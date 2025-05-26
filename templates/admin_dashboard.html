@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Admin Dashboard</h2>
+<h3>Cron Logs</h3>
+<table border="1">
+  <tr>
+    <th>ID</th>
+    <th>Run Date</th>
+    <th>Links Fetched</th>
+    <th>Successful Scrapes</th>
+    <th>Errors</th>
+  </tr>
+  {% for log in logs %}
+  <tr>
+    <td>{{ log.id }}</td>
+    <td>{{ log.run_date }}</td>
+    <td>{{ log.links_fetched }}</td>
+    <td>{{ log.successful_scrapes }}</td>
+    <td>{{ log.errors }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<div class="action-buttons">
+  <form method="POST" action="/admin/trigger" class="inline-form">
+    <button type="submit" class="action-button">Trigger Ingestion</button>
+  </form>
+  <form method="POST" action="/admin/process" class="inline-form">
+    <button type="submit" class="action-button">Process Articles</button>
+  </form>
+</div>
+
+<style>
+.action-buttons {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.action-button {
+  padding: 8px 15px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.action-button:hover {
+  background-color: #2980b9;
+}
+
+.inline-form {
+  margin: 0;
+}
+</style>
+{% endblock %}

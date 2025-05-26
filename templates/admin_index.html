@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-container">
+    <h1 class="admin-title">Admin Control Panel</h1>
+    
+    <div class="admin-grid">
+        <div class="admin-card">
+            <h2>System Monitoring</h2>
+            <p>View system logs and performance metrics</p>
+            <a href="/admin/dashboard" class="admin-button">Dashboard</a>
+        </div>
+
+        <div class="admin-card">
+            <h2>Content Management</h2>
+            <p>Manage content ingestion and processing</p>
+            <div class="button-group">
+                <form method="POST" action="/admin/trigger" class="inline-form">
+                    <button type="submit" class="admin-button">Trigger Ingestion</button>
+                </form>
+                <form method="POST" action="/admin/process" class="inline-form" style="margin-top: 10px;">
+                    <button type="submit" class="admin-button">Process Articles</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <h2>URL Management</h2>
+            <p>Add and manage content sources</p>
+            <a href="/links/add" class="admin-button">Add New URL</a>
+        </div>
+
+        <div class="admin-card">
+            <h2>Recent Activity</h2>
+            <p>View recently added content</p>
+            <a href="/links/recent" class="admin-button">View Recent Links</a>
+        </div>
+    </div>
+</div>
+
+<style>
+.admin-container {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.admin-title {
+    text-align: center;
+    margin-bottom: 2rem;
+    color: #2c3e50;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+}
+
+.admin-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.2s ease;
+}
+
+.admin-card:hover {
+    transform: translateY(-5px);
+}
+
+.admin-card h2 {
+    color: #2c3e50;
+    margin-top: 0;
+    font-size: 1.5rem;
+}
+
+.admin-card p {
+    color: #666;
+    margin-bottom: 1.5rem;
+}
+
+.admin-button {
+    display: inline-block;
+    padding: 0.8rem 1.5rem;
+    background-color: #3498db;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    font-size: 1rem;
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.admin-button:hover {
+    background-color: #2980b9;
+}
+
+.inline-form {
+    margin: 0;
+}
+
+.button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+</style>
+{% endblock %} 

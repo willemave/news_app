@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ article.title if article.title else "No Title" }}</h2>
+<p>Author: {{ article.author if article.author else "Unknown" }}</p>
+<p>Publication Date: {{ article.publication_date if article.publication_date else "N/A" }}</p>
+<p>URL: <a href="{{ article.url }}" target="_blank">{{ article.url }}</a></p>
+
+{% for summary in summaries %}
+  <h3>Short Summary:</h3>
+  <p>{{ summary.short_summary }}</p>
+
+  <h3>Detailed Summary:</h3>
+  <p>{{ summary.detailed_summary }}</p>
+{% endfor %}
+{% endblock %}

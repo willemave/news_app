@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add URL</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
+</head>
+<body>
+    <h1>Add a New URL</h1>
+    <form action="/links/add" method="post">
+        <div>
+            <label for="url">URL:</label>
+            <input type="url" id="url" name="url" required>
+        </div>
+        <div>
+            <label for="title">Title (Optional):</label>
+            <input type="text" id="title" name="title">
+        </div>
+        <div>
+            <button type="submit">Add URL</button>
+        </div>
+    </form>
+    <p><a href="/admin/">Back to Admin</a></p>
+</body>
+</html> 

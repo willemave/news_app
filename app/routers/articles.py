@@ -1,0 +1,37 @@
+from fastapi import APIRouter, Request, Depends
+from sqlalchemy.orm import Session
+from typing import List
+from app.database import SessionLocal, init_db
+from app.models import Articles, Summaries
+from app.schemas import Article
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+
+router = APIRouter()
+templates = Jinja2Templates(directory="templates")
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@router.get("/daily", response_class=HTMLResponse)
+def get_daily_articles(request: Request, db: Session = Depends(get_db), limit: int = 25):
+    # Query articles with 'approved' or 'processed' status, limit to 25
+    articles = db.query(Articles).limit(limit).all()
+    return templates.TemplateResponse("daily_links.html", {
+        "request": request,
+        "articles": articles
+    })
+
+@router.get("/detail/{article_id}", response_class=HTMLResponse)
+def detailed_article(request: Request, article_id: int, db: Session = Depends(get_db)):
+    article = db.query(Articles).filter(Articles.id == article_id).first()
+    summaries = db.query(Summaries).filter(Summaries.article_id == article_id).all()
+    return templates.TemplateResponse("detailed_article.html", {
+        "request": request,
+        "article": article,
+        "summaries": summaries
+    })
