@@ -1,5 +1,5 @@
 import pytest
-import requests_mock
+from unittest.mock import patch
 from app.scraping.fallback_scraper import scrape_fallback
 
 def test_scrape_fallback_success():
@@ -17,8 +17,10 @@ def test_scrape_fallback_success():
     </html>
     """
     url = "http://example.com"
-    with requests_mock.Mocker() as m:
-        m.get(url, text=test_html, status_code=200)
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.text = test_html
+        mock_get.return_value.raise_for_status = lambda: None
         result = scrape_fallback(url)
         assert result is not None
         assert result["title"] == "Test Page"
@@ -33,8 +35,9 @@ def test_scrape_fallback_http_error():
     Test fallback scraper handling of 404 or other HTTP errors.
     """
     url = "http://example.com/404"
-    with requests_mock.Mocker() as m:
-        m.get(url, status_code=404)
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 404
+        mock_get.return_value.raise_for_status.side_effect = Exception("404")
         result = scrape_fallback(url)
         # The function logs an error and returns None
         assert result is None

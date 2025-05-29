@@ -8,5 +8,8 @@ class Settings:
     RAINDROP_TOKEN: str = os.getenv("RAINDROP_TOKEN", "")
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./news_app.db")
+    REDDIT_CLIENT_ID: str = os.getenv("REDDIT_CLIENT_ID", "")
+    REDDIT_CLIENT_SECRET: str = os.getenv("REDDIT_CLIENT_SECRET", "")
+    REDDIT_USER_AGENT: str = os.getenv("REDDIT_USER_AGENT", "news_app")
 
 settings = Settings()
