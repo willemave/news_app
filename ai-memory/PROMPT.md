@@ -1,89 +1,186 @@
+# CrewAI HackerNews Scraper Feature
 
-  You are an expert in Python, Flask, and scalable API development.
+## 1. Feature Overview
+- **Problem:** To explore the CrewAI framework by building a script that scrapes Hacker News, then for each of the top 10 external links, scrapes the content of the linked page and generates a summary. The results (links and summaries) will be presented in a simple HTML page.
+- **Value:** Provides a practical example of CrewAI, automates HN content gathering and summarization via agents, and creates a simple HTML output.
+- **Success Metrics (KPIs):** Script runs successfully, generates an HTML page with up to 10 HN links, and each link has an accompanying summary derived from scraping and summarizing the linked page.
 
-  Key Principles
-  - Write concise, technical responses with accurate Python examples.
-  - Use functional, declarative programming; avoid classes where possible except for Flask views.
-  - Prefer iteration and modularization over code duplication.
-  - Use descriptive variable names with auxiliary verbs (e.g., is_active, has_permission).
-  - Use lowercase with underscores for directories and files (e.g., blueprints/user_routes.py).
-  - Favor named exports for routes and utility functions.
-  - Use the Receive an Object, Return an Object (RORO) pattern where applicable.
+## 2. Users and Personas
+- **Target Users:** Developer (for learning/experimenting with CrewAI).
+- **Goals:** Understand CrewAI agent/task definition, agent collaboration, tool usage (web scraping, summarization), and see a practical web scraping/content processing application.
 
-  Python/Flask
-  - Use def for function definitions.
-  - Use type hints for all function signatures where possible.
-  - File structure: Flask app initialization, blueprints, models, utilities, config.
-  - Avoid unnecessary curly braces in conditional statements.
-  - For single-line statements in conditionals, omit curly braces.
-  - Use concise, one-line syntax for simple conditional statements (e.g., if condition: do_something()).
+## 3. User Stories & Scenarios
+- As a developer, I want to run a Python script to get an HTML page with the top 10 Hacker News external links and their AI-generated summaries, created by a CrewAI team.
+- As a developer, I want a "Hacker News Topic Scraper Agent" in CrewAI to fetch the top 10 external article links from Hacker News.
+- As a developer, I want an "Article Content Writer Agent" in CrewAI to take each URL, scrape its content, generate a summary of that content (likely using an LLM-powered tool), and compile all links/summaries into an HTML output file.
+- **Edge Cases:** HN structure changes, inaccessible linked pages, rate limits, LLM API errors, content extraction failures.
 
-  Error Handling and Validation
-  - Prioritize error handling and edge cases:
-    - Handle errors and edge cases at the beginning of functions.
-    - Use early returns for error conditions to avoid deeply nested if statements.
-    - Place the happy path last in the function for improved readability.
-    - Avoid unnecessary else statements; use the if-return pattern instead.
-    - Use guard clauses to handle preconditions and invalid states early.
-    - Implement proper error logging and user-friendly error messages.
-    - Use custom error types or error factories for consistent error handling.
+## 4. Scope Definition
+- **In Scope (Must-Haves):**
+  - Python script using CrewAI (`scripts/crewai_hackernews_scraper.py`).
+  - Requires `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables to be set.
+  - Two CrewAI agents:
+    1. **HackerNews Topic Scraper Agent:** Fetches top 10 external article links from `https://news.ycombinator.com/`.
+    2. **Article Content Writer Agent:** For each link provided by the first agent:
+       - Uses a tool to scrape the content of the linked page and generate a summary.
+       - Compiles all original links and their generated summaries.
+  - A CrewAI Task that directs the `Article Content Writer Agent` to output the final compiled list of links and summaries into an HTML file (e.g., `scripts/hackernews_crew_report.html`).
+- **Out of Scope:** Integration with the main app's DB/backend, advanced error handling beyond what tools provide, sophisticated HTML styling, using the project's existing Google Gemini LLM setup (will rely on CrewAI's default/tool-specific LLM integrations).
 
-  Dependencies
-  - Flask
-  - Flask-RESTful (for RESTful API development)
-  - Flask-SQLAlchemy (for ORM)
-  - Flask-Migrate (for database migrations)
-  - Marshmallow (for serialization/deserialization)
-  - Flask-JWT-Extended (for JWT authentication)
+## 5. Acceptance Criteria
+- Script execution produces an HTML file named `hackernews_crew_report.html` in the `scripts/` directory.
+- The HTML file contains up to 10 Hacker News article links and their corresponding AI-generated summaries.
+- The Hacker News Topic Scraper Agent successfully returns a list of up to 10 external article URLs from Hacker News.
+- The Article Content Writer Agent successfully scrapes content and generates a summary for each provided URL, and the final task outputs the HTML file.
+- The script checks for `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables and informs the user if they are missing.
 
-  Flask-Specific Guidelines
-  - Use Flask application factories for better modularity and testing.
-  - Organize routes using Flask Blueprints for better code organization.
-  - Use Flask-RESTful for building RESTful APIs with class-based views.
-  - Implement custom error handlers for different types of exceptions.
-  - Use Flask's before_request, after_request, and teardown_request decorators for request lifecycle management.
-  - Utilize Flask extensions for common functionalities (e.g., Flask-SQLAlchemy, Flask-Migrate).
-  - Use Flask's config object for managing different configurations (development, testing, production).
-  - Implement proper logging using Flask's app.logger.
-  - Use Flask-JWT-Extended for handling authentication and authorization.
+## 6. Functional Requirements
+- **Inputs:** Environment variables for API keys.
+- **Outputs:** An HTML file (`scripts/hackernews_crew_report.html`).
+- **Business Rules:** Target `https://news.ycombinator.com/` for initial links, process up to 10 external links, summaries generated by an LLM tool acting on the content of these external links.
 
-  Performance Optimization
-  - Use Flask-Caching for caching frequently accessed data.
-  - Implement database query optimization techniques (e.g., eager loading, indexing).
-  - Use connection pooling for database connections.
-  - Implement proper database session management.
-  - Use background tasks for time-consuming operations (e.g., Celery with Flask).
+## 7. Non-Functional Requirements
+- **Performance:** Reasonable completion time for fetching and processing up to 10 articles.
+- **Reliability:** Relies on the robustness of CrewAI tools for scraping and summarization. Basic error messages for missing API keys.
+- **Security:** API keys handled via environment variables.
 
-  Key Conventions
-  1. Use Flask's application context and request context appropriately.
-  2. Prioritize API performance metrics (response time, latency, throughput).
-  3. Structure the application:
-    - Use blueprints for modularizing the application.
-    - Implement a clear separation of concerns (routes, business logic, data access).
-    - Use environment variables for configuration management.
+## 8. Data & Integration
+- **APIs/Libraries:** CrewAI, `crewai_tools` (specifically `SerperDevTool`, `WebsiteSearchTool`). `python-dotenv` for loading `.env` files.
+- **External Dependencies:** `crewai`, `crewai-tools`, `python-dotenv`, `beautifulsoup4`, `requests`.
 
-  Database Interaction
-  - Use Flask-SQLAlchemy for ORM operations.
-  - Implement database migrations using Flask-Migrate.
-  - Use SQLAlchemy's session management properly, ensuring sessions are closed after use.
+## 9. UI/UX Considerations
+- Output is a simple HTML file: a list of original article titles (hyperlinked) followed by their summaries.
+- Clear console messages during script execution (verbose mode in CrewAI).
 
-  Serialization and Validation
-  - Use Marshmallow for object serialization/deserialization and input validation.
-  - Create schema classes for each model to handle serialization consistently.
+## 10. Technical Architecture
+- Standalone Python script: `scripts/crewai_hackernews_scraper.py`.
+- **CrewAI Structure:**
+  - **Tools:**
+    - `SerperDevTool` (for the first agent to find HN links).
+    - `WebsiteSearchTool` (for the second agent to scrape and summarize content from a URL).
+  - **Agents:**
+    1. `HackerNewsLinkCollectorAgent`: Role to find top current Hacker News article links. Goal to retrieve a list of URLs.
+    2. `ArticleSummarizerAgent`: Role to process a list of URLs. Goal to scrape content from each URL, generate a summary, and compile all results.
+  - **Tasks:**
+    1. `CollectHackerNewsLinksTask`: Assigned to `HackerNewsLinkCollectorAgent`. Expected output: a list of URLs.
+    2. `SummarizeArticlesAndCreateReportTask`: Assigned to `ArticleSummarizerAgent`. Takes the list of URLs as input. Expected output: an HTML file (`scripts/hackernews_crew_report.html`) containing the links and their summaries. This task will use the `output_file` parameter.
+  - **Crew:** Orchestrates the two agents sequentially. Planning mode can be enabled.
 
-  Authentication and Authorization
-  - Implement JWT-based authentication using Flask-JWT-Extended.
-  - Use decorators for protecting routes that require authentication.
+- **Illustrative Code Snippets:**
 
-  Testing
-  - Write unit tests using pytest.
-  - Use Flask's test client for integration testing.
-  - Implement test fixtures for database and application setup.
+  ```python
+  # scripts/crewai_hackernews_scraper.py (Conceptual Outline)
+  import os
+  from crewai import Agent, Task, Crew
+  from crewai_tools import SerperDevTool, WebsiteSearchTool
+  from dotenv import load_dotenv
 
-  Deployment
-  - Use Gunicorn or uWSGI as WSGI HTTP Server.
-  - Implement proper logging and monitoring in production.
-  - Use environment variables for sensitive information and configuration.
+  # Load environment variables (ensure .env file has OPENAI_API_KEY and SERPER_API_KEY)
+  load_dotenv()
 
-  Refer to Flask documentation for detailed information on Views, Blueprints, and Extensions for best practices.
-    
+  # Check for API keys
+  openai_api_key = os.getenv("OPENAI_API_KEY")
+  serper_api_key = os.getenv("SERPER_API_KEY")
+
+  if not openai_api_key or not serper_api_key:
+      print("Error: OPENAI_API_KEY or SERPER_API_KEY not found in environment variables.")
+      print("Please ensure they are set in your .env file or environment.")
+      exit()
+
+  # Instantiate tools
+  search_tool = SerperDevTool() # For finding HN links
+  web_scraper_tool = WebsiteSearchTool() # For scraping and summarizing linked pages
+
+  # Agent 1: HackerNews Link Collector
+  link_collector_agent = Agent(
+      role='HackerNews Link Collector',
+      goal='Find the top 10 external article links from the Hacker News homepage (news.ycombinator.com)',
+      backstory='An expert web researcher efficient at finding relevant links from Hacker News.',
+      tools=[search_tool], # Or a direct scraping tool if preferred for HN
+      verbose=True,
+      allow_delegation=False
+  )
+
+  # Agent 2: Article Summarizer and HTML Report Writer
+  summarizer_agent = Agent(
+      role='Article Summarizer and HTML Report Writer',
+      goal='For each provided URL, scrape its content, generate a concise summary, and compile all links and summaries into a final HTML report.',
+      backstory='A meticulous agent skilled in web content extraction, summarization, and HTML report generation.',
+      tools=[web_scraper_tool],
+      verbose=True,
+      allow_delegation=False
+  )
+
+  # Task 1: Collect Hacker News Links
+  collect_links_task = Task(
+      description=(
+          "Search for the current top 10 external article links on Hacker News (news.ycombinator.com). "
+          "Focus on actual articles, not comments or 'Ask HN' posts. "
+          "Return a list of these 10 URLs."
+      ),
+      expected_output='A Python list containing exactly 10 unique URLs of external articles from Hacker News.',
+      agent=link_collector_agent
+  )
+
+  # Task 2: Summarize Articles and Create HTML Report
+  # This task will receive the output of collect_links_task as context.
+  summarize_and_report_task = Task(
+      description=(
+          "Process a list of article URLs. For each URL: "
+          "1. Scrape the main content of the article using the WebsiteSearchTool. "
+          "2. Generate a 1-2 sentence summary of the scraped content. "
+          "3. Compile all original article URLs and their summaries into a single HTML formatted string. "
+          "The HTML should list each article with its URL (as a clickable link) and its summary."
+      ),
+      expected_output=(
+          "An HTML string containing a list of up to 10 articles. Each article entry should include "
+          "the original URL (hyperlinked) and its generated summary. "
+          "Example for one article: <p><a href='URL'>Article Title (if available, else URL)</a><br/>Summary text...</p>"
+      ),
+      agent=summarizer_agent,
+      output_file='scripts/hackernews_crew_report.html' # CrewAI will write the task's string output here
+  )
+
+  # Assemble the crew
+  hackernews_crew = Crew(
+      agents=[link_collector_agent, summarizer_agent],
+      tasks=[collect_links_task, summarize_and_report_task],
+      verbose=True
+      # planning=True # Optional: enable planning mode
+  )
+
+  # Kick off the crew's work
+  if __name__ == '__main__':
+      print("Starting Hacker News CrewAI Scraper...")
+      result = hackernews_crew.kickoff()
+      print("\nCrewAI Scraper Finished.")
+      print("\nFinal Report:")
+      # The result of the last task (HTML string) is in 'result'.
+      # It's also written to 'scripts/hackernews_crew_report.html' by the task's output_file parameter.
+      print(f"Report saved to: scripts/hackernews_crew_report.html")
+      # To print the HTML content:
+      # print(result)
+  ```
+
+## 11. File & Code Organization
+- Script: `scripts/crewai_hackernews_scraper.py`.
+- Output HTML: `scripts/hackernews_crew_report.html`.
+- The project root `.env` file should contain `OPENAI_API_KEY` and `SERPER_API_KEY`.
+
+## 12. Testing Strategy
+- Manual execution of the script: `python scripts/crewai_hackernews_scraper.py`.
+- Verification of the generated `scripts/hackernews_crew_report.html` for content (up to 10 links and summaries) and basic HTML structure.
+- Verification of console output for agent activity and API key checks.
+
+## 13. Deployment & Rollout
+- N/A (local script).
+
+## 14. Monitoring & Observability
+- CrewAI's `verbose=True` setting for console logs.
+- Print statements for API key checks and script start/finish.
+
+## 15. Documentation Needs
+- In-script comments explaining agent roles, tasks, tool usage, and API key requirements.
+- This `ai-memory/PROMPT.md` file.
+- A new `ai-memory/TASKS.md` file for this feature.
+- An update to the main `ai-memory/README.md` to document this new script under "Development & Testing Scripts" or a new "AI Agent Exploration Scripts" section, including the need for `OPENAI_API_KEY` and `SERPER_API_KEY`.

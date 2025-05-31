@@ -78,7 +78,16 @@ graph TB
    - Time-filtered bookmark retrieval
    - Requires `RAINDROP_TOKEN` configuration
 
-5. **Fallback Scraper (`fallback_scraper.py`)**
+5. **HackerNews Scraper (`hackernews_scraper.py`)**
+   - Specialized scraper for HackerNews homepage content
+   - Fetches HackerNews homepage and extracts external article links
+   - Filters out internal HN discussion links (item?id=)
+   - Uses multiple content selectors for robust article extraction
+   - Integrates with LLM for automatic summarization
+   - Implements duplicate checking and comprehensive error handling
+   - Direct database integration with Articles and Summaries models
+
+6. **Fallback Scraper (`fallback_scraper.py`)**
    - Generic web scraping using BeautifulSoup
    - Boilerplate removal (scripts, styles, nav, footer, header)
    - Basic title extraction from `<title>` tag
@@ -95,7 +104,7 @@ graph TB
 - **Pydantic**: Data validation and serialization throughout the application
 - **Status-based workflow**: Clear article processing pipeline with enum-based status tracking
 - **Modular scraping**: Pluggable scraper architecture with intelligent routing
-- **External AI integration**: Gemini Vision for advanced PDF processing
+- **External AI integration**: Google Gemini Flash 2.5 for content summarization and PDF processing
 
 ## Tech Context
 
@@ -153,6 +162,7 @@ graph TB
 - **`rss.py`**: RSS feed processing
 - **`pdf_scraper.py`**: PDF content extraction
 - **`raindrop.py`**: Raindrop bookmark service integration
+- **`hackernews_scraper.py`**: HackerNews-specific scraping with LLM integration
 - **`fallback_scraper.py`**: Backup scraping methods
 
 ### Automation (`cron/`)
@@ -163,6 +173,23 @@ graph TB
 ### Frontend (`templates/`, `static/`)
 - **`templates/`**: Jinja2 HTML templates
 - **`static/`**: CSS and JavaScript assets
+
+### Development & Testing Scripts (`scripts/`)
+- **`test_hackernews_scraper.py`**: Standalone test script for HackerNews scraper functionality
+  - Runs the complete HackerNews scraping pipeline
+  - Displays processing statistics and results
+  - Shows all scraped articles with their summaries
+  - Includes database initialization and proper session management
+
+### AI Agent Exploration Scripts (`scripts/`)
+- **`crewai_hackernews_scraper.py`**: CrewAI-powered HackerNews content aggregation script
+  - Uses CrewAI framework with two specialized agents for web scraping and content summarization
+  - **Agent 1 (Link Collector)**: Finds top 10 external article links from Hacker News homepage using SerperDevTool
+  - **Agent 2 (Summarizer)**: Scrapes article content and generates AI-powered summaries using WebsiteSearchTool
+  - Outputs comprehensive HTML report (`scripts/hackernews_crew_report.html`) with clickable links and summaries
+  - **Requirements**: `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables
+  - **Usage**: `python scripts/crewai_hackernews_scraper.py`
+  - Demonstrates CrewAI agent collaboration, task sequencing, and automated content processing
 
 ### Testing (`tests/`)
 - Comprehensive test suite for scraping components

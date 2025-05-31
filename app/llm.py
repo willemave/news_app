@@ -3,19 +3,19 @@ This module manages the LLM integration for:
 1. Preference-based filtering.
 2. Summarization (short and detailed).
 
-You can use OpenAI or any other provider with the appropriate client library.
+Uses Google Gemini Flash 2.5 for all LLM operations.
 """
-import os
 import json
-from openai import OpenAI
+import os
+from google import genai
+from google.genai import types
 from .config import settings
 
-# Initialize OpenAI client
-client = OpenAI(api_key=settings.LLM_API_KEY)
+# Removed global genai.configure(api_key=settings.GOOGLE_API_KEY)
 
 def filter_article(content: str) -> bool:
     """
-    Decide whether an article matches user preferences using OpenAI.
+    Decide whether an article matches user preferences using Google Gemini.
     Returns True if the article matches preferences, False otherwise.
     """
     system_prompt = """You are an intelligent news filter. Your task is to determine if an article matches the following preferences:
@@ -31,61 +31,129 @@ def filter_article(content: str) -> bool:
     }"""
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": content}
-            ],
-            temperature=0.3,
-            max_tokens=150,
-            response_format={ "type": "json_object" }
+        # Initialize client with API key
+        client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+        )
+
+        model = "gemini-2.5-flash-preview-05-20"
+        prompt = f"{system_prompt}\n\nArticle content:\n{content}"
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=prompt),
+                ],
+            ),
+        ]
+        generate_content_config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
         )
         
-        result = json.loads(response.choices[0].message.content)
+        # It's good practice to check if response.text is valid JSON before loading
+        # For now, assuming it's valid as per original code
+        result = json.loads(response.text)
         print(f"Filter reason: {result.get('reason')}")  # Logging for debugging
         return result.get('matches', False)
     except Exception as e:
         print(f"Error in filter_article: {e}")
         return False  # Default to excluding on error
 
-def summarize_article(content: str) -> tuple[str, str]:
+def summarize_article(content: str) -> dict[str, str]:
     """
-    Generate short and detailed summaries for the content using OpenAI.
+    Generate short and detailed summaries for the content using Google Gemini.
     Returns a tuple of (short_summary, detailed_summary).
     """
-    system_prompt = """You are an expert at summarizing articles. Create two summaries:
-    1. A short summary (2-3 sentences) that captures the main point
-    2. A detailed summary that includes key points, important details, and any relevant data or quotes
+    system_prompt = """You are an expert at summarizing articles. 
+    
+    You are going to create two summaries of the article. 
+    1. A Short 2 sentence summary for brief scanning. 
+    2. A detailed summary that starts with bullet points of the key topics
+     and then a few paragraphs summarizing the document.
+    3. Please pull out a set of relevant keywords. 
 
     Respond with a JSON object containing:
     {
-        "short_summary": "2-3 sentence summary",
-        "detailed_summary": "comprehensive summary with key points",
+        "short": "2 sentence summary",
+        "detailed": "bullet points of the key topics, and multiple paragraph summary" 
         "keywords": ["list", "of", "relevant", "keywords"]
     }"""
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",  # Using GPT-4 for better summarization
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": content}
-            ],
-            temperature=0.7,
-            max_tokens=1000,
-            response_format={ "type": "json_object" }
+        # Initialize client with API key
+        client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+        )
+
+        model = "gemini-2.5-flash-preview-05-20"
+        prompt = f"{system_prompt}\n\nArticle content:\n{content}"
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=prompt),
+                ],
+            ),
+        ]
+        generate_content_config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
         )
         
-        result = json.loads(response.choices[0].message.content)
-        
-        # Log keywords for potential future use
-        print(f"Keywords: {', '.join(result.get('keywords', []))}")
-        
-        return (
-            result.get('short_summary', "Error generating summary"),
-            result.get('detailed_summary', "Error generating detailed summary")
-        )
+        return json.loads(response.text)
+    
     except Exception as e:
         print(f"Error in summarize_article: {e}")
         return ("Error generating summary", "Error generating detailed summary")
+
+def summarize_text(content: str) -> str:
+    """
+    Generate a summary for the given text content using Google Gemini.
+    This is a simplified function for basic summarization needs.
+    Returns a single summary string.
+    """
+    prompt = f"""Please provide a concise summary of the following article content in 2-3 sentences:
+
+{content}"""
+
+    try:
+        # Initialize client with API key
+        client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+        )
+
+        model = "gemini-2.5-flash-preview-05-20"
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=prompt),
+                ],
+            ),
+        ]
+        generate_content_config = types.GenerateContentConfig(
+            response_mime_type="text/plain",
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error in summarize_text: {e}")
+        return "Error generating summary"
