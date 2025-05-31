@@ -25,5 +25,6 @@ class Settings:
     REDDIT_CLIENT_ID: str = os.getenv("REDDIT_CLIENT_ID", "")
     REDDIT_CLIENT_SECRET: str = os.getenv("REDDIT_CLIENT_SECRET", "")
     REDDIT_USER_AGENT: str = os.getenv("REDDIT_USER_AGENT", "news_app")
+    HUEY_DB_PATH: str = os.getenv("HUEY_DB_PATH", "./db/huey.db")
 
 settings = Settings()

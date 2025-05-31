@@ -20,7 +20,6 @@ class Articles(Base):
     url = Column(String, unique=True, index=True, nullable=False)
     author = Column(String, nullable=True)
     publication_date = Column(DateTime, nullable=True)
-    raw_content = Column(Text, nullable=True)
     scraped_date = Column(DateTime, default=datetime.utcnow)
     status = Column(Enum(ArticleStatus), default=ArticleStatus.new)
 
