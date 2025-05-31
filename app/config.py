@@ -1,8 +1,21 @@
 import os
+import logging
 from dotenv import load_dotenv
 
 # Load environment variables from .env if present
 load_dotenv()
+
+# Basic Logging Configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler() # Log to console
+    ]
+)
+
+# Get a logger instance
+logger = logging.getLogger(__name__)
 
 class Settings:
     RAINDROP_TOKEN: str = os.getenv("RAINDROP_TOKEN", "")

@@ -16,5 +16,7 @@ db/*
 *.pyo
 *.pyd
 
+build/
+
 # Mac/Linux system files
 .DS_Store

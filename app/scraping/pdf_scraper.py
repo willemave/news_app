@@ -5,7 +5,7 @@ import os
 import io
 from typing import Optional, Dict, Any
 import requests
-import google.generativeai as genai
+import google.genai as genai
 from PyPDF2 import PdfReader
 
 class GeminiPDFProcessor:

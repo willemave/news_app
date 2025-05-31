@@ -218,3 +218,7 @@ The Memory Bank MUST be kept current. Updates occur when:
 REMEMBER: After every memory reset, you begin completely fresh. The Memory Bank is your only link to previous work. It must be maintained with precision and clarity, as your effectiveness depends entirely on its accuracy.
 
 
+Libraries & Tools
+- Use google-genai because google-generativeai is deprecated. 
+- use `uv pip install` to install new python packages
+- use `uv` as the environment manager and make sure to `source .venv/bin/activate`
