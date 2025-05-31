@@ -393,6 +393,8 @@ pyyaml==6.0.2
     #   huggingface-hub
     #   newspaper4k
     #   transformers
+praw==7.7.1
+    # via news-app (pyproject.toml)
 queuelib==1.8.0
     # via scrapy
 readability-lxml==0.8.4.1
