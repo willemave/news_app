@@ -2,6 +2,13 @@
 """
 Test script for the Reddit scraper.
 This script runs the Reddit scraper and then displays all processed articles and their summaries.
+
+USAGE:
+    python scripts/run_reddit_scraper.py --clear-existing
+
+NOTE:
+    Always run this script using the Python interpreter as shown above.
+    Running it as an executable (e.g., ./scripts/run_reddit_scraper.py) may cause import errors.
 """
 
 import sys
@@ -14,17 +21,25 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.scraping.reddit import process_reddit_articles, validate_reddit_config
 from app.models import Articles, Summaries
 from app.database import SessionLocal, init_db
+from app.queue import drain_queue, get_queue_stats
 
 
 def main():
     """
     Main function to test the Reddit scraper.
     """
+    # Hardcoded subreddit map as requested
+    SUBREDDIT_MAP = {
+        "SquarePOS_Users": 10,
+        "POS": 10,
+        "ArtificialInteligence": 20,
+        "ChatGPTPro": 5,
+        "reinforcementlearning": 20,
+        "mlscaling": 10,
+        "NooTopics": 10
+    }
+    
     parser = argparse.ArgumentParser(description="Reddit Scraper Test Script")
-    parser.add_argument("--subreddit", default="front", help="Subreddit to scrape (default: front)")
-    parser.add_argument("--limit", type=int, default=10, help="Number of posts to process (default: 10)")
-    parser.add_argument("--time-filter", default="day", choices=["hour", "day", "week", "month", "year", "all"],
-                       help="Time filter for top posts (default: day)")
     parser.add_argument("--clear-existing", action="store_true", 
                        help="Clear existing Reddit articles from database before scraping")
     parser.add_argument("--show-articles", action="store_true", 
@@ -59,23 +74,49 @@ def main():
             db.commit()
             print(f"Cleared {deleted_count} existing articles.")
         
-        # Run the Reddit scraper
-        print(f"\nRunning Reddit scraper for r/{args.subreddit}...")
-        print(f"Parameters: limit={args.limit}, time_filter={args.time_filter}")
+        # Process each subreddit in the map
+        total_stats = {
+            "total_posts": 0,
+            "external_links": 0,
+            "successful_scrapes": 0,
+            "successful_summaries": 0,
+            "errors": 0,
+            "duplicates_skipped": 0
+        }
         
-        stats = process_reddit_articles(
-            subreddit_name=args.subreddit,
-            limit=args.limit,
-            time_filter=args.time_filter
-        )
+        for subreddit, limit in SUBREDDIT_MAP.items():
+            print(f"\nRunning Reddit scraper for r/{subreddit}...")
+            print(f"Parameters: limit={limit}, time_filter=day")
+            
+            stats = process_reddit_articles(
+                subreddit_name=subreddit,
+                limit=limit,
+                time_filter="day"
+            )
+            
+            # Aggregate stats
+            for key in total_stats:
+                total_stats[key] += stats[key]
+            
+            print(f"Completed r/{subreddit} - Scraped: {stats['successful_scrapes']}, Queued: {stats['successful_summaries']}")
         
-        print(f"\nScraping completed with stats:")
-        print(f"  Total posts found: {stats['total_posts']}")
-        print(f"  External links: {stats['external_links']}")
-        print(f"  Successful scrapes: {stats['successful_scrapes']}")
-        print(f"  Successful summaries: {stats['successful_summaries']}")
-        print(f"  Duplicates skipped: {stats['duplicates_skipped']}")
-        print(f"  Errors: {stats['errors']}")
+        print(f"\nAll subreddits completed. Total stats:")
+        print(f"  Total posts found: {total_stats['total_posts']}")
+        print(f"  External links: {total_stats['external_links']}")
+        print(f"  Successful scrapes: {total_stats['successful_scrapes']}")
+        print(f"  Successful summaries queued: {total_stats['successful_summaries']}")
+        print(f"  Duplicates skipped: {total_stats['duplicates_skipped']}")
+        print(f"  Errors: {total_stats['errors']}")
+        
+        # Check queue status and drain if needed
+        queue_stats = get_queue_stats()
+        if queue_stats.get("pending_tasks", 0) > 0:
+            print(f"\nFound {queue_stats['pending_tasks']} pending summarization tasks in queue.")
+            print("Draining queue (processing all pending summarization tasks)...")
+            drain_queue()
+            print("Queue processing completed.")
+        else:
+            print("\nNo pending tasks in queue.")
         
         if args.show_articles:
             # Query and display all articles and summaries

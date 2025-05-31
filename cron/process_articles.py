@@ -60,7 +60,6 @@ def process_articles(batch_size=10):
             article.title = data.get("title") or article.title
             article.author = data.get("author")
             article.publication_date = data.get("publication_date") or article.publication_date
-            article.raw_content = data.get("content")
             article.status = ArticleStatus.scraped
             db.commit()
             
@@ -103,4 +102,4 @@ def process_articles(batch_size=10):
     return (processed_count, approved_count, len(errors))
 
 if __name__ == "__main__":
-    process_articles() 
+    process_articles()

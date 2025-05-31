@@ -119,6 +119,74 @@ def summarize_article(content: str) -> dict[str, str]:
         print(f"Error in summarize_article: {e}")
         return ("Error generating summary", "Error generating detailed summary")
 
+def summarize_pdf(pdf_data: str) -> dict[str, str]:
+    """
+    Generate short and detailed summaries for PDF content using Google Gemini.
+    
+    Args:
+        pdf_data: Base64 encoded PDF data
+    
+    Returns:
+        Dictionary with short, detailed summaries and keywords
+    """
+    system_prompt = """You are an expert at summarizing PDF documents. 
+    
+    You are going to create two summaries of the PDF document. 
+    1. A Short 2 sentence summary for brief scanning. 
+    2. A detailed summary that starts with bullet points of the key topics
+     and then a few paragraphs summarizing the document.
+    3. Please pull out a set of relevant keywords. 
+
+    Respond with a JSON object containing:
+    {
+        "short": "2 sentence summary",
+        "detailed": "bullet points of the key topics, and multiple paragraph summary" 
+        "keywords": ["list", "of", "relevant", "keywords"]
+    }"""
+
+    try:
+        # Initialize client with API key
+        client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+        )
+
+        model = "gemini-2.5-flash-preview-05-20"
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=system_prompt),
+                    types.Part.from_inline_data(
+                        inline_data=types.InlineData(
+                            mime_type="application/pdf",
+                            data=pdf_data
+                        )
+                    ),
+                ],
+            ),
+        ]
+        generate_content_config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
+        )
+        
+        return json.loads(response.text)
+    
+    except Exception as e:
+        print(f"Error in summarize_pdf: {e}")
+        return {
+            "short": "Error generating PDF summary",
+            "detailed": "Error generating detailed PDF summary",
+            "keywords": []
+        }
+
+
 def summarize_text(content: str) -> str:
     """
     Generate a summary for the given text content using Google Gemini.

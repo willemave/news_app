@@ -1,0 +1,176 @@
+"""
+Queue management using Huey for background task processing.
+Handles LLM summarization tasks and link processing to avoid blocking the main scraping process.
+"""
+import json
+from datetime import datetime
+from typing import Optional
+from huey import SqliteHuey
+
+from .config import settings, logger
+from .database import SessionLocal
+from .models import Articles, Summaries, ArticleStatus
+from . import llm
+
+
+# Initialize Huey with SQLite backend
+huey = SqliteHuey(filename=settings.HUEY_DB_PATH)
+
+
+@huey.task(retries=3, retry_delay=60)
+def process_link_task(url: str, source: str = "unknown") -> bool:
+    """
+    Background task to process a link from the links_to_scrape queue.
+    Downloads content, processes with LLM, and creates Articles/Summaries.
+    
+    Args:
+        url: URL to process
+        source: Source of the link (e.g., "hackernews", "reddit")
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    from .processor import process_single_link
+    from google.genai.errors import ClientError
+    
+    try:
+        return process_single_link(url, source)
+    except ClientError as e:
+        # Check if this is a 429 rate limit error
+        if "429" in str(e) or "rate limit" in str(e).lower():
+            logger.warning(f"LLM rate limit hit for {url}, will retry: {e}")
+            # Re-raise to trigger Huey's retry mechanism
+            raise
+        else:
+            logger.error(f"LLM client error for {url}: {e}", exc_info=True)
+            return False
+    except Exception as e:
+        logger.error(f"Error processing link {url}: {e}", exc_info=True)
+        return False
+
+
+@huey.task()
+def summarize_task(article_id: int, raw_content: str, is_pdf: bool = False) -> bool:
+    """
+    Background task to summarize article content and update database.
+    
+    Args:
+        article_id: ID of the article to summarize
+        raw_content: Raw content (text for HTML, base64 bytes for PDF)
+        is_pdf: Whether the content is a PDF file
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    db = SessionLocal()
+    
+    try:
+        # Retrieve the article record
+        article = db.query(Articles).filter(Articles.id == article_id).first()
+        if not article:
+            logger.error(f"Article with ID {article_id} not found")
+            return False
+        
+        logger.info(f"Processing summarization for article {article_id}: {article.title}")
+        
+        # Generate summary based on content type
+        if is_pdf:
+            # For PDF content, raw_content should be base64 encoded bytes
+            summaries = llm.summarize_pdf(raw_content)
+        else:
+            # For HTML content, use regular summarization
+            summaries = llm.summarize_article(raw_content)
+        
+        # Handle both dict and tuple return formats for backward compatibility
+        if isinstance(summaries, dict):
+            short_summary = summaries.get("short", "")
+            detailed_summary = summaries.get("detailed", "")
+            keywords = summaries.get("keywords", [])
+        else:
+            # Fallback for tuple format
+            short_summary = summaries[0] if len(summaries) > 0 else ""
+            detailed_summary = summaries[1] if len(summaries) > 1 else ""
+            keywords = []
+        
+        # Create Summary record
+        summary = Summaries(
+            article_id=article.id,
+            short_summary=short_summary,
+            detailed_summary=detailed_summary,
+            summary_date=datetime.utcnow()
+        )
+        
+        db.add(summary)
+        
+        # Update article status to processed
+        article.status = ArticleStatus.processed
+        
+        # Commit changes
+        db.commit()
+        
+        logger.info(f"Successfully summarized article {article_id}: {article.title}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error summarizing article {article_id}: {e}", exc_info=True)
+        db.rollback()
+        return False
+        
+    finally:
+        db.close()
+
+
+def drain_queue() -> None:
+    """
+    Drain the Huey queue by running all pending tasks.
+    This is useful for scripts that need to wait for all tasks to complete.
+    """
+    logger.info("Starting to drain Huey queue...")
+    
+    processed_count = 0
+    failed_count = 0
+    
+    while True:
+        task = huey.dequeue()
+        if not task:
+            logger.info("No more tasks in the queue.")
+            break
+        
+        logger.info(f"Processing task: {getattr(task, 'id', 'N/A')} - {getattr(task, 'name', 'N/A')}")
+        try:
+            # Execute the task directly using Huey's execute method
+            result = huey.execute(task)
+            processed_count += 1
+            logger.info(f"Successfully processed task: {getattr(task, 'id', 'N/A')}")
+        except Exception as e:
+            failed_count += 1
+            logger.error(f"Error processing task {getattr(task, 'id', 'N/A')} ({getattr(task, 'name', 'N/A')}): {e}", exc_info=True)
+
+    if processed_count > 0 or failed_count > 0:
+        logger.info(f"Queue draining finished. Processed: {processed_count}, Failed: {failed_count}.")
+    else:
+        logger.info("Queue was empty or no tasks were processed during drain.")
+
+
+def get_queue_stats() -> dict:
+    """
+    Get statistics about the current queue state.
+    
+    Returns:
+        Dictionary with queue statistics
+    """
+    try:
+        # Get pending tasks count
+        pending_count = len(huey.pending())
+        
+        return {
+            "pending_tasks": pending_count,
+            "queue_db_path": settings.HUEY_DB_PATH
+        }
+    except Exception as e:
+        logger.error(f"Error getting queue stats: {e}")
+        return {
+            "pending_tasks": -1,
+            "queue_db_path": settings.HUEY_DB_PATH,
+            "error": str(e)
+        }

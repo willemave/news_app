@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.scraping.hackernews_scraper import process_hackernews_articles
 from app.models import Articles, Summaries
 from app.database import SessionLocal, init_db
+from app.queue import drain_queue, get_queue_stats
 
 def main():
     """
@@ -40,8 +41,18 @@ def main():
         print(f"\nScraping completed with stats:")
         print(f"  Total links found: {stats['total_links']}")
         print(f"  Successful scrapes: {stats['successful_scrapes']}")
-        print(f"  Successful summaries: {stats['successful_summaries']}")
+        print(f"  Successful summaries queued: {stats['successful_summaries']}")
         print(f"  Errors: {stats['errors']}")
+        
+        # Check queue status and drain if needed
+        queue_stats = get_queue_stats()
+        if queue_stats.get("pending_tasks", 0) > 0:
+            print(f"\nFound {queue_stats['pending_tasks']} pending summarization tasks in queue.")
+            print("Draining queue (processing all pending summarization tasks)...")
+            drain_queue()
+            print("Queue processing completed.")
+        else:
+            print("\nNo pending tasks in queue.")
         
         # Query and display all articles and summaries
         print("\n" + "=" * 60)

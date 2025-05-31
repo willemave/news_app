@@ -1,10 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
 from typing import List, Dict, Optional
-from ..database import SessionLocal
-from ..models import Articles, Summaries, ArticleStatus
-from ..llm import summarize_article
+from ..queue import process_link_task
 
 def fetch_hackernews_homepage() -> str:
     """
@@ -49,81 +46,23 @@ def extract_article_links(homepage_html: str) -> List[str]:
         print(f"Error extracting article links: {e}")
         return []
 
-def scrape_article_content(article_url: str) -> Optional[Dict[str, str]]:
-    """
-    Scrape the content of an individual article URL.
-    Returns a dictionary with url, title, and raw_content, or None if failed.
-    """
-    try:
-        response = requests.get(article_url, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Remove obvious boilerplate tags
-        for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
-            script.decompose()
-
-        # Extract title
-        title = ""
-        if soup.title and soup.title.string:
-            title = soup.title.string.strip()
-        
-        # Try to find main content areas (common patterns)
-        content_selectors = [
-            "article",
-            "main",
-            ".content",
-            ".post-content",
-            ".entry-content",
-            ".article-content",
-            "#content",
-            ".story-body"
-        ]
-        
-        content_text = ""
-        for selector in content_selectors:
-            content_element = soup.select_one(selector)
-            if content_element:
-                content_text = content_element.get_text(separator=" ", strip=True)
-                break
-        
-        # If no specific content area found, get all text
-        if not content_text:
-            content_text = soup.get_text(separator=" ", strip=True)
-        
-        # Basic content validation - ensure we have substantial content
-        if len(content_text.strip()) < 100:
-            print(f"Content too short for {article_url}")
-            return None
-
-        return {
-            "url": article_url,
-            "title": title,
-            "raw_content": content_text
-        }
-    except Exception as e:
-        print(f"Error scraping article {article_url}: {e}")
-        return None
 
 def process_hackernews_articles() -> Dict[str, int]:
     """
     Main function to process HackerNews articles:
     1. Fetch homepage
     2. Extract article links
-    3. Scrape each article
-    4. Summarize content
-    5. Store in database
+    3. Add links to processing queue
     
     Returns a dictionary with processing statistics.
     """
     stats = {
         "total_links": 0,
-        "successful_scrapes": 0,
-        "successful_summaries": 0,
+        "queued_links": 0,
         "errors": 0
     }
     
-    print("Starting HackerNews scraping process...")
+    print("Starting HackerNews link discovery...")
     
     # Fetch homepage
     homepage_html = fetch_hackernews_homepage()
@@ -136,74 +75,19 @@ def process_hackernews_articles() -> Dict[str, int]:
     stats["total_links"] = len(article_links)
     print(f"Found {len(article_links)} article links")
     
-    # Get database session
-    db = SessionLocal()
+    # Queue each link for processing
+    for i, article_url in enumerate(article_links, 1):
+        print(f"Queuing link {i}/{len(article_links)}: {article_url}")
+        
+        try:
+            # Add link to processing queue
+            process_link_task(article_url, "hackernews")
+            stats["queued_links"] += 1
+            print(f"Queued link for processing: {article_url}")
+            
+        except Exception as e:
+            print(f"Error queuing link {article_url}: {e}")
+            stats["errors"] += 1
     
-    try:
-        for i, article_url in enumerate(article_links, 1):
-            print(f"Processing article {i}/{len(article_links)}: {article_url}")
-            
-            # Check if article already exists
-            existing_article = db.query(Articles).filter(Articles.url == article_url).first()
-            if existing_article:
-                print(f"Article already exists, skipping: {article_url}")
-                continue
-            
-            # Scrape article content
-            article_data = scrape_article_content(article_url)
-            if not article_data:
-                stats["errors"] += 1
-                continue
-            
-            stats["successful_scrapes"] += 1
-            
-            # Create Article record
-            article = Articles(
-                title=article_data["title"],
-                url=article_data["url"],
-                raw_content=article_data["raw_content"],
-                scraped_date=datetime.utcnow(),
-                status=ArticleStatus.scraped
-            )
-            
-            db.add(article)
-            db.flush()  # Get the article ID
-            
-            # Generate summary
-            try:
-                summaries = summarize_article(article_data["raw_content"])
-
-                # Create Summary record
-                summary = Summaries(
-                    article_id=article.id,
-                    short_summary=summaries["short"],
-                    detailed_summary=summaries["detailed"],  # Using same summary for both for now
-                    summary_date=datetime.utcnow()
-                )
-                
-                db.add(summary)
-                
-                # Update article status to processed
-                article.status = ArticleStatus.processed
-                
-                stats["successful_summaries"] += 1
-                print(f"Successfully processed and summarized: {article_data['title']}")
-                
-            except Exception as e:
-                print(f"Error generating summary for {article_url}: {e}")
-                stats["errors"] += 1
-                # Keep article as scraped even if summary fails
-            
-            # Commit after each article to avoid losing progress
-            db.commit()
-    
-    except Exception as e:
-        print(f"Error in process_hackernews_articles: {e}")
-        db.rollback()
-        stats["errors"] += 1
-    
-    finally:
-        db.close()
-    
-    print(f"HackerNews scraping completed. Stats: {stats}")
+    print(f"HackerNews link discovery completed. Stats: {stats}")
     return stats
