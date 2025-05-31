@@ -1,7 +1,6 @@
 import pytest
 import datetime
 from unittest.mock import patch
-import requests_mock
 from app.scraping.raindrop import fetch_new_raindrops
 from app.config import settings
 
@@ -35,10 +34,9 @@ def test_fetch_new_raindrops_success(mock_settings):
         ]
     }
     
-    with requests_mock.Mocker() as m:
-        m.get('https://api.raindrop.io/rest/v1/raindrops/0', 
-              json=mock_response)
-        
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_response
         result = fetch_new_raindrops(last_run_date)
         
         assert len(result) == 2
@@ -49,9 +47,7 @@ def test_fetch_new_raindrops_api_error(mock_settings):
     """Test handling of API errors"""
     last_run_date = datetime.datetime.now(datetime.timezone.utc)
     
-    with requests_mock.Mocker() as m:
-        m.get('https://api.raindrop.io/rest/v1/raindrops/0', 
-              status_code=500)
-        
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 500
         result = fetch_new_raindrops(last_run_date)
         assert result == [] 
