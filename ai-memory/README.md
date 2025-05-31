@@ -122,13 +122,18 @@ graph TB
 - **feedparser**: RSS/Atom feed processing
 - **BeautifulSoup4**: HTML parsing and content extraction
 - **PyPDF2**: PDF text extraction
-- **google-generativeai**: Gemini AI model integration
+- **google-genai**: Gemini AI model integration
 - **requests**: HTTP client for web scraping
 
 ### Development Environment
 - **uvicorn**: ASGI server for development and production
 - **python-dotenv**: Environment variable management
 - **pytest**: Testing framework
+
+### Logging
+- Basic logging is configured in `app/config.py`.
+- Logs to console with INFO level by default.
+- Format: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`
 
 ### Configuration Management
 - Environment-based configuration via `.env` file
