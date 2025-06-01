@@ -2,9 +2,7 @@
 Queue management using Huey for background task processing.
 Handles LLM summarization tasks and link processing to avoid blocking the main scraping process.
 """
-import json
 from datetime import datetime
-from typing import Optional
 from huey import SqliteHuey
 
 from .config import settings, logger

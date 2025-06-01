@@ -111,7 +111,7 @@ def main():
         
         print("\n" + "=" * 60)
         print("✅ CrewAI HackerNews Scraper completed successfully!")
-        print(f"📄 Report saved to: scripts/hackernews_crew_report.html")
+        print("📄 Report saved to: scripts/hackernews_crew_report.html")
         print("\nYou can open the HTML file in your browser to view the results.")
         
     except Exception as e:

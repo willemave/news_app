@@ -4,9 +4,7 @@ Script to clean Python cache files and build artifacts.
 Removes __pycache__ directories, .pyc files, build directories, and other common Python artifacts.
 """
 
-import os
 import shutil
-import glob
 from pathlib import Path
 import argparse
 

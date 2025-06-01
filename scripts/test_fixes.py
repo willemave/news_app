@@ -28,7 +28,7 @@ def test_url_preprocessing():
     processed_regular = url_preprocessor(regular_url)
     
     print(f"Regular URL: {regular_url} -> {processed_regular}")
-    assert processed_regular == regular_url, f"Regular URL should not change"
+    assert processed_regular == regular_url, "Regular URL should not change"
     
     print("✓ URL preprocessing tests passed!")
 

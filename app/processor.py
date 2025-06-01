@@ -7,12 +7,12 @@ import re
 import requests
 from datetime import datetime
 from typing import Optional, Dict, Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 from google.genai.errors import ClientError
 from trafilatura import fetch_url, bare_extraction
 from bs4 import BeautifulSoup
 
-from .config import settings, logger
+from .config import logger
 from .database import SessionLocal
 from .models import Articles, Links, LinkStatus, FailurePhase
 from .utils.failures import record_failure
