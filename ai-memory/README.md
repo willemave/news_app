@@ -110,61 +110,35 @@ graph TB
 
 ### Scraping System Architecture
 
-**Central Coordination (`aggregator.py`):**
-- Smart URL routing based on content type detection
-- HEAD request analysis for content-type determination
-- Hierarchical scraper selection: PDF → News → Fallback
-- Unified return format: `{title, author, publication_date, content}`
+**Content Processing Pipeline (`app/processor.py`):**
+- Central link processing module that handles URL downloading and content extraction
+- Direct HTTP requests using `requests` library with proper headers and timeout handling
+- Smart content type detection for PDF vs HTML content
+- Trafilatura-based HTML content extraction with Markdown output and metadata parsing
+- Intelligent metadata extraction (title, author, publication_date) with automatic date parsing
+- Content validation with minimum length requirements
+- PDF content handling with base64 encoding for LLM processing
+- Comprehensive error handling for HTTP and parsing failures
+- Returns unified format: `{url, title, author, publication_date, content, is_pdf}`
 
-**Specialized Scrapers:**
+**Link Discovery Scrapers:**
 
-1. **News Scraper (`news_scraper.py`)**
-   - Uses `news-please` library for news article extraction
-   - Automatic metadata extraction (title, author, publication date)
-   - Main content extraction with boilerplate removal
-   - Fallback error handling
-
-2. **PDF Scraper (`pdf_scraper.py`)**
-   - Advanced PDF processing using Google Gemini Vision model
-   - Two-stage approach: PyPDF2 text extraction + AI analysis
-   - Intelligent metadata extraction via LLM prompting
-   - Requires `GOOGLE_API_KEY` environment variable
-   - Fallback to basic text extraction on AI failure
-
-3. **RSS Scraper (`rss.py`)**
-   - `feedparser` library for RSS/Atom feed processing
-   - Time-based filtering since last run date
-   - Timezone-aware datetime handling
-   - Multiple date field support (published_parsed, updated_parsed)
-   - Bulk link extraction for pipeline processing
-
-4. **Raindrop Integration (`raindrop.py`)**
-   - Raindrop.io API integration for bookmark management
-   - Bearer token authentication
-   - Time-filtered bookmark retrieval
-   - Requires `RAINDROP_TOKEN` configuration
-
-5. **HackerNews Scraper (`hackernews_scraper.py`)**
+1. **HackerNews Scraper (`hackernews_scraper.py`)**
    - Specialized scraper for HackerNews homepage content
    - Fetches HackerNews homepage and extracts external article links
    - Filters out internal HN discussion links (item?id=)
-   - Uses multiple content selectors for robust article extraction
-   - Integrates with LLM for automatic summarization
-   - Implements duplicate checking and comprehensive error handling
-   - Direct database integration with Articles and Summaries models
+   - Queues discovered links for processing via `app/processor.py`
+   - Uses `app/queue.process_link_task()` for link submission
 
-6. **Reddit Scraper (`reddit.py`)**
+2. **Reddit Scraper (`reddit.py`)**
    - Reddit API integration using PRAW (Python Reddit API Wrapper)
    - Supports multiple subreddit monitoring
    - Configurable post filtering (hot, new, top posts)
-   - Automatic content extraction from Reddit posts and linked articles
+   - Extracts external links from Reddit posts
+   - Queues discovered links for processing via `app/processor.py`
    - Rate limiting and API authentication handling
 
-7. **Fallback Scraper (`fallback_scraper.py`)**
-   - Generic web scraping using BeautifulSoup
-   - Boilerplate removal (scripts, styles, nav, footer, header)
-   - Basic title extraction from `<title>` tag
-   - Last resort for unrecognized content types
+**Note:** The scraping system has been refactored. Previous components (`aggregator.py`, `news_scraper.py`, `fallback_scraper.py`) have been consolidated into `app/processor.py` for direct content downloading and processing.
 
 ### Data Models & Status Flow
 - **Articles**: Core content entity with status progression (new → scraped → failed/processed → approved)
@@ -200,7 +174,7 @@ graph TB
 ### Scraping Dependencies
 - **news-please**: News article extraction and parsing
 - **feedparser**: RSS/Atom feed processing
-- **BeautifulSoup4**: HTML parsing and content extraction
+- **trafilatura**: HTML content extraction and metadata parsing with Markdown output
 - **PyPDF2**: PDF text extraction
 - **google-genai**: Gemini AI model integration (preferred over deprecated google-generativeai)
 - **requests**: HTTP client for web scraping
@@ -266,14 +240,12 @@ graph TB
 - **`links.py`**: Link submission and management
 
 ### Scraping System (`app/scraping/`)
-- **`aggregator.py`**: Central scraping coordination
-- **`news_scraper.py`**: General news site scraping
-- **`rss.py`**: RSS feed processing
-- **`pdf_scraper.py`**: PDF content extraction
-- **`raindrop.py`**: Raindrop bookmark service integration
-- **`hackernews_scraper.py`**: HackerNews-specific scraping with LLM integration
-- **`reddit.py`**: Reddit API integration and content scraping
-- **`fallback_scraper.py`**: Backup scraping methods
+- **`hackernews_scraper.py`**: HackerNews link discovery and queuing
+- **`reddit.py`**: Reddit API integration for link discovery and queuing
+
+### Content Processing (`app/`)
+- **`processor.py`**: Central content downloading, parsing, and processing module
+- **`queue.py`**: Link queuing and task management system
 
 ### Automation (`cron/`)
 - **`run_full_pipeline.py`**: Complete processing pipeline

@@ -5,7 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "beautifulsoup4>=4.13.4",
     "crewai>=0.80.0",
     "crewai-tools>=0.17.0",
     "docling>=2.34.0",
@@ -21,6 +20,7 @@ dependencies = [
     "praw>=7.7.1",
     "requests>=2.32.3",
     "sqlalchemy>=2.0.41",
+    "trafilatura>=1.8.0",
     "uvicorn>=0.34.2",
     "google-genai>=1.18.0",
 ]
