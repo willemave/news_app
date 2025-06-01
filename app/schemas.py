@@ -10,14 +10,19 @@ class ArticleBase(BaseModel):
     url: HttpUrl
     author: Optional[str]
     publication_date: Optional[datetime]
+    source: Optional[str] = "unknown"
 
 class ArticleCreate(ArticleBase):
-    pass
+    raw_content: Optional[str] = None
 
 class Article(ArticleBase):
     id: int
+    raw_content: Optional[str]
     scraped_date: datetime
     status: str
+    short_summary: Optional[str]
+    detailed_summary: Optional[str]
+    summary_date: Optional[datetime]
 
     class Config:
         from_attributes = True

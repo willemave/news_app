@@ -1,15 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>{{ article.title if article.title else "No Title" }}</h2>
-<p>Author: {{ article.author if article.author else "Unknown" }}</p>
-<p>Publication Date: {{ article.publication_date if article.publication_date else "N/A" }}</p>
-<p>URL: <a href="{{ article.url }}" target="_blank">{{ article.url }}</a></p>
+<p><strong>Author:</strong> {{ article.author if article.author else "Unknown" }}</p>
+<p><strong>Publication Date:</strong> {{ article.publication_date if article.publication_date else "N/A" }}</p>
+<p><strong>Source:</strong> {{ article.source|title }}</p>
+<p><strong>Status:</strong> {{ article.status }}</p>
+<p><strong>URL:</strong> <a href="{{ article.url }}" target="_blank">{{ article.url }}</a></p>
 
-{% for summary in summaries %}
+{% if article.short_summary %}
   <h3>Short Summary:</h3>
-  <p>{{ summary.short_summary }}</p>
+  <p>{{ article.short_summary }}</p>
+{% endif %}
 
+{% if article.detailed_summary %}
   <h3>Detailed Summary:</h3>
-  <p>{{ summary.detailed_summary }}</p>
-{% endfor %}
+  <div style="white-space: pre-wrap;">{{ article.detailed_summary }}</div>
+{% endif %}
+
+{% if not article.short_summary and not article.detailed_summary %}
+  <p><em>No summary available for this article.</em></p>
+{% endif %}
+
+<div style="margin-top: 30px;">
+  <a href="/articles/" class="btn btn-secondary">← Back to Articles</a>
+  {% if article.source != 'unknown' %}
+    <a href="/articles/?source={{ article.source }}" class="btn btn-secondary">More from {{ article.source|title }}</a>
+  {% endif %}
+</div>
+
 {% endblock %}

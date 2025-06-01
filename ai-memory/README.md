@@ -49,10 +49,10 @@ graph TB
 
 **Main Application (`app/main.py`):**
 - Simple, clean FastAPI application setup
-- Three main router modules: articles, admin, links
+- Two main router modules: articles, admin
 - Static file serving from `/static` directory
 - Jinja2 template rendering from `templates/` directory
-- Root endpoint redirects users to `/articles/daily`
+- Root endpoint redirects users to `/articles/`
 - Application title: "News Aggregation & Summarization"
 
 **Configuration Management (`app/config.py`):**
@@ -259,6 +259,8 @@ graph TB
 
 ### Frontend (`templates/`, `static/`)
 - **`templates/`**: Jinja2 HTML templates
+  - **`articles.html`**: Main articles listing page (formerly daily_links.html) - displays title, URL, and short summaries
+  - **`detailed_article.html`**: Individual article detail view with full summaries
 - **`static/`**: CSS and JavaScript assets
 
 ### Development & Testing Scripts (`scripts/`)

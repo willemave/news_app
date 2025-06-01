@@ -12,7 +12,7 @@ from trafilatura import fetch_url, bare_extraction
 
 from .config import settings, logger
 from .database import SessionLocal
-from .models import Articles, Summaries, ArticleStatus
+from .models import Articles, ArticleStatus
 from . import llm
 
 
@@ -81,8 +81,7 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
             output_format='markdown', 
             with_metadata=True, 
             include_links=True, 
-            include_formatting=True, 
-            date_extraction_params={'original_date': True}
+            include_formatting=True
         )
         
         if not extracted_data:
@@ -189,7 +188,7 @@ def process_with_llm(content_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def create_article_and_summary(content_data: Dict[str, Any], llm_data: Dict[str, Any], source: str) -> bool:
     """
-    Create Article and Summary records in the database.
+    Create Article record with embedded summary data in the database.
     
     Args:
         content_data: Dictionary with content information
@@ -201,35 +200,29 @@ def create_article_and_summary(content_data: Dict[str, Any], llm_data: Dict[str,
     """
     db = SessionLocal()
     try:
-        # Create Article record (without raw_content)
+        # Create Article record with embedded summary data
         article = Articles(
             title=content_data.get("title", ""),
             url=content_data["url"],
             author=content_data.get("author"),
             publication_date=content_data.get("publication_date"),
+            raw_content=content_data.get("content", ""),
             scraped_date=datetime.utcnow(),
-            status=ArticleStatus.processed
+            status=ArticleStatus.processed,
+            short_summary=llm_data.get("short_summary", ""),
+            detailed_summary=llm_data.get("detailed_summary", ""),
+            summary_date=datetime.utcnow(),
+            source=source
         )
         
         db.add(article)
-        db.flush()  # Get the article ID
-        
-        # Create Summary record
-        summary = Summaries(
-            article_id=article.id,
-            short_summary=llm_data.get("short_summary", ""),
-            detailed_summary=llm_data.get("detailed_summary", ""),
-            summary_date=datetime.utcnow()
-        )
-        
-        db.add(summary)
         db.commit()
         
-        logger.info(f"Successfully created article and summary for: {content_data['url']} (source: {source})")
+        logger.info(f"Successfully created article with summary for: {content_data['url']} (source: {source})")
         return True
         
     except Exception as e:
-        logger.error(f"Error creating article and summary for {content_data['url']}: {e}", exc_info=True)
+        logger.error(f"Error creating article for {content_data['url']}: {e}", exc_info=True)
         db.rollback()
         return False
         

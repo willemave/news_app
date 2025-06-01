@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Articles{% if current_source %} from {{ current_source|title }}{% endif %}</h2>
+
+<!-- Source filter buttons -->
+<div style="margin-bottom: 20px;">
+  <a href="/articles/" class="btn {% if not current_source %}btn-primary{% else %}btn-secondary{% endif %}">All Sources</a>
+  <a href="/articles/?source=reddit" class="btn {% if current_source == 'reddit' %}btn-primary{% else %}btn-secondary{% endif %}">Reddit</a>
+  <a href="/articles/?source=hackernews" class="btn {% if current_source == 'hackernews' %}btn-primary{% else %}btn-secondary{% endif %}">HackerNews</a>
+  <a href="/articles/?source=unknown" class="btn {% if current_source == 'unknown' %}btn-primary{% else %}btn-secondary{% endif %}">Unknown</a>
+</div>
+
+<ul>
+  {% for article in articles %}
+    <li>
+      <a href="/articles/detail/{{ article.id }}">
+        {{ article.title if article.title else article.url }}
+      </a>
+      {% if article.url and article.title %}
+        <br><small>{{ article.url }}</small>
+      {% endif %}
+      {% if article.short_summary %}
+        <br><em>{{ article.short_summary }}</em>
+      {% endif %}
+      <br><small>Status: {{ article.status }} | Source: {{ article.source|title }}</small>
+    </li>
+  {% endfor %}
+</ul>
+
+{% if not articles %}
+  <p>No articles found{% if current_source %} for source "{{ current_source }}"{% endif %}.</p>
+{% endif %}
+
+{% endblock %}
