@@ -271,10 +271,14 @@ def process_with_llm(content_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not matches_preferences:
             logger.info(f"Article does not match preferences, marking as skipped: {content_data['url']} - Reason: {skip_reason}")
             return {"skipped": True, "skip_reason": skip_reason}
+        else:
+            logger.info(f"Article matches preferences, proceeding with summarization: {content_data['url']} - Reason: {skip_reason}")
             
         # Generate summaries
         if is_pdf:
-            summary = llm.summarize_pdf(content)
+            # Decode base64 string back to bytes for LLM processing
+            pdf_bytes = base64.b64decode(content)
+            summary = llm.summarize_pdf(pdf_bytes)
         else:
             summary = llm.summarize_article(content)
             
@@ -420,7 +424,9 @@ def process_link_from_db(link: Links) -> bool:
             skip_reason = llm_data.get("skip_reason", "No reason provided")
             logger.info(f"Content skipped by LLM filtering: {link.url} - Reason: {skip_reason}")
             # Record the skip as a "failure" with the skip reason for tracking
-            record_failure(FailurePhase.processor, f"Content skipped by LLM filtering: {skip_reason}", link.id, skip_reason)
+            # Concatenate filter decision to the beginning of error_msg
+            error_msg = f"FILTER_DECISION: REJECTED - Content skipped by LLM filtering: {skip_reason}"
+            record_failure(FailurePhase.processor, error_msg, link.id, skip_reason)
             update_link_status(link.id, LinkStatus.skipped)
             return True  # This is a successful processing, just skipped
         

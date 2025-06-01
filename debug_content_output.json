@@ -1,9 +1,0 @@
-{
-  "url": "https://johnnysswlab.com/an-optimizing-compiler-doesnt-help-much-with-long-instruction-dependencies/",
-  "title": "An optimizing compiler doesn't help much with long instruction dependencies - Johnny's Software Lab",
-  "author": "Ivica Bogosavljevi\u0107",
-  "publication_date": "2025-05-31 00:00:00",
-  "is_pdf": false,
-  "content_preview": "*We at Johnny\u2019s Software Lab LLC are experts in performance. If performance is in any way concern in your software project, feel free to contact us.*\n\nThere was a rumor I read somewhere related to training AI models, something along the lines \u201cwhether we compile our code in debug mode or release mode, it doesn\u2019t matter, because our models are huge, all of our code is memory bound\u201d.\n\nI wanted to investigate if this is true for the cases that are interesting to me so I wrote a few small kernels to investigate. Here is the first:\n\nfor (size_t i { 0ULL }; i < pointers.size(); i++) { sum += vector[pointers[i]]; }\n\nThis is a very memory intensive kernel. The data from `vector`\n\nis read from random locations \u2013 depending on the size of `vector`\n\nwe can experiment with data being read from L1, L2, L3 caches or memory.\n\nI compiled this loop with Gcc, optimization level -O0 (no optimizations) and -O3 (full optimizations). Then I calculated the instruction count ratio \u2013 instructions_count(O0) / in...",
-  "content_length": 4326
-}

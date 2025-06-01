@@ -86,7 +86,10 @@ def summarize_task(article_id: int, raw_content: str, is_pdf: bool = False) -> b
         # Generate summary based on content type
         if is_pdf:
             # For PDF content, raw_content should be base64 encoded bytes
-            summaries = llm.summarize_pdf(raw_content)
+            # Decode base64 string back to bytes for LLM processing
+            import base64
+            pdf_bytes = base64.b64decode(raw_content)
+            summaries = llm.summarize_pdf(pdf_bytes)
         else:
             # For HTML content, use regular summarization
             summaries = llm.summarize_article(raw_content)
