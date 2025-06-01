@@ -1,6 +1,4 @@
-Here's the improved prompt with enhanced Python best practices while preserving the ai-memory instructions:
 
-```markdown
 #### 1  Python / FastAPI Coding Rules
 * **Functions over classes**. `def` for sync, `async def` for I/O.
 * **Full type hints**; validate with **Pydantic v2** models. Use `typing` for complex types.
@@ -11,7 +9,6 @@ Here's the improved prompt with enhanced Python best practices while preserving 
 * **Docstrings**: Use Google-style for all public functions/classes.
 * **Constants**: Define in `app/constants.py` or module-level UPPER_CASE.
 * Folder layout:
-  ```
   app/
     routers/      # route groups
     models/       # Pydantic + DB models
@@ -25,7 +22,6 @@ Here's the improved prompt with enhanced Python best practices while preserving 
     exceptions/   # custom exceptions
     static/
     tests/        # pytest test files
-  ```
 ---
 #### 2  FastAPI Best Practices
 * Use **lifespan** context, not `startup/shutdown` events.
@@ -54,10 +50,8 @@ Here's the improved prompt with enhanced Python best practices while preserving 
 * **TestClient** from FastAPI for endpoint testing.
 * Mock external dependencies with `pytest-mock` or `unittest.mock`.
 * **Run tests after implementation**: 
-  ```bash
   pytest app/tests/ -v  # verbose output
-  pytest --cov=app --cov-report=term-missing  # with coverage
-  ```
+
 * **Test data**: Use factories or fixtures, never production data.
 ---
 #### 5  Performance & Monitoring
@@ -73,11 +67,10 @@ Here's the improved prompt with enhanced Python best practices while preserving 
 * **Utils**: python-dateutil
 * **External**: httpx (async HTTP), google-genai (not google-generativeai)
 * Package with **uv**:
-  ```bash
   uv add <pkg>
   uv add --dev pytest pytest-asyncio httpx pytest-mock pytest-cov
   source .venv/bin/activate
-  ```
+
 ---
 #### 7  Development Workflow
 * **Pre-commit hooks**: `ruff` for linting, `black` for formatting, `mypy` for types.
@@ -89,7 +82,7 @@ Here's the improved prompt with enhanced Python best practices while preserving 
 ---
 #### 8  Memory-Bank Workflow (Stateless Agent)
 1. **At session start** read:
-   `ai-memory/README.md`, `PROMPT.md`, `TASKS.md`.
+   `ai-memory/README.md`, `TASKS.md`.
 2. **Treat `README.md` as canonical context**.
 3. **Maintain `TASKS.md`**:
    * Fine-grained tasks with `- [ ]` / `- [x]`.
@@ -104,7 +97,6 @@ Here's the improved prompt with enhanced Python best practices while preserving 
 | ------------- | ---------------------------------------------------------------------- |
 | **README.md** | Product context, architecture, tech stack, key files, API contracts    |
 | **TASKS.md**  | Living checklist (phases, tasks, reference files, learnings, new deps) |
-| **PROMPT.md** | This file - coding standards and workflow rules                        |
 ---
 #### 10  Updating the Memory Bank
 - You MUST review ALL core memory bank files (ai-memory/README.md, ai-memory/PROMPT.md, ai-memory/TASKS.md) for necessary updates.

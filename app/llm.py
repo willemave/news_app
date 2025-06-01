@@ -64,11 +64,12 @@ def filter_article(content: str) -> tuple[bool, str]:
         result = json.loads(response.text)
         matches = result.get('matches', False)
         reason = result.get('reason', 'No reason provided')
-        print(f"Filter reason: {reason}")  # Logging for debugging
+        print(f"Filter result: matches={matches}, reason: {reason}")  # Log both result and reason
         return matches, reason
     except Exception as e:
-        print(f"Error in filter_article: {e}")
-        return False, f"Error during filtering: {str(e)}"  # Default to excluding on error
+        error_msg = f"Error during filtering: {str(e)}"
+        print(f"Filter result: matches=False (error), reason: {error_msg}")
+        return False, error_msg  # Default to excluding on error
 
 def summarize_article(content: str) -> ArticleSummary:
     """
@@ -126,12 +127,12 @@ def summarize_article(content: str) -> ArticleSummary:
             detailed_summary="Error generating detailed summary"
         )
 
-def summarize_pdf(pdf_data: str) -> ArticleSummary:
+def summarize_pdf(pdf_data: bytes) -> ArticleSummary:
     """
     Generate short and detailed summaries for PDF content using Google Gemini.
     
     Args:
-        pdf_data: Base64 encoded PDF data
+        pdf_data: Raw PDF bytes data
     
     Returns:
         ArticleSummary pydantic model
@@ -158,18 +159,11 @@ def summarize_pdf(pdf_data: str) -> ArticleSummary:
         model = "gemini-2.5-flash-preview-05-20"
         
         contents = [
-            types.Content(
-                role="user",
-                parts=[
-                    types.Part.from_text(text=system_prompt),
-                    types.Part.from_inline_data(
-                        inline_data=types.InlineData(
-                            mime_type="application/pdf",
-                            data=pdf_data
-                        )
-                    ),
-                ],
+            types.Part.from_bytes(
+                data=pdf_data,
+                mime_type='application/pdf',
             ),
+            system_prompt
         ]
         generate_content_config = types.GenerateContentConfig(
             response_mime_type="application/json",

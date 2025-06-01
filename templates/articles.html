@@ -4,62 +4,120 @@
   <!-- Simple Header -->
   <div class="page-header">
     <h1 class="page-title">
-      📚 Articles{% if current_source %} from {{ current_source|title }}{% endif %}
+      📚 Articles{% if current_source %} from {{ current_source|title }}{% endif %}{% if current_date %} from {{ current_date }}{% endif %}
     </h1>
     <p class="page-subtitle">{{ articles|length if articles else 0 }} article{{ 's' if articles|length != 1 else '' }} found</p>
   </div>
 
-  <!-- Simple Filter Links -->
-  <div class="filter-nav">
-    <a href="/articles/" class="filter-link {% if not current_source %}active{% endif %}">All Sources</a>
-    <a href="/articles/?source=reddit" class="filter-link {% if current_source == 'reddit' %}active{% endif %}">Reddit</a>
-    <a href="/articles/?source=hackernews" class="filter-link {% if current_source == 'hackernews' %}active{% endif %}">HackerNews</a>
-    <a href="/articles/?source=unknown" class="filter-link {% if current_source == 'unknown' %}active{% endif %}">Unknown</a>
+  <!-- Filter Controls -->
+  <div class="filter-controls">
+    <!-- Date Filter Dropdown -->
+    <div class="filter-group">
+      <label for="date-filter" class="filter-label">📅 Date:</label>
+      <select id="date-filter" class="filter-dropdown" onchange="filterByDate(this.value)">
+        <option value="">All Dates</option>
+        {% if available_dates %}
+          {% for date in available_dates %}
+            <option value="{{ date }}" {% if current_date == date %}selected{% endif %}>
+              {{ date }}
+            </option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+
+    <!-- Source Filter Links -->
+    <div class="filter-group">
+      <span class="filter-label">🔗 Source:</span>
+      <div class="filter-nav">
+        <a href="/articles/{% if current_date %}?date={{ current_date }}{% endif %}" class="filter-link {% if not current_source %}active{% endif %}">All Sources</a>
+        <a href="/articles/?source=reddit{% if current_date %}&date={{ current_date }}{% endif %}" class="filter-link {% if current_source == 'reddit' %}active{% endif %}">Reddit</a>
+        <a href="/articles/?source=hackernews{% if current_date %}&date={{ current_date }}{% endif %}" class="filter-link {% if current_source == 'hackernews' %}active{% endif %}">HackerNews</a>
+        <a href="/articles/?source=unknown{% if current_date %}&date={{ current_date }}{% endif %}" class="filter-link {% if current_source == 'unknown' %}active{% endif %}">Unknown</a>
+      </div>
+    </div>
+
+    <!-- Action Area -->
+    <div class="filter-group action-group">
+      <a href="/links/add" class="btn btn-primary btn-sm">➕ Add Article</a>
+      {% if current_source or current_date %}
+        <a href="/articles/" class="btn btn-secondary btn-sm">🔄 Clear Filters</a>
+      {% endif %}
+    </div>
   </div>
 
-  <!-- Articles List -->
+  <!-- Articles Table -->
   {% if articles %}
-  <div class="articles-list">
-    {% for article in articles %}
-      <article class="article-item">
-        <!-- Source Badge -->
-        <div class="article-source">
-          {% if article.link.source|lower == 'reddit' %}
-            🔴 Reddit
-          {% elif article.link.source|lower == 'hackernews' %}
-            🟠 HackerNews
-          {% else %}
-            ❓ {{ article.link.source|title }}
-          {% endif %}
-        </div>
+  <div class="articles-table-container">
+    <table class="articles-table">
+      <thead>
+        <tr>
+          <th class="col-date">📅 Date</th>
+          <th class="col-source">🔗 Source</th>
+          <th class="col-title">📰 Title</th>
+          <th class="col-description">📝 Description</th>
+          <th class="col-actions">⚡ Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for article in articles %}
+          <tr class="article-row">
+            <!-- Date Column -->
+            <td class="article-date">
+              {{ article.scraped_date.strftime('%Y-%m-%d') if article.scraped_date else 'Unknown' }}
+            </td>
+            
+            <!-- Source Column -->
+            <td class="article-source">
+              <span class="source-badge source-{{ article.link.source|lower }}">
+                {% if article.link.source|lower == 'reddit' %}
+                  🔴 Reddit
+                {% elif article.link.source|lower == 'hackernews' %}
+                  🟠 HackerNews
+                {% else %}
+                  ❓ {{ article.link.source|title }}
+                {% endif %}
+              </span>
+            </td>
 
-        <!-- Article Content -->
-        <div class="article-content">
-          <h3 class="article-title">
-            <a href="/articles/detail/{{ article.id }}">
-              {{ article.title if article.title else article.url }}
-            </a>
-          </h3>
-          
-          {% if article.url and article.title %}
-            <div class="article-url">
-              <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer">
-                {{ article.url.split('/')[2] if '/' in article.url else article.url[:50] }}
-              </a>
-            </div>
-          {% endif %}
-          
-          {% if article.short_summary %}
-            <p class="article-summary">{{ article.short_summary }}</p>
-          {% endif %}
-        </div>
+            <!-- Title Column -->
+            <td class="article-title">
+              <div class="title-content">
+                <a href="/articles/detail/{{ article.id }}" class="title-link">
+                  {{ article.title if article.title else article.url }}
+                </a>
+                {% if article.url and article.title %}
+                  <div class="article-url">
+                    <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" class="external-link">
+                      🔗 {{ article.url.split('/')[2] if '/' in article.url else article.url[:30] }}
+                    </a>
+                  </div>
+                {% endif %}
+              </div>
+            </td>
 
-        <!-- Simple Footer -->
-        <div class="article-footer">
-          <a href="/articles/detail/{{ article.id }}" class="read-more">Read Full Article →</a>
-        </div>
-      </article>
-    {% endfor %}
+            <!-- Description Column -->
+            <td class="article-description">
+              {% if article.short_summary %}
+                <p class="summary-text">{{ article.short_summary[:150] }}{% if article.short_summary|length > 150 %}...{% endif %}</p>
+              {% else %}
+                <span class="no-summary">No summary available</span>
+              {% endif %}
+            </td>
+
+            <!-- Actions Column -->
+            <td class="article-actions">
+              <div class="action-buttons">
+                <a href="/articles/detail/{{ article.id }}" class="btn btn-sm btn-primary" title="Read Full Article">📖</a>
+                {% if article.url %}
+                  <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-secondary" title="Open Original">🔗</a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 
   {% else %}
@@ -68,20 +126,41 @@
       <div class="empty-icon">📰</div>
       <h3>No articles found</h3>
       <p>
-        {% if current_source %}
+        {% if current_source and current_date %}
+          No articles are available for {{ current_source|title }} on {{ current_date }}.
+        {% elif current_source %}
           No articles are currently available for {{ current_source|title }}.
+        {% elif current_date %}
+          No articles are available for {{ current_date }}.
         {% else %}
           Your article collection is empty. Start by adding some links!
         {% endif %}
       </p>
       <div class="empty-actions">
         <a href="/links/add" class="btn btn-primary">Add Your First Article</a>
-        {% if current_source %}
-          <a href="/articles/" class="btn btn-secondary">View All Sources</a>
+        {% if current_source or current_date %}
+          <a href="/articles/" class="btn btn-secondary">View All Articles</a>
         {% endif %}
       </div>
     </div>
   {% endif %}
 </div>
+
+<script>
+function filterByDate(selectedDate) {
+  const currentUrl = new URL(window.location);
+  const params = new URLSearchParams(currentUrl.search);
+  
+  if (selectedDate) {
+    params.set('date', selectedDate);
+  } else {
+    params.delete('date');
+  }
+  
+  // Preserve existing source filter
+  const newUrl = currentUrl.pathname + '?' + params.toString();
+  window.location.href = newUrl;
+}
+</script>
 
 {% endblock %}
