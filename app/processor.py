@@ -3,14 +3,16 @@ Link processor module that consumes URLs from the links_to_scrape queue,
 downloads content, processes it with LLM, and creates Articles/Summaries.
 """
 import base64
+import requests
 from datetime import datetime
 from typing import Optional, Dict, Any
+from urllib.parse import urljoin, urlparse
 from google.genai.errors import ClientError
+from trafilatura import fetch_url, bare_extraction
 
 from .config import settings, logger
 from .database import SessionLocal
 from .models import Articles, Summaries, ArticleStatus
-from .scraping.aggregator import scrape_url
 from . import llm
 
 
@@ -45,39 +47,79 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
     try:
         logger.info(f"Downloading content from: {url}")
         
-        # Use the aggregator to scrape content
-        scraped_data = scrape_url(url)
+        # Set up headers to mimic a real browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
         
-        if not scraped_data:
-            logger.warning(f"Failed to scrape content from: {url}")
+        # Make HTTP request
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        # Check content type
+        content_type = response.headers.get('content-type', '').lower()
+        
+        # Handle PDF content
+        if 'application/pdf' in content_type:
+            logger.info(f"Detected PDF content for: {url}")
+            # Encode PDF content as base64 for LLM processing
+            pdf_content = base64.b64encode(response.content).decode('utf-8')
+            return {
+                "url": url,
+                "title": urlparse(url).path.split('/')[-1] or "PDF Document",
+                "author": None,
+                "publication_date": None,
+                "content": pdf_content,
+                "is_pdf": True
+            }
+        
+        # Extract content and metadata using trafilatura
+        downloaded_html = response.text
+        extracted_data = bare_extraction(
+            downloaded_html, 
+            url=url, 
+            output_format='markdown', 
+            with_metadata=True, 
+            include_links=True, 
+            include_formatting=True, 
+            date_extraction_params={'original_date': True}
+        )
+        
+        if not extracted_data:
+            logger.warning(f"Trafilatura failed to extract content from {url}")
             return None
-            
-        # Extract content and validate
-        content = scraped_data.get("content", "").strip()
-        if len(content) < 100:  # Minimum content threshold
+        
+        # Extract metadata from trafilatura result
+        title = extracted_data.title or "Untitled"
+        author = extracted_data.author
+        content = extracted_data.text or ""
+        
+        # Handle publication date
+        publication_date = None
+        if extracted_data.date:
+            try:
+                from dateutil import parser
+                publication_date = parser.parse(extracted_data.date)
+            except Exception:
+                pass
+        
+        # Validate content length
+        if len(content) < 100:
             logger.warning(f"Content too short for {url}. Length: {len(content)}")
             return None
             
-        # Determine if this is PDF content (base64 encoded)
-        is_pdf = False
-        try:
-            # Try to decode as base64 to check if it's PDF data
-            base64.b64decode(content)
-            is_pdf = True
-            logger.info(f"Detected PDF content for: {url}")
-        except Exception:
-            # Not base64, so it's regular text content
-            pass
-            
         return {
             "url": url,
-            "title": scraped_data.get("title", ""),
-            "author": scraped_data.get("author"),
-            "publication_date": scraped_data.get("publication_date"),
+            "title": title or "Untitled",
+            "author": author,
+            "publication_date": publication_date,
             "content": content,
-            "is_pdf": is_pdf
+            "is_pdf": False
         }
         
+    except requests.RequestException as e:
+        logger.error(f"HTTP error downloading content from {url}: {e}", exc_info=True)
+        return None
     except Exception as e:
         logger.error(f"Error downloading content from {url}: {e}", exc_info=True)
         return None
