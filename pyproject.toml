@@ -25,6 +25,7 @@ dependencies = [
     "uvicorn>=0.34.2",
     "google-genai>=1.18.0",
     "huey>=2.5.3",
+    "beautifulsoup4>=4.13.4",
 ]
 
 [tool.setuptools.packages.find]

@@ -3,18 +3,117 @@ Link processor module that consumes URLs from the links_to_scrape queue,
 downloads content, processes it with LLM, and creates Articles/Summaries.
 """
 import base64
+import re
 import requests
 from datetime import datetime
 from typing import Optional, Dict, Any
 from urllib.parse import urljoin, urlparse
 from google.genai.errors import ClientError
 from trafilatura import fetch_url, bare_extraction
+from bs4 import BeautifulSoup
 
 from .config import settings, logger
 from .database import SessionLocal
 from .models import Articles, Links, LinkStatus, FailurePhase
 from .utils.failures import record_failure
+from .schemas import ArticleSummary
 from . import llm
+
+
+def url_preprocessor(url: str) -> str:
+    """
+    Preprocess URLs to handle specific site heuristics.
+    
+    Args:
+        url: Original URL
+        
+    Returns:
+        Processed URL that may be different from the original
+    """
+    logger.info(f"Preprocessing URL: {url}")
+    
+    # Handle arXiv URLs: convert /abs/ to /pdf/
+    arxiv_pattern = r'https://arxiv\.org/abs/(\d+\.\d+)'
+    arxiv_match = re.match(arxiv_pattern, url)
+    if arxiv_match:
+        paper_id = arxiv_match.group(1)
+        pdf_url = f"https://arxiv.org/pdf/{paper_id}"
+        logger.info(f"Converted arXiv URL from {url} to {pdf_url}")
+        return pdf_url
+    
+    # Handle PubMed URLs: extract full text links
+    if 'pubmed.ncbi.nlm.nih.gov' in url:
+        try:
+            full_text_url = extract_pubmed_full_text_link(url)
+            if full_text_url:
+                logger.info(f"Extracted PubMed full text URL: {full_text_url}")
+                return full_text_url
+            else:
+                logger.warning(f"Could not extract full text link from PubMed URL: {url}")
+        except Exception as e:
+            logger.error(f"Error processing PubMed URL {url}: {e}")
+    
+    return url
+
+
+def extract_pubmed_full_text_link(pubmed_url: str) -> Optional[str]:
+    """
+    Extract the first available full text link from a PubMed article page.
+    
+    Args:
+        pubmed_url: PubMed article URL
+        
+    Returns:
+        Full text URL if found, None otherwise
+    """
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(pubmed_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Look for full text links section
+        full_text_section = soup.find('div', {'class': 'full-text-links-list'})
+        if not full_text_section:
+            # Alternative selector for full text links
+            full_text_section = soup.find('div', string=re.compile(r'Full.*text.*links', re.IGNORECASE))
+            if full_text_section:
+                full_text_section = full_text_section.find_parent('div')
+        
+        if full_text_section:
+            # Find the first link in the full text section
+            links = full_text_section.find_all('a', href=True)
+            for link in links:
+                href = link.get('href')
+                if href and (href.startswith('http') or href.startswith('//')):
+                    # Convert relative URLs to absolute
+                    if href.startswith('//'):
+                        href = 'https:' + href
+                    elif href.startswith('/'):
+                        href = 'https://pubmed.ncbi.nlm.nih.gov' + href
+                    
+                    # Prioritize PMC links
+                    if 'pmc' in href.lower():
+                        return href
+                    
+            # If no PMC link found, return the first available link
+            if links:
+                href = links[0].get('href')
+                if href.startswith('//'):
+                    href = 'https:' + href
+                elif href.startswith('/'):
+                    href = 'https://pubmed.ncbi.nlm.nih.gov' + href
+                return href
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error extracting full text link from {pubmed_url}: {e}")
+        return None
 
 
 def check_duplicate_url(url: str) -> bool:
@@ -46,7 +145,9 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
         Dictionary with processed content or None if failed
     """
     try:
-        logger.info(f"Downloading content from: {url}")
+        # Preprocess URL for specific site heuristics
+        processed_url = url_preprocessor(url)
+        logger.info(f"Downloading content from: {processed_url}")
         
         # First, make a HEAD request to check content type
         headers = {
@@ -54,24 +155,24 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
         }
         
         try:
-            head_response = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
+            head_response = requests.head(processed_url, headers=headers, timeout=10, allow_redirects=True)
             content_type = head_response.headers.get('content-type', '').lower()
         except Exception as e:
-            logger.warning(f"HEAD request failed for {url}: {e}. Proceeding with content detection.")
+            logger.warning(f"HEAD request failed for {processed_url}: {e}. Proceeding with content detection.")
             content_type = ''
         
         # Handle PDF content
         if 'application/pdf' in content_type:
-            logger.info(f"Detected PDF content for: {url}")
+            logger.info(f"Detected PDF content for: {processed_url}")
             # Use requests for PDF content to get binary data
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(processed_url, headers=headers, timeout=30)
             response.raise_for_status()
             
             # Encode PDF content as base64 for LLM processing
             pdf_content = base64.b64encode(response.content).decode('utf-8')
             return {
-                "url": url,
-                "title": urlparse(url).path.split('/')[-1] or "PDF Document",
+                "url": url,  # Keep original URL for tracking
+                "title": urlparse(processed_url).path.split('/')[-1] or "PDF Document",
                 "author": None,
                 "publication_date": None,
                 "content": pdf_content,
@@ -79,23 +180,23 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
             }
         
         # For HTML/text content, use trafilatura's fetch_url
-        downloaded_html = fetch_url(url)
+        downloaded_html = fetch_url(processed_url)
         
         if not downloaded_html:
-            logger.warning(f"Failed to fetch content from {url}")
+            logger.warning(f"Failed to fetch content from {processed_url}")
             return None
         
         # Extract content and metadata using trafilatura
         extracted_data = bare_extraction(
-            filecontent=downloaded_html, 
-            url=url,
-            with_metadata=True, 
-            include_links=True, 
+            filecontent=downloaded_html,
+            url=processed_url,
+            with_metadata=True,
+            include_links=True,
             include_formatting=True
         )
         
         if not extracted_data:
-            logger.warning(f"Trafilatura failed to extract content from {url}")
+            logger.warning(f"Trafilatura failed to extract content from {processed_url}")
             return None
         
         # Extract metadata from trafilatura result
@@ -129,11 +230,11 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
         }
         
     except requests.RequestException as e:
-        error_msg = f"HTTP error downloading content from {url}: {e}"
+        error_msg = f"HTTP error downloading content from {processed_url}: {e}"
         logger.error(error_msg, exc_info=True)
         return None
     except Exception as e:
-        error_msg = f"Error downloading content from {url}: {e}"
+        error_msg = f"Error downloading content from {processed_url}: {e}"
         logger.error(error_msg, exc_info=True)
         return None
 
@@ -146,7 +247,7 @@ def process_with_llm(content_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         content_data: Dictionary with content information
         
     Returns:
-        Dictionary with LLM results or None if failed
+        Dictionary with LLM results, {"skipped": True, "skip_reason": str} if filtered out, or None if failed
         
     Raises:
         ClientError: If LLM returns 429 (rate limit) error
@@ -163,28 +264,28 @@ def process_with_llm(content_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             # since filtering PDFs requires different handling
             logger.info("Skipping filtering for PDF content")
             matches_preferences = True
+            skip_reason = None
         else:
-            matches_preferences = llm.filter_article(content)
+            matches_preferences, skip_reason = llm.filter_article(content)
             
         if not matches_preferences:
-            logger.info(f"Article does not match preferences: {content_data['url']}")
-            return None
+            logger.info(f"Article does not match preferences, marking as skipped: {content_data['url']} - Reason: {skip_reason}")
+            return {"skipped": True, "skip_reason": skip_reason}
             
         # Generate summaries
         if is_pdf:
-            summaries = llm.summarize_pdf(content)
+            summary = llm.summarize_pdf(content)
         else:
-            summaries = llm.summarize_article(content)
+            summary = llm.summarize_article(content)
             
-        # Validate summary format
-        if not isinstance(summaries, dict):
-            logger.error(f"Invalid summary format for {content_data['url']}: {type(summaries)}")
+        # Validate summary is ArticleSummary instance
+        if not isinstance(summary, ArticleSummary):
+            logger.error(f"Invalid summary format for {content_data['url']}: {type(summary)}")
             return None
             
         return {
-            "short_summary": summaries.get("short", ""),
-            "detailed_summary": summaries.get("detailed", ""),
-            "keywords": summaries.get("keywords", [])
+            "short_summary": summary.short_summary,
+            "detailed_summary": summary.detailed_summary
         }
         
     except ClientError as e:
@@ -308,11 +409,20 @@ def process_link_from_db(link: Links) -> bool:
         # Process with LLM (may raise ClientError for 429)
         llm_data = process_with_llm(content_data)
         if not llm_data:
-            error_msg = f"Content filtered out or LLM processing failed for: {link.url}"
-            logger.info(error_msg)
+            error_msg = f"LLM processing failed for: {link.url}"
+            logger.error(error_msg)
             record_failure(FailurePhase.processor, error_msg, link.id)
             update_link_status(link.id, LinkStatus.failed, error_msg)
             return False
+        
+        # Check if content was skipped by LLM filtering
+        if llm_data.get("skipped"):
+            skip_reason = llm_data.get("skip_reason", "No reason provided")
+            logger.info(f"Content skipped by LLM filtering: {link.url} - Reason: {skip_reason}")
+            # Record the skip as a "failure" with the skip reason for tracking
+            record_failure(FailurePhase.processor, f"Content skipped by LLM filtering: {skip_reason}", link.id, skip_reason)
+            update_link_status(link.id, LinkStatus.skipped)
+            return True  # This is a successful processing, just skipped
         
         # Create article and link to source
         success = create_article_and_link_to_source(content_data, llm_data, link)
@@ -348,42 +458,3 @@ def process_link_from_db(link: Links) -> bool:
         return False
 
 
-def process_single_link(url: str, source: str = "unknown") -> bool:
-    """
-    Legacy function for backward compatibility.
-    Process a single link: download, filter, summarize, and store.
-    
-    Args:
-        url: URL to process
-        source: Source of the link
-        
-    Returns:
-        True if successful, False otherwise
-        
-    Raises:
-        ClientError: If LLM returns 429 (rate limit) error
-    """
-    logger.warning("process_single_link is deprecated. Use process_link_from_db instead.")
-    
-    # Create a temporary Link object for processing
-    db = SessionLocal()
-    try:
-        # Check if link already exists
-        existing_link = db.query(Links).filter(Links.url == url).first()
-        if existing_link:
-            return process_link_from_db(existing_link)
-        
-        # Create new link
-        link = Links(url=url, source=source)
-        db.add(link)
-        db.commit()
-        db.refresh(link)
-        
-        return process_link_from_db(link)
-        
-    except Exception as e:
-        logger.error(f"Error in process_single_link for {url}: {e}", exc_info=True)
-        db.rollback()
-        return False
-    finally:
-        db.close()

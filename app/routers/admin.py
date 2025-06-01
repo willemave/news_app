@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Depends
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
-from app.models import CronLogs
+from app.models import CronLogs, Links, FailureLogs
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 import sys
@@ -13,7 +13,6 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
 # Import the necessary functions
-from cron.daily_ingest import run_daily_ingest
 from app.scraping.hackernews_scraper import process_hackernews_articles
 from app.scraping.reddit import process_reddit_articles
 
@@ -39,9 +38,13 @@ def admin_index(request: Request):
 @router.get("/dashboard", response_class=HTMLResponse)
 def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     logs = db.query(CronLogs).all()
+    links = db.query(Links).all()
+    failures = db.query(FailureLogs).all()
     return templates.TemplateResponse("admin_dashboard.html", {
         "request": request,
-        "logs": logs
+        "logs": logs,
+        "links": links,
+        "failures": failures
     })
 
 @router.post("/trigger")
