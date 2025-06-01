@@ -12,7 +12,8 @@ from trafilatura import fetch_url, bare_extraction
 
 from .config import settings, logger
 from .database import SessionLocal
-from .models import Articles, ArticleStatus
+from .models import Articles, Links, LinkStatus, FailurePhase
+from .utils.failures import record_failure
 from . import llm
 
 
@@ -47,21 +48,25 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
     try:
         logger.info(f"Downloading content from: {url}")
         
-        # Set up headers to mimic a real browser
+        # First, make a HEAD request to check content type
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
-        # Make HTTP request
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        # Check content type
-        content_type = response.headers.get('content-type', '').lower()
+        try:
+            head_response = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
+            content_type = head_response.headers.get('content-type', '').lower()
+        except Exception as e:
+            logger.warning(f"HEAD request failed for {url}: {e}. Proceeding with content detection.")
+            content_type = ''
         
         # Handle PDF content
         if 'application/pdf' in content_type:
             logger.info(f"Detected PDF content for: {url}")
+            # Use requests for PDF content to get binary data
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
             # Encode PDF content as base64 for LLM processing
             pdf_content = base64.b64encode(response.content).decode('utf-8')
             return {
@@ -73,12 +78,17 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
                 "is_pdf": True
             }
         
+        # For HTML/text content, use trafilatura's fetch_url
+        downloaded_html = fetch_url(url)
+        
+        if not downloaded_html:
+            logger.warning(f"Failed to fetch content from {url}")
+            return None
+        
         # Extract content and metadata using trafilatura
-        downloaded_html = response.text
         extracted_data = bare_extraction(
-            downloaded_html, 
-            url=url, 
-            output_format='markdown', 
+            filecontent=downloaded_html, 
+            url=url,
             with_metadata=True, 
             include_links=True, 
             include_formatting=True
@@ -92,6 +102,8 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
         title = extracted_data.title or "Untitled"
         author = extracted_data.author
         content = extracted_data.text or ""
+
+        logger.info(f"Sample content {content[0:100]}")
         
         # Handle publication date
         publication_date = None
@@ -117,10 +129,12 @@ def download_and_process_content(url: str) -> Optional[Dict[str, Any]]:
         }
         
     except requests.RequestException as e:
-        logger.error(f"HTTP error downloading content from {url}: {e}", exc_info=True)
+        error_msg = f"HTTP error downloading content from {url}: {e}"
+        logger.error(error_msg, exc_info=True)
         return None
     except Exception as e:
-        logger.error(f"Error downloading content from {url}: {e}", exc_info=True)
+        error_msg = f"Error downloading content from {url}: {e}"
+        logger.error(error_msg, exc_info=True)
         return None
 
 
@@ -186,39 +200,37 @@ def process_with_llm(content_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
 
-def create_article_and_summary(content_data: Dict[str, Any], llm_data: Dict[str, Any], source: str) -> bool:
+def create_article_and_link_to_source(content_data: Dict[str, Any], llm_data: Dict[str, Any], link: Links) -> bool:
     """
-    Create Article record with embedded summary data in the database.
+    Create Article record with embedded summary data and link it to the source Link.
     
     Args:
         content_data: Dictionary with content information
         llm_data: Dictionary with LLM processing results
-        source: Source of the link
+        link: Link object that was processed
         
     Returns:
         True if successful, False otherwise
     """
     db = SessionLocal()
     try:
-        # Create Article record with embedded summary data
+        # Create Article record with embedded summary data (no raw_content)
         article = Articles(
             title=content_data.get("title", ""),
             url=content_data["url"],
             author=content_data.get("author"),
             publication_date=content_data.get("publication_date"),
-            raw_content=content_data.get("content", ""),
             scraped_date=datetime.utcnow(),
-            status=ArticleStatus.processed,
             short_summary=llm_data.get("short_summary", ""),
             detailed_summary=llm_data.get("detailed_summary", ""),
             summary_date=datetime.utcnow(),
-            source=source
+            link_id=link.id
         )
         
         db.add(article)
         db.commit()
         
-        logger.info(f"Successfully created article with summary for: {content_data['url']} (source: {source})")
+        logger.info(f"Successfully created article with summary for: {content_data['url']} (source: {link.source})")
         return True
         
     except Exception as e:
@@ -230,8 +242,115 @@ def create_article_and_summary(content_data: Dict[str, Any], llm_data: Dict[str,
         db.close()
 
 
+def update_link_status(link_id: int, status: LinkStatus, error_message: str = None) -> None:
+    """
+    Update the status of a link in the database.
+    
+    Args:
+        link_id: ID of the link to update
+        status: New status for the link
+        error_message: Optional error message if status is failed
+    """
+    db = SessionLocal()
+    try:
+        link = db.query(Links).filter(Links.id == link_id).first()
+        if link:
+            link.status = status
+            if status == LinkStatus.processed:
+                link.processed_date = datetime.utcnow()
+            if error_message:
+                link.error_message = error_message
+            db.commit()
+            logger.info(f"Updated link {link_id} status to {status.value}")
+        else:
+            logger.error(f"Link {link_id} not found for status update")
+    except Exception as e:
+        logger.error(f"Error updating link {link_id} status: {e}", exc_info=True)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def process_link_from_db(link: Links) -> bool:
+    """
+    Process a link from the database: download, filter, summarize, and store.
+    
+    Args:
+        link: Link object from database
+        
+    Returns:
+        True if successful, False otherwise
+        
+    Raises:
+        ClientError: If LLM returns 429 (rate limit) error
+    """
+    logger.info(f"Processing link from {link.source}: {link.url}")
+    
+    # Update status to processing
+    update_link_status(link.id, LinkStatus.processing)
+    
+    try:
+        # Check for duplicates in Articles table
+        if check_duplicate_url(link.url):
+            logger.info(f"URL already exists in articles, marking as processed: {link.url}")
+            update_link_status(link.id, LinkStatus.processed)
+            return True
+        
+        # Download and process content
+        content_data = download_and_process_content(link.url)
+        if not content_data:
+            error_msg = f"Failed to download content for: {link.url}"
+            logger.warning(error_msg)
+            record_failure(FailurePhase.processor, error_msg, link.id)
+            update_link_status(link.id, LinkStatus.failed, error_msg)
+            return False
+        
+        # Process with LLM (may raise ClientError for 429)
+        llm_data = process_with_llm(content_data)
+        if not llm_data:
+            error_msg = f"Content filtered out or LLM processing failed for: {link.url}"
+            logger.info(error_msg)
+            record_failure(FailurePhase.processor, error_msg, link.id)
+            update_link_status(link.id, LinkStatus.failed, error_msg)
+            return False
+        
+        # Create article and link to source
+        success = create_article_and_link_to_source(content_data, llm_data, link)
+        if success:
+            logger.info(f"Successfully processed link: {link.url}")
+            update_link_status(link.id, LinkStatus.processed)
+        else:
+            error_msg = f"Failed to create article for: {link.url}"
+            logger.error(error_msg)
+            record_failure(FailurePhase.processor, error_msg, link.id)
+            update_link_status(link.id, LinkStatus.failed, error_msg)
+        
+        return success
+        
+    except ClientError as e:
+        # Check if this is a 429 rate limit error
+        if "429" in str(e) or "rate limit" in str(e).lower():
+            logger.warning(f"LLM rate limit hit for {link.url}, will retry: {e}")
+            # Reset status to new for retry
+            update_link_status(link.id, LinkStatus.new)
+            raise  # Re-raise to trigger retry logic
+        else:
+            error_msg = f"LLM client error: {e}"
+            logger.error(f"LLM client error for {link.url}: {e}", exc_info=True)
+            record_failure(FailurePhase.processor, error_msg, link.id)
+            update_link_status(link.id, LinkStatus.failed, error_msg)
+            return False
+    except Exception as e:
+        error_msg = f"Unexpected error: {e}"
+        logger.error(f"Error processing link {link.url}: {e}", exc_info=True)
+        record_failure(FailurePhase.processor, error_msg, link.id)
+        update_link_status(link.id, LinkStatus.failed, error_msg)
+        return False
+
+
 def process_single_link(url: str, source: str = "unknown") -> bool:
     """
+    Legacy function for backward compatibility.
     Process a single link: download, filter, summarize, and store.
     
     Args:
@@ -244,30 +363,27 @@ def process_single_link(url: str, source: str = "unknown") -> bool:
     Raises:
         ClientError: If LLM returns 429 (rate limit) error
     """
-    logger.info(f"Processing link from {source}: {url}")
+    logger.warning("process_single_link is deprecated. Use process_link_from_db instead.")
     
-    # Check for duplicates
-    if check_duplicate_url(url):
-        logger.info(f"URL already exists in database, skipping: {url}")
-        return True  # Consider this successful since we don't need to reprocess
-    
-    # Download and process content
-    content_data = download_and_process_content(url)
-    if not content_data:
-        logger.warning(f"Failed to download content for: {url}")
+    # Create a temporary Link object for processing
+    db = SessionLocal()
+    try:
+        # Check if link already exists
+        existing_link = db.query(Links).filter(Links.url == url).first()
+        if existing_link:
+            return process_link_from_db(existing_link)
+        
+        # Create new link
+        link = Links(url=url, source=source)
+        db.add(link)
+        db.commit()
+        db.refresh(link)
+        
+        return process_link_from_db(link)
+        
+    except Exception as e:
+        logger.error(f"Error in process_single_link for {url}: {e}", exc_info=True)
+        db.rollback()
         return False
-    
-    # Process with LLM (may raise ClientError for 429)
-    llm_data = process_with_llm(content_data)
-    if not llm_data:
-        logger.info(f"Content filtered out or LLM processing failed for: {url}")
-        return False
-    
-    # Create article and summary
-    success = create_article_and_summary(content_data, llm_data, source)
-    if success:
-        logger.info(f"Successfully processed link: {url}")
-    else:
-        logger.error(f"Failed to create article/summary for: {url}")
-    
-    return success
+    finally:
+        db.close()

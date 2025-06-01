@@ -1,34 +1,87 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Articles{% if current_source %} from {{ current_source|title }}{% endif %}</h2>
+<div class="articles-container">
+  <!-- Simple Header -->
+  <div class="page-header">
+    <h1 class="page-title">
+      📚 Articles{% if current_source %} from {{ current_source|title }}{% endif %}
+    </h1>
+    <p class="page-subtitle">{{ articles|length if articles else 0 }} article{{ 's' if articles|length != 1 else '' }} found</p>
+  </div>
 
-<!-- Source filter buttons -->
-<div style="margin-bottom: 20px;">
-  <a href="/articles/" class="btn {% if not current_source %}btn-primary{% else %}btn-secondary{% endif %}">All Sources</a>
-  <a href="/articles/?source=reddit" class="btn {% if current_source == 'reddit' %}btn-primary{% else %}btn-secondary{% endif %}">Reddit</a>
-  <a href="/articles/?source=hackernews" class="btn {% if current_source == 'hackernews' %}btn-primary{% else %}btn-secondary{% endif %}">HackerNews</a>
-  <a href="/articles/?source=unknown" class="btn {% if current_source == 'unknown' %}btn-primary{% else %}btn-secondary{% endif %}">Unknown</a>
+  <!-- Simple Filter Links -->
+  <div class="filter-nav">
+    <a href="/articles/" class="filter-link {% if not current_source %}active{% endif %}">All Sources</a>
+    <a href="/articles/?source=reddit" class="filter-link {% if current_source == 'reddit' %}active{% endif %}">Reddit</a>
+    <a href="/articles/?source=hackernews" class="filter-link {% if current_source == 'hackernews' %}active{% endif %}">HackerNews</a>
+    <a href="/articles/?source=unknown" class="filter-link {% if current_source == 'unknown' %}active{% endif %}">Unknown</a>
+  </div>
+
+  <!-- Articles List -->
+  {% if articles %}
+  <div class="articles-list">
+    {% for article in articles %}
+      <article class="article-item">
+        <!-- Source Badge -->
+        <div class="article-source">
+          {% if article.link.source|lower == 'reddit' %}
+            🔴 Reddit
+          {% elif article.link.source|lower == 'hackernews' %}
+            🟠 HackerNews
+          {% else %}
+            ❓ {{ article.link.source|title }}
+          {% endif %}
+        </div>
+
+        <!-- Article Content -->
+        <div class="article-content">
+          <h3 class="article-title">
+            <a href="/articles/detail/{{ article.id }}">
+              {{ article.title if article.title else article.url }}
+            </a>
+          </h3>
+          
+          {% if article.url and article.title %}
+            <div class="article-url">
+              <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer">
+                {{ article.url.split('/')[2] if '/' in article.url else article.url[:50] }}
+              </a>
+            </div>
+          {% endif %}
+          
+          {% if article.short_summary %}
+            <p class="article-summary">{{ article.short_summary }}</p>
+          {% endif %}
+        </div>
+
+        <!-- Simple Footer -->
+        <div class="article-footer">
+          <a href="/articles/detail/{{ article.id }}" class="read-more">Read Full Article →</a>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+
+  {% else %}
+    <!-- Simple Empty State -->
+    <div class="empty-state">
+      <div class="empty-icon">📰</div>
+      <h3>No articles found</h3>
+      <p>
+        {% if current_source %}
+          No articles are currently available for {{ current_source|title }}.
+        {% else %}
+          Your article collection is empty. Start by adding some links!
+        {% endif %}
+      </p>
+      <div class="empty-actions">
+        <a href="/links/add" class="btn btn-primary">Add Your First Article</a>
+        {% if current_source %}
+          <a href="/articles/" class="btn btn-secondary">View All Sources</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
 </div>
-
-<ul>
-  {% for article in articles %}
-    <li>
-      <a href="/articles/detail/{{ article.id }}">
-        {{ article.title if article.title else article.url }}
-      </a>
-      {% if article.url and article.title %}
-        <br><small>{{ article.url }}</small>
-      {% endif %}
-      {% if article.short_summary %}
-        <br><em>{{ article.short_summary }}</em>
-      {% endif %}
-      <br><small>Status: {{ article.status }} | Source: {{ article.source|title }}</small>
-    </li>
-  {% endfor %}
-</ul>
-
-{% if not articles %}
-  <p>No articles found{% if current_source %} for source "{{ current_source }}"{% endif %}.</p>
-{% endif %}
 
 {% endblock %}

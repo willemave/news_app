@@ -2,9 +2,14 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from .routers import articles, admin
-
+from .database import init_db
 
 app = FastAPI(title="News Aggregation & Summarization")
+
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    init_db()
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

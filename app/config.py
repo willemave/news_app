@@ -27,4 +27,12 @@ class Settings:
     REDDIT_USER_AGENT: str = os.getenv("REDDIT_USER_AGENT", "news_app")
     HUEY_DB_PATH: str = os.getenv("HUEY_DB_PATH", "./db/huey.db")
 
+# Per-subreddit fetch limits
+SUBREDDIT_LIMITS = {
+    "front": 30,
+    "technology": 80,
+    "ai": 120,
+    "*": 50        # default
+}
+
 settings = Settings()
