@@ -14,6 +14,65 @@ from .schemas import ArticleSummary
 
 # Removed global genai.configure(api_key=settings.GOOGLE_API_KEY)
 
+def _parse_malformed_summary_response(response_text: str) -> ArticleSummary:
+    """
+    Fallback parser for malformed JSON responses from LLM.
+    Attempts to extract short_summary and detailed_summary from the response.
+    """
+    import re
+    
+    try:
+        # Try to find short_summary and detailed_summary in the response
+        short_match = re.search(r'"short_summary"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', response_text, re.DOTALL)
+        detailed_match = re.search(r'"detailed_summary"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', response_text, re.DOTALL)
+        
+        short_summary = "Error parsing summary"
+        detailed_summary = "Error parsing detailed summary"
+        
+        if short_match:
+            short_summary = short_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+        
+        if detailed_match:
+            detailed_summary = detailed_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+        
+        return ArticleSummary(
+            short_summary=short_summary,
+            detailed_summary=detailed_summary
+        )
+    except Exception as e:
+        print(f"Error in fallback parsing: {e}")
+        return ArticleSummary(
+            short_summary="Error parsing summary",
+            detailed_summary="Error parsing detailed summary"
+        )
+
+def _parse_malformed_filter_response(response_text: str) -> tuple[bool, str]:
+    """
+    Fallback parser for malformed JSON responses from filter_article.
+    Attempts to extract matches and reason from the response.
+    """
+    import re
+    
+    try:
+        # Try to find matches and reason in the response
+        matches_match = re.search(r'"matches"\s*:\s*(true|false)', response_text, re.IGNORECASE)
+        reason_match = re.search(r'"reason"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', response_text, re.DOTALL)
+        
+        matches = False
+        reason = "Error parsing filter response"
+        
+        if matches_match:
+            matches = matches_match.group(1).lower() == 'true'
+        
+        if reason_match:
+            reason = reason_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+        
+        print(f"Filter result (fallback): matches={matches}, reason: {reason}")
+        return matches, reason
+    except Exception as e:
+        print(f"Error in fallback filter parsing: {e}")
+        return False, "Error parsing filter response"
+
 def filter_article(content: str) -> tuple[bool, str]:
     """
     Decide whether an article matches user preferences using Google Gemini.
@@ -59,13 +118,18 @@ def filter_article(content: str) -> tuple[bool, str]:
             config=generate_content_config,
         )
         
-        # It's good practice to check if response.text is valid JSON before loading
-        # For now, assuming it's valid as per original code
-        result = json.loads(response.text)
-        matches = result.get('matches', False)
-        reason = result.get('reason', 'No reason provided')
-        print(f"Filter result: matches={matches}, reason: {reason}")  # Log both result and reason
-        return matches, reason
+        # Parse JSON response with error handling
+        try:
+            result = json.loads(response.text)
+            matches = result.get('matches', False)
+            reason = result.get('reason', 'No reason provided')
+            print(f"Filter result: matches={matches}, reason: {reason}")
+            return matches, reason
+        except json.JSONDecodeError as json_error:
+            print(f"JSON parsing error in filter_article: {json_error}")
+            print(f"Raw response text: {response.text[:500]}...")
+            # Try fallback parsing for filter response
+            return _parse_malformed_filter_response(response.text)
     except Exception as e:
         error_msg = f"Error during filtering: {str(e)}"
         print(f"Filter result: matches=False (error), reason: {error_msg}")
@@ -117,8 +181,14 @@ def summarize_article(content: str) -> ArticleSummary:
         )
         
         # Parse JSON response and validate with Pydantic model
-        summary_data = json.loads(response.text)
-        return ArticleSummary(**summary_data)
+        try:
+            summary_data = json.loads(response.text)
+            return ArticleSummary(**summary_data)
+        except json.JSONDecodeError as json_error:
+            print(f"JSON parsing error in summarize_article: {json_error}")
+            print(f"Raw response text: {response.text[:500]}...")  # Log first 500 chars for debugging
+            # Try to extract summaries from malformed JSON using fallback parsing
+            return _parse_malformed_summary_response(response.text)
     
     except Exception as e:
         print(f"Error in summarize_article: {e}")
@@ -176,8 +246,14 @@ def summarize_pdf(pdf_data: bytes) -> ArticleSummary:
         )
         
         # Parse JSON response and validate with Pydantic model
-        summary_data = json.loads(response.text)
-        return ArticleSummary(**summary_data)
+        try:
+            summary_data = json.loads(response.text)
+            return ArticleSummary(**summary_data)
+        except json.JSONDecodeError as json_error:
+            print(f"JSON parsing error in summarize_pdf: {json_error}")
+            print(f"Raw response text: {response.text[:500]}...")
+            # Try to extract summaries from malformed JSON using fallback parsing
+            return _parse_malformed_summary_response(response.text)
     
     except Exception as e:
         print(f"Error in summarize_pdf: {e}")
