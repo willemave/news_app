@@ -14,7 +14,8 @@ sys.path.append(str(project_root))
 
 # Import the necessary functions
 from cron.daily_ingest import run_daily_ingest
-from cron.process_articles import process_articles
+from app.scraping.hackernews_scraper import process_hackernews_articles
+from app.scraping.reddit import process_reddit_articles
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -55,14 +56,28 @@ def trigger_ingestion(db: Session = Depends(get_db)):
     except Exception as e:
         return {"status": "error", "message": f"Error triggering ingestion: {str(e)}"}
 
-@router.post("/process")
-def trigger_processing(db: Session = Depends(get_db)):
+@router.post("/run_scrapers")
+def run_scrapers_now():
     """
-    Manually trigger the article processing script.
-    This directly calls the process_articles function rather than using subprocess.
+    Manually trigger the scrapers to run immediately.
+    This runs both HackerNews and Reddit scrapers.
     """
     try:
-        processed, approved, errors = process_articles()
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
+        # Import the run_all function from the scheduled job script
+        import sys
+        import os
+        from pathlib import Path
+        
+        # Add scripts directory to path
+        scripts_dir = Path(__file__).parent.parent.parent / "scripts"
+        sys.path.insert(0, str(scripts_dir))
+        
+        from run_scrapers_job import run_all
+        
+        # Run the scrapers
+        run_all()
+        
+        return {"status": "ok", "message": "Scrapers executed successfully"}
     except Exception as e:
-        return {"status": "error", "message": f"Error triggering processing: {str(e)}"}
+        return {"status": "error", "message": f"Error running scrapers: {str(e)}"}
+

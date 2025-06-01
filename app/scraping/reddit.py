@@ -1,10 +1,13 @@
 import praw
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime
 from urllib.parse import urlparse
 
-from app.config import settings, logger
+from app.config import settings, logger, SUBREDDIT_LIMITS
+from ..database import SessionLocal
+from ..models import Links, FailurePhase
 from ..queue import process_link_task
+from ..utils.failures import record_failure
 
 
 def validate_reddit_config() -> bool:
@@ -24,7 +27,9 @@ def validate_reddit_config() -> bool:
         if not settings.REDDIT_USER_AGENT:
             missing.append("REDDIT_USER_AGENT")
         
-        logger.error(f"Missing Reddit configuration: {', '.join(missing)}")
+        error_msg = f"Missing Reddit configuration: {', '.join(missing)}"
+        logger.error(error_msg)
+        record_failure(FailurePhase.scraper, error_msg)
         return False
     
     return True
@@ -95,22 +100,60 @@ def fetch_reddit_posts(subreddit_name: str = "front", limit: int = 50, time_filt
         return posts
     
     except Exception as e:
-        logger.error(f"Error fetching Reddit posts for {subreddit_name}: {e}", exc_info=True)
+        error_msg = f"Error fetching Reddit posts for {subreddit_name}: {e}"
+        logger.error(error_msg, exc_info=True)
+        record_failure(FailurePhase.scraper, error_msg)
         return []
 
 
 
 
-def process_reddit_articles(subreddit_name: str = "front", limit: int = 25, time_filter: str = "day") -> Dict[str, int]:
+def create_link_record(url: str, source: str) -> Optional[int]:
+    """
+    Create a link record in the database.
+    
+    Args:
+        url: URL to create record for
+        source: Source of the link
+        
+    Returns:
+        Link ID if successful, None otherwise
+    """
+    db = SessionLocal()
+    try:
+        # Check if link already exists
+        existing_link = db.query(Links).filter(Links.url == url).first()
+        if existing_link:
+            logger.info(f"Link already exists: {url}")
+            return existing_link.id
+        
+        # Create new link
+        link = Links(url=url, source=source)
+        db.add(link)
+        db.commit()
+        db.refresh(link)
+        
+        logger.info(f"Created link record {link.id} for: {url}")
+        return link.id
+        
+    except Exception as e:
+        logger.error(f"Error creating link record for {url}: {e}", exc_info=True)
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+
+def process_reddit_articles(subreddit_name: str = "front", limit: Optional[int] = None, time_filter: str = "day") -> Dict[str, int]:
     """
     Main function to process Reddit articles:
     1. Fetch posts from Reddit
     2. Extract external links
-    3. Add links to processing queue
+    3. Create link records and queue for processing
     
     Args:
         subreddit_name: Name of subreddit or "front" for front page
-        limit: Maximum number of posts to process
+        limit: Maximum number of posts to process (uses SUBREDDIT_LIMITS if None)
         time_filter: Time filter for top posts (hour, day, week, month, year, all)
     
     Returns:
@@ -119,9 +162,14 @@ def process_reddit_articles(subreddit_name: str = "front", limit: int = 25, time
     stats = {
         "total_posts": 0,
         "external_links": 0,
+        "created_links": 0,
         "queued_links": 0,
         "errors": 0
     }
+    
+    # Compute limit from SUBREDDIT_LIMITS if not provided
+    if limit is None:
+        limit = SUBREDDIT_LIMITS.get(subreddit_name, SUBREDDIT_LIMITS.get("*", 50))
     
     logger.info(f"Starting Reddit link discovery for subreddit '{subreddit_name}', limit={limit}, time_filter='{time_filter}'.")
     
@@ -138,18 +186,27 @@ def process_reddit_articles(subreddit_name: str = "front", limit: int = 25, time
     stats["external_links"] = len(external_posts)
     logger.info(f"Found {len(external_posts)} external links from {len(posts)} total posts for {subreddit_name}.")
     
-    # Queue each external link for processing
+    # Create link records and queue for processing
     for i, post in enumerate(external_posts, 1):
-        logger.info(f"Queuing link {i}/{len(external_posts)}: {post['url']}")
+        logger.info(f"Processing link {i}/{len(external_posts)}: {post['url']}")
         
         try:
-            # Add link to processing queue
-            process_link_task(post["url"], f"reddit-{subreddit_name}")
-            stats["queued_links"] += 1
-            logger.info(f"Queued link for processing: {post['url']}")
+            # Create link record
+            link_id = create_link_record(post["url"], f"reddit-{subreddit_name}")
+            if link_id:
+                stats["created_links"] += 1
+                
+                # Queue link for processing
+                process_link_task(link_id)
+                stats["queued_links"] += 1
+                logger.info(f"Queued link {link_id} for processing: {post['url']}")
+            else:
+                stats["errors"] += 1
             
         except Exception as e:
-            logger.error(f"Error queuing link {post['url']}: {e}", exc_info=True)
+            error_msg = f"Error processing link {post['url']}: {e}"
+            logger.error(error_msg, exc_info=True)
+            record_failure(FailurePhase.scraper, error_msg)
             stats["errors"] += 1
     
     logger.info(f"Reddit link discovery completed for {subreddit_name}. Stats: {stats}")
@@ -189,5 +246,7 @@ def fetch_frontpage_posts(limit: int = 100) -> List[Dict[str, str]]:
         return results
     
     except Exception as e:
-        logger.error(f"Error in fetch_frontpage_posts: {e}", exc_info=True)
+        error_msg = f"Error in fetch_frontpage_posts: {e}"
+        logger.error(error_msg, exc_info=True)
+        record_failure(FailurePhase.scraper, error_msg)
         return []

@@ -18,10 +18,52 @@ huey = SqliteHuey(filename=settings.HUEY_DB_PATH)
 
 
 @huey.task(retries=3, retry_delay=60)
-def process_link_task(url: str, source: str = "unknown") -> bool:
+def process_link_task(link_id: int) -> bool:
     """
-    Background task to process a link from the links_to_scrape queue.
-    Downloads content, processes with LLM, and creates Articles/Summaries.
+    Background task to process a link from the links table.
+    Downloads content, processes with LLM, and creates Articles.
+    
+    Args:
+        link_id: ID of the link to process
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    from .processor import process_link_from_db
+    from .models import Links
+    from google.genai.errors import ClientError
+    
+    # Fetch the link from database
+    db = SessionLocal()
+    try:
+        link = db.query(Links).filter(Links.id == link_id).first()
+        if not link:
+            logger.error(f"Link with ID {link_id} not found")
+            return False
+        
+        # Process the link
+        return process_link_from_db(link)
+        
+    except ClientError as e:
+        # Check if this is a 429 rate limit error
+        if "429" in str(e) or "rate limit" in str(e).lower():
+            logger.warning(f"LLM rate limit hit for link {link_id}, will retry: {e}")
+            # Re-raise to trigger Huey's retry mechanism
+            raise
+        else:
+            logger.error(f"LLM client error for link {link_id}: {e}", exc_info=True)
+            return False
+    except Exception as e:
+        logger.error(f"Error processing link {link_id}: {e}", exc_info=True)
+        return False
+    finally:
+        db.close()
+
+
+@huey.task(retries=3, retry_delay=60)
+def process_link_task_legacy(url: str, source: str = "unknown") -> bool:
+    """
+    Legacy background task for backward compatibility.
     
     Args:
         url: URL to process
@@ -32,6 +74,8 @@ def process_link_task(url: str, source: str = "unknown") -> bool:
     """
     from .processor import process_single_link
     from google.genai.errors import ClientError
+    
+    logger.warning("process_link_task_legacy is deprecated. Use process_link_task with link_id instead.")
     
     try:
         return process_single_link(url, source)
@@ -129,12 +173,10 @@ def drain_queue() -> None:
             logger.info("No more tasks in the queue.")
             break
         
-        logger.info(f"Processing task: {getattr(task, 'id', 'N/A')} - {getattr(task, 'name', 'N/A')}")
         try:
             # Execute the task directly using Huey's execute method
             result = huey.execute(task)
             processed_count += 1
-            logger.info(f"Successfully processed task: {getattr(task, 'id', 'N/A')}")
         except Exception as e:
             failed_count += 1
             logger.error(f"Error processing task {getattr(task, 'id', 'N/A')} ({getattr(task, 'name', 'N/A')}): {e}", exc_info=True)

@@ -1,40 +1,78 @@
-# Router and Template Updates for Articles Display
+# News App Development Tasks
 
-## Phase 1: Update Router and Rename Template
-**Phase Goal:** Change the articles router to mount at "/" instead of "/daily" and rename the template file.
+## Phase: Links Table Implementation
 
-### Tasks:
-- [x] Update `app/routers/articles.py` to change route from "/daily" to "/"
-- [x] Update template reference from "daily_links.html" to "articles.html"
-- [x] Rename `templates/daily_links.html` to `templates/articles.html`
+### Database & Models
+- [x] Create LinkStatus enum in models.py
+- [x] Create Links model with all required fields
+- [x] Update Articles model - remove raw_content and status columns
+- [x] Add bidirectional relationship between Links and Articles
+- [x] Create Pydantic schemas for Links (LinkBase, LinkCreate, Link)
+- [x] Update Article schemas - remove raw_content and status fields
 
-### Reference Files:
-- `app/routers/articles.py` - Main router file to modify
-- `templates/daily_links.html` - Template to rename and update
+### Processor Updates
+- [x] Modify process_single_link to accept Link object
+- [x] Update link status to "processing" at start
+- [x] Remove raw_content storage in create_article_and_summary
+- [x] Link created Article to Link record
+- [x] Update link status to "processed" or "failed" based on outcome
+- [x] Store error messages in Link record on failure
 
-## Phase 2: Update Template to Display Short Summary
-**Phase Goal:** Modify the articles query to join with summaries and update the template to display short_summary.
+### Queue Updates  
+- [x] Change process_link_task to accept link_id parameter
+- [x] Fetch Link from database by ID
+- [x] Pass Link object to processor
+- [x] Handle Link not found errors
 
-### Tasks:
-- [x] Update SQLAlchemy query in `get_daily_articles` to join Articles with Summaries
-- [x] Modify `templates/articles.html` to display title, url, and short_summary
-- [x] Add proper null checks for summaries in template
-- [x] Test the updated display functionality
+### Scraper Updates
+- [x] Update HackerNews scraper to create Link records
+- [x] Update Reddit scraper to create Link records
+- [x] Replace process_link_task calls with link_id based calls
+- [x] Add duplicate URL checking at Link creation
 
-### Reference Files:
-- `app/models.py` - Review relationship between Articles and Summaries
-- `templates/articles.html` - Template to update with summary display
+### Migration
+- [x] Create migration script for existing data
+- [ ] Test migration on backup database
+- [ ] Document rollback procedure
 
-## Phase 3: Update Memory Bank
-### Tasks:
-- [x] Update `ai-memory/README.md` with changes to router mounting and template structure
-- [x] Mark tasks as complete in this file
+### Testing & Validation
+- [ ] Test end-to-end flow with new Links table
+- [ ] Verify no data loss during migration
+- [ ] Update any affected API endpoints
+- [ ] Update admin dashboard if needed
 
-### Key Learnings/Decisions from this Phase:
-- Successfully changed articles router from "/daily" to "/" mounting
-- Renamed daily_links.html to articles.html
-- Updated template to display title, URL, and short_summary from joined Summaries table
-- Fixed multiple import issues by removing raindrop.py and rss.py references
-- Updated cron/daily_ingest.py and cron/process_articles.py to use correct imports
-- Removed missing links router from main.py
-- Server now starts successfully and articles are displayed with summaries
+## Key Files Updated
+- [x] app/models.py (Links model, update Articles)
+- [x] app/schemas.py (Link schemas, update Article schemas)
+- [x] app/processor.py (modify processing logic)
+- [x] app/queue.py (update task parameters)
+- [x] app/scraping/hackernews_scraper.py (create Links instead of direct queue)
+- [x] app/scraping/reddit.py (create Links instead of direct queue)
+- [x] scripts/migrate_to_links_table.py (migration script)
+
+## Architecture Changes
+- **Before**: Scrapers → Queue → Process → Articles (with raw_content, status)
+- **After**: Scrapers → Links table → Queue → Process → Articles (clean) + Update Links status
+
+## Implementation Summary
+
+### What's Been Implemented:
+1. **New Links Table**: Stores all scraped URLs with status tracking
+2. **Updated Articles Table**: Removed raw_content and status, added link_id foreign key
+3. **Enhanced Processor**: Now works with Link objects, updates link status during processing
+4. **Updated Queue System**: Tasks now reference link_id instead of passing URLs
+5. **Modified Scrapers**: Create Link records before queuing for processing
+6. **Migration Script**: Complete migration from old to new architecture
+
+### Key Benefits:
+- **Separation of Concerns**: Link discovery separate from content processing
+- **Better Status Tracking**: Can track link processing independent of article creation
+- **Cleaner Data Model**: Articles only contain processed content, not raw data
+- **Improved Error Handling**: Link-level error tracking and retry capability
+- **Duplicate Prevention**: URL deduplication at the link level
+
+### Next Steps:
+1. Run migration script on existing database
+2. Test the new flow end-to-end
+3. Update any API endpoints that reference old Article fields
+4. Update admin dashboard to show Links table information

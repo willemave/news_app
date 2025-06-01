@@ -1,288 +1,54 @@
-# News Aggregation & Summarization App - Memory Bank
+**News Aggregation & Summarization App — Concise Overview (bullet-only)**
 
-## Product Context
+---
 
-**Purpose:** A news aggregation and summarization application that scrapes content from top news sites, RSS feeds, and podcasts, then processes and presents them through a web interface.
+**Purpose**
 
-**Problems it solves:**
-- Centralizes news consumption from multiple sources
-- Provides automated content scraping and processing
-- Offers summarization capabilities for quick content review
-- Tracks article processing status and workflow
+* Aggregate news from web sites, RSS, PDFs, Reddit, podcasts.
+* Auto-scrape, filter with an LLM, generate short + detailed summaries, store, and display in a web UI.
 
-**How it works:**
-- Automated scraping of news sources via multiple scraper implementations
-- Content processing pipeline with status tracking (new → scraped → processed → approved)
-- Web interface for content management and viewing
-- Integration with external services (Raindrop, LLM APIs)
+**Problems Solved**
 
-## System Patterns
+* One place to read across sources.
+* Automated scraping and status-tracked processing.
+* Fast scanning via AI summaries.
+* Admin visibility into pipeline health.
 
-### Application Architecture
-```mermaid
-graph TB
-    A[FastAPI Main App] --> B[Articles Router]
-    A --> C[Admin Router] 
-    A --> D[Links Router]
-    A --> E[Static Files]
-    A --> F[Jinja2 Templates]
-    
-    G[Scraping System] --> H[News Scraper]
-    G --> I[RSS Scraper]
-    G --> J[PDF Scraper]
-    G --> K[Raindrop Integration]
-    G --> L[Fallback Scraper]
-    G --> M[Aggregator]
-    G --> N[Reddit Scraper]
-    
-    O[Cron Pipeline] --> P[Daily Ingest]
-    O --> Q[Process Articles]
-    O --> R[Full Pipeline]
-    
-    S[Database Layer] --> T[SQLite DB]
-    S --> U[ChromaDB Vector Store]
-    V[LLM Integration] --> W[Content Summarization]
-    V --> X[Content Filtering]
-```
+**Core Architecture**
 
-### FastAPI Application Structure
+* **API & UI**: FastAPI (`main.py`) with `articles`, `admin`, `links`; Jinja2 templates; HTMX for dynamic actions.
+* **Scraping & Processing**: `processor.py` handles HTML/PDF download and extraction (Trafilatura, PyPDF2). HackerNews and Reddit scrapers enqueue links.
+* **LLM**: `llm.py` uses Google Gemini 2.5 Flash to filter relevance and create dual-level summaries + keywords.
+* **Queue**: Huey (SQLite backend) in `queue.py`; retries on 429; utility to drain queue.
+* **Data**: SQLite via SQLAlchemy (`models.py`, `database.py`). Tables: Articles (includes summaries), CronLogs.
+* **Vector Search**: ChromaDB for semantic lookup.
+* **Automation**: Cron scripts (`cron/daily_ingest.py`, `cron/process_articles.py`) run scheduled ingest and batch processing.
 
-**Main Application (`app/main.py`):**
-- Simple, clean FastAPI application setup
-- Two main router modules: articles, admin
-- Static file serving from `/static` directory
-- Jinja2 template rendering from `templates/` directory
-- Root endpoint redirects users to `/articles/`
-- Application title: "News Aggregation & Summarization"
+**Tech Stack**
 
-**Configuration Management (`app/config.py`):**
-- Environment variable loading via `python-dotenv`
-- Centralized Settings class with all configuration parameters
-- Console logging with INFO level and structured format
-- Key environment variables:
-  - `RAINDROP_TOKEN`: Raindrop.io API access
-  - `LLM_API_KEY`: General LLM API key
-  - `GOOGLE_API_KEY`: Google Gemini API access
-  - `DATABASE_URL`: SQLite database location (default: `sqlite:///./news_app.db`)
-  - `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`: Reddit API credentials
+* Python 3.13, FastAPI, SQLAlchemy, Pydantic, SQLite.
+* requests, Trafilatura, PyPDF2, PRAW.
+* google-genai, ChromaDB, Huey.
+* CrewAI for experimental multi-agent scraping.
 
-### Database Architecture
+**Key Workflows**
 
-**Models (`app/models.py`):**
-- **Articles Table**: Core content entity with comprehensive metadata
-  - Status progression: `new → scraped → failed/processed → approved`
-  - Fields: id, title, url (unique), author, publication_date, raw_content, scraped_date, status
-  - One-to-many relationship with Summaries
-- **Summaries Table**: AI-generated content summaries
-  - Fields: id, article_id (FK), short_summary, detailed_summary, summary_date
-  - Linked to Articles via foreign key relationship
-- **CronLogs Table**: Automation pipeline execution tracking
-  - Fields: id, run_date, links_fetched, successful_scrapes, errors
-  - Tracks performance metrics and error logging
+* Daily ingest adds new links (`status=new`).
+* Queue worker downloads content, filters with LLM, saves summaries (`status=processed` or `failed`).
+* Manual or auto approval marks articles as `approved`.
+* Web UI lists articles; detail view shows full content and summaries; admin dashboard displays CronLogs and trigger buttons.
 
-**Database Layer (`app/database.py`):**
-- SQLAlchemy engine with SQLite backend
-- Session management with proper connection handling
-- Declarative base for ORM models
-- Database initialization function for table creation
+**Repository Highlights**
 
-**Data Validation (`app/schemas.py`):**
-- Pydantic models for API request/response validation
-- `LinkCreate`: URL validation for new link submissions
-- `ArticleBase`, `ArticleCreate`, `Article`: Article data structures
-- Proper type hints and optional field handling
+* `app/`: main, config, models, schemas, processor, llm, queue, routers.
+* `app/scraping/`: HackerNews and Reddit scrapers.
+* `cron/`: scheduled ingest and processing jobs.
+* `scripts/`: dev helpers (run scrapers, CrewAI demo, migrations).
+* `templates/` & `static/`: minimalist Bootstrap-style frontend.
 
-### LLM Integration Architecture
+**Configuration**
 
-**Google Gemini Integration (`app/llm.py`):**
-- **Model**: Gemini 2.5 Flash Preview for all LLM operations
-- **Content Filtering**: Intelligent article relevance assessment
-  - Focuses on technology, software development, AI, business strategy
-  - Prefers in-depth analysis over news reports
-  - Excludes opinion pieces unless from recognized experts
-  - Filters out marketing/promotional content
-- **Summarization**: Dual-level summary generation
-  - Short summary: 2-sentence brief for quick scanning
-  - Detailed summary: Bullet points + multi-paragraph analysis
-  - Keyword extraction for content categorization
-- **Error Handling**: Graceful fallbacks for API failures
-- **JSON Response Format**: Structured output for reliable parsing
+* `.env` controls Raindrop token (legacy), Google API key, Reddit creds, database paths, etc.
+* Default local DB paths: `./news_app.db` (SQLite) and `./db/chroma.sqlite3` (ChromaDB).
 
-### Scraping System Architecture
-
-**Content Processing Pipeline (`app/processor.py`):**
-- Central link processing module that handles URL downloading and content extraction
-- Direct HTTP requests using `requests` library with proper headers and timeout handling
-- Smart content type detection for PDF vs HTML content
-- Trafilatura-based HTML content extraction with Markdown output and metadata parsing
-- Intelligent metadata extraction (title, author, publication_date) with automatic date parsing
-- Content validation with minimum length requirements
-- PDF content handling with base64 encoding for LLM processing
-- Comprehensive error handling for HTTP and parsing failures
-- Returns unified format: `{url, title, author, publication_date, content, is_pdf}`
-
-**Link Discovery Scrapers:**
-
-1. **HackerNews Scraper (`hackernews_scraper.py`)**
-   - Specialized scraper for HackerNews homepage content
-   - Fetches HackerNews homepage and extracts external article links
-   - Filters out internal HN discussion links (item?id=)
-   - Queues discovered links for processing via `app/processor.py`
-   - Uses `app/queue.process_link_task()` for link submission
-
-2. **Reddit Scraper (`reddit.py`)**
-   - Reddit API integration using PRAW (Python Reddit API Wrapper)
-   - Supports multiple subreddit monitoring
-   - Configurable post filtering (hot, new, top posts)
-   - Extracts external links from Reddit posts
-   - Queues discovered links for processing via `app/processor.py`
-   - Rate limiting and API authentication handling
-
-**Note:** The scraping system has been refactored. Previous components (`aggregator.py`, `news_scraper.py`, `fallback_scraper.py`) have been consolidated into `app/processor.py` for direct content downloading and processing.
-
-### Data Models & Status Flow
-- **Articles**: Core content entity with status progression (new → scraped → failed/processed → approved)
-- **Summaries**: Generated content summaries linked to articles
-- **CronLogs**: Automation pipeline execution tracking
-
-### Key Technical Decisions
-- **FastAPI**: Modern async web framework for API and web interface
-- **SQLAlchemy ORM**: Database abstraction with relationship management
-- **Pydantic**: Data validation and serialization throughout the application
-- **Status-based workflow**: Clear article processing pipeline with enum-based status tracking
-- **Modular scraping**: Pluggable scraper architecture with intelligent routing
-- **External AI integration**: Google Gemini Flash 2.5 for content summarization and PDF processing
-- **Vector storage**: ChromaDB for semantic search and content similarity
-
-## Tech Context
-
-### Core Technologies
-- **Python 3.13**: Primary language (specified in `.python-version`)
-- **FastAPI**: Web framework with automatic API documentation
-- **SQLAlchemy**: ORM for database operations
-- **Pydantic**: Data validation and schema definition
-- **SQLite**: Local database storage
-- **Jinja2**: Template engine for HTML rendering
-- **HTMX**: Frontend interactivity (referenced in original spec)
-
-### Package Management & Build System
-- **uv**: Modern Python package installer and dependency resolver (primary tool)
-- **pyproject.toml**: Modern Python project configuration and dependency specification
-- **requirements.txt**: Auto-generated from pyproject.toml via `uv pip compile`
-- **uv.lock**: Locked dependency versions for reproducible builds
-
-### Scraping Dependencies
-- **news-please**: News article extraction and parsing
-- **feedparser**: RSS/Atom feed processing
-- **trafilatura**: HTML content extraction and metadata parsing with Markdown output
-- **PyPDF2**: PDF text extraction
-- **google-genai**: Gemini AI model integration (preferred over deprecated google-generativeai)
-- **requests**: HTTP client for web scraping
-- **praw**: Python Reddit API Wrapper for Reddit integration
-- **docling**: Advanced document processing and extraction
-
-### AI & Machine Learning
-- **CrewAI**: Multi-agent AI framework for complex task automation
-- **ChromaDB**: Vector database for embeddings and semantic search
-- **OpenAI**: GPT model integration (via CrewAI)
-- **Instructor**: Structured LLM output parsing
-- **LangChain**: LLM application framework and tooling
-
-### Development Environment
-- **uvicorn**: ASGI server for development and production
-- **python-dotenv**: Environment variable management
-- **pytest**: Testing framework
-
-### Logging
-- Basic logging is configured in `app/config.py`.
-- Logs to console with INFO level by default.
-- Format: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`
-
-### Configuration Management
-- Environment-based configuration via `.env` file using `python-dotenv`
-- Centralized Settings class in `app/config.py`
-- Key settings: RAINDROP_TOKEN, LLM_API_KEY, DATABASE_URL, GOOGLE_API_KEY, Reddit API credentials
-- Default SQLite database: `./news_app.db`
-- ChromaDB vector store: `./db/chroma.sqlite3`
-
-### Application Entry Points
-- **Main app**: `app/main.py` - FastAPI application with router mounting
-- **Development server**: Runs on `0.0.0.0:8000`
-- **API endpoints**: `/articles/*`, `/admin/*`, `/links/*`
-- **Root endpoint**: Returns welcome message directing to `/articles/daily`
-
-### Server Startup Scripts
-- **`start_server.sh`** (root): Comprehensive startup script with environment detection, dependency installation, and server launch
-- **`scripts/start_server.sh`**: Simplified startup script for development use
-
-## Key Repository Folders and Files
-
-### Project Configuration
-- **`pyproject.toml`**: Modern Python project configuration with dependencies and build settings
-- **`requirements.txt`**: Auto-generated dependency list from pyproject.toml
-- **`uv.lock`**: Locked dependency versions for reproducible environments
-- **`.python-version`**: Python version specification (3.13)
-- **`.clinerules`**: AI agent coding guidelines and project-specific instructions
-- **`AGENTS.md`**: Comprehensive AI agent workflow documentation and memory bank guidelines
-- **`start_server.sh`**: Production-ready server startup script with environment setup
-
-### Core Application (`app/`)
-- **`main.py`**: FastAPI application entry point with router configuration and static file mounting
-- **`config.py`**: Environment-based settings management with logging configuration
-- **`models.py`**: SQLAlchemy database models (Articles, Summaries, CronLogs) with relationships
-- **`schemas.py`**: Pydantic data validation schemas for API requests/responses
-- **`database.py`**: Database connection, session management, and initialization
-- **`llm.py`**: Google Gemini integration for content filtering and summarization
-
-### Routing Layer (`app/routers/`)
-- **`articles.py`**: Article viewing and management endpoints
-- **`admin.py`**: Administrative interface and controls
-- **`links.py`**: Link submission and management
-
-### Scraping System (`app/scraping/`)
-- **`hackernews_scraper.py`**: HackerNews link discovery and queuing
-- **`reddit.py`**: Reddit API integration for link discovery and queuing
-
-### Content Processing (`app/`)
-- **`processor.py`**: Central content downloading, parsing, and processing module
-- **`queue.py`**: Link queuing and task management system
-
-### Automation (`cron/`)
-- **`run_full_pipeline.py`**: Complete processing pipeline
-- **`daily_ingest.py`**: Daily content ingestion
-- **`process_articles.py`**: Article processing workflows
-
-### Data Storage (`db/`)
-- **`chroma.sqlite3`**: ChromaDB vector database for semantic search
-- **Vector index files**: Binary files for efficient similarity search
-- **`news_app.db`**: Primary SQLite database (created at runtime)
-
-### Frontend (`templates/`, `static/`)
-- **`templates/`**: Jinja2 HTML templates
-  - **`articles.html`**: Main articles listing page (formerly daily_links.html) - displays title, URL, and short summaries
-  - **`detailed_article.html`**: Individual article detail view with full summaries
-- **`static/`**: CSS and JavaScript assets
-
-### Development & Testing Scripts (`scripts/`)
-- **`test_hackernews_scraper.py`**: Standalone test script for HackerNews scraper functionality
-  - Runs the complete HackerNews scraping pipeline
-  - Displays processing statistics and results
-  - Shows all scraped articles with their summaries
-  - Includes database initialization and proper session management
-- **`run_reddit_scraper.py`**: Reddit scraper testing and execution script
-- **`start_server.sh`**: Simplified development server startup script
-
-### AI Agent Exploration Scripts (`scripts/`)
-- **`crewai_hackernews_scraper.py`**: CrewAI-powered HackerNews content aggregation script
-  - Uses CrewAI framework with two specialized agents for web scraping and content summarization
-  - **Agent 1 (Link Collector)**: Finds top 10 external article links from Hacker News homepage using SerperDevTool
-  - **Agent 2 (Summarizer)**: Scrapes article content and generates AI-powered summaries using WebsiteSearchTool
-  - Outputs comprehensive HTML report (`scripts/hackernews_crew_report.html`) with clickable links and summaries
-  - **Requirements**: `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables
-  - **Usage**: `python scripts/crewai_hackernews_scraper.py`
-  - Demonstrates CrewAI agent collaboration, task sequencing, and automated content processing
-
-### Testing (`tests/`)
-- Comprehensive test suite for scraping components
-- **`conftest.py`**: Test configuration and fixtures
-- Individual test files for each scraper component
+This bullet list captures purpose, components, workflows, and tech choices without tables or extra detail.
