@@ -10,6 +10,7 @@ class LinkStatus(enum.Enum):
     processing = "processing"
     processed = "processed"
     failed = "failed"
+    skipped = "skipped"
 
 class ArticleStatus(enum.Enum):
     new = "new"
@@ -62,6 +63,7 @@ class FailureLogs(Base):
     link_id = Column(Integer, ForeignKey("links.id"), nullable=True, index=True)
     phase = Column(Enum(FailurePhase), nullable=False, index=True)
     error_msg = Column(Text, nullable=False)
+    skip_reason = Column(Text, nullable=True)  # Reason for skipping when applicable
     created_date = Column(DateTime, default=datetime.utcnow, index=True)
     
     # Relationship to Link

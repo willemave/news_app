@@ -10,19 +10,21 @@ import os
 from google import genai
 from google.genai import types
 from .config import settings
+from .schemas import ArticleSummary
 
 # Removed global genai.configure(api_key=settings.GOOGLE_API_KEY)
 
-def filter_article(content: str) -> bool:
+def filter_article(content: str) -> tuple[bool, str]:
     """
     Decide whether an article matches user preferences using Google Gemini.
-    Returns True if the article matches preferences, False otherwise.
+    Returns tuple of (matches: bool, reason: str).
     """
     system_prompt = """You are an intelligent news filter. Your task is to determine if an article matches the following preferences:
-    - Focus on technology, software development, AI, and business strategy
-    - Prefer in-depth analysis over news reports
-    - Exclude opinion pieces unless they're from recognized industry experts
-    - Exclude articles that are primarily marketing or promotional
+
+- Focus on technology, software development, AI, and business strategy.
+- Prefer in-depth analysis over news reports.
+- Include opinion pieces only if they provide detailed technical or strategic insights from recognized industry experts, even if they contain a minor promotional element.
+- Exclude articles primarily intended as marketing or promotional material unless the promotional content is minimal and clearly secondary to substantial informative content.
     
     Respond with a JSON object containing:
     {
@@ -60,30 +62,30 @@ def filter_article(content: str) -> bool:
         # It's good practice to check if response.text is valid JSON before loading
         # For now, assuming it's valid as per original code
         result = json.loads(response.text)
-        print(f"Filter reason: {result.get('reason')}")  # Logging for debugging
-        return result.get('matches', False)
+        matches = result.get('matches', False)
+        reason = result.get('reason', 'No reason provided')
+        print(f"Filter reason: {reason}")  # Logging for debugging
+        return matches, reason
     except Exception as e:
         print(f"Error in filter_article: {e}")
-        return False  # Default to excluding on error
+        return False, f"Error during filtering: {str(e)}"  # Default to excluding on error
 
-def summarize_article(content: str) -> dict[str, str]:
+def summarize_article(content: str) -> ArticleSummary:
     """
     Generate short and detailed summaries for the content using Google Gemini.
-    Returns a tuple of (short_summary, detailed_summary).
+    Returns an ArticleSummary pydantic model.
     """
-    system_prompt = """You are an expert at summarizing articles. 
+    system_prompt = """You are an expert at summarizing articles.
     
-    You are going to create two summaries of the article. 
-    1. A Short 2 sentence summary for brief scanning. 
+    You are going to create two summaries of the article.
+    1. A Short 2 sentence summary for brief scanning.
     2. A detailed summary that starts with bullet points of the key topics
      and then a few paragraphs summarizing the document.
-    3. Please pull out a set of relevant keywords. 
 
     Respond with a JSON object containing:
     {
-        "short": "2 sentence summary",
-        "detailed": "bullet points of the key topics, and multiple paragraph summary" 
-        "keywords": ["list", "of", "relevant", "keywords"]
+        "short_summary": "2 sentence summary",
+        "detailed_summary": "bullet points of the key topics, and multiple paragraph summary"
     }"""
 
     try:
@@ -113,13 +115,18 @@ def summarize_article(content: str) -> dict[str, str]:
             config=generate_content_config,
         )
         
-        return json.loads(response.text)
+        # Parse JSON response and validate with Pydantic model
+        summary_data = json.loads(response.text)
+        return ArticleSummary(**summary_data)
     
     except Exception as e:
         print(f"Error in summarize_article: {e}")
-        return ("Error generating summary", "Error generating detailed summary")
+        return ArticleSummary(
+            short_summary="Error generating summary",
+            detailed_summary="Error generating detailed summary"
+        )
 
-def summarize_pdf(pdf_data: str) -> dict[str, str]:
+def summarize_pdf(pdf_data: str) -> ArticleSummary:
     """
     Generate short and detailed summaries for PDF content using Google Gemini.
     
@@ -127,21 +134,19 @@ def summarize_pdf(pdf_data: str) -> dict[str, str]:
         pdf_data: Base64 encoded PDF data
     
     Returns:
-        Dictionary with short, detailed summaries and keywords
+        ArticleSummary pydantic model
     """
-    system_prompt = """You are an expert at summarizing PDF documents. 
+    system_prompt = """You are an expert at summarizing PDF documents.
     
-    You are going to create two summaries of the PDF document. 
-    1. A Short 2 sentence summary for brief scanning. 
+    You are going to create two summaries of the PDF document.
+    1. A Short 2 sentence summary for brief scanning.
     2. A detailed summary that starts with bullet points of the key topics
      and then a few paragraphs summarizing the document.
-    3. Please pull out a set of relevant keywords. 
 
     Respond with a JSON object containing:
     {
-        "short": "2 sentence summary",
-        "detailed": "bullet points of the key topics, and multiple paragraph summary" 
-        "keywords": ["list", "of", "relevant", "keywords"]
+        "short_summary": "2 sentence summary",
+        "detailed_summary": "bullet points of the key topics, and multiple paragraph summary"
     }"""
 
     try:
@@ -176,15 +181,16 @@ def summarize_pdf(pdf_data: str) -> dict[str, str]:
             config=generate_content_config,
         )
         
-        return json.loads(response.text)
+        # Parse JSON response and validate with Pydantic model
+        summary_data = json.loads(response.text)
+        return ArticleSummary(**summary_data)
     
     except Exception as e:
         print(f"Error in summarize_pdf: {e}")
-        return {
-            "short": "Error generating PDF summary",
-            "detailed": "Error generating detailed PDF summary",
-            "keywords": []
-        }
+        return ArticleSummary(
+            short_summary="Error generating PDF summary",
+            detailed_summary="Error generating detailed PDF summary"
+        )
 
 
 def summarize_text(content: str) -> str:

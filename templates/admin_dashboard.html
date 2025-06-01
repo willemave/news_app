@@ -2,7 +2,7 @@
 {% block content %}
 <h2>Admin Dashboard</h2>
 <h3>Cron Logs</h3>
-<table border="1">
+<table>
   <tr>
     <th>ID</th>
     <th>Run Date</th>
@@ -21,6 +21,52 @@
   {% endfor %}
 </table>
 
+<h3>All Links</h3>
+<table>
+  <tr>
+    <th>ID</th>
+    <th>URL</th>
+    <th>Source</th>
+    <th>Status</th>
+    <th>Created Date</th>
+    <th>Processed Date</th>
+    <th>Error Message</th>
+  </tr>
+  {% for link in links %}
+  <tr>
+    <td>{{ link.id }}</td>
+    <td><a href="{{ link.url }}" target="_blank">{{ link.url[:50] }}{% if link.url|length > 50 %}...{% endif %}</a></td>
+    <td>{{ link.source }}</td>
+    <td>{{ link.status.value }}</td>
+    <td>{{ link.created_date.strftime('%Y-%m-%d %H:%M') if link.created_date else '' }}</td>
+    <td>{{ link.processed_date.strftime('%Y-%m-%d %H:%M') if link.processed_date else '' }}</td>
+    <td>{{ link.error_message[:100] if link.error_message else '' }}{% if link.error_message and link.error_message|length > 100 %}...{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h3>Failure Logs</h3>
+<table>
+  <tr>
+    <th>ID</th>
+    <th>Link ID</th>
+    <th>URL</th>
+    <th>Phase</th>
+    <th>Error Message</th>
+    <th>Created Date</th>
+  </tr>
+  {% for failure in failures %}
+  <tr>
+    <td>{{ failure.id }}</td>
+    <td>{{ failure.link_id }}</td>
+    <td><a href="{{ failure.link.url }}" target="_blank">{{ failure.link.url[:50] }}{% if failure.link.url|length > 50 %}...{% endif %}</a></td>
+    <td>{{ failure.phase.value }}</td>
+    <td>{{ failure.error_msg }}{% if failure.error_msg|length > 100 %}...{% endif %}</td>
+    <td>{{ failure.created_date.strftime('%Y-%m-%d %H:%M') if failure.created_date else '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
 <div class="action-buttons">
   <form method="POST" action="/admin/trigger" class="inline-form">
     <button type="submit" class="action-button">Trigger Ingestion</button>
@@ -31,23 +77,50 @@
 </div>
 
 <style>
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 30px;
+  border: 1px solid #ddd;
+}
+
+th, td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+  color: #495057;
+}
+
+h3 {
+  margin-top: 40px;
+  margin-bottom: 15px;
+  color: #343a40;
+  font-size: 1.25rem;
+}
+
 .action-buttons {
-  margin-top: 20px;
+  margin-top: 30px;
   display: flex;
-  gap: 10px;
+  gap: 15px;
 }
 
 .action-button {
-  padding: 8px 15px;
-  background-color: #3498db;
+  padding: 10px 20px;
+  background-color: #007bff;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
+  font-size: 14px;
 }
 
 .action-button:hover {
-  background-color: #2980b9;
+  background-color: #0056b3;
 }
 
 .inline-form {

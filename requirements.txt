@@ -263,6 +263,8 @@ httpx-sse==0.4.0
     # via
     #   cohere
     #   langchain-community
+huey==2.5.3
+    # via news-app (pyproject.toml)
 huggingface-hub==0.32.1
     # via
     #   docling
@@ -846,6 +848,8 @@ safetensors==0.5.3
     # via
     #   docling-ibm-models
     #   transformers
+schedule==1.2.2
+    # via news-app (pyproject.toml)
 schema==0.7.7
     # via embedchain
 scikit-image==0.25.2

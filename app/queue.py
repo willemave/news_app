@@ -59,40 +59,6 @@ def process_link_task(link_id: int) -> bool:
     finally:
         db.close()
 
-
-@huey.task(retries=3, retry_delay=60)
-def process_link_task_legacy(url: str, source: str = "unknown") -> bool:
-    """
-    Legacy background task for backward compatibility.
-    
-    Args:
-        url: URL to process
-        source: Source of the link (e.g., "hackernews", "reddit")
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    from .processor import process_single_link
-    from google.genai.errors import ClientError
-    
-    logger.warning("process_link_task_legacy is deprecated. Use process_link_task with link_id instead.")
-    
-    try:
-        return process_single_link(url, source)
-    except ClientError as e:
-        # Check if this is a 429 rate limit error
-        if "429" in str(e) or "rate limit" in str(e).lower():
-            logger.warning(f"LLM rate limit hit for {url}, will retry: {e}")
-            # Re-raise to trigger Huey's retry mechanism
-            raise
-        else:
-            logger.error(f"LLM client error for {url}: {e}", exc_info=True)
-            return False
-    except Exception as e:
-        logger.error(f"Error processing link {url}: {e}", exc_info=True)
-        return False
-
-
 @huey.task()
 def summarize_task(article_id: int, raw_content: str, is_pdf: bool = False) -> bool:
     """

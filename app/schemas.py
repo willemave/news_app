@@ -19,6 +19,11 @@ class Link(LinkBase):
     class Config:
         from_attributes = True
 
+class ArticleSummary(BaseModel):
+    """Pydantic model for LLM-generated article summaries."""
+    short_summary: str
+    detailed_summary: str
+
 class ArticleBase(BaseModel):
     title: Optional[str]
     url: HttpUrl
