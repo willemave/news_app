@@ -11,8 +11,7 @@ import datetime
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, init_db
 from app.models import Articles, CronLogs, ArticleStatus
-from app.scraping.raindrop import fetch_new_raindrops
-from app.scraping.rss import fetch_rss_links
+# Removed raindrop and rss imports - using direct scraping instead
 
 def run_daily_ingest():
     """
@@ -32,15 +31,9 @@ def run_daily_ingest():
     last_run_date = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
 
     # Fetch links from different sources
-    # 1) Fetch from Raindrop.io
-    raindrop_links = fetch_new_raindrops(last_run_date)
-    
-    # 2) Fetch from RSS feeds
-    feed_urls = ["https://some-rss-feed.com/rss", "https://other-feed.com/feed"]
-    rss_links = fetch_rss_links(feed_urls, last_run_date)
-
-    # Combine all links
-    all_links = raindrop_links + rss_links
+    # Note: Raindrop and RSS functionality removed - using direct scrapers instead
+    # For now, return empty list until direct scrapers are integrated
+    all_links = []
     cron_log.links_fetched = len(all_links)
     db.commit()
 

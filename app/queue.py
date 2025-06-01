@@ -9,7 +9,7 @@ from huey import SqliteHuey
 
 from .config import settings, logger
 from .database import SessionLocal
-from .models import Articles, Summaries, ArticleStatus
+from .models import Articles, ArticleStatus
 from . import llm
 
 
@@ -92,17 +92,10 @@ def summarize_task(article_id: int, raw_content: str, is_pdf: bool = False) -> b
             detailed_summary = summaries[1] if len(summaries) > 1 else ""
             keywords = []
         
-        # Create Summary record
-        summary = Summaries(
-            article_id=article.id,
-            short_summary=short_summary,
-            detailed_summary=detailed_summary,
-            summary_date=datetime.utcnow()
-        )
-        
-        db.add(summary)
-        
-        # Update article status to processed
+        # Update article with summary data
+        article.short_summary = short_summary
+        article.detailed_summary = detailed_summary
+        article.summary_date = datetime.utcnow()
         article.status = ArticleStatus.processed
         
         # Commit changes

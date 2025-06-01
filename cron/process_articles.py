@@ -10,8 +10,8 @@ This script is responsible for:
 import datetime
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, init_db
-from app.models import Articles, ArticleStatus, Summaries, CronLogs
-from app.scraping.aggregator import scrape_url
+from app.models import Articles, ArticleStatus, CronLogs
+from app.processor import download_and_process_content
 from app.llm import filter_article, summarize_article
 
 def process_articles(batch_size=10):
@@ -49,7 +49,7 @@ def process_articles(batch_size=10):
     for article in new_articles:
         try:
             # Scrape article content
-            data = scrape_url(article.url)
+            data = download_and_process_content(article.url)
             if not data or not data.get("content"):
                 article.status = ArticleStatus.failed
                 db.commit()
@@ -68,14 +68,21 @@ def process_articles(batch_size=10):
             # Apply LLM filtering
             if filter_article(data.get("content")):
                 # Generate summaries for approved articles
-                short_sum, long_sum = summarize_article(data.get("content"))
+                summaries = summarize_article(data.get("content"))
                 
-                summary_entry = Summaries(
-                    article_id=article.id,
-                    short_summary=short_sum,
-                    detailed_summary=long_sum
-                )
-                db.add(summary_entry)
+                # Handle both dict and tuple return formats
+                if isinstance(summaries, dict):
+                    short_summary = summaries.get("short", "")
+                    detailed_summary = summaries.get("detailed", "")
+                else:
+                    # Fallback for tuple format
+                    short_summary = summaries[0] if len(summaries) > 0 else ""
+                    detailed_summary = summaries[1] if len(summaries) > 1 else ""
+                
+                # Update article with summary data
+                article.short_summary = short_summary
+                article.detailed_summary = detailed_summary
+                article.summary_date = datetime.datetime.utcnow()
                 article.status = ArticleStatus.approved
                 db.commit()
                 

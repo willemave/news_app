@@ -23,6 +23,7 @@ dependencies = [
     "trafilatura>=1.8.0",
     "uvicorn>=0.34.2",
     "google-genai>=1.18.0",
+    "huey>=2.5.3",
 ]
 
 [tool.setuptools.packages.find]
