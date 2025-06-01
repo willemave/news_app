@@ -116,6 +116,7 @@
 2. Use `alembic` for database migrations
 3. Use `ruff check` and `ruff format` for code quality
 4. Use `mypy` for type checking
+5. Make sure to ALWAYS run activate before the command. 
 
 **Keep all replies short, technical, and complete.**
 ```

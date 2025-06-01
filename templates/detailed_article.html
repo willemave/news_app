@@ -13,7 +13,7 @@
 
 {% if article.detailed_summary %}
   <h3>Detailed Summary:</h3>
-  <div style="white-space: pre-wrap;">{{ article.detailed_summary }}</div>
+  <div class="markdown-content">{{ article.detailed_summary | markdown }}</div>
 {% endif %}
 
 {% if not article.short_summary and not article.detailed_summary %}

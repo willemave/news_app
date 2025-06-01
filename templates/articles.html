@@ -99,7 +99,7 @@
             <!-- Description Column -->
             <td class="article-description">
               {% if article.short_summary %}
-                <p class="summary-text">{{ article.short_summary[:150] }}{% if article.short_summary|length > 150 %}...{% endif %}</p>
+                <p class="summary-text">{{ article.short_summary }}</p>
               {% else %}
                 <span class="no-summary">No summary available</span>
               {% endif %}

@@ -6,7 +6,7 @@ Shows both the links and articles tables.
 
 import sqlite3
 from datetime import datetime
-from typing import List, Tuple, Any
+from typing import List, Tuple
 
 def format_table(headers: List[str], rows: List[Tuple], title: str) -> str:
     """Format data as a table with proper alignment."""

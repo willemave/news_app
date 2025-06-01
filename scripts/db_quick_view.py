@@ -4,7 +4,6 @@ Quick database viewer - simplified version for fast viewing
 """
 
 import sqlite3
-import sys
 
 def quick_view():
     """Quick view of database contents with basic formatting."""

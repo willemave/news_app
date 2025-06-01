@@ -5,7 +5,6 @@ from app.models import CronLogs, Links, FailureLogs
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 import sys
-import os
 from pathlib import Path
 
 # Add the project root to sys.path to allow importing from cron directory
@@ -13,8 +12,6 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
 # Import the necessary functions
-from app.scraping.hackernews_scraper import process_hackernews_articles
-from app.scraping.reddit import process_reddit_articles
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -68,7 +65,6 @@ def run_scrapers_now():
     try:
         # Import the run_all function from the scheduled job script
         import sys
-        import os
         from pathlib import Path
         
         # Add scripts directory to path

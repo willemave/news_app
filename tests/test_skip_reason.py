@@ -1,14 +1,11 @@
 """
 Test skip_reason functionality for filtering and failure logging.
 """
-import pytest
-from unittest.mock import patch, Mock, MagicMock
-from google.genai.errors import ClientError
+from unittest.mock import patch, Mock
 
 from app.llm import filter_article
 from app.utils.failures import record_failure
 from app.models import FailurePhase, FailureLogs
-from app.database import SessionLocal
 
 
 class TestFilterArticle:

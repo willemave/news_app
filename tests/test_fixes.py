@@ -2,7 +2,7 @@
 Test implemented fixes for URL preprocessing, models, and enums.
 """
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 from app.processor import url_preprocessor
 from app.schemas import ArticleSummary

@@ -6,13 +6,31 @@ This module manages the LLM integration for:
 Uses Google Gemini Flash 2.5 for all LLM operations.
 """
 import json
-import os
 from google import genai
 from google.genai import types
 from .config import settings
 from .schemas import ArticleSummary
 
 # Removed global genai.configure(api_key=settings.GOOGLE_API_KEY)
+
+def _normalize_summary_data(summary_data: dict) -> dict:
+    """
+    Normalize summary data to ensure all fields are strings.
+    Converts lists to formatted strings if needed.
+    """
+    normalized = summary_data.copy()
+    
+    # Handle short_summary
+    if isinstance(normalized.get('short_summary'), list):
+        normalized['short_summary'] = ' '.join(str(item) for item in normalized['short_summary'])
+    
+    # Handle detailed_summary
+    if isinstance(normalized.get('detailed_summary'), list):
+        # Format list items as bullet points
+        items = [str(item) for item in normalized['detailed_summary']]
+        normalized['detailed_summary'] = '\n'.join(f"• {item}" for item in items)
+    
+    return normalized
 
 def _parse_malformed_summary_response(response_text: str) -> ArticleSummary:
     """
@@ -147,10 +165,12 @@ def summarize_article(content: str) -> ArticleSummary:
     2. A detailed summary that starts with bullet points of the key topics
      and then a few paragraphs summarizing the document.
 
+    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks.
+
     Respond with a JSON object containing:
     {
-        "short_summary": "2 sentence summary",
-        "detailed_summary": "bullet points of the key topics, and multiple paragraph summary"
+        "short_summary": "2 sentence summary as a string",
+        "detailed_summary": "• Key topic 1\n• Key topic 2\n• Key topic 3\n\nDetailed paragraph summary..."
     }"""
 
     try:
@@ -183,7 +203,9 @@ def summarize_article(content: str) -> ArticleSummary:
         # Parse JSON response and validate with Pydantic model
         try:
             summary_data = json.loads(response.text)
-            return ArticleSummary(**summary_data)
+            # Normalize data to handle lists
+            normalized_data = _normalize_summary_data(summary_data)
+            return ArticleSummary(**normalized_data)
         except json.JSONDecodeError as json_error:
             print(f"JSON parsing error in summarize_article: {json_error}")
             print(f"Raw response text: {response.text[:500]}...")  # Log first 500 chars for debugging
@@ -214,10 +236,12 @@ def summarize_pdf(pdf_data: bytes) -> ArticleSummary:
     2. A detailed summary that starts with bullet points of the key topics
      and then a few paragraphs summarizing the document.
 
+    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks.
+
     Respond with a JSON object containing:
     {
-        "short_summary": "2 sentence summary",
-        "detailed_summary": "bullet points of the key topics, and multiple paragraph summary"
+        "short_summary": "2 sentence summary as a string",
+        "detailed_summary": "• Key topic 1\n• Key topic 2\n• Key topic 3\n\nDetailed paragraph summary..."
     }"""
 
     try:
@@ -248,7 +272,9 @@ def summarize_pdf(pdf_data: bytes) -> ArticleSummary:
         # Parse JSON response and validate with Pydantic model
         try:
             summary_data = json.loads(response.text)
-            return ArticleSummary(**summary_data)
+            # Normalize data to handle lists
+            normalized_data = _normalize_summary_data(summary_data)
+            return ArticleSummary(**normalized_data)
         except json.JSONDecodeError as json_error:
             print(f"JSON parsing error in summarize_pdf: {json_error}")
             print(f"Raw response text: {response.text[:500]}...")

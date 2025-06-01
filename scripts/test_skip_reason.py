@@ -71,7 +71,7 @@ def main():
     test1_passed = test_filter_article()
     test2_passed = test_record_failure_with_skip_reason()
     
-    print(f"\nTest Results:")
+    print("\nTest Results:")
     print(f"Filter article test: {'✓ PASSED' if test1_passed else '✗ FAILED'}")
     print(f"Record failure test: {'✓ PASSED' if test2_passed else '✗ FAILED'}")
     

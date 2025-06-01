@@ -6,10 +6,8 @@ Always runs both scrapers. Supports Reddit flags for clearing existing data and 
 """
 import schedule
 import time
-import logging
 import sys
 import os
-import argparse
 
 # Add parent directory so we can import from app
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

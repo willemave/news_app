@@ -9,5 +9,4 @@ Base = declarative_base()
 
 def init_db():
     # Import models here to ensure they are registered
-    from . import models
     Base.metadata.create_all(bind=engine)

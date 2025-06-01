@@ -4,13 +4,12 @@ Simple script to clear all database tables.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add the parent directory to the path so we can import from app
 sys.path.append(str(Path(__file__).parent.parent))
 
-from app.database import SessionLocal, engine
+from app.database import SessionLocal
 from app.models import Links, Articles, FailureLogs, CronLogs
 
 

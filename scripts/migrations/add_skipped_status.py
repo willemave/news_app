@@ -6,7 +6,6 @@ Run with: python scripts/migrations/add_skipped_status.py
 
 import sqlite3
 import os
-from pathlib import Path
 
 def get_db_path():
     """Get the database path from environment or use default."""
