@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 .news_app.egg-info
 news_app.egg-info
-
+node_modules/
 # Environments
 .env
 
@@ -22,3 +22,5 @@ build/
 
 # Mac/Linux system files
 .DS_Store
+
+package-lock.json

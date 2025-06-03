@@ -13,6 +13,29 @@ from .schemas import ArticleSummary
 
 # Removed global genai.configure(api_key=settings.GOOGLE_API_KEY)
 
+def _unescape_json_string(escaped_string: str) -> str:
+    """
+    Properly unescape a JSON string, handling all standard JSON escape sequences.
+    """
+    # Handle standard JSON escape sequences
+    unescaped = escaped_string.replace('\\"', '"')
+    unescaped = unescaped.replace('\\\\', '\\')
+    unescaped = unescaped.replace('\\/', '/')
+    unescaped = unescaped.replace('\\b', '\b')
+    unescaped = unescaped.replace('\\f', '\f')
+    unescaped = unescaped.replace('\\n', '\n')
+    unescaped = unescaped.replace('\\r', '\r')
+    unescaped = unescaped.replace('\\t', '\t')
+    
+    # Handle unicode escape sequences (\uXXXX)
+    import re
+    def replace_unicode(match):
+        return chr(int(match.group(1), 16))
+    
+    unescaped = re.sub(r'\\u([0-9a-fA-F]{4})', replace_unicode, unescaped)
+    
+    return unescaped
+
 def _normalize_summary_data(summary_data: dict) -> dict:
     """
     Normalize summary data to ensure all fields are strings.
@@ -41,17 +64,18 @@ def _parse_malformed_summary_response(response_text: str) -> ArticleSummary:
     
     try:
         # Try to find short_summary and detailed_summary in the response
-        short_match = re.search(r'"short_summary"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', response_text, re.DOTALL)
-        detailed_match = re.search(r'"detailed_summary"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', response_text, re.DOTALL)
+        # More robust regex patterns that handle escaped quotes and special characters
+        short_match = re.search(r'"short_summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]', response_text, re.DOTALL)
+        detailed_match = re.search(r'"detailed_summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]', response_text, re.DOTALL)
         
         short_summary = "Error parsing summary"
         detailed_summary = "Error parsing detailed summary"
         
         if short_match:
-            short_summary = short_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+            short_summary = _unescape_json_string(short_match.group(1))
         
         if detailed_match:
-            detailed_summary = detailed_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+            detailed_summary = _unescape_json_string(detailed_match.group(1))
         
         return ArticleSummary(
             short_summary=short_summary,
@@ -74,7 +98,7 @@ def _parse_malformed_filter_response(response_text: str) -> tuple[bool, str]:
     try:
         # Try to find matches and reason in the response
         matches_match = re.search(r'"matches"\s*:\s*(true|false)', response_text, re.IGNORECASE)
-        reason_match = re.search(r'"reason"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', response_text, re.DOTALL)
+        reason_match = re.search(r'"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]', response_text, re.DOTALL)
         
         matches = False
         reason = "Error parsing filter response"
@@ -83,7 +107,7 @@ def _parse_malformed_filter_response(response_text: str) -> tuple[bool, str]:
             matches = matches_match.group(1).lower() == 'true'
         
         if reason_match:
-            reason = reason_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+            reason = _unescape_json_string(reason_match.group(1))
         
         print(f"Filter result (fallback): matches={matches}, reason: {reason}")
         return matches, reason

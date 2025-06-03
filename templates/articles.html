@@ -1,131 +1,156 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="articles-container">
-  <!-- Simple Header -->
-  <div class="page-header">
-    <h1 class="page-title">
-      📚 Articles{% if current_source %} from {{ current_source|title }}{% endif %}{% if current_date %} from {{ current_date }}{% endif %}
-    </h1>
-    <p class="page-subtitle">{{ articles|length if articles else 0 }} article{{ 's' if articles|length != 1 else '' }} found</p>
-  </div>
-
-  <!-- Filter Controls -->
-  <div class="filter-controls">
-    <!-- Date Filter Dropdown -->
-    <div class="filter-group">
-      <label for="date-filter" class="filter-label">📅 Date:</label>
-      <select id="date-filter" class="filter-dropdown" onchange="filterByDate(this.value)">
-        <option value="">All Dates</option>
-        {% if available_dates %}
-          {% for date in available_dates %}
-            <option value="{{ date }}" {% if current_date == date %}selected{% endif %}>
-              {{ date }}
-            </option>
-          {% endfor %}
-        {% endif %}
-      </select>
-    </div>
-
-    <!-- Source Filter Links -->
-    <div class="filter-group">
-      <span class="filter-label">🔗 Source:</span>
-      <div class="filter-nav">
-        <a href="/articles/{% if current_date %}?date={{ current_date }}{% endif %}" class="filter-link {% if not current_source %}active{% endif %}">All Sources</a>
-        <a href="/articles/?source=reddit{% if current_date %}&date={{ current_date }}{% endif %}" class="filter-link {% if current_source == 'reddit' %}active{% endif %}">Reddit</a>
-        <a href="/articles/?source=hackernews{% if current_date %}&date={{ current_date }}{% endif %}" class="filter-link {% if current_source == 'hackernews' %}active{% endif %}">HackerNews</a>
-        <a href="/articles/?source=unknown{% if current_date %}&date={{ current_date }}{% endif %}" class="filter-link {% if current_source == 'unknown' %}active{% endif %}">Unknown</a>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <!-- Clean Header -->
+  <div class="mb-8 pb-6 border-b border-gray-100">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-semibold text-gray-900">
+          Articles{% if current_source %} from <span class="text-blue-600">{{ current_source|title }}</span>{% endif %}{% if current_date %} from <span class="text-blue-600">{{ current_date }}</span>{% endif %}
+        </h1>
+        <p class="mt-2 text-gray-600">{{ articles|length if articles else 0 }} article{{ 's' if articles|length != 1 else '' }} found</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
+          {{ articles|length if articles else 0 }} Total
+        </span>
       </div>
     </div>
+  </div>
 
-    <!-- Action Area -->
-    <div class="filter-group action-group">
-      <a href="/links/add" class="btn btn-primary btn-sm">➕ Add Article</a>
-      {% if current_source or current_date %}
-        <a href="/articles/" class="btn btn-secondary btn-sm">🔄 Clear Filters</a>
-      {% endif %}
+  <!-- Clean Filter Controls -->
+  <div class="mb-8 p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+    <div class="flex flex-col lg:flex-row lg:items-center gap-6">
+      <!-- Date Filter -->
+      <div class="flex items-center gap-3">
+        <label for="date-filter" class="text-sm font-medium text-gray-700 whitespace-nowrap">Date:</label>
+        <select id="date-filter" class="px-3 py-2 border border-gray-300 rounded-md bg-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors min-w-[150px]" onchange="filterByDate(this.value)">
+          <option value="">All Dates</option>
+          {% if available_dates %}
+            {% for date in available_dates %}
+              <option value="{{ date }}" {% if current_date == date %}selected{% endif %}>
+                {{ date }}
+              </option>
+            {% endfor %}
+          {% endif %}
+        </select>
+      </div>
+
+      <!-- Source Filter -->
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-medium text-gray-700 whitespace-nowrap">Source:</span>
+        <div class="flex flex-wrap gap-2">
+          <a href="/articles/{% if current_date %}?date={{ current_date }}{% endif %}" class="px-3 py-1 rounded-md text-sm font-medium transition-all {% if not current_source %}bg-blue-600 text-white{% else %}bg-gray-50 text-gray-700 hover:bg-gray-100{% endif %} border border-gray-300">All Sources</a>
+          <a href="/articles/?source=reddit{% if current_date %}&date={{ current_date }}{% endif %}" class="px-3 py-1 rounded-md text-sm font-medium transition-all {% if current_source == 'reddit' %}bg-blue-600 text-white{% else %}bg-gray-50 text-gray-700 hover:bg-gray-100{% endif %} border border-gray-300">Reddit</a>
+          <a href="/articles/?source=hackernews{% if current_date %}&date={{ current_date }}{% endif %}" class="px-3 py-1 rounded-md text-sm font-medium transition-all {% if current_source == 'hackernews' %}bg-blue-600 text-white{% else %}bg-gray-50 text-gray-700 hover:bg-gray-100{% endif %} border border-gray-300">HackerNews</a>
+          <a href="/articles/?source=unknown{% if current_date %}&date={{ current_date }}{% endif %}" class="px-3 py-1 rounded-md text-sm font-medium transition-all {% if current_source == 'unknown' %}bg-blue-600 text-white{% else %}bg-gray-50 text-gray-700 hover:bg-gray-100{% endif %} border border-gray-300">Unknown</a>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center gap-3 lg:ml-auto">
+        {% if current_source or current_date %}
+          <a href="/articles/" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors">
+            Clear Filters
+          </a>
+        {% endif %}
+      </div>
     </div>
   </div>
 
-  <!-- Articles Table -->
+  <!-- Clean Articles Table -->
   {% if articles %}
-  <div class="articles-table-container">
-    <table class="articles-table">
-      <thead>
-        <tr>
-          <th class="col-date">📅 Date</th>
-          <th class="col-source">🔗 Source</th>
-          <th class="col-title">📰 Title</th>
-          <th class="col-description">📝 Description</th>
-          <th class="col-actions">⚡ Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for article in articles %}
-          <tr class="article-row">
-            <!-- Date Column -->
-            <td class="article-date">
-              {{ article.scraped_date.strftime('%Y-%m-%d') if article.scraped_date else 'Unknown' }}
-            </td>
-            
-            <!-- Source Column -->
-            <td class="article-source">
-              <span class="source-badge source-{{ article.link.source|lower }}">
-                {% if article.link.source|lower == 'reddit' %}
-                  🔴 Reddit
-                {% elif article.link.source|lower == 'hackernews' %}
-                  🟠 HackerNews
-                {% else %}
-                  ❓ {{ article.link.source|title }}
-                {% endif %}
-              </span>
-            </td>
-
-            <!-- Title Column -->
-            <td class="article-title">
-              <div class="title-content">
-                <a href="/articles/detail/{{ article.id }}" class="title-link">
-                  {{ article.title if article.title else article.url }}
-                </a>
-                {% if article.url and article.title %}
-                  <div class="article-url">
-                    <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" class="external-link">
-                      🔗 {{ article.url.split('/')[2] if '/' in article.url else article.url[:30] }}
-                    </a>
-                  </div>
-                {% endif %}
-              </div>
-            </td>
-
-            <!-- Description Column -->
-            <td class="article-description">
-              {% if article.short_summary %}
-                <p class="summary-text">{{ article.short_summary }}</p>
-              {% else %}
-                <span class="no-summary">No summary available</span>
-              {% endif %}
-            </td>
-
-            <!-- Actions Column -->
-            <td class="article-actions">
-              <div class="action-buttons">
-                <a href="/articles/detail/{{ article.id }}" class="btn btn-sm btn-primary" title="Read Full Article">📖</a>
-                {% if article.url %}
-                  <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-secondary" title="Open Original">🔗</a>
-                {% endif %}
-              </div>
-            </td>
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-32">Date</th>
+            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-32">Source</th>
+            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[250px]">Title</th>
+            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden lg:table-cell">Summary</th>
+            <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">Actions</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for article in articles %}
+            <tr class="hover:bg-gray-50 transition-colors">
+              <!-- Date Column -->
+              <td class="px-6 py-4 text-sm text-gray-600 font-mono">
+                {{ article.scraped_date.strftime('%Y-%m-%d') if article.scraped_date else 'Unknown' }}
+              </td>
+              
+              <!-- Source Column -->
+              <td class="px-6 py-4">
+                <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium uppercase tracking-wide
+                  {% if article.link.source|lower == 'reddit' %}bg-orange-100 text-orange-800 border border-orange-200
+                  {% elif article.link.source|lower == 'hackernews' %}bg-orange-100 text-orange-700 border border-orange-200
+                  {% else %}bg-gray-100 text-gray-800 border border-gray-200{% endif %}">
+                  {% if article.link.source|lower == 'reddit' %}
+                    Reddit
+                  {% elif article.link.source|lower == 'hackernews' %}
+                    HackerNews
+                  {% else %}
+                    {{ article.link.source|title }}
+                  {% endif %}
+                </span>
+              </td>
+
+              <!-- Title Column -->
+              <td class="px-6 py-4">
+                <div class="space-y-2">
+                  <a href="/articles/detail/{{ article.id }}" class="block text-gray-900 font-medium hover:text-blue-600 transition-colors">
+                    {{ article.title if article.title else article.url }}
+                  </a>
+                  {% if article.url and article.title %}
+                    <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors">
+                      {{ article.url.split('/')[2] if '/' in article.url else article.url[:30] }}
+                    </a>
+                  {% endif %}
+                </div>
+              </td>
+
+              <!-- Summary Column (Hidden on mobile) -->
+              <td class="px-6 py-4 hidden lg:table-cell">
+                {% if article.short_summary %}
+                  <p class="text-sm text-gray-600">{{ article.short_summary }}</p>
+                {% else %}
+                  <span class="text-xs text-gray-400 italic">No summary available</span>
+                {% endif %}
+              </td>
+
+              <!-- Actions Column -->
+              <td class="px-6 py-4">
+                <div class="flex items-center justify-center gap-2">
+                  <a href="/articles/detail/{{ article.id }}" class="inline-flex items-center justify-center px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-md transition-colors text-sm font-medium" title="Read Full Article">
+                    View
+                  </a>
+                  {% if article.url %}
+                    <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-md transition-colors text-sm font-medium" title="Open Original">
+                      Source
+                    </a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
   {% else %}
-    <!-- Simple Empty State -->
-    <div class="empty-state">
-      <div class="empty-icon">📰</div>
-      <h3>No articles found</h3>
-      <p>
+    <!-- Clean Empty State -->
+    <div class="text-center py-16 px-6 bg-white rounded-lg border border-gray-200">
+      <div class="mb-6">
+        <div class="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+          <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+        </div>
+      </div>
+      <h3 class="text-xl font-medium text-gray-900 mb-3">No articles found</h3>
+      <p class="text-gray-600 mb-8 max-w-md mx-auto">
         {% if current_source and current_date %}
           No articles are available for {{ current_source|title }} on {{ current_date }}.
         {% elif current_source %}
@@ -133,13 +158,14 @@
         {% elif current_date %}
           No articles are available for {{ current_date }}.
         {% else %}
-          Your article collection is empty. Start by adding some links!
+          Your article collection is empty.
         {% endif %}
       </p>
-      <div class="empty-actions">
-        <a href="/links/add" class="btn btn-primary">Add Your First Article</a>
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
         {% if current_source or current_date %}
-          <a href="/articles/" class="btn btn-secondary">View All Articles</a>
+          <a href="/articles/" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors">
+            View All Articles
+          </a>
         {% endif %}
       </div>
     </div>
