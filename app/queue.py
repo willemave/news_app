@@ -27,8 +27,11 @@ def process_link_task(link_id: int) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    import asyncio
     from .processor import process_link_from_db
     from .models import Links
+    from .http_client.robust_http_client import RobustHttpClient
+    from .processing_strategies.factory import UrlProcessorFactory
     from google.genai.errors import ClientError
     
     # Fetch the link from database
@@ -39,8 +42,21 @@ def process_link_task(link_id: int) -> bool:
             logger.error(f"Link with ID {link_id} not found")
             return False
         
-        # Process the link
-        return process_link_from_db(link)
+        # Initialize HTTP client and factory for async processing
+        async def run_async_processing():
+            http_client = RobustHttpClient(
+                timeout=settings.HTTP_CLIENT_TIMEOUT,
+                headers={'User-Agent': settings.HTTP_CLIENT_USER_AGENT}
+            )
+            factory = UrlProcessorFactory(http_client)
+            
+            try:
+                return await process_link_from_db(link, http_client, factory)
+            finally:
+                await http_client.close()
+        
+        # Run the async processing
+        return asyncio.run(run_async_processing())
         
     except ClientError as e:
         # Check if this is a 429 rate limit error

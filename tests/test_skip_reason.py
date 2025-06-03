@@ -122,7 +122,7 @@ class TestFilterArticle:
         matches, reason = filter_article(content)
         
         assert matches is False
-        assert "Error during filtering" in reason
+        assert "Error parsing filter response" in reason
 
     @patch('app.llm.genai.Client')
     def test_filter_article_missing_fields_in_response(self, mock_client_class):
