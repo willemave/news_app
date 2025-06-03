@@ -1811,3 +1811,97 @@ nav a {
   border-radius: 6px;
   margin: 1em 0;
 }
+
+/* Modern Minimal Table Styles */
+.bg-gray-25 {
+  background-color: #fafafa;
+}
+
+/* Enhanced Mobile Responsiveness for Articles Table */
+@media (max-width: 640px) {
+  .articles-table-mobile {
+    display: block;
+  }
+  
+  .articles-table-mobile thead {
+    display: none;
+  }
+  
+  .articles-table-mobile tbody {
+    display: block;
+  }
+  
+  .articles-table-mobile tr {
+    display: block;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  
+  .articles-table-mobile td {
+    display: block;
+    padding: 0.25rem 0;
+    border: none;
+  }
+  
+  .articles-table-mobile td:before {
+    content: attr(data-label) ": ";
+    font-weight: 600;
+    color: #6b7280;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  .mobile-card-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 0.5rem;
+  }
+  
+  .mobile-card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f3f4f6;
+  }
+}
+
+/* Improved hover states */
+.table-row-hover:hover {
+  background-color: #fafafa;
+}
+
+/* Better action button visibility */
+.action-buttons-minimal {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.group:hover .action-buttons-minimal {
+  opacity: 1;
+}
+
+/* Responsive text truncation */
+.text-truncate-mobile {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .text-truncate-mobile {
+    max-width: 200px;
+  }
+}
+
+@media (max-width: 480px) {
+  .text-truncate-mobile {
+    max-width: 150px;
+  }
+}

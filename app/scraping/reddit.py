@@ -1,5 +1,5 @@
 import praw
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -108,24 +108,34 @@ def fetch_reddit_posts(subreddit_name: str = "front", limit: int = 50, time_filt
 
 
 
-def create_link_record(url: str, source: str) -> Optional[int]:
+def create_link_record(url: str, source: str) -> Optional[Tuple[int, bool]]:
     """
-    Create a link record in the database.
+    Create a link record in the database if it doesn't exist.
     
     Args:
         url: URL to create record for
         source: Source of the link
         
     Returns:
-        Link ID if successful, None otherwise
+        A tuple (link_id: int, created: bool) if successful, None otherwise.
+        'created' is True if a new record was made, False if it already existed.
     """
+    from ..models import Articles
+    
     db = SessionLocal()
     try:
-        # Check if link already exists
+        # Check if URL already exists in Articles table (successfully processed)
+        existing_article = db.query(Articles).filter(Articles.url == url).first()
+        if existing_article:
+            logger.info(f"URL already processed as article: {url}")
+            return None  # Don't queue if already processed
+        
+        # Check if link already exists in Links table
         existing_link = db.query(Links).filter(Links.url == url).first()
         if existing_link:
-            logger.info(f"Link already exists: {url}")
-            return existing_link.id
+            from ..models import LinkStatus
+            logger.info(f"Link {existing_link.id} already exists with status {existing_link.status.value}: {url}")
+            return existing_link.id, False # Not created, already exists
         
         # Create new link
         link = Links(url=url, source=source)
@@ -133,8 +143,8 @@ def create_link_record(url: str, source: str) -> Optional[int]:
         db.commit()
         db.refresh(link)
         
-        logger.info(f"Created link record {link.id} for: {url}")
-        return link.id
+        logger.info(f"Created new link record {link.id} for: {url}")
+        return link.id, True # Created new
         
     except Exception as e:
         logger.error(f"Error creating link record for {url}: {e}", exc_info=True)
@@ -191,16 +201,39 @@ def process_reddit_articles(subreddit_name: str = "front", limit: Optional[int] 
         logger.info(f"Processing link {i}/{len(external_posts)}: {post['url']}")
         
         try:
-            # Create link record
-            link_id = create_link_record(post["url"], f"reddit-{subreddit_name}")
-            if link_id:
-                stats["created_links"] += 1
-                
-                # Queue link for processing
-                process_link_task(link_id)
-                stats["queued_links"] += 1
-                logger.info(f"Queued link {link_id} for processing: {post['url']}")
-            else:
+            # Create link record if it doesn't exist
+            link_record_result = create_link_record(post["url"], f"reddit-{subreddit_name}")
+
+            if link_record_result is None:
+                # URL already processed as article, skip completely
+                logger.info(f"URL already processed, skipping: {post['url']}")
+                continue
+            elif link_record_result:
+                link_id, created_new = link_record_result
+                if created_new:
+                    stats["created_links"] += 1
+                    # Queue link for processing only if it's new
+                    process_link_task(link_id)
+                    stats["queued_links"] += 1
+                    logger.info(f"Queued new link {link_id} for processing: {post['url']}")
+                else:
+                    # Link already existed - check if it needs retry
+                    from ..models import LinkStatus
+                    db = SessionLocal()
+                    try:
+                        existing_link = db.query(Links).filter(Links.id == link_id).first()
+                        if existing_link and existing_link.status in [LinkStatus.failed, LinkStatus.new]:
+                            # Only queue failed or unprocessed links for retry
+                            process_link_task(link_id)
+                            stats["queued_links"] += 1
+                            logger.info(f"Queued existing link {link_id} for retry (status: {existing_link.status.value}): {post['url']}")
+                        else:
+                            # Link already processed/skipped, don't queue
+                            status_str = existing_link.status.value if existing_link else "unknown"
+                            logger.info(f"Skipping existing link {link_id} (status: {status_str}): {post['url']}")
+                    finally:
+                        db.close()
+            else: # Error during create_link_record
                 stats["errors"] += 1
             
         except Exception as e:
