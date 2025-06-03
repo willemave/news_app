@@ -79,6 +79,7 @@
 * **API versioning**: Use `/v1/` prefix; deprecate gracefully.
 * **OpenAPI**: Customize with tags, descriptions; generate client SDKs.
 * **Error responses**: Consistent format with error codes, messages, details.
+* We use tailwindcss, you write tailwind css to ./static/css/styles.css and then run `npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css` to build the ./static/css/styles.css
 ---
 #### 8  Memory-Bank Workflow (Stateless Agent)
 1. **At session start** read:
