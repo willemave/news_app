@@ -54,7 +54,8 @@ class RobustHttpClient:
         self,
         url: str,
         headers: Optional[Dict[str, str]] = None,
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
+        stream: bool = False
     ) -> httpx.Response:
         """
         Performs an asynchronous GET request.
@@ -63,6 +64,7 @@ class RobustHttpClient:
             url: The URL to request.
             headers: Optional headers to include in the request, overriding defaults.
             timeout: Optional timeout for this specific request, overriding default.
+            stream: Whether to stream the response content.
 
         Returns:
             An httpx.Response object.
@@ -78,9 +80,14 @@ class RobustHttpClient:
         
         effective_timeout = timeout if timeout is not None else self.default_timeout
 
-        logger.info(f"Making GET request to {url} with timeout {effective_timeout}s")
+        logger.info(f"Making GET request to {url} with timeout {effective_timeout}s (stream={stream})")
         try:
-            response = await client.get(url, headers=request_headers, timeout=effective_timeout)
+            if stream:
+                response = await client.stream('GET', url, headers=request_headers, timeout=effective_timeout)
+                await response.__aenter__()  # Enter the async context manager
+            else:
+                response = await client.get(url, headers=request_headers, timeout=effective_timeout)
+            
             response.raise_for_status()  # Raise an exception for 4XX or 5XX status codes
             logger.info(f"GET request to {url} successful, status: {response.status_code}")
             if response.history:

@@ -1,0 +1,22 @@
+feeds:
+  - name: "Lenny's Podcast"
+    url: "https://api.substack.com/feed/podcast/10845.rss"
+    limit: 5
+  - name: "AI Daily Brief"
+    url: "https://anchor.fm/s/f7cac464/podcast/rss"
+    limit: 5
+  - name: "AI Fix"
+    url: "https://theaifix.show/rss"
+    limit: 5
+  - name: "BG2 Pod"
+    url: "https://anchor.fm/s/f06c2370/podcast/rss"
+    limit: 5
+  - name: "Honestly with Bari Weiss"
+    url: "https://feeds.megaphone.fm/rsv2347142881"
+    limit: 5
+  - name: "Crucible Moments"
+    url: "https://feeds.megaphone.fm/VMP5587961509"
+    limit: 5
+  - name: "Knowledge Project with Shane Paris"
+    url: "https://feeds.megaphone.fm/FSMI7575968096"
+    limit: 5

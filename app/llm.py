@@ -359,3 +359,74 @@ def summarize_text(content: str) -> str:
     except Exception as e:
         print(f"Error in summarize_text: {e}")
         return "Error generating summary"
+
+def summarize_podcast_transcript(transcript_text: str) -> ArticleSummary:
+    """
+    Generate short and detailed summaries for podcast transcript content using Google Gemini.
+    
+    Args:
+        transcript_text: The transcript text from the podcast
+    
+    Returns:
+        ArticleSummary pydantic model
+    """
+    system_prompt = """You are an expert at summarizing podcast transcripts.
+    
+    You are going to create two summaries of the podcast transcript.
+    1. A Short 2 sentence summary for brief scanning.
+    2. A detailed summary that starts with bullet points of the key topics discussed
+     and then a few paragraphs summarizing the main points and insights from the podcast.
+
+    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks.
+
+    Respond with a JSON object containing:
+    {
+        "short_summary": "2 sentence summary as a string",
+        "detailed_summary": "• Key topic 1\n• Key topic 2\n• Key topic 3\n\nDetailed paragraph summary..."
+    }"""
+
+    try:
+        # Initialize client with API key
+        client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+        )
+
+        model = "gemini-2.5-flash-preview-05-20"
+        prompt = f"{system_prompt}\n\nPodcast transcript:\n{transcript_text}"
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=prompt),
+                ],
+            ),
+        ]
+        generate_content_config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
+        )
+        
+        # Parse JSON response and validate with Pydantic model
+        try:
+            summary_data = json.loads(response.text)
+            # Normalize data to handle lists
+            normalized_data = _normalize_summary_data(summary_data)
+            return ArticleSummary(**normalized_data)
+        except json.JSONDecodeError as json_error:
+            print(f"JSON parsing error in summarize_podcast_transcript: {json_error}")
+            print(f"Raw response text: {response.text[:500]}...")
+            # Try to extract summaries from malformed JSON using fallback parsing
+            return _parse_malformed_summary_response(response.text)
+    
+    except Exception as e:
+        print(f"Error in summarize_podcast_transcript: {e}")
+        return ArticleSummary(
+            short_summary="Error generating podcast summary",
+            detailed_summary="Error generating detailed podcast summary"
+        )
