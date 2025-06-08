@@ -1,68 +1,139 @@
-**News Aggregation & Summarization App — Concise Overview (bullet-only)**
+# News Aggregation & Summarization App
 
----
+## Purpose
 
-**Purpose**
+* Aggregate news from web sites, RSS feeds, PDFs, Reddit, and other sources
+* Auto-scrape, filter with LLM, generate short + detailed summaries, store, and display in web UI
+* Provide intelligent content filtering based on user preferences (tech, AI, business strategy)
+* Enable fast scanning via AI-generated summaries with admin pipeline visibility
 
-* Aggregate news from web sites, RSS, PDFs, Reddit, podcasts.
-* Auto-scrape, filter with an LLM, generate short + detailed summaries, store, and display in a web UI.
+## Core Architecture
 
-**Problems Solved**
+### Strategy Pattern Processing
+* **URL Processing**: Strategy pattern via [`UrlProcessorFactory`](app/processing_strategies/factory.py:14) handles different content types
+* **Strategies**: [`HtmlProcessorStrategy`](app/processing_strategies/html_strategy.py), [`PdfProcessorStrategy`](app/processing_strategies/pdf_strategy.py), [`PubMedProcessorStrategy`](app/processing_strategies/pubmed_strategy.py), [`ArxivProcessorStrategy`](app/processing_strategies/arxiv_strategy.py)
+* **HTTP Client**: [`RobustHttpClient`](app/http_client/robust_http_client.py) with retry logic and rate limiting
 
-* One place to read across sources.
-* Automated scraping and status-tracked processing.
-* Fast scanning via AI summaries.
-* Admin visibility into pipeline health.
+### API & UI
+* **FastAPI**: [`main.py`](app/main.py:10) with routers for [`articles`](app/routers/articles.py), [`admin`](app/routers/admin.py)
+* **Templates**: Jinja2 with markdown filter support, HTMX for dynamic actions
+* **Static**: TailwindCSS for styling
 
-**Core Architecture**
+### Data Layer
+* **Models**: [`Articles`](app/models.py:40), [`Links`](app/models.py:26), [`FailureLogs`](app/models.py:64), [`CronLogs`](app/models.py:77)
+* **Status Tracking**: [`LinkStatus`](app/models.py:8), [`ArticleStatus`](app/models.py:15) enums for pipeline state
+* **Database**: SQLite via SQLAlchemy with [`local_path`](app/models.py:62) support for Substack articles
 
-* **API & UI**: FastAPI (`main.py`) with `articles`, `admin`, `links`; Jinja2 templates; HTMX for dynamic actions.
-* **Scraping & Processing**: `processor.py` handles HTML/PDF download and extraction (Trafilatura, PyPDF2). HackerNews and Reddit scrapers enqueue links.
-* **LLM**: `llm.py` uses Google Gemini 2.5 Flash to filter relevance and create dual-level summaries + keywords.
-* **Queue**: Huey (SQLite backend) in `queue.py`; retries on 429; utility to drain queue.
-* **Data**: SQLite via SQLAlchemy (`models.py`, `database.py`). Tables: Articles (includes summaries), CronLogs.
-* **Vector Search**: ChromaDB for semantic lookup.
-* **Automation**: Cron scripts (`cron/daily_ingest.py`, `cron/process_articles.py`) run scheduled ingest and batch processing.
+### LLM Integration
+* **Provider**: Google Gemini 2.5 Flash via [`llm.py`](app/llm.py:6)
+* **Functions**: [`filter_article()`](app/llm.py:126), [`summarize_article()`](app/llm.py:188), [`summarize_pdf()`](app/llm.py:254)
+* **Error Handling**: Robust JSON parsing with fallback for malformed responses
 
-**Tech Stack**
+### Queue System
+* **Background Processing**: Huey with SQLite backend via [`queue.py`](app/queue.py:15)
+* **Tasks**: [`process_link_task()`](app/queue.py:18) with retry logic for rate limits
+* **Utilities**: [`drain_queue()`](app/queue.py:143), [`get_queue_stats()`](app/queue.py:173)
 
-* Python 3.13, FastAPI, SQLAlchemy, Pydantic, SQLite.
-* requests, Trafilatura, PyPDF2, PRAW.
-* google-genai, ChromaDB, Huey.
-* CrewAI for experimental multi-agent scraping.
+## Tech Stack
 
-**Key Workflows**
+* **Core**: Python 3.13, FastAPI, SQLAlchemy, Pydantic v2, SQLite
+* **Content Processing**: trafilatura, PyPDF2, feedparser, beautifulsoup4
+* **LLM**: google-genai, httpx for HTTP
+* **Queue**: Huey with SQLite backend
+* **Frontend**: Jinja2, TailwindCSS, HTMX
+* **Testing**: pytest, pytest-asyncio, pytest-mock, pytest-cov
+* **Development**: ruff (linting), uv (package management)
 
-* Daily ingest adds new links (`status=new`).
-* Queue worker downloads content, filters with LLM, saves summaries (`status=processed` or `failed`).
-* Manual or auto approval marks articles as `approved`.
-* Web UI lists articles; detail view shows full content and summaries; admin dashboard displays CronLogs and trigger buttons.
+## Key Workflows
 
-**Repository Highlights**
+1. **Link Ingestion**: Scrapers add URLs to [`Links`](app/models.py:26) table with `status=new`
+2. **Background Processing**: [`process_link_task()`](app/queue.py:18) downloads content using strategy pattern
+3. **LLM Filtering**: [`filter_article()`](app/llm.py:126) determines relevance based on preferences
+4. **Summarization**: [`summarize_article()`](app/llm.py:188) or [`summarize_pdf()`](app/llm.py:254) creates summaries
+5. **Storage**: Creates [`Articles`](app/models.py:40) record with summaries, updates link status
+6. **Web UI**: Display articles with filtering, admin dashboard for pipeline monitoring
 
-* `app/`: main, config, models, schemas, processor, llm, queue, routers.
-* `app/scraping/`: HackerNews and Reddit scrapers.
-* `cron/`: scheduled ingest and processing jobs.
-* `scripts/`: dev helpers (run scrapers, CrewAI demo, migrations).
-* `templates/` & `static/`: minimalist Bootstrap-style frontend.
+## Key Repository Folders and Files
 
-**Configuration**
+### Core Application
+* [`app/main.py`](app/main.py) - FastAPI application entry point
+* [`app/models.py`](app/models.py) - SQLAlchemy models with status enums
+* [`app/processor.py`](app/processor.py) - Main processing logic with strategy pattern
+* [`app/llm.py`](app/llm.py) - Google Gemini integration for filtering and summarization
+* [`app/queue.py`](app/queue.py) - Huey background task management
+* [`app/schemas.py`](app/schemas.py) - Pydantic models for API/validation
 
-* `.env` controls Raindrop token (legacy), Google API key, Reddit creds, database paths, etc.
-* Default local DB paths: `./news_app.db` (SQLite) and `./db/chroma.sqlite3` (ChromaDB).
+### Processing Strategies
+* [`app/processing_strategies/factory.py`](app/processing_strategies/factory.py) - Strategy factory with registration
+* [`app/processing_strategies/base_strategy.py`](app/processing_strategies/base_strategy.py) - Abstract base strategy
+* [`app/processing_strategies/html_strategy.py`](app/processing_strategies/html_strategy.py) - HTML content processing
+* [`app/processing_strategies/pdf_strategy.py`](app/processing_strategies/pdf_strategy.py) - PDF content processing
+* [`app/processing_strategies/pubmed_strategy.py`](app/processing_strategies/pubmed_strategy.py) - PubMed delegation strategy
+* [`app/processing_strategies/arxiv_strategy.py`](app/processing_strategies/arxiv_strategy.py) - ArXiv preprocessing strategy
 
-This bullet list captures purpose, components, workflows, and tech choices without tables or extra detail.
+### Scrapers
+* [`app/scraping/hackernews_scraper.py`](app/scraping/hackernews_scraper.py) - HackerNews top stories
+* [`app/scraping/reddit.py`](app/scraping/reddit.py) - Reddit front page scraper
+* [`app/scraping/substack_scraper.py`](app/scraping/substack_scraper.py) - RSS feed scraper for Substack
 
+### HTTP Client
+* [`app/http_client/robust_http_client.py`](app/http_client/robust_http_client.py) - Async HTTP client with retry logic
 
-This is a new app. The goal of this app is to scrape top news sites, rss feeds and pod casts. 
+### Utilities
+* [`app/utils/failures.py`](app/utils/failures.py) - Failure logging utilities
 
-Technologies
-1. Python
-2. Pydantic for all models
-3. SQLite for local sql database
-4. HTMX for simple html rendering. 
+### Web Interface
+* [`app/routers/articles.py`](app/routers/articles.py) - Article viewing endpoints
+* [`app/routers/admin.py`](app/routers/admin.py) - Admin dashboard and controls
+* [`templates/`](templates/) - Jinja2 templates with markdown support
+* [`static/`](static/) - TailwindCSS styles and JavaScript
 
-Structure
-1. app/scraping/ -- this is the main place to implement new scrapers. 
-2. app/routers/ -- these are the routes for the web app
-3. app/cron/ -- this includes all the crontabes. 
+### Automation
+* [`cron/run_scrapers_job.py`](cron/run_scrapers_job.py) - Scheduled scraping job
+
+### Configuration
+* [`config/substack.yml`](config/substack.yml) - Substack RSS feed URLs
+* [`pyproject.toml`](pyproject.toml) - Project dependencies and configuration
+
+### Testing
+* [`tests/`](tests/) - Comprehensive test suite mirroring app structure
+* [`tests/processing_strategies/`](tests/processing_strategies/) - Strategy pattern tests
+* [`tests/http_client/`](tests/http_client/) - HTTP client tests
+* [`tests/scraping/`](tests/scraping/) - Scraper tests
+
+### Scripts & Utilities
+* [`scripts/run_scrapers.py`](scripts/run_scrapers.py) - Manual scraper execution
+* [`scripts/process_local_articles.py`](scripts/process_local_articles.py) - Local content processing
+* [`scripts/migrations/`](scripts/migrations/) - Database migration scripts
+* [`scripts/clear_database.py`](scripts/clear_database.py) - Database cleanup utility
+
+## System Patterns
+
+### Error Handling
+* **Failure Logging**: [`record_failure()`](app/utils/failures.py:10) with phase tracking
+* **Status Management**: Comprehensive status enums for links and articles
+* **Retry Logic**: Huey task retries for rate limits and transient failures
+* **Graceful Degradation**: Fallback parsing for malformed LLM responses
+
+### Content Processing Pipeline
+1. **URL Strategy Selection**: Factory pattern determines appropriate processor
+2. **Content Download**: Robust HTTP client with retry and rate limiting
+3. **Data Extraction**: Strategy-specific extraction (HTML, PDF, delegation)
+4. **Duplicate Detection**: URL checking at multiple pipeline stages
+5. **LLM Processing**: Filtering and summarization with error handling
+6. **Database Storage**: Transactional updates with rollback support
+
+### Configuration Management
+* **Environment Variables**: Settings via pydantic-settings
+* **YAML Configuration**: External config files for scrapers
+* **Database Paths**: Configurable SQLite and Huey database locations
+
+## Current Development Status
+
+* **Implemented**: Core processing pipeline with strategy pattern
+* **Implemented**: HackerNews, Reddit, and Substack scrapers
+* **Implemented**: Google Gemini LLM integration with robust error handling
+* **Implemented**: Comprehensive test suite 
+* **Implemented**: Admin dashboard with pipeline monitoring
+* **In Progress**: Substack RSS processing with local file storage
+* **Planned**: Additional content sources and processing strategies

@@ -4,8 +4,9 @@
 
 feeds:
   - url: "https://importai.substack.com/feed"
-  - url: "https://www.deeplearning.ai/the-batch/feed/"
+  - url: "https://www.deeplearning.ai/the-batch/feed"
   - url: "https://aisnakeoil.substack.com/feed"
+  - url: "https://vevesta.substack.com/feed"
 
 # Add more Substack feeds here as needed
 # Example:

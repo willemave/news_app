@@ -19,6 +19,42 @@ class Link(LinkBase):
     class Config:
         from_attributes = True
 
+class PodcastBase(BaseModel):
+    title: str
+    url: HttpUrl
+    enclosure_url: HttpUrl
+    podcast_feed_name: str
+    publication_date: Optional[datetime]
+
+class PodcastCreate(PodcastBase):
+    pass
+
+class PodcastResponse(PodcastBase):
+    id: int
+    file_path: Optional[str]
+    transcribed_text_path: Optional[str]
+    short_summary: Optional[str]
+    detailed_summary: Optional[str]
+    download_date: Optional[datetime]
+    status: str
+    created_date: datetime
+    error_message: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class PodcastListResponse(BaseModel):
+    id: int
+    title: str
+    podcast_feed_name: str
+    publication_date: Optional[datetime]
+    status: str
+    created_date: datetime
+    short_summary: Optional[str]
+
+    class Config:
+        from_attributes = True
+
 class ArticleSummary(BaseModel):
     """Pydantic model for LLM-generated article summaries."""
     short_summary: str

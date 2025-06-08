@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from .routers import articles, admin
+from .routers import articles, admin, podcasts
 from .database import init_db
 import markdown
 from markupsafe import Markup
@@ -33,6 +33,7 @@ templates.env.filters['markdown'] = markdown_filter
 # Include router endpoints
 app.include_router(articles.router, prefix="/articles", tags=["Articles"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
+app.include_router(podcasts.router, prefix="/podcasts", tags=["Podcasts"])
 
 @app.get("/")
 def home():

@@ -23,6 +23,13 @@ class FailurePhase(enum.Enum):
     scraper = "scraper"
     processor = "processor"
 
+class PodcastStatus(enum.Enum):
+    new = "new"
+    downloaded = "downloaded"
+    transcribed = "transcribed"
+    summarized = "summarized"
+    failed = "failed"
+
 class Links(Base):
     __tablename__ = "links"
 
@@ -82,3 +89,21 @@ class CronLogs(Base):
     links_fetched = Column(Integer, default=0)
     successful_scrapes = Column(Integer, default=0)
     errors = Column(Text, nullable=True)
+
+class Podcasts(Base):
+    __tablename__ = "podcasts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    url = Column(String, unique=True, index=True, nullable=False)  # RSS episode URL
+    enclosure_url = Column(String, nullable=False)  # Direct audio file URL
+    file_path = Column(String, nullable=True)  # Local path to downloaded audio file
+    transcribed_text_path = Column(String, nullable=True)  # Local path to transcript file
+    short_summary = Column(Text, nullable=True)
+    detailed_summary = Column(Text, nullable=True)
+    publication_date = Column(DateTime, nullable=True)
+    download_date = Column(DateTime, nullable=True)
+    podcast_feed_name = Column(String, nullable=False, index=True)
+    status = Column(Enum(PodcastStatus), default=PodcastStatus.new, index=True)
+    created_date = Column(DateTime, default=datetime.utcnow)
+    error_message = Column(Text, nullable=True)
