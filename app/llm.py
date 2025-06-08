@@ -64,9 +64,17 @@ def _parse_malformed_summary_response(response_text: str) -> ArticleSummary:
     
     try:
         # Try to find short_summary and detailed_summary in the response
-        # More robust regex patterns that handle escaped quotes and special characters
-        short_match = re.search(r'"short_summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]', response_text, re.DOTALL)
-        detailed_match = re.search(r'"detailed_summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]', response_text, re.DOTALL)
+        # More robust regex patterns that handle various malformed JSON scenarios
+        # Pattern 1: Try to match complete quoted strings with proper delimiters
+        short_match = re.search(r'"short_summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}\n]', response_text, re.DOTALL)
+        detailed_match = re.search(r'"detailed_summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}\n]', response_text, re.DOTALL)
+        
+        # Pattern 2: If that fails, try to match even without proper closing delimiters (for truncated responses)
+        if not short_match:
+            short_match = re.search(r'"short_summary"\s*:\s*"((?:[^"\\]|\\.)*)', response_text, re.DOTALL)
+        
+        if not detailed_match:
+            detailed_match = re.search(r'"detailed_summary"\s*:\s*"((?:[^"\\]|\\.)*)', response_text, re.DOTALL)
         
         short_summary = "Error parsing summary"
         detailed_summary = "Error parsing detailed summary"
