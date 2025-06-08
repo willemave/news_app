@@ -13,7 +13,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.scraping.hackernews_scraper import process_hackernews_articles
 from app.scraping.reddit import process_reddit_articles, validate_reddit_config
+from app.scraping.substack_scraper import run_substack_scraper
 from app.models import Articles
+from scripts.process_local_articles import process_new_local_articles
 from app.database import SessionLocal, init_db
 from app.queue import drain_queue, get_queue_stats
 
@@ -123,6 +125,18 @@ def main():
             print("Queue processing completed.")
         else:
             print("\nNo pending tasks in queue.")
+
+        # Substack scraper
+        print("\n" + "=" * 60)
+        print("Substack Scraper")
+        print("=" * 60)
+        run_substack_scraper()
+        print("\nSubstack scraper finished.")
+
+        # Process local articles (from Substack)
+        print("\nProcessing newly downloaded local articles...")
+        process_new_local_articles(db)
+        print("Local article processing finished.")
 
         # Show all articles if requested
         if args.show_articles:

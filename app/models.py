@@ -47,6 +47,8 @@ class Articles(Base):
     publication_date = Column(DateTime, nullable=True)
     scraped_date = Column(DateTime, default=datetime.utcnow)
     
+    status = Column(Enum(ArticleStatus), default=ArticleStatus.new, index=True)
+    
     # Summary fields (previously in Summaries table)
     short_summary = Column(Text, nullable=True)
     detailed_summary = Column(Text, nullable=True)
@@ -55,6 +57,9 @@ class Articles(Base):
     # Link to the source link record
     link_id = Column(Integer, ForeignKey("links.id"), nullable=True, index=True)
     link = relationship("Links", back_populates="article")
+    
+    # Path to locally stored content, e.g., for Substack articles
+    local_path = Column(String, nullable=True)
 
 class FailureLogs(Base):
     __tablename__ = "failure_logs"
