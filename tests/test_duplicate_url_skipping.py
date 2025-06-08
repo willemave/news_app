@@ -31,9 +31,10 @@ class TestDuplicateUrlSkipping:
         test_url = "https://example.com/new-article"
         
         result = hn_create_link_record(test_url, "hackernews")
-        
+
         # Verify new link was created
-        assert result == 123
+        assert result[0] == 123
+        assert result[1] is True
         mock_db.add.assert_called_once()
         mock_db.commit.assert_called_once()
         mock_db.refresh.assert_called_once()
@@ -59,9 +60,9 @@ class TestDuplicateUrlSkipping:
         test_url = "https://example.com/existing-article"
         
         result = hn_create_link_record(test_url, "hackernews")
-        
+
         # Verify existing link ID was returned
-        assert result == 456
+        assert result is None
         
         # Verify no new link was created
         mock_db.add.assert_not_called()
@@ -90,7 +91,8 @@ class TestDuplicateUrlSkipping:
         result = reddit_create_link_record(test_url, "reddit-technology")
         
         # Verify new link was created
-        assert result == 789
+        assert result[0] == 789
+        assert result[1] is True
         mock_db.add.assert_called_once()
         mock_db.commit.assert_called_once()
         mock_db.refresh.assert_called_once()
@@ -118,7 +120,7 @@ class TestDuplicateUrlSkipping:
         result = reddit_create_link_record(test_url, "reddit-technology")
         
         # Verify existing link ID was returned
-        assert result == 999
+        assert result is None
         
         # Verify no new link was created
         mock_db.add.assert_not_called()
@@ -177,9 +179,10 @@ class TestDuplicateUrlSkipping:
         test_url = "https://Example.com/Article"  # Different case
         
         result = hn_create_link_record(test_url, "hackernews")
-        
+
         # Verify new link was created (URLs are case-sensitive)
-        assert result == 111
+        assert result[0] == 111
+        assert result[1] is True
         mock_db.add.assert_called_once()
 
     @patch('app.scraping.reddit.SessionLocal')
@@ -203,9 +206,9 @@ class TestDuplicateUrlSkipping:
         test_url = "https://arxiv.org/abs/2024.12345"
         
         result = reddit_create_link_record(test_url, "reddit-MachineLearning")
-        
+
         # Verify existing link ID was returned (same URL, different source)
-        assert result == 555
+        assert result is None
         
         # Verify no new link was created
         mock_db.add.assert_not_called()
@@ -245,12 +248,13 @@ class TestDuplicateUrlIntegration:
         
         # First scraper (HackerNews) creates the link
         hn_result = hn_create_link_record(shared_url, "hackernews")
-        assert hn_result == 100
+        assert hn_result[0] == 100
+        assert hn_result[1] is True
         mock_hn_db.add.assert_called_once()
         
         # Second scraper (Reddit) finds existing link
         reddit_result = reddit_create_link_record(shared_url, "reddit-technology")
-        assert reddit_result == 100
+        assert reddit_result is None
         mock_reddit_db.add.assert_not_called()  # No new link created
 
     def test_url_normalization_scenarios(self):
@@ -291,10 +295,10 @@ class TestDuplicateUrlIntegration:
         test_url = "https://example.com/duplicate-article"
         
         result = hn_create_link_record(test_url, "hackernews")
-        
+
         # Verify logging was called for duplicate detection
-        mock_logger.info.assert_called_with(f"Link already exists: {test_url}")
-        assert result == 777
+        mock_logger.info.assert_called_with(f"URL already processed as article: {test_url}")
+        assert result is None
 
     @patch('app.scraping.reddit.logger')
     @patch('app.scraping.reddit.SessionLocal')
@@ -316,10 +320,10 @@ class TestDuplicateUrlIntegration:
         test_url = "https://reddit.com/r/technology/duplicate-post"
         
         result = reddit_create_link_record(test_url, "reddit-technology")
-        
+
         # Verify logging was called for duplicate detection
-        mock_logger.info.assert_called_with(f"Link already exists: {test_url}")
-        assert result == 888
+        mock_logger.info.assert_called_with(f"URL already processed as article: {test_url}")
+        assert result is None
 
 
 class TestDuplicateUrlEdgeCases:
@@ -342,9 +346,10 @@ class TestDuplicateUrlEdgeCases:
         
         # Test with empty URL
         result = hn_create_link_record("", "hackernews")
-        
+
         # Should still attempt to create record (validation happens elsewhere)
-        assert result == 1
+        assert result[0] == 1
+        assert result[1] is True
 
     @patch('app.scraping.reddit.SessionLocal')
     def test_very_long_url_handling(self, mock_session_local):
@@ -364,9 +369,10 @@ class TestDuplicateUrlEdgeCases:
         # Test with very long URL
         long_url = "https://example.com/" + "a" * 1000
         result = reddit_create_link_record(long_url, "reddit-test")
-        
+
         # Should handle long URLs (database constraints may apply)
-        assert result == 2
+        assert result[0] == 2
+        assert result[1] is True
 
     @patch('app.scraping.hackernews_scraper.SessionLocal')
     def test_unicode_url_handling(self, mock_session_local):
@@ -386,6 +392,7 @@ class TestDuplicateUrlEdgeCases:
         # Test with Unicode URL
         unicode_url = "https://example.com/文章"
         result = hn_create_link_record(unicode_url, "hackernews")
-        
+
         # Should handle Unicode URLs
-        assert result == 3
+        assert result[0] == 3
+        assert result[1] is True

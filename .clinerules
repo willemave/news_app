@@ -100,7 +100,7 @@
 | **TASKS.md**  | Living checklist (phases, tasks, reference files, learnings, new deps) |
 ---
 #### 10  Updating the Memory Bank
-- You MUST review ALL core memory bank files (ai-memory/README.md, ai-memory/PROMPT.md, ai-memory/TASKS.md) for necessary updates.
+- You MUST review ALL core memory bank files (ai-memory/README.md, ai-memory/TASKS.md) for necessary updates.
 - Process:
   1. Execute a suitable command to get a project file listing:
      ```bash

@@ -26,7 +26,9 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         If specific HTML URL transformations are needed in the future,
         they can be implemented here.
         """
-        # ArXiv specific logic has been moved to ArxivProcessorStrategy
+        if "arxiv.org/abs/" in url:
+            logger.debug(f"HtmlStrategy: Transforming arXiv URL {url}")
+            return url.replace("/abs/", "/pdf/")
         logger.debug(f"HtmlStrategy: preprocess_url called for {url}, no transformation applied.")
         return url
 

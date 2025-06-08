@@ -1,0 +1,12 @@
+# Substack RSS Feed URLs
+# Format: https://{substack-name}.substack.com/feed
+# Name and description will be extracted from the RSS feed
+
+feeds:
+  - url: "https://importai.substack.com/feed"
+  - url: "https://www.deeplearning.ai/the-batch/feed/"
+  - url: "https://aisnakeoil.substack.com/feed"
+
+# Add more Substack feeds here as needed
+# Example:
+# - url: "https://example.substack.com/feed"
