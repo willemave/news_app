@@ -1,7 +1,6 @@
 import feedparser
 import yaml
 import re
-import os
 from typing import List
 from datetime import datetime
 from app.database import SessionLocal

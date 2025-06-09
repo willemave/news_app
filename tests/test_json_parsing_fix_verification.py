@@ -2,9 +2,7 @@
 Verification tests for the JSON parsing fix.
 Tests the exact error scenario from the logs to ensure it's resolved.
 """
-import pytest
 from unittest.mock import Mock, patch
-import json
 from app.llm import summarize_podcast_transcript, summarize_article, summarize_pdf
 from app.schemas import ArticleSummary
 

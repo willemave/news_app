@@ -2,7 +2,6 @@
 Pydantic schemas for the news app.
 """
 from pydantic import BaseModel
-from typing import Optional
 
 
 class ArticleSummary(BaseModel):

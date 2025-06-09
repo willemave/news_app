@@ -8,9 +8,8 @@ using the new state machine architecture with checkout/checkin mechanism.
 import sys
 import os
 import signal
-import time
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -303,7 +302,7 @@ def main():
         print("="*60)
         
         if result['success']:
-            print(f"✅ Status: SUCCESS")
+            print("✅ Status: SUCCESS")
             if 'summary' in result:
                 print(f"📊 Result: {result['summary']['message']}")
                 print(f"⏱️  Execution time: {result['execution_time']:.1f} seconds")
@@ -317,7 +316,7 @@ def main():
             
             return 0
         else:
-            print(f"❌ Status: FAILED")
+            print("❌ Status: FAILED")
             print(f"💥 Error: {result.get('error', 'Unknown error')}")
             print(f"⏱️  Execution time: {result.get('execution_time', 0):.1f} seconds")
             return 1

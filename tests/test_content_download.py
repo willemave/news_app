@@ -1,10 +1,6 @@
 """
 Test content download and processing functionality.
 """
-import pytest
-import base64
-from unittest.mock import patch, Mock
-from requests.exceptions import RequestException
 
 # from app.processor import download_and_process_content, url_preprocessor # Commented out due to refactoring
 

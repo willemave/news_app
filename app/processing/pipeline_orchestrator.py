@@ -4,15 +4,13 @@ Coordinates workers and manages the state machine-driven pipeline.
 """
 
 import time
-import signal
 import threading
-from typing import List, Dict, Optional
+from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.database import SessionLocal
 from app.models import Podcasts, PodcastStatus
 from app.config import logger
 from app.processing.checkout_manager import CheckoutManager
-from app.processing.state_machine import PodcastStateMachine
 from app.processing.podcast_downloader import PodcastDownloader
 from app.processing.podcast_converter import PodcastConverter
 from app.processing.podcast_summarizer import PodcastSummarizer
@@ -20,11 +18,7 @@ from app.constants import (
     DEFAULT_POLLING_INTERVAL_SECONDS,
     DEFAULT_DOWNLOADER_CONCURRENCY,
     DEFAULT_TRANSCRIBER_CONCURRENCY,
-    DEFAULT_SUMMARIZER_CONCURRENCY,
-    generate_worker_id,
-    WORKER_DOWNLOADER,
-    WORKER_TRANSCRIBER,
-    WORKER_SUMMARIZER
+    DEFAULT_SUMMARIZER_CONCURRENCY
 )
 
 

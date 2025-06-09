@@ -2,7 +2,6 @@
 Test cases for robust LLM JSON parsing based on actual error logs.
 These tests reproduce the exact JSON parsing failures found in logs/llm_response_error*.
 """
-import pytest
 from unittest.mock import Mock, patch
 from app.llm import summarize_podcast_transcript, filter_article, summarize_article
 from app.schemas import ArticleSummary
