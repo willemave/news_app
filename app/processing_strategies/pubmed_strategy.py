@@ -21,7 +21,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
 
-    async def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
+    def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
         """
         Determines if this strategy can handle the given URL.
         Checks if the URL is a PubMed article page.
@@ -36,17 +36,17 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
         logger.debug(f"PubMedStrategy cannot handle URL: {url} (not a typical PubMed article page URL)")
         return False
 
-    async def download_content(self, url: str) -> str:
+    def download_content(self, url: str) -> str:
         """
         Downloads the HTML content of the PubMed article page.
         """
         logger.info(f"PubMedStrategy: Downloading PubMed page HTML from {url}")
-        response = await self.http_client.get(url)
+        response = self.http_client.get(url)
         # response.raise_for_status() is handled by RobustHttpClient
         logger.info(f"PubMedStrategy: Successfully downloaded PubMed page HTML from {url}. Final URL: {response.url}")
         return response.text
 
-    async def _extract_full_text_link_from_html(self, pubmed_page_html: str, pubmed_url: str) -> Optional[str]:
+    def _extract_full_text_link_from_html(self, pubmed_page_html: str, pubmed_url: str) -> Optional[str]:
         """
         Helper to extract the full text link from PubMed page HTML.
         This logic is similar to the one previously in processor.py.
@@ -103,7 +103,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
             logger.error(f"PubMedStrategy: Error parsing PubMed HTML for full text link from {pubmed_url}: {e}", exc_info=True)
             return None
 
-    async def extract_data(self, content: str, url: str) -> Dict[str, Any]:
+    def extract_data(self, content: str, url: str) -> Dict[str, Any]:
         """
         Extracts the full-text link from the PubMed page HTML.
         Returns a special dictionary indicating the next URL to process.
@@ -111,7 +111,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
         """
         logger.info(f"PubMedStrategy: Extracting full-text link from PubMed page: {url}")
         
-        full_text_url = await self._extract_full_text_link_from_html(content, url)
+        full_text_url = self._extract_full_text_link_from_html(content, url)
 
         if full_text_url:
             logger.info(f"PubMedStrategy: Extracted full-text URL '{full_text_url}' from PubMed page {url}. Delegating processing.")
@@ -131,7 +131,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
                 "final_url_after_redirects": url,
             }
 
-    async def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         This method should not be called directly if delegation occurs.
         If called (e.g., due to an extraction failure), it indicates no LLM processing.
@@ -145,7 +145,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
             "is_pdf": False # Irrelevant as we are delegating or failed
         }
 
-    async def extract_internal_urls(self, content: str, original_url: str) -> List[str]:
+    def extract_internal_urls(self, content: str, original_url: str) -> List[str]:
         """
         Extracts internal URLs from the PubMed page for logging.
         Could log other links found on the PubMed page if desired.

@@ -107,3 +107,7 @@ class Podcasts(Base):
     status = Column(Enum(PodcastStatus), default=PodcastStatus.new, index=True)
     created_date = Column(DateTime, default=datetime.utcnow)
     error_message = Column(Text, nullable=True)
+    
+    # Checkout mechanism for worker concurrency control
+    checked_out_by = Column(String, nullable=True)  # Worker ID that has checked out this podcast
+    checked_out_at = Column(DateTime, nullable=True)  # When the podcast was checked out

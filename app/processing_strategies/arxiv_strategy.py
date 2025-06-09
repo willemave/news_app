@@ -25,7 +25,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         self.arxiv_abs_pattern = r'https://arxiv\.org/abs/(\d+\.\d+.*)'
         self.arxiv_pdf_template = r'https://arxiv.org/pdf/{paper_id}'
 
-    async def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
+    def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
         """
         Determines if this strategy can handle the given URL, specifically looking for
         arXiv abstract page patterns.
@@ -37,7 +37,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         logger.debug(f"ArxivStrategy cannot handle URL: {url}")
         return False
 
-    async def preprocess_url(self, url: str) -> str:
+    def preprocess_url(self, url: str) -> str:
         """
         Transforms an arXiv abstract URL (e.g., /abs/...) to its PDF version (e.g., /pdf/...).
         If the URL doesn't match the arXiv abstract pattern, it's returned unchanged.
@@ -53,19 +53,19 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         logger.warning(f"ArxivStrategy: preprocess_url called with non-matching URL {url}, returning unchanged.")
         return url
 
-    async def download_content(self, url: str) -> bytes: # PDF content is bytes
+    def download_content(self, url: str) -> bytes: # PDF content is bytes
         """
         Downloads the PDF content from the given URL.
         This method expects 'url' to be a direct link to a PDF file
         (transformed by preprocess_url if it was an abstract page).
         """
         logger.info(f"ArxivStrategy: Downloading PDF content from {url}")
-        response = await self.http_client.get(url)
+        response = self.http_client.get(url)
         # RobustHttpClient handles raise_for_status
         logger.info(f"ArxivStrategy: Successfully downloaded PDF from {url}. Final URL: {response.url}")
         return response.content
 
-    async def extract_data(self, content: bytes, url: str) -> Dict[str, Any]:
+    def extract_data(self, content: bytes, url: str) -> Dict[str, Any]:
         """
         Extracts text and metadata from the downloaded PDF content.
         'url' is the final URL from which the PDF was downloaded.
@@ -140,7 +140,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
             "final_url_after_redirects": url,
         }
 
-    async def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prepares the extracted PDF data for processing by an LLM.
         """
@@ -154,7 +154,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
             "is_pdf": True  # Indicate that the content is from a PDF
         }
 
-    async def extract_internal_urls(self, content: bytes, original_url: str) -> List[str]:
+    def extract_internal_urls(self, content: bytes, original_url: str) -> List[str]:
         """
         Extracts internal URLs. For PDFs, this is typically not applicable in the same
         way as HTML, so an empty list is returned.

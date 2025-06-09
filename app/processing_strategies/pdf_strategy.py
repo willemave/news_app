@@ -19,7 +19,7 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
 
-    async def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
+    def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
         """
         Determines if this strategy can handle the given URL.
         Checks for 'application/pdf' in Content-Type or if URL ends with '.pdf'.
@@ -43,17 +43,17 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
         logger.debug(f"PdfStrategy cannot handle {url} based on current checks.")
         return False
 
-    async def download_content(self, url: str) -> bytes:
+    def download_content(self, url: str) -> bytes:
         """
         Downloads PDF content from the given URL.
         """
         logger.info(f"PdfStrategy: Downloading PDF content from {url}")
-        response = await self.http_client.get(url)
+        response = self.http_client.get(url)
         # response.raise_for_status() is handled by RobustHttpClient
         logger.info(f"PdfStrategy: Successfully downloaded PDF from {url}. Final URL: {response.url}")
         return response.content # Returns PDF as bytes
 
-    async def extract_data(self, content: bytes, url: str) -> Dict[str, Any]:
+    def extract_data(self, content: bytes, url: str) -> Dict[str, Any]:
         """
         Extracts data from PDF content.
         'url' here is the final URL after any redirects from download_content.
@@ -93,7 +93,7 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
             # "original_url_from_db" will be added by the main processor
         }
 
-    async def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prepares extracted PDF data for LLM processing.
         The primary content is the PDF itself (bytes).
@@ -122,7 +122,7 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
             "is_pdf": True
         }
 
-    async def extract_internal_urls(self, content: bytes, original_url: str) -> List[str]:
+    def extract_internal_urls(self, content: bytes, original_url: str) -> List[str]:
         """
         Extracting URLs from PDF content is complex and not implemented for now.
         Returns an empty list.

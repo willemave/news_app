@@ -6,12 +6,56 @@ This module manages the LLM integration for:
 Uses Google Gemini Flash 2.5 for all LLM operations.
 """
 import json
+import logging
+import os
+from datetime import datetime
 from google import genai
 from google.genai import types
 from .config import settings
-from .schemas import ArticleSummary
+from .schemas import ArticleSummary, FilterResult, PodcastSummary
 
 # Removed global genai.configure(api_key=settings.GOOGLE_API_KEY)
+
+def _log_llm_response_to_file(response_text: str, function_name: str, error_details: str) -> None:
+    """
+    Log the entire LLM response to a file for debugging purposes.
+    
+    Args:
+        response_text: The complete response text from the LLM
+        function_name: Name of the function where the error occurred
+        error_details: Details about the parsing error
+    """
+    try:
+        # Create logs directory if it doesn't exist
+        logs_dir = "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        # Generate timestamp for filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # Include milliseconds
+        filename = f"llm_response_error_{function_name}_{timestamp}.log"
+        filepath = os.path.join(logs_dir, filename)
+        
+        # Prepare log content
+        log_content = f"""=== LLM Response Error Log ===
+Timestamp: {datetime.now().isoformat()}
+Function: {function_name}
+Error Details: {error_details}
+Response Length: {len(response_text)} characters
+
+=== Full Response Text ===
+{response_text}
+
+=== End of Response ===
+"""
+        
+        # Write to file
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(log_content)
+        
+        print(f"Full LLM response logged to: {filepath}")
+        
+    except Exception as log_error:
+        print(f"Failed to log LLM response to file: {log_error}")
 
 def _unescape_json_string(escaped_string: str) -> str:
     """
@@ -63,8 +107,16 @@ def _parse_malformed_summary_response(response_text: str) -> ArticleSummary:
     import re
     
     try:
+        # Handle empty or whitespace-only responses early
+        if not response_text or response_text.isspace():
+            return ArticleSummary(
+                short_summary="Error parsing summary",
+                detailed_summary="Error parsing detailed summary"
+            )
+        
         # Try to find short_summary and detailed_summary in the response
         # More robust regex patterns that handle various malformed JSON scenarios
+        
         # Pattern 1: Try to match complete quoted strings with proper delimiters
         short_match = re.search(r'"short_summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}\n]', response_text, re.DOTALL)
         detailed_match = re.search(r'"detailed_summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}\n]', response_text, re.DOTALL)
@@ -76,14 +128,47 @@ def _parse_malformed_summary_response(response_text: str) -> ArticleSummary:
         if not detailed_match:
             detailed_match = re.search(r'"detailed_summary"\s*:\s*"((?:[^"\\]|\\.)*)', response_text, re.DOTALL)
         
+        # Pattern 3: Handle cases where quotes might be missing or malformed
+        if not short_match:
+            short_match = re.search(r'"short_summary"\s*:\s*([^,}\n]*)', response_text, re.DOTALL)
+        
+        if not detailed_match:
+            detailed_match = re.search(r'"detailed_summary"\s*:\s*([^,}\n]*)', response_text, re.DOTALL)
+        
         short_summary = "Error parsing summary"
         detailed_summary = "Error parsing detailed summary"
         
         if short_match:
-            short_summary = _unescape_json_string(short_match.group(1))
+            extracted = short_match.group(1).strip()
+            # Remove surrounding quotes if present
+            if extracted.startswith('"') and extracted.endswith('"'):
+                extracted = extracted[1:-1]
+            elif extracted.startswith('"'):
+                extracted = extracted[1:]
+            if extracted and not extracted.isspace():
+                short_summary = _unescape_json_string(extracted)
         
         if detailed_match:
-            detailed_summary = _unescape_json_string(detailed_match.group(1))
+            extracted = detailed_match.group(1).strip()
+            # Remove surrounding quotes if present
+            if extracted.startswith('"') and extracted.endswith('"'):
+                extracted = extracted[1:-1]
+            elif extracted.startswith('"'):
+                extracted = extracted[1:]
+            if extracted and not extracted.isspace():
+                detailed_summary = _unescape_json_string(extracted)
+        
+        # Clean up any trailing ellipsis or incomplete text
+        if short_summary.endswith('...'):
+            short_summary = short_summary[:-3].strip()
+        if detailed_summary.endswith('...'):
+            detailed_summary = detailed_summary[:-3].strip()
+            
+        # Ensure we have meaningful content
+        if not short_summary or short_summary.isspace():
+            short_summary = "Error parsing summary"
+        if not detailed_summary or detailed_summary.isspace():
+            detailed_summary = "Error parsing detailed summary"
         
         return ArticleSummary(
             short_summary=short_summary,
@@ -104,9 +189,24 @@ def _parse_malformed_filter_response(response_text: str) -> tuple[bool, str]:
     import re
     
     try:
+        # Handle empty or whitespace-only responses early
+        if not response_text or response_text.isspace():
+            return False, "Error parsing filter response"
+        
         # Try to find matches and reason in the response
         matches_match = re.search(r'"matches"\s*:\s*(true|false)', response_text, re.IGNORECASE)
-        reason_match = re.search(r'"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]', response_text, re.DOTALL)
+        
+        # More robust regex patterns for reason field
+        # Pattern 1: Try to match complete quoted strings with proper delimiters
+        reason_match = re.search(r'"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}\n]', response_text, re.DOTALL)
+        
+        # Pattern 2: If that fails, try to match even without proper closing delimiters (for truncated responses)
+        if not reason_match:
+            reason_match = re.search(r'"reason"\s*:\s*"((?:[^"\\]|\\.)*)', response_text, re.DOTALL)
+        
+        # Pattern 3: Handle cases where quotes might be missing or malformed
+        if not reason_match:
+            reason_match = re.search(r'"reason"\s*:\s*([^,}\n]*)', response_text, re.DOTALL)
         
         matches = False
         reason = "Error parsing filter response"
@@ -115,7 +215,22 @@ def _parse_malformed_filter_response(response_text: str) -> tuple[bool, str]:
             matches = matches_match.group(1).lower() == 'true'
         
         if reason_match:
-            reason = _unescape_json_string(reason_match.group(1))
+            extracted = reason_match.group(1).strip()
+            # Remove surrounding quotes if present
+            if extracted.startswith('"') and extracted.endswith('"'):
+                extracted = extracted[1:-1]
+            elif extracted.startswith('"'):
+                extracted = extracted[1:]
+            if extracted and not extracted.isspace():
+                reason = _unescape_json_string(extracted)
+        
+        # Clean up any trailing ellipsis or incomplete text
+        if reason.endswith('...'):
+            reason = reason[:-3].strip()
+            
+        # Ensure we have meaningful content
+        if not reason or reason.isspace():
+            reason = "Error parsing filter response"
         
         print(f"Filter result (fallback): matches={matches}, reason: {reason}")
         return matches, reason
@@ -135,11 +250,7 @@ def filter_article(content: str) -> tuple[bool, str]:
 - Include opinion pieces only if they provide detailed technical or strategic insights from recognized industry experts, even if they contain a minor promotional element.
 - Exclude articles primarily intended as marketing or promotional material unless the promotional content is minimal and clearly secondary to substantial informative content.
     
-    Respond with a JSON object containing:
-    {
-        "matches": boolean,
-        "reason": "brief explanation of decision"
-    }"""
+    Respond with whether the article matches and provide a brief explanation."""
 
     try:
         # Initialize client with API key
@@ -160,6 +271,7 @@ def filter_article(content: str) -> tuple[bool, str]:
         ]
         generate_content_config = types.GenerateContentConfig(
             response_mime_type="application/json",
+            response_schema=FilterResult,
         )
 
         response = client.models.generate_content(
@@ -168,16 +280,28 @@ def filter_article(content: str) -> tuple[bool, str]:
             config=generate_content_config,
         )
         
-        # Parse JSON response with error handling
+        # Use structured output with fallback
         try:
-            result = json.loads(response.text)
-            matches = result.get('matches', False)
-            reason = result.get('reason', 'No reason provided')
-            print(f"Filter result: matches={matches}, reason: {reason}")
-            return matches, reason
-        except json.JSONDecodeError as json_error:
-            print(f"JSON parsing error in filter_article: {json_error}")
+            if hasattr(response, 'parsed') and response.parsed:
+                # Use the parsed Pydantic object
+                result = response.parsed
+                print(f"Filter result (structured): matches={result.matches}, reason: {result.reason}")
+                return result.matches, result.reason
+            else:
+                # Fallback to JSON parsing
+                result = json.loads(response.text)
+                matches = result.get('matches', False)
+                reason = result.get('reason', 'No reason provided')
+                print(f"Filter result (JSON): matches={matches}, reason: {reason}")
+                return matches, reason
+        except (json.JSONDecodeError, AttributeError) as json_error:
+            error_msg = f"JSON parsing error in filter_article: {json_error}"
+            print(error_msg)
             print(f"Raw response text: {response.text[:500]}...")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "filter_article", error_msg)
+            
             # Try fallback parsing for filter response
             return _parse_malformed_filter_response(response.text)
     except Exception as e:
@@ -197,13 +321,7 @@ def summarize_article(content: str) -> ArticleSummary:
     2. A detailed summary that starts with bullet points of the key topics
      and then a few paragraphs summarizing the document.
 
-    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks.
-
-    Respond with a JSON object containing:
-    {
-        "short_summary": "2 sentence summary as a string",
-        "detailed_summary": "• Key topic 1\n• Key topic 2\n• Key topic 3\n\nDetailed paragraph summary..."
-    }"""
+    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks."""
 
     try:
         # Initialize client with API key
@@ -224,6 +342,7 @@ def summarize_article(content: str) -> ArticleSummary:
         ]
         generate_content_config = types.GenerateContentConfig(
             response_mime_type="application/json",
+            response_schema=ArticleSummary,
         )
 
         response = client.models.generate_content(
@@ -232,15 +351,50 @@ def summarize_article(content: str) -> ArticleSummary:
             config=generate_content_config,
         )
         
-        # Parse JSON response and validate with Pydantic model
+        # Use structured output with fallback
         try:
-            summary_data = json.loads(response.text)
-            # Normalize data to handle lists
-            normalized_data = _normalize_summary_data(summary_data)
-            return ArticleSummary(**normalized_data)
-        except json.JSONDecodeError as json_error:
-            print(f"JSON parsing error in summarize_article: {json_error}")
-            print(f"Raw response text: {response.text[:500]}...")  # Log first 500 chars for debugging
+            if hasattr(response, 'parsed') and response.parsed:
+                # Use the parsed Pydantic object
+                result = response.parsed
+                print(f"Article summary (structured): {result.short_summary[:100]}...")
+                return result
+            else:
+                # Fallback to JSON parsing
+                summary_data = json.loads(response.text)
+                # Normalize data to handle lists
+                normalized_data = _normalize_summary_data(summary_data)
+                
+                # Handle missing fields by providing defaults before Pydantic validation
+                if 'short_summary' not in normalized_data:
+                    normalized_data['short_summary'] = "Error parsing summary"
+                if 'detailed_summary' not in normalized_data:
+                    normalized_data['detailed_summary'] = "Error parsing detailed summary"
+                
+                # Handle empty or whitespace-only fields
+                if not normalized_data['short_summary'] or normalized_data['short_summary'].isspace():
+                    normalized_data['short_summary'] = "Error parsing summary"
+                if not normalized_data['detailed_summary'] or normalized_data['detailed_summary'].isspace():
+                    normalized_data['detailed_summary'] = "Error parsing detailed summary"
+                    
+                return ArticleSummary(**normalized_data)
+        except (json.JSONDecodeError, AttributeError) as json_error:
+            error_msg = f"JSON parsing error in summarize_article: {json_error}"
+            print(error_msg)
+            print(f"Raw response text: {response.text}")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "summarize_article", error_msg)
+            
+            # Try to extract summaries from malformed JSON using fallback parsing
+            return _parse_malformed_summary_response(response.text)
+        except Exception as pydantic_error:
+            error_msg = f"Pydantic validation error in summarize_article: {pydantic_error}"
+            print(error_msg)
+            print(f"Raw response text: {response.text}")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "summarize_article", error_msg)
+            
             # Try to extract summaries from malformed JSON using fallback parsing
             return _parse_malformed_summary_response(response.text)
     
@@ -268,13 +422,7 @@ def summarize_pdf(pdf_data: bytes) -> ArticleSummary:
     2. A detailed summary that starts with bullet points of the key topics
      and then a few paragraphs summarizing the document.
 
-    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks.
-
-    Respond with a JSON object containing:
-    {
-        "short_summary": "2 sentence summary as a string",
-        "detailed_summary": "• Key topic 1\n• Key topic 2\n• Key topic 3\n\nDetailed paragraph summary..."
-    }"""
+    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks."""
 
     try:
         # Initialize client with API key
@@ -293,6 +441,7 @@ def summarize_pdf(pdf_data: bytes) -> ArticleSummary:
         ]
         generate_content_config = types.GenerateContentConfig(
             response_mime_type="application/json",
+            response_schema=ArticleSummary,
         )
 
         response = client.models.generate_content(
@@ -301,15 +450,50 @@ def summarize_pdf(pdf_data: bytes) -> ArticleSummary:
             config=generate_content_config,
         )
         
-        # Parse JSON response and validate with Pydantic model
+        # Use structured output with fallback
         try:
-            summary_data = json.loads(response.text)
-            # Normalize data to handle lists
-            normalized_data = _normalize_summary_data(summary_data)
-            return ArticleSummary(**normalized_data)
-        except json.JSONDecodeError as json_error:
-            print(f"JSON parsing error in summarize_pdf: {json_error}")
-            print(f"Raw response text: {response.text[:500]}...")
+            if hasattr(response, 'parsed') and response.parsed:
+                # Use the parsed Pydantic object
+                result = response.parsed
+                print(f"PDF summary (structured): {result.short_summary[:100]}...")
+                return result
+            else:
+                # Fallback to JSON parsing
+                summary_data = json.loads(response.text)
+                # Normalize data to handle lists
+                normalized_data = _normalize_summary_data(summary_data)
+                
+                # Handle missing fields by providing defaults before Pydantic validation
+                if 'short_summary' not in normalized_data:
+                    normalized_data['short_summary'] = "Error parsing summary"
+                if 'detailed_summary' not in normalized_data:
+                    normalized_data['detailed_summary'] = "Error parsing detailed summary"
+                
+                # Handle empty or whitespace-only fields
+                if not normalized_data['short_summary'] or normalized_data['short_summary'].isspace():
+                    normalized_data['short_summary'] = "Error parsing summary"
+                if not normalized_data['detailed_summary'] or normalized_data['detailed_summary'].isspace():
+                    normalized_data['detailed_summary'] = "Error parsing detailed summary"
+                    
+                return ArticleSummary(**normalized_data)
+        except (json.JSONDecodeError, AttributeError) as json_error:
+            error_msg = f"JSON parsing error in summarize_pdf: {json_error}"
+            print(error_msg)
+            print(f"Raw response text: {response.text}")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "summarize_pdf", error_msg)
+            
+            # Try to extract summaries from malformed JSON using fallback parsing
+            return _parse_malformed_summary_response(response.text)
+        except Exception as pydantic_error:
+            error_msg = f"Pydantic validation error in summarize_pdf: {pydantic_error}"
+            print(error_msg)
+            print(f"Raw response text: {response.text}")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "summarize_pdf", error_msg)
+            
             # Try to extract summaries from malformed JSON using fallback parsing
             return _parse_malformed_summary_response(response.text)
     
@@ -377,13 +561,7 @@ def summarize_podcast_transcript(transcript_text: str) -> ArticleSummary:
     2. A detailed summary that starts with bullet points of the key topics discussed
      and then a few paragraphs summarizing the main points and insights from the podcast.
 
-    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks.
-
-    Respond with a JSON object containing:
-    {
-        "short_summary": "2 sentence summary as a string",
-        "detailed_summary": "• Key topic 1\n• Key topic 2\n• Key topic 3\n\nDetailed paragraph summary..."
-    }"""
+    IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks."""
 
     try:
         # Initialize client with API key
@@ -404,6 +582,7 @@ def summarize_podcast_transcript(transcript_text: str) -> ArticleSummary:
         ]
         generate_content_config = types.GenerateContentConfig(
             response_mime_type="application/json",
+            response_schema=ArticleSummary,
         )
 
         response = client.models.generate_content(
@@ -412,15 +591,50 @@ def summarize_podcast_transcript(transcript_text: str) -> ArticleSummary:
             config=generate_content_config,
         )
         
-        # Parse JSON response and validate with Pydantic model
+        # Use structured output with fallback
         try:
-            summary_data = json.loads(response.text)
-            # Normalize data to handle lists
-            normalized_data = _normalize_summary_data(summary_data)
-            return ArticleSummary(**normalized_data)
-        except json.JSONDecodeError as json_error:
-            print(f"JSON parsing error in summarize_podcast_transcript: {json_error}")
-            print(f"Raw response text: {response.text[:500]}...")
+            if hasattr(response, 'parsed') and response.parsed:
+                # Use the parsed Pydantic object
+                result = response.parsed
+                print(f"Podcast summary (structured): {result.short_summary[:100]}...")
+                return result
+            else:
+                # Fallback to JSON parsing
+                summary_data = json.loads(response.text)
+                # Normalize data to handle lists
+                normalized_data = _normalize_summary_data(summary_data)
+                
+                # Handle missing fields by providing defaults before Pydantic validation
+                if 'short_summary' not in normalized_data:
+                    normalized_data['short_summary'] = "Error parsing summary"
+                if 'detailed_summary' not in normalized_data:
+                    normalized_data['detailed_summary'] = "Error parsing detailed summary"
+                
+                # Handle empty or whitespace-only fields
+                if not normalized_data['short_summary'] or normalized_data['short_summary'].isspace():
+                    normalized_data['short_summary'] = "Error parsing summary"
+                if not normalized_data['detailed_summary'] or normalized_data['detailed_summary'].isspace():
+                    normalized_data['detailed_summary'] = "Error parsing detailed summary"
+                    
+                return ArticleSummary(**normalized_data)
+        except (json.JSONDecodeError, AttributeError) as json_error:
+            error_msg = f"JSON parsing error in summarize_podcast_transcript: {json_error}"
+            print(error_msg)
+            print(f"Raw response text: {response.text}")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "summarize_podcast_transcript", error_msg)
+            
+            # Try to extract summaries from malformed JSON using fallback parsing
+            return _parse_malformed_summary_response(response.text)
+        except Exception as pydantic_error:
+            error_msg = f"Pydantic validation error in summarize_podcast_transcript: {pydantic_error}"
+            print(error_msg)
+            print(f"Raw response text: {response.text}")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "summarize_podcast_transcript", error_msg)
+            
             # Try to extract summaries from malformed JSON using fallback parsing
             return _parse_malformed_summary_response(response.text)
     

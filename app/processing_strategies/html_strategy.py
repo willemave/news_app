@@ -19,7 +19,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
 
-    async def preprocess_url(self, url: str) -> str:
+    def preprocess_url(self, url: str) -> str:
         """
         Currently, HTML strategy does not perform any preprocessing on the URL.
         This method is kept for consistency with the base class.
@@ -32,7 +32,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         logger.debug(f"HtmlStrategy: preprocess_url called for {url}, no transformation applied.")
         return url
 
-    async def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
+    def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
         """
         Determines if this strategy can handle the given URL.
         Checks for 'text/html' in Content-Type or common HTML file extensions.
@@ -59,17 +59,17 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         logger.debug(f"HtmlStrategy cannot handle {url} based on current checks.")
         return False
 
-    async def download_content(self, url: str) -> str:
+    def download_content(self, url: str) -> str:
         """
         Downloads HTML content from the given URL.
         """
         logger.info(f"HtmlStrategy: Downloading HTML content from {url}")
-        response = await self.http_client.get(url)
+        response = self.http_client.get(url)
         # response.raise_for_status() is handled by RobustHttpClient
         logger.info(f"HtmlStrategy: Successfully downloaded HTML from {url}. Final URL: {response.url}")
         return response.text # Returns HTML as string
 
-    async def extract_data(self, content: str, url: str) -> Dict[str, Any]:
+    def extract_data(self, content: str, url: str) -> Dict[str, Any]:
         """
         Extracts data from HTML content using Trafilatura.
         'url' here is the final URL after any redirects from download_content.
@@ -128,7 +128,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             # "original_url_from_db" will be added by the main processor
         }
 
-    async def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prepares extracted HTML data for LLM processing.
         """
@@ -146,7 +146,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "is_pdf": False
         }
 
-    async def extract_internal_urls(self, content: str, original_url: str) -> List[str]:
+    def extract_internal_urls(self, content: str, original_url: str) -> List[str]:
         """
         Extracts internal URLs from HTML content for logging.
         This is a basic implementation; more sophisticated parsing might be needed.

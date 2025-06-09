@@ -28,7 +28,6 @@ def process_link_task(link_id: int) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    import asyncio
     from .processor import process_link_from_db
     from .models import Links
     from .http_client.robust_http_client import RobustHttpClient
@@ -43,21 +42,17 @@ def process_link_task(link_id: int) -> bool:
             logger.error(f"Link with ID {link_id} not found")
             return False
         
-        # Initialize HTTP client and factory for async processing
-        async def run_async_processing():
-            http_client = RobustHttpClient(
-                timeout=settings.HTTP_CLIENT_TIMEOUT,
-                headers={'User-Agent': settings.HTTP_CLIENT_USER_AGENT}
-            )
-            factory = UrlProcessorFactory(http_client)
-            
-            try:
-                return await process_link_from_db(link, http_client, factory)
-            finally:
-                await http_client.close()
+        # Initialize HTTP client and factory for synchronous processing
+        http_client = RobustHttpClient(
+            timeout=settings.HTTP_CLIENT_TIMEOUT,
+            headers={'User-Agent': settings.HTTP_CLIENT_USER_AGENT}
+        )
+        factory = UrlProcessorFactory(http_client)
         
-        # Run the async processing
-        return asyncio.run(run_async_processing())
+        try:
+            return process_link_from_db(link, http_client, factory)
+        finally:
+            http_client.close()
         
     except ClientError as e:
         # Check if this is a 429 rate limit error
@@ -206,24 +201,12 @@ def download_podcast_task(podcast_id: int) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    import asyncio
     from .processing.podcast_downloader import PodcastDownloader
-    from .http_client.robust_http_client import RobustHttpClient
-    
-    async def run_async_download():
-        http_client = RobustHttpClient(
-            timeout=settings.HTTP_CLIENT_TIMEOUT,
-            headers={'User-Agent': settings.HTTP_CLIENT_USER_AGENT}
-        )
-        downloader = PodcastDownloader(http_client)
-        
-        try:
-            return await downloader.download_podcast(podcast_id)
-        finally:
-            await http_client.close()
     
     try:
-        result = asyncio.run(run_async_download())
+        # http_client parameter is no longer used by PodcastDownloader
+        downloader = PodcastDownloader()
+        result = downloader.download_podcast(podcast_id)
         
         # If download was successful, automatically queue transcription
         if result:
@@ -247,18 +230,14 @@ def transcribe_podcast_task(podcast_id: int) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    import asyncio
     from .processing.podcast_converter import PodcastConverter
     
-    async def run_async_transcription():
+    try:
         converter = PodcastConverter(model_size="distil-large-v3")
         try:
-            return await converter.transcribe_podcast(podcast_id)
+            result = converter.transcribe_podcast(podcast_id)
         finally:
             converter.cleanup_model()
-    
-    try:
-        result = asyncio.run(run_async_transcription())
         
         # If transcription was successful, automatically queue summarization
         if result:
