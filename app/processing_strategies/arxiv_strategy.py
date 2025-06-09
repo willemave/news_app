@@ -1,12 +1,12 @@
 """
 This module defines the strategy for processing arXiv web pages.
+Simplified to pass PDF bytes directly to the LLM without any local processing.
 """
 import re
-import io
 from typing import Optional, Dict, Any, List
+from urllib.parse import urlparse
 
 import httpx  # For type hinting httpx.Headers
-import pdfplumber # For PDF processing
 
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
@@ -67,91 +67,59 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
 
     def extract_data(self, content: bytes, url: str) -> Dict[str, Any]:
         """
-        Extracts text and metadata from the downloaded PDF content.
-        'url' is the final URL from which the PDF was downloaded.
+        Prepares PDF data for LLM processing.
+        No local text extraction - the LLM will handle everything from the PDF bytes.
         """
-        logger.info(f"ArxivStrategy: Extracting data from PDF content for URL: {url}")
-        text_content = ""
-        # Default title, attempt to update from PDF metadata
-        title = "Untitled arXiv PDF Document"
+        logger.info(f"ArxivStrategy: Preparing PDF data for LLM processing for URL: {url}")
 
         if not content:
-            logger.warning(f"ArxivStrategy: No PDF content provided for extraction for URL {url}")
+            logger.warning(f"ArxivStrategy: No PDF content provided for {url}")
             return {
                 "title": "Extraction Failed (No PDF Content)",
-                "text_content": "",
+                "text_content": None,
                 "content_type": "pdf",
                 "final_url_after_redirects": url,
+                "pdf_bytes": None,
             }
 
-        try:
-            with io.BytesIO(content) as pdf_file_stream:
-                with pdfplumber.open(pdf_file_stream) as pdf_doc:
-                    # Attempt to extract title from PDF metadata
-                    if pdf_doc.metadata and isinstance(pdf_doc.metadata, dict):
-                        meta_title = pdf_doc.metadata.get('title')
-                        if isinstance(meta_title, (str, bytes)):
-                            if isinstance(meta_title, bytes):
-                                try:
-                                    title = meta_title.decode('utf-8', errors='replace')
-                                except UnicodeDecodeError:
-                                    # Fallback to latin-1 if utf-8 fails
-                                    title = meta_title.decode('latin-1', errors='replace')
-                            else:
-                                title = meta_title
-                        elif meta_title is not None: # Handle other types by converting to string
-                            title = str(meta_title)
-                    
-                    extracted_pages = []
-                    for page in pdf_doc.pages:
-                        page_text = page.extract_text()
-                        if page_text:
-                            extracted_pages.append(page_text)
-                    text_content = "\n".join(extracted_pages)
+        # Use filename from URL as a fallback title - LLM will extract the real title
+        parsed_url = urlparse(url)
+        filename = parsed_url.path.split('/')[-1] or "ArXiv PDF Document"
+        if not filename.lower().endswith(".pdf"):
+            filename += ".pdf"
 
-            if not text_content.strip():
-                logger.warning(f"ArxivStrategy: pdfplumber extracted no text from PDF at {url}")
-                text_content = "Content extraction from PDF yielded no text (pdfplumber)."
-
-        except pdfplumber.exceptions.PDFSyntaxError as e:
-            logger.error(f"ArxivStrategy: PDFSyntaxError while processing {url}: {e}")
-            return {
-                "title": title, # Use title extracted so far or default
-                "text_content": f"Failed to parse PDF due to syntax error: {e}",
-                "content_type": "pdf",
-                "final_url_after_redirects": url,
-            }
-        except Exception as e:
-            logger.error(f"ArxivStrategy: Unexpected error extracting PDF text for {url}: {e}", exc_info=True)
-            return {
-                "title": title, # Use title extracted so far or default
-                "text_content": f"An unexpected error occurred during PDF text extraction: {e}",
-                "content_type": "pdf",
-                "final_url_after_redirects": url,
-            }
-
-        logger.info(f"ArxivStrategy: Successfully extracted data for PDF {url}. Title: '{title[:60]}...'")
+        logger.info(f"ArxivStrategy: Successfully prepared PDF data for {url}. Fallback title: {filename}")
         return {
-            "title": title,
-            "author": None,  # PDF author metadata can be unreliable; not extracted by default
-            "publication_date": None,  # PDF date metadata can be unreliable
-            "text_content": text_content,
-            "content_type": "pdf", # Explicitly state content type
+            "title": filename,  # Fallback title - LLM will extract the real title
+            "author": None,
+            "publication_date": None,
+            "text_content": None,  # No text extraction - LLM handles PDF bytes
+            "content_type": "pdf",
             "final_url_after_redirects": url,
+            "pdf_bytes": content,  # Store raw PDF bytes for LLM processing
         }
 
     def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Prepares the extracted PDF data for processing by an LLM.
+        Prepares PDF data for LLM processing.
+        Passes raw PDF bytes directly to the LLM for all processing (title extraction, summarization).
         """
         final_url = extracted_data.get('final_url_after_redirects', 'Unknown URL')
         logger.info(f"ArxivStrategy: Preparing PDF data for LLM for URL: {final_url}")
-        text_content = extracted_data.get("text_content", "")
+        pdf_bytes = extracted_data.get("pdf_bytes")
+        
+        if pdf_bytes is None:
+            logger.error(f"ArxivStrategy: PDF bytes not found in extracted_data for {final_url}")
+            return {
+                "content_to_filter": None,  # PDFs skip text-based filtering
+                "content_to_summarize": b"",  # Empty bytes as fallback
+                "is_pdf": True
+            }
         
         return {
-            "content_to_filter": text_content,
-            "content_to_summarize": text_content,
-            "is_pdf": True  # Indicate that the content is from a PDF
+            "content_to_filter": None,  # PDFs skip text-based filtering
+            "content_to_summarize": pdf_bytes,  # Pass raw PDF bytes to LLM
+            "is_pdf": True
         }
 
     def extract_internal_urls(self, content: bytes, original_url: str) -> List[str]:

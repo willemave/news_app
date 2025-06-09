@@ -96,9 +96,19 @@ def process_with_llm(llm_input_data: Dict[str, Any], original_url: str) -> Optio
         if is_pdf:
             # content_to_summarize should be bytes for PDF
             if not isinstance(content_to_summarize, bytes):
-                logger.error(f"LLM PDF summarization error: content_to_summarize is not bytes for {original_url}")
+                logger.error(f"LLM PDF analysis error: content_to_summarize is not bytes for {original_url}")
                 return None
-            summary_model = llm.summarize_pdf(content_to_summarize)
+            pdf_analysis = llm.analyze_pdf(content_to_summarize)
+            
+            if not hasattr(pdf_analysis, 'title') or not hasattr(pdf_analysis, 'short_summary'):
+                logger.error(f"Invalid PDF analysis format from LLM for {original_url}: {type(pdf_analysis)}")
+                return None
+                
+            return {
+                "title": pdf_analysis.title,  # Include extracted title
+                "short_summary": pdf_analysis.short_summary,
+                "detailed_summary": pdf_analysis.detailed_summary
+            }
         else:
             # content_to_summarize should be string for text
             if not isinstance(content_to_summarize, str):
@@ -106,14 +116,14 @@ def process_with_llm(llm_input_data: Dict[str, Any], original_url: str) -> Optio
                 return None
             summary_model = llm.summarize_article(content_to_summarize)
             
-        if not isinstance(summary_model, ArticleSummary):
-            logger.error(f"Invalid summary format from LLM for {original_url}: {type(summary_model)}")
-            return None
-            
-        return {
-            "short_summary": summary_model.short_summary,
-            "detailed_summary": summary_model.detailed_summary
-        }
+            if not isinstance(summary_model, ArticleSummary):
+                logger.error(f"Invalid summary format from LLM for {original_url}: {type(summary_model)}")
+                return None
+                
+            return {
+                "short_summary": summary_model.short_summary,
+                "detailed_summary": summary_model.detailed_summary
+            }
         
     except ClientError as e:
         if "429" in str(e) or "rate limit" in str(e).lower():
@@ -140,8 +150,11 @@ def create_article_and_link_to_source(
     """
     # db = SessionLocal() # Session should be managed by the caller
     try:
+        # Use title from LLM results if available (for PDFs), otherwise use extracted title
+        title = llm_results.get("title") or extracted_data.get("title", "Untitled")
+        
         article = Articles(
-            title=extracted_data.get("title", "Untitled"),
+            title=title,
             url=extracted_data["final_url_after_redirects"], # Use final URL
             author=extracted_data.get("author"),
             publication_date=extracted_data.get("publication_date"), # Assumes already parsed if string
@@ -224,7 +237,7 @@ def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: Ur
             if not strategy_instance:
                 error_msg = f"No suitable processing strategy found for URL: {current_url_to_process} (original: {link.url})"
                 logger.error(error_msg)
-                record_failure(db, FailurePhase.processor, error_msg, link.id) # Pass db session
+                record_failure(FailurePhase.processor, error_msg, link.id)
                 update_link_status(link.id, LinkStatus.failed, db, error_msg)
                 db.commit()
                 return False
@@ -275,7 +288,7 @@ def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: Ur
             except Exception as e_strat:
                 error_msg = f"Strategy {strategy_instance.__class__.__name__} failed for {current_url_to_process} (original: {link.url}): {e_strat}"
                 logger.error(error_msg, exc_info=True)
-                record_failure(db, FailurePhase.processor, error_msg, link.id) # Pass db session
+                record_failure(FailurePhase.processor, error_msg, link.id)
                 update_link_status(link.id, LinkStatus.failed, db, error_msg)
                 db.commit()
                 return False
@@ -283,7 +296,7 @@ def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: Ur
         if delegation_count >= MAX_DELEGATIONS:
             error_msg = f"Exceeded max delegations ({MAX_DELEGATIONS}) for link ID {link.id}, original URL {link.url}"
             logger.error(error_msg)
-            record_failure(db, FailurePhase.processor, error_msg, link.id)
+            record_failure(FailurePhase.processor, error_msg, link.id)
             update_link_status(link.id, LinkStatus.failed, db, error_msg)
             db.commit()
             return False
@@ -295,7 +308,7 @@ def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: Ur
             if extracted_data and extracted_data.get("content_type") == "error_pubmed_extraction":
                 error_msg = extracted_data.get("text_content", error_msg)
 
-            record_failure(db, FailurePhase.processor, error_msg, link.id) # Pass db session
+            record_failure(FailurePhase.processor, error_msg, link.id)
             update_link_status(link.id, LinkStatus.failed, db, error_msg)
             db.commit()
             return False
@@ -323,7 +336,7 @@ def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: Ur
         if not llm_results:
             error_msg = f"LLM processing failed for final URL: {final_url_from_content} (original: {link.url})"
             logger.error(error_msg)
-            record_failure(db, FailurePhase.processor, error_msg, link.id) # Pass db session
+            record_failure(FailurePhase.processor, error_msg, link.id)
             update_link_status(link.id, LinkStatus.failed, db, error_msg)
             db.commit()
             return False
@@ -332,7 +345,7 @@ def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: Ur
             skip_reason = llm_results.get("skip_reason", "No reason provided")
             logger.info(f"Content skipped by LLM filtering: {link.url} - Reason: {skip_reason}")
             error_msg_skipped = f"FILTER_DECISION: REJECTED - Content skipped by LLM filtering: {skip_reason}"
-            record_failure(db, FailurePhase.processor, error_msg_skipped, link.id, skip_reason=skip_reason) # Pass db session
+            record_failure(FailurePhase.processor, error_msg_skipped, link.id, skip_reason=skip_reason)
             update_link_status(link.id, LinkStatus.skipped, db)
             db.commit()
             return True
@@ -348,7 +361,7 @@ def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: Ur
             error_msg = f"Failed to create article in DB for: {link.url} -> {final_url_from_content}"
             logger.error(error_msg)
             # record_failure already called by create_article if it fails internally, but good to have a fallback
-            record_failure(db, FailurePhase.database, error_msg, link.id) # Pass db session
+            record_failure(FailurePhase.database, error_msg, link.id)
             update_link_status(link.id, LinkStatus.failed, db, error_msg)
             db.commit()
             return False
@@ -362,7 +375,7 @@ def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: Ur
         error_msg = f"Unexpected error processing link {link.url}: {e_main}"
         logger.error(error_msg, exc_info=True)
         # Ensure db session is passed to record_failure if it's available
-        record_failure(db, FailurePhase.processor, error_msg, link.id)
+        record_failure(FailurePhase.processor, error_msg, link.id)
         update_link_status(link.id, LinkStatus.failed, db, error_msg)
         db.commit()
         return False
