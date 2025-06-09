@@ -3,7 +3,7 @@ This module defines the strategy for processing standard HTML web pages.
 """
 import httpx # For type hinting httpx.Headers
 from typing import Optional, Dict, Any, List
-from trafilatura import bare_extraction
+from trafilatura import extract
 from dateutil import parser as date_parser # For parsing dates from metadata
 
 from app.http_client.robust_http_client import RobustHttpClient
@@ -75,47 +75,46 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         'url' here is the final URL after any redirects from download_content.
         """
         logger.info(f"HtmlStrategy: Extracting data from HTML content for URL: {url}")
-        if not content:
-            logger.warning(f"HtmlStrategy: No content to extract for {url}")
-            return {
-                "title": "Extraction Failed (No Content)",
-                "text_content": "",
-                "content_type": "html",
-                "final_url_after_redirects": url,
-            }
-
-        extracted_data_trafilatura = bare_extraction(
+        
+        # Use trafilatura.extract() with metadata extraction
+        text_content = extract(
             filecontent=content,
-            url=url, # Provide URL for better context to Trafilatura
+            url=url,
             with_metadata=True,
-            include_links=False, # As per plan, internal URLs handled by extract_internal_urls
-            include_formatting=False # Simpler text for LLM
+            include_links=False,
+            include_formatting=False,
+            output_format='json'
         )
 
-        if not extracted_data_trafilatura:
+        if not text_content:
             logger.warning(f"HtmlStrategy: Trafilatura failed to extract content from {url}")
             return {
-                "title": "Extraction Failed (Trafilatura)",
+                "title": "Extraction Failed",
                 "text_content": "",
                 "content_type": "html",
                 "final_url_after_redirects": url,
             }
 
-        title = extracted_data_trafilatura.get("title", "Untitled")
-        author = extracted_data_trafilatura.get("author")
-        text_content = extracted_data_trafilatura.get("text", "")
+        # Parse JSON output to extract metadata
+        import json
+        try:
+            extracted_data = json.loads(text_content)
+            title = extracted_data.get("title", "Untitled")
+            author = extracted_data.get("author")
+            text_content = extracted_data.get("text", "")
+            publication_date_str = extracted_data.get("date")
+        except (json.JSONDecodeError, AttributeError):
+            # Fallback: treat as plain text
+            title = "Untitled"
+            author = None
+            publication_date_str = None
         
-        publication_date_str = extracted_data_trafilatura.get("date")
         publication_date = None
         if publication_date_str:
             try:
                 publication_date = date_parser.parse(publication_date_str).strftime('%Y-%m-%d')
-            except (date_parser.ParserError, ValueError) as e:
-                logger.warning(f"HtmlStrategy: Could not parse date '{publication_date_str}' for {url}: {e}")
-        
-        if len(text_content) < 100: # Arbitrary threshold for meaningful content
-            logger.warning(f"HtmlStrategy: Content too short after extraction for {url}. Length: {len(text_content)}")
-            # Potentially return less or mark as low quality
+            except (date_parser.ParserError, ValueError):
+                pass
 
         logger.info(f"HtmlStrategy: Successfully extracted data for {url}. Title: {title[:50]}...")
         return {
@@ -125,7 +124,6 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "text_content": text_content,
             "content_type": "html",
             "final_url_after_redirects": url,
-            # "original_url_from_db" will be added by the main processor
         }
 
     def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:

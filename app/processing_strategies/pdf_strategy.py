@@ -1,7 +1,7 @@
 """
 This module defines the strategy for processing PDF documents.
+Simplified to only handle PDFs as bytes and pass them directly to the LLM.
 """
-import base64
 import httpx # For type hinting httpx.Headers
 from typing import Optional, Dict, Any, List
 from urllib.parse import urlparse
@@ -13,8 +13,8 @@ from app.config import logger
 class PdfProcessorStrategy(UrlProcessorStrategy):
     """
     Strategy for processing PDF documents.
-    It downloads PDF content, extracts basic metadata (like filename as title),
-    and prepares it (as bytes) for LLM processing.
+    Downloads PDF content and passes bytes directly to the LLM for processing.
+    No text extraction is performed - the LLM handles the PDF bytes directly.
     """
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
@@ -50,75 +50,62 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
         logger.info(f"PdfStrategy: Downloading PDF content from {url}")
         response = self.http_client.get(url)
         # response.raise_for_status() is handled by RobustHttpClient
-        logger.info(f"PdfStrategy: Successfully downloaded PDF from {url}. Final URL: {response.url}")
+        logger.info(f"PdfStrategy: eessfully downloaded PDF from {url}. Final URL: {response.url}")
         return response.content # Returns PDF as bytes
 
     def extract_data(self, content: bytes, url: str) -> Dict[str, Any]:
         """
-        Extracts data from PDF content.
-        'url' here is the final URL after any redirects from download_content.
-        For PDFs, the primary "content" for the LLM is the PDF bytes themselves.
-        Text extraction could be done here (e.g. with PyPDF2) if needed before LLM,
-        but current app.llm.summarize_pdf takes bytes.
+        Extracts basic metadata from PDF content.
+        No text extraction is performed - the LLM will handle the PDF bytes directly.
         """
-        logger.info(f"PdfStrategy: Extracting data from PDF content for URL: {url}")
+        logger.info(f"PdfStrategy: Preparing PDF data for URL: {url}")
         
         if not content:
-            logger.warning(f"PdfStrategy: No PDF content to extract for {url}")
+            logger.warning(f"PdfStrategy: No PDF content provided for {url}")
             return {
                 "title": "Extraction Failed (No PDF Content)",
-                "binary_content_b64": None,
                 "content_type": "pdf",
                 "final_url_after_redirects": url,
+                "pdf_bytes": None,
             }
 
         # Use filename from URL as a fallback title
         parsed_url = urlparse(url)
         filename = parsed_url.path.split('/')[-1] or "PDF Document"
         if not filename.lower().endswith(".pdf"):
-            filename += ".pdf" # Ensure it looks like a PDF filename
-
-        pdf_content_base64 = base64.b64encode(content).decode('utf-8')
+            filename += ".pdf"
 
         logger.info(f"PdfStrategy: Successfully prepared PDF data for {url}. Title: {filename}")
         return {
             "title": filename,
-            "author": None, # PDF metadata extraction is more complex, skip for now
-            "publication_date": None, # Skip for now
-            "text_content": None, # Raw text extraction not done here, LLM handles bytes
-            "binary_content_b64": pdf_content_base64, # LLM might prefer raw bytes
-            "raw_bytes": content, # Provide raw bytes as well, LLM function can choose
+            "author": None,
+            "publication_date": None,
+            "text_content": None,  # No text extraction - LLM handles PDF bytes
             "content_type": "pdf",
             "final_url_after_redirects": url,
-            # "original_url_from_db" will be added by the main processor
+            "pdf_bytes": content,  # Store raw PDF bytes for LLM processing
         }
 
     def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Prepares extracted PDF data for LLM processing.
-        The primary content is the PDF itself (bytes).
+        Prepares PDF data for LLM processing.
+        Passes raw PDF bytes directly to the LLM for text extraction and summarization.
         """
-        logger.info(f"PdfStrategy: Preparing PDF data for LLM for URL: {extracted_data.get('final_url_after_redirects')}")
+        final_url = extracted_data.get('final_url_after_redirects', 'Unknown URL')
+        logger.info(f"PdfStrategy: Preparing PDF data for LLM for URL: {final_url}")
         
-        # app.llm.summarize_pdf expects raw PDF bytes.
-        # app.llm.filter_article expects text. PDFs currently bypass direct text filtering in processor.py
-        # If filtering is desired for PDFs based on text, text extraction would need to happen first.
-        # For now, aligning with existing llm.py which summarizes PDF bytes directly.
-        
-        raw_bytes = extracted_data.get("raw_bytes")
-        if not raw_bytes:
-            logger.error(f"PdfStrategy: No raw_bytes found in extracted_data for LLM preparation for {extracted_data.get('final_url_after_redirects')}")
-            # This case should ideally not happen if download and extract_data worked.
-            # Return a structure that indicates an issue or use placeholder.
+        pdf_bytes = extracted_data.get("pdf_bytes")
+        if not pdf_bytes:
+            logger.error(f"PdfStrategy: No pdf_bytes found in extracted_data for {final_url}")
             return {
-                "content_to_filter": None, # PDFs might skip text-based filtering
-                "content_to_summarize": b"", # Empty bytes
+                "content_to_filter": None,  # PDFs skip text-based filtering
+                "content_to_summarize": b"",  # Empty bytes as fallback
                 "is_pdf": True
             }
             
         return {
-            "content_to_filter": None, # PDFs might skip text-based filtering in the current setup
-            "content_to_summarize": raw_bytes, # Pass raw bytes to llm.summarize_pdf
+            "content_to_filter": None,  # PDFs skip text-based filtering
+            "content_to_summarize": pdf_bytes,  # Pass raw PDF bytes to LLM
             "is_pdf": True
         }
 

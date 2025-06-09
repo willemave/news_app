@@ -12,6 +12,13 @@ from google import genai
 from google.genai import types
 from .config import settings
 from .schemas import ArticleSummary, FilterResult
+from pydantic import BaseModel
+
+class PdfAnalysis(BaseModel):
+    """Schema for PDF analysis including title extraction and summarization."""
+    title: str
+    short_summary: str
+    detailed_summary: str
 
 # Removed global genai.configure(api_key=settings.GOOGLE_API_KEY)
 
@@ -403,6 +410,118 @@ def summarize_article(content: str) -> ArticleSummary:
             short_summary="Error generating summary",
             detailed_summary="Error generating detailed summary"
         )
+
+def analyze_pdf(pdf_data: bytes) -> PdfAnalysis:
+    """
+    Analyze PDF content to extract title and generate summaries using Google Gemini.
+    
+    Args:
+        pdf_data: Raw PDF bytes data
+    
+    Returns:
+        PdfAnalysis pydantic model with title, short_summary, and detailed_summary
+    """
+    system_prompt = """You are an expert at analyzing PDF documents.
+    
+    Your task is to:
+    1. Extract the title of the document
+    2. Create a short 2 sentence summary for brief scanning
+    3. Create a detailed summary that starts with bullet points of the key topics
+       and then a few paragraphs summarizing the document
+    
+    IMPORTANT: All fields must be strings, not arrays. Format bullet points as text with line breaks."""
+
+    try:
+        # Initialize client with API key
+        client = genai.Client(
+            api_key=settings.GOOGLE_API_KEY,
+        )
+
+        model = "gemini-2.5-flash-preview-05-20"
+        
+        contents = [
+            types.Part.from_bytes(
+                data=pdf_data,
+                mime_type='application/pdf',
+            ),
+            system_prompt
+        ]
+        generate_content_config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=PdfAnalysis,
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
+        )
+        
+        # Use structured output with fallback
+        try:
+            if hasattr(response, 'parsed') and response.parsed:
+                # Use the parsed Pydantic object
+                result = response.parsed
+                print(f"PDF analysis (structured): title='{result.title}', summary: {result.short_summary[:100]}...")
+                return result
+            else:
+                # Fallback to JSON parsing
+                analysis_data = json.loads(response.text)
+                
+                # Handle missing fields by providing defaults before Pydantic validation
+                if 'title' not in analysis_data:
+                    analysis_data['title'] = "Untitled PDF Document"
+                if 'short_summary' not in analysis_data:
+                    analysis_data['short_summary'] = "Error parsing summary"
+                if 'detailed_summary' not in analysis_data:
+                    analysis_data['detailed_summary'] = "Error parsing detailed summary"
+                
+                # Handle empty or whitespace-only fields
+                if not analysis_data['title'] or analysis_data['title'].isspace():
+                    analysis_data['title'] = "Untitled PDF Document"
+                if not analysis_data['short_summary'] or analysis_data['short_summary'].isspace():
+                    analysis_data['short_summary'] = "Error parsing summary"
+                if not analysis_data['detailed_summary'] or analysis_data['detailed_summary'].isspace():
+                    analysis_data['detailed_summary'] = "Error parsing detailed summary"
+                    
+                return PdfAnalysis(**analysis_data)
+        except (json.JSONDecodeError, AttributeError) as json_error:
+            error_msg = f"JSON parsing error in analyze_pdf: {json_error}"
+            print(error_msg)
+            print(f"Raw response text: {response.text}")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "analyze_pdf", error_msg)
+            
+            # Return fallback analysis
+            return PdfAnalysis(
+                title="Error extracting title",
+                short_summary="Error parsing summary",
+                detailed_summary="Error parsing detailed summary"
+            )
+        except Exception as pydantic_error:
+            error_msg = f"Pydantic validation error in analyze_pdf: {pydantic_error}"
+            print(error_msg)
+            print(f"Raw response text: {response.text}")
+            
+            # Log the entire response to file for debugging
+            _log_llm_response_to_file(response.text, "analyze_pdf", error_msg)
+            
+            # Return fallback analysis
+            return PdfAnalysis(
+                title="Error extracting title",
+                short_summary="Error parsing summary",
+                detailed_summary="Error parsing detailed summary"
+            )
+    
+    except Exception as e:
+        print(f"Error in analyze_pdf: {e}")
+        return PdfAnalysis(
+            title="Error analyzing PDF",
+            short_summary="Error generating PDF summary",
+            detailed_summary="Error generating detailed PDF summary"
+        )
+
 
 def summarize_pdf(pdf_data: bytes) -> ArticleSummary:
     """

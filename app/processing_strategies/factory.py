@@ -9,6 +9,7 @@ from app.processing_strategies.html_strategy import HtmlProcessorStrategy
 from app.processing_strategies.pdf_strategy import PdfProcessorStrategy
 from app.processing_strategies.pubmed_strategy import PubMedProcessorStrategy
 from app.processing_strategies.arxiv_strategy import ArxivProcessorStrategy # Added import
+from app.processing_strategies.image_strategy import ImageProcessorStrategy
 from app.config import logger
 
 class UrlProcessorFactory:
@@ -32,10 +33,12 @@ class UrlProcessorFactory:
         # ArxivStrategy for /abs/ links, which then become PDF links.
         # PubMedStrategy for specific domain.
         # PdfProcessorStrategy for direct .pdf links or Content-Type PDF.
+        # ImageProcessorStrategy for image files (before HTML to avoid false matches).
         # HtmlProcessorStrategy as a more general fallback.
         self.register_strategy(ArxivProcessorStrategy)  # Handles arxiv.org/abs/ links
         self.register_strategy(PubMedProcessorStrategy) # Specific domain
         self.register_strategy(PdfProcessorStrategy)    # Specific content type by extension/common URL pattern
+        self.register_strategy(ImageProcessorStrategy)  # Image files (before HTML fallback)
         self.register_strategy(HtmlProcessorStrategy)   # More general HTML
 
     def register_strategy(self, strategy_class: Type[UrlProcessorStrategy]):
