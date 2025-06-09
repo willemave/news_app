@@ -51,7 +51,7 @@ class UrlProcessorFactory:
         else:
             logger.warning(f"Strategy {strategy_class.__name__} already registered.")
 
-    async def get_strategy(self, url: str) -> Optional[UrlProcessorStrategy]:
+    def get_strategy(self, url: str) -> Optional[UrlProcessorStrategy]:
         """
         Determines and instantiates the appropriate strategy for a given URL.
 
@@ -73,7 +73,7 @@ class UrlProcessorFactory:
             # This is a bit of a workaround for strategies that don't need HEAD
             # A more refined approach might involve a static method on strategy or different check.
             temp_instance_for_url_check = strategy_class(self.http_client)
-            if await temp_instance_for_url_check.can_handle_url(url, response_headers=None):
+            if temp_instance_for_url_check.can_handle_url(url, response_headers=None):
                 logger.info(f"Factory: Strategy {strategy_class.__name__} matched URL pattern for {url}.")
                 # Return a new instance for actual processing
                 return strategy_class(self.http_client)
@@ -82,7 +82,7 @@ class UrlProcessorFactory:
         response_headers = None
         try:
             logger.debug(f"Factory: Making HEAD request for {url} to determine content type.")
-            head_response = await self.http_client.head(url)
+            head_response = self.http_client.head(url)
             response_headers = head_response.headers
             # The actual URL might have changed after redirects from HEAD
             # Strategies should ideally use the final URL from HEAD if it's different
@@ -95,7 +95,7 @@ class UrlProcessorFactory:
         for strategy_class in self._strategies:
             # Pass response_headers if available
             instance = strategy_class(self.http_client)
-            if await instance.can_handle_url(url, response_headers=response_headers):
+            if instance.can_handle_url(url, response_headers=response_headers):
                 logger.info(f"Factory: Strategy {strategy_class.__name__} selected for {url} (Content-Type based or fallback).")
                 return instance
         

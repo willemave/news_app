@@ -1,5 +1,5 @@
 """
-This module provides a robust asynchronous HTTP client.
+This module provides a robust synchronous HTTP client.
 """
 import httpx
 from typing import Optional, Dict, Any
@@ -12,7 +12,7 @@ DEFAULT_USER_AGENT = "NewsApp/1.0 (RobustHttpClient)"
 
 class RobustHttpClient:
     """
-    A robust asynchronous HTTP client for making GET and HEAD requests.
+    A robust synchronous HTTP client for making GET and HEAD requests.
     It handles redirects, timeouts, and common HTTP errors.
     """
     def __init__(
@@ -38,19 +38,19 @@ class RobustHttpClient:
             base_headers.update(headers)
         self.default_headers = base_headers
 
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: Optional[httpx.Client] = None
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Initializes and returns the httpx.AsyncClient instance."""
+    def _get_client(self) -> httpx.Client:
+        """Initializes and returns the httpx.Client instance."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
+            self._client = httpx.Client(
                 headers=self.default_headers,
                 timeout=self.default_timeout,
                 follow_redirects=True  # Default to follow redirects
             )
         return self._client
 
-    async def get(
+    def get(
         self,
         url: str,
         headers: Optional[Dict[str, str]] = None,
@@ -58,7 +58,7 @@ class RobustHttpClient:
         stream: bool = False
     ) -> httpx.Response:
         """
-        Performs an asynchronous GET request.
+        Performs a synchronous GET request.
 
         Args:
             url: The URL to request.
@@ -73,7 +73,7 @@ class RobustHttpClient:
             httpx.HTTPStatusError: For 4xx or 5xx responses.
             httpx.RequestError: For other network-related errors.
         """
-        client = await self._get_client()
+        client = self._get_client()
         request_headers = self.default_headers.copy()
         if headers:
             request_headers.update(headers)
@@ -83,10 +83,10 @@ class RobustHttpClient:
         logger.info(f"Making GET request to {url} with timeout {effective_timeout}s (stream={stream})")
         try:
             if stream:
-                response = await client.stream('GET', url, headers=request_headers, timeout=effective_timeout)
-                await response.__aenter__()  # Enter the async context manager
+                response = client.stream('GET', url, headers=request_headers, timeout=effective_timeout)
+                response.__enter__()  # Enter the context manager
             else:
-                response = await client.get(url, headers=request_headers, timeout=effective_timeout)
+                response = client.get(url, headers=request_headers, timeout=effective_timeout)
             
             response.raise_for_status()  # Raise an exception for 4XX or 5XX status codes
             logger.info(f"GET request to {url} successful, status: {response.status_code}")
@@ -102,14 +102,14 @@ class RobustHttpClient:
             logger.error(f"Request error for GET {url}: {e}")
             raise
 
-    async def head(
+    def head(
         self,
         url: str,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None
     ) -> httpx.Response:
         """
-        Performs an asynchronous HEAD request.
+        Performs a synchronous HEAD request.
 
         Args:
             url: The URL to request.
@@ -123,7 +123,7 @@ class RobustHttpClient:
             httpx.HTTPStatusError: For 4xx or 5xx responses.
             httpx.RequestError: For other network-related errors.
         """
-        client = await self._get_client()
+        client = self._get_client()
         request_headers = self.default_headers.copy()
         if headers:
             request_headers.update(headers)
@@ -132,7 +132,7 @@ class RobustHttpClient:
         
         logger.info(f"Making HEAD request to {url} with timeout {effective_timeout}s")
         try:
-            response = await client.head(url, headers=request_headers, timeout=effective_timeout)
+            response = client.head(url, headers=request_headers, timeout=effective_timeout)
             response.raise_for_status() # Raise an exception for 4XX or 5XX status codes
             logger.info(f"HEAD request to {url} successful, status: {response.status_code}")
             if response.history:
@@ -147,27 +147,27 @@ class RobustHttpClient:
             logger.error(f"Request error for HEAD {url}: {e}")
             raise
 
-    async def close(self) -> None:
+    def close(self) -> None:
         """
-        Closes the underlying httpx.AsyncClient.
+        Closes the underlying httpx.Client.
         Should be called when the client is no longer needed, e.g., at application shutdown.
         """
         if self._client and not self._client.is_closed:
             logger.info("Closing RobustHttpClient")
-            await self._client.aclose()
+            self._client.close()
             self._client = None
         else:
             logger.info("RobustHttpClient already closed or not initialized.")
 
 # Example usage (for testing or demonstration, typically not here)
-# async def main():
+# def main():
 #     http_client = RobustHttpClient()
 #     try:
-#         # response = await http_client.get("https://httpbin.org/get")
+#         # response = http_client.get("https://httpbin.org/get")
 #         # print(response.json())
-#         # response_head = await http_client.head("https://httpbin.org/status/200")
+#         # response_head = http_client.head("https://httpbin.org/status/200")
 #         # print(response_head.headers)
-#         response_redirect = await http_client.get("https://httpbin.org/redirect/2")
+#         response_redirect = http_client.get("https://httpbin.org/redirect/2")
 #         print(f"Final URL after redirects: {response_redirect.url}")
 #         print(f"Content: {response_redirect.text[:100]}")
 #
@@ -176,8 +176,7 @@ class RobustHttpClient:
 #     except httpx.RequestError as e:
 #         print(f"Request Error: {e}")
 #     finally:
-#         await http_client.close()
+#         http_client.close()
 
 # if __name__ == "__main__":
-#     import asyncio
-#     asyncio.run(main())
+#     main()

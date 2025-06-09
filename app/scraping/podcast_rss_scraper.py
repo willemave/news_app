@@ -5,7 +5,7 @@ import os
 from typing import List
 from datetime import datetime
 from app.database import SessionLocal
-from app.models import Podcasts
+from app.models import Podcasts, PodcastStatus
 from app.config import logger
 
 def sanitize_filename(title: str) -> str:
@@ -184,8 +184,20 @@ class PodcastRSSScraper:
             # Check if podcast already exists
             existing_podcast = db.query(Podcasts).filter(Podcasts.url == link_url).first()
             if existing_podcast:
-                logger.info(f"Podcast already exists, skipping: {title}")
+                logger.info(f"Podcast already exists: {title}")
                 logger.debug(f"  Existing podcast ID: {existing_podcast.id}, status: {existing_podcast.status}")
+                
+                # If enclosure URL has changed, update it
+                if existing_podcast.enclosure_url != enclosure_url:
+                    logger.info(f"Updating enclosure URL for podcast: {title}")
+                    logger.debug(f"  Old URL: {existing_podcast.enclosure_url}")
+                    logger.debug(f"  New URL: {enclosure_url}")
+                    existing_podcast.enclosure_url = enclosure_url
+                    db.commit()
+                
+                # Log status for pipeline orchestrator to pick up
+                logger.debug(f"Existing podcast status: {existing_podcast.status.value} - will be handled by pipeline orchestrator")
+                
                 return
 
             publication_date = entry.get('published_parsed')
@@ -202,7 +214,7 @@ class PodcastRSSScraper:
                 enclosure_url=enclosure_url,
                 publication_date=publication_date,
                 podcast_feed_name=feed_name,
-                status='new'
+                status=PodcastStatus.new
             )
             db.add(podcast)
             db.commit()

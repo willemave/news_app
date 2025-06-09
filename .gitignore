@@ -15,6 +15,9 @@ data/*
 
 db/*
 
+# Log files (including LLM response debugging logs)
+logs/
+
 # Byte-compiled / optimized / DLL files
 *.pyc
 *.pyo

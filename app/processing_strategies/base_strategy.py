@@ -21,7 +21,7 @@ class UrlProcessorStrategy(ABC):
         """
         self.http_client = http_client
 
-    async def preprocess_url(self, url: str) -> str:
+    def preprocess_url(self, url: str) -> str:
         """
         Optional method to normalize, clean, or otherwise transform a URL
         before attempting to download.
@@ -36,7 +36,7 @@ class UrlProcessorStrategy(ABC):
         return url
 
     @abstractmethod
-    async def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
+    def can_handle_url(self, url: str, response_headers: Optional[httpx.Headers] = None) -> bool:
         """
         Determines if this strategy can handle the given URL or content type.
         This method might be called by a factory after making a HEAD request.
@@ -51,7 +51,7 @@ class UrlProcessorStrategy(ABC):
         pass
 
     @abstractmethod
-    async def download_content(self, url: str) -> Any:
+    def download_content(self, url: str) -> Any:
         """
         Downloads the content from the given URL.
         The return type depends on the content (e.g., bytes for PDF, str for HTML).
@@ -65,7 +65,7 @@ class UrlProcessorStrategy(ABC):
         pass
 
     @abstractmethod
-    async def extract_data(self, content: Any, url: str) -> Dict[str, Any]:
+    def extract_data(self, content: Any, url: str) -> Dict[str, Any]:
         """
         Extracts relevant data from the downloaded content.
         Should return a standardized dictionary.
@@ -97,7 +97,7 @@ class UrlProcessorStrategy(ABC):
         pass
 
     @abstractmethod
-    async def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    def prepare_for_llm(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prepares the extracted data into a format suitable for LLM processing
         (filtering and summarization) based on app.llm functions.
@@ -116,7 +116,7 @@ class UrlProcessorStrategy(ABC):
         """
         pass
 
-    async def extract_internal_urls(self, content: Any, original_url: str) -> List[str]:
+    def extract_internal_urls(self, content: Any, original_url: str) -> List[str]:
         """
         Optional method to identify and extract relevant URLs found within the
         processed content. For logging related links.

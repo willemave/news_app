@@ -3,7 +3,6 @@ Link processor module that consumes URLs from the links_to_scrape queue,
 downloads content, processes it with LLM, and creates Articles/Summaries.
 Uses a strategy pattern for handling different URL types.
 """
-import asyncio # For async operations
 import base64
 # import re # No longer needed here, moved to strategies
 # import requests # Replaced by httpx via RobustHttpClient
@@ -192,10 +191,10 @@ def update_link_status(link_id: int, status: LinkStatus, db_session: SessionLoca
         pass # db_session.close() # Caller manages session
 
 
-async def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: UrlProcessorFactory) -> bool: # Made async, added client & factory
+def process_link_from_db(link: Links, http_client: RobustHttpClient, factory: UrlProcessorFactory) -> bool: # Made synchronous, added client & factory
     """
     Process a link from the database using the strategy pattern.
-    This function is now asynchronous.
+    This function is now synchronous.
     """
     logger.info(f"Processing link ID {link.id} from {link.source}: {link.url}")
     db = SessionLocal() # Manage session within this task execution
@@ -221,7 +220,7 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
 
         while delegation_count < MAX_DELEGATIONS:
             delegation_count += 1
-            strategy_instance = await factory.get_strategy(current_url_to_process)
+            strategy_instance = factory.get_strategy(current_url_to_process)
 
             if not strategy_instance:
                 error_msg = f"No suitable processing strategy found for URL: {current_url_to_process} (original: {link.url})"
@@ -237,7 +236,7 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
                 # Preprocess URL (e.g., arXiv /abs/ to /pdf/)
                 # The factory might re-evaluate if preprocess_url changes URL type significantly,
                 # but for now, assume current strategy handles the preprocessed URL.
-                processed_url_for_download = await strategy_instance.preprocess_url(current_url_to_process)
+                processed_url_for_download = strategy_instance.preprocess_url(current_url_to_process)
                 if processed_url_for_download != current_url_to_process:
                      logger.info(f"URL preprocessed from {current_url_to_process} to {processed_url_for_download} by {strategy_instance.__class__.__name__}")
                      # If URL changed significantly (e.g. to a PDF by Arxiv preprocessor in HTML strategy),
@@ -246,10 +245,10 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
                      current_url_to_process = processed_url_for_download
 
 
-                content_downloaded = await strategy_instance.download_content(current_url_to_process)
+                content_downloaded = strategy_instance.download_content(current_url_to_process)
                 
                 # Pass original link.url for context if needed by extract_data
-                temp_extracted_data = await strategy_instance.extract_data(content_downloaded, current_url_to_process)
+                temp_extracted_data = strategy_instance.extract_data(content_downloaded, current_url_to_process)
                 temp_extracted_data["original_url_from_db"] = link.url # Ensure original URL is part of data
 
                 if temp_extracted_data.get("content_type") == "pubmed_delegation":
@@ -269,7 +268,7 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
                         logger.error(error_msg)
                         # Fall through to treat as failure of this strategy path
                         extracted_data = temp_extracted_data # Keep the error data
-                        break 
+                        break
                 
                 extracted_data = temp_extracted_data
                 break # Successful extraction, exit delegation loop
@@ -303,7 +302,7 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
             return False
 
         # Log internal URLs if any (for now, strategies return empty list)
-        # internal_urls = await strategy_instance.extract_internal_urls(content_downloaded, link.url)
+        # internal_urls = strategy_instance.extract_internal_urls(content_downloaded, link.url)
         # if internal_urls:
         #     logger.info(f"Extracted internal URLs for {link.url}: {internal_urls}")
 
@@ -317,7 +316,7 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
             return True
 
         # Prepare data for LLM
-        llm_input_data = await strategy_instance.prepare_for_llm(extracted_data)
+        llm_input_data = strategy_instance.prepare_for_llm(extracted_data)
         
         # Process with LLM (may raise ClientError for 429)
         llm_results = process_with_llm(llm_input_data, link.url) # Pass original_url for logging
@@ -337,7 +336,7 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
             record_failure(db, FailurePhase.processor, error_msg_skipped, link.id, skip_reason=skip_reason) # Pass db session
             update_link_status(link.id, LinkStatus.skipped, db)
             db.commit()
-            return True 
+            return True
 
         # Create article
         article_created = create_article_and_link_to_source(extracted_data, llm_results, link, db)
@@ -382,7 +381,7 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
 # huey = SqliteHuey(filename=settings.HUEY_DB_PATH)
 
 # @huey.task()
-# async def process_link_task(link_id: int):
+# def process_link_task(link_id: int):
 #     db = SessionLocal()
 #     link = db.query(Links).filter(Links.id == link_id).first()
 #     if not link:
@@ -392,19 +391,16 @@ async def process_link_from_db(link: Links, http_client: RobustHttpClient, facto
     
 #     # Initialize http_client and factory once per worker or task group if possible,
 #     # or per task if they are lightweight to create/destroy.
-#     # For RobustHttpClient, it's better to reuse the underlying httpx.AsyncClient.
+#     # For RobustHttpClient, it's better to reuse the underlying httpx.Client.
 #     # This example creates them per task for simplicity here.
 #     http_client = RobustHttpClient(timeout=settings.HTTP_CLIENT_TIMEOUT, headers={'User-Agent': settings.HTTP_CLIENT_USER_AGENT})
 #     factory = UrlProcessorFactory(http_client)
     
 #     try:
-#         await process_link_from_db(link, http_client, factory)
+#         process_link_from_db(link, http_client, factory)
 #     finally:
-#         await http_client.close() # Ensure client is closed
+#         http_client.close() # Ensure client is closed
 #         db.close()
 
-# To run an async Huey task, the Huey consumer needs to be configured
-# to handle asyncio tasks. This might involve using `asyncio.run` within
-# the task or using an async-compatible Huey setup.
-# The `process_link_from_db` is now async. The caller (Huey task)
-# needs to be ableto `await` it or run it in an event loop.
+# The `process_link_from_db` is now synchronous. The caller (Huey task)
+# can call it directly without needing async/await.
