@@ -1,6 +1,4 @@
-import asyncio
-from datetime import datetime
-from typing import Dict, List
+from typing import Dict
 from app.database import SessionLocal
 from app.models import Podcasts, PodcastStatus
 from app.queue import download_podcast_task, transcribe_podcast_task, summarize_podcast_task

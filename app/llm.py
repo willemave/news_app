@@ -6,13 +6,12 @@ This module manages the LLM integration for:
 Uses Google Gemini Flash 2.5 for all LLM operations.
 """
 import json
-import logging
 import os
 from datetime import datetime
 from google import genai
 from google.genai import types
 from .config import settings
-from .schemas import ArticleSummary, FilterResult, PodcastSummary
+from .schemas import ArticleSummary, FilterResult
 
 # Removed global genai.configure(api_key=settings.GOOGLE_API_KEY)
 

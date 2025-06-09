@@ -2,7 +2,7 @@
 This module provides a robust synchronous HTTP client.
 """
 import httpx
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 
 from app.config import settings, logger # Assuming logger is configured in app.config
 

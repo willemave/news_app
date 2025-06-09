@@ -1,12 +1,10 @@
 import os
-from datetime import datetime
 from typing import Optional
 from faster_whisper import WhisperModel
 from app.database import SessionLocal
-from app.models import Podcasts, PodcastStatus
+from app.models import PodcastStatus
 from app.config import logger
 from app.processing.checkout_manager import CheckoutManager
-from app.processing.state_machine import PodcastStateMachine
 from app.constants import generate_worker_id, WORKER_TRANSCRIBER
 
 class PodcastConverter:

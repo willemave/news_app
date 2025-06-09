@@ -18,7 +18,13 @@ class TestFilterArticle:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         
+        # Mock the parsed response object
+        mock_parsed = Mock()
+        mock_parsed.matches = True
+        mock_parsed.reason = "Technical content with good depth"
+        
         mock_response = Mock()
+        mock_response.parsed = mock_parsed
         mock_response.text = '{"matches": true, "reason": "Technical content with good depth"}'
         mock_client.models.generate_content.return_value = mock_response
         
@@ -36,13 +42,19 @@ class TestFilterArticle:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         
+        # Mock the parsed response object
+        mock_parsed = Mock()
+        mock_parsed.matches = False
+        mock_parsed.reason = "Primarily promotional content with minimal technical value"
+        
         mock_response = Mock()
+        mock_response.parsed = mock_parsed
         mock_response.text = '{"matches": false, "reason": "Primarily promotional content with minimal technical value"}'
         mock_client.models.generate_content.return_value = mock_response
         
         content = """
-        This is a promotional article about our amazing new product that will revolutionize 
-        your life! Buy now and get 50% off! This is clearly marketing content with no 
+        This is a promotional article about our amazing new product that will revolutionize
+        your life! Buy now and get 50% off! This is clearly marketing content with no
         technical depth or analysis.
         """
         
@@ -58,7 +70,13 @@ class TestFilterArticle:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         
+        # Mock the parsed response object
+        mock_parsed = Mock()
+        mock_parsed.matches = False
+        mock_parsed.reason = "Shallow news report without technical analysis"
+        
         mock_response = Mock()
+        mock_response.parsed = mock_parsed
         mock_response.text = '{"matches": false, "reason": "Shallow news report without technical analysis"}'
         mock_client.models.generate_content.return_value = mock_response
         
@@ -76,7 +94,13 @@ class TestFilterArticle:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         
+        # Mock the parsed response object
+        mock_parsed = Mock()
+        mock_parsed.matches = True
+        mock_parsed.reason = "In-depth technical analysis with implementation details"
+        
         mock_response = Mock()
+        mock_response.parsed = mock_parsed
         mock_response.text = '{"matches": true, "reason": "In-depth technical analysis with implementation details"}'
         mock_client.models.generate_content.return_value = mock_response
         
@@ -114,6 +138,7 @@ class TestFilterArticle:
         mock_client_class.return_value = mock_client
         
         mock_response = Mock()
+        mock_response.parsed = None  # No parsed object available
         mock_response.text = 'invalid json response'
         mock_client.models.generate_content.return_value = mock_response
         
@@ -132,6 +157,7 @@ class TestFilterArticle:
         mock_client_class.return_value = mock_client
         
         mock_response = Mock()
+        mock_response.parsed = None  # No parsed object available
         mock_response.text = '{"some_other_field": "value"}'
         mock_client.models.generate_content.return_value = mock_response
         
@@ -300,7 +326,13 @@ class TestSkipReasonIntegration:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         
+        # Mock the parsed response object
+        mock_parsed = Mock()
+        mock_parsed.matches = False
+        mock_parsed.reason = "Promotional content detected"
+        
         mock_response = Mock()
+        mock_response.parsed = mock_parsed
         mock_response.text = '{"matches": false, "reason": "Promotional content detected"}'
         mock_client.models.generate_content.return_value = mock_response
         

@@ -133,7 +133,6 @@ def create_link_record(url: str, source: str) -> Optional[Tuple[int, bool]]:
         # Check if link already exists in Links table
         existing_link = db.query(Links).filter(Links.url == url).first()
         if existing_link:
-            from ..models import LinkStatus
             logger.info(f"Link {existing_link.id} already exists with status {existing_link.status.value}: {url}")
             return existing_link.id, False # Not created, already exists
         

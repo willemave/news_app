@@ -1,8 +1,6 @@
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 from app.scraping.podcast_rss_scraper import PodcastRSSScraper
-from app.models import Podcasts, PodcastStatus
 
 
 class TestPodcastRSSScraperExistingPodcasts:
@@ -26,7 +24,7 @@ class TestPodcastRSSScraperExistingPodcasts:
             return PodcastRSSScraper()
 
     def test_existing_podcast_new_status_queues_download(self, scraper, mock_db_session):
-        """Test that existing podcast with 'new' status gets queued for download."""
+        """Test that existing podcast with 'new' status is handled correctly."""
         # Mock existing podcast with 'new' status
         existing_podcast = Mock()
         existing_podcast.id = 123
@@ -35,22 +33,21 @@ class TestPodcastRSSScraperExistingPodcasts:
         
         mock_db_session.query.return_value.filter.return_value.first.return_value = existing_podcast
         
-        # Mock the download task
-        with patch('app.queue.download_podcast_task') as mock_download_task:
-            # Create mock entry
-            entry = {
-                'title': 'Test Episode',
-                'link': 'http://example.com/episode1',
-                'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
-            }
-            
-            scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
-            
-            # Verify download task was called
-            mock_download_task.assert_called_once_with(123)
+        # Create mock entry
+        entry = {
+            'title': 'Test Episode',
+            'link': 'http://example.com/episode1',
+            'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
+        }
+        
+        # The scraper should just log and return - pipeline orchestrator handles queueing
+        scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
+        
+        # Verify no new podcast was created (existing one was found)
+        mock_db_session.add.assert_not_called()
 
     def test_existing_podcast_downloaded_status_queues_transcription(self, scraper, mock_db_session):
-        """Test that existing podcast with 'downloaded' status gets queued for transcription."""
+        """Test that existing podcast with 'downloaded' status is handled correctly."""
         # Mock existing podcast with 'downloaded' status
         existing_podcast = Mock()
         existing_podcast.id = 456
@@ -59,22 +56,21 @@ class TestPodcastRSSScraperExistingPodcasts:
         
         mock_db_session.query.return_value.filter.return_value.first.return_value = existing_podcast
         
-        # Mock the transcription task
-        with patch('app.queue.transcribe_podcast_task') as mock_transcribe_task:
-            # Create mock entry
-            entry = {
-                'title': 'Test Episode',
-                'link': 'http://example.com/episode1',
-                'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
-            }
-            
-            scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
-            
-            # Verify transcription task was called
-            mock_transcribe_task.assert_called_once_with(456)
+        # Create mock entry
+        entry = {
+            'title': 'Test Episode',
+            'link': 'http://example.com/episode1',
+            'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
+        }
+        
+        # The scraper should just log and return - pipeline orchestrator handles queueing
+        scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
+        
+        # Verify no new podcast was created (existing one was found)
+        mock_db_session.add.assert_not_called()
 
     def test_existing_podcast_transcribed_status_queues_summarization(self, scraper, mock_db_session):
-        """Test that existing podcast with 'transcribed' status gets queued for summarization."""
+        """Test that existing podcast with 'transcribed' status is handled correctly."""
         # Mock existing podcast with 'transcribed' status
         existing_podcast = Mock()
         existing_podcast.id = 789
@@ -83,19 +79,18 @@ class TestPodcastRSSScraperExistingPodcasts:
         
         mock_db_session.query.return_value.filter.return_value.first.return_value = existing_podcast
         
-        # Mock the summarization task
-        with patch('app.queue.summarize_podcast_task') as mock_summarize_task:
-            # Create mock entry
-            entry = {
-                'title': 'Test Episode',
-                'link': 'http://example.com/episode1',
-                'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
-            }
-            
-            scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
-            
-            # Verify summarization task was called
-            mock_summarize_task.assert_called_once_with(789)
+        # Create mock entry
+        entry = {
+            'title': 'Test Episode',
+            'link': 'http://example.com/episode1',
+            'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
+        }
+        
+        # The scraper should just log and return - pipeline orchestrator handles queueing
+        scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
+        
+        # Verify no new podcast was created (existing one was found)
+        mock_db_session.add.assert_not_called()
 
     def test_existing_podcast_summarized_status_no_action(self, scraper, mock_db_session):
         """Test that existing podcast with 'summarized' status takes no action."""

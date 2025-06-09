@@ -4,9 +4,7 @@ Test to reproduce and fix JSON parsing errors in podcast summarization.
 This test reproduces the specific error seen in logs:
 "JSON parsing error in summarize_podcast_transcript: Expecting ',' delimiter: line 3 column 1241 (char 1647)"
 """
-import pytest
 from unittest.mock import Mock, patch
-import json
 from app.llm import summarize_podcast_transcript, _parse_malformed_summary_response
 from app.schemas import ArticleSummary
 

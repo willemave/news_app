@@ -4,9 +4,7 @@ Test to reproduce JSON parsing error in summarize_article function.
 This test reproduces the specific error seen in logs:
 "JSON parsing error in summarize_article: Expecting ',' delimiter: line 4 column 1 (char 3526)"
 """
-import pytest
 from unittest.mock import Mock, patch
-import json
 from app.llm import summarize_article
 from app.schemas import ArticleSummary
 

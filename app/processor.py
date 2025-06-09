@@ -3,7 +3,6 @@ Link processor module that consumes URLs from the links_to_scrape queue,
 downloads content, processes it with LLM, and creates Articles/Summaries.
 Uses a strategy pattern for handling different URL types.
 """
-import base64
 # import re # No longer needed here, moved to strategies
 # import requests # Replaced by httpx via RobustHttpClient
 from datetime import datetime
@@ -13,7 +12,7 @@ from google.genai.errors import ClientError
 # from trafilatura import bare_extraction # Moved to HtmlStrategy
 # from bs4 import BeautifulSoup # Moved to PubMedStrategy
 
-from .config import logger, settings # Import settings for client config
+from .config import logger # Import settings for client config
 from .database import SessionLocal
 from .models import Articles, Links, LinkStatus, FailurePhase
 from .utils.failures import record_failure

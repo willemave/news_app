@@ -6,10 +6,9 @@ Uses checkout/checkin mechanism for worker concurrency control.
 import os
 from typing import Optional
 from app.database import SessionLocal
-from app.models import Podcasts, PodcastStatus
+from app.models import PodcastStatus
 from app.config import logger
 from app.processing.checkout_manager import CheckoutManager
-from app.processing.state_machine import PodcastStateMachine
 from app.constants import generate_worker_id, WORKER_SUMMARIZER
 from app import llm
 

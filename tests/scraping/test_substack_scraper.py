@@ -1,6 +1,5 @@
 import pytest
 from unittest.mock import patch, MagicMock, mock_open, call
-import yaml
 
 # Mock database models before importing the scraper
 from app.models import Base
