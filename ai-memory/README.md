@@ -84,6 +84,7 @@
 
 ### Web Interface
 * [`app/routers/articles.py`](app/routers/articles.py) - Article viewing endpoints
+* [`app/routers/podcasts.py`](app/routers/podcasts.py) - Podcast viewing endpoints with filtering
 * [`app/routers/admin.py`](app/routers/admin.py) - Admin dashboard and controls
 * [`templates/`](templates/) - Jinja2 templates with markdown support
 * [`static/`](static/) - TailwindCSS styles and JavaScript
@@ -136,5 +137,6 @@
 * **Implemented**: Comprehensive test suite 
 * **Implemented**: Admin dashboard with pipeline monitoring
 * **Implemented**: Podcast processing continuation - existing podcasts now continue through pipeline instead of being skipped
+* **Implemented**: Podcast download date filtering - dropdown filter showing actual download dates from database
 * **In Progress**: Substack RSS processing with local file storage
 * **Planned**: Additional content sources and processing strategies

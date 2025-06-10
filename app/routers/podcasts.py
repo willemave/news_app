@@ -2,25 +2,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from typing import Optional
+from datetime import datetime, timedelta
 
 from ..database import get_db
 from ..models import Podcasts, PodcastStatus
 from ..config import logger
+from ..templates import templates
 
 router = APIRouter()
-
-# Import templates from main to get the markdown filter
-def get_templates():
-    from app.main import templates
-    return templates
 
 @router.get("/", response_class=HTMLResponse)
 def get_podcasts_page(
     request: Request,
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=100, description="Number of podcasts to return"),
-    status: Optional[str] = Query(None, description="Filter by podcast status"),
-    feed_name: Optional[str] = Query(None, description="Filter by podcast feed name")
+    download_date: Optional[str] = Query(None, description="Filter by download date")
 ):
     """
     Get the podcasts HTML page with optional filtering and pagination.
@@ -28,16 +24,16 @@ def get_podcasts_page(
     try:
         query = db.query(Podcasts)
         
-        # Apply filters
-        if status:
+        # Apply date filter
+        if download_date:
             try:
-                status_enum = PodcastStatus(status)
-                query = query.filter(Podcasts.status == status_enum)
+                # Parse the date string and filter by that specific date
+                filter_date = datetime.strptime(download_date, "%Y-%m-%d").date()
+                query = query.filter(
+                    db.func.date(Podcasts.download_date) == filter_date
+                )
             except ValueError:
-                pass  # Invalid status, ignore filter
-        
-        if feed_name:
-            query = query.filter(Podcasts.podcast_feed_name.ilike(f"%{feed_name}%"))
+                pass  # Invalid date format, ignore filter
         
         # Order by creation date (newest first)
         query = query.order_by(Podcasts.created_date.desc())
@@ -45,16 +41,20 @@ def get_podcasts_page(
         # Apply limit
         podcasts = query.limit(limit).all()
         
-        # Get unique feed names for filter dropdown
-        feed_names = db.query(Podcasts.podcast_feed_name).distinct().all()
-        feed_names = [name[0] for name in feed_names]
+        # Get unique download dates for filter dropdown
+        download_dates_query = db.query(
+            db.func.date(Podcasts.download_date).label('date')
+        ).filter(
+            Podcasts.download_date.isnot(None)
+        ).distinct().order_by(db.func.date(Podcasts.download_date).desc())
         
-        return get_templates().TemplateResponse("podcasts.html", {
+        download_dates = [row.date.strftime('%Y-%m-%d') for row in download_dates_query.all() if row.date]
+        
+        return templates.TemplateResponse("podcasts.html", {
             "request": request,
             "podcasts": podcasts,
-            "current_status": status,
-            "current_feed": feed_name,
-            "feed_names": feed_names
+            "current_download_date": download_date,
+            "download_dates": download_dates
         })
         
     except Exception as e:
@@ -85,7 +85,7 @@ def get_podcast_detail_page(
             except FileNotFoundError:
                 pass
         
-        return get_templates().TemplateResponse("podcast_detail.html", {
+        return templates.TemplateResponse("podcast_detail.html", {
             "request": request,
             "podcast": podcast,
             "transcript": transcript_text

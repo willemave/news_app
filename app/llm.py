@@ -249,11 +249,12 @@ def filter_article(content: str) -> tuple[bool, str]:
     Decide whether an article matches user preferences using Google Gemini.
     Returns tuple of (matches: bool, reason: str).
     """
-    system_prompt = """You are an intelligent news filter. Your task is to determine if an article matches the following preferences:
+    system_prompt = """You are an intelligent news filter. 
+    Your task is to determine if an article matches the following preferences:
 
-- Focus on technology, software development, AI, and business strategy.
-- Prefer in-depth analysis over news reports.
-- Include opinion pieces only if they provide detailed technical or strategic insights from recognized industry experts, even if they contain a minor promotional element.
+- Focus on technology, physics, longevity, AI, and strategy.
+- Skip news reports.
+- Include opinion pieces only if they provide unqiue insights.
 - Exclude articles primarily intended as marketing or promotional material unless the promotional content is minimal and clearly secondary to substantial informative content.
     
     Respond with whether the article matches and provide a brief explanation."""
@@ -320,12 +321,15 @@ def summarize_article(content: str) -> ArticleSummary:
     Generate short and detailed summaries for the content using Google Gemini.
     Returns an ArticleSummary pydantic model.
     """
-    system_prompt = """You are an expert at summarizing articles.
+    system_prompt = """You are an expert at summarizing articles, 
+    you want to provide a dense and information rich summary of the article.
     
     You are going to create two summaries of the article.
     1. A Short 2 sentence summary for brief scanning.
-    2. A detailed summary that starts with bullet points of the key topics
-     and then a few paragraphs summarizing the document.
+    2. A detailed summary that has the following: 
+        Bullet points of the key topics. 
+        A few paragraphs summarizing the document. 
+        Some quotes that convey the meaning of the article.
 
     IMPORTANT: Both fields must be strings, not arrays. Format bullet points as text with line breaks."""
 
@@ -426,8 +430,11 @@ def analyze_pdf(pdf_data: bytes) -> PdfAnalysis:
     Your task is to:
     1. Extract the title of the document
     2. Create a short 2 sentence summary for brief scanning
-    3. Create a detailed summary that starts with bullet points of the key topics
-       and then a few paragraphs summarizing the document
+    3. A detailed summary that has the following: 
+        Bullet points of the key topics. 
+        A few paragraphs summarizing the document. 
+        Some quotes that convey the meaning of the article.
+        Please include descriptions of diagrams.
     
     IMPORTANT: All fields must be strings, not arrays. Format bullet points as text with line breaks."""
 
