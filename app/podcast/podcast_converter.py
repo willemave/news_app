@@ -4,7 +4,7 @@ from faster_whisper import WhisperModel
 from app.database import SessionLocal
 from app.models import PodcastStatus
 from app.config import logger
-from app.processing.checkout_manager import CheckoutManager
+from app.podcast.checkout_manager import CheckoutManager
 from app.constants import generate_worker_id, WORKER_TRANSCRIBER
 
 class PodcastConverter:

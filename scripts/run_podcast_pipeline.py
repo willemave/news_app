@@ -15,8 +15,8 @@ from typing import Dict
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.scraping.podcast_rss_scraper import run_podcast_scraper
-from app.processing.pipeline_orchestrator import PipelineOrchestrator
-from app.processing.checkout_manager import CheckoutManager
+from app.podcast.pipeline_orchestrator import PipelineOrchestrator
+from app.podcast.checkout_manager import CheckoutManager
 from app.database import SessionLocal
 from app.models import Podcasts, PodcastStatus
 from app.config import logger

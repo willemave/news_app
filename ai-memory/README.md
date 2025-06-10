@@ -15,13 +15,13 @@
 * **HTTP Client**: [`RobustHttpClient`](app/http_client/robust_http_client.py) with retry logic and rate limiting
 
 ### API & UI
-* **FastAPI**: [`main.py`](app/main.py:10) with routers for [`articles`](app/routers/articles.py), [`admin`](app/routers/admin.py)
+* **FastAPI**: [`main.py`](app/main.py:10) with routers for [`articles`](app/routers/articles.py), [`podcasts`](app/routers/podcasts.py), [`admin`](app/routers/admin.py)
 * **Templates**: Jinja2 with markdown filter support, HTMX for dynamic actions
 * **Static**: TailwindCSS for styling
 
 ### Data Layer
-* **Models**: [`Articles`](app/models.py:40), [`Links`](app/models.py:26), [`FailureLogs`](app/models.py:64), [`CronLogs`](app/models.py:77)
-* **Status Tracking**: [`LinkStatus`](app/models.py:8), [`ArticleStatus`](app/models.py:15) enums for pipeline state
+* **Models**: [`Articles`](app/models.py:40), [`Links`](app/models.py:26), [`FailureLogs`](app/models.py:64), [`CronLogs`](app/models.py:77), [`PodcastEpisodes`](app/models.py:90), [`PodcastDownloads`](app/models.py:118)
+* **Status Tracking**: [`LinkStatus`](app/models.py:8), [`ArticleStatus`](app/models.py:15), [`PodcastStatus`](app/models.py:21) enums for pipeline state
 * **Database**: SQLite via SQLAlchemy with [`local_path`](app/models.py:62) support for Substack articles
 
 ### LLM Integration
@@ -70,11 +70,20 @@
 * [`app/processing_strategies/pdf_strategy.py`](app/processing_strategies/pdf_strategy.py) - PDF content processing
 * [`app/processing_strategies/pubmed_strategy.py`](app/processing_strategies/pubmed_strategy.py) - PubMed delegation strategy
 * [`app/processing_strategies/arxiv_strategy.py`](app/processing_strategies/arxiv_strategy.py) - ArXiv preprocessing strategy
+* [`app/processing_strategies/image_strategy.py`](app/processing_strategies/image_strategy.py) - Image processing strategy
+
+### Podcast Pipeline
+* [`app/podcast/pipeline_orchestrator.py`](app/podcast/pipeline_orchestrator.py) - Orchestrates the podcast processing pipeline
+* [`app/podcast/podcast_downloader.py`](app/podcast/podcast_downloader.py) - Downloads podcast episodes
+* [`app/podcast/podcast_converter.py`](app/podcast/podcast_converter.py) - Converts audio files to a standard format
+* [`app/podcast/podcast_summarizer.py`](app/podcast/podcast_summarizer.py) - Summarizes podcast episodes using LLM
+* [`app/podcast/state_machine.py`](app/podcast/state_machine.py) - Manages the state of podcast episodes
 
 ### Scrapers
 * [`app/scraping/hackernews_scraper.py`](app/scraping/hackernews_scraper.py) - HackerNews top stories
 * [`app/scraping/reddit.py`](app/scraping/reddit.py) - Reddit front page scraper
 * [`app/scraping/substack_scraper.py`](app/scraping/substack_scraper.py) - RSS feed scraper for Substack
+* [`app/scraping/podcast_rss_scraper.py`](app/scraping/podcast_rss_scraper.py) - Scrapes podcast RSS feeds
 
 ### HTTP Client
 * [`app/http_client/robust_http_client.py`](app/http_client/robust_http_client.py) - Async HTTP client with retry logic
@@ -138,5 +147,4 @@
 * **Implemented**: Admin dashboard with pipeline monitoring
 * **Implemented**: Podcast processing continuation - existing podcasts now continue through pipeline instead of being skipped
 * **Implemented**: Podcast download date filtering - dropdown filter showing actual download dates from database
-* **In Progress**: Substack RSS processing with local file storage
-* **Planned**: Additional content sources and processing strategies
+* **Implemented**: Substack RSS processing with local file storage

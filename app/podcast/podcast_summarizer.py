@@ -8,7 +8,7 @@ from typing import Optional
 from app.database import SessionLocal
 from app.models import PodcastStatus
 from app.config import logger
-from app.processing.checkout_manager import CheckoutManager
+from app.podcast.checkout_manager import CheckoutManager
 from app.constants import generate_worker_id, WORKER_SUMMARIZER
 from app import llm
 

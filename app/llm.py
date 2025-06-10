@@ -252,8 +252,8 @@ def filter_article(content: str) -> tuple[bool, str]:
     system_prompt = """You are an intelligent news filter. 
     Your task is to determine if an article matches the following preferences:
 
-- Focus on technology, physics, longevity, AI, and strategy.
-- Skip news reports.
+- Focus on technology, physics, longevity, biology, AI, and strategy.
+- Skip news reports and marketing pieces. 
 - Include opinion pieces only if they provide unqiue insights.
 - Exclude articles primarily intended as marketing or promotional material unless the promotional content is minimal and clearly secondary to substantial informative content.
     

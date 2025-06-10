@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from app.database import SessionLocal
 from app.models import PodcastStatus
 from app.config import logger
-from app.processing.checkout_manager import CheckoutManager
+from app.podcast.checkout_manager import CheckoutManager
 from app.constants import generate_worker_id, WORKER_DOWNLOADER
 
 def sanitize_filename(title: str) -> str:
