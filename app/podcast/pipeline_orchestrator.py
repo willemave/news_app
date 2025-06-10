@@ -10,10 +10,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.database import SessionLocal
 from app.models import Podcasts, PodcastStatus
 from app.config import logger
-from app.processing.checkout_manager import CheckoutManager
-from app.processing.podcast_downloader import PodcastDownloader
-from app.processing.podcast_converter import PodcastConverter
-from app.processing.podcast_summarizer import PodcastSummarizer
+from app.podcast.checkout_manager import CheckoutManager
+from app.podcast.podcast_downloader import PodcastDownloader
+from app.podcast.podcast_converter import PodcastConverter
+from app.podcast.podcast_summarizer import PodcastSummarizer
 from app.constants import (
     DEFAULT_POLLING_INTERVAL_SECONDS,
     DEFAULT_DOWNLOADER_CONCURRENCY,

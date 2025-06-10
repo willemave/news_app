@@ -145,7 +145,8 @@
                     <span class="font-medium">Created:</span> {{ failure.created_date.strftime('%Y-%m-%d %H:%M') if failure.created_date else 'N/A' }}
                   </div>
                   <div class="p-2 bg-red-50 rounded text-xs text-red-700">
-                    <span class="font-medium">Error:</span> {{ failure.error_msg[:200] }}{% if failure.error_msg|length > 200 %}...{% endif %}
+                    <span class="font-medium">Error:</span>
+                    <pre class="whitespace-pre-wrap font-sans">{{ failure.error_msg }}</pre>
                   </div>
                 </div>
               </div>
