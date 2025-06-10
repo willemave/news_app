@@ -1,103 +1,97 @@
 {% extends "base.html" %}
-
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-    <h1 class="text-3xl font-bold mb-6">Podcasts</h1>
-    
-    <!-- Filter Form -->
-    <div class="mb-6 p-4 bg-gray-100 rounded-lg">
-        <form method="get" class="flex flex-wrap gap-4 items-end">
-            <div>
-                <label for="feed_name" class="block text-sm font-medium text-gray-700 mb-1">Feed</label>
-                <select name="feed_name" id="feed_name" class="border border-gray-300 rounded-md px-3 py-2">
-                    <option value="">All Feeds</option>
-                    {% for feed in feed_names %}
-                    <option value="{{ feed }}" {% if current_feed == feed %}selected{% endif %}>{{ feed }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            
-            <div>
-                <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select name="status" id="status" class="border border-gray-300 rounded-md px-3 py-2">
-                    <option value="">All Statuses</option>
-                    <option value="new" {% if current_status == "new" %}selected{% endif %}>New</option>
-                    <option value="downloaded" {% if current_status == "downloaded" %}selected{% endif %}>Downloaded</option>
-                    <option value="transcribed" {% if current_status == "transcribed" %}selected{% endif %}>Transcribed</option>
-                    <option value="summarized" {% if current_status == "summarized" %}selected{% endif %}>Summarized</option>
-                    <option value="failed" {% if current_status == "failed" %}selected{% endif %}>Failed</option>
-                </select>
-            </div>
-            
-            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                Filter
-            </button>
-            
-            <a href="/podcasts" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
-                Clear
-            </a>
-        </form>
-    </div>
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <!-- Podcasts List -->
-    {% if podcasts %}
-    <div class="grid gap-6">
-        {% for podcast in podcasts %}
-        <div class="bg-white shadow-md rounded-lg p-6 border border-gray-200">
-            <div class="flex justify-between items-start mb-4">
-                <div class="flex-1">
-                    <h2 class="text-xl font-semibold mb-2">
-                        <a href="/podcasts/detail/{{ podcast.id }}" class="text-blue-600 hover:text-blue-800">
-                            {{ podcast.title }}
-                        </a>
-                    </h2>
-                    <p class="text-gray-600 mb-2">
-                        <strong>Feed:</strong> {{ podcast.podcast_feed_name }}
-                    </p>
-                    {% if podcast.publication_date %}
-                    <p class="text-gray-500 text-sm mb-2">
-                        <strong>Published:</strong> {{ podcast.publication_date.strftime('%Y-%m-%d %H:%M') }}
-                    </p>
-                    {% endif %}
-                </div>
-                
-                <div class="ml-4">
-                    {% if podcast.status.value == "new" %}
-                    <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">New</span>
-                    {% elif podcast.status.value == "downloaded" %}
-                    <span class="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Downloaded</span>
-                    {% elif podcast.status.value == "transcribed" %}
-                    <span class="inline-block bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">Transcribed</span>
-                    {% elif podcast.status.value == "summarized" %}
-                    <span class="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">Summarized</span>
-                    {% elif podcast.status.value == "failed" %}
-                    <span class="inline-block bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">Failed</span>
-                    {% endif %}
-                </div>
-            </div>
-            
-            {% if podcast.short_summary %}
-            <div class="mb-4">
-                <p class="text-gray-700">{{ podcast.short_summary }}</p>
-            </div>
-            {% endif %}
-            
-            <div class="flex justify-between items-center text-sm text-gray-500">
-                <span>Added: {{ podcast.created_date.strftime('%Y-%m-%d %H:%M') }}</span>
-                <a href="/podcasts/detail/{{ podcast.id }}" class="text-blue-600 hover:text-blue-800 font-medium">
-                    View Details →
-                </a>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="text-center py-12">
-        <p class="text-gray-500 text-lg">No podcasts found.</p>
-        {% if current_status or current_feed %}
-        <p class="text-gray-400 mt-2">Try adjusting your filters or <a href="/podcasts" class="text-blue-600 hover:text-blue-800">view all podcasts</a>.</p>
+  <!-- Header and Date Filter -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 pb-2">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">
+        Podcasts
+      </h1>
+      <p class="mt-1 text-sm text-gray-500">
+        {% if current_download_date %}
+          Displaying episodes for <span class="font-semibold text-blue-600">{{ current_download_date }}</span>
+        {% else %}
+          Displaying {{ podcasts|length }} most recent episodes
         {% endif %}
+      </p>
     </div>
-    {% endif %}
+    
+    <!-- Date Filter Dropdown -->
+    <div class="mt-4 sm:mt-0">
+      <label for="date-filter" class="sr-only">Filter by date</label>
+      <select id="date-filter" class="block w-full sm:w-auto pl-3 pr-10 py-2 text-base bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md border-transparent" onchange="filterByDate(this.value)">
+        <option value="">All Dates</option>
+        {% for date in download_dates %}
+          <option value="{{ date }}" {% if current_download_date == date %}selected{% endif %}>
+            {{ date }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <!-- Podcasts List -->
+  {% if podcasts %}
+    <div class="space-y-4">
+      {% for podcast in podcasts %}
+        <div class="bg-white p-4 rounded-lg hover:shadow-md transition-shadow duration-200">
+          <!-- Top Line: Feed Name and Title -->
+          <div class="flex items-center text-base">
+            <span class="font-bold text-sm text-gray-600 uppercase tracking-wide">{{ podcast.podcast_feed_name }}</span>
+            <span class="mx-2 text-gray-300">|</span>
+            <a href="/podcasts/detail/{{ podcast.id }}" class="text-lg font-semibold text-gray-800 hover:text-blue-600 hover:underline">
+              {{ podcast.title }}
+            </a>
+          </div>
+          
+          <!-- Short Summary -->
+          {% if podcast.short_summary %}
+            <p class="mt-2 text-sm text-gray-600 italic">
+              {{ podcast.short_summary }}
+            </p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <!-- Empty State -->
+    <div class="text-center py-16 px-6 bg-gray-50 rounded-lg">
+      <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+      </svg>
+      <h3 class="mt-2 text-lg font-medium text-gray-900">No podcasts found</h3>
+      <p class="mt-1 text-sm text-gray-500">
+        {% if current_download_date %}
+          There are no episodes for the selected date.
+        {% else %}
+          There are no episodes available at the moment.
+        {% endif %}
+      </p>
+      {% if current_download_date %}
+        <div class="mt-6">
+          <a href="/podcasts" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+            View All Episodes
+          </a>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
 </div>
+
+<script>
+function filterByDate(selectedDate) {
+  const currentUrl = new URL(window.location);
+  const params = new URLSearchParams(currentUrl.search);
+  
+  if (selectedDate) {
+    params.set('download_date', selectedDate);
+  } else {
+    params.delete('download_date');
+  }
+  
+  // Reset to the base path and apply new params
+  window.location.href = currentUrl.pathname + '?' + params.toString();
+}
+</script>
 {% endblock %}

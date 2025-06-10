@@ -112,7 +112,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         publication_date = None
         if publication_date_str:
             try:
-                publication_date = date_parser.parse(publication_date_str).strftime('%Y-%m-%d')
+                publication_date = date_parser.parse(publication_date_str)
             except (date_parser.ParserError, ValueError):
                 pass
 

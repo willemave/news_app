@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Depends
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import CronLogs, Links, FailureLogs
-from fastapi.templating import Jinja2Templates
+from app.templates import templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 import sys
 from pathlib import Path
@@ -14,7 +14,6 @@ sys.path.append(str(project_root))
 # Import the necessary functions
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 def get_db():
     db = SessionLocal()

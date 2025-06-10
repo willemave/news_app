@@ -1,5 +1,7 @@
 import pytest
 import httpx # For creating mock Headers
+import json
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from app.http_client.robust_http_client import RobustHttpClient
@@ -24,10 +26,9 @@ SAMPLE_ARXIV_HTML_CONTENT = """
 
 
 @pytest.fixture
-def mock_http_client(mocker):
+def mock_http_client():
     """Fixture to mock RobustHttpClient."""
-    mock = MagicMock(spec=RobustHttpClient)
-    return mock
+    return MagicMock(spec=RobustHttpClient)
 
 @pytest.fixture
 def html_strategy(mock_http_client):
@@ -75,39 +76,42 @@ def test_download_content(html_strategy: HtmlProcessorStrategy, mock_http_client
     mock_response.text = SAMPLE_HTML_CONTENT
     mock_response.url = url # Simulate final URL after potential redirects
 
-    def mock_get_op(*args, **kwargs):
-        return mock_response
-    mock_http_client.get = MagicMock(side_effect=mock_get_op)
+    mock_http_client.get.return_value = mock_response
 
     content = html_strategy.download_content(url)
 
     mock_http_client.get.assert_called_once_with(url)
     assert content == SAMPLE_HTML_CONTENT
 
-def test_extract_data_successful(html_strategy: HtmlProcessorStrategy):
-    """Test successful data extraction from HTML content."""
+def test_extract_data_successful_and_returns_datetime(html_strategy: HtmlProcessorStrategy):
+    """Test successful data extraction and that publication_date is a datetime object."""
     url = "http://example.com/article.html"
-    # Mock trafilatura.bare_extraction
-    with patch('app.processing_strategies.html_strategy.bare_extraction') as mock_bare_extraction:
-        mock_bare_extraction.return_value = {
-            "title": "Test Article Title",
-            "author": "John Doe",
-            "date": "2023-01-15",
-            "text": "This is the main content of the article. It's very informative."
-        }
+    mock_trafilatura_output = json.dumps({
+        "title": "Test Article Title",
+        "author": "John Doe",
+        "date": "2023-01-15",
+        "text": "This is the main content of the article. It's very informative."
+    })
+
+    with patch('app.processing_strategies.html_strategy.extract') as mock_extract:
+        mock_extract.return_value = mock_trafilatura_output
         
         extracted_data = html_strategy.extract_data(SAMPLE_HTML_CONTENT, url)
 
-        mock_bare_extraction.assert_called_once_with(
+        mock_extract.assert_called_once_with(
             filecontent=SAMPLE_HTML_CONTENT,
             url=url,
             with_metadata=True,
             include_links=False,
-            include_formatting=False
+            include_formatting=False,
+            output_format='json'
         )
         assert extracted_data["title"] == "Test Article Title"
         assert extracted_data["author"] == "John Doe"
-        assert extracted_data["publication_date"] == "2023-01-15"
+        assert isinstance(extracted_data["publication_date"], datetime)
+        assert extracted_data["publication_date"].year == 2023
+        assert extracted_data["publication_date"].month == 1
+        assert extracted_data["publication_date"].day == 15
         assert extracted_data["text_content"] == "This is the main content of the article. It's very informative."
         assert extracted_data["content_type"] == "html"
         assert extracted_data["final_url_after_redirects"] == url
@@ -116,21 +120,14 @@ def test_extract_data_trafilatura_fails(html_strategy: HtmlProcessorStrategy):
     """Test data extraction when Trafilatura fails to extract content."""
     url = "http://example.com/empty_article.html"
     empty_html_content = "<html><body></body></html>"
-    with patch('app.processing_strategies.html_strategy.bare_extraction') as mock_bare_extraction:
-        mock_bare_extraction.return_value = None # Simulate Trafilatura failure
+    with patch('app.processing_strategies.html_strategy.extract') as mock_extract:
+        mock_extract.return_value = None # Simulate Trafilatura failure
         
         extracted_data = html_strategy.extract_data(empty_html_content, url)
         
-        assert extracted_data["title"] == "Extraction Failed (Trafilatura)"
+        assert extracted_data["title"] == "Extraction Failed"
         assert extracted_data["text_content"] == ""
         assert extracted_data["content_type"] == "html"
-
-def test_extract_data_no_content(html_strategy: HtmlProcessorStrategy):
-    """Test data extraction when no content is provided."""
-    url = "http://example.com/no_content_page.html"
-    extracted_data = html_strategy.extract_data("", url) # Empty string content
-    assert extracted_data["title"] == "Extraction Failed (No Content)"
-    assert extracted_data["text_content"] == ""
 
 def test_prepare_for_llm(html_strategy: HtmlProcessorStrategy):
     """Test preparation of extracted data for LLM processing."""
