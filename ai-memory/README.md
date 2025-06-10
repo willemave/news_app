@@ -147,4 +147,4 @@
 * **Implemented**: Admin dashboard with pipeline monitoring
 * **Implemented**: Podcast processing continuation - existing podcasts now continue through pipeline instead of being skipped
 * **Implemented**: Podcast download date filtering - dropdown filter showing actual download dates from database
-* **Implemented**: Substack RSS processing with local file storage
+* **Implemented**: Substack RSS processing with local file storag

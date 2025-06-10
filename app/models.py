@@ -41,6 +41,10 @@ class Links(Base):
     processed_date = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
     
+    # Checkout mechanism for worker concurrency control
+    checked_out_by = Column(String, nullable=True)  # Worker ID that has checked out this link
+    checked_out_at = Column(DateTime, nullable=True)  # When the link was checked out
+    
     # Relationship to Article
     article = relationship("Articles", back_populates="link", uselist=False)
 

@@ -58,7 +58,7 @@ class PodcastDownloader:
                 logger.debug(f"Could not checkout podcast {podcast_id} for download")
                 return False
 
-            logger.info(f"Downloading podcast: {podcast.title} (checked out by {worker_id})")
+            logger.debug(f"Downloading podcast: {podcast.title} (checked out by {worker_id})")
 
             try:
                 # Create directory structure
@@ -73,7 +73,7 @@ class PodcastDownloader:
 
                 # Check if file already exists
                 if os.path.exists(file_path):
-                    logger.info(f"File already exists: {file_path}")
+                    logger.debug(f"File already exists: {file_path}")
                     podcast.file_path = file_path
                     podcast.download_date = datetime.utcnow()
                     podcast.error_message = None
@@ -81,7 +81,7 @@ class PodcastDownloader:
                     # Checkin with downloaded state
                     success = checkout_manager.checkin_podcast(podcast_id, worker_id, PodcastStatus.downloaded)
                     if success:
-                        logger.info(f"Successfully checked in existing podcast: {podcast.title}")
+                        logger.debug(f"Successfully checked in existing podcast: {podcast.title}")
                         return True
                     else:
                         logger.error(f"Failed to checkin podcast {podcast_id} after finding existing file")
@@ -109,7 +109,7 @@ class PodcastDownloader:
                 # Checkin with downloaded state
                 success = checkout_manager.checkin_podcast(podcast_id, worker_id, PodcastStatus.downloaded)
                 if success:
-                    logger.info(f"Successfully downloaded and checked in podcast: {podcast.title} to {file_path}")
+                    logger.debug(f"Successfully downloaded and checked in podcast: {podcast.title} to {file_path}")
                     return True
                 else:
                     logger.error(f"Failed to checkin podcast {podcast_id} after successful download")
@@ -170,7 +170,7 @@ class PodcastDownloader:
                 else:
                     failed += 1
 
-            logger.info(f"Download batch complete: {downloaded} downloaded, {failed} failed out of {len(available_podcasts)} available")
+            logger.debug(f"Download batch complete: {downloaded} downloaded, {failed} failed out of {len(available_podcasts)} available")
             return {"downloaded": downloaded, "failed": failed, "total": len(available_podcasts)}
 
         except Exception as e:

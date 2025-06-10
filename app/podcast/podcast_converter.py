@@ -23,9 +23,9 @@ class PodcastConverter:
     def _load_model(self):
         """Lazy load the Whisper model to save memory."""
         if self.model is None:
-            logger.info(f"Loading Whisper model: {self.model_size}")
+            logger.debug(f"Loading Whisper model: {self.model_size}")
             self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
-            logger.info("Whisper model loaded successfully")
+            logger.debug("Whisper model loaded successfully")
 
     def convert_to_text(self, audio_path: str) -> Optional[str]:
         """
@@ -44,7 +44,7 @@ class PodcastConverter:
         try:
             self._load_model()
             
-            logger.info(f"Starting transcription of: {audio_path}")
+            logger.debug(f"Starting transcription of: {audio_path}")
             
             # Transcribe the audio
             segments, info = self.model.transcribe(audio_path, beam_size=5)
@@ -62,8 +62,8 @@ class PodcastConverter:
             with open(text_path, 'w', encoding='utf-8') as f:
                 f.write(transcript_text.strip())
             
-            logger.info(f"Transcription completed: {text_path}")
-            logger.info(f"Detected language: {info.language} (probability: {info.language_probability:.2f})")
+            logger.debug(f"Transcription completed: {text_path}")
+            logger.debug(f"Detected language: {info.language} (probability: {info.language_probability:.2f})")
             
             return text_path
             
@@ -95,7 +95,7 @@ class PodcastConverter:
                 logger.debug(f"Could not checkout podcast {podcast_id} for transcription")
                 return False
 
-            logger.info(f"Transcribing podcast: {podcast.title} (checked out by {worker_id})")
+            logger.debug(f"Transcribing podcast: {podcast.title} (checked out by {worker_id})")
 
             try:
                 if not podcast.file_path or not os.path.exists(podcast.file_path):
@@ -115,7 +115,7 @@ class PodcastConverter:
                     # Checkin with transcribed state
                     success = checkout_manager.checkin_podcast(podcast_id, worker_id, PodcastStatus.transcribed)
                     if success:
-                        logger.info(f"Successfully transcribed and checked in podcast: {podcast.title}")
+                        logger.debug(f"Successfully transcribed and checked in podcast: {podcast.title}")
                         return True
                     else:
                         logger.error(f"Failed to checkin podcast {podcast_id} after successful transcription")
@@ -172,7 +172,7 @@ class PodcastConverter:
                 else:
                     failed += 1
 
-            logger.info(f"Transcription batch complete: {transcribed} transcribed, {failed} failed out of {len(available_podcasts)} available")
+            logger.debug(f"Transcription batch complete: {transcribed} transcribed, {failed} failed out of {len(available_podcasts)} available")
             return {"transcribed": transcribed, "failed": failed, "total": len(available_podcasts)}
 
         except Exception as e:

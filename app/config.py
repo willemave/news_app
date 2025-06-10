@@ -5,17 +5,34 @@ from dotenv import load_dotenv
 # Load environment variables from .env if present
 load_dotenv()
 
-# Basic Logging Configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler() # Log to console
-    ]
-)
-
 # Get a logger instance
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("news_app")
+
+def setup_logging(level=logging.INFO):
+    """
+    Set up the root logger with a specified level and format.
+    """
+    # Get the root logger
+    root_logger = logging.getLogger()
+    
+    # Clear existing handlers to avoid duplicate logs
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # Set the new level
+    root_logger.setLevel(level)
+
+    # Create a handler and formatter
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+
+    # Add the handler to the root logger
+    root_logger.addHandler(handler)
+
+# Set up default logging
+setup_logging()
+
 
 class Settings:
     def __init__(self, **kwargs):
@@ -34,7 +51,7 @@ class Settings:
 
 # Per-subreddit fetch limits
 SUBREDDIT_LIMITS = {
-    "front": 30,
+    "front": 80,
     "technology": 80,
     "ai": 120,
     "*": 50        # default

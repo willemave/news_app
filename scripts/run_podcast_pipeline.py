@@ -8,6 +8,8 @@ using the new state machine architecture with checkout/checkin mechanism.
 import sys
 import os
 import signal
+import argparse
+import logging
 from datetime import datetime
 from typing import Dict
 
@@ -19,7 +21,7 @@ from app.podcast.pipeline_orchestrator import PipelineOrchestrator
 from app.podcast.checkout_manager import CheckoutManager
 from app.database import SessionLocal
 from app.models import Podcasts, PodcastStatus
-from app.config import logger
+from app.config import logger, setup_logging
 
 
 class PodcastPipelineRunner:
@@ -27,17 +29,12 @@ class PodcastPipelineRunner:
     Orchestrates the complete podcast pipeline using state machine architecture.
     """
     
-    def __init__(self, config_path: str = 'config/podcasts.yml', debug: bool = False):
+    def __init__(self, config_path: str = 'config/podcasts.yml'):
         self.config_path = config_path
-        self.debug = debug
         self.orchestrator = None
         self.start_time = datetime.now()
         self.initial_stats = {}
         self.shutdown_requested = False
-        
-        if self.debug:
-            logger.setLevel(10)  # DEBUG level
-            logger.info("Debug mode enabled for podcast pipeline")
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -280,18 +277,28 @@ class PodcastPipelineRunner:
 
 def main():
     """Main entry point for the podcast pipeline runner."""
-    # Parse command line arguments
-    debug_mode = '--debug' in sys.argv
-    config_path = 'config/podcasts.yml'
-    
-    # Check for custom config path
-    for i, arg in enumerate(sys.argv):
-        if arg == '--config' and i + 1 < len(sys.argv):
-            config_path = sys.argv[i + 1]
-            break
-    
+    parser = argparse.ArgumentParser(description="Podcast Pipeline Runner")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="config/podcasts.yml",
+        help="Path to the podcast configuration file"
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging"
+    )
+    args = parser.parse_args()
+
+    # Setup logging
+    if args.debug:
+        setup_logging(logging.DEBUG)
+    else:
+        setup_logging(logging.INFO)
+
     # Initialize and run pipeline
-    runner = PodcastPipelineRunner(config_path=config_path, debug=debug_mode)
+    runner = PodcastPipelineRunner(config_path=args.config)
     
     try:
         result = runner.run_pipeline()
@@ -330,29 +337,11 @@ def main():
         return 1
 
 
-def print_usage():
-    """Print usage information."""
-    print("Usage: python scripts/run_podcast_pipeline.py [OPTIONS]")
-    print("\nOptions:")
-    print("  --debug          Enable debug logging")
-    print("  --config PATH    Use custom podcast configuration file")
-    print("                   (default: config/podcasts.yml)")
-    print("\nExamples:")
-    print("  python scripts/run_podcast_pipeline.py")
-    print("  python scripts/run_podcast_pipeline.py --debug")
-    print("  python scripts/run_podcast_pipeline.py --config custom_podcasts.yml")
-
-
 if __name__ == "__main__":
-    # Check for help
-    if '--help' in sys.argv or '-h' in sys.argv:
-        print_usage()
-        sys.exit(0)
-    
     # Run the main function
     try:
         exit_code = main()
         sys.exit(exit_code)
     except KeyboardInterrupt:
-        print("\n⚠️  Interrupted by user")
+        logger.warning("\nInterrupted by user")
         sys.exit(130)
