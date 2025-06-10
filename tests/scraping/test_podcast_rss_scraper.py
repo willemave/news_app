@@ -102,24 +102,17 @@ class TestPodcastRSSScraperExistingPodcasts:
         
         mock_db_session.query.return_value.filter.return_value.first.return_value = existing_podcast
         
-        # Mock all tasks to ensure none are called
-        with patch('app.queue.download_podcast_task') as mock_download, \
-             patch('app.queue.transcribe_podcast_task') as mock_transcribe, \
-             patch('app.queue.summarize_podcast_task') as mock_summarize:
-            
-            # Create mock entry
-            entry = {
-                'title': 'Test Episode',
-                'link': 'http://example.com/episode1',
-                'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
-            }
-            
-            scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
-            
-            # Verify no tasks were called
-            mock_download.assert_not_called()
-            mock_transcribe.assert_not_called()
-            mock_summarize.assert_not_called()
+        # Create mock entry
+        entry = {
+            'title': 'Test Episode',
+            'link': 'http://example.com/episode1',
+            'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
+        }
+        
+        scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
+        
+        # Verify no new podcast was created (existing one was found)
+        mock_db_session.add.assert_not_called()
 
     def test_existing_podcast_enclosure_url_update(self, scraper, mock_db_session):
         """Test that enclosure URL gets updated if it has changed."""
@@ -154,21 +147,14 @@ class TestPodcastRSSScraperExistingPodcasts:
         
         mock_db_session.query.return_value.filter.return_value.first.return_value = existing_podcast
         
-        # Mock all tasks to ensure none are called
-        with patch('app.queue.download_podcast_task') as mock_download, \
-             patch('app.queue.transcribe_podcast_task') as mock_transcribe, \
-             patch('app.queue.summarize_podcast_task') as mock_summarize:
-            
-            # Create mock entry
-            entry = {
-                'title': 'Test Episode',
-                'link': 'http://example.com/episode1',
-                'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
-            }
-            
-            scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
-            
-            # Verify no tasks were called
-            mock_download.assert_not_called()
-            mock_transcribe.assert_not_called()
-            mock_summarize.assert_not_called()
+        # Create mock entry
+        entry = {
+            'title': 'Test Episode',
+            'link': 'http://example.com/episode1',
+            'enclosures': [Mock(href='http://example.com/audio.mp3', type='audio/mpeg')]
+        }
+        
+        scraper.create_podcast_record(entry, 'Test Podcast', 'http://example.com/audio.mp3')
+        
+        # Verify no new podcast was created (existing one was found)
+        mock_db_session.add.assert_not_called()

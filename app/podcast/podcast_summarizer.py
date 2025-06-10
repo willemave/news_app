@@ -49,7 +49,7 @@ class PodcastSummarizer:
                 logger.debug(f"Could not checkout podcast {podcast_id} for summarization")
                 return False
 
-            logger.info(f"Summarizing podcast: {podcast.title} (checked out by {worker_id})")
+            logger.debug(f"Summarizing podcast: {podcast.title} (checked out by {worker_id})")
 
             try:
                 if not podcast.transcribed_text_path or not os.path.exists(podcast.transcribed_text_path):
@@ -73,7 +73,7 @@ class PodcastSummarizer:
                 # Checkin with summarized state
                 success = checkout_manager.checkin_podcast(podcast_id, worker_id, PodcastStatus.summarized)
                 if success:
-                    logger.info(f"Successfully summarized and checked in podcast: {podcast.title}")
+                    logger.debug(f"Successfully summarized and checked in podcast: {podcast.title}")
                     return True
                 else:
                     logger.error(f"Failed to checkin podcast {podcast_id} after successful summarization")
@@ -125,7 +125,7 @@ class PodcastSummarizer:
                 else:
                     failed += 1
 
-            logger.info(f"Summarization batch complete: {summarized} summarized, {failed} failed out of {len(available_podcasts)} available")
+            logger.debug(f"Summarization batch complete: {summarized} summarized, {failed} failed out of {len(available_podcasts)} available")
             return {"summarized": summarized, "failed": failed, "total": len(available_podcasts)}
 
         except Exception as e:

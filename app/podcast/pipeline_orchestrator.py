@@ -129,7 +129,7 @@ class PipelineOrchestrator:
                     failed += 1
         
         if downloaded > 0 or failed > 0:
-            logger.info(f"Download dispatch complete: {downloaded} downloaded, {failed} failed")
+            logger.debug(f"Download dispatch complete: {downloaded} downloaded, {failed} failed")
         
         return {"downloaded": downloaded, "failed": failed, "total": downloaded + failed}
     
@@ -171,7 +171,7 @@ class PipelineOrchestrator:
                     failed += 1
         
         if transcribed > 0 or failed > 0:
-            logger.info(f"Transcription dispatch complete: {transcribed} transcribed, {failed} failed")
+            logger.debug(f"Transcription dispatch complete: {transcribed} transcribed, {failed} failed")
         
         return {"transcribed": transcribed, "failed": failed, "total": transcribed + failed}
     
@@ -213,7 +213,7 @@ class PipelineOrchestrator:
                     failed += 1
         
         if summarized > 0 or failed > 0:
-            logger.info(f"Summarization dispatch complete: {summarized} summarized, {failed} failed")
+            logger.debug(f"Summarization dispatch complete: {summarized} summarized, {failed} failed")
         
         return {"summarized": summarized, "failed": failed, "total": summarized + failed}
     
@@ -307,7 +307,7 @@ class PipelineOrchestrator:
                 )
                 
                 if total_work > 0 or cycle_stats['stale_checkouts_released'] > 0:
-                    logger.info(f"Cycle {self.stats['cycles_completed']} complete: "
+                    logger.debug(f"Cycle {self.stats['cycles_completed']} complete: "
                                f"downloads={cycle_stats['downloads']}, "
                                f"transcriptions={cycle_stats['transcriptions']}, "
                                f"summarizations={cycle_stats['summarizations']}, "

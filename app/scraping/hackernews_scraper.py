@@ -3,7 +3,6 @@ from bs4 import BeautifulSoup
 from typing import List, Dict, Optional, Tuple
 from ..database import SessionLocal
 from ..models import Links, FailurePhase
-from ..queue import process_link_task
 from ..config import logger
 from ..utils.failures import record_failure
 
@@ -147,8 +146,7 @@ def process_hackernews_articles() -> Dict[str, int]:
                 link_id, created_new = link_record_result
                 if created_new:
                     stats["created_links"] += 1
-                    # Queue link for processing only if it's new
-                    process_link_task(link_id)
+                    # Link created and will be processed by pipeline orchestrator
                     stats["queued_links"] += 1
                     logger.info(f"Queued new link {link_id} for processing: {article_url}")
                 else:
@@ -158,8 +156,7 @@ def process_hackernews_articles() -> Dict[str, int]:
                     try:
                         existing_link = db.query(Links).filter(Links.id == link_id).first()
                         if existing_link and existing_link.status in [LinkStatus.failed, LinkStatus.new]:
-                            # Only queue failed or unprocessed links for retry
-                            process_link_task(link_id)
+                            # Link will be retried by pipeline orchestrator
                             stats["queued_links"] += 1
                             logger.info(f"Queued existing link {link_id} for retry (status: {existing_link.status.value}): {article_url}")
                         else:

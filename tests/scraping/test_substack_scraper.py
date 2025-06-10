@@ -106,3 +106,78 @@ def test_scrape_process_and_filter(mock_feedparser_parse, mock_load_feeds, mock_
         # 4. Verify the podcast was filtered and not processed
         # The DB session should only have been committed for the valid article
         mock_db_session.commit.call_count == 2
+
+
+@patch('app.scraping.substack_scraper.load_substack_feeds')
+@patch('app.scraping.substack_scraper.feedparser.parse')
+@patch('app.links.link_processor.process_link_from_db')
+@patch('app.http_client.robust_http_client.RobustHttpClient')
+@patch('app.processing_strategies.factory.UrlProcessorFactory')
+def test_scrape_with_pipeline_processing(mock_factory, mock_http_client, mock_process_func,
+                                       mock_feedparser_parse, mock_load_feeds, mock_db_session):
+    """Test scraping with pipeline processing integration."""
+    from app.links.pipeline_orchestrator import LinkPipelineOrchestrator
+    
+    # Mock the YAML config loading
+    mock_load_feeds.return_value = ['http://test.com/feed']
+
+    # Mock feedparser results
+    mock_feed_result = MagicMock()
+    mock_feed_result.bozo = 0
+    mock_feed_result.entries = [mock_entry_article]
+    mock_feed_result.feed = {
+        'title': 'Test Feed',
+        'description': 'A test feed for testing'
+    }
+    mock_feedparser_parse.return_value = mock_feed_result
+
+    # Mock successful link processing
+    mock_process_func.return_value = True
+    
+    # Mock HTTP client and factory
+    mock_http_client_instance = MagicMock()
+    mock_http_client.return_value = mock_http_client_instance
+    mock_factory_instance = Mock()
+    mock_factory.return_value = mock_factory_instance
+
+    # Mock file system operations
+    with patch('builtins.open', mock_open()) as mock_file, \
+         patch('os.makedirs') as mock_makedirs:
+
+        # Run scraper
+        scraper = SubstackScraper()
+        scraper.scrape()
+
+        # Verify scraper created links
+        assert mock_db_session.add.call_count == 2  # Link and Article
+        
+        # Mock the database session for pipeline
+        with patch('app.links.pipeline_orchestrator.SessionLocal') as mock_session_local:
+            mock_pipeline_db = Mock()
+            mock_session_local.return_value = mock_pipeline_db
+            
+            # Mock finding available links
+            mock_link = Mock()
+            mock_link.id = 1
+            mock_link.url = 'http://test.com/article'
+            mock_link.status = 'new'
+            
+            # Mock checkout manager behavior
+            with patch('app.links.pipeline_orchestrator.LinkCheckoutManager') as mock_checkout_manager_class:
+                mock_checkout_manager = Mock()
+                mock_checkout_manager_class.return_value = mock_checkout_manager
+                mock_checkout_manager.find_available_links.return_value = [mock_link]
+                mock_checkout_manager.release_stale_checkouts.return_value = 0
+                
+                # Create and run pipeline
+                orchestrator = LinkPipelineOrchestrator(processor_concurrency=1, polling_interval=0.1)
+                
+                try:
+                    # Run a single cycle
+                    cycle_stats = orchestrator.run_single_cycle()
+                    
+                    # Verify processing was attempted
+                    assert 'processing' in cycle_stats
+                    
+                finally:
+                    orchestrator.cleanup()
