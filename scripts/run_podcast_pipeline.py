@@ -29,8 +29,9 @@ class PodcastPipelineRunner:
     Orchestrates the complete podcast pipeline using state machine architecture.
     """
     
-    def __init__(self, config_path: str = 'config/podcasts.yml'):
+    def __init__(self, config_path: str = 'config/podcasts.yml', debug: bool = False):
         self.config_path = config_path
+        self.debug = debug
         self.orchestrator = None
         self.start_time = datetime.now()
         self.initial_stats = {}
@@ -298,7 +299,7 @@ def main():
         setup_logging(logging.INFO)
 
     # Initialize and run pipeline
-    runner = PodcastPipelineRunner(config_path=args.config)
+    runner = PodcastPipelineRunner(config_path=args.config, debug=args.debug)
     
     try:
         result = runner.run_pipeline()
