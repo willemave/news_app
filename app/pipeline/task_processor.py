@@ -293,16 +293,42 @@ class TaskProcessor:
                     processed_count += 1
                     logger.info(f"Worker {worker_id} successfully processed task {task_id}")
                 else:
-                    # Retry logic
-                    if retry_count < settings.max_retries:
-                        self.queue_service.retry_task(task_id, delay_seconds=60 * (retry_count + 1))
-                        logger.info(f"Task {task_id} scheduled for retry")
+                    # Retry logic with exponential backoff
+                    max_retries = getattr(settings, 'max_retries', 3)
+                    if retry_count < max_retries:
+                        # Use exponential backoff: 2^retry_count * 60 seconds
+                        delay_seconds = min(60 * (2 ** retry_count), 3600)  # Cap at 1 hour
+                        self.queue_service.retry_task(task_id, delay_seconds=delay_seconds)
+                        logger.info(f"Task {task_id} scheduled for retry {retry_count + 1}/{max_retries} in {delay_seconds}s")
                     else:
-                        logger.error(f"Task {task_id} exceeded max retries")
+                        logger.error(f"Task {task_id} exceeded max retries ({max_retries})")
                 
             except Exception as e:
-                logger.error(f"Worker {worker_id} error processing task {task_id}: {e}", exc_info=True)
-                self.queue_service.complete_task(task_id, success=False, error_message=str(e))
+                error_msg = str(e)
+                logger.error(f"Worker {worker_id} error processing task {task_id}: {error_msg}", exc_info=True)
+                
+                # Check if it's a network/DNS error that should be retried
+                is_network_error = any(term in error_msg.lower() for term in [
+                    'nodename nor servname provided',
+                    'name or service not known',
+                    'temporary failure in name resolution',
+                    'connection error',
+                    'timeout',
+                    'dns'
+                ])
+                
+                if is_network_error:
+                    max_retries = getattr(settings, 'max_retries', 3)
+                    if retry_count < max_retries:
+                        delay_seconds = min(120 * (2 ** retry_count), 7200)  # Longer delays for network issues
+                        self.queue_service.retry_task(task_id, delay_seconds=delay_seconds)
+                        logger.info(f"Network error for task {task_id}, scheduling retry {retry_count + 1}/{max_retries} in {delay_seconds}s")
+                    else:
+                        logger.error(f"Task {task_id} exceeded max retries due to persistent network issues")
+                        self.queue_service.complete_task(task_id, success=False, error_message=error_msg[:500])
+                else:
+                    # Non-network errors don't get retried automatically
+                    self.queue_service.complete_task(task_id, success=False, error_message=error_msg[:500])
         
         logger.info(f"Worker {worker_id} finished. Processed {processed_count} tasks")
         

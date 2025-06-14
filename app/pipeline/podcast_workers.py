@@ -1,9 +1,16 @@
 import os
 import re
 import httpx
+import asyncio
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 from datetime import datetime
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type
+)
 
 from app.core.db import get_db
 from app.core.logging import get_logger
@@ -12,6 +19,7 @@ from app.models.schema import Content, ContentStatus
 from app.services.queue import get_queue_service, TaskType
 from app.domain.content import ContentData
 from app.domain.converters import content_to_domain, domain_to_content
+from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -43,7 +51,99 @@ class PodcastDownloadWorker:
         self.base_dir = "data/podcasts"
         os.makedirs(self.base_dir, exist_ok=True)
         self.queue_service = get_queue_service()
+        self.error_logger = create_error_logger("podcast_download_worker")
     
+    def _validate_url(self, url: str) -> bool:
+        """Validate URL format and basic reachability."""
+        try:
+            parsed = urlparse(url)
+            if not parsed.scheme or not parsed.netloc:
+                logger.error(f"Invalid URL format: {url}")
+                return False
+            
+            # Check for obvious invalid characters
+            if any(char in url for char in [' ', '\n', '\r', '\t']):
+                logger.error(f"URL contains invalid characters: {url}")
+                return False
+            
+            return True
+        except Exception as e:
+            logger.error(f"URL validation failed for {url}: {e}")
+            return False
+    
+    def _extract_actual_audio_url(self, url: str) -> str:
+        """
+        Extract the actual audio URL from redirect URLs.
+        
+        Some podcast platforms (like Anchor.fm) use redirect URLs that contain
+        the actual audio URL as an encoded parameter.
+        """
+        # Check if this is an Anchor.fm redirect URL
+        if 'anchor.fm' in url and 'https%3A%2F%2F' in url:
+            # Find the encoded URL in the path
+            parts = url.split('/')
+            for part in parts:
+                if 'https%3A%2F%2F' in part:
+                    # Decode the URL
+                    decoded_url = unquote(part)
+                    logger.info(f"Extracted actual URL from Anchor redirect: {decoded_url}")
+                    return decoded_url
+        
+        return url
+    
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=5, max=60),
+        retry=retry_if_exception_type((
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            OSError  # This includes DNS resolution errors
+        ))
+    )
+    async def _download_with_retry(self, audio_url: str, file_path: str) -> None:
+        """Download file with retry logic for network issues."""
+        logger.info(f"Attempting download from {audio_url}")
+        
+        # Use async httpx client with proper timeout configuration
+        timeout = httpx.Timeout(
+            timeout=300.0,  # Default timeout
+            connect=30.0,   # DNS resolution timeout
+            read=300.0,     # Large file download timeout
+            write=30.0,
+            pool=10.0
+        )
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0; Podcast Downloader)'
+        }
+        
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            headers=headers
+        ) as client:
+            # First, try a HEAD request to validate the URL
+            try:
+                head_response = await client.head(audio_url)
+                head_response.raise_for_status()
+                logger.info(f"URL validated, content-length: {head_response.headers.get('content-length', 'unknown')}")
+            except Exception as e:
+                logger.warning(f"HEAD request failed, proceeding with GET: {e}")
+            
+            # Download the file
+            async with client.stream('GET', audio_url) as response:
+                response.raise_for_status()
+                
+                # Create directory if it doesn't exist
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                
+                # Write file in chunks
+                with open(file_path, 'wb') as f:
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        f.write(chunk)
+                
+                logger.info(f"Downloaded {os.path.getsize(file_path)} bytes to {file_path}")
+
     async def process_download_task(self, content_id: int) -> bool:
         """
         Download a podcast audio file.
@@ -55,6 +155,7 @@ class PodcastDownloadWorker:
             True if successful, False otherwise
         """
         logger.info(f"Processing download task for content {content_id}")
+        file_path = None
         
         try:
             with get_db() as db:
@@ -78,8 +179,23 @@ class PodcastDownloadWorker:
                     db.commit()
                     return False
                 
-                # Get podcast feed name from metadata
-                feed_name = content.metadata.get('podcast_feed_name', 'unknown_feed')
+                # Extract actual audio URL if it's a redirect
+                audio_url = self._extract_actual_audio_url(audio_url)
+                
+                # Validate URL format
+                if not self._validate_url(audio_url):
+                    logger.error(f"Invalid audio URL for content {content_id}: {audio_url}")
+                    db_content.status = ContentStatus.FAILED.value
+                    db_content.error_message = "Invalid audio URL format"
+                    db.commit()
+                    return False
+                
+                # Get podcast feed name from metadata (try multiple keys)
+                feed_name = (
+                    content.metadata.get('feed_name') or
+                    content.metadata.get('podcast_feed_name') or
+                    'unknown_feed'
+                )
                 
                 # Create directory structure
                 feed_dir = os.path.join(self.base_dir, sanitize_filename(feed_name))
@@ -92,10 +208,11 @@ class PodcastDownloadWorker:
                 file_path = os.path.join(feed_dir, filename)
                 
                 # Check if file already exists
-                if os.path.exists(file_path):
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
                     logger.info(f"File already exists: {file_path}")
                     content.metadata['file_path'] = file_path
                     content.metadata['download_date'] = datetime.utcnow().isoformat()
+                    content.metadata['file_size'] = os.path.getsize(file_path)
                     
                     # Update database
                     domain_to_content(content, db_content)
@@ -109,18 +226,10 @@ class PodcastDownloadWorker:
                     
                     return True
                 
-                # Download the audio file
-                logger.info(f"Downloading audio from {audio_url}")
-                with httpx.Client(timeout=300.0, follow_redirects=True) as client:
-                    with client.stream('GET', audio_url) as response:
-                        response.raise_for_status()
-                        
-                        # Write file in chunks to handle large files
-                        with open(file_path, 'wb') as f:
-                            for chunk in response.iter_bytes(chunk_size=8192):
-                                f.write(chunk)
+                # Download the audio file with retry logic
+                await self._download_with_retry(audio_url, file_path)
                 
-                # Verify file was written
+                # Verify file was written correctly
                 if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
                     raise Exception("Downloaded file is empty or doesn't exist")
                 
@@ -133,7 +242,7 @@ class PodcastDownloadWorker:
                 domain_to_content(content, db_content)
                 db.commit()
                 
-                logger.info(f"Successfully downloaded podcast to {file_path}")
+                logger.info(f"Successfully downloaded podcast to {file_path} ({os.path.getsize(file_path)} bytes)")
                 
                 # Queue transcription task
                 self.queue_service.enqueue(
@@ -144,14 +253,28 @@ class PodcastDownloadWorker:
                 return True
                 
         except Exception as e:
-            logger.error(f"Error downloading podcast {content_id}: {e}")
+            error_msg = str(e)
+            logger.error(f"Error downloading podcast {content_id}: {error_msg}")
+            
+            # Log detailed error information
+            self.error_logger.log_processing_error(
+                item_id=content_id,
+                error=e,
+                operation="podcast_download",
+                context={
+                    "audio_url": audio_url if 'audio_url' in locals() else None,
+                    "file_path": file_path,
+                    "error_type": type(e).__name__
+                }
+            )
             
             # Clean up partial download if exists
-            if 'file_path' in locals() and os.path.exists(file_path):
+            if file_path and os.path.exists(file_path):
                 try:
                     os.remove(file_path)
-                except:
-                    pass
+                    logger.info(f"Cleaned up partial download: {file_path}")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to clean up partial download: {cleanup_error}")
             
             # Update content with error
             try:
@@ -161,11 +284,11 @@ class PodcastDownloadWorker:
                     ).first()
                     if db_content:
                         db_content.status = ContentStatus.FAILED.value
-                        db_content.error_message = str(e)
+                        db_content.error_message = error_msg[:500]  # Limit error message length
                         db_content.retry_count += 1
                         db.commit()
-            except:
-                pass
+            except Exception as db_error:
+                logger.error(f"Failed to update database with error: {db_error}")
             
             return False
 
