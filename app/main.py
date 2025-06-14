@@ -1,27 +1,47 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from .database import init_db
-import uvicorn
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="News Aggregation & Summarization")
+from app.core.settings import get_settings
+from app.core.logging import setup_logging
+from app.core.db import init_db
+from app.api import content
 
-# Initialize database on startup
+# Initialize
+settings = get_settings()
+logger = setup_logging()
+
+# Create app
+app = FastAPI(
+    title=settings.app_name,
+    version="2.0.0",
+    description="Unified News Aggregation System"
+)
+
+# Add middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(content.router)
+
+# Startup event
 @app.on_event("startup")
 async def startup_event():
+    """Initialize services on startup."""
+    logger.info("Starting up...")
     init_db()
+    logger.info("Database initialized")
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Include router endpoints - import after app creation to avoid circular imports
-from .routers import articles, admin, podcasts
-app.include_router(articles.router, prefix="/articles", tags=["Articles"])
-app.include_router(admin.router, prefix="/admin", tags=["Admin"])
-app.include_router(podcasts.router, prefix="/podcasts", tags=["Podcasts"])
-
-@app.get("/")
-def home():
-    return {"message": "Welcome to the News App. Go to /articles/ to see today's articles."}
+# Health check
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": settings.app_name}
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

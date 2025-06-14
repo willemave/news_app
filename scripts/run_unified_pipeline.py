@@ -20,7 +20,7 @@ from app.core.settings import get_settings
 from app.services.queue import get_queue_service, TaskType, TaskStatus
 from app.pipeline.task_processor import TaskProcessorPool
 from app.scraping.runner import ScraperRunner
-from app.models.unified import Content, ProcessingTask, ContentStatus, ContentType
+from app.models.schema import Content, ProcessingTask, ContentStatus, ContentType
 from sqlalchemy import func
 
 logger = get_logger(__name__)

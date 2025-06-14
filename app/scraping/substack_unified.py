@@ -10,7 +10,7 @@ from datetime import datetime
 from app.scraping.base import BaseScraper
 from app.domain.content import ContentType
 from app.core.logging import get_logger
-from app.utils.rss_error_logger import RSSErrorLogger
+from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 
@@ -36,7 +36,7 @@ class SubstackScraper(BaseScraper):
         super().__init__("Substack")
         self.feeds = load_substack_feeds(config_path)
         self.podcast_filter = re.compile(r'\b(podcast|transcript)\b', re.IGNORECASE)
-        self.error_logger = RSSErrorLogger(log_dir="logs/rss_errors/substack")
+        self.error_logger = create_error_logger("substack_scraper", "logs/errors")
     
     async def scrape(self) -> List[Dict[str, Any]]:
         """Scrape all configured Substack feeds with comprehensive error logging."""
@@ -47,8 +47,6 @@ class SubstackScraper(BaseScraper):
             return items
         
         for feed_url in self.feeds:
-            self.error_logger.increment_feed_count()
-            
             if not feed_url:
                 logger.warning("Skipping empty feed URL.")
                 continue
@@ -59,12 +57,12 @@ class SubstackScraper(BaseScraper):
                 
                 # Check for parsing issues
                 if parsed_feed.bozo:
-                    # Log detailed parsing error
-                    self.error_logger.log_feed_parsing_error(
+                    # Log detailed parsing error with new logger
+                    self.error_logger.log_feed_error(
                         feed_url=feed_url,
                         error=parsed_feed.bozo_exception,
                         feed_name=parsed_feed.feed.get('title', 'Unknown Feed'),
-                        parsed_feed=parsed_feed
+                        operation="feed_parsing"
                     )
                     # Only warn for serious parsing errors, not encoding issues
                     if not isinstance(parsed_feed.bozo_exception, getattr(feedparser.exceptions, 'CharacterEncodingOverride', type(None))):
@@ -85,26 +83,19 @@ class SubstackScraper(BaseScraper):
                         items.append(item)
                         processed_entries += 1
                 
-                # Log successful processing
-                self.error_logger.log_successful_feed(feed_url, processed_entries, feed_name)
+                logger.info(f"Successfully processed {processed_entries} entries from {feed_name}")
                         
             except Exception as e:
                 # Log comprehensive error details
-                self.error_logger.log_feed_parsing_error(
+                self.error_logger.log_feed_error(
                     feed_url=feed_url,
                     error=e,
-                    feed_name="Unknown Feed"
+                    feed_name="Unknown Feed",
+                    operation="feed_scraping"
                 )
                 logger.error(f"Error scraping feed {feed_url}: {e}", exc_info=True)
         
-        # Save error logs before returning
-        try:
-            log_files = self.error_logger.save_logs()
-            if log_files:
-                logger.info(f"RSS error logs saved: {list(log_files.values())}")
-        except Exception as e:
-            logger.error(f"Failed to save RSS error logs: {e}")
-        
+        logger.info(f"Substack scraping completed. Processed {len(items)} total items")
         return items
     
     def _process_entry(self, entry, feed_name: str, feed_description: str = "", feed_url: str = "") -> Dict[str, Any]:
@@ -114,12 +105,16 @@ class SubstackScraper(BaseScraper):
         
         if not link:
             # Log detailed entry error
-            self.error_logger.log_entry_error(
-                feed_url=feed_url,
-                entry=entry,
-                error_type="missing_link",
-                error_message=f"Skipping entry with no link in feed {feed_name}: {title}",
-                feed_name=feed_name
+            self.error_logger.log_error(
+                error=Exception(f"Missing link for entry: {title}"),
+                operation="entry_processing",
+                context={
+                    "feed_url": feed_url,
+                    "feed_name": feed_name,
+                    "entry_title": title,
+                    "entry_id": entry.get('id'),
+                    "error_type": "missing_link"
+                }
             )
             logger.warning(f"Skipping entry with no link in feed {feed_name}: {title}")
             return None

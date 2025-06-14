@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from app.core.settings import get_settings
 from app.core.logging import get_logger
 from app.core.db import get_db
-from app.models.unified import Content, ProcessingTask
+from app.models.schema import Content, ProcessingTask
 from app.services.queue import get_queue_service, TaskType, TaskStatus
 from app.services.llm import get_llm_service
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker

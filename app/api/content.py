@@ -8,7 +8,7 @@ from sqlalchemy import or_
 from app.core.db import get_db_session
 from app.domain.content import ContentData, ContentType, ContentStatus
 from app.domain.converters import content_to_domain
-from app.models.unified import Content
+from app.models.schema import Content
 from app.pipeline.worker import get_worker
 
 router = APIRouter(prefix="/content", tags=["content"])

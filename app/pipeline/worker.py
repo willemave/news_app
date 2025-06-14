@@ -14,7 +14,7 @@ from app.services.http import get_http_service
 from app.services.llm import get_llm_service
 from app.services.queue import get_queue_service, TaskType, TaskStatus
 from app.processing_strategies.registry import get_strategy_registry
-from app.models.unified import Content, ProcessingTask
+from app.models.schema import Content, ProcessingTask
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 
 logger = get_logger(__name__)
@@ -277,3 +277,34 @@ class WorkerPool:
         
         logger.info(f"Checkout stats: {checkout_stats}")
         logger.info(f"Queue stats: {queue_stats}")
+    
+    async def process_batch(self, limit: int = 10) -> int:
+        """Process a batch of content items."""
+        logger.info(f"Processing batch of up to {limit} items")
+        
+        processed_count = 0
+        
+        with self.checkout_manager.checkout_content(
+            worker_id="api-batch",
+            batch_size=limit
+        ) as content_ids:
+            
+            if not content_ids:
+                logger.info("No content to process")
+                return 0
+            
+            # Process each item
+            for content_id in content_ids:
+                try:
+                    success = await self.worker.process_content(content_id, "api-worker")
+                    if success:
+                        processed_count += 1
+                except Exception as e:
+                    logger.error(f"Error processing content {content_id}: {e}")
+        
+        logger.info(f"Batch processing completed. Processed {processed_count} items")
+        return processed_count
+
+def get_worker() -> WorkerPool:
+    """Get worker pool instance."""
+    return WorkerPool()

@@ -7,7 +7,7 @@ from datetime import datetime
 from app.scraping.base import BaseScraper
 from app.domain.content import ContentType
 from app.core.logging import get_logger
-from app.utils.rss_error_logger import RSSErrorLogger
+from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 
@@ -18,7 +18,7 @@ class PodcastUnifiedScraper(BaseScraper):
         super().__init__("Podcast")
         self.config_path = config_path
         self.feeds = self._load_podcast_feeds()
-        self.error_logger = RSSErrorLogger(log_dir="logs/rss_errors/podcast")
+        self.error_logger = create_error_logger("podcast_scraper", "logs/errors")
     
     def _load_podcast_feeds(self) -> List[dict]:
         """Load podcast feed URLs from YAML config."""
@@ -44,8 +44,6 @@ class PodcastUnifiedScraper(BaseScraper):
         items = []
         
         for feed_config in self.feeds:
-            self.error_logger.increment_feed_count()
-            
             if not isinstance(feed_config, dict):
                 logger.warning("Invalid feed configuration, skipping")
                 continue
@@ -66,12 +64,12 @@ class PodcastUnifiedScraper(BaseScraper):
                 
                 # Check for parsing issues
                 if parsed_feed.bozo:
-                    # Log detailed parsing error
-                    self.error_logger.log_feed_parsing_error(
+                    # Log detailed parsing error with new logger
+                    self.error_logger.log_feed_error(
                         feed_url=feed_url,
                         error=parsed_feed.bozo_exception,
                         feed_name=feed_name,
-                        parsed_feed=parsed_feed
+                        operation="feed_parsing"
                     )
                     # Only warn for serious parsing errors, not encoding issues
                     if not isinstance(parsed_feed.bozo_exception, getattr(feedparser.exceptions, 'CharacterEncodingOverride', type(None))):
@@ -94,26 +92,19 @@ class PodcastUnifiedScraper(BaseScraper):
                         items.append(item)
                         processed_entries += 1
                 
-                # Log successful processing
-                self.error_logger.log_successful_feed(feed_url, processed_entries, feed_name)
+                logger.info(f"Successfully processed {processed_entries} episodes from {feed_name}")
                         
             except Exception as e:
                 # Log comprehensive error details
-                self.error_logger.log_feed_parsing_error(
+                self.error_logger.log_feed_error(
                     feed_url=feed_url,
                     error=e,
-                    feed_name=feed_name
+                    feed_name=feed_name,
+                    operation="feed_scraping"
                 )
                 logger.error(f"Error scraping feed {feed_url}: {e}")
         
-        # Save error logs before returning
-        try:
-            log_files = self.error_logger.save_logs()
-            if log_files:
-                logger.info(f"RSS error logs saved: {list(log_files.values())}")
-        except Exception as e:
-            logger.error(f"Failed to save RSS error logs: {e}")
-        
+        logger.info(f"Podcast scraping completed. Processed {len(items)} total items")
         return items
     
     def _process_entry(self, entry, feed_name: str, feed_info: dict, feed_url: str) -> Dict[str, Any]:

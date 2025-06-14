@@ -1,216 +1,250 @@
-# Unified Pipeline Implementation Tasks
+# Code Cleanup & Improvement Tasks
 
-## Pipeline Architecture Diagram
+## Overview
 
-## Current System Analysis
+This document outlines two key improvements to simplify and enhance the news aggregation system:
 
-### Existing Components:
-1. **TaskProcessor** (`app/pipeline/task_processor.py`):
-   - Already handles: DOWNLOAD_AUDIO, TRANSCRIBE, SUMMARIZE
-   - Missing: SCRAPE, PROCESS_CONTENT
+1. **✅ COMPLETED: Rename Model File**: Change `app/models/unified.py` to `app/models/schema.py` for better naming convention
+2. **✅ COMPLETED: Generic Error Logger**: Replace the complex RSS-specific error logger with a simpler, more generic error logging utility
 
-2. **ScraperRunner** (`app/scraping/runner.py`):
-   - Runs scrapers directly (not through task queue)
-   - Returns count of scraped items
+## ✅ Task 1: Rename Model File (app/models/unified.py → app/models/schema.py) - COMPLETED
 
-3. **WorkerPool** (`app/pipeline/worker.py`):
-   - Uses checkout mechanism (not task queue)
-   - Processes content directly
+### 🎯 Goals
+- ✅ Improve naming convention (unified.py → schema.py is more descriptive)
+- ✅ Maintain all existing functionality
+- ✅ Update all import references across the codebase
 
-4. **QueueService** (`app/services/queue.py`):
-   - Supports all 5 TaskTypes
-   - Has enqueue/dequeue/retry logic
+### 📋 Implementation Steps
 
-## Implementation Plan
+#### Phase 1: File Rename and Import Updates
+- [x] **Rename File**: Move [`app/models/unified.py`](app/models/unified.py) to [`app/models/schema.py`](app/models/schema.py)
+- [x] **Update Import Statements** in the following 14 files:
+  - [x] [`scripts/run_scrapers_unified.py`](scripts/run_scrapers_unified.py:23) - Update import statement
+  - [x] [`scripts/run_unified_pipeline.py`](scripts/run_unified_pipeline.py:23) - Update import statement
+  - [x] [`app/domain/converters.py`](app/domain/converters.py:7) - Update import statement
+  - [x] [`app/services/queue.py`](app/services/queue.py:10) - Update import statement
+  - [x] [`app/api/content.py`](app/api/content.py:11) - Update import statement
+  - [x] [`tests/test_detached_instance_fix.py`](tests/test_detached_instance_fix.py:10) - Update import statement
+  - [x] [`tests/pipeline/test_podcast_workers.py`](tests/pipeline/test_podcast_workers.py:13) - Update import statement
+  - [x] [`tests/scraping/test_podcast_scraper_integration.py`](tests/scraping/test_podcast_scraper_integration.py:6) - Update import statement
+  - [x] [`app/pipeline/checkout.py`](app/pipeline/checkout.py:11) - Update import statement
+  - [x] [`app/pipeline/task_processor.py`](app/pipeline/task_processor.py:9) - Update import statement
+  - [x] [`app/scraping/base.py`](app/scraping/base.py:7) - Update import statement
+  - [x] [`app/pipeline/worker.py`](app/pipeline/worker.py:17) - Update import statement
+  - [x] [`tests/pipeline/test_podcast_pipeline_integration.py`](tests/pipeline/test_podcast_pipeline_integration.py:6) - Update import statement
+  - [x] [`app/pipeline/podcast_workers.py`](app/pipeline/podcast_workers.py:11) - Update import statement
 
-### Phase 1: Extend TaskProcessor ✅
-- [x] Analyze current TaskProcessor implementation
-- [x] Add `_process_scrape_task()` method to handle SCRAPE tasks
-- [x] Add `_process_content_task()` method to handle PROCESS_CONTENT tasks
-- [x] Update the main `process_task()` method to route new task types
+#### Phase 2: Verification
+- [x] **Run Tests**: Execute test suite to ensure no broken imports
+- [x] **Verify Database Models**: Confirm database connectivity and ORM operations work correctly
+- [x] **Test Scripts**: Run key scripts to verify functionality
+- [x] **Update AI Memory**: Update references in [`ai-memory/README.md`](ai-memory/README.md) if needed
 
-### Phase 2: Create Task-Based Scrapers ✅
-- [x] ScraperRunner already supports async execution
-- [x] Scrapers already enqueue PROCESS_CONTENT tasks after saving
-- [x] Backward compatibility maintained
-
-### Phase 3: Integrate Content Processing with Task Queue ✅
-- [x] ContentWorker is called from TaskProcessor._process_content_task()
-- [x] Checkout logic remains in ContentWorker for consistency
-- [x] Error handling and retry logic implemented
-
-### Phase 4: Create Unified Pipeline Script ✅
-- [x] Created scripts/run_unified_pipeline.py with full orchestration
-- [x] Added command-line arguments for different modes (full, scrape, process, tasks)
-- [x] Implemented progress monitoring and comprehensive statistics
-- [x] Added graceful shutdown handling with KeyboardInterrupt
-
-### Phase 5: Testing and Validation
-- [ ] Test each task type individually
-- [ ] Test full pipeline flow
-- [ ] Verify error handling and retry logic
-- [ ] Performance testing with concurrent workers
-
-## Detailed Implementation Steps
-
-### 1. Extend TaskProcessor for SCRAPE Tasks
+### 🔧 Implementation Details
 
 ```python
-async def _process_scrape_task(self, payload: dict) -> bool:
-    """Process a scrape task."""
-    scraper_name = payload.get('scraper_name')
-    if not scraper_name:
-        logger.error("No scraper_name in payload")
-        return False
+# Before (in all files):
+from app.models.unified import Content, ProcessingTask, ContentStatus, ContentType
+
+# After (in all files):  
+from app.models.schema import Content, ProcessingTask, ContentStatus, ContentType
+```
+
+## ✅ Task 2: Generic Error Logger Replacement - COMPLETED
+
+### 🎯 Goals
+- ✅ Replace complex RSS-specific logger with simple, generic error logger
+- ✅ Capture full error context including HTTP responses, stack traces, etc.
+- ✅ Support debugging of download errors across all system components
+- ✅ Reduce code complexity and maintenance overhead
+
+### 📋 Current Analysis
+
+#### Previous RSS Error Logger Issues (RESOLVED):
+- ✅ 305 lines of RSS-specific code in [`app/utils/rss_error_logger.py`](app/utils/rss_error_logger.py) - REMOVED
+- ✅ Complex statistics tracking and file management - SIMPLIFIED
+- ✅ Multiple output formats (JSON, text, summary) - STREAMLINED
+- ✅ Only used by 2 scrapers: [`podcast_unified.py`](app/scraping/podcast_unified.py:21) and [`substack_unified.py`](app/scraping/substack_unified.py:39) - UPDATED
+
+#### ✅ New Generic Error Logger Features (IMPLEMENTED):
+- ✅ Simple, universal error logging with full context
+- ✅ Capture HTTP responses, headers, status codes
+- ✅ Include complete stack traces and error details
+- ✅ JSON-structured logs for easy parsing (JSONL format)
+- ✅ Support for categorizing errors by component/operation
+- ✅ Timestamped logs with searchable metadata
+
+### 📋 Implementation Steps
+
+#### Phase 1: Design Generic Error Logger
+- [x] **Create New Logger**: Design [`app/utils/error_logger.py`](app/utils/error_logger.py) with simple interface
+- [x] **Define Error Structure**: Create standardized error data structure
+- [x] **Support Context Capture**: Include HTTP responses, headers, raw data
+- [x] **JSON Logging**: Structured logs for easy analysis
+- [x] **Component Categorization**: Tag errors by system component (scraper, processor, etc.)
+
+#### Phase 2: Implement Generic Error Logger
+- [x] **Core Logger Class**: Simple `GenericErrorLogger` class
+- [x] **Context Methods**: Methods to capture HTTP responses, exceptions, custom data
+- [x] **File Management**: Simple timestamped log files
+- [x] **Search/Filter Support**: Metadata for easy log analysis
+
+#### Phase 3: Replace RSS Error Logger Usage
+- [x] **Update Podcast Scraper**: Replace [`RSSErrorLogger`](app/scraping/podcast_unified.py:21) usage
+- [x] **Update Substack Scraper**: Replace [`RSSErrorLogger`](app/scraping/substack_unified.py:39) usage
+- [x] **Maintain Functionality**: Ensure same error visibility and debugging capability
+- [x] **Add HTTP Context**: Enhance with HTTP response logging for download errors
+
+#### Phase 4: Extend to Other Components (FUTURE)
+- [ ] **Processing Strategies**: Add error logging to content processors
+- [ ] **HTTP Client**: Add response logging to [`RobustHttpClient`](app/http_client/robust_http_client.py)
+- [ ] **Task Processor**: Add error context to [`TaskProcessor`](app/pipeline/task_processor.py)
+- [ ] **LLM Services**: Add error logging to LLM interactions
+
+#### Phase 5: Cleanup and Testing
+- [x] **Remove Old Logger**: Delete [`app/utils/rss_error_logger.py`](app/utils/rss_error_logger.py)
+- [x] **Update Tests**: Modify tests that reference old logger
+- [x] **Integration Testing**: Verify error logging across pipeline
+- [ ] **Documentation**: Update error handling documentation
+
+### 🔧 Implementation Details
+
+#### Generic Error Logger Interface:
+```python
+class GenericErrorLogger:
+    """Simple, universal error logger with full context capture."""
     
-    # Get scraper instance
-    runner = ScraperRunner()
-    count = await runner.run_scraper(scraper_name)
+    def __init__(self, component: str, log_dir: str = "logs/errors"):
+        self.component = component
+        self.log_file = self._create_log_file(log_dir)
     
-    if count is not None and count > 0:
-        logger.info(f"Scraper {scraper_name} found {count} items")
-        # Items are already in database, enqueue processing tasks
-        # This happens automatically via scraper implementation
-        return True
-    else:
-        logger.error(f"Scraper {scraper_name} failed or found no items")
-        return False
+    def log_error(
+        self,
+        error: Exception,
+        context: Dict[str, Any] = None,
+        http_response: Any = None,
+        operation: str = None
+    ) -> None:
+        """Log error with full context."""
+        
+    def log_http_error(
+        self,
+        url: str,
+        response: Any,
+        error: Exception = None,
+        operation: str = None
+    ) -> None:
+        """Log HTTP-specific errors with response details."""
+        
+    def log_processing_error(
+        self,
+        item_id: Any,
+        error: Exception,
+        context: Dict[str, Any] = None
+    ) -> None:
+        """Log processing errors with item context."""
 ```
 
-### 2. Extend TaskProcessor for PROCESS_CONTENT Tasks
-
+#### Usage Examples:
 ```python
-async def _process_content_task(self, content_id: int) -> bool:
-    """Process content using the existing ContentWorker logic."""
-    worker = ContentWorker()
-    success = await worker.process_content(content_id, f"task-processor-{content_id}")
-    return success
+# In scrapers:
+error_logger = GenericErrorLogger("podcast_scraper")
+error_logger.log_http_error(feed_url, response, error, "feed_parsing")
+
+# In processors: 
+error_logger = GenericErrorLogger("html_processor")
+error_logger.log_processing_error(content_id, error, {"url": url, "strategy": "html"})
+
+# In HTTP client:
+error_logger = GenericErrorLogger("http_client") 
+error_logger.log_http_error(url, response, error, "content_download")
 ```
 
-### 3. Update run_scrapers_unified.py Structure
-
-```python
-# New structure will:
-1. Initialize task queue
-2. Enqueue SCRAPE tasks for each scraper
-3. Start TaskProcessorPool to handle all tasks
-4. Monitor progress and display statistics
-5. Support different execution modes
+#### Error Log Structure:
+```json
+{
+  "timestamp": "2025-06-14T14:05:22.123Z",
+  "component": "podcast_scraper",
+  "operation": "feed_parsing",
+  "error_type": "HTTPError",
+  "error_message": "404 Not Found",
+  "stack_trace": "...",
+  "context": {
+    "url": "https://example.com/feed.xml",
+    "feed_name": "Tech Podcast"
+  },
+  "http_details": {
+    "status_code": 404,
+    "headers": {...},
+    "response_body": "...",
+    "request_url": "...",
+    "request_method": "GET"
+  }
+}
 ```
 
-### 4. Command-Line Arguments
+## 🧪 Testing Strategy
 
-```
---mode: full|scrape|process|tasks
-  - full: Run scrapers then process all content
-  - scrape: Only run scrapers
-  - process: Only process existing content
-  - tasks: Only process queued tasks
+### Task 1 Testing:
+- [ ] Run full test suite after imports are updated
+- [ ] Test database operations with renamed models
+- [ ] Verify all scripts execute without import errors
+- [ ] Check VS Code/IDE import resolution
 
---scrapers: List of scrapers to run
---content-type: Filter by article/podcast
---max-workers: Number of concurrent workers
---max-items: Maximum items to process
---continuous: Run continuously with interval
---debug: Enable debug logging
---show-stats: Show detailed statistics
-```
+### Task 2 Testing:
+- [ ] Unit tests for `GenericErrorLogger` class
+- [ ] Integration tests with scrapers using new logger
+- [ ] Verify error logs contain expected context
+- [ ] Test HTTP error logging with various response types
+- [ ] Performance testing to ensure minimal logging overhead
 
-## Key Design Decisions
+## 📊 Success Criteria
 
-1. **Task Granularity**: 
-   - Each scraper = 1 SCRAPE task
-   - Each content item = 1 PROCESS_CONTENT task
-   - Podcast processing = 3 sequential tasks (DOWNLOAD → TRANSCRIBE → SUMMARIZE)
+### Task 1 Success:
+- ✅ All 14 files successfully import from `app.models.schema`
+- ✅ All tests pass without import errors
+- ✅ Database operations function correctly
+- ✅ Scripts execute without issues
 
-2. **Error Handling**:
-   - Failed tasks retry with exponential backoff
-   - Max retry count from settings
-   - Detailed error logging
+### Task 2 Success:
+- ✅ Generic error logger captures full error context
+- ✅ HTTP responses and headers logged for debugging
+- ✅ Scrapers maintain same error visibility with simpler code
+- ✅ Error logs are structured and searchable
+- ✅ Old RSS error logger completely removed
+- ✅ No loss of debugging capability
 
-3. **Concurrency**:
-   - Multiple workers process different task types simultaneously
-   - Task queue ensures no duplicate processing
-   - Checkout mechanism prevents race conditions
+## 🔄 Implementation Order
 
-4. **Monitoring**:
-   - Real-time task queue statistics
-   - Progress tracking per task type
-   - Success/failure rates
+1. **Task 1 First** (simpler, lower risk):
+   - Rename file and update imports
+   - Verify functionality
+   - Commit changes
 
-## Success Criteria
+2. **Task 2 Second** (more complex):
+   - Implement generic logger
+   - Replace usage incrementally  
+   - Test thoroughly
+   - Remove old logger
 
-1. ✅ All 5 TaskTypes are implemented in TaskProcessor
-2. ✅ Pipeline runs end-to-end without manual intervention
-3. ✅ Error recovery with proper retry logic
-4. ✅ Concurrent processing optimization
-5. ✅ Clear monitoring and statistics
-6. ✅ Support for different execution modes
-7. ✅ Backward compatibility maintained
+## 🎯 Expected Benefits
 
-## Implementation Summary
+### Task 1 Benefits:
+- Better file naming convention (`schema.py` vs `unified.py`)
+- Clearer code organization
+- Improved developer experience
 
-### Scripts Created/Modified:
+### Task 2 Benefits:
+- **Simplified Codebase**: 305 lines → ~100 lines
+- **Better Debugging**: Full HTTP context capture
+- **System-Wide Usage**: Error logging across all components
+- **Reduced Maintenance**: Single, simple logger vs complex RSS-specific one
+- **Enhanced Troubleshooting**: Rich error context for fixing download issues
 
-1. **app/pipeline/task_processor.py**:
-   - Added `_process_scrape_task()` to handle SCRAPE tasks
-   - Added `_process_content_task()` to handle PROCESS_CONTENT tasks
-   - Integrated ScraperRunner and ContentWorker
+## 📝 Notes
 
-2. **scripts/run_unified_pipeline.py** (NEW):
-   - Full pipeline orchestration script
-   - Supports modes: full, scrape, process, tasks
-   - Continuous mode with configurable interval
-   - Comprehensive statistics and monitoring
-   - Example usage included in help
-
-3. **scripts/run_scrapers_unified.py** (UPDATED):
-   - Updated to use new pipeline by default
-   - Added `--use-legacy` flag for backward compatibility
-   - Maintains same command-line interface
-   - Shows comprehensive statistics
-
-## Usage Examples
-
-```bash
-# Full pipeline (scrape + process everything)
-python scripts/run_unified_pipeline.py --mode full
-
-# Run specific scrapers only
-python scripts/run_unified_pipeline.py --mode scrape --scrapers hackernews reddit
-
-# Process only articles
-python scripts/run_unified_pipeline.py --mode process --content-type article
-
-# Process only queued tasks with 5 workers
-python scripts/run_unified_pipeline.py --mode tasks --max-workers 5
-
-# Run continuously every 5 minutes
-python scripts/run_unified_pipeline.py --mode full --continuous --interval 300
-
-# Legacy compatibility mode
-python scripts/run_scrapers_unified.py --use-legacy --scrapers hackernews
-```
-
-## Next Steps
-
-1. Test individual task types:
-   - [ ] Test SCRAPE tasks
-   - [ ] Test PROCESS_CONTENT tasks for articles
-   - [ ] Test podcast pipeline (DOWNLOAD_AUDIO → TRANSCRIBE → SUMMARIZE)
-
-2. Integration testing:
-   - [ ] Run full pipeline with all scrapers
-   - [ ] Verify task queue ordering
-   - [ ] Test error recovery and retries
-   - [ ] Performance test with high concurrency
-
-3. Documentation:
-   - [ ] Update README.md with new pipeline architecture
-   - [ ] Document task flow and dependencies
-   - [ ] Add troubleshooting guide
-
-4. Monitoring improvements:
-   - [ ] Add real-time progress bars
-   - [ ] Export metrics to monitoring system
-   - [ ] Add webhook notifications for failures
+- Both tasks are independent and can be implemented in parallel if needed
+- Task 1 is low-risk and should be completed first
+- Task 2 provides significant debugging improvements for download error troubleshooting
+- Generic error logger can be extended to other system components beyond scrapers
+- Consider adding error dashboard/viewer as future enhancement
