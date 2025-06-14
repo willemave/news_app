@@ -6,13 +6,14 @@ from typing import Optional, Dict
 
 from app.core.settings import get_settings
 from app.core.logging import get_logger
+from app.utils.error_logger import create_error_logger
 
 settings = get_settings()
 logger = get_logger(__name__)
 
 # Default values, can be overridden by settings
 DEFAULT_TIMEOUT = 10.0
-DEFAULT_USER_AGENT = "NewsApp/1.0 (RobustHttpClient)"
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36)"
 
 class RobustHttpClient:
     """
@@ -43,6 +44,7 @@ class RobustHttpClient:
         self.default_headers = base_headers
 
         self._client: Optional[httpx.Client] = None
+        self.error_logger = create_error_logger("robust_http_client")
 
     def _get_client(self) -> httpx.Client:
         """Initializes and returns the httpx.Client instance."""
@@ -100,9 +102,21 @@ class RobustHttpClient:
                     logger.debug(f"Redirect {i+1}: {r.url} ({r.status_code}) -> {r.headers.get('Location')}")
             return response
         except httpx.HTTPStatusError as e:
+            self.error_logger.log_http_error(
+                url=url,
+                response=e.response,
+                error=e,
+                operation="http_get",
+                context={"status_code": e.response.status_code}
+            )
             logger.error(f"HTTP error {e.response.status_code} for GET {url}: {e.response.text[:200]}")
             raise
         except httpx.RequestError as e:
+            self.error_logger.log_http_error(
+                url=url,
+                error=e,
+                operation="http_get"
+            )
             logger.error(f"Request error for GET {url}: {e}")
             raise
 
@@ -145,9 +159,21 @@ class RobustHttpClient:
                     logger.debug(f"Redirect {i+1}: {r.url} ({r.status_code}) -> {r.headers.get('Location')}")
             return response
         except httpx.HTTPStatusError as e:
+            self.error_logger.log_http_error(
+                url=url,
+                response=e.response,
+                error=e,
+                operation="http_head",
+                context={"status_code": e.response.status_code}
+            )
             logger.error(f"HTTP error {e.response.status_code} for HEAD {url}: {e.response.text[:200]}")
             raise
         except httpx.RequestError as e:
+            self.error_logger.log_http_error(
+                url=url,
+                error=e,
+                operation="http_head"
+            )
             logger.error(f"Request error for HEAD {url}: {e}")
             raise
 

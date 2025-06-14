@@ -13,6 +13,7 @@ from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscrib
 from app.domain.converters import content_to_domain
 from app.scraping.runner import ScraperRunner
 from app.pipeline.worker import ContentWorker
+from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -28,6 +29,7 @@ class TaskProcessor:
         self.podcast_transcribe_worker = PodcastTranscribeWorker()
         self.scraper_runner = ScraperRunner()
         self.content_worker = ContentWorker()
+        self.error_logger = create_error_logger("task_processor")
     
     async def process_task(self, task_data: Dict[str, Any]) -> bool:
         """
@@ -67,6 +69,16 @@ class TaskProcessor:
                 return False
                 
         except Exception as e:
+            self.error_logger.log_processing_error(
+                item_id=task_id,
+                error=e,
+                operation="task_processing",
+                context={
+                    "task_type": task_type,
+                    "content_id": content_id,
+                    "payload": payload
+                }
+            )
             logger.error(f"Error processing task {task_id}: {e}")
             return False
     
@@ -144,6 +156,12 @@ class TaskProcessor:
                     return False
                     
         except Exception as e:
+            self.error_logger.log_processing_error(
+                item_id=content_id,
+                error=e,
+                operation="content_summarization",
+                context={"content_id": content_id}
+            )
             logger.error(f"Error summarizing content {content_id}: {e}")
             
             # Update content with error
@@ -192,6 +210,12 @@ class TaskProcessor:
                 return False
                 
         except Exception as e:
+            self.error_logger.log_processing_error(
+                item_id=scraper_name,
+                error=e,
+                operation="scraper_execution",
+                context={"scraper_name": scraper_name}
+            )
             logger.error(f"Error running scraper {scraper_name}: {e}")
             return False
     
@@ -220,6 +244,12 @@ class TaskProcessor:
             return success
             
         except Exception as e:
+            self.error_logger.log_processing_error(
+                item_id=content_id,
+                error=e,
+                operation="content_processing",
+                context={"content_id": content_id}
+            )
             logger.error(f"Error processing content {content_id}: {e}")
             return False
     
@@ -252,7 +282,8 @@ class TaskProcessor:
             retry_count = task_data['retry_count']
             
             try:
-                # Process the task
+                # Process the task - asyncio.run() is safe here because
+                # each thread in the ThreadPoolExecutor gets its own event loop
                 success = asyncio.run(self.process_task(task_data))
                 
                 # Update task status
@@ -270,7 +301,7 @@ class TaskProcessor:
                         logger.error(f"Task {task_id} exceeded max retries")
                 
             except Exception as e:
-                logger.error(f"Worker {worker_id} error processing task {task_id}: {e}")
+                logger.error(f"Worker {worker_id} error processing task {task_id}: {e}", exc_info=True)
                 self.queue_service.complete_task(task_id, success=False, error_message=str(e))
         
         logger.info(f"Worker {worker_id} finished. Processed {processed_count} tasks")
