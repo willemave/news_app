@@ -71,7 +71,7 @@ class BaseScraper(ABC):
                         url=item['url'],
                         title=item.get('title'),
                         status=ContentStatus.NEW.value,
-                        metadata=item.get('metadata', {}),
+                        content_metadata=item.get('metadata', {}),
                         created_at=datetime.utcnow()
                     )
                     

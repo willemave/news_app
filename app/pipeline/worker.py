@@ -115,7 +115,7 @@ class ContentWorker:
                     if db_content:
                         db_content.status = ContentStatus.FAILED.value
                         # Handle metadata properly
-                        metadata = db_content.metadata.copy() if db_content.metadata else {}
+                        metadata = dict(db_content.content_metadata) if db_content.content_metadata else {}
                         metadata['error'] = str(e)
                         metadata['error_type'] = 'non_retryable'
                         db_content.metadata = metadata
@@ -176,11 +176,11 @@ class ContentWorker:
                 db_content = db.query(Content).filter(Content.id == content.id).first()
                 if db_content:
                     db_content.status = ContentStatus.FAILED.value
-                    # Handle metadata properly
-                    metadata = db_content.metadata.copy() if db_content.metadata else {}
+                    # Handle metadata properly - use content_metadata not metadata
+                    metadata = dict(db_content.content_metadata) if db_content.content_metadata else {}
                     metadata['error'] = str(e)
                     metadata['error_type'] = 'non_retryable'
-                    db_content.metadata = metadata
+                    db_content.content_metadata = metadata
                     db.commit()
             return False
         except Exception as e:

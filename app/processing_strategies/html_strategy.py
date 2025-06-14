@@ -128,7 +128,9 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             except (date_parser.ParserError, ValueError):
                 pass
 
-        logger.info(f"HtmlStrategy: Successfully extracted data for {url}. Title: {title[:50]}...")
+        # Safely handle None title for logging
+        title_preview = title[:50] if title else "None"
+        logger.info(f"HtmlStrategy: Successfully extracted data for {url}. Title: {title_preview}...")
         return {
             "title": title or "Untitled",
             "author": author,
