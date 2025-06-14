@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.settings import get_settings
 from app.core.logging import setup_logging
 from app.core.db import init_db
-from app.api import content
+from app.routers import content, logs
 
 # Initialize
 settings = get_settings()
@@ -26,8 +26,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Include routers
 app.include_router(content.router)
+app.include_router(logs.router)
 
 # Startup event
 @app.on_event("startup")

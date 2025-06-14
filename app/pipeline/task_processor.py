@@ -47,21 +47,27 @@ class TaskProcessor:
         payload = task_data.get('payload', {})
         
         logger.info(f"Processing task {task_id} of type {task_type}")
+        logger.debug(f"Task details - Content ID: {content_id}, Payload: {payload}")
         
         try:
             if task_type == TaskType.SCRAPE.value:
+                logger.info(f"Starting SCRAPE task for payload: {payload}")
                 return await self._process_scrape_task(payload)
             
             elif task_type == TaskType.PROCESS_CONTENT.value:
+                logger.info(f"Starting PROCESS_CONTENT task for content ID: {content_id}")
                 return await self._process_content_task(content_id)
             
             elif task_type == TaskType.DOWNLOAD_AUDIO.value:
+                logger.info(f"Starting DOWNLOAD_AUDIO task for content ID: {content_id}")
                 return await self.podcast_download_worker.process_download_task(content_id)
             
             elif task_type == TaskType.TRANSCRIBE.value:
+                logger.info(f"Starting TRANSCRIBE task for content ID: {content_id}")
                 return await self.podcast_transcribe_worker.process_transcribe_task(content_id)
             
             elif task_type == TaskType.SUMMARIZE.value:
+                logger.info(f"Starting SUMMARIZE task for content ID: {content_id}")
                 return await self._process_summarize_task(content_id)
             
             else:
@@ -146,7 +152,7 @@ class TaskProcessor:
                     db_content_to_update.processed_at = datetime.now(timezone.utc)
                     db.commit()
                     
-                    logger.info(f"Successfully summarized content {content_id}")
+                    logger.info(f"Successfully summarized content {content_id} - Summary length: {len(summary)} chars")
                     return True
                 else:
                     logger.error(f"Failed to generate summary for content {content_id}")
@@ -199,10 +205,11 @@ class TaskProcessor:
         
         try:
             # Run the scraper
+            logger.info(f"Executing scraper: {scraper_name}")
             count = await self.scraper_runner.run_scraper(scraper_name)
             
             if count is not None and count >= 0:
-                logger.info(f"Scraper {scraper_name} found {count} new items")
+                logger.info(f"Scraper {scraper_name} completed successfully - found {count} new items")
                 # Items are already saved and PROCESS_CONTENT tasks are queued by the scraper
                 return True
             else:
@@ -237,10 +244,15 @@ class TaskProcessor:
         
         try:
             # Use ContentWorker to process the content
+            logger.info(f"Delegating content {content_id} to ContentWorker")
             success = await self.content_worker.process_content(
                 content_id,
                 f"task-processor-{content_id}"
             )
+            if success:
+                logger.info(f"ContentWorker successfully processed content {content_id}")
+            else:
+                logger.warning(f"ContentWorker failed to process content {content_id}")
             return success
             
         except Exception as e:
@@ -272,11 +284,14 @@ class TaskProcessor:
                 break
             
             # Get next task from queue
+            logger.debug(f"Worker {worker_id} checking for new tasks...")
             task_data = self.queue_service.dequeue(worker_id=worker_id)
             
             if not task_data:
                 logger.debug(f"No tasks available for worker {worker_id}")
                 break
+            
+            logger.info(f"Worker {worker_id} dequeued task {task_data['id']} (type: {task_data['task_type']})")
             
             task_id = task_data['id']
             retry_count = task_data['retry_count']
@@ -291,7 +306,7 @@ class TaskProcessor:
                 
                 if success:
                     processed_count += 1
-                    logger.info(f"Worker {worker_id} successfully processed task {task_id}")
+                    logger.info(f"Worker {worker_id} successfully completed task {task_id} (total processed: {processed_count})")
                 else:
                     # Retry logic with exponential backoff
                     max_retries = getattr(settings, 'max_retries', 3)
@@ -330,7 +345,7 @@ class TaskProcessor:
                     # Non-network errors don't get retried automatically
                     self.queue_service.complete_task(task_id, success=False, error_message=error_msg[:500])
         
-        logger.info(f"Worker {worker_id} finished. Processed {processed_count} tasks")
+        logger.info(f"Worker {worker_id} shutting down. Total tasks processed: {processed_count}")
         
         # Cleanup models if needed
         if hasattr(self.podcast_transcribe_worker, 'cleanup_model'):
@@ -351,6 +366,8 @@ class TaskProcessorPool:
             max_tasks_per_worker: Maximum tasks each worker should process
         """
         logger.info(f"Starting task processor pool with {self.max_workers} workers")
+        if max_tasks_per_worker:
+            logger.info(f"Each worker will process up to {max_tasks_per_worker} tasks")
         
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = []
@@ -359,6 +376,7 @@ class TaskProcessorPool:
                 worker_id = f"task-worker-{i}"
                 processor = TaskProcessor()
                 
+                logger.info(f"Launching worker {worker_id}")
                 future = executor.submit(
                     processor.run_worker,
                     worker_id,
@@ -367,13 +385,15 @@ class TaskProcessorPool:
                 futures.append(future)
             
             # Wait for all workers to complete
-            for future in futures:
+            logger.info(f"Waiting for all {len(futures)} workers to complete...")
+            for i, future in enumerate(futures):
                 try:
                     future.result()
+                    logger.debug(f"Worker {i} completed successfully")
                 except Exception as e:
-                    logger.error(f"Worker pool error: {e}")
+                    logger.error(f"Worker {i} encountered error: {e}")
         
-        logger.info("Task processor pool finished")
+        logger.info("All workers finished - Task processor pool shutting down")
     
     def run_continuous(self, check_interval_seconds: int = 30):
         """
@@ -390,10 +410,11 @@ class TaskProcessorPool:
             pending_count = stats.get('by_status', {}).get(TaskStatus.PENDING.value, 0)
             
             if pending_count > 0:
-                logger.info(f"Found {pending_count} pending tasks, starting workers")
+                logger.info(f"Found {pending_count} pending tasks, starting worker pool")
                 self.run_pool()
+                logger.info("Worker pool completed processing batch")
             else:
-                logger.debug("No pending tasks")
+                logger.debug("No pending tasks in queue")
             
             # Wait before checking again
             logger.debug(f"Sleeping for {check_interval_seconds} seconds")

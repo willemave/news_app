@@ -46,10 +46,12 @@ class UnifiedPipeline:
             Number of scraper tasks enqueued
         """
         available_scrapers = self.scraper_runner.list_scrapers()
+        logger.debug(f"Available scrapers: {', '.join(available_scrapers)}")
         
         if scrapers:
             # Filter to requested scrapers
             scrapers_to_run = [s for s in scrapers if s.lower() in [a.lower() for a in available_scrapers]]
+            logger.info(f"Filtered to requested scrapers: {', '.join(scrapers_to_run)}")
         else:
             scrapers_to_run = available_scrapers
         
@@ -102,10 +104,12 @@ class UnifiedPipeline:
                         TaskType.PROCESS_CONTENT,
                         content_id=content.id
                     )
-                    logger.debug(f"Enqueued PROCESS_CONTENT task {task_id} for content {content.id}")
+                    logger.debug(f"Enqueued PROCESS_CONTENT task {task_id} for content {content.id} (type: {content.content_type})")
                     task_count += 1
+                else:
+                    logger.debug(f"Content {content.id} already has pending task {existing_task.id}")
             
-            logger.info(f"Enqueued {task_count} PROCESS_CONTENT tasks")
+            logger.info(f"Enqueued {task_count} PROCESS_CONTENT tasks out of {len(contents)} unprocessed items")
             return task_count
     
     def get_pipeline_stats(self) -> Dict:
@@ -191,19 +195,22 @@ async def run_with_periodic_stats(processor_pool: TaskProcessorPool, pipeline: U
         pipeline: Pipeline instance for getting stats
         stats_interval: Interval in seconds between stats reports
     """
-    logger.info(f"Task processing with stats every {stats_interval} seconds")
+    logger.info(f"Starting task processing with stats every {stats_interval} seconds")
     
     # Flag to indicate when processing is complete
     processing_complete = threading.Event()
     
     def run_processor_pool():
         """Run the processor pool in a separate thread."""
+        logger.debug("Starting processor pool thread")
         try:
             processor_pool.run_pool(max_tasks_per_worker=None)
+            logger.debug("Processor pool completed normally")
         except Exception as e:
-            logger.error(f"Error in processor pool: {e}")
+            logger.error(f"Error in processor pool: {e}", exc_info=True)
         finally:
             processing_complete.set()
+            logger.debug("Processing complete event set")
     
     # Start task processing in background thread
     processor_thread = threading.Thread(target=run_processor_pool, name="TaskProcessor")
@@ -214,6 +221,7 @@ async def run_with_periodic_stats(processor_pool: TaskProcessorPool, pipeline: U
     while not processing_complete.is_set():
         # Wait for either completion or stats interval
         if processing_complete.wait(timeout=stats_interval):
+            logger.debug("Processing complete, exiting stats loop")
             break  # Processing completed
         
         stats_count += 1
@@ -228,8 +236,9 @@ async def run_with_periodic_stats(processor_pool: TaskProcessorPool, pipeline: U
             logger.error(f"Error getting periodic stats: {e}")
     
     # Wait for processing thread to complete
+    logger.debug("Waiting for processor thread to complete...")
     processor_thread.join()
-    logger.info("Task processing completed")
+    logger.info("Task processing phase completed")
 
 async def main():
     parser = argparse.ArgumentParser(
@@ -334,11 +343,14 @@ Examples:
         logger.info(f"Running continuously with {args.interval}s interval")
     
     # Initialize database
-    logger.info("Initializing database...")
+    logger.info("Initializing database connection...")
     init_db()
+    logger.debug("Database initialized successfully")
     
     # Create pipeline instance
+    logger.debug("Creating UnifiedPipeline instance")
     pipeline = UnifiedPipeline()
+    logger.debug("Pipeline instance created")
     
     try:
         while True:  # Loop for continuous mode
@@ -359,23 +371,31 @@ Examples:
             if args.mode in ["full", "scrape"]:
                 # Enqueue scraper tasks
                 logger.info("\nPHASE 1: ENQUEUEING SCRAPERS")
+                logger.info("=" * 40)
                 scraper_count = await pipeline.enqueue_scrapers(args.scrapers)
-                logger.info(f"Enqueued {scraper_count} scraper tasks")
+                logger.info(f"Phase 1 complete: Enqueued {scraper_count} scraper tasks")
             
             if args.mode in ["full", "process"]:
                 # Enqueue content processing tasks
                 logger.info("\nPHASE 2: ENQUEUEING CONTENT PROCESSING")
+                logger.info("=" * 40)
                 content_type = ContentType(args.content_type) if args.content_type else None
+                if content_type:
+                    logger.info(f"Filtering to content type: {content_type.value}")
+                if args.max_items:
+                    logger.info(f"Limiting to {args.max_items} items")
                 content_count = pipeline.enqueue_unprocessed_content(
                     content_type=content_type,
                     max_items=args.max_items
                 )
-                logger.info(f"Enqueued {content_count} content processing tasks")
+                logger.info(f"Phase 2 complete: Enqueued {content_count} content processing tasks")
             
             if args.mode in ["full", "tasks"] or (args.mode == "scrape" and scraper_count > 0) or (args.mode == "process" and content_count > 0):
                 # Process tasks with periodic stats reporting
                 logger.info(f"\nPHASE 3: PROCESSING TASKS")
+                logger.info("=" * 40)
                 logger.info(f"Starting task processor pool with {args.max_workers} workers")
+                logger.info(f"Stats will be displayed every {args.stats_interval} seconds")
                 
                 # Create task processor pool
                 processor_pool = TaskProcessorPool(max_workers=args.max_workers)
@@ -389,26 +409,32 @@ Examples:
             
             # Show final statistics
             if args.show_stats:
-                logger.info("\nFINAL STATISTICS:")
+                logger.info("\n" + "=" * 60)
+                logger.info("FINAL STATISTICS")
+                logger.info("=" * 60)
                 final_stats = pipeline.get_pipeline_stats()
                 pipeline.display_stats(final_stats)
             
             # Break if not continuous mode
             if not args.continuous:
+                logger.debug("Not in continuous mode, exiting main loop")
                 break
             
             # Wait before next iteration
-            logger.info(f"\nSleeping for {args.interval} seconds...")
+            logger.info(f"\nContinuous mode: Sleeping for {args.interval} seconds before next run...")
             await asyncio.sleep(args.interval)
             
     except KeyboardInterrupt:
-        logger.warning("\nPipeline interrupted by user")
+        logger.warning("\nPipeline interrupted by user (Ctrl+C)")
+        logger.info("Cleaning up and shutting down...")
         return 1
     except Exception as e:
-        logger.error(f"Pipeline error: {e}", exc_info=True)
+        logger.error(f"Unexpected pipeline error: {e}", exc_info=True)
         return 1
     
-    logger.info("\nUnified pipeline completed successfully!")
+    logger.info("\n" + "=" * 60)
+    logger.info("UNIFIED PIPELINE COMPLETED SUCCESSFULLY!")
+    logger.info("=" * 60)
     return 0
 
 if __name__ == "__main__":

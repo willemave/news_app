@@ -11,7 +11,7 @@ def setup_logging(
     level: Optional[str] = None
 ) -> logging.Logger:
     """
-    Set up logging configuration.
+    Set up logging configuration for the entire application.
     
     Args:
         name: Logger name (defaults to app name from settings)
@@ -24,12 +24,13 @@ def setup_logging(
     logger_name = name or settings.app_name
     log_level = level or settings.log_level
     
-    # Create logger
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(getattr(logging, log_level.upper()))
+    # Configure the root logger instead of a specific named logger
+    # This ensures all child loggers inherit the configuration
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, log_level.upper()))
     
-    # Remove existing handlers
-    logger.handlers.clear()
+    # Remove existing handlers from root logger
+    root_logger.handlers.clear()
     
     # Console handler with formatting
     console_handler = logging.StreamHandler(sys.stdout)
@@ -42,12 +43,13 @@ def setup_logging(
     )
     console_handler.setFormatter(formatter)
     
-    logger.addHandler(console_handler)
+    root_logger.addHandler(console_handler)
     
-    # Prevent propagation to avoid duplicate logs
-    logger.propagate = False
+    # Also return the app-specific logger for backward compatibility
+    app_logger = logging.getLogger(logger_name)
+    app_logger.setLevel(getattr(logging, log_level.upper()))
     
-    return logger
+    return app_logger
 
 def get_logger(name: str) -> logging.Logger:
     """Get a logger instance with the given name."""

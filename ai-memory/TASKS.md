@@ -1,195 +1,149 @@
-# Test Suite Update Implementation Plan
+# UI Template Overhaul - Implementation Tasks
 
-## Overview
-The test suite needs major updates to align with the unified architecture that replaced separate Article/Podcast models with a single Content model and Huey with a database-backed queue.
+## Phase 1: Cleanup and Removal
+- [x] Remove old template files
+  - [x] Delete `templates/admin_dashboard.html`
+  - [x] Delete `templates/admin_index.html`
+  - [x] Delete `templates/partials/article_preview.html`
+  - [x] Delete `templates/podcast_detail.html`
+  - [x] Delete `templates/podcasts.html`
+  - [x] Delete `templates/daily_links.html` (if exists)
+  - [x] Keep only `templates/base.html` as starting point
 
-## Phase 1: Remove Obsolete Tests (Priority: High) ✅ COMPLETE
-These tests reference old models/modules that no longer exist:
+- [x] Remove old API endpoints
+  - [x] Delete `app/api/admin.py`
+  
+  - [x] Archive `app/api/content.py` content for reference (copy useful parts)
+  - [x] Delete entire `app/api/` directory after archiving
 
-- [x] **Remove** `tests/test_content_download.py` - Completely commented out, references non-existent `app.processor`
-- [x] **Remove** `tests/test_scraper_pipeline_integration.py` - Uses old Links/Articles models and LinkPipelineOrchestrator
-- [x] **Remove** `tests/test_duplicate_url_skipping.py` - References old scraper modules that have been refactored
-- [x] **Remove** `tests/test_skip_reason.py` - References old FailureLogs model and filter_article function
-- [x] **Remove** `tests/test_detached_instance_fix.py` - Likely references old models
-- [x] **Remove** `tests/test_json_parsing_fix_verification.py` - Likely references old LLM functions
-- [x] **Remove** `tests/test_llm_json_parsing_error.py` - References old LLM module structure
-- [x] **Remove** `tests/test_podcast_download_date_filter.py` - Likely uses old models
-- [x] **Remove** `tests/test_podcast_summarization_json_errors.py` - References old LLM functions
+- [x] Remove old routers that won't be needed
+  - [x] Delete `app/routers/admin.py`
+  - [x] Delete `app/routers/podcasts.py`
+  - [x] Archive `app/routers/articles.py` for reference
 
-## Phase 2: Update Tests for New Architecture (Priority: High) ✅ COMPLETE
+- [x] Update `app/main.py` to remove references to deleted routers/APIs
 
-### 2.1 Update LLM Tests
-- [x] **Update** `tests/test_llm_json_parsing_robust.py`:
-  - Replace `app.llm` imports with `app.services.llm`
-  - Update function names: `summarize_podcast_transcript` → use LLMService methods
-  - Replace `ArticleSummary` with domain models from `app.domain.content`
-  - Update test logic to use new LLMService abstraction
+## Phase 2: Create New Router Structure
+- [x] Create `app/routers/content.py` - main content listing and detail router
+  - [x] Implement `/` route for content list with filters
+  - [x] Implement `/content/{content_id}` for detail view
+  - [x] Use unified Content model instead of Articles/Links
 
-### 2.2 Update Model Tests
-- [x] **Update** `tests/test_fixes_simple.py`:
-  - Replace `ArticleSummary` import from `app.schemas` to domain models
-  - Replace `LinkStatus` with `ContentStatus` from `app.models.schema`
-  - Update enum values to match new ContentStatus (new, processing, completed, failed, skipped)
+- [x] Create `app/routers/logs.py` - admin logs viewer
+  - [x] Implement `/admin/logs` route
+  - [x] List all log files from `logs/` directory
+  - [x] Implement `/admin/logs/{filename}` to view specific log content
 
-### 2.3 Update Scraper Tests
-- [x] **Update** `tests/scraping/test_substack_scraper.py`:
-  - Remove MockArticle class and imports
-  - Update to use Content model instead of Articles
-  - Replace old pipeline references with new queue system
-  - Update status values to use ContentStatus enum
+## Phase 3: Update Base Template
+- [x] Modify `templates/base.html`
+  - [x] Simplify header - just app name and minimal navigation
+  - [x] Remove links to articles/podcasts/admin dashboard
+  - [x] Add link to content list (`/`) and logs (`/admin/logs`)
+  - [x] Ensure mobile responsiveness with proper viewport meta tags
+  - [x] Keep TailwindCSS styling minimal and clean
 
-## Phase 3: Create New Tests (Priority: Medium) ✅ MOSTLY COMPLETE
+## Phase 4: Create Content List Template
+- [x] Create `templates/content_list.html`
+  - [x] Minimalistic design with focus on readability
+  - [x] Add filters at top:
+    - [x] Content type dropdown (All, Article, Podcast)
+    - [x] Date picker or dropdown for date filtering
+  - [x] Content items displayed as simple cards:
+    - [x] Title (linked to detail page)
+    - [x] Content type badge
+    - [x] Date
+    - [x] Short summary preview (if available)
+  - [x] Mobile-first responsive design
+  - [x] Use TailwindCSS utility classes
 
-### 3.1 Queue System Tests
-- [x] Create `tests/services/test_queue.py`:
-  - Test QueueService enqueue/dequeue operations
-  - Test ProcessingTask model
-  - Test TaskType enum handling
-  - Test retry logic and error handling
+## Phase 5: Create Content Detail Template
+- [x] Create `templates/content_detail.html`
+  - [x] Clean, readable layout for article/podcast details
+  - [x] Metadata section:
+    - [x] Title
+    - [x] Content type
+    - [x] URL (as external link)
+    - [x] Created date
+    - [x] Status
+  - [x] Content sections:
+    - [x] Short summary (if available)
+    - [x] Detailed summary (if available)
+    - [x] For podcasts: show transcript if available in metadata
+  - [x] Back button to return to list
+  - [x] Mobile-optimized typography and spacing
 
-### 3.2 Content Model Tests
-- [x] Create `tests/models/test_content.py`:
-  - Test Content model with different content_types
-  - Test ContentStatus transitions
-  - Test metadata JSON field handling
-  - Test content_type differentiation (article vs podcast)
+## Phase 6: Create Admin Logs Template
+- [x] Create `templates/logs_list.html`
+  - [x] Simple list of log files from `logs/` directory
+  - [x] Show filename, size, last modified date
+  - [x] Click to view log content
 
-### 3.3 LLM Service Tests
-- [x] Create `tests/services/test_llm.py`:
-  - Test LLMService with different providers
-  - Test summarize_content method
-  - Test extract_topics method
-  - Test provider switching
-  - Test error handling and JSON parsing
+- [x] Create `templates/log_detail.html`  
+  - [x] Display log file content in monospace font
+  - [x] Add basic search/filter functionality (client-side)
+  - [x] Download button for log file
+  - [x] Back to logs list button
 
-### 3.4 Domain Converter Tests
-- [x] Create `tests/domain/test_converters.py`:
-  - Test convert_to_domain_model function
-  - Test different content types conversion
-  - Test metadata handling in conversion
+## Phase 7: Update Main Application
+- [x] Update `app/main.py`
+  - [x] Remove old router imports
+  - [x] Add new content and logs routers
+  - [x] Update middleware if needed
+  - [x] Ensure markdown filter is available for Jinja2
 
-### 3.5 Worker Tests
-- [ ] Create `tests/pipeline/test_worker.py`:
-  - Test ContentWorker processing logic
-  - Test different content type routing
-  - Test error handling in processing
+- [x] Update router implementations to use:
+  - [x] Unified Content model from `app/models/schema.py`
+  - [x] Domain converters from `app/domain/converters.py`
+  - [x] Proper database session handling
 
-## Phase 4: Verify Existing Good Tests (Priority: Low)
+## Phase 8: Update Styles
+- [x] Review and update `static/css/styles.css`
+  - [x] Remove any admin-specific styles
+  - [x] Add mobile-first utility classes if needed
+  - [x] Ensure good readability on small screens
+  
+- [x] Rebuild CSS with Tailwind CLI:
+  ```bash
+  npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css
+  ```
 
-These tests appear to be properly aligned with the new architecture:
-- [ ] Verify `tests/test_unified_system_integration.py` - Already uses unified architecture
-- [ ] Verify `tests/scraping/test_podcast_scraper_integration.py` - Uses unified scraper
-- [ ] Verify `tests/processing_strategies/*.py` - Strategy pattern tests look good
-- [ ] Verify `tests/http_client/test_robust_http_client.py` - HTTP client tests are fine
+## Phase 9: Testing and Cleanup
+- [x] Remove tests for deleted components:
+  - [x] Tests for old API endpoints
+  - [x] Tests for admin functionality
+  - [x] Tests for old routers
 
-## Phase 5: Integration Tests (Priority: Low)
-
-- [ ] Create `tests/test_end_to_end_flow.py`:
-  - Test complete flow: scrape → queue → process → store
-  - Test both article and podcast content types
-  - Test error scenarios and recovery
-  - Test status transitions through pipeline
+- [x] Test new UI:
+  - [x] Content list with filters
+  - [x] Content detail pages
+  - [x] Admin logs viewer
+  - [x] Mobile responsiveness
 
 ## Implementation Notes
 
-1. **Import Updates Required**:
-   - `app.models.Links` → `app.models.schema.Content`
-   - `app.models.Articles` → `app.models.schema.Content`
-   - `app.models.LinkStatus` → `app.models.schema.ContentStatus`
-   - `app.llm.*` → `app.services.llm.LLMService`
-   - `app.schemas.ArticleSummary` → domain models
+### Database Query Patterns
+- Use the unified Content model: `from app.models.schema import Content`
+- Filter by content_type: `Content.content_type == ContentType.ARTICLE.value`
+- Filter by date: Use `Content.created_at` or `processed_at`
+- Join is no longer needed since Content has all data
 
-2. **Status Values Update**:
-   - Old: new, processing, processed, failed
-   - New: new, processing, completed, failed, skipped
+### Template Context Variables
+- List view: `contents`, `content_types`, `selected_date`, `selected_type`
+- Detail view: `content`, with metadata accessed via `content.content_metadata`
+- Use `content_to_domain()` converter when needed
 
-3. **Content Type Handling**:
-   - Use `content_type` field to differentiate article/podcast
-   - Use `ContentType` enum from domain models
+### Mobile Optimization
+- Use Tailwind's responsive prefixes: `sm:`, `md:`, `lg:`
+- Test on actual mobile devices or responsive mode
+- Ensure touch targets are at least 44x44 pixels
+- Use appropriate font sizes (min 16px for body text)
 
-4. **Queue System**:
-   - Replace Huey references with ProcessingTask/QueueService
-   - Use TaskType enum for task types
+### Error Handling
+- Handle missing content gracefully with 404 pages
+- Show user-friendly messages for empty states
+- Log errors appropriately using the error logger
 
-5. **Test Fixtures Needed**:
-   - Mock Content objects with proper metadata
-   - Mock QueueService for enqueue/dequeue
-   - Mock LLMService with provider abstraction
-   - Mock database sessions with new models
-
-## Execution Order
-
-1. First, remove obsolete tests (Phase 1)
-2. Update critical tests (Phase 2)
-3. Create new test coverage (Phase 3)
-4. Verify existing good tests (Phase 4)
-5. Add integration tests (Phase 5)
-
-## Success Criteria
-
-- [ ] All tests pass with `pytest`
-- [ ] Test coverage > 80%
-- [ ] No references to old models remain
-- [ ] All new architecture components have test coverage
-- [ ] Integration tests verify end-to-end flows
-
----
-
-## Execution Summary
-
-### Completed Work ✅
-1. **Phase 1 Complete**: Removed 9 obsolete test files that referenced old models
-2. **Phase 2 Complete**: Updated 3 existing tests for new architecture:
-   - `tests/test_fixes_simple.py` - Updated to use ContentStatus instead of LinkStatus
-   - `tests/test_llm_json_parsing_robust.py` - Rewritten to test new LLMService
-   - `tests/scraping/test_substack_scraper.py` - Updated for unified Content model
-3. **Phase 3 Mostly Complete**: Created 4 new comprehensive test files:
-   - `tests/services/test_queue.py` - Complete QueueService test coverage
-   - `tests/models/test_content.py` - Content model and enum tests
-   - `tests/services/test_llm.py` - LLMService tests (included in llm_json_parsing_robust)
-   - `tests/domain/test_converters.py` - Domain converter tests
-4. **Created** `app/domain/summary.py` - ArticleSummary model for tests
-
-### Test Status ✅
-- Updated tests are now passing (verified with pytest)
-- All imports updated to use new unified architecture
-- Enum values corrected (ContentStatus vs LinkStatus)
-- New test coverage for core components
-
-### Remaining Work
-- **Phase 3.5**: Create `tests/pipeline/test_worker.py` (1 file remaining)
-- **Phase 4**: Verify existing good tests still work
-- **Phase 5**: Add end-to-end integration tests
-
-### Architecture Changes Validated
-- ✅ Old models (Links, Articles, FailureLogs) → Unified Content model
-- ✅ LinkStatus → ContentStatus enum with correct values
-- ✅ Huey → Database-backed QueueService
-- ✅ Old LLM functions → LLMService abstraction
-- ✅ Domain models and converters working correctly
-
----
-
-## Bug Fixes Completed
-
-### UNIQUE Constraint Error in HackerNews Scraper (2025-06-14 1:55 PM)
-- **Issue**: HackerNews scraper throwing `sqlite3.IntegrityError: UNIQUE constraint failed: contents.url`
-- **Root Cause**: Race condition when multiple scrapers or instances try to insert the same URL
-- **Fix**: Added exception handling in `app/scraping/base.py:_save_items()` method:
-  - Wrapped each item insertion in try-except block
-  - Specifically catches UNIQUE constraint violations
-  - Rolls back transaction on error
-  - Logs as debug message for race conditions
-  - Continues processing remaining items
-
-### Podcast Scraper Encoding Error (2025-06-14 1:55 PM)
-- **Issue**: Podcast scraper logging errors for "document declared as us-ascii, but parsed as utf-8"
-- **Root Cause**: feedparser's bozo exception for encoding declaration mismatches (non-critical)
-- **Fix**: Improved encoding error detection in `app/scraping/podcast_unified.py`:
-  - Check exception string for encoding-related keywords
-  - Skip error logging for encoding mismatches (only debug log)
-  - Continue to log actual parsing errors
-
-**Last Updated**: 2025-06-14 1:55 PM
-**Status**: Fixed critical scraper errors, test suite functional with new architecture
-**Priority**: Medium - Core tests working, remaining work is enhancement
+## Dependencies
+- All existing dependencies should work
+- No new packages needed
+- Ensure TailwindCSS CLI is available for rebuilding styles

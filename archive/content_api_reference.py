@@ -1,3 +1,8 @@
+"""
+ARCHIVED FROM app/api/content.py
+This file contains reference code for content API endpoints that can be reused in the new router structure.
+"""
+
 from typing import Optional, List
 from datetime import datetime
 
