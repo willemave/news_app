@@ -64,15 +64,20 @@ class PodcastUnifiedScraper(BaseScraper):
                 
                 # Check for parsing issues
                 if parsed_feed.bozo:
-                    # Log detailed parsing error with new logger
-                    self.error_logger.log_feed_error(
-                        feed_url=feed_url,
-                        error=parsed_feed.bozo_exception,
-                        feed_name=feed_name,
-                        operation="feed_parsing"
-                    )
-                    # Only warn for serious parsing errors, not encoding issues
-                    if not isinstance(parsed_feed.bozo_exception, getattr(feedparser.exceptions, 'CharacterEncodingOverride', type(None))):
+                    # Check if it's just an encoding mismatch (not critical)
+                    is_encoding_issue = False
+                    exception_str = str(parsed_feed.bozo_exception).lower()
+                    if 'encoding' in exception_str or 'declared as' in exception_str:
+                        is_encoding_issue = True
+                    
+                    # Only log serious errors, not encoding mismatches
+                    if not is_encoding_issue:
+                        self.error_logger.log_feed_error(
+                            feed_url=feed_url,
+                            error=parsed_feed.bozo_exception,
+                            feed_name=feed_name,
+                            operation="feed_parsing"
+                        )
                         logger.warning(f"Feed {feed_url} may be ill-formed: {parsed_feed.bozo_exception}")
                     else:
                         logger.debug(f"Feed {feed_url} has encoding declaration mismatch (not critical): {parsed_feed.bozo_exception}")

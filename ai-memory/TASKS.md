@@ -170,6 +170,26 @@ These tests appear to be properly aligned with the new architecture:
 
 ---
 
-**Last Updated**: 2025-06-14 1:50 PM
-**Status**: Major progress - test suite is now functional with new architecture
+## Bug Fixes Completed
+
+### UNIQUE Constraint Error in HackerNews Scraper (2025-06-14 1:55 PM)
+- **Issue**: HackerNews scraper throwing `sqlite3.IntegrityError: UNIQUE constraint failed: contents.url`
+- **Root Cause**: Race condition when multiple scrapers or instances try to insert the same URL
+- **Fix**: Added exception handling in `app/scraping/base.py:_save_items()` method:
+  - Wrapped each item insertion in try-except block
+  - Specifically catches UNIQUE constraint violations
+  - Rolls back transaction on error
+  - Logs as debug message for race conditions
+  - Continues processing remaining items
+
+### Podcast Scraper Encoding Error (2025-06-14 1:55 PM)
+- **Issue**: Podcast scraper logging errors for "document declared as us-ascii, but parsed as utf-8"
+- **Root Cause**: feedparser's bozo exception for encoding declaration mismatches (non-critical)
+- **Fix**: Improved encoding error detection in `app/scraping/podcast_unified.py`:
+  - Check exception string for encoding-related keywords
+  - Skip error logging for encoding mismatches (only debug log)
+  - Continue to log actual parsing errors
+
+**Last Updated**: 2025-06-14 1:55 PM
+**Status**: Fixed critical scraper errors, test suite functional with new architecture
 **Priority**: Medium - Core tests working, remaining work is enhancement
