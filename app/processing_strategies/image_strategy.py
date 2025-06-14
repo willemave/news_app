@@ -7,7 +7,9 @@ from typing import Optional, Dict, Any, List
 
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
-from app.config import logger
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 class ImageProcessorStrategy(UrlProcessorStrategy):
     """

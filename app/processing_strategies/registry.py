@@ -1,0 +1,73 @@
+from typing import Optional, List, Dict
+
+from app.processing_strategies.base_strategy import UrlProcessorStrategy
+from app.processing_strategies.html_strategy import HtmlProcessorStrategy
+from app.processing_strategies.pdf_strategy import PdfProcessorStrategy
+from app.processing_strategies.pubmed_strategy import PubMedProcessorStrategy
+from app.processing_strategies.arxiv_strategy import ArxivProcessorStrategy
+from app.processing_strategies.image_strategy import ImageProcessorStrategy
+from app.http_client.robust_http_client import RobustHttpClient
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+class StrategyRegistry:
+    """Registry for content processing strategies."""
+    
+    def __init__(self):
+        self.strategies: List[UrlProcessorStrategy] = []
+        self.http_client = RobustHttpClient()
+        self._initialize_default_strategies()
+    
+    def _initialize_default_strategies(self):
+        """Initialize with default strategies."""
+        # Order is important: more specific strategies should come before general ones.
+        # ArxivStrategy for /abs/ links, which then become PDF links.
+        # PubMedStrategy for specific domain.
+        # PdfProcessorStrategy for direct .pdf links or Content-Type PDF.
+        # ImageProcessorStrategy for image files (before HTML to avoid false matches).
+        # HtmlProcessorStrategy as a more general fallback.
+        self.register(ArxivProcessorStrategy(self.http_client))  # Handles arxiv.org/abs/ links
+        self.register(PubMedProcessorStrategy(self.http_client)) # Specific domain
+        self.register(PdfProcessorStrategy(self.http_client))    # Specific content type by extension/common URL pattern
+        self.register(ImageProcessorStrategy(self.http_client))  # Image files (before HTML fallback)
+        self.register(HtmlProcessorStrategy(self.http_client))   # More general HTML
+    
+    def register(self, strategy: UrlProcessorStrategy):
+        """Register a new strategy."""
+        self.strategies.append(strategy)
+        logger.info(f"Registered strategy: {strategy.__class__.__name__}")
+    
+    def get_strategy(
+        self,
+        url: str,
+        headers: Optional[Dict[str, str]] = None
+    ) -> Optional[UrlProcessorStrategy]:
+        """Get the appropriate strategy for a URL."""
+        # Convert dict headers to httpx.Headers if needed
+        httpx_headers = None
+        if headers:
+            import httpx
+            httpx_headers = httpx.Headers(headers)
+        
+        for strategy in self.strategies:
+            if strategy.can_handle_url(url, httpx_headers):
+                logger.debug(f"Using {strategy.__class__.__name__} for {url}")
+                return strategy
+        
+        logger.warning(f"No strategy found for URL: {url}")
+        return None
+    
+    def list_strategies(self) -> List[str]:
+        """List all registered strategy names."""
+        return [s.__class__.__name__ for s in self.strategies]
+
+# Global registry instance
+_registry = None
+
+def get_strategy_registry() -> StrategyRegistry:
+    """Get the global strategy registry."""
+    global _registry
+    if _registry is None:
+        _registry = StrategyRegistry()
+    return _registry

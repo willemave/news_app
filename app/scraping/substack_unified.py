@@ -1,0 +1,182 @@
+"""
+Unified Substack scraper following the new architecture.
+"""
+import feedparser
+import yaml
+import re
+from typing import List, Dict, Any
+from datetime import datetime
+
+from app.scraping.base import BaseScraper
+from app.domain.content import ContentType
+from app.core.logging import get_logger
+from app.utils.rss_error_logger import RSSErrorLogger
+
+logger = get_logger(__name__)
+
+def load_substack_feeds(config_path: str = 'config/substack.yml') -> List[str]:
+    """Loads Substack feed URLs from a YAML file."""
+    try:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        feeds = config.get('feeds', [])
+        # Extract URLs from the feed list
+        return [feed.get('url') if isinstance(feed, dict) else feed for feed in feeds if feed]
+    except FileNotFoundError:
+        logger.error(f"Substack config file not found at: {config_path}")
+        return []
+    except Exception as e:
+        logger.error(f"Error loading Substack config: {e}", exc_info=True)
+        return []
+
+class SubstackScraper(BaseScraper):
+    """Scraper for Substack RSS feeds."""
+    
+    def __init__(self, config_path: str = 'config/substack.yml'):
+        super().__init__("Substack")
+        self.feeds = load_substack_feeds(config_path)
+        self.podcast_filter = re.compile(r'\b(podcast|transcript)\b', re.IGNORECASE)
+        self.error_logger = RSSErrorLogger(log_dir="logs/rss_errors/substack")
+    
+    async def scrape(self) -> List[Dict[str, Any]]:
+        """Scrape all configured Substack feeds with comprehensive error logging."""
+        items = []
+        
+        if not self.feeds:
+            logger.warning("No Substack feeds configured. Skipping scrape.")
+            return items
+        
+        for feed_url in self.feeds:
+            self.error_logger.increment_feed_count()
+            
+            if not feed_url:
+                logger.warning("Skipping empty feed URL.")
+                continue
+            
+            logger.info(f"Scraping Substack feed: {feed_url}")
+            try:
+                parsed_feed = feedparser.parse(feed_url)
+                
+                # Check for parsing issues
+                if parsed_feed.bozo:
+                    # Log detailed parsing error
+                    self.error_logger.log_feed_parsing_error(
+                        feed_url=feed_url,
+                        error=parsed_feed.bozo_exception,
+                        feed_name=parsed_feed.feed.get('title', 'Unknown Feed'),
+                        parsed_feed=parsed_feed
+                    )
+                    # Only warn for serious parsing errors, not encoding issues
+                    if not isinstance(parsed_feed.bozo_exception, getattr(feedparser.exceptions, 'CharacterEncodingOverride', type(None))):
+                        logger.warning(f"Feed {feed_url} may be ill-formed: {parsed_feed.bozo_exception}")
+                    else:
+                        logger.debug(f"Feed {feed_url} has encoding declaration mismatch (not critical): {parsed_feed.bozo_exception}")
+                
+                # Extract feed name and description from the RSS feed
+                feed_name = parsed_feed.feed.get('title', 'Unknown Feed')
+                feed_description = parsed_feed.feed.get('description', '')
+                
+                logger.info(f"Processing feed: {feed_name} - {feed_description}")
+                
+                processed_entries = 0
+                for entry in parsed_feed.entries:
+                    item = self._process_entry(entry, feed_name, feed_description, feed_url)
+                    if item:
+                        items.append(item)
+                        processed_entries += 1
+                
+                # Log successful processing
+                self.error_logger.log_successful_feed(feed_url, processed_entries, feed_name)
+                        
+            except Exception as e:
+                # Log comprehensive error details
+                self.error_logger.log_feed_parsing_error(
+                    feed_url=feed_url,
+                    error=e,
+                    feed_name="Unknown Feed"
+                )
+                logger.error(f"Error scraping feed {feed_url}: {e}", exc_info=True)
+        
+        # Save error logs before returning
+        try:
+            log_files = self.error_logger.save_logs()
+            if log_files:
+                logger.info(f"RSS error logs saved: {list(log_files.values())}")
+        except Exception as e:
+            logger.error(f"Failed to save RSS error logs: {e}")
+        
+        return items
+    
+    def _process_entry(self, entry, feed_name: str, feed_description: str = "", feed_url: str = "") -> Dict[str, Any]:
+        """Process a single entry from an RSS feed."""
+        title = entry.get('title', 'No Title')
+        link = entry.get('link')
+        
+        if not link:
+            # Log detailed entry error
+            self.error_logger.log_entry_error(
+                feed_url=feed_url,
+                entry=entry,
+                error_type="missing_link",
+                error_message=f"Skipping entry with no link in feed {feed_name}: {title}",
+                feed_name=feed_name
+            )
+            logger.warning(f"Skipping entry with no link in feed {feed_name}: {title}")
+            return None
+        
+        # Filter out podcasts
+        if self.podcast_filter.search(title):
+            logger.info(f"Skipping podcast entry: {title}")
+            return None
+        
+        # Extract content from RSS entry
+        content = ""
+        if 'content' in entry and entry['content']:
+            for c in entry['content']:
+                if c.get('type') == 'text/html':
+                    content = c.get('value', '')
+                    break
+        if not content:
+            content = entry.get('summary', '')
+        
+        # Parse publication date
+        publication_date = None
+        if entry.get('published_parsed'):
+            try:
+                publication_date = datetime(*entry['published_parsed'][:6])
+            except (TypeError, ValueError):
+                pass
+        
+        # Create item for unified system
+        item = {
+            'url': self._normalize_url(link),
+            'title': title,
+            'content_type': ContentType.ARTICLE,
+            'metadata': {
+                'source': 'substack',
+                'feed_name': feed_name,
+                'feed_description': feed_description,
+                'author': entry.get('author'),
+                'publication_date': publication_date.isoformat() if publication_date else None,
+                'rss_content': content,  # Store RSS content for processing
+                'word_count': len(content.split()) if content else 0,
+                'entry_id': entry.get('id'),
+                'tags': [tag.get('term') for tag in entry.get('tags', []) if tag.get('term')]
+            }
+        }
+        
+        return item
+
+def run_substack_scraper():
+    """Initialize and run the Substack scraper."""
+    import asyncio
+    
+    async def main():
+        scraper = SubstackScraper()
+        return await scraper.run()
+    
+    return asyncio.run(main())
+
+if __name__ == '__main__':
+    count = run_substack_scraper()
+    print(f"Substack scraper processed {count} items")

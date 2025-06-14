@@ -10,7 +10,9 @@ from app.processing_strategies.pdf_strategy import PdfProcessorStrategy
 from app.processing_strategies.pubmed_strategy import PubMedProcessorStrategy
 from app.processing_strategies.arxiv_strategy import ArxivProcessorStrategy # Added import
 from app.processing_strategies.image_strategy import ImageProcessorStrategy
-from app.config import logger
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 class UrlProcessorFactory:
     """

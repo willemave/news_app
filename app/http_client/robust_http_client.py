@@ -4,7 +4,11 @@ This module provides a robust synchronous HTTP client.
 import httpx
 from typing import Optional, Dict
 
-from app.config import settings, logger # Assuming logger is configured in app.config
+from app.core.settings import get_settings
+from app.core.logging import get_logger
+
+settings = get_settings()
+logger = get_logger(__name__)
 
 # Default values, can be overridden by settings
 DEFAULT_TIMEOUT = 10.0
@@ -29,7 +33,7 @@ class RobustHttpClient:
             headers: Default headers for requests.
                      Merges with a default User-Agent from settings or DEFAULT_USER_AGENT.
         """
-        self.default_timeout = timeout or getattr(settings, 'HTTP_CLIENT_TIMEOUT', DEFAULT_TIMEOUT)
+        self.default_timeout = timeout or getattr(settings, 'http_timeout_seconds', DEFAULT_TIMEOUT)
         
         base_headers = {
             'User-Agent': getattr(settings, 'HTTP_CLIENT_USER_AGENT', DEFAULT_USER_AGENT)
