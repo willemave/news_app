@@ -10,12 +10,13 @@ from app.core.db import get_db
 from app.domain.content import ContentType, ContentData, ContentStatus
 from app.domain.converters import content_to_domain, domain_to_content
 from app.pipeline.checkout import get_checkout_manager
-from app.services.http import get_http_service
+from app.services.http import get_http_service, NonRetryableError
 from app.services.llm import get_llm_service
 from app.services.queue import get_queue_service, TaskType, TaskStatus
 from app.processing_strategies.registry import get_strategy_registry
 from app.models.schema import Content, ProcessingTask
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
+from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -31,6 +32,7 @@ class ContentWorker:
         self.strategy_registry = get_strategy_registry()
         self.podcast_download_worker = PodcastDownloadWorker()
         self.podcast_transcribe_worker = PodcastTranscribeWorker()
+        self.error_logger = create_error_logger("content_worker")
     
     async def process_content(self, content_id: int, worker_id: str) -> bool:
         """
@@ -81,6 +83,12 @@ class ContentWorker:
             return success
             
         except Exception as e:
+            self.error_logger.log_processing_error(
+                item_id=content_id,
+                error=e,
+                operation="content_processing",
+                context={"content_id": content_id, "worker_id": worker_id}
+            )
             logger.error(f"Error processing content {content_id}: {e}")
             return False
     
@@ -97,7 +105,22 @@ class ContentWorker:
             processed_url = strategy.preprocess_url(str(content.url))
             
             # Download content using HttpService
-            raw_content, _ = await self.http_service.fetch_content(processed_url)
+            try:
+                raw_content, _ = await self.http_service.fetch_content(processed_url)
+            except NonRetryableError as e:
+                logger.warning(f"Non-retryable error for {processed_url}: {e}")
+                # Mark as failed but don't retry
+                with get_db() as db:
+                    db_content = db.query(Content).filter(Content.id == content.id).first()
+                    if db_content:
+                        db_content.status = ContentStatus.FAILED.value
+                        # Handle metadata properly
+                        metadata = db_content.metadata.copy() if db_content.metadata else {}
+                        metadata['error'] = str(e)
+                        metadata['error_type'] = 'non_retryable'
+                        db_content.metadata = metadata
+                        db.commit()
+                return False
             
             # Extract data using strategy
             extracted_data = strategy.extract_data(raw_content, processed_url)
@@ -146,7 +169,27 @@ class ContentWorker:
             
             return True
             
+        except NonRetryableError as e:
+            logger.warning(f"Non-retryable error processing article {content.url}: {e}")
+            # Mark as failed without incrementing retry count
+            with get_db() as db:
+                db_content = db.query(Content).filter(Content.id == content.id).first()
+                if db_content:
+                    db_content.status = ContentStatus.FAILED.value
+                    # Handle metadata properly
+                    metadata = db_content.metadata.copy() if db_content.metadata else {}
+                    metadata['error'] = str(e)
+                    metadata['error_type'] = 'non_retryable'
+                    db_content.metadata = metadata
+                    db.commit()
+            return False
         except Exception as e:
+            self.error_logger.log_processing_error(
+                item_id=content.url,
+                error=e,
+                operation="article_processing",
+                context={"url": str(content.url), "content_id": content.id}
+            )
             logger.error(f"Error processing article {content.url}: {e}")
             return False
     
@@ -182,6 +225,12 @@ class ContentWorker:
             return True
             
         except Exception as e:
+            self.error_logger.log_processing_error(
+                item_id=content.url,
+                error=e,
+                operation="podcast_processing",
+                context={"url": str(content.url), "content_id": content.id}
+            )
             logger.error(f"Error processing podcast {content.url}: {e}")
             return False
 

@@ -9,6 +9,7 @@ from dateutil import parser as date_parser # For parsing dates from metadata
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 from app.core.logging import get_logger
+from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 
@@ -20,6 +21,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
     """
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
+        self.error_logger = create_error_logger("html_strategy")
 
     def preprocess_url(self, url: str) -> str:
         """
@@ -89,7 +91,15 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         )
 
         if not text_content:
-            logger.warning(f"HtmlStrategy: Trafilatura failed to extract content from {url}")
+            error_msg = f"Trafilatura failed to extract content from {url}"
+            error = Exception(error_msg)
+            self.error_logger.log_processing_error(
+                item_id=url,
+                error=error,
+                operation="html_content_extraction",
+                context={"url": url, "strategy": "html"}
+            )
+            logger.warning(f"HtmlStrategy: {error_msg}")
             return {
                 "title": "Extraction Failed",
                 "text_content": "",

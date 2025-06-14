@@ -9,41 +9,22 @@ from pathlib import Path
 # Add the parent directory to the path so we can import from app
 sys.path.append(str(Path(__file__).parent.parent))
 
-from app.database import SessionLocal
-from app.models import Links, Articles, FailureLogs, CronLogs
+from app.core.db import get_db
+from app.models.schema import Content, ProcessingTask
 
 
 def clear_all_tables():
     """Clear all data from database tables."""
-    db = SessionLocal()
-    try:
-        # Delete in order to respect foreign key constraints
-        # Articles reference Links, so delete Articles first
-        articles_deleted = db.query(Articles).delete()
-        print(f"Deleted {articles_deleted} articles")
+    with get_db() as db:
+        # Delete processing tasks first (no foreign key constraints)
+        tasks_deleted = db.query(ProcessingTask).delete()
+        print(f"Deleted {tasks_deleted} processing tasks")
         
-        # Delete failure logs (they reference links)
-        failure_logs_deleted = db.query(FailureLogs).delete()
-        print(f"Deleted {failure_logs_deleted} failure logs")
+        # Delete content (unified articles and podcasts)
+        content_deleted = db.query(Content).delete()
+        print(f"Deleted {content_deleted} content items")
         
-        # Delete links
-        links_deleted = db.query(Links).delete()
-        print(f"Deleted {links_deleted} links")
-        
-        # Delete cron logs (no foreign key dependencies)
-        cron_logs_deleted = db.query(CronLogs).delete()
-        print(f"Deleted {cron_logs_deleted} cron logs")
-        
-        # Commit the transaction
-        db.commit()
         print("\nAll tables cleared successfully!")
-        
-    except Exception as e:
-        db.rollback()
-        print(f"Error clearing tables: {e}")
-        raise
-    finally:
-        db.close()
 
 
 def confirm_action():

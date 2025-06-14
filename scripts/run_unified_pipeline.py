@@ -8,6 +8,8 @@ import sys
 import os
 import asyncio
 import argparse
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
 
@@ -180,6 +182,55 @@ class UnifiedPipeline:
         
         print("=" * 60)
 
+async def run_with_periodic_stats(processor_pool: TaskProcessorPool, pipeline: UnifiedPipeline, stats_interval: int):
+    """
+    Run task processing with periodic stats reporting.
+    
+    Args:
+        processor_pool: The task processor pool to run
+        pipeline: Pipeline instance for getting stats
+        stats_interval: Interval in seconds between stats reports
+    """
+    logger.info(f"Task processing with stats every {stats_interval} seconds")
+    
+    # Flag to indicate when processing is complete
+    processing_complete = threading.Event()
+    
+    def run_processor_pool():
+        """Run the processor pool in a separate thread."""
+        try:
+            processor_pool.run_pool(max_tasks_per_worker=None)
+        except Exception as e:
+            logger.error(f"Error in processor pool: {e}")
+        finally:
+            processing_complete.set()
+    
+    # Start task processing in background thread
+    processor_thread = threading.Thread(target=run_processor_pool, name="TaskProcessor")
+    processor_thread.start()
+    
+    # Periodically show stats while processing
+    stats_count = 0
+    while not processing_complete.is_set():
+        # Wait for either completion or stats interval
+        if processing_complete.wait(timeout=stats_interval):
+            break  # Processing completed
+        
+        stats_count += 1
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"PERIODIC STATS UPDATE #{stats_count} - {datetime.now(timezone.utc).isoformat()}")
+        logger.info(f"{'=' * 60}")
+        
+        try:
+            current_stats = pipeline.get_pipeline_stats()
+            pipeline.display_stats(current_stats)
+        except Exception as e:
+            logger.error(f"Error getting periodic stats: {e}")
+    
+    # Wait for processing thread to complete
+    processor_thread.join()
+    logger.info("Task processing completed")
+
 async def main():
     parser = argparse.ArgumentParser(
         description="Unified Pipeline - Orchestrates complete content processing",
@@ -249,6 +300,13 @@ Examples:
     )
     
     parser.add_argument(
+        "--stats-interval",
+        type=int,
+        default=30,
+        help="Interval in seconds for periodic stats display during processing (default: 30)"
+    )
+    
+    parser.add_argument(
         "--show-stats",
         action="store_true",
         default=True,
@@ -293,6 +351,10 @@ Examples:
                 initial_stats = pipeline.get_pipeline_stats()
                 pipeline.display_stats(initial_stats)
             
+            # Initialize counters
+            scraper_count = 0
+            content_count = 0
+            
             # Execute based on mode
             if args.mode in ["full", "scrape"]:
                 # Enqueue scraper tasks
@@ -311,19 +373,19 @@ Examples:
                 logger.info(f"Enqueued {content_count} content processing tasks")
             
             if args.mode in ["full", "tasks"] or (args.mode == "scrape" and scraper_count > 0) or (args.mode == "process" and content_count > 0):
-                # Process tasks
+                # Process tasks with periodic stats reporting
                 logger.info(f"\nPHASE 3: PROCESSING TASKS")
                 logger.info(f"Starting task processor pool with {args.max_workers} workers")
                 
-                # Create and run task processor pool
+                # Create task processor pool
                 processor_pool = TaskProcessorPool(max_workers=args.max_workers)
                 
-                # For non-continuous mode, run until queue is empty
-                if not args.continuous:
-                    processor_pool.run_pool(max_tasks_per_worker=None)
-                else:
-                    # For continuous mode, process available tasks then continue
-                    processor_pool.run_pool(max_tasks_per_worker=None)
+                # Run task processing with periodic stats in background
+                await run_with_periodic_stats(
+                    processor_pool,
+                    pipeline,
+                    args.stats_interval
+                )
             
             # Show final statistics
             if args.show_stats:
