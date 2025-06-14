@@ -1,3 +1,0 @@
-"""
-Link processing pipeline components.
-"""
