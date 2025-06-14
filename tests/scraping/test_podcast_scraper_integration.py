@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
 from app.scraping.podcast_unified import PodcastUnifiedScraper
-from app.models.unified import Content, ContentStatus
+from app.models.schema import Content, ContentStatus
 from app.domain.content import ContentType
 from app.services.queue import TaskType
 

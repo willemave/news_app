@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.logging import get_logger
-from app.models.unified import ProcessingTask
+from app.models.schema import ProcessingTask
 
 logger = get_logger(__name__)
 

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from app.core.db import get_db
 from app.core.logging import get_logger
-from app.models.unified import Content
+from app.models.schema import Content
 from app.domain.content import ContentType, ContentStatus
 from app.services.queue import get_queue_service, TaskType
 

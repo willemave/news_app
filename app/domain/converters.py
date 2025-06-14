@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime
 
 from app.domain.content import ContentData, ContentType, ContentStatus
-from app.models.unified import Content as DBContent
+from app.models.schema import Content as DBContent
 
 def content_to_domain(db_content: DBContent) -> ContentData:
     """Convert database Content to domain ContentData."""

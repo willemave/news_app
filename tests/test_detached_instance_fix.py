@@ -7,7 +7,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from app.pipeline.checkout import CheckoutManager
 from app.domain.content import ContentType, ContentStatus
-from app.models.unified import Content
+from app.models.schema import Content
 from datetime import datetime
 
 

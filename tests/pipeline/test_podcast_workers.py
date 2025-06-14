@@ -10,7 +10,7 @@ from app.pipeline.podcast_workers import (
     sanitize_filename,
     get_file_extension_from_url
 )
-from app.models.unified import Content, ContentStatus
+from app.models.schema import Content, ContentStatus
 from app.domain.content import ContentData, ContentType
 
 

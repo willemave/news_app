@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
 
-from app.models.unified import Content, ContentStatus, ProcessingTask
+from app.models.schema import Content, ContentStatus, ProcessingTask
 from app.services.queue import TaskType, TaskStatus
 from app.pipeline.task_processor import TaskProcessor, TaskProcessorPool
 from app.domain.content import ContentData, ContentType
