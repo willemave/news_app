@@ -1,3 +1,8 @@
+"""
+ARCHIVED FROM app/routers/articles.py
+This file contains reference code for article routing that can be reused in the new router structure.
+"""
+
 from fastapi import APIRouter, Request, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
