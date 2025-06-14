@@ -55,36 +55,45 @@ class BaseScraper(ABC):
         
         with get_db() as db:
             for item in items:
-                # Check if already exists
-                existing = db.query(Content).filter(
-                    Content.url == item['url']
-                ).first()
-                
-                if existing:
-                    logger.debug(f"URL already exists: {item['url']}")
+                try:
+                    # Check if already exists
+                    existing = db.query(Content).filter(
+                        Content.url == item['url']
+                    ).first()
+                    
+                    if existing:
+                        logger.debug(f"URL already exists: {item['url']}")
+                        continue
+                    
+                    # Create new content
+                    content = Content(
+                        content_type=item['content_type'].value,
+                        url=item['url'],
+                        title=item.get('title'),
+                        status=ContentStatus.NEW.value,
+                        metadata=item.get('metadata', {}),
+                        created_at=datetime.utcnow()
+                    )
+                    
+                    db.add(content)
+                    db.commit()
+                    db.refresh(content)
+                    
+                    # Queue for processing
+                    self.queue_service.enqueue(
+                        TaskType.PROCESS_CONTENT,
+                        content_id=content.id
+                    )
+                    
+                    saved_count += 1
+                    
+                except Exception as e:
+                    db.rollback()
+                    if "UNIQUE constraint failed" in str(e) or "duplicate key value" in str(e):
+                        logger.debug(f"URL already exists (race condition): {item['url']}")
+                    else:
+                        logger.error(f"Error saving item {item['url']}: {e}")
                     continue
-                
-                # Create new content
-                content = Content(
-                    content_type=item['content_type'].value,
-                    url=item['url'],
-                    title=item.get('title'),
-                    status=ContentStatus.NEW.value,
-                    metadata=item.get('metadata', {}),
-                    created_at=datetime.utcnow()
-                )
-                
-                db.add(content)
-                db.commit()
-                db.refresh(content)
-                
-                # Queue for processing
-                self.queue_service.enqueue(
-                    TaskType.PROCESS_CONTENT,
-                    content_id=content.id
-                )
-                
-                saved_count += 1
         
         return saved_count
     
