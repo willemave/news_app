@@ -83,7 +83,7 @@
 ---
 #### 8  Memory-Bank Workflow (Stateless Agent)
 1. **At session start** read:
-   `ai-memory/README.md`, `TASKS.md`.
+   `ai-memory/README.md`, `ai-memory/TASKS.md`.
 2. **Treat `README.md` as canonical context**.
 3. **Maintain `TASKS.md`**:
    * Fine-grained tasks with `- [ ]` / `- [x]`.
@@ -104,7 +104,7 @@
 - Process:
   1. Execute a suitable command to get a project file listing:
      ```bash
-     find . -maxdepth 4 -type f -name "*.py" -o -name "*.md" -o -name "*.yaml" -o -name "*.toml" | grep -v -E "(\.venv|__pycache__|\.git|\.pytest_cache)" | sort
+     find . -maxdepth 4 -type f -name "*.py" -o -name "*.md" -o -name "*.yaml" -o -name "*.toml" | grep -v -E "(\.venv|__pycache__|\.git|\.pytest_cache|\.vscode|node_modules|logs|.*egg-info|\.ruff_cache|\.benchmarks|data)" | sort
      ```
   2. Identify key files and folders that need to be explored and add them to the 'Key Repository Folders and Files' section of ai-memory/README.md.
   3. Based on the file listing and recent project activity, identify other key project files (e.g., main application entry points, core modules, critical configuration files) that might require reading or re-reading to ensure ai-memory/README.md (especially 'System Patterns' and 'Tech Context') is comprehensive and up-to-date. Create a ai-memory/TASKS.md file with a list of files and folders to traverse. Include frequent tasks to "update the ai-memory/README.md" as part of the tasks list. Balance reading a group of 3 or 4 files before updating the ai-memory/README.md but waiting too long for updates.
