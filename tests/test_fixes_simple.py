@@ -5,8 +5,8 @@ Tests core functionality like URL patterns, model validation, and enum values.
 import pytest
 import re
 
-from app.schemas import ArticleSummary
-from app.models import LinkStatus
+from app.domain.summary import ArticleSummary
+from app.models.schema import ContentStatus
 
 
 class TestArxivUrlPattern:
@@ -161,39 +161,39 @@ class TestArticleSummaryModelValidation:
         assert isinstance(dumped, dict)
 
 
-class TestLinkStatusEnumValidation:
-    """Test LinkStatus enum validation."""
+class TestContentStatusEnumValidation:
+    """Test ContentStatus enum validation."""
 
     def test_skipped_status_availability(self):
         """Test that the new 'skipped' status is available."""
-        assert hasattr(LinkStatus, 'skipped')
-        assert LinkStatus.skipped.value == "skipped"
+        assert hasattr(ContentStatus, 'SKIPPED')
+        assert ContentStatus.SKIPPED.value == "skipped"
 
     def test_all_expected_statuses(self):
         """Test that all expected statuses are available."""
-        expected_statuses = ["new", "processing", "processed", "failed", "skipped"]
-        actual_statuses = [status.value for status in LinkStatus]
+        expected_statuses = ["new", "processing", "completed", "failed", "skipped"]
+        actual_statuses = [status.value for status in ContentStatus]
         
         for status in expected_statuses:
             assert status in actual_statuses
 
     def test_status_enum_values(self):
         """Test individual status enum values."""
-        assert LinkStatus.new.value == "new"
-        assert LinkStatus.processing.value == "processing"
-        assert LinkStatus.processed.value == "processed"
-        assert LinkStatus.failed.value == "failed"
-        assert LinkStatus.skipped.value == "skipped"
+        assert ContentStatus.NEW.value == "new"
+        assert ContentStatus.PROCESSING.value == "processing"
+        assert ContentStatus.COMPLETED.value == "completed"
+        assert ContentStatus.FAILED.value == "failed"
+        assert ContentStatus.SKIPPED.value == "skipped"
 
     def test_status_enum_count(self):
         """Test that we have exactly 5 statuses."""
-        statuses = list(LinkStatus)
+        statuses = list(ContentStatus)
         assert len(statuses) == 5
 
     def test_status_enum_iteration(self):
-        """Test iterating over LinkStatus enum."""
-        expected_values = {"new", "processing", "processed", "failed", "skipped"}
-        actual_values = {status.value for status in LinkStatus}
+        """Test iterating over ContentStatus enum."""
+        expected_values = {"new", "processing", "completed", "failed", "skipped"}
+        actual_values = {status.value for status in ContentStatus}
         
         assert actual_values == expected_values
 
@@ -292,23 +292,23 @@ class TestIntegrationSimple:
     def test_status_workflow_simulation(self):
         """Test typical status workflow."""
         # Start with new status
-        current_status = LinkStatus.new
+        current_status = ContentStatus.NEW
         assert current_status.value == "new"
         
         # Move to processing
-        current_status = LinkStatus.processing
+        current_status = ContentStatus.PROCESSING
         assert current_status.value == "processing"
         
         # Can end in different ways
         possible_end_states = [
-            LinkStatus.processed,
-            LinkStatus.failed,
-            LinkStatus.skipped
+            ContentStatus.COMPLETED,
+            ContentStatus.FAILED,
+            ContentStatus.SKIPPED
         ]
         
         for end_state in possible_end_states:
-            assert isinstance(end_state, LinkStatus)
-            assert end_state.value in ["processed", "failed", "skipped"]
+            assert isinstance(end_state, ContentStatus)
+            assert end_state.value in ["completed", "failed", "skipped"]
 
     def test_complete_validation_workflow(self):
         """Test complete validation workflow for all components."""
@@ -330,5 +330,5 @@ class TestIntegrationSimple:
         assert summary.short_summary == "Valid summary"
         
         # 4. Status enum validation
-        assert LinkStatus.skipped.value == "skipped"
-        assert len(list(LinkStatus)) == 5
+        assert ContentStatus.SKIPPED.value == "skipped"
+        assert len(list(ContentStatus)) == 5

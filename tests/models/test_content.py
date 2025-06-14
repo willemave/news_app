@@ -1,0 +1,368 @@
+import pytest
+from datetime import datetime
+from app.models.schema import Content, ContentType, ContentStatus, ProcessingTask
+
+
+class TestContentModel:
+    """Test the Content model."""
+    
+    def test_content_creation_article(self):
+        """Test creating a Content object for an article."""
+        content = Content(
+            content_type=ContentType.ARTICLE.value,
+            url="https://example.com/article",
+            title="Test Article",
+            status=ContentStatus.NEW.value
+        )
+        
+        assert content.content_type == ContentType.ARTICLE.value
+        assert content.url == "https://example.com/article"
+        assert content.title == "Test Article"
+        assert content.status == ContentStatus.NEW.value
+        assert content.content_metadata == {}
+        assert content.retry_count == 0
+        assert content.checked_out_by is None
+        assert content.checked_out_at is None
+        assert content.error_message is None
+    
+    def test_content_creation_podcast(self):
+        """Test creating a Content object for a podcast."""
+        metadata = {
+            "audio_url": "https://example.com/audio.mp3",
+            "duration_seconds": 3600,
+            "episode_number": 1
+        }
+        
+        content = Content(
+            content_type=ContentType.PODCAST.value,
+            url="https://example.com/podcast/episode1",
+            title="Test Podcast Episode",
+            status=ContentStatus.NEW.value,
+            content_metadata=metadata
+        )
+        
+        assert content.content_type == ContentType.PODCAST.value
+        assert content.url == "https://example.com/podcast/episode1"
+        assert content.title == "Test Podcast Episode"
+        assert content.content_metadata == metadata
+        assert content.content_metadata["audio_url"] == "https://example.com/audio.mp3"
+        assert content.content_metadata["duration_seconds"] == 3600
+    
+    def test_content_metadata_json_field(self):
+        """Test that metadata is stored as JSON."""
+        complex_metadata = {
+            "author": "John Doe",
+            "tags": ["tech", "AI", "programming"],
+            "publication_date": "2025-06-14",
+            "word_count": 1500,
+            "nested": {
+                "key": "value",
+                "number": 42
+            }
+        }
+        
+        content = Content(
+            content_type=ContentType.ARTICLE.value,
+            url="https://example.com/complex",
+            content_metadata=complex_metadata
+        )
+        
+        assert content.content_metadata == complex_metadata
+        assert content.content_metadata["nested"]["number"] == 42
+    
+    def test_content_status_transitions(self):
+        """Test status transitions."""
+        content = Content(
+            content_type=ContentType.ARTICLE.value,
+            url="https://example.com/test"
+        )
+        
+        # Default status
+        assert content.status == ContentStatus.NEW.value
+        
+        # Transition to processing
+        content.status = ContentStatus.PROCESSING.value
+        assert content.status == ContentStatus.PROCESSING.value
+        
+        # Transition to completed
+        content.status = ContentStatus.COMPLETED.value
+        content.processed_at = datetime.utcnow()
+        assert content.status == ContentStatus.COMPLETED.value
+        assert content.processed_at is not None
+    
+    def test_content_checkout_mechanism(self):
+        """Test the checkout mechanism for workers."""
+        content = Content(
+            content_type=ContentType.ARTICLE.value,
+            url="https://example.com/checkout-test",
+            status=ContentStatus.NEW.value
+        )
+        
+        # Initially not checked out
+        assert content.checked_out_by is None
+        assert content.checked_out_at is None
+        
+        # Check out to worker
+        content.checked_out_by = "worker-123"
+        content.checked_out_at = datetime.utcnow()
+        content.status = ContentStatus.PROCESSING.value
+        
+        assert content.checked_out_by == "worker-123"
+        assert content.checked_out_at is not None
+        assert content.status == ContentStatus.PROCESSING.value
+    
+    def test_content_error_handling(self):
+        """Test error message storage."""
+        content = Content(
+            content_type=ContentType.ARTICLE.value,
+            url="https://example.com/error-test",
+            status=ContentStatus.FAILED.value,
+            error_message="Network timeout",
+            retry_count=3
+        )
+        
+        assert content.status == ContentStatus.FAILED.value
+        assert content.error_message == "Network timeout"
+        assert content.retry_count == 3
+    
+    def test_content_timestamps(self):
+        """Test timestamp handling."""
+        now = datetime.utcnow()
+        
+        content = Content(
+            content_type=ContentType.ARTICLE.value,
+            url="https://example.com/timestamp-test",
+            created_at=now,
+            updated_at=now
+        )
+        
+        assert content.created_at == now
+        assert content.updated_at == now
+        
+        # Test processed_at
+        processed_time = datetime.utcnow()
+        content.processed_at = processed_time
+        assert content.processed_at == processed_time
+
+
+class TestContentTypeEnum:
+    """Test ContentType enum."""
+    
+    def test_content_type_values(self):
+        """Test ContentType enum values."""
+        assert ContentType.ARTICLE.value == "article"
+        assert ContentType.PODCAST.value == "podcast"
+    
+    def test_content_type_count(self):
+        """Test that we have exactly 2 content types."""
+        content_types = list(ContentType)
+        assert len(content_types) == 2
+    
+    def test_content_type_iteration(self):
+        """Test iterating over ContentType enum."""
+        expected_values = {"article", "podcast"}
+        actual_values = {ct.value for ct in ContentType}
+        assert actual_values == expected_values
+
+
+class TestContentStatusEnum:
+    """Test ContentStatus enum."""
+    
+    def test_content_status_values(self):
+        """Test ContentStatus enum values."""
+        assert ContentStatus.NEW.value == "new"
+        assert ContentStatus.PROCESSING.value == "processing"
+        assert ContentStatus.COMPLETED.value == "completed"
+        assert ContentStatus.FAILED.value == "failed"
+        assert ContentStatus.SKIPPED.value == "skipped"
+    
+    def test_content_status_count(self):
+        """Test that we have exactly 5 statuses."""
+        statuses = list(ContentStatus)
+        assert len(statuses) == 5
+    
+    def test_content_status_iteration(self):
+        """Test iterating over ContentStatus enum."""
+        expected_values = {"new", "processing", "completed", "failed", "skipped"}
+        actual_values = {status.value for status in ContentStatus}
+        assert actual_values == expected_values
+
+
+class TestProcessingTaskModel:
+    """Test the ProcessingTask model."""
+    
+    def test_processing_task_creation(self):
+        """Test creating a ProcessingTask object."""
+        task = ProcessingTask(
+            task_type="process_content",
+            content_id=123,
+            payload={"test": "data"},
+            status="pending"
+        )
+        
+        assert task.task_type == "process_content"
+        assert task.content_id == 123
+        assert task.payload == {"test": "data"}
+        assert task.status == "pending"
+        assert task.retry_count == 0
+        assert task.error_message is None
+    
+    def test_processing_task_minimal(self):
+        """Test creating a minimal ProcessingTask."""
+        task = ProcessingTask(task_type="scrape")
+        
+        assert task.task_type == "scrape"
+        assert task.content_id is None
+        assert task.payload == {}
+        assert task.status == "pending"
+    
+    def test_processing_task_timestamps(self):
+        """Test ProcessingTask timestamp handling."""
+        now = datetime.utcnow()
+        
+        task = ProcessingTask(
+            task_type="test",
+            created_at=now
+        )
+        
+        assert task.created_at == now
+        assert task.started_at is None
+        assert task.completed_at is None
+        
+        # Set processing timestamps
+        started = datetime.utcnow()
+        completed = datetime.utcnow()
+        
+        task.started_at = started
+        task.completed_at = completed
+        
+        assert task.started_at == started
+        assert task.completed_at == completed
+    
+    def test_processing_task_error_handling(self):
+        """Test ProcessingTask error handling."""
+        task = ProcessingTask(
+            task_type="test",
+            status="failed",
+            error_message="Test error",
+            retry_count=2
+        )
+        
+        assert task.status == "failed"
+        assert task.error_message == "Test error"
+        assert task.retry_count == 2
+
+
+class TestModelIntegration:
+    """Integration tests for model relationships."""
+    
+    def test_content_with_multiple_tasks(self):
+        """Test content that has multiple processing tasks."""
+        # Create content
+        content = Content(
+            content_type=ContentType.ARTICLE.value,
+            url="https://example.com/multi-task"
+        )
+        content.id = 123  # Simulate database ID
+        
+        # Create related tasks
+        task1 = ProcessingTask(
+            task_type="process_content",
+            content_id=content.id,
+            status="completed"
+        )
+        
+        task2 = ProcessingTask(
+            task_type="summarize",
+            content_id=content.id,
+            status="pending"
+        )
+        
+        # Verify relationship
+        assert task1.content_id == content.id
+        assert task2.content_id == content.id
+    
+    def test_article_workflow_simulation(self):
+        """Test simulating an article processing workflow."""
+        # 1. Create new article content
+        content = Content(
+            content_type=ContentType.ARTICLE.value,
+            url="https://example.com/workflow-test",
+            title="Workflow Test Article",
+            status=ContentStatus.NEW.value
+        )
+        
+        # 2. Create processing task
+        task = ProcessingTask(
+            task_type="process_content",
+            content_id=123,  # Simulate content ID
+            status="pending"
+        )
+        
+        # 3. Simulate processing
+        content.status = ContentStatus.PROCESSING.value
+        content.checked_out_by = "worker-1"
+        content.checked_out_at = datetime.utcnow()
+        
+        task.status = "processing"
+        task.started_at = datetime.utcnow()
+        
+        # 4. Simulate completion
+        content.status = ContentStatus.COMPLETED.value
+        content.processed_at = datetime.utcnow()
+        content.content_metadata = {
+            "author": "Test Author",
+            "word_count": 1200,
+            "summary": "Test summary"
+        }
+        
+        task.status = "completed"
+        task.completed_at = datetime.utcnow()
+        
+        # Verify final state
+        assert content.status == ContentStatus.COMPLETED.value
+        assert content.processed_at is not None
+        assert content.content_metadata["word_count"] == 1200
+        assert task.status == "completed"
+        assert task.completed_at is not None
+    
+    def test_podcast_workflow_simulation(self):
+        """Test simulating a podcast processing workflow."""
+        # 1. Create new podcast content
+        content = Content(
+            content_type=ContentType.PODCAST.value,
+            url="https://example.com/podcast/episode",
+            title="Test Podcast Episode",
+            content_metadata={
+                "audio_url": "https://example.com/audio.mp3",
+                "episode_number": 1
+            }
+        )
+        
+        # 2. Create download task
+        download_task = ProcessingTask(
+            task_type="download_audio",
+            content_id=456,
+            status="completed"
+        )
+        
+        # 3. Create transcription task
+        transcribe_task = ProcessingTask(
+            task_type="transcribe",
+            content_id=456,
+            status="completed"
+        )
+        
+        # 4. Update content with transcript
+        content.content_metadata.update({
+            "transcript": "This is the podcast transcript...",
+            "duration_seconds": 3600
+        })
+        content.status = ContentStatus.COMPLETED.value
+        
+        # Verify final state
+        assert content.content_type == ContentType.PODCAST.value
+        assert "transcript" in content.content_metadata
+        assert content.content_metadata["duration_seconds"] == 3600
+        assert download_task.task_type == "download_audio"
+        assert transcribe_task.task_type == "transcribe"
