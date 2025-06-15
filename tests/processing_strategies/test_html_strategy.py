@@ -107,9 +107,12 @@ async def test_extract_with_crawl4ai_successful(html_strategy: HtmlProcessorStra
     # Mock the crawler and its result
     mock_result = MagicMock()
     mock_result.success = True
-    mock_result.markdown_v2 = MagicMock(raw_markdown=SAMPLE_EXTRACTED_MARKDOWN)
+    mock_result.markdown = SAMPLE_EXTRACTED_MARKDOWN  # Changed from markdown_v2
     mock_result.metadata = {"title": "Test Article Title"}
     mock_result.url = url
+    mock_result.cleaned_html = "<html>...</html>"
+    mock_result.links = []
+    mock_result.media = {}
     
     mock_crawler = AsyncMock()
     mock_crawler.arun = AsyncMock(return_value=mock_result)
@@ -287,17 +290,25 @@ def test_extract_internal_urls_placeholder(html_strategy: HtmlProcessorStrategy)
     urls = html_strategy.extract_internal_urls(SAMPLE_HTML_CONTENT, "http://example.com")
     assert urls == []
 
-def test_get_extraction_instruction(html_strategy: HtmlProcessorStrategy):
-    """Test extraction instruction generation for different sources."""
-    web_instruction = html_strategy._get_extraction_instruction("web")
-    assert "Focus on extracting the core educational" in web_instruction
-    assert "PubMed" not in web_instruction
+def test_get_source_specific_config(html_strategy: HtmlProcessorStrategy):
+    """Test source-specific configuration generation."""
+    # Test web config (default)
+    web_config = html_strategy._get_source_specific_config("web")
+    assert web_config["word_count_threshold"] == 20
+    assert "script" in web_config["excluded_tags"]
+    assert web_config["exclude_external_links"] is True
     
-    pubmed_instruction = html_strategy._get_extraction_instruction("PubMed")
-    assert "Abstract" in pubmed_instruction
-    assert "Methods" in pubmed_instruction
-    assert "Results" in pubmed_instruction
+    # Test Substack config
+    substack_config = html_strategy._get_source_specific_config("Substack")
+    assert "form" in substack_config["excluded_tags"]
+    assert ".subscribe-widget" in substack_config["excluded_selector"]
+    assert ".post" in substack_config["target_elements"]
     
-    arxiv_instruction = html_strategy._get_extraction_instruction("Arxiv")
-    assert "Mathematical formulas" in arxiv_instruction
-    assert "Algorithms" in arxiv_instruction
+    # Test PubMed config
+    pubmed_config = html_strategy._get_source_specific_config("PubMed")
+    assert pubmed_config["word_count_threshold"] == 10
+    assert len(pubmed_config["excluded_tags"]) < len(web_config["excluded_tags"])  # Less strict for scientific content
+    
+    # Test Arxiv config
+    arxiv_config = html_strategy._get_source_specific_config("Arxiv")
+    assert arxiv_config.get("pdf") is True
