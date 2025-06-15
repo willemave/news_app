@@ -130,8 +130,11 @@ class TaskProcessor:
                     db.commit()
                     return False
                 
-                # Use LLM to generate summary
-                summary = await self.llm_service.summarize_content(content_to_summarize)
+                # Use LLM to generate structured summary
+                summary = await self.llm_service.summarize_content(
+                    content_to_summarize,
+                    structured=True  # Use structured summarization
+                )
                 
                 if summary:
                     # Re-fetch the content object to ensure it's attached to the session
@@ -144,7 +147,13 @@ class TaskProcessor:
                     
                     # Create a mutable copy to update
                     new_metadata = dict(db_content_to_update.content_metadata)
-                    new_metadata['summary'] = summary
+                    
+                    # Convert to dict if it's a Pydantic model
+                    if hasattr(summary, 'model_dump'):
+                        new_metadata['summary'] = summary.model_dump(mode='json')
+                    else:
+                        new_metadata['summary'] = summary
+                    
                     new_metadata['summarization_date'] = datetime.now(timezone.utc).isoformat()
                     
                     db_content_to_update.content_metadata = new_metadata
@@ -152,7 +161,8 @@ class TaskProcessor:
                     db_content_to_update.processed_at = datetime.now(timezone.utc)
                     db.commit()
                     
-                    logger.info(f"Successfully summarized content {content_id} - Summary length: {len(summary)} chars")
+                    summary_info = summary if isinstance(summary, str) else "structured summary"
+                    logger.info(f"Successfully summarized content {content_id} - {summary_info}")
                     return True
                 else:
                     logger.error(f"Failed to generate summary for content {content_id}")

@@ -142,10 +142,16 @@ class ContentWorker:
             # Summarize if we have content
             if llm_data.get('content_to_summarize'):
                 summary = await self.llm_service.summarize_content(
-                    llm_data['content_to_summarize']
+                    llm_data['content_to_summarize'],
+                    structured=True  # Use structured summarization
                 )
                 if summary:
-                    content.metadata['summary'] = summary
+                    # Convert to dict if it's a Pydantic model
+                    if hasattr(summary, 'model_dump'):
+                        content.metadata['summary'] = summary.model_dump(mode='json')
+                    else:
+                        content.metadata['summary'] = summary
+                    content.metadata['summarization_date'] = datetime.utcnow().isoformat()
             
             # Save to database
             with get_db() as db:

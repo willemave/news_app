@@ -113,3 +113,62 @@ class ContentData(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
+    
+    @property
+    def summary(self) -> Optional[str]:
+        """Get summary text (either simple or overview from structured)."""
+        summary_data = self.metadata.get('summary')
+        if not summary_data:
+            return None
+        if isinstance(summary_data, str):
+            return summary_data
+        if isinstance(summary_data, dict):
+            return summary_data.get('overview', '')
+        return None
+    
+    @property
+    def short_summary(self) -> Optional[str]:
+        """Get short version of summary for list view."""
+        summary = self.summary
+        if not summary:
+            return None
+        # Return first 200 chars
+        if len(summary) > 200:
+            return summary[:197] + "..."
+        return summary
+    
+    @property
+    def structured_summary(self) -> Optional[Dict[str, Any]]:
+        """Get structured summary if available."""
+        summary_data = self.metadata.get('summary')
+        if isinstance(summary_data, dict) and 'bullet_points' in summary_data:
+            return summary_data
+        return None
+    
+    @property
+    def bullet_points(self) -> List[Dict[str, str]]:
+        """Get bullet points from structured summary."""
+        if self.structured_summary:
+            return self.structured_summary.get('bullet_points', [])
+        return []
+    
+    @property
+    def quotes(self) -> List[Dict[str, str]]:
+        """Get quotes from structured summary."""
+        if self.structured_summary:
+            return self.structured_summary.get('quotes', [])
+        return []
+    
+    @property
+    def topics(self) -> List[str]:
+        """Get topics from structured summary."""
+        if self.structured_summary:
+            return self.structured_summary.get('topics', [])
+        return self.metadata.get('topics', [])
+    
+    @property
+    def transcript(self) -> Optional[str]:
+        """Get transcript for podcasts."""
+        if self.content_type == ContentType.PODCAST:
+            return self.metadata.get('transcript')
+        return None

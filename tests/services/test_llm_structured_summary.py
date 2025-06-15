@@ -1,0 +1,242 @@
+"""Tests for structured summarization in LLM service."""
+import pytest
+import json
+from unittest.mock import Mock, AsyncMock, patch
+from datetime import datetime
+
+from app.services.llm import LLMService, MockProvider
+from app.schemas.metadata import StructuredSummary, SummaryBulletPoint, ContentQuote
+
+
+class TestStructuredSummarization:
+    """Test structured summarization functionality."""
+    
+    @pytest.fixture
+    def mock_llm_service(self):
+        """Create LLM service with mock provider."""
+        service = LLMService()
+        service.provider = Mock()
+        return service
+    
+    @pytest.fixture
+    def sample_content(self):
+        """Sample content for testing."""
+        return """
+        Artificial Intelligence Research Makes Major Breakthrough
+        
+        Researchers at Stanford University have developed a new AI model that can 
+        understand and generate code with unprecedented accuracy. Dr. Jane Smith, 
+        lead researcher, stated: "This represents a paradigm shift in how AI can 
+        assist software development."
+        
+        The key findings include:
+        - 95% accuracy in code generation tasks
+        - Ability to understand complex programming concepts
+        - Reduced development time by 40%
+        
+        "We believe this will revolutionize the industry," added Dr. John Doe, 
+        co-author of the study. The team plans to open-source their model next month.
+        """
+    
+    @pytest.fixture
+    def mock_structured_response(self):
+        """Mock structured response from LLM."""
+        return {
+            "overview": "Stanford researchers develop groundbreaking AI model for code generation with 95% accuracy.",
+            "bullet_points": [
+                {
+                    "text": "AI model achieves 95% accuracy in code generation tasks",
+                    "category": "key_finding"
+                },
+                {
+                    "text": "Model demonstrates understanding of complex programming concepts",
+                    "category": "methodology"
+                },
+                {
+                    "text": "Development time reduced by 40% in testing scenarios",
+                    "category": "conclusion"
+                }
+            ],
+            "quotes": [
+                {
+                    "text": "This represents a paradigm shift in how AI can assist software development",
+                    "context": "Dr. Jane Smith, lead researcher"
+                },
+                {
+                    "text": "We believe this will revolutionize the industry",
+                    "context": "Dr. John Doe, co-author"
+                }
+            ],
+            "topics": ["AI", "Software Development", "Research", "Stanford"]
+        }
+    
+    @pytest.mark.asyncio
+    async def test_generate_structured_summary_success(
+        self, mock_llm_service, sample_content, mock_structured_response
+    ):
+        """Test successful generation of structured summary."""
+        # Mock the provider's generate method
+        mock_llm_service.provider.generate = AsyncMock(
+            return_value=json.dumps(mock_structured_response)
+        )
+        
+        result = await mock_llm_service.generate_structured_summary(sample_content)
+        
+        # Verify result is a StructuredSummary
+        assert isinstance(result, StructuredSummary)
+        assert result.overview == mock_structured_response["overview"]
+        assert len(result.bullet_points) == 3
+        assert len(result.quotes) == 2
+        assert len(result.topics) == 4
+        
+        # Verify bullet points
+        assert result.bullet_points[0].text == mock_structured_response["bullet_points"][0]["text"]
+        assert result.bullet_points[0].category == "key_finding"
+        
+        # Verify quotes
+        assert result.quotes[0].text == mock_structured_response["quotes"][0]["text"]
+        assert result.quotes[0].context == "Dr. Jane Smith, lead researcher"
+    
+    @pytest.mark.asyncio
+    async def test_generate_structured_summary_with_json_markdown(
+        self, mock_llm_service, sample_content, mock_structured_response
+    ):
+        """Test handling of JSON wrapped in markdown code blocks."""
+        # Mock response with markdown code blocks
+        wrapped_response = f"```json\n{json.dumps(mock_structured_response)}\n```"
+        mock_llm_service.provider.generate = AsyncMock(return_value=wrapped_response)
+        
+        result = await mock_llm_service.generate_structured_summary(sample_content)
+        
+        assert isinstance(result, StructuredSummary)
+        assert result.overview == mock_structured_response["overview"]
+    
+    @pytest.mark.asyncio
+    async def test_generate_structured_summary_invalid_json(
+        self, mock_llm_service, sample_content
+    ):
+        """Test handling of invalid JSON response."""
+        # Mock invalid JSON response
+        invalid_response = "This is not valid JSON"
+        mock_llm_service.provider.generate = AsyncMock(return_value=invalid_response)
+        
+        result = await mock_llm_service.generate_structured_summary(sample_content)
+        
+        # Should return dict for backward compatibility
+        assert isinstance(result, dict)
+        assert result["overview"] == invalid_response
+        assert result["bullet_points"] == []
+        assert result["quotes"] == []
+        assert result["topics"] == []
+    
+    @pytest.mark.asyncio
+    async def test_generate_structured_summary_content_truncation(
+        self, mock_llm_service, mock_structured_response
+    ):
+        """Test that long content is truncated."""
+        # Create very long content
+        long_content = "x" * 20000
+        
+        mock_llm_service.provider.generate = AsyncMock(
+            return_value=json.dumps(mock_structured_response)
+        )
+        
+        await mock_llm_service.generate_structured_summary(long_content)
+        
+        # Verify the prompt was called with truncated content
+        call_args = mock_llm_service.provider.generate.call_args
+        prompt = call_args[1]["prompt"]
+        assert "x" * 15000 in prompt
+        assert len(prompt) < 20000
+    
+    @pytest.mark.asyncio
+    async def test_summarize_content_structured_mode(
+        self, mock_llm_service, sample_content, mock_structured_response
+    ):
+        """Test summarize_content with structured=True."""
+        mock_llm_service.provider.generate = AsyncMock(
+            return_value=json.dumps(mock_structured_response)
+        )
+        
+        result = await mock_llm_service.summarize_content(
+            sample_content,
+            structured=True
+        )
+        
+        assert isinstance(result, StructuredSummary)
+        assert len(result.bullet_points) >= 3
+    
+    @pytest.mark.asyncio
+    async def test_summarize_content_simple_mode(
+        self, mock_llm_service, sample_content
+    ):
+        """Test summarize_content with structured=False still returns structured summary."""
+        # Even with structured=False, the method should return a structured summary
+        mock_response = {
+            "overview": "This is a comprehensive test overview that provides detailed context about the content being summarized. It meets the minimum length requirement.",
+            "bullet_points": [
+                {"text": "First key finding from the analysis", "category": "key_finding"},
+                {"text": "Important methodology used in the process", "category": "methodology"},
+                {"text": "Significant conclusion drawn from the data", "category": "conclusion"}
+            ],
+            "quotes": [],
+            "topics": ["Test", "Summary", "Analysis"]
+        }
+        mock_llm_service.provider.generate = AsyncMock(
+            return_value=json.dumps(mock_response)
+        )
+        
+        result = await mock_llm_service.summarize_content(
+            sample_content,
+            structured=False  # This parameter is ignored now
+        )
+        
+        # Should still return structured summary
+        assert isinstance(result, (StructuredSummary, dict))
+        if isinstance(result, StructuredSummary):
+            assert len(result.overview) >= 50
+            assert len(result.bullet_points) >= 3
+        elif isinstance(result, dict):
+            assert "overview" in result
+            assert "bullet_points" in result
+    
+    @pytest.mark.asyncio
+    async def test_mock_provider_structured_summary(self):
+        """Test that MockProvider returns appropriate mock data."""
+        service = LLMService()
+        service.provider = MockProvider()
+        
+        result = await service.generate_structured_summary("Test content")
+        
+        # MockProvider should return a dict that can be converted to StructuredSummary
+        assert result is not None
+    
+    @pytest.mark.asyncio
+    async def test_bullet_point_categories(
+        self, mock_llm_service, sample_content
+    ):
+        """Test that bullet point categories are properly validated."""
+        response_with_categories = {
+            "overview": "This is a comprehensive test overview that meets the minimum length requirement for validation",
+            "bullet_points": [
+                {"text": "This is the first key finding from the research", "category": "key_finding"},
+                {"text": "This describes the methodology used in the study", "category": "methodology"},
+                {"text": "This is an important warning about the limitations", "category": "warning"},
+                {"text": "This is a recommendation for future research", "category": "recommendation"}
+            ],
+            "quotes": [],
+            "topics": ["Test"]
+        }
+        
+        mock_llm_service.provider.generate = AsyncMock(
+            return_value=json.dumps(response_with_categories)
+        )
+        
+        result = await mock_llm_service.generate_structured_summary(sample_content)
+        
+        assert isinstance(result, StructuredSummary)
+        categories = [bp.category for bp in result.bullet_points]
+        assert "key_finding" in categories
+        assert "methodology" in categories
+        assert "warning" in categories
+        assert "recommendation" in categories

@@ -1,6 +1,8 @@
 from typing import List, Dict, Any, Optional
 import httpx
+import yaml
 from datetime import datetime
+from pathlib import Path
 
 from app.scraping.base import BaseScraper
 from app.domain.content import ContentType
@@ -15,30 +17,34 @@ class RedditUnifiedScraper(BaseScraper):
     
     def __init__(self):
         super().__init__("Reddit")
-        self.subreddits = {
-            "front": 50,  # Reddit front page
-            "programming": 20,
-            "MachineLearning": 20,
-            "artificial": 15,
-            "technology": 25,
-            "startups": 15,
-            "entrepreneur": 10,
-            "business": 15,
-            "investing": 10,
-            "datascience": 15,
-            "Python": 15,
-            "javascript": 10,
-            "webdev": 10,
-            "devops": 10,
-            "cybersecurity": 10,
-            "ArtificialInteligence": 20,
-            "ChatGPTPro": 5,
-            "reinforcementlearning": 20,
-            "mlscaling": 10,
-            "NooTopics": 10,
-            "SquarePOS_Users": 10,
-            "POS": 10
-        }
+        self.subreddits = self._load_subreddit_config()
+    
+    def _load_subreddit_config(self) -> Dict[str, int]:
+        """Load subreddit configuration from YAML file."""
+        config_path = Path("config/reddit.yml")
+        
+        if not config_path.exists():
+            logger.error(f"Reddit config file not found: {config_path}")
+            return {}
+        
+        try:
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+            
+            subreddits = config.get("subreddits", {})
+            
+            # Validate that all values are integers
+            for subreddit, limit in subreddits.items():
+                if not isinstance(limit, int) or limit <= 0:
+                    logger.warning(f"Invalid limit for subreddit {subreddit}: {limit}")
+                    subreddits[subreddit] = 10  # Default to 10 if invalid
+            
+            logger.info(f"Loaded {len(subreddits)} subreddits from config")
+            return subreddits
+            
+        except Exception as e:
+            logger.error(f"Error loading Reddit config: {e}")
+            return {}
     
     async def scrape(self) -> List[Dict[str, Any]]:
         """Scrape Reddit posts from multiple subreddits."""
