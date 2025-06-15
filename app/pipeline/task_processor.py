@@ -1,18 +1,18 @@
 import asyncio
-from typing import Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
-from app.core.settings import get_settings
-from app.core.logging import get_logger
 from app.core.db import get_db
-from app.models.schema import Content, ProcessingTask
-from app.services.queue import get_queue_service, TaskType, TaskStatus
-from app.services.llm import get_llm_service
-from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
+from app.core.logging import get_logger
+from app.core.settings import get_settings
 from app.domain.converters import content_to_domain
-from app.scraping.runner import ScraperRunner
+from app.models.schema import Content
+from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker
+from app.scraping.runner import ScraperRunner
+from app.services.llm import get_llm_service
+from app.services.queue import TaskStatus, TaskType, get_queue_service
 from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
@@ -31,7 +31,7 @@ class TaskProcessor:
         self.content_worker = ContentWorker()
         self.error_logger = create_error_logger("task_processor")
     
-    async def process_task(self, task_data: Dict[str, Any]) -> bool:
+    async def process_task(self, task_data: dict[str, Any]) -> bool:
         """
         Process a single task based on its type.
         
@@ -147,15 +147,22 @@ class TaskProcessor:
                     
                     # Convert to dict if it's a Pydantic model
                     if hasattr(summary, 'model_dump'):
-                        new_metadata['summary'] = summary.model_dump(mode='json')
+                        summary_dict = summary.model_dump(mode='json')
+                        new_metadata['summary'] = summary_dict
+                        # Set the generated title on the Content model
+                        if 'title' in summary_dict and summary_dict['title']:
+                            db_content_to_update.title = summary_dict['title']
                     else:
                         new_metadata['summary'] = summary
+                        # For dict summaries, also check for title
+                        if isinstance(summary, dict) and 'title' in summary and summary['title']:
+                            db_content_to_update.title = summary['title']
                     
-                    new_metadata['summarization_date'] = datetime.now(timezone.utc).isoformat()
+                    new_metadata['summarization_date'] = datetime.now(UTC).isoformat()
                     
                     db_content_to_update.content_metadata = new_metadata
                     db_content_to_update.status = "completed"
-                    db_content_to_update.processed_at = datetime.now(timezone.utc)
+                    db_content_to_update.processed_at = datetime.now(UTC)
                     db.commit()
                     
                     summary_info = summary if isinstance(summary, str) else "structured summary"
@@ -272,7 +279,7 @@ class TaskProcessor:
             logger.error(f"Error processing content {content_id}: {e}")
             return False
     
-    def run_worker(self, worker_id: str, max_tasks: Optional[int] = None):
+    def run_worker(self, worker_id: str, max_tasks: int | None = None):
         """
         Run a worker that processes tasks from the queue.
         
@@ -365,7 +372,7 @@ class TaskProcessorPool:
     def __init__(self, max_workers: int = None):
         self.max_workers = max_workers or settings.max_workers
     
-    def run_pool(self, max_tasks_per_worker: Optional[int] = None):
+    def run_pool(self, max_tasks_per_worker: int | None = None):
         """
         Run a pool of workers to process tasks.
         

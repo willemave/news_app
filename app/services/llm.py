@@ -150,6 +150,7 @@ class MockProvider(LLMProvider):
     ) -> str:
         # Return a mock structured summary response
         mock_response = {
+            "title": "Mock Content Analysis Reveals Key Testing Insights",
             "overview": (
                 "This is a comprehensive mock overview that provides detailed context "
                 "about the content being summarized. It meets the minimum length "
@@ -218,6 +219,7 @@ class LLMService:
                 structured summary.
                 
                 Important:
+                - Generate a descriptive title that captures the main theme (10-200 chars)
                 - Extract actual quotes when available, don't paraphrase
                 - Make bullet points specific and information dense
                 - Ensure the overview provides context for someone who hasn't read the content
@@ -326,21 +328,24 @@ class LLMService:
                 Analyze the following content and provide a structured summary in JSON format 
                 with these exact fields:
                 
-                1. "overview": A brief overview paragraph (50-200 words) that captures the 
+                1. "title": A descriptive, engaging title that captures the main theme 
+                   (10-200 chars)
+                2. "overview": A brief overview paragraph (50-200 words) that captures the 
                    main theme and significance
-                2. "bullet_points": An array of {max_bullet_points} key points, each as an object 
+                3. "bullet_points": An array of {max_bullet_points} key points, each as an object 
                    with:
                    - "text": The bullet point text (concise, informative, 10-100 words)
                    - "category": One of: "key_finding", "methodology", "conclusion", 
                      "insight", "announcement", "warning", "recommendation"
-                3. "quotes": Up to {max_quotes} notable quotes from the content, each as an 
+                4. "quotes": Up to {max_quotes} notable quotes from the content, each as an 
                    object with:
                    - "text": The exact quote (if available)
                    - "context": Who said it or where it comes from
-                4. "topics": An array of 3-8 relevant topic tags 
+                5. "topics": An array of 3-8 relevant topic tags 
                    (e.g., "AI", "Technology", "Business")
                 
                 Important:
+                - Generate a descriptive title that would make someone want to read the content
                 - Extract actual quotes when available, don't paraphrase
                 - Make bullet points specific and information dense
                 - Ensure the overview provides context for someone who hasn't read the content
@@ -374,6 +379,7 @@ class LLMService:
 
             # Validate and create structured summary
             structured_summary = StructuredSummary(
+                title=summary_data.get("title", "Untitled Content"),
                 overview=summary_data.get("overview", ""),
                 bullet_points=[
                     SummaryBulletPoint(text=bp.get("text", ""), category=bp.get("category"))

@@ -1,23 +1,17 @@
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any
 
-from sqlalchemy import (
-    Column, Integer, String, DateTime,
-    JSON, Index, UniqueConstraint, Text
-)
+from pydantic import ValidationError
+from sqlalchemy import JSON, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import validates
-from pydantic import ValidationError
 
-from app.models.metadata import (
-    validate_content_metadata,
-    ArticleMetadata,
-    PodcastMetadata,
-    StructuredSummary,
-    ContentType,
-    ContentStatus
-)
 from app.core.logging import get_logger
+from app.models.metadata import (
+    ContentStatus,
+    StructuredSummary,
+    validate_content_metadata,
+)
 
 logger = get_logger(__name__)
 Base = declarative_base()
@@ -30,6 +24,7 @@ class Content(Base):
     content_type = Column(String(20), nullable=False, index=True)
     url = Column(String(2048), nullable=False, unique=True)
     title = Column(String(500), nullable=True)
+    source = Column(String(100), nullable=True, index=True)
     
     # Status tracking
     status = Column(String(20), default=ContentStatus.NEW.value, nullable=False, index=True)
@@ -80,7 +75,7 @@ class Content(Base):
             logger.error(f"Unexpected error validating metadata: {e}")
             return value
     
-    def get_validated_metadata(self) -> Optional[Dict[str, Any]]:
+    def get_validated_metadata(self) -> dict[str, Any] | None:
         """Get metadata as validated Pydantic model."""
         if not self.content_metadata:
             return None
@@ -91,7 +86,7 @@ class Content(Base):
             logger.error(f"Error validating metadata for content {self.id}: {e}")
             return None
     
-    def get_structured_summary(self) -> Optional[StructuredSummary]:
+    def get_structured_summary(self) -> StructuredSummary | None:
         """Get structured summary if available."""
         if not self.content_metadata:
             return None

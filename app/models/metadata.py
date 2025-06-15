@@ -50,6 +50,7 @@ class StructuredSummary(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
+                "title": "AI Advances in Natural Language Processing Transform Industry",
                 "overview": "Brief overview of the content",
                 "bullet_points": [
                     {"text": "Key point 1", "category": "key_finding"},
@@ -62,6 +63,9 @@ class StructuredSummary(BaseModel):
         }
     )
 
+    title: str = Field(
+        ..., min_length=10, max_length=200, description="Descriptive title for the content"
+    )
     overview: str = Field(
         ..., min_length=50, max_length=2000, description="Brief overview paragraph"
     )
@@ -246,13 +250,13 @@ class ContentData(BaseModel):
                 try:
                     ArticleMetadata(**v)
                 except Exception as e:
-                    raise ValueError(f"Invalid article metadata: {e}")
+                    raise ValueError(f"Invalid article metadata: {e}") from e
             elif content_type == ContentType.PODCAST:
                 # Validate podcast metadata
                 try:
                     PodcastMetadata(**v)
                 except Exception as e:
-                    raise ValueError(f"Invalid podcast metadata: {e}")
+                    raise ValueError(f"Invalid podcast metadata: {e}") from e
         return v
     
     def to_article_metadata(self) -> ArticleMetadata:

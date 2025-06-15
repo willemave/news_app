@@ -207,6 +207,7 @@ async def test_run_saves_to_database(mock_db_session, mock_queue_service):
             assert created_content.content_type == ContentType.ARTICLE.value
             assert created_content.url == 'https://test.com/article'
             assert created_content.title == 'Test Article'
+            assert created_content.source == 'Test Feed'  # Verify source field is set
             assert created_content.status == ContentStatus.NEW.value
             
             # Verify task was queued

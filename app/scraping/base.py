@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import Any
 
 from app.core.db import get_db
 from app.core.logging import get_logger
+from app.models.metadata import ContentStatus
 from app.models.schema import Content
-from app.models.metadata import ContentType, ContentStatus
-from app.services.queue import get_queue_service, TaskType
+from app.services.queue import TaskType, get_queue_service
 
 logger = get_logger(__name__)
 
@@ -18,7 +18,7 @@ class BaseScraper(ABC):
         self.queue_service = get_queue_service()
     
     @abstractmethod
-    async def scrape(self) -> List[Dict[str, Any]]:
+    async def scrape(self) -> list[dict[str, Any]]:
         """
         Scrape content and return list of items.
         
@@ -49,7 +49,7 @@ class BaseScraper(ABC):
             logger.error(f"Error in {self.name} scraper: {e}")
             return 0
     
-    def _save_items(self, items: List[Dict[str, Any]]) -> int:
+    def _save_items(self, items: list[dict[str, Any]]) -> int:
         """Save scraped items to database."""
         saved_count = 0
         
@@ -66,12 +66,14 @@ class BaseScraper(ABC):
                         continue
                     
                     # Create new content
+                    metadata = item.get('metadata', {})
                     content = Content(
                         content_type=item['content_type'].value,
                         url=item['url'],
                         title=item.get('title'),
+                        source=metadata.get('source'),  # Extract source from metadata
                         status=ContentStatus.NEW.value,
-                        content_metadata=item.get('metadata', {}),
+                        content_metadata=metadata,
                         created_at=datetime.utcnow()
                     )
                     
