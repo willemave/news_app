@@ -9,7 +9,7 @@ from app.core.db import get_db
 from app.core.settings import get_settings
 from app.core.logging import get_logger
 from app.models.schema import Content
-from app.domain.content import ContentType, ContentStatus
+from app.models.metadata import ContentType, ContentStatus
 
 logger = get_logger(__name__)
 settings = get_settings()

@@ -54,7 +54,7 @@ async def resummarize_content(content_id: int, llm_service) -> bool:
             logger.info(f"Re-summarizing content {content_id}: {db_content.title}")
             
             # Generate new structured summary
-            summary = await llm_service.generate_structured_summary(content_to_summarize)
+            summary = await llm_service.summarize_content(content_to_summarize)
             
             if summary:
                 # Update content metadata

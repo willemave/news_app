@@ -4,12 +4,19 @@ from datetime import datetime
 
 from app.scraping.substack_unified import SubstackScraper, load_substack_feeds
 from app.models.schema import Content, ContentStatus
-from app.domain.content import ContentType
+from app.models.metadata import ContentType
 
 # Sample YAML content
 SAMPLE_YAML = """
 feeds:
   - url: "http://test.com/feed"
+"""
+
+SAMPLE_YAML_WITH_LIMIT = """
+feeds:
+  - url: "http://test.com/feed"
+    name: "Test Feed"
+    limit: 2
 """
 
 # Sample feedparser entry
@@ -57,8 +64,21 @@ def test_load_substack_feeds():
     with patch('builtins.open', mock_open(read_data=SAMPLE_YAML)) as mock_file:
         feeds = load_substack_feeds('dummy/path.yml')
         assert len(feeds) == 1
-        assert feeds[0] == 'http://test.com/feed'
-        mock_file.assert_called_once_with('dummy/path.yml', 'r')
+        assert feeds[0]['url'] == 'http://test.com/feed'
+        assert feeds[0]['name'] == 'Unknown Substack'  # Default name when not specified
+        assert feeds[0]['limit'] == 10  # Default limit when not specified
+        mock_file.assert_called_once_with('dummy/path.yml')
+
+
+def test_load_substack_feeds_with_limit():
+    """Test loading feeds with limit from a YAML file."""
+    with patch('builtins.open', mock_open(read_data=SAMPLE_YAML_WITH_LIMIT)) as mock_file:
+        feeds = load_substack_feeds('dummy/path.yml')
+        assert len(feeds) == 1
+        assert feeds[0]['url'] == 'http://test.com/feed'
+        assert feeds[0]['name'] == 'Test Feed'
+        assert feeds[0]['limit'] == 2  # Specific limit from config
+        mock_file.assert_called_once_with('dummy/path.yml')
 
 
 @pytest.mark.asyncio
@@ -78,7 +98,7 @@ async def test_scrape_process_and_filter(mock_feedparser_parse, mock_db_session,
 
     # Create scraper with mocked feeds
     with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = ['http://test.com/feed']
+        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
         
         scraper = SubstackScraper()
         items = await scraper.scrape()
@@ -90,7 +110,7 @@ async def test_scrape_process_and_filter(mock_feedparser_parse, mock_db_session,
         assert item['url'] == 'https://test.com/article'  # Note: normalized to https
         assert item['title'] == 'Test Article'
         assert item['content_type'] == ContentType.ARTICLE
-        assert item['metadata']['source'] == 'substack'
+        assert item['metadata']['source'] == 'Test Feed'
         assert item['metadata']['feed_name'] == 'Test Feed'
         assert item['metadata']['author'] == 'Test Author'
 
@@ -111,7 +131,7 @@ async def test_scrape_filters_podcasts(mock_feedparser_parse, mock_db_session, m
 
     # Create scraper with mocked feeds
     with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = ['http://test.com/feed']
+        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
         
         scraper = SubstackScraper()
         items = await scraper.scrape()
@@ -143,7 +163,7 @@ async def test_scrape_handles_missing_link(mock_feedparser_parse, mock_db_sessio
 
     # Create scraper with mocked feeds
     with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = ['http://test.com/feed']
+        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
         
         scraper = SubstackScraper()
         items = await scraper.scrape()
@@ -168,7 +188,7 @@ async def test_run_saves_to_database(mock_db_session, mock_queue_service):
 
         # Create scraper with mocked feeds
         with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-            mock_load_feeds.return_value = ['http://test.com/feed']
+            mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
             
             scraper = SubstackScraper()
             saved_count = await scraper.run()
@@ -214,7 +234,7 @@ async def test_run_skips_existing_urls(mock_db_session, mock_queue_service):
 
         # Create scraper with mocked feeds
         with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-            mock_load_feeds.return_value = ['http://test.com/feed']
+            mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
             
             scraper = SubstackScraper()
             saved_count = await scraper.run()
@@ -237,6 +257,45 @@ def test_url_normalization():
     
     # Test combined normalization
     assert scraper._normalize_url('http://test.com/article/') == 'https://test.com/article'
+
+
+@pytest.mark.asyncio
+@patch('app.scraping.substack_unified.feedparser.parse')
+async def test_scrape_respects_limit(mock_feedparser_parse, mock_db_session, mock_queue_service):
+    """Test that scraper respects the limit configuration."""
+    # Create multiple entries
+    entries = []
+    for i in range(5):
+        entries.append({
+            'title': f'Test Article {i}',
+            'link': f'http://test.com/article{i}',
+            'author': 'Test Author',
+            'published_parsed': (2025, 6, 7, 12, 0, 0, 5, 158, 0),
+            'content': [{'type': 'text/html', 'value': f'<p>Content {i}</p>'}],
+            'id': f'test-entry-{i}'
+        })
+    
+    # Mock feedparser results
+    mock_feed_result = MagicMock()
+    mock_feed_result.bozo = 0
+    mock_feed_result.entries = entries
+    mock_feed_result.feed = {
+        'title': 'Test Feed',
+        'description': 'A test feed for testing'
+    }
+    mock_feedparser_parse.return_value = mock_feed_result
+
+    # Create scraper with limit of 2
+    with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
+        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 2}]
+        
+        scraper = SubstackScraper()
+        items = await scraper.scrape()
+
+        # Verify only 2 items were processed despite having 5 entries
+        assert len(items) == 2
+        assert items[0]['title'] == 'Test Article 0'
+        assert items[1]['title'] == 'Test Article 1'
 
 
 @pytest.mark.asyncio

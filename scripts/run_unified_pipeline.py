@@ -34,6 +34,7 @@ class UnifiedPipeline:
     def __init__(self):
         self.queue_service = get_queue_service()
         self.scraper_runner = ScraperRunner()
+        self.run_start_time = None
     
     async def enqueue_scrapers(self, scrapers: Optional[List[str]] = None) -> int:
         """
@@ -113,34 +114,43 @@ class UnifiedPipeline:
             return task_count
     
     def get_pipeline_stats(self) -> Dict:
-        """Get comprehensive pipeline statistics."""
+        """Get comprehensive pipeline statistics for the current run."""
         stats = {
             'timestamp': datetime.now(timezone.utc).isoformat(),
+            'run_start': self.run_start_time.isoformat() if self.run_start_time else 'Not started',
             'queue': self.queue_service.get_queue_stats(),
             'content': {},
             'tasks': {}
         }
         
         with get_db() as db:
-            # Content statistics
+            # If run hasn't started yet, return empty stats
+            if not self.run_start_time:
+                return stats
+            
+            # Content statistics - only content created/modified during this run
             for status in ContentStatus:
                 count = db.query(func.count(Content.id)).filter(
-                    Content.status == status.value
+                    Content.status == status.value,
+                    Content.updated_at >= self.run_start_time
                 ).scalar()
                 stats['content'][status.value] = count
             
-            # Content by type
+            # Content by type - only content created during this run
             for content_type in ContentType:
                 count = db.query(func.count(Content.id)).filter(
-                    Content.content_type == content_type.value
+                    Content.content_type == content_type.value,
+                    Content.created_at >= self.run_start_time
                 ).scalar()
-                stats['content'][f'{content_type.value}_total'] = count
+                stats['content'][f'{content_type.value}_created'] = count
             
-            # Task statistics by type and status
+            # Task statistics by type and status - only tasks created during this run
             task_stats = db.query(
                 ProcessingTask.task_type,
                 ProcessingTask.status,
                 func.count(ProcessingTask.id)
+            ).filter(
+                ProcessingTask.created_at >= self.run_start_time
             ).group_by(
                 ProcessingTask.task_type,
                 ProcessingTask.status
@@ -156,20 +166,25 @@ class UnifiedPipeline:
     def display_stats(self, stats: Dict):
         """Display pipeline statistics in a formatted way."""
         print("\n" + "=" * 60)
-        print("PIPELINE STATISTICS")
+        print("CURRENT RUN STATISTICS")
         print("=" * 60)
-        print(f"Timestamp: {stats['timestamp']}")
+        print(f"Run Started : {stats['run_start']}")
+        print(f"Current Time: {stats['timestamp']}")
         
-        print("\nCONTENT STATUS:")
+        if self.run_start_time:
+            duration = datetime.now(timezone.utc) - self.run_start_time
+            print(f"Duration    : {duration}")
+        
+        print("\nCONTENT UPDATED THIS RUN:")
         for status, count in stats['content'].items():
-            if not status.endswith('_total'):
+            if not status.endswith('_created'):
                 print(f"  {status:12}: {count:6}")
         
-        print("\nCONTENT TYPES:")
-        print(f"  Articles    : {stats['content'].get('article_total', 0):6}")
-        print(f"  Podcasts    : {stats['content'].get('podcast_total', 0):6}")
+        print("\nCONTENT CREATED THIS RUN:")
+        print(f"  Articles    : {stats['content'].get('article_created', 0):6}")
+        print(f"  Podcasts    : {stats['content'].get('podcast_created', 0):6}")
         
-        print("\nQUEUE STATUS:")
+        print("\nCURRENT QUEUE STATUS:")
         for status, count in stats['queue'].get('by_status', {}).items():
             print(f"  {status:12}: {count:6}")
         
@@ -178,7 +193,7 @@ class UnifiedPipeline:
             print(f"  {task_type:18}: {count:6}")
         
         if stats['tasks']:
-            print("\nTASK DETAILS:")
+            print("\nTASKS CREATED THIS RUN:")
             for task_type, statuses in stats['tasks'].items():
                 print(f"  {task_type}:")
                 for status, count in statuses.items():
@@ -354,8 +369,11 @@ Examples:
     
     try:
         while True:  # Loop for continuous mode
+            # Set run start time for this iteration
+            pipeline.run_start_time = datetime.now(timezone.utc)
+            
             logger.info(f"\n{'=' * 60}")
-            logger.info(f"PIPELINE RUN - {datetime.now(timezone.utc).isoformat()}")
+            logger.info(f"PIPELINE RUN - {pipeline.run_start_time.isoformat()}")
             logger.info(f"{'=' * 60}")
             
             # Show initial statistics
@@ -410,7 +428,7 @@ Examples:
             # Show final statistics
             if args.show_stats:
                 logger.info("\n" + "=" * 60)
-                logger.info("FINAL STATISTICS")
+                logger.info("FINAL RUN STATISTICS")
                 logger.info("=" * 60)
                 final_stats = pipeline.get_pipeline_stats()
                 pipeline.display_stats(final_stats)

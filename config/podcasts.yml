@@ -1,13 +1,13 @@
 feeds:
   - name: "Lenny's Podcast"
     url: "https://api.substack.com/feed/podcast/10845.rss"
-    limit: 5
+    limit: 3
   - name: "BG2 Pod"
     url: "https://anchor.fm/s/f06c2370/podcast/rss"
-    limit: 5
+    limit: 3
   - name: "Crucible Moments"
     url: "https://feeds.megaphone.fm/VMP5587961509"
-    limit: 5
+    limit: 3
   - name: "Knowledge Project with Shane Paris"
     url: "https://feeds.megaphone.fm/FSMI7575968096"
-    limit: 5
+    limit: 3

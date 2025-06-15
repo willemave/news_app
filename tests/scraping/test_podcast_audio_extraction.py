@@ -9,7 +9,7 @@ from datetime import datetime
 from app.scraping.podcast_unified import PodcastUnifiedScraper
 from app.pipeline.podcast_workers import PodcastDownloadWorker
 from app.models.schema import Content, ContentType, ContentStatus
-from app.domain.content import ContentData
+from app.models.metadata import ContentData
 
 
 class TestPodcastAudioExtraction:

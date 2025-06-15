@@ -1,13 +1,14 @@
-from typing import List, Dict, Any, Optional
-import httpx
-import yaml
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from app.scraping.base import BaseScraper
-from app.domain.content import ContentType
+import httpx
+import yaml
+
 from app.core.logging import get_logger
 from app.core.settings import get_settings
+from app.models.metadata import ContentType
+from app.scraping.base import BaseScraper
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -19,7 +20,7 @@ class RedditUnifiedScraper(BaseScraper):
         super().__init__("Reddit")
         self.subreddits = self._load_subreddit_config()
     
-    def _load_subreddit_config(self) -> Dict[str, int]:
+    def _load_subreddit_config(self) -> dict[str, int]:
         """Load subreddit configuration from YAML file."""
         config_path = Path("config/reddit.yml")
         
@@ -28,7 +29,7 @@ class RedditUnifiedScraper(BaseScraper):
             return {}
         
         try:
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 config = yaml.safe_load(f)
             
             subreddits = config.get("subreddits", {})
@@ -46,7 +47,7 @@ class RedditUnifiedScraper(BaseScraper):
             logger.error(f"Error loading Reddit config: {e}")
             return {}
     
-    async def scrape(self) -> List[Dict[str, Any]]:
+    async def scrape(self) -> list[dict[str, Any]]:
         """Scrape Reddit posts from multiple subreddits."""
         all_items = []
         
@@ -73,7 +74,7 @@ class RedditUnifiedScraper(BaseScraper):
         client: httpx.AsyncClient, 
         subreddit_name: str, 
         limit: int
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Scrape a specific subreddit."""
         items = []
         
@@ -112,7 +113,7 @@ class RedditUnifiedScraper(BaseScraper):
                     'title': post.get('title'),
                     'content_type': ContentType.ARTICLE,
                     'metadata': {
-                        'source': 'reddit',
+                        'source': post.get('subreddit', subreddit_name),  # Use subreddit name as source
                         'subreddit': post.get('subreddit', subreddit_name),
                         'reddit_id': post.get('id'),
                         'reddit_url': f"https://reddit.com{post.get('permalink', '')}",

@@ -1,12 +1,13 @@
+import re
+from datetime import datetime
+from typing import Any
+
 import feedparser
 import yaml
-import re
-from typing import List, Dict, Any
-from datetime import datetime
 
-from app.scraping.base import BaseScraper
-from app.domain.content import ContentType
 from app.core.logging import get_logger
+from app.models.metadata import ContentType
+from app.scraping.base import BaseScraper
 from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
@@ -20,10 +21,10 @@ class PodcastUnifiedScraper(BaseScraper):
         self.feeds = self._load_podcast_feeds()
         self.error_logger = create_error_logger("podcast_scraper", "logs/errors")
     
-    def _load_podcast_feeds(self) -> List[dict]:
+    def _load_podcast_feeds(self) -> list[dict]:
         """Load podcast feed URLs from YAML config."""
         try:
-            with open(self.config_path, 'r') as f:
+            with open(self.config_path) as f:
                 config = yaml.safe_load(f)
             feeds = config.get('feeds', [])
             logger.info(f"Loaded {len(feeds)} podcast feeds from config")
@@ -35,7 +36,7 @@ class PodcastUnifiedScraper(BaseScraper):
             logger.error(f"Error loading podcast config: {e}")
             return []
     
-    async def scrape(self) -> List[Dict[str, Any]]:
+    async def scrape(self) -> list[dict[str, Any]]:
         """Scrape all configured podcast feeds with comprehensive error logging."""
         if not self.feeds:
             logger.warning("No podcast feeds configured")
@@ -112,7 +113,7 @@ class PodcastUnifiedScraper(BaseScraper):
         logger.info(f"Podcast scraping completed. Processed {len(items)} total items")
         return items
     
-    def _process_entry(self, entry, feed_name: str, feed_info: dict, feed_url: str) -> Dict[str, Any]:
+    def _process_entry(self, entry, feed_name: str, feed_info: dict, feed_url: str) -> dict[str, Any]:
         """Process a single podcast entry."""
         title = entry.get('title', 'No Title')
         link = entry.get('link')
@@ -173,7 +174,7 @@ class PodcastUnifiedScraper(BaseScraper):
             'feed_description': feed_info.get('description'),
             'author': entry.get('author') or feed_info.get('author'),
             'description': entry.get('description') or entry.get('summary'),
-            'source': 'podcast_rss'
+            'source': feed_name  # Use the podcast name from config as source
         }
         
         return {

@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.schemas.metadata import ContentQuote, StructuredSummary, SummaryBulletPoint
+from app.models.metadata import ContentQuote, StructuredSummary, SummaryBulletPoint
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -190,25 +190,18 @@ class LLMService:
             return MockProvider()
 
     async def summarize_content(
-        self, content: str, structured: bool = True
-    ) -> str | StructuredSummary | dict[str, Any] | None:
+        self, content: str, max_bullet_points: int = 6, max_quotes: int = 3
+    ) -> StructuredSummary | dict[str, Any] | None:
         """Summarize content using LLM.
 
         Args:
             content: The content to summarize
-            structured: If True, returns a StructuredSummary with bullet points and quotes
-                (default: True)
+            max_bullet_points: Maximum number of bullet points to generate (default: 6)
+            max_quotes: Maximum number of quotes to extract (default: 3)
 
         Returns:
-            StructuredSummary if structured=True, None if error
+            StructuredSummary with bullet points and quotes, None if error
         """
-        # Always use structured summary
-        return await self.generate_structured_summary(content)
-
-    async def generate_structured_summary(
-        self, content: str, max_bullet_points: int = 6, max_quotes: int = 3
-    ) -> StructuredSummary | dict[str, Any] | None:
-        """Generate a structured summary with bullet points and quotes."""
         try:
             # Truncate content if too long
             if isinstance(content, bytes):

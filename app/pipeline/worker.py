@@ -7,7 +7,7 @@ from datetime import datetime
 from app.core.settings import get_settings
 from app.core.logging import get_logger
 from app.core.db import get_db
-from app.domain.content import ContentType, ContentData, ContentStatus
+from app.models.metadata import ContentType, ContentData, ContentStatus
 from app.domain.converters import content_to_domain, domain_to_content
 from app.pipeline.checkout import get_checkout_manager
 from app.services.http import get_http_service, NonRetryableError
@@ -142,8 +142,7 @@ class ContentWorker:
             # Summarize if we have content
             if llm_data.get('content_to_summarize'):
                 summary = await self.llm_service.summarize_content(
-                    llm_data['content_to_summarize'],
-                    structured=True  # Use structured summarization
+                    llm_data['content_to_summarize']
                 )
                 if summary:
                     # Convert to dict if it's a Pydantic model

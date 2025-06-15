@@ -1,27 +1,43 @@
 """
 Unified Substack scraper following the new architecture.
 """
+import re
+from datetime import datetime
+from typing import Any
+
 import feedparser
 import yaml
-import re
-from typing import List, Dict, Any
-from datetime import datetime
 
-from app.scraping.base import BaseScraper
-from app.domain.content import ContentType
 from app.core.logging import get_logger
+from app.models.metadata import ContentType
+from app.scraping.base import BaseScraper
 from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 
-def load_substack_feeds(config_path: str = 'config/substack.yml') -> List[str]:
-    """Loads Substack feed URLs from a YAML file."""
+def load_substack_feeds(config_path: str = 'config/substack.yml') -> list[dict[str, Any]]:
+    """Loads Substack feed URLs, names, and limits from a YAML file."""
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f)
         feeds = config.get('feeds', [])
-        # Extract URLs from the feed list
-        return [feed.get('url') if isinstance(feed, dict) else feed for feed in feeds if feed]
+        # Return list of dicts with url, name, and limit
+        result = []
+        for feed in feeds:
+            if isinstance(feed, dict) and feed.get('url'):
+                result.append({
+                    'url': feed['url'],
+                    'name': feed.get('name', 'Unknown Substack'),
+                    'limit': feed.get('limit', 10)  # Default limit of 10 if not specified
+                })
+            elif isinstance(feed, str):
+                # Handle legacy format
+                result.append({
+                    'url': feed,
+                    'name': 'Unknown Substack',
+                    'limit': 10  # Default limit for legacy format
+                })
+        return result
     except FileNotFoundError:
         logger.error(f"Substack config file not found at: {config_path}")
         return []
@@ -38,7 +54,7 @@ class SubstackScraper(BaseScraper):
         self.podcast_filter = re.compile(r'\b(podcast|transcript)\b', re.IGNORECASE)
         self.error_logger = create_error_logger("substack_scraper", "logs/errors")
     
-    async def scrape(self) -> List[Dict[str, Any]]:
+    async def scrape(self) -> list[dict[str, Any]]:
         """Scrape all configured Substack feeds with comprehensive error logging."""
         items = []
         
@@ -46,12 +62,18 @@ class SubstackScraper(BaseScraper):
             logger.warning("No Substack feeds configured. Skipping scrape.")
             return items
         
-        for feed_url in self.feeds:
+        for feed_info in self.feeds:
+            feed_url = feed_info.get('url')
+            source_name = feed_info.get('name', 'Unknown Substack')
+            limit = feed_info.get('limit', 10)
+            
             if not feed_url:
                 logger.warning("Skipping empty feed URL.")
                 continue
             
-            logger.info(f"Scraping Substack feed: {feed_url}")
+            logger.info(
+                f"Scraping Substack feed: {feed_url} (source: {source_name}, limit: {limit})"
+            )
             try:
                 parsed_feed = feedparser.parse(feed_url)
                 
@@ -65,10 +87,18 @@ class SubstackScraper(BaseScraper):
                         operation="feed_parsing"
                     )
                     # Only warn for serious parsing errors, not encoding issues
-                    if not isinstance(parsed_feed.bozo_exception, getattr(feedparser.exceptions, 'CharacterEncodingOverride', type(None))):
-                        logger.warning(f"Feed {feed_url} may be ill-formed: {parsed_feed.bozo_exception}")
+                    encoding_override = getattr(
+                        feedparser.exceptions, 'CharacterEncodingOverride', type(None)
+                    )
+                    if not isinstance(parsed_feed.bozo_exception, encoding_override):
+                        logger.warning(
+                            f"Feed {feed_url} may be ill-formed: {parsed_feed.bozo_exception}"
+                        )
                     else:
-                        logger.debug(f"Feed {feed_url} has encoding declaration mismatch (not critical): {parsed_feed.bozo_exception}")
+                        logger.debug(
+                            f"Feed {feed_url} has encoding declaration mismatch (not critical): "
+                            f"{parsed_feed.bozo_exception}"
+                        )
                 
                 # Extract feed name and description from the RSS feed
                 feed_name = parsed_feed.feed.get('title', 'Unknown Feed')
@@ -76,14 +106,22 @@ class SubstackScraper(BaseScraper):
                 
                 logger.info(f"Processing feed: {feed_name} - {feed_description}")
                 
+                # Apply limit to entries (similar to podcast scraper)
+                entries_to_process = parsed_feed.entries[:limit]
+                
                 processed_entries = 0
-                for entry in parsed_feed.entries:
-                    item = self._process_entry(entry, feed_name, feed_description, feed_url)
+                for entry in entries_to_process:
+                    item = self._process_entry(
+                        entry, feed_name, feed_description, feed_url, source_name
+                    )
                     if item:
                         items.append(item)
                         processed_entries += 1
                 
-                logger.info(f"Successfully processed {processed_entries} entries from {feed_name}")
+                logger.info(
+                    f"Successfully processed {processed_entries} entries from {feed_name} "
+                    f"(limit: {limit})"
+                )
                         
             except Exception as e:
                 # Log comprehensive error details
@@ -98,7 +136,14 @@ class SubstackScraper(BaseScraper):
         logger.info(f"Substack scraping completed. Processed {len(items)} total items")
         return items
     
-    def _process_entry(self, entry, feed_name: str, feed_description: str = "", feed_url: str = "") -> Dict[str, Any]:
+    def _process_entry(
+        self,
+        entry,
+        feed_name: str,
+        feed_description: str = "",
+        feed_url: str = "",
+        source_name: str = ""
+    ) -> dict[str, Any]:
         """Process a single entry from an RSS feed."""
         title = entry.get('title', 'No Title')
         link = entry.get('link')
@@ -148,7 +193,8 @@ class SubstackScraper(BaseScraper):
             'title': title,
             'content_type': ContentType.ARTICLE,
             'metadata': {
-                'source': 'substack',
+                # Use configured source name or fallback to feed name
+                'source': source_name or feed_name,
                 'feed_name': feed_name,
                 'feed_description': feed_description,
                 'author': entry.get('author'),

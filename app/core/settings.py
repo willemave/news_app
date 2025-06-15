@@ -28,7 +28,6 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
-    firecrawl_api_key: str | None = None
     
     # HTTP client
     http_timeout_seconds: int = 30

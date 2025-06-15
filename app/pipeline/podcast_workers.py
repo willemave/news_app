@@ -17,7 +17,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.schema import Content, ContentStatus
 from app.services.queue import get_queue_service, TaskType
-from app.domain.content import ContentData
+from app.models.metadata import ContentData
 from app.domain.converters import content_to_domain, domain_to_content
 from app.utils.error_logger import create_error_logger
 
