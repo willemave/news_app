@@ -72,7 +72,20 @@
             </time>
           </div>
           
-          {% if content.short_summary %}
+          {% if content.bullet_points %}
+            <!-- Show first 3 bullet points if available -->
+            <ul class="text-gray-700 text-sm space-y-1 mt-2">
+              {% for bullet in content.bullet_points[:3] %}
+                <li class="flex items-start">
+                  <span class="text-blue-600 mr-2">•</span>
+                  <span class="line-clamp-2">{{ bullet.text }}</span>
+                </li>
+              {% endfor %}
+              {% if content.bullet_points|length > 3 %}
+                <li class="text-gray-500 italic text-xs ml-4">... and {{ content.bullet_points|length - 3 }} more points</li>
+              {% endif %}
+            </ul>
+          {% elif content.short_summary %}
             <p class="text-gray-700 line-clamp-2">{{ content.short_summary }}</p>
           {% elif content.summary %}
             <p class="text-gray-700 line-clamp-2">{{ content.summary[:200] }}...</p>

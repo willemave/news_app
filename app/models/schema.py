@@ -7,7 +7,18 @@ from sqlalchemy import (
     JSON, Index, UniqueConstraint, Text
 )
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import validates
+from pydantic import ValidationError
 
+from app.schemas.metadata import (
+    validate_content_metadata,
+    ArticleMetadata,
+    PodcastMetadata,
+    StructuredSummary
+)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 Base = declarative_base()
 
 class ContentType(str, Enum):
@@ -55,6 +66,58 @@ class Content(Base):
         Index('idx_checkout', 'checked_out_by', 'checked_out_at'),
         Index('idx_created_at', 'created_at'),
     )
+    
+    @validates('content_metadata')
+    def validate_metadata(self, key, value):
+        """Validate metadata using Pydantic models."""
+        if not value or value == {}:
+            return value
+            
+        # Skip validation during initial load or if content_type not set
+        if not hasattr(self, 'content_type') or not self.content_type:
+            return value
+            
+        try:
+            # Validate using appropriate schema
+            validated = validate_content_metadata(self.content_type, value)
+            # Convert back to dict for storage
+            return validated.model_dump(mode='json')
+        except ValidationError as e:
+            logger.warning(f"Metadata validation failed for {self.content_type}: {e}")
+            # For backward compatibility, store as-is but log warning
+            return value
+        except Exception as e:
+            logger.error(f"Unexpected error validating metadata: {e}")
+            return value
+    
+    def get_validated_metadata(self) -> Optional[Dict[str, Any]]:
+        """Get metadata as validated Pydantic model."""
+        if not self.content_metadata:
+            return None
+            
+        try:
+            return validate_content_metadata(self.content_type, self.content_metadata)
+        except Exception as e:
+            logger.error(f"Error validating metadata for content {self.id}: {e}")
+            return None
+    
+    def get_structured_summary(self) -> Optional[StructuredSummary]:
+        """Get structured summary if available."""
+        if not self.content_metadata:
+            return None
+            
+        summary = self.content_metadata.get('summary')
+        if not summary:
+            return None
+            
+        # Check if it's already a structured summary
+        if isinstance(summary, dict) and 'bullet_points' in summary:
+            try:
+                return StructuredSummary(**summary)
+            except Exception as e:
+                logger.error(f"Error parsing structured summary: {e}")
+                
+        return None
 
 class ProcessingTask(Base):
     """Simple task queue to replace Huey"""

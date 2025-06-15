@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # External services
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None
     
     # HTTP client
     http_timeout_seconds: int = 30

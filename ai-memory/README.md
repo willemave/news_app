@@ -30,11 +30,20 @@
 * **Task Queue**: [`ProcessingTask`](app/models/schema.py:59) for background job management
 * **Enums**: [`ContentType`](app/models/schema.py:13), [`ContentStatus`](app/models/schema.py:17) for type safety
 * **Database**: SQLite/PostgreSQL via SQLAlchemy with JSON metadata support
+* **Schema Validation**: Pydantic models for metadata validation:
+  - [`ArticleMetadata`](app/schemas/metadata.py) - Validates article-specific fields
+  - [`PodcastMetadata`](app/schemas/metadata.py) - Validates podcast-specific fields
+  - [`StructuredSummary`](app/schemas/metadata.py) - Structured summary format with bullet points and quotes
+  - Automatic validation on metadata updates via SQLAlchemy validators
 
 ### LLM Integration
 * **Provider Abstraction**: [`LLMService`](app/services/llm.py:70) with pluggable providers
 * **Providers**: [`OpenAIProvider`](app/services/llm.py:26), [`MockProvider`](app/services/llm.py:58) for testing
-* **Functions**: [`summarize_content()`](app/services/llm.py:85), [`extract_topics()`](app/services/llm.py:120)
+* **Functions**: 
+  - [`summarize_content()`](app/services/llm.py:87) - Supports both simple and structured summaries
+  - [`generate_structured_summary()`](app/services/llm.py:150) - Creates summaries with bullet points and quotes
+  - [`extract_topics()`](app/services/llm.py:122)
+* **Structured Summaries**: New format with overview, categorized bullet points, quotes, and topics
 * **Error Handling**: Robust JSON parsing with fallback for malformed responses
 
 ### Queue System
@@ -106,8 +115,13 @@
 * [`app/services/http.py`](app/services/http.py) - HTTP service wrapper
 
 ### Domain Models
-* [`app/domain/content.py`](app/domain/content.py) - Domain content models
+* [`app/domain/content.py`](app/domain/content.py) - Domain content models with properties for structured summaries
 * [`app/domain/converters.py`](app/domain/converters.py) - Convert between domain and DB models
+
+### Schema Validation
+* [`app/schemas/metadata.py`](app/schemas/metadata.py) - Pydantic models for content metadata validation
+* Structured summary models with bullet points, quotes, and topics
+* Migration utilities for legacy metadata
 
 ### HTTP Client
 * [`app/http_client/robust_http_client.py`](app/http_client/robust_http_client.py) - Async HTTP client with retry logic
@@ -183,6 +197,10 @@
 * **Implemented**: Strategy pattern for content processing
 * **Implemented**: Comprehensive test suite
 * **Implemented**: Admin dashboard with pipeline monitoring
+* **Implemented**: Pydantic schema validation for content metadata
+* **Implemented**: Structured summarization with bullet points, quotes, and topics
+* **Implemented**: Markdown rendering support in templates
+* **Implemented**: Migration script for updating existing content to new schema
 * **In Progress**: Migration from old models to unified schema
 * **Planned**: Additional LLM providers (Anthropic, local models)
 * **Planned**: Enhanced content filtering and categorization
