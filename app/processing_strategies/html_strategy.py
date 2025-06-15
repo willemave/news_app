@@ -14,9 +14,6 @@ from crawl4ai import (
     BrowserConfig,
     CacheMode,
     CrawlerRunConfig,
-    DefaultMarkdownGenerator,
-    LLMConfig,
-    LLMContentFilter,
 )
 from dateutil import parser as date_parser  # For parsing dates from metadata
 
@@ -35,7 +32,7 @@ nest_asyncio.apply()
 class HtmlProcessorStrategy(UrlProcessorStrategy):
     """
     Strategy for processing standard HTML web pages.
-    It downloads HTML content using crawl4ai with LLM-based content extraction,
+    It downloads HTML content using crawl4ai with optimized content extraction,
     and prepares it for further processing.
     """
 
@@ -50,6 +47,12 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             return "PubMed"
         elif "arxiv.org" in url:
             return "Arxiv"
+        elif "substack.com" in url:
+            return "Substack"
+        elif "medium.com" in url:
+            return "Medium"
+        elif "chinatalk.media" in url:
+            return "ChinaTalk"
         else:
             return "web"
 
@@ -66,12 +69,12 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/pmid/{pmid}/"
             logger.debug(f"HtmlStrategy: Transforming PubMed URL {url} to PMC URL {pmc_url}")
             return pmc_url
-
+        
         # Handle ArXiv URLs - transform abstract to PDF
         if "arxiv.org/abs/" in url:
             logger.debug(f"HtmlStrategy: Transforming arXiv URL {url}")
             return url.replace("/abs/", "/pdf/")
-
+        
         logger.debug(f"HtmlStrategy: preprocess_url called for {url}, no transformation applied.")
         return url
 
@@ -117,128 +120,138 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         # We'll actually download in extract_data using crawl4ai
         return url  # Return the URL itself as a placeholder
 
-    def _get_extraction_instruction(self, source: str) -> str:
-        """Get source-specific extraction instructions for the LLM."""
-        base_instruction = """
-        Focus on extracting the core educational and informational content.
-        Include:
-        - Main article content
-        - Key concepts and explanations
-        - Important facts and findings
-        - Code examples if present
-        - Essential technical details
+    def _get_source_specific_config(self, source: str) -> dict[str, Any]:
+        """Get source-specific configuration for crawl4ai."""
+        # Base configuration
+        config = {
+            "word_count_threshold": 20,
+            "excluded_tags": ["script", "style", "nav", "footer", "header"],
+            "exclude_external_links": True,
+            "remove_overlay_elements": True,
+        }
         
-        Exclude:
-        - Navigation elements
-        - Sidebars and advertisements
-        - Footer content
-        - Cookie notices
-        - Social media links
-        
-        Extract metadata if available:
-        - Title
-        - Author(s)
-        - Publication date
-        
-        Format the output as clean markdown with proper headers and structure.
-        """
-
-        if source == "PubMed":
-            return (
-                base_instruction
-                + """
-            
-            For PubMed/PMC articles, also include:
-            - Abstract
-            - Introduction
-            - Methods
-            - Results
-            - Discussion
-            - Conclusions
-            - References (main ones)
-            """
-            )
+        # Source-specific adjustments
+        if source == "Substack":
+            config["excluded_tags"].extend(["form", "aside"])
+            config["excluded_selector"] = ".subscribe-widget, .footer-wrap, .subscription-form-wrapper"
+            config["target_elements"] = [".post", ".post-content", "article"]
+        elif source == "Medium":
+            config["excluded_selector"] = ".metabar, .js-postActions, .js-stickyFooter"
+            config["target_elements"] = ["article", ".postArticle", ".section-content"]
+        elif source in ["PubMed", "PMC"]:
+            # Keep more scientific content
+            config["excluded_tags"] = ["script", "style", "nav", "footer"]
+            config["target_elements"] = [".article", ".abstract", ".body", ".content", "main"]
+            config["word_count_threshold"] = 10  # Lower threshold for scientific content
+        elif source == "ChinaTalk":
+            config["target_elements"] = [".post-content", ".post", "article"]
+            config["excluded_selector"] = ".subscribe-widget, .comments-section"
         elif source == "Arxiv":
-            return (
-                base_instruction
-                + """
+            # ArXiv PDFs need special handling
+            config["pdf"] = True
             
-            For ArXiv papers, also include:
-            - Abstract
-            - All sections of the paper
-            - Mathematical formulas (in LaTeX format if possible)
-            - Algorithms and pseudocode
-            - Experimental results
-            """
-            )
-        else:
-            return base_instruction
+        return config
 
     async def _extract_with_crawl4ai(self, url: str) -> dict[str, Any]:
-        """Extract content using crawl4ai with LLM filtering."""
+        """Extract content using crawl4ai with optimized settings."""
         source = self._detect_source(url)
-
+        
         # Configure browser
-        browser_config = BrowserConfig(headless=True, viewport_width=1280, viewport_height=720)
-
-        # Configure LLM for content filtering
-        llm_config = LLMConfig(
-            provider="gemini/gemini-2.5-flash-preview-05-20", api_token="env:GOOGLE_API_KEY"
+        browser_config = BrowserConfig(
+            headless=True,
+            viewport_width=1920,  # Wider viewport for better content capture
+            viewport_height=1080,
+            text_mode=False,  # Keep images for now, filter later if needed
+            light_mode=True,  # Performance optimization
+            ignore_https_errors=True,
+            java_script_enabled=True,  # Need JS for many modern sites
+            extra_args=["--disable-blink-features=AutomationControlled"],  # Stealth
         )
-
-        # Initialize LLM filter with specific instruction
-        content_filter = LLMContentFilter(
-            llm_config=llm_config,
-            instruction=self._get_extraction_instruction(source),
-            chunk_token_threshold=2000,  # Increased to reduce chunks
-            verbose=True,
-        )
-
-        # Configure markdown generator
-        markdown_generator = DefaultMarkdownGenerator(
-            content_filter=content_filter, options={"ignore_links": True}
-        )
-
+        
+        # Get source-specific configuration
+        source_config = self._get_source_specific_config(source)
+        
         # Configure crawler run
         run_config = CrawlerRunConfig(
-            markdown_generator=markdown_generator,
-            cache_mode=CacheMode.BYPASS,
+            # Content filtering
+            word_count_threshold=source_config.get("word_count_threshold", 20),
+            excluded_tags=source_config.get("excluded_tags", []),
+            excluded_selector=source_config.get("excluded_selector"),
+            target_elements=source_config.get("target_elements"),
+            exclude_external_links=source_config.get("exclude_external_links", True),
+            
+            # Content processing
+            process_iframes=False,
+            remove_overlay_elements=source_config.get("remove_overlay_elements", True),
+            remove_forms=True,  # Usually don't need forms in article content
+            keep_data_attributes=False,  # Clean up HTML
+            
+            # Page handling
+            wait_until="domcontentloaded",  # Faster than networkidle
             wait_for="body",
-            delay_before_return_html=2.0,  # Wait for dynamic content
+            delay_before_return_html=1.0,  # Reduced delay
+            adjust_viewport_to_content=True,
+            
+            # Performance
+            cache_mode=CacheMode.ENABLED,  # Use cache for repeated visits
+            verbose=False,  # Less logging
+            
+            # Link filtering
+            exclude_social_media_links=True,
+            exclude_domains=["facebook.com", "twitter.com", "instagram.com", "linkedin.com"],
+            
+            # Special handling
+            pdf=source_config.get("pdf", False),
+            check_robots_txt=False,  # Speed over compliance for news aggregation
         )
-
-        async with AsyncWebCrawler(config=browser_config) as crawler:
-            result = await crawler.arun(url=url, config=run_config)
-
-            if result.success:
-                # Handle the new markdown format
-                content = ""
-                if hasattr(result, 'markdown') and result.markdown:
-                    if hasattr(result.markdown, 'raw_markdown'):
-                        content = result.markdown.raw_markdown
-                    else:
-                        content = str(result.markdown)
+        
+        try:
+            async with AsyncWebCrawler(config=browser_config) as crawler:
+                result = await crawler.arun(url=url, config=run_config)
                 
-                return {
-                    "success": True,
-                    "content": content,
-                    "title": result.metadata.get("title") if result.metadata else None,
-                    "final_url": result.url,
-                }
-            else:
-                return {"success": False, "error": result.error_message or "Unknown error"}
+                if result.success:
+                    # Get content
+                    content = ""
+                    if hasattr(result, 'markdown') and result.markdown:
+                        if hasattr(result.markdown, 'raw_markdown'):
+                            content = result.markdown.raw_markdown
+                        elif isinstance(result.markdown, str):
+                            content = result.markdown
+                        else:
+                            content = str(result.markdown)
+                    
+                    return {
+                        "success": True,
+                        "content": content,
+                        "title": result.metadata.get("title") if result.metadata else None,
+                        "final_url": result.url,
+                        "cleaned_html": result.cleaned_html,
+                        "links": result.links,
+                        "media": result.media,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": result.error_message or "Unknown error"
+                    }
+        except Exception as e:
+            logger.error(f"Crawl4ai extraction error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
-        Extracts data from HTML content using crawl4ai with LLM-based extraction.
+        Extracts data from HTML content using crawl4ai.
         'content' parameter is ignored as crawl4ai handles downloading.
         'url' here is the final URL after any preprocessing.
         """
         logger.info(f"HtmlStrategy: Extracting data from {url}")
-
+        
         # Detect source for metadata
         source = self._detect_source(url)
-
+        
         try:
             # With nest_asyncio, we can safely run async code
             loop = asyncio.get_event_loop()
@@ -265,14 +278,29 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 # Simple pattern matching for common metadata patterns
                 # Author patterns
                 author_patterns = [
-                    r"(?:Author|By|Written by)[:\s]+([^\n]+)",
+                    r"(?:By|Author|Written by)[:\s]+([^\n]+)",
                     r"<meta[^>]+name=[\"']author[\"'][^>]+content=[\"']([^\"']+)[\"']",
                 ]
-                for pattern in author_patterns:
-                    match = re.search(pattern, extracted_text, re.IGNORECASE)
-                    if match:
-                        author = match.group(1).strip()
-                        break
+                
+                # First check cleaned HTML for meta tags
+                cleaned_html = result.get("cleaned_html", "")
+                if cleaned_html:
+                    for pattern in author_patterns[1:]:  # Meta tag patterns
+                        match = re.search(pattern, cleaned_html, re.IGNORECASE)
+                        if match:
+                            author = match.group(1).strip()
+                            break
+                
+                # Then check markdown content
+                if not author:
+                    for pattern in author_patterns[:1]:  # Text patterns
+                        match = re.search(pattern, extracted_text, re.IGNORECASE)
+                        if match:
+                            author = match.group(1).strip()
+                            # Clean up author if it contains extra content
+                            if len(author) > 100:  # Likely grabbed too much
+                                author = None
+                            break
 
                 # Date patterns
                 date_patterns = [
@@ -300,7 +328,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 "publication_date": publication_date,
                 "text_content": extracted_text,
                 "content_type": "html",
-                "source": source,  # New field
+                "source": source,  # Source field for categorization
                 "final_url_after_redirects": result.get("final_url", url),
             }
 
@@ -356,4 +384,3 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "(Placeholder - returning empty list)"
         )
         return []
-

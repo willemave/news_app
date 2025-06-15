@@ -41,7 +41,7 @@ class Content(Base):
     checked_out_at = Column(DateTime, nullable=True)
     
     # Type-specific data stored as JSON
-    # For articles: author, content, publish_date, source_type, internal_links
+    # For articles: author, content, publish_date, source, internal_links
     # For podcasts: audio_url, transcript, duration, episode_number
     content_metadata = Column(JSON, default=dict, nullable=False)
     
