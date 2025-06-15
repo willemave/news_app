@@ -5,9 +5,6 @@ feeds:
   - name: "BG2 Pod"
     url: "https://anchor.fm/s/f06c2370/podcast/rss"
     limit: 5
-  - name: "Honestly with Bari Weiss"
-    url: "https://feeds.megaphone.fm/rsv2347142881"
-    limit: 5
   - name: "Crucible Moments"
     url: "https://feeds.megaphone.fm/VMP5587961509"
     limit: 5

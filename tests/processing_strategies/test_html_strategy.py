@@ -104,7 +104,9 @@ def test_extract_data_successful_and_returns_datetime(html_strategy: HtmlProcess
             with_metadata=True,
             include_links=False,
             include_formatting=False,
-            output_format='json'
+            output_format='json',
+            favor_recall=True,
+            no_fallback=False
         )
         assert extracted_data["title"] == "Test Article Title"
         assert extracted_data["author"] == "John Doe"
@@ -116,17 +118,92 @@ def test_extract_data_successful_and_returns_datetime(html_strategy: HtmlProcess
         assert extracted_data["content_type"] == "html"
         assert extracted_data["final_url_after_redirects"] == url
 
-def test_extract_data_trafilatura_fails(html_strategy: HtmlProcessorStrategy):
-    """Test data extraction when Trafilatura fails to extract content."""
+def test_extract_data_trafilatura_fails_html2text_succeeds(html_strategy: HtmlProcessorStrategy):
+    """Test data extraction when Trafilatura fails but html2text succeeds."""
+    url = "http://example.com/empty_article.html"
+    empty_html_content = "<html><body><p>HTML2Text Content</p></body></html>"
+    
+    with patch('app.processing_strategies.html_strategy.extract') as mock_extract, \
+         patch('app.processing_strategies.html_strategy.html2text.HTML2Text') as mock_html2text_class:
+        
+        mock_extract.return_value = None # Simulate Trafilatura failure
+        
+        # Mock html2text
+        mock_html2text = MagicMock()
+        mock_html2text.handle.return_value = "HTML2Text Content\n"
+        mock_html2text_class.return_value = mock_html2text
+        
+        extracted_data = html_strategy.extract_data(empty_html_content, url)
+        
+        assert extracted_data["title"] == "Untitled (html2text)"
+        assert extracted_data["text_content"] == "HTML2Text Content\n"
+        assert extracted_data["content_type"] == "html"
+
+def test_extract_data_all_methods_fail(html_strategy: HtmlProcessorStrategy):
+    """Test data extraction when all methods fail."""
     url = "http://example.com/empty_article.html"
     empty_html_content = "<html><body></body></html>"
-    with patch('app.processing_strategies.html_strategy.extract') as mock_extract:
+    
+    with patch('app.processing_strategies.html_strategy.extract') as mock_extract, \
+         patch('app.processing_strategies.html_strategy.html2text.HTML2Text') as mock_html2text_class, \
+         patch('app.processing_strategies.html_strategy.get_settings') as mock_get_settings:
+        
         mock_extract.return_value = None # Simulate Trafilatura failure
+        
+        # Mock html2text failure
+        mock_html2text = MagicMock()
+        mock_html2text.handle.side_effect = Exception("HTML2Text failed")
+        mock_html2text_class.return_value = mock_html2text
+        
+        # Mock settings with no Firecrawl API key
+        mock_settings = MagicMock()
+        mock_settings.firecrawl_api_key = None
+        mock_get_settings.return_value = mock_settings
         
         extracted_data = html_strategy.extract_data(empty_html_content, url)
         
         assert extracted_data["title"] == "Extraction Failed"
         assert extracted_data["text_content"] == ""
+        assert extracted_data["content_type"] == "html"
+
+def test_extract_data_firecrawl_fallback(html_strategy: HtmlProcessorStrategy):
+    """Test data extraction with Firecrawl fallback."""
+    url = "http://example.com/article.html"
+    html_content = "<html><body><p>Some content</p></body></html>"
+    
+    with patch('app.processing_strategies.html_strategy.extract') as mock_extract, \
+         patch('app.processing_strategies.html_strategy.html2text.HTML2Text') as mock_html2text_class, \
+         patch('app.processing_strategies.html_strategy.get_settings') as mock_get_settings, \
+         patch('app.processing_strategies.html_strategy.FirecrawlApp') as mock_firecrawl_class:
+        
+        mock_extract.return_value = None # Simulate Trafilatura failure
+        
+        # Mock html2text failure
+        mock_html2text = MagicMock()
+        mock_html2text.handle.side_effect = Exception("HTML2Text failed")
+        mock_html2text_class.return_value = mock_html2text
+        
+        # Mock settings with Firecrawl API key
+        mock_settings = MagicMock()
+        mock_settings.firecrawl_api_key = "test-api-key"
+        mock_get_settings.return_value = mock_settings
+        
+        # Mock Firecrawl
+        mock_firecrawl = MagicMock()
+        mock_firecrawl.scrape_url.return_value = {
+            'markdown': 'Firecrawl extracted content',
+            'metadata': {
+                'title': 'Firecrawl Title',
+                'author': 'Firecrawl Author'
+            }
+        }
+        mock_firecrawl_class.return_value = mock_firecrawl
+        
+        extracted_data = html_strategy.extract_data(html_content, url)
+        
+        assert extracted_data["title"] == "Firecrawl Title"
+        assert extracted_data["author"] == "Firecrawl Author"
+        assert extracted_data["text_content"] == "Firecrawl extracted content"
         assert extracted_data["content_type"] == "html"
 
 def test_prepare_for_llm(html_strategy: HtmlProcessorStrategy):

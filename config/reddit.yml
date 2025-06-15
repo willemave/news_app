@@ -5,33 +5,15 @@ subreddits:
   # Reddit front page
   front: 50
   
-  # Programming and Development
-  programming: 20
-  Python: 15
-  javascript: 10
-  webdev: 10
-  devops: 10
-  
   # AI and Machine Learning
   MachineLearning: 20
   artificial: 15
   ArtificialInteligence: 20
-  datascience: 15
   ChatGPTPro: 5
   reinforcementlearning: 20
   mlscaling: 10
-  
-  # Technology
-  technology: 25
-  cybersecurity: 10
-  
-  # Business and Startups
-  startups: 15
-  entrepreneur: 10
-  business: 15
-  investing: 10
-  
+
   # Specific Tools/Topics
-  NooTopics: 10
-  SquarePOS_Users: 10
-  POS: 10
+  NooTopics: 20
+  SquarePOS_Users: 20
+  POS: 20

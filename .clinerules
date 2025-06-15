@@ -74,10 +74,10 @@
 ---
 #### 7  Development Workflow
 * **Pre-commit hooks**: `ruff` for linting, `black` for formatting, `mypy` for types.
-* **Environment management**: `.env.example` template; never commit `.env`.
+* **Environment management**: `.env.example` template; never commit `.env`. Use app/core/settings.py and Pydantic to store settings for the app. 
 * **Database migrations**: Alembic with descriptive revision messages.
-* **API versioning**: Use `/v1/` prefix; deprecate gracefully.
 * **OpenAPI**: Customize with tags, descriptions; generate client SDKs.
+* **UI**: We use jinja and basic templates to render our html pages, we're not a javascript/react app. 
 * **Error responses**: Consistent format with error codes, messages, details.
 * We use tailwindcss, you write tailwind css to ./static/css/styles.css and then run `npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css` to build the ./static/css/styles.css
 ---

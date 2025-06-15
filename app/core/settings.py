@@ -1,11 +1,11 @@
-from typing import Optional, Dict, Any, Union
 from functools import lru_cache
+
 from pydantic import PostgresDsn, field_validator
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database - allow both PostgreSQL and SQLite for development
-    database_url: Union[PostgresDsn, str]
+    database_url: PostgresDsn | str
     database_pool_size: int = 20
     database_max_overflow: int = 40
     
@@ -25,9 +25,10 @@ class Settings(BaseSettings):
     max_retries: int = 3
     
     # External services
-    openai_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
-    google_api_key: Optional[str] = None
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    google_api_key: str | None = None
+    firecrawl_api_key: str | None = None
     
     # HTTP client
     http_timeout_seconds: int = 30
@@ -48,7 +49,7 @@ class Settings(BaseSettings):
             return v
         return v
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
