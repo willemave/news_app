@@ -6,6 +6,14 @@ feeds:
   - url: "https://importai.substack.com/feed"
   - url: "https://aisnakeoil.substack.com/feed"
   - url: "https://vevesta.substack.com/feed"
+  - url: "https://www.fishmanafnewsletter.com/feed"
+  - url: "https://epochai.substack.com/feed"
+  - url: "https://www.techemails.com/feed"
+  - url: "https://ojiudezue.substack.com/feed"
+  - url: "https://www.chinatalk.media/feed"
+  - url: "https://www.interconnects.ai/feed"
+  - url: ""
+
 
 # Add more Substack feeds here as needed
 # Example:
