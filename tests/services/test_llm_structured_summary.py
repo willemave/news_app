@@ -42,6 +42,7 @@ class TestStructuredSummarization:
     def mock_structured_response(self):
         """Mock structured response from LLM."""
         return {
+            "title": "Stanford AI Breakthrough: 95% Accurate Code Generation Model Transforms Software Development",
             "overview": "Stanford researchers develop groundbreaking AI model for code generation with 95% accuracy.",
             "bullet_points": [
                 {
@@ -84,6 +85,7 @@ class TestStructuredSummarization:
         
         # Verify result is a StructuredSummary
         assert isinstance(result, StructuredSummary)
+        assert result.title == mock_structured_response["title"]
         assert result.overview == mock_structured_response["overview"]
         assert len(result.bullet_points) == 3
         assert len(result.quotes) == 2
@@ -109,6 +111,7 @@ class TestStructuredSummarization:
         result = await mock_llm_service.summarize_content(sample_content)
         
         assert isinstance(result, StructuredSummary)
+        assert result.title == mock_structured_response["title"]
         assert result.overview == mock_structured_response["overview"]
     
     @pytest.mark.asyncio
@@ -169,6 +172,7 @@ class TestStructuredSummarization:
     ):
         """Test summarize_content with custom parameters."""
         mock_response = {
+            "title": "Comprehensive Test Analysis Reveals Key Insights",
             "overview": "This is a comprehensive test overview that provides detailed context about the content being summarized. It meets the minimum length requirement.",
             "bullet_points": [
                 {"text": "First key finding from the analysis", "category": "key_finding"},
@@ -214,6 +218,7 @@ class TestStructuredSummarization:
     ):
         """Test that bullet point categories are properly validated."""
         response_with_categories = {
+            "title": "Research Study Reveals Key Findings and Future Recommendations",
             "overview": "This is a comprehensive test overview that meets the minimum length requirement for validation",
             "bullet_points": [
                 {"text": "This is the first key finding from the research", "category": "key_finding"},

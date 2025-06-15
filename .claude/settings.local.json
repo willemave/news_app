@@ -21,7 +21,10 @@
       "Bash(uv remove:*)",
       "Bash(python -m pytest tests/processing_strategies/test_html_strategy.py -v)",
       "Bash(ruff format:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(alembic init:*)",
+      "Bash(alembic revision:*)",
+      "Bash(alembic upgrade:*)"
     ],
     "deny": []
   }
