@@ -11,7 +11,17 @@
       "Bash(pytest:*)",
       "Bash(ruff check:*)",
       "Bash(chmod:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pkill:*)",
+      "Bash(true)",
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(jq:*)",
+      "Bash(rg:*)",
+      "Bash(uv remove:*)",
+      "Bash(python -m pytest tests/processing_strategies/test_html_strategy.py -v)",
+      "Bash(ruff format:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

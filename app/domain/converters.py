@@ -1,29 +1,35 @@
 """Converters between domain models and database models."""
 
-from typing import Optional
 from datetime import datetime
 
-from app.domain.content import ContentData, ContentType, ContentStatus
+from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
+
 
 def content_to_domain(db_content: DBContent) -> ContentData:
     """Convert database Content to domain ContentData."""
-    return ContentData(
-        id=db_content.id,
-        content_type=ContentType(db_content.content_type),
-        url=db_content.url,
-        title=db_content.title,
-        status=ContentStatus(db_content.status),
-        metadata=db_content.content_metadata or {},
-        error_message=db_content.error_message,
-        retry_count=db_content.retry_count,
-        created_at=db_content.created_at,
-        processed_at=db_content.processed_at
-    )
+    try:
+        return ContentData(
+            id=db_content.id,
+            content_type=ContentType(db_content.content_type),
+            url=db_content.url,
+            title=db_content.title,
+            status=ContentStatus(db_content.status),
+            metadata=db_content.content_metadata or {},
+            error_message=db_content.error_message,
+            retry_count=db_content.retry_count or 0,
+            created_at=db_content.created_at,
+            processed_at=db_content.processed_at
+        )
+    except Exception as e:
+        # Log the error with details
+        print(f"Error converting content {db_content.id}: {e}")
+        print(f"Metadata: {db_content.content_metadata}")
+        raise
 
 def domain_to_content(
     content_data: ContentData,
-    existing: Optional[DBContent] = None
+    existing: DBContent | None = None
 ) -> DBContent:
     """Convert domain ContentData to database Content."""
     if existing:

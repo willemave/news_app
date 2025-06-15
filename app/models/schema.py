@@ -1,5 +1,4 @@
 from datetime import datetime
-from enum import Enum
 from typing import Optional, Dict, Any
 
 from sqlalchemy import (
@@ -10,27 +9,18 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import validates
 from pydantic import ValidationError
 
-from app.schemas.metadata import (
+from app.models.metadata import (
     validate_content_metadata,
     ArticleMetadata,
     PodcastMetadata,
-    StructuredSummary
+    StructuredSummary,
+    ContentType,
+    ContentStatus
 )
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 Base = declarative_base()
-
-class ContentType(str, Enum):
-    ARTICLE = "article"
-    PODCAST = "podcast"
-
-class ContentStatus(str, Enum):
-    NEW = "new"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    SKIPPED = "skipped"
 
 class Content(Base):
     __tablename__ = "contents"

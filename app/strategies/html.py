@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 
 from app.strategies.base import ProcessingStrategy
-from app.domain.content import ProcessingResult, ContentType
+from app.models.metadata import ProcessingResult, ContentType
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

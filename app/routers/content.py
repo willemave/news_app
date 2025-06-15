@@ -7,7 +7,7 @@ from sqlalchemy import func
 
 from app.core.db import get_db_session
 from app.models.schema import Content
-from app.domain.content import ContentType
+from app.models.metadata import ContentType
 from app.domain.converters import content_to_domain
 from app.templates import templates
 
@@ -52,8 +52,15 @@ async def list_content(
     # Order by most recent first
     contents = query.order_by(Content.created_at.desc()).all()
     
-    # Convert to domain objects
-    domain_contents = [content_to_domain(c) for c in contents]
+    # Convert to domain objects, skipping invalid ones
+    domain_contents = []
+    for c in contents:
+        try:
+            domain_contents.append(content_to_domain(c))
+        except Exception as e:
+            # Skip content with invalid metadata
+            print(f"Skipping content {c.id} due to validation error: {e}")
+            continue
     
     # Get content types for filter
     content_types = [ct.value for ct in ContentType]

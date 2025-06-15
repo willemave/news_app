@@ -3,7 +3,7 @@ import pytest
 from datetime import datetime
 from pydantic import ValidationError
 
-from app.schemas.metadata import (
+from app.models.metadata import (
     ArticleMetadata,
     PodcastMetadata,
     StructuredSummary,
@@ -115,13 +115,15 @@ class TestArticleMetadata:
         assert len(metadata.summary.bullet_points) == 3
     
     def test_article_with_string_summary(self):
-        """Test backward compatibility with string summaries."""
-        metadata = ArticleMetadata(
-            content="Article content",
-            summary="This is a simple string summary"
-        )
+        """Test that string summaries are not allowed - must use StructuredSummary."""
+        with pytest.raises(ValidationError) as exc_info:
+            ArticleMetadata(
+                content="Article content",
+                summary="This is a simple string summary"
+            )
         
-        assert metadata.summary == "This is a simple string summary"
+        # Should raise validation error for non-structured summary
+        assert "summary" in str(exc_info.value)
     
     def test_content_type_validation(self):
         """Test content_type field validation."""
@@ -256,8 +258,8 @@ class TestMigrateLegacyMetadata:
         assert "publication_date" not in migrated
         assert "summarization_date" not in migrated
     
-    def test_migrate_preserves_string_summary(self):
-        """Test that string summaries are preserved during migration."""
+    def test_migrate_converts_string_summary(self):
+        """Test that string summaries are converted to structured format during migration."""
         legacy_metadata = {
             "content": "Article text",
             "summary": "This is a legacy string summary"
@@ -265,4 +267,8 @@ class TestMigrateLegacyMetadata:
         
         migrated = migrate_legacy_metadata("article", legacy_metadata)
         
-        assert migrated["summary"] == "This is a legacy string summary"
+        # Should convert to structured format
+        assert isinstance(migrated["summary"], dict)
+        assert migrated["summary"]["overview"] == "This is a legacy string summary"
+        assert len(migrated["summary"]["bullet_points"]) >= 1
+        assert migrated["summary"]["bullet_points"][0]["text"] == "Legacy summary migrated - please re-summarize for better results"

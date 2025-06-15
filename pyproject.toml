@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "crewai>=0.80.0",
-    "crewai-tools>=0.17.0",
     "docling>=2.34.0",
     "fastapi>=0.115.12",
     "feedparser>=6.0.11",
@@ -21,18 +20,16 @@ dependencies = [
     "requests>=2.32.3",
     "schedule>=1.2.0",
     "sqlalchemy>=2.0.41",
-    "trafilatura>=1.8.0",
     "uvicorn>=0.34.2",
     "google-genai>=1.18.0",
-    "huey>=2.5.3",
     "beautifulsoup4>=4.13.4",
     "markdown>=3.8",
     "faster-whisper>=1.1.1",
     "pydantic-settings>=2.9.1",
     "tenacity>=9.1.2",
     "markupsafe>=3.0.2",
-    "html2text>=2025.4.15",
-    "firecrawl-py>=2.8.0",
+    "crawl4ai>=0.6.3",
+    "nest-asyncio>=1.6.0",
 ]
 
 [tool.setuptools.packages.find]

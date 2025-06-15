@@ -1,15 +1,24 @@
 """
-This module defines the strategy for processing standard HTML web pages.
+This module defines the strategy for processing standard HTML web pages using crawl4ai.
 """
 
+import asyncio
 import contextlib
+import re
 from typing import Any
 
-import html2text
 import httpx  # For type hinting httpx.Headers
+import nest_asyncio
+from crawl4ai import (
+    AsyncWebCrawler,
+    BrowserConfig,
+    CacheMode,
+    CrawlerRunConfig,
+    DefaultMarkdownGenerator,
+    LLMConfig,
+    LLMContentFilter,
+)
 from dateutil import parser as date_parser  # For parsing dates from metadata
-from firecrawl import FirecrawlApp
-from trafilatura import extract
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
@@ -19,28 +28,50 @@ from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
+
 
 class HtmlProcessorStrategy(UrlProcessorStrategy):
     """
     Strategy for processing standard HTML web pages.
-    It downloads HTML content, extracts data using Trafilatura,
-    and prepares it for LLM processing.
+    It downloads HTML content using crawl4ai with LLM-based content extraction,
+    and prepares it for further processing.
     """
 
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
         self.error_logger = create_error_logger("html_strategy")
+        self.settings = get_settings()
+
+    def _detect_source(self, url: str) -> str:
+        """Detect the source type from URL."""
+        if "pubmed.ncbi.nlm.nih.gov" in url or "pmc.ncbi.nlm.nih.gov" in url:
+            return "PubMed"
+        elif "arxiv.org" in url:
+            return "Arxiv"
+        else:
+            return "web"
 
     def preprocess_url(self, url: str) -> str:
         """
-        Currently, HTML strategy does not perform any preprocessing on the URL.
-        This method is kept for consistency with the base class.
-        If specific HTML URL transformations are needed in the future,
-        they can be implemented here.
+        Preprocess URLs to ensure we get the full content.
+        - Transform PubMed URLs to PMC full-text URLs
+        - Transform ArXiv abstract URLs to PDF URLs
         """
+        # Handle PubMed URLs - transform to PMC full-text if available
+        pubmed_match = re.match(r"https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", url)
+        if pubmed_match:
+            pmid = pubmed_match.group(1)
+            pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/pmid/{pmid}/"
+            logger.debug(f"HtmlStrategy: Transforming PubMed URL {url} to PMC URL {pmc_url}")
+            return pmc_url
+
+        # Handle ArXiv URLs - transform abstract to PDF
         if "arxiv.org/abs/" in url:
             logger.debug(f"HtmlStrategy: Transforming arXiv URL {url}")
             return url.replace("/abs/", "/pdf/")
+
         logger.debug(f"HtmlStrategy: preprocess_url called for {url}, no transformation applied.")
         return url
 
@@ -56,9 +87,6 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 return True
 
         # Fallback: check URL pattern if no headers (e.g. direct call without HEAD)
-        # This is a loose check and might need refinement.
-        # For now, assume if it's not clearly PDF or another specific type, it might be HTML.
-        # The factory should prioritize more specific strategies first.
         if not url.lower().endswith((".pdf", ".xml", ".json", ".txt")) and url.lower().startswith(
             ("http://", "https://")
         ):
@@ -82,127 +110,222 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
     def download_content(self, url: str) -> str:
         """
         Downloads HTML content from the given URL.
+        For crawl4ai, we'll use the extract_data method directly since it handles downloading.
+        This method remains for compatibility with the base class.
         """
-        logger.info(f"HtmlStrategy: Downloading HTML content from {url}")
-        response = self.http_client.get(url)
-        # response.raise_for_status() is handled by RobustHttpClient
-        logger.info(
-            f"HtmlStrategy: Successfully downloaded HTML from {url}. Final URL: {response.url}"
+        logger.info(f"HtmlStrategy: download_content called for {url}")
+        # We'll actually download in extract_data using crawl4ai
+        return url  # Return the URL itself as a placeholder
+
+    def _get_extraction_instruction(self, source: str) -> str:
+        """Get source-specific extraction instructions for the LLM."""
+        base_instruction = """
+        Focus on extracting the core educational and informational content.
+        Include:
+        - Main article content
+        - Key concepts and explanations
+        - Important facts and findings
+        - Code examples if present
+        - Essential technical details
+        
+        Exclude:
+        - Navigation elements
+        - Sidebars and advertisements
+        - Footer content
+        - Cookie notices
+        - Social media links
+        
+        Extract metadata if available:
+        - Title
+        - Author(s)
+        - Publication date
+        
+        Format the output as clean markdown with proper headers and structure.
+        """
+
+        if source == "PubMed":
+            return (
+                base_instruction
+                + """
+            
+            For PubMed/PMC articles, also include:
+            - Abstract
+            - Introduction
+            - Methods
+            - Results
+            - Discussion
+            - Conclusions
+            - References (main ones)
+            """
+            )
+        elif source == "Arxiv":
+            return (
+                base_instruction
+                + """
+            
+            For ArXiv papers, also include:
+            - Abstract
+            - All sections of the paper
+            - Mathematical formulas (in LaTeX format if possible)
+            - Algorithms and pseudocode
+            - Experimental results
+            """
+            )
+        else:
+            return base_instruction
+
+    async def _extract_with_crawl4ai(self, url: str) -> dict[str, Any]:
+        """Extract content using crawl4ai with LLM filtering."""
+        source = self._detect_source(url)
+
+        # Configure browser
+        browser_config = BrowserConfig(headless=True, viewport_width=1280, viewport_height=720)
+
+        # Configure LLM for content filtering
+        llm_config = LLMConfig(
+            provider="gemini/gemini-2.5-flash-preview-05-20", api_token="env:GOOGLE_API_KEY"
         )
-        return response.text  # Returns HTML as string
+
+        # Initialize LLM filter with specific instruction
+        content_filter = LLMContentFilter(
+            llm_config=llm_config,
+            instruction=self._get_extraction_instruction(source),
+            chunk_token_threshold=2000,  # Increased to reduce chunks
+            verbose=True,
+        )
+
+        # Configure markdown generator
+        markdown_generator = DefaultMarkdownGenerator(
+            content_filter=content_filter, options={"ignore_links": True}
+        )
+
+        # Configure crawler run
+        run_config = CrawlerRunConfig(
+            markdown_generator=markdown_generator,
+            cache_mode=CacheMode.BYPASS,
+            wait_for="body",
+            delay_before_return_html=2.0,  # Wait for dynamic content
+        )
+
+        async with AsyncWebCrawler(config=browser_config) as crawler:
+            result = await crawler.arun(url=url, config=run_config)
+
+            if result.success:
+                # Handle the new markdown format
+                content = ""
+                if hasattr(result, 'markdown') and result.markdown:
+                    if hasattr(result.markdown, 'raw_markdown'):
+                        content = result.markdown.raw_markdown
+                    else:
+                        content = str(result.markdown)
+                
+                return {
+                    "success": True,
+                    "content": content,
+                    "title": result.metadata.get("title") if result.metadata else None,
+                    "final_url": result.url,
+                }
+            else:
+                return {"success": False, "error": result.error_message or "Unknown error"}
 
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
-        Extracts data from HTML content using Trafilatura with fallback methods.
-        'url' here is the final URL after any redirects from download_content.
+        Extracts data from HTML content using crawl4ai with LLM-based extraction.
+        'content' parameter is ignored as crawl4ai handles downloading.
+        'url' here is the final URL after any preprocessing.
         """
-        logger.info(f"HtmlStrategy: Extracting data from HTML content for URL: {url}")
+        logger.info(f"HtmlStrategy: Extracting data from {url}")
 
-        # First attempt: Use trafilatura with enhanced options
-        text_content = extract(
-            filecontent=content,
-            url=url,
-            with_metadata=True,
-            include_links=False,
-            include_formatting=False,
-            output_format="json",
-            favor_recall=True,  # Favor recall over precision
-            no_fallback=False,  # Enable fallback extraction
-        )
+        # Detect source for metadata
+        source = self._detect_source(url)
 
-        title = None
-        author = None
-        publication_date_str = None
-        publication_date = None
-        extracted_text = None
+        try:
+            # With nest_asyncio, we can safely run async code
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're already in an event loop, use it
+                result = loop.run_until_complete(self._extract_with_crawl4ai(url))
+            else:
+                # No running loop, use asyncio.run
+                result = asyncio.run(self._extract_with_crawl4ai(url))
 
-        if text_content:
-            # Parse JSON output to extract metadata
-            import json
+            if not result["success"]:
+                raise Exception(
+                    f"Crawl4ai extraction failed: {result.get('error', 'Unknown error')}"
+                )
 
-            try:
-                extracted_data = json.loads(text_content)
-                title = extracted_data.get("title", "Untitled")
-                author = extracted_data.get("author")
-                extracted_text = extracted_data.get("text", "")
-                publication_date_str = extracted_data.get("date")
-            except (json.JSONDecodeError, AttributeError):
-                logger.warning(f"Failed to parse Trafilatura JSON output for {url}")
-                extracted_text = text_content
+            # Extract metadata from content if not provided
+            extracted_text = result["content"]
+            title = result.get("title", "Untitled")
+            author = None
+            publication_date = None
 
-        # Fallback 1: Try html2text if Trafilatura fails
-        if not extracted_text:
-            logger.info(f"HtmlStrategy: Trafilatura failed, trying html2text for {url}")
-            h = html2text.HTML2Text()
-            h.ignore_links = True
-            h.ignore_images = True
-            h.ignore_emphasis = True
-            h.body_width = 0  # Don't wrap lines
+            # Try to extract metadata from the content
+            if extracted_text:
+                # Simple pattern matching for common metadata patterns
+                # Author patterns
+                author_patterns = [
+                    r"(?:Author|By|Written by)[:\s]+([^\n]+)",
+                    r"<meta[^>]+name=[\"']author[\"'][^>]+content=[\"']([^\"']+)[\"']",
+                ]
+                for pattern in author_patterns:
+                    match = re.search(pattern, extracted_text, re.IGNORECASE)
+                    if match:
+                        author = match.group(1).strip()
+                        break
 
-            try:
-                extracted_text = h.handle(content)
-                title = "Untitled (html2text)"
-                logger.info(f"HtmlStrategy: html2text successfully extracted content for {url}")
-            except Exception as e:
-                logger.warning(f"HtmlStrategy: html2text failed for {url}: {str(e)}")
-                extracted_text = None
+                # Date patterns
+                date_patterns = [
+                    r"(?:Published|Date|Posted)[:\s]+([^\n]+\d{4}[^\n]*)",
+                    r"(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})",
+                    r"(\d{4}[-/]\d{1,2}[-/]\d{1,2})",
+                ]
+                for pattern in date_patterns:
+                    match = re.search(pattern, extracted_text, re.IGNORECASE)
+                    if match:
+                        date_str = match.group(1).strip()
+                        with contextlib.suppress(date_parser.ParserError, ValueError):
+                            publication_date = date_parser.parse(date_str)
+                        if publication_date:
+                            break
 
-        # Fallback 2: Try Firecrawl if html2text also fails
-        settings = get_settings()
-        if not extracted_text and settings.firecrawl_api_key:
-            logger.info(f"HtmlStrategy: Trying Firecrawl for {url}")
-            try:
-                app = FirecrawlApp(api_key=settings.firecrawl_api_key)
-                scrape_result = app.scrape_url(url, params={"formats": ["markdown", "html"]})
+            logger.info(
+                f"HtmlStrategy: Successfully extracted data for {url}. "
+                f"Title: {title[:50]}... Source: {source}"
+            )
 
-                if scrape_result and "markdown" in scrape_result:
-                    extracted_text = scrape_result["markdown"]
-                    title = scrape_result.get("metadata", {}).get("title", "Untitled (Firecrawl)")
-                    author = scrape_result.get("metadata", {}).get("author", author)
-                    logger.info(f"HtmlStrategy: Firecrawl successfully extracted content for {url}")
-            except Exception as e:
-                logger.warning(f"HtmlStrategy: Firecrawl failed for {url}: {str(e)}")
+            return {
+                "title": title,
+                "author": author,
+                "publication_date": publication_date,
+                "text_content": extracted_text,
+                "content_type": "html",
+                "source": source,  # New field
+                "final_url_after_redirects": result.get("final_url", url),
+            }
 
-        # If all methods fail, return error response
-        if not extracted_text:
-            error_msg = f"All extraction methods failed for {url}"
-            error = Exception(error_msg)
+        except Exception as e:
+            error_msg = f"Content extraction failed for {url}: {str(e)}"
             self.error_logger.log_processing_error(
                 item_id=url,
-                error=error,
+                error=e,
                 operation="html_content_extraction",
                 context={
                     "url": url,
                     "strategy": "html",
-                    "methods_tried": ["trafilatura", "html2text", "firecrawl"],
+                    "source": source,
+                    "method": "crawl4ai",
                 },
             )
             logger.error(f"HtmlStrategy: {error_msg}")
+
             return {
                 "title": "Extraction Failed",
                 "text_content": "",
                 "content_type": "html",
+                "source": source,
                 "final_url_after_redirects": url,
             }
-
-        # Parse publication date if available
-        if publication_date_str:
-            with contextlib.suppress(date_parser.ParserError, ValueError):
-                publication_date = date_parser.parse(publication_date_str)
-
-        # Safely handle None title for logging
-        title_preview = title[:50] if title else "None"
-        logger.info(
-            f"HtmlStrategy: Successfully extracted data for {url}. Title: {title_preview}..."
-        )
-        return {
-            "title": title or "Untitled",
-            "author": author,
-            "publication_date": publication_date,
-            "text_content": extracted_text,
-            "content_type": "html",
-            "final_url_after_redirects": url,
-        }
 
     def prepare_for_llm(self, extracted_data: dict[str, Any]) -> dict[str, Any]:
         """
@@ -213,10 +336,6 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             f"{extracted_data.get('final_url_after_redirects')}"
         )
         text_content = extracted_data.get("text_content", "")
-
-        # Construct a meaningful input for filtering and summarization
-        # This might include title and some metadata if helpful for the LLM
-        # For now, primarily using the main text content.
 
         # Based on app.llm.py, filter_article and summarize_article take the content string.
         return {
@@ -232,10 +351,9 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         """
         # This is a placeholder. A more robust implementation would use BeautifulSoup
         # or a regex designed for URLs, and properly resolve relative URLs.
-        # For now, returning empty as per "logging related links" and default.
-        # If actual extraction is needed, this would be more complex.
         logger.info(
             f"HtmlStrategy: extract_internal_urls called for {original_url}. "
             "(Placeholder - returning empty list)"
         )
         return []
+

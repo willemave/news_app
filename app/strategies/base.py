@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List
 import re
 from urllib.parse import urljoin, urlparse
 
-from app.domain.content import ProcessingResult, ContentType
+from app.models.metadata import ProcessingResult, ContentType
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

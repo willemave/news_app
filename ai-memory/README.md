@@ -28,13 +28,14 @@
 ### Data Layer
 * **Unified Model**: [`Content`](app/models/schema.py:24) for all content types (articles, podcasts)
 * **Task Queue**: [`ProcessingTask`](app/models/schema.py:59) for background job management
-* **Enums**: [`ContentType`](app/models/schema.py:13), [`ContentStatus`](app/models/schema.py:17) for type safety
+* **Enums**: [`ContentType`](app/models/metadata.py:14), [`ContentStatus`](app/models/metadata.py:19) for type safety
 * **Database**: SQLite/PostgreSQL via SQLAlchemy with JSON metadata support
 * **Schema Validation**: Pydantic models for metadata validation:
-  - [`ArticleMetadata`](app/schemas/metadata.py) - Validates article-specific fields
-  - [`PodcastMetadata`](app/schemas/metadata.py) - Validates podcast-specific fields
-  - [`StructuredSummary`](app/schemas/metadata.py) - Structured summary format with bullet points and quotes
-  - Automatic validation on metadata updates via SQLAlchemy validators
+  - [`ArticleMetadata`](app/models/metadata.py:102) - Validates article-specific fields
+  - [`PodcastMetadata`](app/models/metadata.py:148) - Validates podcast-specific fields
+  - [`StructuredSummary`](app/models/metadata.py:47) - Structured summary format with bullet points and quotes
+  - [`ContentData`](app/models/metadata.py:207) - Unified content data model for passing between layers
+  - Automatic validation on metadata updates via validators
 
 ### LLM Integration
 * **Provider Abstraction**: [`LLMService`](app/services/llm.py:70) with pluggable providers
@@ -73,7 +74,7 @@
 
 1. **Content Ingestion**: Scrapers add items to [`Content`](app/models/schema.py:24) table with `status=new`
 2. **Task Creation**: [`QueueService`](app/services/queue.py:27) creates processing tasks
-3. **Worker Processing**: [`ContentWorker`](app/pipeline/worker.py:23) processes content by type
+3. **Worker Processing**: [`ContentWorker`](app/pipeline/worker.py:24) processes content by type
 4. **Article Pipeline**: Download → Extract → LLM Filter → Summarize → Store
 5. **Podcast Pipeline**: Download Audio → Transcribe → Summarize → Store
 6. **Web UI**: Display content with filtering, admin dashboard for pipeline monitoring
@@ -115,13 +116,12 @@
 * [`app/services/http.py`](app/services/http.py) - HTTP service wrapper
 
 ### Domain Models
-* [`app/domain/content.py`](app/domain/content.py) - Domain content models with properties for structured summaries
-* [`app/domain/converters.py`](app/domain/converters.py) - Convert between domain and DB models
+* [`app/models/metadata.py`](app/models/metadata.py) - Unified metadata models (merged from schemas/metadata.py and domain/content.py)
+* [`app/domain/converters.py`](app/domain/converters.py) - Convert between domain ContentData and DB Content models
 
-### Schema Validation
-* [`app/schemas/metadata.py`](app/schemas/metadata.py) - Pydantic models for content metadata validation
-* Structured summary models with bullet points, quotes, and topics
-* Migration utilities for legacy metadata
+### Content Processing Strategies
+* [`app/strategies/base.py`](app/strategies/base.py) - Base strategy interface
+* [`app/strategies/html.py`](app/strategies/html.py) - HTML content processing with BeautifulSoup
 
 ### HTTP Client
 * [`app/http_client/robust_http_client.py`](app/http_client/robust_http_client.py) - Async HTTP client with retry logic
@@ -130,8 +130,7 @@
 * [`app/utils/error_logger.py`](app/utils/error_logger.py) - Generic error logging with context
 
 ### Web Interface
-* [`app/routers/articles.py`](app/routers/articles.py) - Article viewing endpoints
-* [`app/routers/podcasts.py`](app/routers/podcasts.py) - Podcast viewing endpoints
+* [`app/routers/content.py`](app/routers/content.py) - Unified content viewing endpoints
 * [`app/routers/admin.py`](app/routers/admin.py) - Admin dashboard and controls
 * [`app/api/content.py`](app/api/content.py) - Content API endpoints
 * [`templates/`](templates/) - Jinja2 templates with markdown support
@@ -144,7 +143,8 @@
 
 ### Configuration
 * [`config/podcasts.yml`](config/podcasts.yml) - Podcast RSS feed URLs
-* [`config/substack.yml`](config/substack.yml) - Substack RSS feed URLs
+* [`config/substack.yml`](config/substack.yml) - Substack RSS feed URLs with source names
+* [`config/reddit.yml`](config/reddit.yml) - Reddit subreddit configuration
 * [`pyproject.toml`](pyproject.toml) - Project dependencies and configuration
 * [`.env.example`](.env.example) - Environment variable template
 
@@ -200,7 +200,10 @@
 * **Implemented**: Pydantic schema validation for content metadata
 * **Implemented**: Structured summarization with bullet points, quotes, and topics
 * **Implemented**: Markdown rendering support in templates
-* **Implemented**: Migration script for updating existing content to new schema
+* **Implemented**: Migration of domain models to app/models/metadata.py
+* **Implemented**: Source tracking in metadata (substack name, podcast name, subreddit)
+* **Implemented**: New strategy pattern in app/strategies/ for content processing
+* **Implemented**: Enhanced error logging with context in scrapers
 * **In Progress**: Migration from old models to unified schema
 * **Planned**: Additional LLM providers (Anthropic, local models)
 * **Planned**: Enhanced content filtering and categorization

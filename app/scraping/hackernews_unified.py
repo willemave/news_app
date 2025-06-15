@@ -2,7 +2,7 @@ from typing import List, Dict, Any
 import httpx
 
 from app.scraping.base import BaseScraper
-from app.domain.content import ContentType
+from app.models.metadata import ContentType
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

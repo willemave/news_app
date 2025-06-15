@@ -131,10 +131,7 @@ class TaskProcessor:
                     return False
                 
                 # Use LLM to generate structured summary
-                summary = await self.llm_service.summarize_content(
-                    content_to_summarize,
-                    structured=True  # Use structured summarization
-                )
+                summary = await self.llm_service.summarize_content(content_to_summarize)
                 
                 if summary:
                     # Re-fetch the content object to ensure it's attached to the session

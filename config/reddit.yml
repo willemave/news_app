@@ -6,14 +6,14 @@ subreddits:
   front: 50
   
   # AI and Machine Learning
-  MachineLearning: 20
-  artificial: 15
-  ArtificialInteligence: 20
+  MachineLearning: 10
+  artificial: 10
+  ArtificialInteligence: 10
   ChatGPTPro: 5
-  reinforcementlearning: 20
+  reinforcementlearning: 10
   mlscaling: 10
 
   # Specific Tools/Topics
-  NooTopics: 20
-  SquarePOS_Users: 20
-  POS: 20
+  NooTopics: 10
+  SquarePOS_Users: 10
+  POS: 10
