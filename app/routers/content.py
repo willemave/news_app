@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -93,3 +93,32 @@ async def content_detail(
         "request": request,
         "content": domain_content
     })
+
+@router.get("/content/{content_id}/json", response_class=JSONResponse)
+async def content_json(
+    content_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """Get content item with metadata as JSON."""
+    content = db.query(Content).filter(Content.id == content_id).first()
+    
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    
+    # Return the entire content model and metadata
+    return {
+        "id": content.id,
+        "content_type": content.content_type,
+        "url": content.url,
+        "title": content.title,
+        "source": content.source,
+        "status": content.status,
+        "error_message": content.error_message,
+        "retry_count": content.retry_count,
+        "checked_out_by": content.checked_out_by,
+        "checked_out_at": content.checked_out_at.isoformat() if content.checked_out_at else None,
+        "content_metadata": content.content_metadata,
+        "created_at": content.created_at.isoformat() if content.created_at else None,
+        "updated_at": content.updated_at.isoformat() if content.updated_at else None,
+        "processed_at": content.processed_at.isoformat() if content.processed_at else None
+    }

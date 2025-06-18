@@ -49,6 +49,13 @@
           </time>
         </div>
         {% endif %}
+        
+        {% if content.source %}
+        <div class="flex items-center">
+          <span class="font-medium text-gray-700 mr-1">Source:</span>
+          <span>{{ content.source }}</span>
+        </div>
+        {% endif %}
       </div>
       
       <!-- URL -->

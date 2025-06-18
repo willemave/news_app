@@ -8,7 +8,6 @@ import re
 from typing import Any
 
 import httpx  # For type hinting httpx.Headers
-import nest_asyncio
 from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
@@ -24,9 +23,6 @@ from app.processing_strategies.base_strategy import UrlProcessorStrategy
 from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
-
-# Apply nest_asyncio to allow nested event loops
-nest_asyncio.apply()
 
 
 class HtmlProcessorStrategy(UrlProcessorStrategy):
@@ -241,6 +237,40 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 "error": str(e)
             }
 
+    def _run_async_extraction(self, url: str) -> dict[str, Any]:
+        """Run async extraction in a thread-safe manner."""
+        import concurrent.futures
+        
+        try:
+            # Check if we're already in an async context
+            try:
+                loop = asyncio.get_running_loop()
+                # We're already in an async context, run in a separate thread
+                logger.debug(f"Already in async context, using thread executor for {url}")
+                
+                # Create a new thread to run the async code independently
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(asyncio.run, self._extract_with_crawl4ai(url))
+                    return future.result(timeout=30)  # 30 second timeout
+                    
+            except RuntimeError:
+                # No event loop is running, we can create one
+                logger.debug(f"No async context, creating new event loop for {url}")
+                return asyncio.run(self._extract_with_crawl4ai(url))
+                
+        except concurrent.futures.TimeoutError:
+            logger.error(f"Extraction timeout for {url}")
+            return {
+                "success": False,
+                "error": "Extraction timed out after 30 seconds"
+            }
+        except Exception as e:
+            logger.error(f"Error in async extraction for {url}: {e}")
+            return {
+                "success": False,
+                "error": f"Async extraction failed: {str(e)}"
+            }
+
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
         Extracts data from HTML content using crawl4ai.
@@ -253,14 +283,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         source = self._detect_source(url)
         
         try:
-            # With nest_asyncio, we can safely run async code
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're already in an event loop, use it
-                result = loop.run_until_complete(self._extract_with_crawl4ai(url))
-            else:
-                # No running loop, use asyncio.run
-                result = asyncio.run(self._extract_with_crawl4ai(url))
+            # Run async extraction in a thread-safe manner
+            result = self._run_async_extraction(url)
 
             if not result["success"]:
                 raise Exception(

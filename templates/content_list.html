@@ -72,6 +72,10 @@
             <time datetime="{{ content.created_at }}">
               {{ content.created_at.strftime('%B %d, %Y at %I:%M %p') if content.created_at else 'Date unknown' }}
             </time>
+            {% if content.source %}
+              <span class="mx-1">•</span>
+              <span>{{ content.source }}</span>
+            {% endif %}
           </div>
           
           {% if content.bullet_points %}
