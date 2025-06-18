@@ -225,7 +225,7 @@ class LLMService:
                 - Ensure the overview provides context for someone who hasn't read the content
                 - Overview should be 50-100 words, short and punchy
                 - Include {max_bullet_points} bullet points
-                - Include up to {max_quotes} notable quotes if available
+                - Include up to {max_quotes} notable quotes if available - each quote should be at least 2-3 sentences long to provide meaningful context and insight
                 - Include 3-8 relevant topic tags
                 
                 Content:
