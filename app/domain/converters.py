@@ -19,7 +19,7 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             error_message=db_content.error_message,
             retry_count=db_content.retry_count or 0,
             created_at=db_content.created_at,
-            processed_at=db_content.processed_at
+            processed_at=db_content.processed_at,
         )
     except Exception as e:
         # Log the error with details
@@ -27,18 +27,16 @@ def content_to_domain(db_content: DBContent) -> ContentData:
         print(f"Metadata: {db_content.content_metadata}")
         raise
 
-def domain_to_content(
-    content_data: ContentData,
-    existing: DBContent | None = None
-) -> DBContent:
+
+def domain_to_content(content_data: ContentData, existing: DBContent | None = None) -> DBContent:
     """Convert domain ContentData to database Content."""
     if existing:
         # Update existing
         existing.title = content_data.title
         existing.status = content_data.status.value
         # Serialize metadata to ensure datetime objects are handled
-        dumped_data = content_data.model_dump(mode='json')
-        existing.content_metadata = dumped_data['metadata']
+        dumped_data = content_data.model_dump(mode="json")
+        existing.content_metadata = dumped_data["metadata"]
         existing.error_message = content_data.error_message
         existing.retry_count = content_data.retry_count
         if content_data.processed_at:
@@ -52,9 +50,9 @@ def domain_to_content(
             url=str(content_data.url),
             title=content_data.title,
             status=content_data.status.value,
-            content_metadata=content_data.model_dump(mode='json')['metadata'],
+            content_metadata=content_data.model_dump(mode="json")["metadata"],
             error_message=content_data.error_message,
             retry_count=content_data.retry_count,
             created_at=content_data.created_at or datetime.utcnow(),
-            processed_at=content_data.processed_at
+            processed_at=content_data.processed_at,
         )

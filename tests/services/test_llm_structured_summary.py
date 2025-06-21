@@ -60,11 +60,15 @@ class TestStructuredSummarization:
             ],
             "quotes": [
                 {
-                    "text": "This represents a paradigm shift in how AI can assist software development",
+                    "text": "This represents a paradigm shift in how AI can assist software development. "
+                    "The advances we're seeing now are just the beginning of what's possible. "
+                    "Our model demonstrates that AI can truly understand the intent behind code, not just pattern match.",
                     "context": "Dr. Jane Smith, lead researcher"
                 },
                 {
-                    "text": "We believe this will revolutionize the industry",
+                    "text": "We believe this will revolutionize the industry. "
+                    "The implications go far beyond just code generation - we're talking about fundamentally changing how software is designed and built. "
+                    "Teams using this technology could see productivity gains we've never imagined before.",
                     "context": "Dr. John Doe, co-author"
                 }
             ],
@@ -98,6 +102,8 @@ class TestStructuredSummarization:
         # Verify quotes
         assert result.quotes[0].text == mock_structured_response["quotes"][0]["text"]
         assert result.quotes[0].context == "Dr. Jane Smith, lead researcher"
+        # Verify quotes are longer (2-3 sentences)
+        assert len(result.quotes[0].text) > 100  # Ensuring meaningful length
     
     @pytest.mark.asyncio
     async def test_generate_structured_summary_with_json_markdown(

@@ -79,43 +79,47 @@ def test_download_content(pubmed_strategy: PubMedProcessorStrategy, mock_http_cl
     mock_http_client.get.assert_called_once_with(url)
     assert content == SAMPLE_PUBMED_PAGE_HTML_PMC_LINK
 
-def test_extract_data_pmc_link_found(pubmed_strategy: PubMedProcessorStrategy):
+@pytest.mark.asyncio
+async def test_extract_data_pmc_link_found(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when a PMC full-text link is found."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/1234567/"
     expected_full_text_url = "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12345/"
     
-    extracted_data = pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_PMC_LINK, pubmed_url)
+    extracted_data = await pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_PMC_LINK, pubmed_url)
 
     assert extracted_data["content_type"] == "pubmed_delegation"
     assert extracted_data["next_url_to_process"] == expected_full_text_url
     assert extracted_data["original_pubmed_url"] == pubmed_url
     assert extracted_data["final_url_after_redirects"] == pubmed_url
 
-def test_extract_data_first_link_used(pubmed_strategy: PubMedProcessorStrategy):
+@pytest.mark.asyncio
+async def test_extract_data_first_link_used(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when no PMC link is found, and the first available link is used."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/2345678/"
     expected_full_text_url = "https://example.com/first_full_text.pdf"
     
-    extracted_data = pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_FIRST_LINK, pubmed_url)
+    extracted_data = await pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_FIRST_LINK, pubmed_url)
 
     assert extracted_data["content_type"] == "pubmed_delegation"
     assert extracted_data["next_url_to_process"] == expected_full_text_url
     assert extracted_data["original_pubmed_url"] == pubmed_url
 
-def test_extract_data_no_links_found(pubmed_strategy: PubMedProcessorStrategy):
+@pytest.mark.asyncio
+async def test_extract_data_no_links_found(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when no full-text links are found on the PubMed page."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/3456789/"
-    extracted_data = pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_NO_LINKS, pubmed_url)
+    extracted_data = await pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_NO_LINKS, pubmed_url)
 
     assert extracted_data["content_type"] == "error_pubmed_extraction"
     assert "next_url_to_process" not in extracted_data
     assert extracted_data["title"] == f"PubMed Full-Text Link Extraction Failed for {pubmed_url.split('/')[-1]}"
     assert "Could not find a usable full-text link" in extracted_data["text_content"]
 
-def test_extract_data_malformed_html(pubmed_strategy: PubMedProcessorStrategy):
+@pytest.mark.asyncio
+async def test_extract_data_malformed_html(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data with malformed HTML where link sections might be missing."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/4567890/"
-    extracted_data = pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_MALFORMED, pubmed_url)
+    extracted_data = await pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_MALFORMED, pubmed_url)
 
     assert extracted_data["content_type"] == "error_pubmed_extraction"
     assert "next_url_to_process" not in extracted_data

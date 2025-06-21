@@ -87,7 +87,7 @@ class GoogleProvider(LLMProvider):
         from google import genai
 
         self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-2.5-flash-preview-05-20"
+        self.model_name = "gemini-2.5-flash-lite-preview-06-17"
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def generate(
@@ -138,6 +138,54 @@ class GoogleProvider(LLMProvider):
             logger.error(f"Error in Google generate: {e}")
             raise
 
+    def generate_sync(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+    ) -> str:
+        """Synchronous version of generate."""
+        # Combine system prompt and user prompt
+        full_prompt = prompt
+        if system_prompt:
+            full_prompt = f"{system_prompt}\n\n{prompt}"
+
+        config = {
+            "temperature": temperature,
+            "max_output_tokens": 50000,  # Increased to prevent truncation
+        }
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name, contents=full_prompt, config=config
+            )
+
+            # Handle response structure properly
+            if hasattr(response, "text"):
+                return response.text
+            elif hasattr(response, "parts"):
+                # Handle multi-part responses
+                parts_text = []
+                for part in response.parts:
+                    if hasattr(part, "text"):
+                        parts_text.append(part.text)
+                return "".join(parts_text)
+            elif hasattr(response, "candidates") and response.candidates:
+                # Handle candidate responses
+                candidate = response.candidates[0]
+                if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
+                    parts_text = []
+                    for part in candidate.content.parts:
+                        if hasattr(part, "text"):
+                            parts_text.append(part.text)
+                    return "".join(parts_text)
+
+            # Fallback: try to convert to string
+            return str(response)
+        except Exception as e:
+            logger.error(f"Error in Google generate_sync: {e}")
+            raise
+
 
 class MockProvider(LLMProvider):
     """Mock provider for testing."""
@@ -163,9 +211,18 @@ class MockProvider(LLMProvider):
                 {"text": "Significant conclusion drawn from the data", "category": "conclusion"},
             ],
             "quotes": [
-                {"text": "This is a notable quote from the content", "context": "Mock Author"}
+                {
+                    "text": (
+                        "This is a notable quote from the content that spans multiple "
+                        "sentences. It provides meaningful context and insight into the "
+                        "topic being discussed. The quote helps readers understand the "
+                        "key themes and perspectives presented."
+                    ),
+                    "context": "Mock Author",
+                }
             ],
             "topics": ["Testing", "Mock Data", "Summary"],
+            "classification": "to_read",
         }
         return json.dumps(mock_response)
 
@@ -193,7 +250,7 @@ class LLMService:
     async def summarize_content(
         self, content: str, max_bullet_points: int = 6, max_quotes: int = 3
     ) -> StructuredSummary | dict[str, Any] | None:
-        """Summarize content using LLM.
+        """Summarize content using LLM and classify it.
 
         Args:
             content: The content to summarize
@@ -201,7 +258,7 @@ class LLMService:
             max_quotes: Maximum number of quotes to extract (default: 3)
 
         Returns:
-            StructuredSummary with bullet points and quotes, None if error
+            StructuredSummary with bullet points, quotes, and classification
         """
         try:
             # Truncate content if too long
@@ -216,7 +273,7 @@ class LLMService:
             if isinstance(self.provider, GoogleProvider):
                 prompt = f"""
                 You are an expert content analyst. Analyze the following content and provide a 
-                structured summary.
+                structured summary with classification.
                 
                 Important:
                 - Generate a descriptive title that captures the main theme (10-200 chars)
@@ -225,8 +282,22 @@ class LLMService:
                 - Ensure the overview provides context for someone who hasn't read the content
                 - Overview should be 50-100 words, short and punchy
                 - Include {max_bullet_points} bullet points
-                - Include up to {max_quotes} notable quotes if available - each quote should be at least 2-3 sentences long to provide meaningful context and insight
+                - Include up to {max_quotes} notable quotes if available - each quote should be 
+                  at least 2-3 sentences long to provide meaningful context and insight
                 - Include 3-8 relevant topic tags
+                - Add a "classification" field with either "to_read" or "skip"
+                
+                Classification Guidelines:
+                - Set classification to "skip" if the content:
+                  * Is light on content or seems like marketing/promotional material
+                  * Is general mainstream news without depth or unique insights
+                  * Lacks substantive information or analysis
+                  * Appears to be clickbait or sensationalized
+                - Set classification to "to_read" if the content:
+                  * Contains in-depth analysis or unique insights
+                  * Provides technical or specialized knowledge
+                  * Offers original research or investigation
+                  * Has educational or informative value
                 
                 Content:
                 {content}
@@ -339,17 +410,32 @@ class LLMService:
                      "insight", "announcement", "warning", "recommendation"
                 4. "quotes": Up to {max_quotes} notable quotes from the content, each as an 
                    object with:
-                   - "text": The exact quote (if available)
+                   - "text": The exact quote (if available) - should be at least 2-3 sentences 
+                     long to provide meaningful context and insight
                    - "context": Who said it or where it comes from
                 5. "topics": An array of 3-8 relevant topic tags 
                    (e.g., "AI", "Technology", "Business")
+                6. "classification": Either "to_read" or "skip" based on content quality
                 
                 Important:
                 - Generate a descriptive title that would make someone want to read the content
-                - Extract actual quotes when available, don't paraphrase
+                - Extract actual quotes when available, don't paraphrase - quotes should be 
+                  at least 2-3 sentences long to provide meaningful context
                 - Make bullet points specific and information dense
                 - Ensure the overview provides context for someone who hasn't read the content
                 - Return ONLY valid JSON, no additional text
+                
+                Classification Guidelines:
+                - Set classification to "skip" if the content:
+                  * Is light on content or seems like marketing/promotional material
+                  * Is general mainstream news without depth or unique insights
+                  * Lacks substantive information or analysis
+                  * Appears to be clickbait or sensationalized
+                - Set classification to "to_read" if the content:
+                  * Contains in-depth analysis or unique insights
+                  * Provides technical or specialized knowledge
+                  * Offers original research or investigation
+                  * Has educational or informative value
                 
                 Content:
                 {content}
@@ -377,6 +463,11 @@ class LLMService:
                 # Parse JSON response
                 summary_data = json.loads(response_text)
 
+            # Extract classification
+            classification = summary_data.get("classification", "to_read")
+            if classification not in ["to_read", "skip"]:
+                classification = "to_read"  # Default to to_read if invalid
+
             # Validate and create structured summary
             structured_summary = StructuredSummary(
                 title=summary_data.get("title", "Untitled Content"),
@@ -391,6 +482,7 @@ class LLMService:
                 ],
                 topics=summary_data.get("topics", []),
                 summarization_date=datetime.utcnow(),
+                classification=classification,
             )
 
             return structured_summary
@@ -415,6 +507,7 @@ class LLMService:
                 "quotes": [],
                 "topics": [],
                 "summarization_date": datetime.utcnow().isoformat(),
+                "classification": "to_read",
             }
         except Exception as e:
             logger.error(f"Error generating structured summary: {e}")
@@ -425,6 +518,150 @@ class LLMService:
                 e,
                 content_id=str(id(content)),
             )
+            return None
+
+    def summarize_content_sync(
+        self, content: str, max_bullet_points: int = 6, max_quotes: int = 3
+    ) -> StructuredSummary | dict[str, Any] | None:
+        """Synchronous version of summarize_content.
+
+        Args:
+            content: The content to summarize
+            max_bullet_points: Maximum number of bullet points to generate (default: 6)
+            max_quotes: Maximum number of quotes to extract (default: 3)
+
+        Returns:
+            StructuredSummary with bullet points, quotes, and classification
+        """
+        try:
+            # Truncate content if too long
+            if isinstance(content, bytes):
+                content = content.decode("utf-8", errors="ignore")
+
+            # Truncate content if too long to fit in context window
+            if len(content) > 15000:
+                content = content[:15000] + "..."
+
+            # Use structured output for GoogleProvider
+            if isinstance(self.provider, GoogleProvider):
+                prompt = f"""
+                You are an expert content analyst. Analyze the following content and provide a 
+                structured summary with classification.
+                
+                Important:
+                - Generate a descriptive title that captures the main theme (10-200 chars)
+                - Extract actual quotes when available, don't paraphrase
+                - Make bullet points specific and information dense
+                - Ensure the overview provides context for someone who hasn't read the content
+                - Overview should be 50-100 words, short and punchy
+                - Include {max_bullet_points} bullet points
+                - Include up to {max_quotes} notable quotes if available - each quote should be 
+                  at least 2-3 sentences long to provide meaningful context and insight
+                - Include 3-8 relevant topic tags
+                - Add a "classification" field with either "to_read" or "skip"
+                
+                Classification Guidelines:
+                - Set classification to "skip" if the content:
+                  * Is light on content or seems like marketing/promotional material
+                  * Is general mainstream news without depth or unique insights
+                  * Lacks substantive information or analysis
+                  * Appears to be clickbait or sensationalized
+                - Set classification to "to_read" if the content:
+                  * Contains in-depth analysis or unique insights
+                  * Provides technical or specialized knowledge
+                  * Offers original research or investigation
+                  * Has educational or informative value
+                
+                Content:
+                {content}
+                """
+
+                # Define the schema for structured output
+                config = {
+                    "temperature": 0.7,
+                    "max_output_tokens": 50000,  # Increased to prevent truncation
+                    "response_mime_type": "application/json",
+                    "response_schema": StructuredSummary,
+                }
+
+                try:
+                    response = self.provider.client.models.generate_content(
+                        model=self.provider.model_name, contents=prompt, config=config
+                    )
+
+                    # Handle response structure properly
+                    response_text = None
+                    if hasattr(response, "text"):
+                        response_text = response.text
+                    elif hasattr(response, "parts"):
+                        parts_text = []
+                        for part in response.parts:
+                            if hasattr(part, "text"):
+                                parts_text.append(part.text)
+                        response_text = "".join(parts_text)
+                    elif hasattr(response, "candidates") and response.candidates:
+                        candidate = response.candidates[0]
+                        if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
+                            parts_text = []
+                            for part in candidate.content.parts:
+                                if hasattr(part, "text"):
+                                    parts_text.append(part.text)
+                            response_text = "".join(parts_text)
+
+                    if not response_text:
+                        logger.error(f"No text found in response: {response}")
+                        return None
+
+                    # Parse the structured response
+                    summary_data = json.loads(response_text)
+                except Exception as e:
+                    logger.error(f"Error in Google sync summarize: {e}")
+                    return None
+            else:
+                # For other providers, return None for now
+                logger.warning("Sync summarization not implemented for non-Google providers")
+                return None
+
+            # Validate classification
+            classification = summary_data.get("classification", "to_read")
+            if classification not in ["to_read", "skip"]:
+                logger.warning(
+                    f"Invalid classification '{classification}', defaulting to 'to_read'"
+                )
+                classification = "to_read"
+
+            # Validate and create structured summary
+            structured_summary = StructuredSummary(
+                title=summary_data.get("title", "Untitled Content"),
+                overview=summary_data.get("overview", ""),
+                bullet_points=[
+                    SummaryBulletPoint(text=bp.get("text", ""), category=bp.get("category"))
+                    for bp in summary_data.get("bullet_points", [])
+                ],
+                quotes=[
+                    ContentQuote(text=q.get("text", ""), context=q.get("context"))
+                    for q in summary_data.get("quotes", [])
+                ],
+                topics=summary_data.get("topics", []),
+                summarization_date=datetime.utcnow(),
+                classification=classification,
+            )
+
+            return structured_summary
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error in sync structured summary: {e}")
+            # Return as dict for backward compatibility
+            return {
+                "overview": "Failed to generate summary due to JSON parsing error",
+                "bullet_points": [],
+                "quotes": [],
+                "topics": [],
+                "summarization_date": datetime.utcnow().isoformat(),
+                "classification": "to_read",
+            }
+        except Exception as e:
+            logger.error(f"Error generating sync structured summary: {e}")
             return None
 
 

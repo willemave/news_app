@@ -24,6 +24,11 @@ class ContentStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+class ContentClassification(str, Enum):
+    TO_READ = "to_read"
+    SKIP = "skip"
+
+
 # Structured summary components from app/schemas/metadata.py
 class SummaryBulletPoint(BaseModel):
     """Individual bullet point in a structured summary."""
@@ -73,6 +78,9 @@ class StructuredSummary(BaseModel):
     quotes: list[ContentQuote] = Field(default_factory=list, max_items=5)
     topics: list[str] = Field(default_factory=list, max_items=10)
     summarization_date: datetime = Field(default_factory=datetime.utcnow)
+    classification: str = Field(
+        default="to_read", description="Content classification: 'to_read' or 'skip'"
+    )
 
 
 # Base metadata with source field added
@@ -83,10 +91,9 @@ class BaseContentMetadata(BaseModel):
 
     # NEW: Source field to track content origin
     source: str | None = Field(
-        None, 
-        description="Source of content (e.g., substack name, podcast name, subreddit name)"
+        None, description="Source of content (e.g., substack name, podcast name, subreddit name)"
     )
-    
+
     summary: StructuredSummary | None = Field(None, description="AI-generated structured summary")
     summarization_date: datetime | None = None
     word_count: int | None = Field(None, ge=0)
@@ -134,7 +141,7 @@ class ArticleMetadata(BaseContentMetadata):
     )
 
     content: str | None = Field(None, description="Full article text content")
-    
+
     @field_validator("content")
     @classmethod
     def validate_content(cls, v):
@@ -142,6 +149,7 @@ class ArticleMetadata(BaseContentMetadata):
         if v == "":
             return None
         return v
+
     author: str | None = Field(None, max_length=200)
     publication_date: datetime | None = None
     content_type: str = Field(default="html", pattern="^(pdf|html|text|markdown)$")
@@ -186,14 +194,14 @@ class PodcastMetadata(BaseContentMetadata):
 # Processing result from app/domain/content.py
 class ProcessingResult(BaseModel):
     """Result from content processing."""
-    
+
     success: bool
     content_type: ContentType
     title: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None
     internal_links: list[str] = Field(default_factory=list)
-    
+
     class Config:
         frozen = True
 
@@ -212,29 +220,29 @@ class ContentData(BaseModel):
     """
     Unified content data model for passing between layers.
     """
-    
+
     id: int | None = None
     content_type: ContentType
     url: HttpUrl
     title: str | None = None
     status: ContentStatus = ContentStatus.NEW
     metadata: dict[str, Any] = Field(default_factory=dict)
-    
+
     # Processing metadata
     error_message: str | None = None
     retry_count: int = 0
-    
+
     # Timestamps
     created_at: datetime | None = None
     processed_at: datetime | None = None
-    
+
     @field_validator("metadata")
     @classmethod
     def validate_metadata(cls, v, info):
         """Ensure metadata matches content type."""
         if info.data:
             content_type = info.data.get("content_type")
-            
+
             # Clean up empty strings in metadata
             if isinstance(v, dict):
                 cleaned_v = {}
@@ -244,7 +252,7 @@ class ContentData(BaseModel):
                     else:
                         cleaned_v[key] = value
                 v = cleaned_v
-            
+
             if content_type == ContentType.ARTICLE:
                 # Validate article metadata
                 try:
@@ -258,36 +266,34 @@ class ContentData(BaseModel):
                 except Exception as e:
                     raise ValueError(f"Invalid podcast metadata: {e}") from e
         return v
-    
+
     def to_article_metadata(self) -> ArticleMetadata:
         """Convert metadata to ArticleMetadata."""
         if self.content_type != ContentType.ARTICLE:
             raise ValueError("Not an article")
         return ArticleMetadata(**self.metadata)
-    
+
     def to_podcast_metadata(self) -> PodcastMetadata:
         """Convert metadata to PodcastMetadata."""
         if self.content_type != ContentType.PODCAST:
             raise ValueError("Not a podcast")
         return PodcastMetadata(**self.metadata)
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-    
+        json_encoders = {datetime: lambda v: v.isoformat()}
+
     @property
     def summary(self) -> str | None:
         """Get summary text (either simple or overview from structured)."""
-        summary_data = self.metadata.get('summary')
+        summary_data = self.metadata.get("summary")
         if not summary_data:
             return None
         if isinstance(summary_data, str):
             return summary_data
         if isinstance(summary_data, dict):
-            return summary_data.get('overview', '')
+            return summary_data.get("overview", "")
         return None
-    
+
     @property
     def short_summary(self) -> str | None:
         """Get short version of summary for list view."""
@@ -298,47 +304,47 @@ class ContentData(BaseModel):
         if len(summary) > 200:
             return summary[:197] + "..."
         return summary
-    
+
     @property
     def structured_summary(self) -> dict[str, Any] | None:
         """Get structured summary if available."""
-        summary_data = self.metadata.get('summary')
-        if isinstance(summary_data, dict) and 'bullet_points' in summary_data:
+        summary_data = self.metadata.get("summary")
+        if isinstance(summary_data, dict) and "bullet_points" in summary_data:
             return summary_data
         return None
-    
+
     @property
     def bullet_points(self) -> list[dict[str, str]]:
         """Get bullet points from structured summary."""
         if self.structured_summary:
-            return self.structured_summary.get('bullet_points', [])
+            return self.structured_summary.get("bullet_points", [])
         return []
-    
+
     @property
     def quotes(self) -> list[dict[str, str]]:
         """Get quotes from structured summary."""
         if self.structured_summary:
-            return self.structured_summary.get('quotes', [])
+            return self.structured_summary.get("quotes", [])
         return []
-    
+
     @property
     def topics(self) -> list[str]:
         """Get topics from structured summary."""
         if self.structured_summary:
-            return self.structured_summary.get('topics', [])
-        return self.metadata.get('topics', [])
-    
+            return self.structured_summary.get("topics", [])
+        return self.metadata.get("topics", [])
+
     @property
     def transcript(self) -> str | None:
         """Get transcript for podcasts."""
         if self.content_type == ContentType.PODCAST:
-            return self.metadata.get('transcript')
+            return self.metadata.get("transcript")
         return None
-    
+
     @property
     def source(self) -> str | None:
         """Get content source (substack name, podcast name, subreddit)."""
-        return self.metadata.get('source')
+        return self.metadata.get("source")
 
 
 # Helper functions from app/schemas/metadata.py

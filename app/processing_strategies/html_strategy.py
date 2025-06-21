@@ -4,6 +4,7 @@ This module defines the strategy for processing standard HTML web pages using cr
 
 import asyncio
 import contextlib
+import logging
 import re
 from typing import Any
 
@@ -65,12 +66,12 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/pmid/{pmid}/"
             logger.debug(f"HtmlStrategy: Transforming PubMed URL {url} to PMC URL {pmc_url}")
             return pmc_url
-        
+
         # Handle ArXiv URLs - transform abstract to PDF
         if "arxiv.org/abs/" in url:
             logger.debug(f"HtmlStrategy: Transforming arXiv URL {url}")
             return url.replace("/abs/", "/pdf/")
-        
+
         logger.debug(f"HtmlStrategy: preprocess_url called for {url}, no transformation applied.")
         return url
 
@@ -125,11 +126,13 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "exclude_external_links": True,
             "remove_overlay_elements": True,
         }
-        
+
         # Source-specific adjustments
         if source == "Substack":
             config["excluded_tags"].extend(["form", "aside"])
-            config["excluded_selector"] = ".subscribe-widget, .footer-wrap, .subscription-form-wrapper"
+            config["excluded_selector"] = (
+                ".subscribe-widget, .footer-wrap, .subscription-form-wrapper"
+            )
             config["target_elements"] = [".post", ".post-content", "article"]
         elif source == "Medium":
             config["excluded_selector"] = ".metabar, .js-postActions, .js-stickyFooter"
@@ -145,131 +148,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         elif source == "Arxiv":
             # ArXiv PDFs need special handling
             config["pdf"] = True
-            
+
         return config
-
-    async def _extract_with_crawl4ai(self, url: str) -> dict[str, Any]:
-        """Extract content using crawl4ai with optimized settings."""
-        source = self._detect_source(url)
-        
-        # Configure browser
-        browser_config = BrowserConfig(
-            headless=True,
-            viewport_width=1920,  # Wider viewport for better content capture
-            viewport_height=1080,
-            text_mode=False,  # Keep images for now, filter later if needed
-            light_mode=True,  # Performance optimization
-            ignore_https_errors=True,
-            java_script_enabled=True,  # Need JS for many modern sites
-            extra_args=["--disable-blink-features=AutomationControlled"],  # Stealth
-        )
-        
-        # Get source-specific configuration
-        source_config = self._get_source_specific_config(source)
-        
-        # Configure crawler run
-        run_config = CrawlerRunConfig(
-            # Content filtering
-            word_count_threshold=source_config.get("word_count_threshold", 20),
-            excluded_tags=source_config.get("excluded_tags", []),
-            excluded_selector=source_config.get("excluded_selector"),
-            target_elements=source_config.get("target_elements"),
-            exclude_external_links=source_config.get("exclude_external_links", True),
-            
-            # Content processing
-            process_iframes=False,
-            remove_overlay_elements=source_config.get("remove_overlay_elements", True),
-            remove_forms=True,  # Usually don't need forms in article content
-            keep_data_attributes=False,  # Clean up HTML
-            
-            # Page handling
-            wait_until="domcontentloaded",  # Faster than networkidle
-            wait_for="body",
-            delay_before_return_html=1.0,  # Reduced delay
-            adjust_viewport_to_content=True,
-            
-            # Performance
-            cache_mode=CacheMode.ENABLED,  # Use cache for repeated visits
-            verbose=False,  # Less logging
-            
-            # Link filtering
-            exclude_social_media_links=True,
-            exclude_domains=["facebook.com", "twitter.com", "instagram.com", "linkedin.com"],
-            
-            # Special handling
-            pdf=source_config.get("pdf", False),
-            check_robots_txt=False,  # Speed over compliance for news aggregation
-        )
-        
-        try:
-            async with AsyncWebCrawler(config=browser_config) as crawler:
-                result = await crawler.arun(url=url, config=run_config)
-                
-                if result.success:
-                    # Get content
-                    content = ""
-                    if hasattr(result, 'markdown') and result.markdown:
-                        if hasattr(result.markdown, 'raw_markdown'):
-                            content = result.markdown.raw_markdown
-                        elif isinstance(result.markdown, str):
-                            content = result.markdown
-                        else:
-                            content = str(result.markdown)
-                    
-                    return {
-                        "success": True,
-                        "content": content,
-                        "title": result.metadata.get("title") if result.metadata else None,
-                        "final_url": result.url,
-                        "cleaned_html": result.cleaned_html,
-                        "links": result.links,
-                        "media": result.media,
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "error": result.error_message or "Unknown error"
-                    }
-        except Exception as e:
-            logger.error(f"Crawl4ai extraction error: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
-    def _run_async_extraction(self, url: str) -> dict[str, Any]:
-        """Run async extraction in a thread-safe manner."""
-        import concurrent.futures
-        
-        try:
-            # Check if we're already in an async context
-            try:
-                loop = asyncio.get_running_loop()
-                # We're already in an async context, run in a separate thread
-                logger.debug(f"Already in async context, using thread executor for {url}")
-                
-                # Create a new thread to run the async code independently
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(asyncio.run, self._extract_with_crawl4ai(url))
-                    return future.result(timeout=30)  # 30 second timeout
-                    
-            except RuntimeError:
-                # No event loop is running, we can create one
-                logger.debug(f"No async context, creating new event loop for {url}")
-                return asyncio.run(self._extract_with_crawl4ai(url))
-                
-        except concurrent.futures.TimeoutError:
-            logger.error(f"Extraction timeout for {url}")
-            return {
-                "success": False,
-                "error": "Extraction timed out after 30 seconds"
-            }
-        except Exception as e:
-            logger.error(f"Error in async extraction for {url}: {e}")
-            return {
-                "success": False,
-                "error": f"Async extraction failed: {str(e)}"
-            }
 
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
@@ -278,22 +158,86 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         'url' here is the final URL after any preprocessing.
         """
         logger.info(f"HtmlStrategy: Extracting data from {url}")
-        
+
         # Detect source for metadata
         source = self._detect_source(url)
-        
-        try:
-            # Run async extraction in a thread-safe manner
-            result = self._run_async_extraction(url)
 
-            if not result["success"]:
+        try:
+            # Configure browser
+            browser_config = BrowserConfig(
+                headless=True,
+                viewport_width=1920,
+                viewport_height=1080,
+                text_mode=False,
+                light_mode=True,
+                ignore_https_errors=True,
+                java_script_enabled=True,
+                extra_args=["--disable-blink-features=AutomationControlled"],
+                verbose=False,
+            )
+
+            # Get source-specific configuration
+            source_config = self._get_source_specific_config(source)
+
+            # Configure crawler run
+            run_config = CrawlerRunConfig(
+                # Content filtering
+                word_count_threshold=source_config.get("word_count_threshold", 20),
+                excluded_tags=source_config.get("excluded_tags", []),
+                excluded_selector=source_config.get("excluded_selector"),
+                target_elements=source_config.get("target_elements"),
+                exclude_external_links=source_config.get("exclude_external_links", True),
+                # Content processing
+                process_iframes=False,
+                remove_overlay_elements=source_config.get("remove_overlay_elements", True),
+                remove_forms=True,
+                keep_data_attributes=False,
+                # Page handling
+                wait_until="domcontentloaded",
+                wait_for="body",
+                delay_before_return_html=1.0,
+                adjust_viewport_to_content=True,
+                # Performance
+                cache_mode=CacheMode.ENABLED,
+                verbose=False,
+                # Link filtering
+                exclude_social_media_links=True,
+                exclude_domains=["facebook.com", "twitter.com", "instagram.com", "linkedin.com"],
+                # Special handling
+                pdf=source_config.get("pdf", False),
+                check_robots_txt=False,
+            )
+
+            # Use AsyncWebCrawler with asyncio.run
+            async def crawl():
+                # Temporarily suppress crawl4ai's initialization messages
+                crawl4ai_logger = logging.getLogger('crawl4ai')
+                original_level = crawl4ai_logger.level
+                crawl4ai_logger.setLevel(logging.WARNING)
+                
+                try:
+                    async with AsyncWebCrawler(config=browser_config) as crawler:
+                        return await crawler.arun(url=url, config=run_config)
+                finally:
+                    crawl4ai_logger.setLevel(original_level)
+            
+            result = asyncio.run(crawl())
+
+            # Check if result is None
+            if result is None:
+                raise Exception("Crawl4ai extraction returned None")
+
+            if not result.success:
                 raise Exception(
-                    f"Crawl4ai extraction failed: {result.get('error', 'Unknown error')}"
+                    f"Crawl4ai extraction failed: {getattr(result, 'error', 'Unknown error')}"
                 )
 
             # Extract metadata from content if not provided
-            extracted_text = result["content"]
-            title = result.get("title", "Untitled")
+            extracted_text = result.markdown.raw_markdown if result.markdown else ""
+            if not extracted_text:
+                raise Exception("No content extracted from the page")
+
+            title = (result.metadata.get("title") if result.metadata else None) or "Untitled"
             author = None
             publication_date = None
 
@@ -305,16 +249,16 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                     r"(?:By|Author|Written by)[:\s]+([^\n]+)",
                     r"<meta[^>]+name=[\"']author[\"'][^>]+content=[\"']([^\"']+)[\"']",
                 ]
-                
+
                 # First check cleaned HTML for meta tags
-                cleaned_html = result.get("cleaned_html", "")
+                cleaned_html = result.cleaned_html if hasattr(result, 'cleaned_html') else ""
                 if cleaned_html:
                     for pattern in author_patterns[1:]:  # Meta tag patterns
                         match = re.search(pattern, cleaned_html, re.IGNORECASE)
                         if match:
                             author = match.group(1).strip()
                             break
-                
+
                 # Then check markdown content
                 if not author:
                     for pattern in author_patterns[:1]:  # Text patterns
@@ -343,7 +287,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
             logger.info(
                 f"HtmlStrategy: Successfully extracted data for {url}. "
-                f"Title: {title[:50]}... Source: {source}"
+                f"Title: {title[:50] if title else 'None'}... Source: {source}"
             )
 
             return {
@@ -353,11 +297,14 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 "text_content": extracted_text,
                 "content_type": "html",
                 "source": source,  # Source field for categorization
-                "final_url_after_redirects": result.get("final_url", url),
+                "final_url_after_redirects": result.url if hasattr(result, 'url') else url,
             }
 
         except Exception as e:
+            import traceback
+
             error_msg = f"Content extraction failed for {url}: {str(e)}"
+            traceback_str = traceback.format_exc()
             self.error_logger.log_processing_error(
                 item_id=url,
                 error=e,
@@ -367,9 +314,10 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                     "strategy": "html",
                     "source": source,
                     "method": "crawl4ai",
+                    "traceback": traceback_str,
                 },
             )
-            logger.error(f"HtmlStrategy: {error_msg}")
+            logger.error(f"HtmlStrategy: {error_msg}\nTraceback: {traceback_str}")
 
             return {
                 "title": "Extraction Failed",
