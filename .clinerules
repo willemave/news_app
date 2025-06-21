@@ -1,6 +1,6 @@
 
 #### 1  Python / FastAPI Coding Rules
-* **Functions over classes**. `def` for sync, `async def` for I/O.
+* **Functions over classes**.
 * **Full type hints**; validate with **Pydantic v2** models. Use `typing` for complex types.
 * **RORO** pattern (receive object, return object).
 * `lower_snake_case` for files/dirs; verbs in variables (`is_valid`, `has_permission`).
@@ -27,7 +27,6 @@
 * Use **lifespan** context, not `startup/shutdown` events.
 * Inject DB/session with dependencies; use `Annotated` for cleaner signatures.
 * Middleware order matters: logging → tracing → CORS → error capture.
-* All DB and external calls are **async**; use `asyncio.gather()` for parallel ops.
 
 ---
 #### 3  Code Quality & Safety
@@ -36,7 +35,7 @@
 * **SQL injection prevention**: Use parameterized queries, never f-strings.
 * **Graceful degradation**: Circuit breakers for external services.
 * **Error context**: Include request IDs, user context in error logs.
-* **Resource cleanup**: Use context managers (`async with`) for connections.
+
 ---
 #### 4  Testing Requirements
 * **Write tests for all new functionality** in `app/tests/` using idiomatic pytest.
@@ -46,7 +45,7 @@
   - Unit tests: isolated function/class testing
   - Integration tests: API endpoints with test DB
   - Contract tests: external service interactions
-* Use pytest fixtures for setup/teardown; `@pytest.mark.asyncio` for async tests.
+* Use pytest fixtures for setup/teardown;
 * **TestClient** from FastAPI for endpoint testing.
 * Mock external dependencies with `pytest-mock` or `unittest.mock`.
 * **Run tests after implementation**: 
@@ -62,13 +61,13 @@
 ---
 #### 6  Dependencies
 * **Core**: fastapi, pydantic[email], pydantic-settings, python-multipart
-* **Database**: asyncpg or aiomysql, sqlalchemy[asyncio]>=2.0, alembic
-* **Testing**: pytest, pytest-asyncio, pytest-cov, httpx, pytest-mock
+* **Database**: sqlalchemy>=2.0, alembic
+* **Testing**: pytest, pytest-cov, httpx, pytest-mock
 * **Utils**: python-dateutil
-* **External**: httpx (async HTTP), google-genai (not google-generativeai)
+* **External**: httpx (HTTP), google-genai (not google-generativeai)
 * Package with **uv**:
   uv add <pkg>
-  uv add --dev pytest pytest-asyncio httpx pytest-mock pytest-cov
+  uv add --dev pytest httpx pytest-mock pytest-cov
   source .venv/bin/activate
 
 ---

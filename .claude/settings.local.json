@@ -24,7 +24,13 @@
       "Bash(python:*)",
       "Bash(alembic init:*)",
       "Bash(alembic revision:*)",
-      "Bash(alembic upgrade:*)"
+      "Bash(alembic upgrade:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(ruff format:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(rm:*)",
+      "Bash(timeout 30 python:*)"
     ],
     "deny": []
   }

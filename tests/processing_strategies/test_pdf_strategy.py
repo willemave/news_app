@@ -61,10 +61,11 @@ def test_download_content(pdf_strategy: PdfProcessorStrategy, mock_http_client: 
     mock_http_client.get.assert_called_once_with(url)
     assert content == SAMPLE_PDF_BYTES
 
-def test_extract_data_successful(pdf_strategy: PdfProcessorStrategy):
+@pytest.mark.asyncio
+async def test_extract_data_successful(pdf_strategy: PdfProcessorStrategy):
     """Test successful data extraction from PDF content."""
     url = "http://example.com/mydoc.pdf"
-    extracted_data = pdf_strategy.extract_data(SAMPLE_PDF_BYTES, url)
+    extracted_data = await pdf_strategy.extract_data(SAMPLE_PDF_BYTES, url)
 
     assert extracted_data["title"] == "mydoc.pdf"
     assert extracted_data["author"] is None
@@ -75,27 +76,29 @@ def test_extract_data_successful(pdf_strategy: PdfProcessorStrategy):
     assert extracted_data["content_type"] == "pdf"
     assert extracted_data["final_url_after_redirects"] == url
 
-def test_extract_data_no_content(pdf_strategy: PdfProcessorStrategy):
+@pytest.mark.asyncio
+async def test_extract_data_no_content(pdf_strategy: PdfProcessorStrategy):
     """Test data extraction when no PDF content is provided."""
     url = "http://example.com/empty.pdf"
-    extracted_data = pdf_strategy.extract_data(b"", url) # Empty bytes content
+    extracted_data = await pdf_strategy.extract_data(b"", url) # Empty bytes content
     
     assert extracted_data["title"] == "Extraction Failed (No PDF Content)"
     assert extracted_data["binary_content_b64"] is None
     assert extracted_data["content_type"] == "pdf"
 
-def test_extract_data_url_filename_parsing(pdf_strategy: PdfProcessorStrategy):
+@pytest.mark.asyncio
+async def test_extract_data_url_filename_parsing(pdf_strategy: PdfProcessorStrategy):
     """Test filename parsing from URL for title."""
     url1 = "http://example.com/path/to/another_document.pdf"
-    data1 = pdf_strategy.extract_data(SAMPLE_PDF_BYTES, url1)
+    data1 = await pdf_strategy.extract_data(SAMPLE_PDF_BYTES, url1)
     assert data1["title"] == "another_document.pdf"
 
     url2 = "http://example.com/simple" # No extension
-    data2 = pdf_strategy.extract_data(SAMPLE_PDF_BYTES, url2)
+    data2 = await pdf_strategy.extract_data(SAMPLE_PDF_BYTES, url2)
     assert data2["title"] == "simple.pdf" # .pdf should be appended
 
     url3 = "http://example.com/" # Root path
-    data3 = pdf_strategy.extract_data(SAMPLE_PDF_BYTES, url3)
+    data3 = await pdf_strategy.extract_data(SAMPLE_PDF_BYTES, url3)
     assert data3["title"] == "PDF Document.pdf" # Default title + .pdf
 
 def test_prepare_for_llm(pdf_strategy: PdfProcessorStrategy):

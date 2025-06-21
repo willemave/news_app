@@ -20,7 +20,8 @@ from rich.json import JSON
 from rich.columns import Columns
 
 from app.core.db import get_db
-from app.models.schema import Content, ProcessingTask, ContentStatus, ContentType
+from app.models.schema import Content, ProcessingTask
+from app.models.metadata import ContentStatus, ContentType
 
 
 def truncate_text(text: str, max_length: int = 50) -> str:
