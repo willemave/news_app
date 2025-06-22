@@ -156,11 +156,11 @@
       {% endif %}
 
       <!-- Raw Content or Transcript -->
-      {% if content.content_type == 'article' and content.metadata.content %}
+      {% if content.content_type == 'article' and content.metadata.full_markdown %}
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-2">Full Article</h2>
         <div class="prose prose-sm max-w-none text-gray-700 bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
-          {{ content.metadata.content | markdown }}
+          {{ content.metadata.full_markdown | markdown }}
         </div>
       </section>
       {% elif content.content_type == 'podcast' and content.transcript %}

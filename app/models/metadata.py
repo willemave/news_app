@@ -18,6 +18,7 @@ class ContentType(str, Enum):
 
 class ContentStatus(str, Enum):
     NEW = "new"
+    PENDING = "pending"  # Legacy status still in database
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -64,6 +65,7 @@ class StructuredSummary(BaseModel):
                 "quotes": [{"text": "Notable quote from the content", "context": "Author Name"}],
                 "topics": ["AI", "Technology", "Innovation"],
                 "summarization_date": "2025-06-14T10:30:00Z",
+                "full_markdown": "# AI Advances in Natural Language Processing\n\nFull article content in markdown format...",
             }
         }
     )
@@ -80,6 +82,9 @@ class StructuredSummary(BaseModel):
     summarization_date: datetime = Field(default_factory=datetime.utcnow)
     classification: str = Field(
         default="to_read", description="Content classification: 'to_read' or 'skip'"
+    )
+    full_markdown: str = Field(
+        default="", description="Full article content formatted as clean, readable markdown"
     )
 
 
@@ -118,6 +123,7 @@ class ArticleMetadata(BaseContentMetadata):
             "example": {
                 "source": "Import AI",
                 "content": "Full article text...",
+                "full_markdown": "# Full Article\n\nMarkdown formatted content...",
                 "author": "John Doe",
                 "publication_date": "2025-06-14T00:00:00",
                 "content_type": "html",
@@ -141,6 +147,7 @@ class ArticleMetadata(BaseContentMetadata):
     )
 
     content: str | None = Field(None, description="Full article text content")
+    full_markdown: str | None = Field(None, description="Full article content formatted as markdown")
 
     @field_validator("content")
     @classmethod
@@ -345,6 +352,11 @@ class ContentData(BaseModel):
     def source(self) -> str | None:
         """Get content source (substack name, podcast name, subreddit)."""
         return self.metadata.get("source")
+    
+    @property
+    def full_markdown(self) -> str | None:
+        """Get full article content formatted as markdown."""
+        return self.metadata.get("full_markdown")
 
 
 # Helper functions from app/schemas/metadata.py

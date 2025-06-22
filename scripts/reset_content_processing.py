@@ -3,7 +3,7 @@
 Reset content processing in the database.
 This script:
 1. Clears all existing processing tasks
-2. Resets content status to 'new'
+2. Resets content status to 'new' and clears metadata
 3. Creates pending processing tasks for all content
 """
 
@@ -44,10 +44,11 @@ def reset_content_processing():
                     Content.retry_count: 0,
                     Content.checked_out_by: None,
                     Content.checked_out_at: None,
-                    Content.processed_at: None
+                    Content.processed_at: None,
+                    Content.content_metadata: {}  # Clear metadata
                 })
             )
-            print(f"Reset {reset_count} content items to 'new' status")
+            print(f"Reset {reset_count} content items to 'new' status and cleared metadata")
             
             # 3. Create pending processing tasks for all content
             all_content = db.query(Content).all()

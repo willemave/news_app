@@ -149,8 +149,12 @@ class ContentWorker:
                     content=llm_data["content_to_summarize"]
                 )
                 if summary:
-                    content.metadata["summary"] = summary.model_dump()
-                    logger.info(f"Generated summary for content {content.id}")
+                    # Convert StructuredSummary to dict and store
+                    summary_dict = summary.model_dump()
+                    # Extract full_markdown before storing summary
+                    content.metadata["full_markdown"] = summary_dict.pop("full_markdown", "")
+                    content.metadata["summary"] = summary_dict
+                    logger.info(f"Generated summary and formatted markdown for content {content.id}")
                 else:
                     logger.warning(f"Failed to generate summary for content {content.id}")
 
