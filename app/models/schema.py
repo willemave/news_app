@@ -69,8 +69,8 @@ class Content(Base):
         try:
             # Validate using appropriate schema
             validated = validate_content_metadata(self.content_type, value)
-            # Convert back to dict for storage
-            return validated.model_dump(mode="json")
+            # Convert back to dict for storage, excluding None values to preserve original data
+            return validated.model_dump(mode="json", exclude_none=True)
         except ValidationError as e:
             logger.warning(f"Metadata validation failed for {self.content_type}: {e}")
             # For backward compatibility, store as-is but log warning

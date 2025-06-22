@@ -4,7 +4,7 @@ import json
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
 
-from app.services.llm import LLMService, MockProvider
+from app.services.llm import LLMService
 from app.models.metadata import StructuredSummary, SummaryBulletPoint, ContentQuote
 
 
@@ -13,10 +13,12 @@ class TestStructuredSummarization:
     
     @pytest.fixture
     def mock_llm_service(self):
-        """Create LLM service with mock provider."""
-        service = LLMService()
-        service.provider = Mock()
-        return service
+        """Create LLM service with mocked Google client."""
+        with patch('app.services.llm.get_settings') as mock_settings:
+            mock_settings.return_value.google_api_key = 'test-key'
+            service = LLMService()
+            service.client = Mock()
+            return service
     
     @pytest.fixture
     def sample_content(self):
@@ -80,10 +82,10 @@ class TestStructuredSummarization:
         self, mock_llm_service, sample_content, mock_structured_response
     ):
         """Test successful generation of structured summary."""
-        # Mock the provider's generate method
-        mock_llm_service.provider.generate = AsyncMock(
-            return_value=json.dumps(mock_structured_response)
-        )
+        # Mock the Google client's response
+        mock_response = Mock()
+        mock_response.text = json.dumps(mock_structured_response)
+        mock_llm_service.client.models.generate_content = Mock(return_value=mock_response)
         
         result = await mock_llm_service.summarize_content(sample_content)
         
@@ -112,7 +114,9 @@ class TestStructuredSummarization:
         """Test handling of JSON wrapped in markdown code blocks."""
         # Mock response with markdown code blocks
         wrapped_response = f"```json\n{json.dumps(mock_structured_response)}\n```"
-        mock_llm_service.provider.generate = AsyncMock(return_value=wrapped_response)
+        mock_response = Mock()
+        mock_response.text = wrapped_response
+        mock_llm_service.client.models.generate_content = Mock(return_value=mock_response)
         
         result = await mock_llm_service.summarize_content(sample_content)
         
@@ -127,16 +131,14 @@ class TestStructuredSummarization:
         """Test handling of invalid JSON response."""
         # Mock invalid JSON response
         invalid_response = "This is not valid JSON"
-        mock_llm_service.provider.generate = AsyncMock(return_value=invalid_response)
+        mock_response = Mock()
+        mock_response.text = invalid_response
+        mock_llm_service.client.models.generate_content = Mock(return_value=mock_response)
         
         result = await mock_llm_service.summarize_content(sample_content)
         
-        # Should return dict for backward compatibility
-        assert isinstance(result, dict)
-        assert result["overview"] == "Failed to generate summary due to JSON parsing error"
-        assert result["bullet_points"] == []
-        assert result["quotes"] == []
-        assert result["topics"] == []
+        # Should return None on error
+        assert result is None
     
     @pytest.mark.asyncio
     async def test_generate_structured_summary_content_truncation(
@@ -146,26 +148,26 @@ class TestStructuredSummarization:
         # Create very long content
         long_content = "x" * 20000
         
-        mock_llm_service.provider.generate = AsyncMock(
-            return_value=json.dumps(mock_structured_response)
-        )
+        mock_response = Mock()
+        mock_response.text = json.dumps(mock_structured_response)
+        mock_llm_service.client.models.generate_content = Mock(return_value=mock_response)
         
         await mock_llm_service.summarize_content(long_content)
         
-        # Verify the prompt was called with truncated content
-        call_args = mock_llm_service.provider.generate.call_args
-        prompt = call_args[1]["prompt"]
-        assert "x" * 15000 in prompt
-        assert len(prompt) < 20000
+        # Verify the content was truncated
+        call_args = mock_llm_service.client.models.generate_content.call_args
+        contents = call_args[1]["contents"]
+        assert "x" * 15000 in contents
+        assert "..." in contents
     
     @pytest.mark.asyncio
     async def test_summarize_content(
         self, mock_llm_service, sample_content, mock_structured_response
     ):
         """Test summarize_content returns structured summary."""
-        mock_llm_service.provider.generate = AsyncMock(
-            return_value=json.dumps(mock_structured_response)
-        )
+        mock_response = Mock()
+        mock_response.text = json.dumps(mock_structured_response)
+        mock_llm_service.client.models.generate_content = Mock(return_value=mock_response)
         
         result = await mock_llm_service.summarize_content(sample_content)
         
@@ -188,9 +190,9 @@ class TestStructuredSummarization:
             "quotes": [],
             "topics": ["Test", "Summary", "Analysis"]
         }
-        mock_llm_service.provider.generate = AsyncMock(
-            return_value=json.dumps(mock_response)
-        )
+        mock_resp = Mock()
+        mock_resp.text = json.dumps(mock_response)
+        mock_llm_service.client.models.generate_content = Mock(return_value=mock_resp)
         
         result = await mock_llm_service.summarize_content(
             sample_content,
@@ -198,25 +200,12 @@ class TestStructuredSummarization:
             max_quotes=2
         )
         
-        # Should return structured summary
-        assert isinstance(result, (StructuredSummary, dict))
-        if isinstance(result, StructuredSummary):
-            assert len(result.overview) >= 50
-            assert len(result.bullet_points) >= 3
-        elif isinstance(result, dict):
-            assert "overview" in result
-            assert "bullet_points" in result
+        # Should return StructuredSummary
+        assert isinstance(result, StructuredSummary)
+        assert len(result.overview) >= 50
+        assert len(result.bullet_points) >= 3
     
-    @pytest.mark.asyncio
-    async def test_mock_provider_structured_summary(self):
-        """Test that MockProvider returns appropriate mock data."""
-        service = LLMService()
-        service.provider = MockProvider()
-        
-        result = await service.summarize_content("Test content")
-        
-        # MockProvider should return a dict that can be converted to StructuredSummary
-        assert result is not None
+    # Test removed - MockProvider no longer exists
     
     @pytest.mark.asyncio
     async def test_bullet_point_categories(
@@ -236,9 +225,9 @@ class TestStructuredSummarization:
             "topics": ["Test"]
         }
         
-        mock_llm_service.provider.generate = AsyncMock(
-            return_value=json.dumps(response_with_categories)
-        )
+        mock_response = Mock()
+        mock_response.text = json.dumps(response_with_categories)
+        mock_llm_service.client.models.generate_content = Mock(return_value=mock_response)
         
         result = await mock_llm_service.summarize_content(sample_content)
         

@@ -22,6 +22,8 @@
     exceptions/   # custom exceptions
     static/
     tests/        # pytest test files
+  logs/           # holds all log files
+  scripts/.       # holds all scripts     
 ---
 #### 2  FastAPI Best Practices
 * Use **lifespan** context, not `startup/shutdown` events.

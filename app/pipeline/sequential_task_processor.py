@@ -197,13 +197,15 @@ class SequentialTaskProcessor:
 
                 if summary:
                     # Update content with summary
-                    metadata = content.content_metadata or {}
+                    # Create a new dictionary to ensure SQLAlchemy detects the change
+                    metadata = dict(content.content_metadata or {})
                     if hasattr(summary, "model_dump"):
                         metadata["summary"] = summary.model_dump(mode="json")
                     else:
                         metadata["summary"] = summary
                     metadata["summarization_date"] = datetime.utcnow().isoformat()
 
+                    # Assign new dictionary to trigger SQLAlchemy change detection
                     content.content_metadata = metadata
                     content.status = "completed"
                     content.processed_at = datetime.utcnow()
