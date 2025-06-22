@@ -38,23 +38,34 @@ def resummarize_podcasts(dry_run: bool = False, limit: int | None = None):
         dry_run: If True, just show what would be processed without making changes
         limit: Maximum number of podcasts to process
     """
-    llm_service = LLMService()
+    print(f"Starting resummarize_podcasts with dry_run={dry_run}, limit={limit}")
+    
+    try:
+        llm_service = LLMService()
+        print("LLMService initialized")
+    except Exception as e:
+        print(f"Failed to initialize LLMService: {e}")
+        return
     
     with get_db() as db:
         # Find all podcasts with transcripts
-        query = db.query(Content).filter(
-            and_(
-                Content.content_type == "podcast",
-                Content.content_metadata["transcript"].isnot(None)
-            )
-        )
+        # First get all podcasts
+        query = db.query(Content).filter(Content.content_type == "podcast")
         
         if limit:
             query = query.limit(limit)
             
         podcasts = query.all()
         
-        logger.info(f"Found {len(podcasts)} podcasts with transcripts")
+        # Filter for those with transcripts
+        podcasts_with_transcripts = []
+        for podcast in podcasts:
+            if podcast.content_metadata and podcast.content_metadata.get("transcript"):
+                podcasts_with_transcripts.append(podcast)
+        
+        logger.info(f"Found {len(podcasts_with_transcripts)} podcasts with transcripts out of {len(podcasts)} total podcasts")
+        
+        podcasts = podcasts_with_transcripts
         
         if dry_run:
             logger.info("DRY RUN - No changes will be made")

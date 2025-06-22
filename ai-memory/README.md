@@ -21,14 +21,16 @@
 * **HTTP Client**: [`RobustHttpClient`](app/http_client/robust_http_client.py) with retry logic and rate limiting
 
 ### API & UI
-* **FastAPI**: [`main.py`](app/main.py:15) with routers for [`articles`](app/routers/articles.py), [`podcasts`](app/routers/podcasts.py), [`admin`](app/routers/admin.py)
+* **FastAPI**: [`main.py`](app/main.py:15) with routers for content, admin, logs, and API
+* **Routers**: [`content`](app/routers/content.py), [`api_content`](app/routers/api_content.py), [`admin`](app/routers/admin.py), [`logs`](app/routers/logs.py)
 * **Templates**: Jinja2 with markdown filter support, HTMX for dynamic actions
 * **Static**: TailwindCSS for styling
 
 ### Data Layer
-* **Unified Model**: [`Content`](app/models/schema.py:24) for all content types (articles, podcasts)
+* **Unified Model**: [`Content`](app/models/schema.py:24) for all content types (articles, podcasts) with classification support
 * **Task Queue**: [`ProcessingTask`](app/models/schema.py:59) for background job management
-* **Enums**: [`ContentType`](app/models/metadata.py:14), [`ContentStatus`](app/models/metadata.py:19) for type safety
+* **Event Logging**: [`EventLog`](app/models/schema.py) for generic event tracking with JSON data
+* **Enums**: [`ContentType`](app/models/metadata.py:14), [`ContentStatus`](app/models/metadata.py:19), [`ContentClassification`](app/models/metadata.py) for type safety
 * **Database**: SQLite/PostgreSQL via SQLAlchemy with JSON metadata support
 * **Schema Validation**: Pydantic models for metadata validation:
   - [`ArticleMetadata`](app/models/metadata.py:102) - Validates article-specific fields
@@ -42,9 +44,9 @@
 * **Providers**: [`OpenAIProvider`](app/services/llm.py:26), [`MockProvider`](app/services/llm.py:58) for testing
 * **Functions**: 
   - [`summarize_content()`](app/services/llm.py:87) - Supports both simple and structured summaries
-  - [`generate_structured_summary()`](app/services/llm.py:150) - Creates summaries with bullet points and quotes
+  - [`generate_structured_summary()`](app/services/llm.py:150) - Creates summaries with bullet points, quotes, and classification
   - [`extract_topics()`](app/services/llm.py:122)
-* **Structured Summaries**: New format with overview, categorized bullet points, quotes, and topics
+* **Structured Summaries**: Format with overview, categorized bullet points, quotes, topics, and content classification
 * **Error Handling**: Robust JSON parsing with fallback for malformed responses
 
 ### Queue System
@@ -114,6 +116,7 @@
 * [`app/services/queue.py`](app/services/queue.py) - Database-backed task queue
 * [`app/services/llm.py`](app/services/llm.py) - LLM service with provider abstraction
 * [`app/services/http.py`](app/services/http.py) - HTTP service wrapper
+* [`app/services/event_logger.py`](app/services/event_logger.py) - Generic event logging with timing and stats
 
 ### Domain Models
 * [`app/models/metadata.py`](app/models/metadata.py) - Unified metadata models (merged from schemas/metadata.py and domain/content.py)
@@ -131,8 +134,9 @@
 
 ### Web Interface
 * [`app/routers/content.py`](app/routers/content.py) - Unified content viewing endpoints
+* [`app/routers/api_content.py`](app/routers/api_content.py) - Content API endpoints
 * [`app/routers/admin.py`](app/routers/admin.py) - Admin dashboard and controls
-* [`app/api/content.py`](app/api/content.py) - Content API endpoints
+* [`app/routers/logs.py`](app/routers/logs.py) - Log file viewer interface
 * [`templates/`](templates/) - Jinja2 templates with markdown support
 * [`static/`](static/) - TailwindCSS styles and JavaScript
 
@@ -169,11 +173,13 @@
 * **Retry Logic**: Automatic retry with increasing delays
 * **Task Types**: Specific task types for each processing stage
 
-### Error Handling
+### Error Handling & Observability
 * **Generic Logger**: [`GenericErrorLogger`](app/utils/error_logger.py:29) captures full context
+* **Event Logger**: [`EventLogger`](app/services/event_logger.py) tracks system events in database
 * **Structured Logs**: JSON Lines format for easy parsing
 * **Component Isolation**: Each component has its own error log
 * **Context Preservation**: HTTP responses, stack traces, operation details
+* **Dual Logging**: File-based logs (viewable via admin) + database event logs
 
 ### Content Processing Pipeline
 1. **Strategy Selection**: Factory pattern determines processor
@@ -204,6 +210,10 @@
 * **Implemented**: Source tracking in metadata (substack name, podcast name, subreddit)
 * **Implemented**: New strategy pattern in app/strategies/ for content processing
 * **Implemented**: Enhanced error logging with context in scrapers
+* **Implemented**: Content classification system (TO_READ/SKIP)
+* **Implemented**: Generic event logging system with timing and stats
+* **Implemented**: Admin log file viewer interface
 * **In Progress**: Migration from old models to unified schema
+* **In Progress**: Templates for log viewer (logs_list.html, log_detail.html)
 * **Planned**: Additional LLM providers (Anthropic, local models)
-* **Planned**: Enhanced content filtering and categorization
+* **Planned**: Enhanced content filtering based on classification
