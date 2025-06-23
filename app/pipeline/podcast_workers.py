@@ -1,6 +1,7 @@
 import os
 import re
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import httpx
@@ -11,6 +12,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
+from app.services.openai_llm import get_openai_transcription_service
 from app.services.queue import TaskType, get_queue_service
 from app.utils.error_logger import create_error_logger
 
@@ -110,9 +112,7 @@ class PodcastDownloadWorker:
 
         headers = {"User-Agent": "Mozilla/5.0 (compatible; NewsAggregator/1.0; Podcast Downloader)"}
 
-        with httpx.Client(
-            timeout=timeout, follow_redirects=True, headers=headers
-        ) as client:
+        with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers) as client:
             # First, try a HEAD request to validate the URL
             try:
                 head_response = client.head(audio_url)
@@ -277,24 +277,20 @@ class PodcastDownloadWorker:
 
 
 class PodcastTranscribeWorker:
-    """Worker for transcribing podcast audio files."""
+    """Worker for transcribing podcast audio files using OpenAI."""
 
-    def __init__(self, model_size: str = "base"):
-        self.model_size = model_size
-        self.model = None
+    def __init__(self):
         self.queue_service = get_queue_service()
+        self.transcription_service = None
 
-    def _load_model(self):
-        """Lazy load the Whisper model to save memory."""
-        if self.model is None:
+    def _get_transcription_service(self):
+        """Lazy load the OpenAI transcription service."""
+        if self.transcription_service is None:
             try:
-                from faster_whisper import WhisperModel
-
-                logger.info(f"Loading Whisper model: {self.model_size}")
-                self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
-                logger.info("Whisper model loaded successfully")
-            except ImportError:
-                logger.error("faster-whisper not installed. Install with: uv add faster-whisper")
+                self.transcription_service = get_openai_transcription_service()
+                logger.info("OpenAI transcription service initialized")
+            except ValueError as e:
+                logger.error(f"Failed to initialize OpenAI transcription service: {e}")
                 raise
 
     def process_transcribe_task(self, content_id: int) -> bool:
@@ -330,18 +326,15 @@ class PodcastTranscribeWorker:
                     db.commit()
                     return False
 
-                # Load model and transcribe
-                self._load_model()
+                # Get transcription service and transcribe
+                self._get_transcription_service()
 
                 logger.info(f"Starting transcription of: {file_path}")
 
-                # Transcribe the audio
-                segments, info = self.model.transcribe(file_path, beam_size=5)
-
-                # Collect all text segments
-                transcript_text = ""
-                for segment in segments:
-                    transcript_text += segment.text + " "
+                # Transcribe the audio using OpenAI
+                transcript_text, detected_language = self.transcription_service.transcribe_audio(
+                    Path(file_path)
+                )
 
                 # Create text file path (same directory as audio, but with .txt extension)
                 base_path = os.path.splitext(file_path)[0]
@@ -352,15 +345,16 @@ class PodcastTranscribeWorker:
                     f.write(transcript_text.strip())
 
                 logger.info(f"Transcription completed: {text_path}")
-                lang_prob = f"{info.language_probability:.2f}"
-                logger.info(f"Detected language: {info.language} (probability: {lang_prob})")
+                if detected_language:
+                    logger.info(f"Detected language: {detected_language}")
 
                 # Update content metadata
                 content.metadata["transcript_path"] = text_path
                 content.metadata["transcript"] = transcript_text.strip()
                 content.metadata["transcription_date"] = datetime.utcnow().isoformat()
-                content.metadata["detected_language"] = info.language
-                content.metadata["language_probability"] = info.language_probability
+                if detected_language:
+                    content.metadata["detected_language"] = detected_language
+                content.metadata["transcription_service"] = "openai"
 
                 # Update database
                 domain_to_content(content, db_content)
@@ -390,9 +384,8 @@ class PodcastTranscribeWorker:
 
             return False
 
-    def cleanup_model(self):
-        """Clean up the loaded model to free memory."""
-        if self.model is not None:
-            del self.model
-            self.model = None
-            logger.info("Whisper model cleaned up")
+    def cleanup_service(self):
+        """Clean up the transcription service."""
+        # OpenAI service doesn't need cleanup as it's API-based
+        self.transcription_service = None
+        logger.info("Transcription service cleaned up")
