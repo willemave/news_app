@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch, MagicMock
 import httpx
 
 from app.services.http import HttpService, NonRetryableError
-from app.services.llm import LLMService, GoogleProvider
+from app.services.google_flash import GoogleFlashService
 from app.models.metadata import StructuredSummary
 
 
@@ -91,18 +91,20 @@ class TestHttpServiceSync:
             assert "SSL error" in str(exc_info.value)
 
 
-class TestLLMServiceSync:
-    """Test synchronous methods in LLMService."""
+class TestGoogleFlashServiceSync:
+    """Test synchronous methods in GoogleFlashService."""
     
     @pytest.fixture
-    def llm_service(self):
-        """Create LLMService instance with mocked provider."""
-        with patch('app.services.llm.LLMService._initialize_provider'):
-            service = LLMService()
-            service.provider = Mock(spec=GoogleProvider)
-            return service
+    def google_flash_service(self):
+        """Create GoogleFlashService instance with mocked client."""
+        with patch('app.services.google_flash.get_settings') as mock_settings:
+            mock_settings.return_value.google_api_key = 'test-key'
+            with patch('google.genai.Client'):
+                service = GoogleFlashService()
+                service.client = Mock()
+                return service
     
-    def test_summarize_content_sync_success(self, llm_service):
+    def test_summarize_content_sync_success(self, google_flash_service):
         """Test successful synchronous content summarization."""
         # Mock the Google provider response
         mock_response = Mock()
@@ -122,11 +124,9 @@ class TestLLMServiceSync:
         }
         '''
         
-        llm_service.provider.client = Mock()
-        llm_service.provider.client.models.generate_content.return_value = mock_response
-        llm_service.provider.model_name = "test-model"
+        google_flash_service.client.models.generate_content.return_value = mock_response
         
-        result = llm_service.summarize_content_sync("Test content to summarize")
+        result = google_flash_service.summarize_content_sync("Test content to summarize")
         
         assert isinstance(result, StructuredSummary)
         assert result.title == "Test Article Summary"
@@ -134,34 +134,34 @@ class TestLLMServiceSync:
         assert len(result.quotes) == 1
         assert result.classification == "to_read"
     
-    def test_summarize_content_sync_json_error(self, llm_service):
+    def test_summarize_content_sync_json_error(self, google_flash_service):
         """Test JSON parsing error handling."""
         # Mock invalid JSON response
         mock_response = Mock()
         mock_response.text = "Invalid JSON {not closed"
         
-        llm_service.provider.client = Mock()
-        llm_service.provider.client.models.generate_content.return_value = mock_response
-        llm_service.provider.model_name = "test-model"
+        google_flash_service.provider.client = Mock()
+        google_flash_service.provider.client.models.generate_content.return_value = mock_response
+        google_flash_service.provider.model_name = "test-model"
         
-        result = llm_service.summarize_content_sync("Test content")
+        result = google_flash_service.summarize_content_sync("Test content")
         
         # Should return error dict instead of None
         assert isinstance(result, dict)
         assert result["overview"] == "Failed to generate summary due to JSON parsing error"
         assert result["classification"] == "to_read"
     
-    def test_summarize_content_sync_non_google_provider(self, llm_service):
+    def test_summarize_content_sync_non_google_provider(self, google_flash_service):
         """Test behavior with non-Google provider."""
         # Set provider to non-Google
-        llm_service.provider = Mock()  # Not GoogleProvider instance
+        google_flash_service.provider = Mock()  # Not GoogleProvider instance
         
-        result = llm_service.summarize_content_sync("Test content")
+        result = google_flash_service.summarize_content_sync("Test content")
         
         # Should return None for non-Google providers
         assert result is None
     
-    def test_summarize_content_sync_truncation(self, llm_service):
+    def test_summarize_content_sync_truncation(self, google_flash_service):
         """Test content truncation for long inputs."""
         # Create very long content
         long_content = "x" * 20000
@@ -169,9 +169,9 @@ class TestLLMServiceSync:
         mock_response = Mock()
         mock_response.text = '{"title": "Test", "overview": "Truncated", "bullet_points": [], "quotes": [], "topics": [], "classification": "to_read"}'
         
-        llm_service.provider.client = Mock()
-        llm_service.provider.client.models.generate_content.return_value = mock_response
-        llm_service.provider.model_name = "test-model"
+        google_flash_service.provider.client = Mock()
+        google_flash_service.provider.client.models.generate_content.return_value = mock_response
+        google_flash_service.provider.model_name = "test-model"
         
         # Capture the actual prompt sent
         actual_prompt = None
@@ -180,9 +180,9 @@ class TestLLMServiceSync:
             actual_prompt = contents
             return mock_response
         
-        llm_service.provider.client.models.generate_content.side_effect = capture_prompt
+        google_flash_service.provider.client.models.generate_content.side_effect = capture_prompt
         
-        result = llm_service.summarize_content_sync(long_content)
+        result = google_flash_service.summarize_content_sync(long_content)
         
         # Verify content was truncated
         assert "..." in actual_prompt

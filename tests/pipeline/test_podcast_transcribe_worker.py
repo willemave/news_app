@@ -1,4 +1,5 @@
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -240,3 +241,139 @@ class TestPodcastTranscribeWorker:
         worker.cleanup_service()
         
         assert worker.transcription_service is None
+
+
+class TestOpenAITranscriptionService:
+    """Test cases for OpenAITranscriptionService."""
+    
+    @patch("app.services.openai_llm.logger")
+    @patch("app.services.openai_llm.get_settings")
+    def test_init_no_api_key(self, mock_get_settings, mock_logger):
+        """Test initialization without API key."""
+        from app.services.openai_llm import OpenAITranscriptionService
+        
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = None
+        mock_get_settings.return_value = mock_settings
+        
+        with pytest.raises(ValueError, match="OpenAI API key is required"):
+            OpenAITranscriptionService()
+    
+    @patch("app.services.openai_llm.OpenAI")
+    @patch("app.services.openai_llm.get_settings")
+    def test_get_audio_format(self, mock_get_settings, mock_openai):
+        """Test audio format detection."""
+        from app.services.openai_llm import OpenAITranscriptionService
+        
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "test-key"
+        mock_get_settings.return_value = mock_settings
+        
+        service = OpenAITranscriptionService()
+        
+        assert service._get_audio_format(Path("test.mp3")) == "mp3"
+        assert service._get_audio_format(Path("test.m4a")) == "mp4"
+        assert service._get_audio_format(Path("test.wav")) == "wav"
+        assert service._get_audio_format(Path("test.unknown")) == "mp3"  # default
+    
+    @patch("app.services.openai_llm.OpenAI")
+    @patch("app.services.openai_llm.get_settings")
+    def test_get_transcription_prompt(self, mock_get_settings, mock_openai):
+        """Test prompt generation based on filename."""
+        from app.services.openai_llm import OpenAITranscriptionService
+        
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "test-key"
+        mock_get_settings.return_value = mock_settings
+        
+        service = OpenAITranscriptionService()
+        
+        # Test different filename patterns
+        prompt = service._get_transcription_prompt(Path("interview-with-expert.mp3"))
+        assert "interview" in prompt.lower()
+        
+        prompt = service._get_transcription_prompt(Path("tech-news-ai.mp3"))
+        assert "technology" in prompt.lower()
+        
+        prompt = service._get_transcription_prompt(Path("bg2-episode-123.mp3"))
+        assert "Bill Gurley" in prompt
+        assert "Brad Gerstner" in prompt
+        
+        prompt = service._get_transcription_prompt(Path("random-podcast.mp3"))
+        assert "podcast episode" in prompt
+    
+    @patch("app.services.openai_llm.os.path.getsize")
+    @patch("app.services.openai_llm.OpenAI")
+    @patch("app.services.openai_llm.get_settings")
+    def test_check_file_size(self, mock_get_settings, mock_openai, mock_getsize):
+        """Test file size checking."""
+        from app.services.openai_llm import OpenAITranscriptionService, MAX_FILE_SIZE_BYTES
+        
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "test-key"
+        mock_get_settings.return_value = mock_settings
+        
+        service = OpenAITranscriptionService()
+        
+        # Test file under limit
+        mock_getsize.return_value = MAX_FILE_SIZE_BYTES - 1
+        assert service._check_file_size(Path("test.mp3")) is True
+        
+        # Test file at limit
+        mock_getsize.return_value = MAX_FILE_SIZE_BYTES
+        assert service._check_file_size(Path("test.mp3")) is True
+        
+        # Test file over limit
+        mock_getsize.return_value = MAX_FILE_SIZE_BYTES + 1
+        assert service._check_file_size(Path("test.mp3")) is False
+    
+    @patch("app.services.openai_llm.PYDUB_AVAILABLE", True)
+    @patch("app.services.openai_llm.AudioSegment")
+    @patch("app.services.openai_llm.tempfile.mkdtemp")
+    @patch("app.services.openai_llm.OpenAI")
+    @patch("app.services.openai_llm.get_settings")
+    def test_split_audio_file(self, mock_get_settings, mock_openai, mock_mkdtemp, mock_audio_segment):
+        """Test audio file splitting."""
+        from app.services.openai_llm import OpenAITranscriptionService, CHUNK_DURATION_MS
+        
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "test-key"
+        mock_get_settings.return_value = mock_settings
+        
+        service = OpenAITranscriptionService()
+        
+        # Mock audio segment with 25 minutes duration
+        mock_audio = MagicMock()
+        mock_audio.__len__.return_value = 25 * 60 * 1000  # 25 minutes in ms
+        mock_audio.__getitem__.return_value = mock_audio  # For slicing
+        mock_audio.export = MagicMock()
+        
+        mock_audio_segment.from_file.return_value = mock_audio
+        mock_mkdtemp.return_value = "/tmp/audio_chunks_123"
+        
+        # Execute
+        chunks = service._split_audio_file(Path("test.mp3"))
+        
+        # Should create 3 chunks (10 min, 10 min, 5 min)
+        assert len(chunks) == 3
+        assert all(chunk.parent.name == "audio_chunks_123" for chunk in chunks)
+        
+        # Verify exports were called
+        assert mock_audio.export.call_count == 3
+    
+    @patch("app.services.openai_llm.PYDUB_AVAILABLE", False)
+    @patch("app.services.openai_llm.OpenAI")
+    @patch("app.services.openai_llm.get_settings")
+    def test_split_audio_file_no_pydub(self, mock_get_settings, mock_openai):
+        """Test audio file splitting when pydub is not available."""
+        from app.services.openai_llm import OpenAITranscriptionService
+        
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "test-key"
+        mock_get_settings.return_value = mock_settings
+        
+        service = OpenAITranscriptionService()
+        
+        # Should raise RuntimeError
+        with pytest.raises(RuntimeError, match="pydub is not available"):
+            service._split_audio_file(Path("test.mp3"))
