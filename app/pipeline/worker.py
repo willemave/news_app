@@ -145,7 +145,7 @@ class ContentWorker:
 
             # Generate structured summary using LLM service
             if llm_data.get("content_to_summarize"):
-                summary = self.llm_service.summarize_content_sync(
+                summary = self.llm_service.summarize_content(
                     content=llm_data["content_to_summarize"]
                 )
                 if summary:

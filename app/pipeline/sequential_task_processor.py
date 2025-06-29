@@ -193,7 +193,7 @@ class SequentialTaskProcessor:
                     return False
 
                 # Use LLM to generate summary synchronously
-                summary = self.llm_service.summarize_content_sync(
+                summary = self.llm_service.summarize_content(
                     text_to_summarize, content_type=content.content_type
                 )
 
@@ -235,9 +235,16 @@ class SequentialTaskProcessor:
         logger.info(f"Starting sequential task processor (worker_id: {self.worker_id})")
 
         # Set up signal handlers
+        self._shutdown_requested = False
+
         def signal_handler(signum, frame):
-            logger.info("Received shutdown signal")
-            self.running = False
+            if not self._shutdown_requested:
+                logger.info("\n🛑 Received shutdown signal (Ctrl+C) - stopping gracefully...")
+                self._shutdown_requested = True
+                self.running = False
+            else:
+                logger.warning("\n⚠️  Force shutdown requested - exiting immediately")
+                sys.exit(1)
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -269,13 +276,25 @@ class SequentialTaskProcessor:
                         logger.debug(
                             f"Startup phase: quick poll {startup_polls}/{startup_phase_polls}"
                         )
-                        time.sleep(0.1)  # Quick 100ms polls during startup
+                        # Check for shutdown more frequently
+                        for _ in range(10):  # 10 x 10ms = 100ms total
+                            if not self.running:
+                                break
+                            time.sleep(0.01)
                     elif consecutive_empty_polls >= max_empty_polls:
                         # Back off when queue is consistently empty
                         logger.debug("Queue empty, backing off...")
-                        time.sleep(5)
+                        # Check for shutdown every 100ms during long waits
+                        for _ in range(50):  # 50 x 100ms = 5s total
+                            if not self.running:
+                                break
+                            time.sleep(0.1)
                     else:
-                        time.sleep(1)
+                        # Check for shutdown every 100ms
+                        for _ in range(10):  # 10 x 100ms = 1s total
+                            if not self.running:
+                                break
+                            time.sleep(0.1)
                     continue
 
                 # Reset empty poll counter

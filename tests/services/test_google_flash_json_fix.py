@@ -73,7 +73,7 @@ class TestGoogleFlashServiceWithTruncation:
         mock_service.client.models.generate_content = Mock(return_value=mock_response)
         
         # Test synchronous version
-        result = mock_service.summarize_content_sync("Test content")
+        result = mock_service.summarize_content("Test content")
         
         # Should handle the truncation gracefully
         assert result is None or isinstance(result, StructuredSummary)
@@ -86,7 +86,7 @@ class TestGoogleFlashServiceWithTruncation:
         
         mock_service.client.models.generate_content = Mock(return_value=mock_response)
         
-        result = mock_service.summarize_content_sync("Test content")
+        result = mock_service.summarize_content("Test content")
         assert result is None
     
     def test_handle_markdown_wrapped_json(self, mock_service):
@@ -112,7 +112,7 @@ class TestGoogleFlashServiceWithTruncation:
         
         mock_service.client.models.generate_content = Mock(return_value=mock_response)
         
-        result = mock_service.summarize_content_sync("Test content")
+        result = mock_service.summarize_content("Test content")
         assert isinstance(result, StructuredSummary)
         assert result.title == "Test Title"
     
@@ -147,7 +147,7 @@ class TestGoogleFlashServiceWithTruncation:
         
         mock_service.client.models.generate_content = Mock(side_effect=capture_prompt)
         
-        result = mock_service.summarize_content_sync(very_long_content)
+        result = mock_service.summarize_content(very_long_content)
         
         # Verify content was truncated
         assert prompt_sent is not None
@@ -184,7 +184,7 @@ class TestGoogleFlashServiceWithTruncation:
         
         # Test with long content
         long_content = "X" * 15000
-        result = mock_service.summarize_content_sync(long_content)
+        result = mock_service.summarize_content(long_content)
         
         # Verify reduced token limit was used
         assert config_used is not None

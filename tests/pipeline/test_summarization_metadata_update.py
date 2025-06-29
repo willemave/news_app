@@ -69,7 +69,7 @@ def test_summarize_task_updates_podcast_metadata(db_session, mock_structured_sum
     # Create processor and mock LLM service
     processor = SequentialTaskProcessor()
     
-    with patch.object(processor.llm_service, 'summarize_content_sync') as mock_summarize:
+    with patch.object(processor.llm_service, 'summarize_content') as mock_summarize:
         mock_summarize.return_value = mock_structured_summary
         
         # Process the summarize task
@@ -137,7 +137,7 @@ def test_summarize_task_updates_article_metadata(db_session, mock_structured_sum
     # Create processor and mock LLM service
     processor = SequentialTaskProcessor()
     
-    with patch.object(processor.llm_service, 'summarize_content_sync') as mock_summarize:
+    with patch.object(processor.llm_service, 'summarize_content') as mock_summarize:
         mock_summarize.return_value = mock_structured_summary
         
         # Process the summarize task
