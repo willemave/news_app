@@ -23,7 +23,7 @@ from sqlalchemy import and_
 from app.core.db import get_db
 from app.core.logging import get_logger, setup_logging
 from app.models.schema import Content
-from app.services.llm import LLMService
+from app.services.google_flash import GoogleFlashService
 
 # Set up logging
 setup_logging()
@@ -41,10 +41,10 @@ def resummarize_podcasts(dry_run: bool = False, limit: int | None = None):
     print(f"Starting resummarize_podcasts with dry_run={dry_run}, limit={limit}")
     
     try:
-        llm_service = LLMService()
-        print("LLMService initialized")
+        llm_service = GoogleFlashService()
+        print("GoogleFlashService initialized")
     except Exception as e:
-        print(f"Failed to initialize LLMService: {e}")
+        print(f"Failed to initialize GoogleFlashService: {e}")
         return
     
     with get_db() as db:

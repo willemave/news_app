@@ -13,7 +13,7 @@ from app.models.schema import Content
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker
 from app.scraping.runner import ScraperRunner
-from app.services.llm import LLMService
+from app.services.google_flash import GoogleFlashService
 from app.services.queue import QueueService, TaskType
 
 logger = get_logger(__name__)
@@ -26,8 +26,8 @@ class SequentialTaskProcessor:
         logger.debug("Initializing SequentialTaskProcessor...")
         self.queue_service = QueueService()
         logger.debug("QueueService initialized")
-        self.llm_service = LLMService()
-        logger.debug("LLMService initialized")
+        self.llm_service = GoogleFlashService()
+        logger.debug("GoogleFlashService initialized")
         self.settings = get_settings()
         logger.debug("Settings loaded")
         self.running = True
@@ -193,7 +193,9 @@ class SequentialTaskProcessor:
                     return False
 
                 # Use LLM to generate summary synchronously
-                summary = self.llm_service.summarize_content_sync(text_to_summarize)
+                summary = self.llm_service.summarize_content_sync(
+                    text_to_summarize, content_type=content.content_type
+                )
 
                 if summary:
                     # Update content with summary

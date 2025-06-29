@@ -10,7 +10,7 @@ from app.pipeline.checkout import get_checkout_manager
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.processing_strategies.registry import get_strategy_registry
 from app.services.http import NonRetryableError, get_http_service
-from app.services.llm import get_llm_service
+from app.services.google_flash import get_google_flash_service
 from app.services.queue import TaskType, get_queue_service
 from app.utils.error_logger import create_error_logger
 
@@ -24,7 +24,7 @@ class ContentWorker:
     def __init__(self):
         self.checkout_manager = get_checkout_manager()
         self.http_service = get_http_service()
-        self.llm_service = get_llm_service()
+        self.llm_service = get_google_flash_service()
         self.queue_service = get_queue_service()
         self.strategy_registry = get_strategy_registry()
         self.podcast_download_worker = PodcastDownloadWorker()

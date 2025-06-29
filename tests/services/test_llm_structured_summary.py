@@ -4,7 +4,7 @@ import json
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
 
-from app.services.llm import LLMService
+from app.services.google_flash import GoogleFlashService
 from app.models.metadata import StructuredSummary, SummaryBulletPoint, ContentQuote
 
 
@@ -14,9 +14,9 @@ class TestStructuredSummarization:
     @pytest.fixture
     def mock_llm_service(self):
         """Create LLM service with mocked Google client."""
-        with patch('app.services.llm.get_settings') as mock_settings:
+        with patch('app.services.google_flash.get_settings') as mock_settings:
             mock_settings.return_value.google_api_key = 'test-key'
-            service = LLMService()
+            service = GoogleFlashService()
             service.client = Mock()
             return service
     
