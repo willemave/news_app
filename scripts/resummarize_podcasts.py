@@ -90,7 +90,7 @@ def resummarize_podcasts(dry_run: bool = False, limit: int | None = None):
                 
                 # Generate new summary
                 logger.info(f"Generating summary for podcast {podcast.id}")
-                summary = llm_service.summarize_content_sync(transcript)
+                summary = llm_service.summarize_content(transcript)
                 
                 if summary:
                     # Update content with new summary

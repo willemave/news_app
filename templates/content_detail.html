@@ -79,13 +79,7 @@
       {% if content.structured_summary %}
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-4">Summary</h2>
-        
-        <!-- Overview -->
-        {% if content.structured_summary.overview %}
-        <div class="mb-4">
-          <p class="text-gray-700 leading-relaxed">{{ content.structured_summary.overview }}</p>
-        </div>
-        {% endif %}
+      
         
         <!-- Key Points -->
         {% if content.bullet_points %}

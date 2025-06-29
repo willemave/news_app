@@ -2,6 +2,7 @@
 Unified Substack scraper following the new architecture.
 """
 
+import contextlib
 import re
 from datetime import datetime
 from typing import Any
@@ -186,10 +187,8 @@ class SubstackScraper(BaseScraper):
         # Parse publication date
         publication_date = None
         if entry.get("published_parsed"):
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 publication_date = datetime(*entry["published_parsed"][:6])
-            except (TypeError, ValueError):
-                pass
 
         # Create item for unified system
         item = {
@@ -213,13 +212,12 @@ class SubstackScraper(BaseScraper):
         return item
 
 
-async def run_substack_scraper():
+def run_substack_scraper():
     """Initialize and run the Substack scraper."""
     scraper = SubstackScraper()
-    return await scraper.run()
+    return scraper.run()
 
 
 if __name__ == "__main__":
-    import asyncio
-    count = asyncio.run(run_substack_scraper())
+    count = run_substack_scraper()
     print(f"Substack scraper processed {count} items")

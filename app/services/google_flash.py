@@ -187,7 +187,7 @@ class GoogleFlashService:
         logger.info("Initialized Google Gemini provider for summarization")
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    async def summarize_content(
+    def summarize_content(
         self, content: str, max_bullet_points: int = 6, max_quotes: int = 3, content_type: str = "article"
     ) -> StructuredSummary | None:
         """Summarize content using LLM and classify it.
@@ -196,163 +196,7 @@ class GoogleFlashService:
             content: The content to summarize
             max_bullet_points: Maximum number of bullet points to generate (default: 6)
             max_quotes: Maximum number of quotes to extract (default: 3)
-
-        Returns:
-            StructuredSummary with bullet points, quotes, classification, and full_markdown
-        """
-        try:
-            # Generate prompt based on content type
-            prompt = generate_summary_prompt(content_type, max_bullet_points, max_quotes, content)
-
-            config = {
-                "temperature": 0.7,
-                "response_mime_type": "application/json",
-                "response_schema": StructuredSummary,
-            }
-
-            response = self.client.models.generate_content(
-                model=self.model_name, contents=prompt, config=config
-            )
-
-            # Handle response structure properly
-            response_text = None
-            
-            # Check if response was truncated due to MAX_TOKENS
-            if hasattr(response, "candidates") and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, "finish_reason") and str(candidate.finish_reason) == "FinishReason.MAX_TOKENS":
-                    logger.warning("Response was truncated due to MAX_TOKENS limit")
-                    # Try to extract partial response
-                    if hasattr(candidate, "content") and hasattr(candidate.content, "parts") and candidate.content.parts:
-                        parts_text = []
-                        for part in candidate.content.parts:
-                            if hasattr(part, "text"):
-                                parts_text.append(part.text)
-                        response_text = "".join(parts_text)
-                        if response_text:
-                            logger.info(f"Extracted partial response of length {len(response_text)}")
-                        else:
-                            logger.error("No text found in truncated response")
-                            log_json_error(
-                                "no_response_text", 
-                                str(response)[:1000],
-                                Exception("No text in truncated response"),
-                                content_id=str(id(content))
-                            )
-                            return None
-            
-            # Normal response extraction
-            if not response_text:
-                if hasattr(response, "text"):
-                    response_text = response.text
-                elif hasattr(response, "parts"):
-                    parts_text = []
-                    for part in response.parts:
-                        if hasattr(part, "text"):
-                            parts_text.append(part.text)
-                    response_text = "".join(parts_text)
-                elif hasattr(response, "candidates") and response.candidates:
-                    candidate = response.candidates[0]
-                    if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
-                        parts_text = []
-                        for part in candidate.content.parts:
-                            if hasattr(part, "text"):
-                                parts_text.append(part.text)
-                        response_text = "".join(parts_text)
-
-            if not response_text:
-                logger.error(f"No text found in response: {response}")
-                log_json_error(
-                    "no_response_text", 
-                    str(response)[:1000],
-                    Exception("No text in response"),
-                    content_id=str(id(content))
-                )
-                return None
-
-            # Clean response if wrapped in markdown code blocks
-            cleaned_text = response_text.strip()
-            if cleaned_text.startswith("```json"):
-                cleaned_text = cleaned_text[7:]
-            elif cleaned_text.startswith("```"):
-                cleaned_text = cleaned_text[3:]
-            if cleaned_text.endswith("```"):
-                cleaned_text = cleaned_text[:-3]
-            cleaned_text = cleaned_text.strip()
-            
-            # Additional cleanup for common issues
-            if not cleaned_text:
-                logger.error("Cleaned text is empty after removing markdown blocks")
-                log_json_error(
-                    "empty_cleaned_text",
-                    response_text,
-                    Exception("Empty text after cleanup"),
-                    content_id=str(id(content))
-                )
-                return None
-            
-            # Check for common error responses
-            if cleaned_text.lower() in ["this is not valid json", "invalid json", "error"]:
-                logger.error(f"LLM returned error response: {cleaned_text}")
-                log_json_error(
-                    "llm_error_response",
-                    response_text,
-                    Exception(f"LLM error: {cleaned_text}"),
-                    content_id=str(id(content))
-                )
-                return None
-
-            # Parse the structured response
-            try:
-                summary_data = json.loads(cleaned_text)
-            except json.JSONDecodeError as e:
-                logger.warning(f"Initial JSON parse failed: {e}")
-                # Try to repair truncated JSON
-                repaired_text = try_repair_truncated_json(cleaned_text)
-                if repaired_text:
-                    try:
-                        summary_data = json.loads(repaired_text)
-                        logger.info("Successfully parsed repaired JSON")
-                    except json.JSONDecodeError:
-                        raise e  # Re-raise original error
-                else:
-                    raise e  # Re-raise original error
-
-            # Create and return StructuredSummary
-            return StructuredSummary(**summary_data)
-
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error in structured summary: {e}")
-            logger.error(
-                f"Response was: "
-                f"{response_text[:500] if 'response_text' in locals() else 'No response'}"
-            )
-            log_json_error(
-                "json_decode_error",
-                response_text if "response_text" in locals() else "No response text",
-                e,
-                content_id=str(id(content)),
-            )
-            return None
-        except Exception as e:
-            logger.error(f"Error generating structured summary: {e}")
-            log_json_error(
-                "unexpected_error",
-                response_text if "response_text" in locals() else "No response text",
-                e,
-                content_id=str(id(content)),
-            )
-            return None
-
-    def summarize_content_sync(
-        self, content: str, max_bullet_points: int = 6, max_quotes: int = 3, content_type: str = "article"
-    ) -> StructuredSummary | None:
-        """Synchronous version of summarize_content.
-
-        Args:
-            content: The content to summarize
-            max_bullet_points: Maximum number of bullet points to generate (default: 6)
-            max_quotes: Maximum number of quotes to extract (default: 3)
+            content_type: Type of content - "article" or "podcast" (default: "article")
 
         Returns:
             StructuredSummary with bullet points, quotes, classification, and full_markdown
@@ -501,10 +345,26 @@ class GoogleFlashService:
             return StructuredSummary(**summary_data)
 
         except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error in sync structured summary: {e}")
+            logger.error(f"JSON decode error in structured summary: {e}")
+            logger.error(
+                f"Response was: "
+                f"{response_text[:500] if 'response_text' in locals() else 'No response'}"
+            )
+            log_json_error(
+                "json_decode_error",
+                response_text if "response_text" in locals() else "No response text",
+                e,
+                content_id=str(id(content)),
+            )
             return None
         except Exception as e:
-            logger.error(f"Error generating sync structured summary: {e}")
+            logger.error(f"Error generating structured summary: {e}")
+            log_json_error(
+                "unexpected_error",
+                response_text if "response_text" in locals() else "No response text",
+                e,
+                content_id=str(id(content)),
+            )
             return None
 
 

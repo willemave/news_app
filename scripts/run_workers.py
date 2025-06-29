@@ -110,6 +110,9 @@ def main():
         logger.info(f"  Completed: {final_by_status.get('completed', 0)}")
         logger.info(f"  Failed: {final_by_status.get('failed', 0)}")
         logger.info(f"  Remaining: {sum(final_stats.get('pending_by_type', {}).values())}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        return 1
 
     return 0
 

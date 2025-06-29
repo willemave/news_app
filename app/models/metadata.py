@@ -305,11 +305,6 @@ class ContentData(BaseModel):
     def short_summary(self) -> str | None:
         """Get short version of summary for list view."""
         summary = self.summary
-        if not summary:
-            return None
-        # Return first 200 chars
-        if len(summary) > 200:
-            return summary[:197] + "..."
         return summary
 
     @property
