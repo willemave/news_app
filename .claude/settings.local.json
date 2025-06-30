@@ -30,7 +30,8 @@
       "Bash(mv:*)",
       "Bash(touch:*)",
       "Bash(rm:*)",
-      "Bash(timeout 30 python:*)"
+      "Bash(timeout 30 python:*)",
+      "WebFetch(domain:fly.io)"
     ],
     "deny": []
   }

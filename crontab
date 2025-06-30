@@ -1,2 +1,2 @@
 # Run scrapers every hour
-0 * * * * cd /app && /app/.venv/bin/python scripts/run_scrapers.py >> /var/log/cron.log 2>&1
+0 * * * * cd /app && /app/.venv/bin/python scripts/run_scrapers_unified.py >> /var/log/cron.log 2>&1

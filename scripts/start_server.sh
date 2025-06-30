@@ -1,10 +1,15 @@
 #!/bin/bash
+# Shell script wrapper that runs migrations before starting the server
 
-# Navigate to the project directory
-cd /Users/willem/Development/news_app
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 
-# Activate the virtual environment
+# Change to project root
+cd "$PROJECT_ROOT"
+
+# Activate virtual environment
 source .venv/bin/activate
 
-# Start the server
-uvicorn app.main:app --reload
+# Run the Python startup script
+exec python scripts/start_server.py "$@"
