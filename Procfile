@@ -1,3 +1,3 @@
-web: .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+web: scripts/start_server.sh
 cron: cron -f
-worker: .venv/bin/python scripts/run_worker.py
+worker: scripts/wait_for_migrations.sh
