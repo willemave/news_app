@@ -35,7 +35,9 @@
       "Bash(.venv/bin/python:*)",
       "Bash(cat:*)",
       "Bash(fly deploy:*)",
-      "Bash(fly ssh console:*)"
+      "Bash(fly ssh console:*)",
+      "Bash(fly secrets:*)",
+      "Bash(fly logs:*)"
     ],
     "deny": []
   }
