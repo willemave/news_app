@@ -26,6 +26,8 @@ dependencies = [
     "nest-asyncio>=1.6.0",
     "openai>=1.75.0",
     "ffmpeg-python>=0.2.0",
+    "python-dateutil>=2.9.0.post0",
+    "playwright>=1.53.0",
 ]
 
 [tool.setuptools.packages.find]
