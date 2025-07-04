@@ -1,5 +1,7 @@
 from collections.abc import Generator
 from contextlib import contextmanager
+import subprocess
+import sys
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -91,3 +93,23 @@ def get_db_session() -> Session:
     """
     SessionLocal = get_session_factory()
     return SessionLocal()
+
+
+def run_migrations():
+    """Run Alembic migrations to ensure database schema is up to date."""
+    try:
+        # Run alembic upgrade head
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        logger.info("Database migrations completed successfully")
+        if result.stdout:
+            logger.debug(f"Migration output: {result.stdout}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Database migration failed: {e}")
+        if e.stderr:
+            logger.error(f"Migration error output: {e.stderr}")
+        raise RuntimeError("Failed to run database migrations") from e

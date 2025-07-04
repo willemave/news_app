@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Worker configuration
-    max_workers: int = 5
+    max_workers: int = 1
     worker_timeout_seconds: int = 300
     checkout_timeout_minutes: int = 30
 

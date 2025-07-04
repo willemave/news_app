@@ -14,7 +14,9 @@ settings = get_settings()
 # Create logs directory if it doesn't exist
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
-JSON_ERROR_LOG = LOG_DIR / "llm_json_errors.log"
+ERRORS_DIR = LOG_DIR / "errors"
+ERRORS_DIR.mkdir(exist_ok=True)
+JSON_ERROR_LOG = ERRORS_DIR / "llm_json_errors.log"
 
 
 def log_json_error(

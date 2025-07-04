@@ -31,7 +31,11 @@
       "Bash(touch:*)",
       "Bash(rm:*)",
       "Bash(timeout 30 python:*)",
-      "WebFetch(domain:fly.io)"
+      "WebFetch(domain:fly.io)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(cat:*)",
+      "Bash(fly deploy:*)",
+      "Bash(fly ssh console:*)"
     ],
     "deny": []
   }
