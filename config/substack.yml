@@ -36,3 +36,6 @@ feeds:
   - url: "https://cameronrwolfe.substack.com/feed"
     name: "Deep Learning Focus"
     limit: 5
+  - url: "https://www.techmeme.com/feed.xml"
+    name: "Techmeme"
+    limit: 50

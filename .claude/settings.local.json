@@ -37,7 +37,9 @@
       "Bash(fly deploy:*)",
       "Bash(fly ssh console:*)",
       "Bash(fly secrets:*)",
-      "Bash(fly logs:*)"
+      "Bash(fly logs:*)",
+      "WebFetch(domain:www.techmeme.com)",
+      "Bash(alembic current:*)"
     ],
     "deny": []
   }

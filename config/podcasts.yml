@@ -11,3 +11,9 @@ feeds:
   - name: "Knowledge Project with Shane Paris"
     url: "https://feeds.megaphone.fm/FSMI7575968096"
     limit: 3
+  - name: "Tim Ferris Show"
+    url: "https://pod.link/863897795.rss"
+    limit: 3
+  - name: "Knowledge Project with Shane Paris"
+    url: "https://feeds.megaphone.fm/FSMI7575968096"
+    limit: 3

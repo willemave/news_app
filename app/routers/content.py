@@ -1,6 +1,8 @@
+import secrets
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -9,17 +11,52 @@ from app.core.db import get_db_session
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
 from app.models.schema import Content
+from app.services import read_status
 from app.templates import templates
 
 router = APIRouter()
+
+SESSION_COOKIE_NAME = "news_app_session"
+SESSION_COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # 1 year
+
+
+def get_or_create_session_id(
+    request: Request,
+    response: Response,
+    session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE_NAME)] = None,
+) -> str:
+    """Get existing session ID or create a new one."""
+    print(f"[SESSION] Request path: {request.url.path}")
+    print(f"[SESSION] Request cookies: {request.cookies}")
+    print(f"[SESSION] Incoming session_id from cookie: {session_id}")
+    if not session_id:
+        session_id = secrets.token_urlsafe(32)
+        print(f"[SESSION] Creating new session_id: {session_id}")
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=session_id,
+            max_age=SESSION_COOKIE_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+            secure=False,  # Set to True in production with HTTPS
+            path="/",
+        )
+        print(f"[SESSION] Cookie set with key={SESSION_COOKIE_NAME}, value={session_id}")
+    else:
+        print(f"[SESSION] Using existing session_id: {session_id}")
+    return session_id
+
+
+SessionDep = Annotated[str, Depends(get_or_create_session_id)]
 
 
 @router.get("/", response_class=HTMLResponse)
 async def list_content(
     request: Request,
+    db: Session = Depends(get_db_session),
     content_type: str | None = None,
     date: str | None = None,
-    db: Session = Depends(get_db_session),
+    read_filter: str = "unread",
 ):
     """List content with optional filters."""
     # Get available dates for the dropdown
@@ -62,12 +99,25 @@ async def list_content(
 
     # Order by most recent first
     contents = query.order_by(Content.created_at.desc()).all()
+    
+    # Get read content IDs
+    print(f"DEBUG: Getting read content")
+    read_content_ids = read_status.get_read_content_ids(db)
+    print(f"DEBUG: Found {len(read_content_ids)} read items: {read_content_ids}")
+    
+    # Filter based on read status if needed
+    if read_filter == "unread":
+        contents = [c for c in contents if c.id not in read_content_ids]
+    elif read_filter == "read":
+        contents = [c for c in contents if c.id in read_content_ids]
+    # If read_filter is "all", don't filter
 
     # Convert to domain objects, skipping invalid ones
     domain_contents = []
     for c in contents:
         try:
-            domain_contents.append(content_to_domain(c))
+            domain_content = content_to_domain(c)
+            domain_contents.append(domain_content)
         except Exception as e:
             # Skip content with invalid metadata
             print(f"Skipping content {c.id} due to validation error: {e}")
@@ -85,17 +135,30 @@ async def list_content(
             "selected_type": content_type,
             "selected_date": date,
             "available_dates": available_dates,
+            "selected_read_filter": read_filter,
+            "read_content_ids": read_content_ids,
         },
     )
 
 
 @router.get("/content/{content_id}", response_class=HTMLResponse)
-async def content_detail(request: Request, content_id: int, db: Session = Depends(get_db_session)):
+async def content_detail(
+    request: Request, 
+    content_id: int, 
+    db: Session = Depends(get_db_session)
+):
     """Get detailed view of a specific content item."""
     content = db.query(Content).filter(Content.id == content_id).first()
 
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
+
+    # Mark content as read (no session needed)
+    print(f"DEBUG: Marking content {content_id} as read")
+    result = read_status.mark_content_as_read(db, content_id)
+    print(f"DEBUG: Mark as read result: {result}")
+    if result:
+        print(f"DEBUG: Successfully marked content {content_id} as read at {result.read_at}")
 
     # Convert to domain object
     domain_content = content_to_domain(content)

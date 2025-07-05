@@ -44,8 +44,6 @@ class GenericErrorLogger:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_file = self.log_dir / f"{component}_{timestamp}.jsonl"
 
-        logger.info(f"Generic error logger initialized for {component}. Logs: {self.log_file}")
-
     def log_error(
         self,
         error: Exception,

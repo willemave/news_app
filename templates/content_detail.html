@@ -20,6 +20,19 @@
         {{ content.title or "Untitled" }}
       </h1>
       
+      <!-- Full URL -->
+      {% if content.url %}
+      <div class="mb-4">
+        <div class="flex items-start">
+          <span class="font-medium text-gray-700 mr-2">URL:</span>
+          <a href="{{ content.url }}" target="_blank" rel="noopener noreferrer" 
+             class="text-blue-600 hover:text-blue-800 break-all text-sm">
+            {{ content.url }}
+          </a>
+        </div>
+      </div>
+      {% endif %}
+      
       <!-- Metadata -->
       <div class="flex flex-wrap gap-4 text-sm text-gray-600">
         <div class="flex items-center">

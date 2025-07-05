@@ -1,7 +1,7 @@
-from collections.abc import Generator
-from contextlib import contextmanager
 import subprocess
 import sys
+from collections.abc import Generator
+from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
