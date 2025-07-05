@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import JSON, Column, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import validates
 
@@ -129,6 +129,22 @@ class ProcessingTask(Base):
 
     __table_args__ = (Index("idx_task_status_created", "status", "created_at"),)
 
+
+
+class ContentReadStatus(Base):
+    """Track which content has been read by which session."""
+    
+    __tablename__ = "content_read_status"
+    
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String(255), nullable=False, index=True)
+    content_id = Column(Integer, nullable=False, index=True)
+    read_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index("idx_content_read_session_content", "session_id", "content_id", unique=True),
+    )
 
 
 class EventLog(Base):

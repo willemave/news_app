@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.domain.converters import content_to_domain
-from app.models.metadata import ContentData, ContentStatus, ContentType
+from app.models.metadata import ContentType
 from app.models.schema import Content
 
 router = APIRouter(
@@ -267,7 +267,7 @@ async def get_content_detail(
     # Convert to domain object to validate metadata
     try:
         domain_content = content_to_domain(content)
-    except Exception as e:
+    except Exception:
         # If domain conversion fails, return raw data
         return ContentDetailResponse(
             id=content.id,
