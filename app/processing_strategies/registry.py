@@ -6,6 +6,7 @@ from app.processing_strategies.html_strategy import HtmlProcessorStrategy
 from app.processing_strategies.image_strategy import ImageProcessorStrategy
 from app.processing_strategies.pdf_strategy import PdfProcessorStrategy
 from app.processing_strategies.pubmed_strategy import PubMedProcessorStrategy
+from app.processing_strategies.youtube_strategy import YouTubeProcessorStrategy
 
 logger = get_logger(__name__)
 
@@ -23,11 +24,13 @@ class StrategyRegistry:
         # Order is important: more specific strategies should come before general ones.
         # ArxivStrategy for /abs/ links, which then become PDF links.
         # PubMedStrategy for specific domain.
+        # YouTubeStrategy for YouTube video URLs.
         # PdfProcessorStrategy for direct .pdf links or Content-Type PDF.
         # ImageProcessorStrategy for image files.
         # HtmlProcessorStrategy should be checked before URL strategy fallback.
         self.register(ArxivProcessorStrategy(self.http_client))  # Handles arxiv.org/abs/ links
         self.register(PubMedProcessorStrategy(self.http_client))  # Specific domain
+        self.register(YouTubeProcessorStrategy())  # YouTube videos
         self.register(
             PdfProcessorStrategy(self.http_client)
         )  # Specific content type by extension/common URL pattern

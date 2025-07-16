@@ -98,6 +98,9 @@ class ContentDetailResponse(BaseModel):
     content_type: str = Field(..., description="Type of content (article/podcast)")
     url: str = Field(..., description="Original URL of the content")
     title: str | None = Field(None, description="Content title")
+    display_title: str = Field(
+        ..., description="Display title (prefers summary title over content title)"
+    )
     source: str | None = Field(None, description="Content source")
     status: str = Field(..., description="Processing status")
     error_message: str | None = Field(None, description="Error message if processing failed")
@@ -114,6 +117,20 @@ class ContentDetailResponse(BaseModel):
         None, description="ISO timestamp of when content was published"
     )
     is_read: bool = Field(False, description="Whether the content has been marked as read")
+    # Additional useful properties from ContentData
+    summary: str | None = Field(None, description="Summary text")
+    short_summary: str | None = Field(None, description="Short version of summary for list view")
+    structured_summary: dict[str, Any] | None = Field(
+        None, description="Structured summary with bullet points and quotes"
+    )
+    bullet_points: list[dict[str, str]] = Field(
+        ..., description="Bullet points from structured summary"
+    )
+    quotes: list[dict[str, str]] = Field(..., description="Quotes from structured summary")
+    topics: list[str] = Field(..., description="Topics from structured summary")
+    full_markdown: str | None = Field(
+        None, description="Full article content formatted as markdown"
+    )
 
     class Config:
         json_schema_extra = {
@@ -151,6 +168,26 @@ class ContentDetailResponse(BaseModel):
                 "checked_out_at": None,
                 "publication_date": "2025-06-18T12:00:00Z",
                 "is_read": False,
+                "display_title": "Understanding AI in 2025",
+                "summary": "This article explores the latest developments...",
+                "short_summary": "This article explores the latest developments...",
+                "structured_summary": {
+                    "title": "Understanding AI in 2025",
+                    "overview": "This article explores the latest developments...",
+                    "bullet_points": [
+                        {"text": "AI is transforming industries", "category": "key_finding"}
+                    ],
+                    "quotes": [{"text": "The future is now", "context": "Jane Doe"}],
+                    "topics": ["AI", "Technology", "Future"],
+                    "summarization_date": "2025-06-19T10:35:00Z",
+                    "classification": "to_read",
+                },
+                "bullet_points": [
+                    {"text": "AI is transforming industries", "category": "key_finding"}
+                ],
+                "quotes": [{"text": "The future is now", "context": "Jane Doe"}],
+                "topics": ["AI", "Technology", "Future"],
+                "full_markdown": "# Understanding AI in 2025\n\nFull article content...",
             }
         }
 
@@ -171,7 +208,9 @@ class BulkMarkReadRequest(BaseModel):
     "/",
     response_model=ContentListResponse,
     summary="List content items",
-    description="Retrieve a list of content items with optional filtering by content type and date.",
+    description=(
+        "Retrieve a list of content items with optional filtering by content type and date."
+    ),
 )
 async def list_contents(
     content_type: str | None = Query(None, description="Filter by content type (article/podcast)"),
@@ -255,17 +294,15 @@ async def list_contents(
 
             # Get classification from metadata
             classification = None
-            if domain_content.metadata and "summary" in domain_content.metadata:
-                summary_data = domain_content.metadata["summary"]
-                if isinstance(summary_data, dict):
-                    classification = summary_data.get("classification")
+            if domain_content.structured_summary:
+                classification = domain_content.structured_summary.get("classification")
 
             content_summaries.append(
                 ContentSummaryResponse(
                     id=domain_content.id,
                     content_type=domain_content.content_type.value,
                     url=str(domain_content.url),
-                    title=domain_content.title,
+                    title=domain_content.display_title,
                     source=domain_content.source,
                     status=domain_content.status.value,
                     short_summary=domain_content.short_summary,
@@ -276,7 +313,9 @@ async def list_contents(
                     if domain_content.processed_at
                     else None,
                     classification=classification,
-                    publication_date=c.publication_date.isoformat() if c.publication_date else None,
+                    publication_date=domain_content.publication_date.isoformat()
+                    if domain_content.publication_date
+                    else None,
                     is_read=c.id in read_content_ids,
                 )
             )
@@ -355,35 +394,19 @@ async def get_content_detail(
     # Convert to domain object to validate metadata
     try:
         domain_content = content_to_domain(content)
-    except Exception:
-        # If domain conversion fails, return raw data
-        return ContentDetailResponse(
-            id=content.id,
-            content_type=content.content_type,
-            url=content.url,
-            title=content.title,
-            source=content.source,
-            status=content.status,
-            error_message=content.error_message,
-            retry_count=content.retry_count or 0,
-            metadata=content.content_metadata or {},
-            created_at=content.created_at.isoformat() if content.created_at else "",
-            updated_at=content.updated_at.isoformat() if content.updated_at else None,
-            processed_at=content.processed_at.isoformat() if content.processed_at else None,
-            checked_out_by=content.checked_out_by,
-            checked_out_at=content.checked_out_at.isoformat() if content.checked_out_at else None,
-            publication_date=content.publication_date.isoformat()
-            if content.publication_date
-            else None,
-            is_read=is_read,
-        )
+    except Exception as e:
+        # If domain conversion fails, raise HTTP exception
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process content metadata: {str(e)}"
+        ) from e
 
-    # Return the validated content
+    # Return the validated content with all properties from ContentData
     return ContentDetailResponse(
         id=domain_content.id,
         content_type=domain_content.content_type.value,
         url=str(domain_content.url),
         title=domain_content.title,
+        display_title=domain_content.display_title,
         source=domain_content.source,
         status=domain_content.status.value,
         error_message=domain_content.error_message,
@@ -396,8 +419,18 @@ async def get_content_detail(
         else None,
         checked_out_by=content.checked_out_by,
         checked_out_at=content.checked_out_at.isoformat() if content.checked_out_at else None,
-        publication_date=content.publication_date.isoformat() if content.publication_date else None,
+        publication_date=domain_content.publication_date.isoformat()
+        if domain_content.publication_date
+        else None,
         is_read=is_read,
+        # Additional properties from ContentData
+        summary=domain_content.summary,
+        short_summary=domain_content.short_summary,
+        structured_summary=domain_content.structured_summary,
+        bullet_points=domain_content.bullet_points,
+        quotes=domain_content.quotes,
+        topics=domain_content.topics,
+        full_markdown=domain_content.full_markdown,
     )
 
 

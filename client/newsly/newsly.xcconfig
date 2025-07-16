@@ -1,0 +1,11 @@
+// Configuration settings file for newsly
+// This file fixes the duplicate Info.plist issue
+
+// Do not generate Info.plist automatically
+GENERATE_INFOPLIST_FILE = NO
+
+// Use the existing Info.plist file
+INFOPLIST_FILE = newsly/Info.plist
+
+// Ensure the Info.plist is not processed multiple times
+DONT_GENERATE_INFOPLIST_FILE = NO

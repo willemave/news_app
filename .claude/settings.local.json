@@ -39,7 +39,10 @@
       "Bash(fly secrets:*)",
       "Bash(fly logs:*)",
       "WebFetch(domain:www.techmeme.com)",
-      "Bash(alembic current:*)"
+      "Bash(alembic current:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(ruby:*)",
+      "Bash(openssl req:*)"
     ],
     "deny": []
   }
