@@ -38,4 +38,4 @@ feeds:
     limit: 5
   - url: "https://www.techmeme.com/feed.xml"
     name: "Techmeme"
-    limit: 50
+    limit: 1

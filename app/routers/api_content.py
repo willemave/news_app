@@ -35,6 +35,10 @@ class ContentSummaryResponse(BaseModel):
     created_at: str = Field(..., description="ISO timestamp when content was created")
     processed_at: str | None = Field(None, description="ISO timestamp when content was processed")
     classification: str | None = Field(None, description="Content classification (to_read/skip)")
+    publication_date: str | None = Field(
+        None, description="ISO timestamp of when content was published"
+    )
+    is_read: bool = Field(False, description="Whether the content has been marked as read")
 
     class Config:
         json_schema_extra = {
@@ -49,6 +53,8 @@ class ContentSummaryResponse(BaseModel):
                 "created_at": "2025-06-19T10:30:00Z",
                 "processed_at": "2025-06-19T10:35:00Z",
                 "classification": "to_read",
+                "publication_date": "2025-06-18T12:00:00Z",
+                "is_read": False,
             }
         }
 
@@ -104,6 +110,10 @@ class ContentDetailResponse(BaseModel):
     checked_out_at: str | None = Field(
         None, description="ISO timestamp when content was checked out"
     )
+    publication_date: str | None = Field(
+        None, description="ISO timestamp of when content was published"
+    )
+    is_read: bool = Field(False, description="Whether the content has been marked as read")
 
     class Config:
         json_schema_extra = {
@@ -139,8 +149,22 @@ class ContentDetailResponse(BaseModel):
                 "processed_at": "2025-06-19T10:35:00Z",
                 "checked_out_by": None,
                 "checked_out_at": None,
+                "publication_date": "2025-06-18T12:00:00Z",
+                "is_read": False,
             }
         }
+
+
+# Request models
+class BulkMarkReadRequest(BaseModel):
+    """Request to mark multiple content items as read."""
+
+    content_ids: list[int] = Field(
+        ..., description="List of content IDs to mark as read", min_items=1
+    )
+
+    class Config:
+        json_schema_extra = {"example": {"content_ids": [123, 456, 789]}}
 
 
 @router.get(
@@ -156,12 +180,27 @@ async def list_contents(
         description="Filter by date (YYYY-MM-DD format)",
         regex="^\\d{4}-\\d{2}-\\d{2}$",
     ),
+    read_filter: str = Query(
+        "all",
+        description="Filter by read status (all/read/unread)",
+        regex="^(all|read|unread)$",
+    ),
     db: Session = Depends(get_db_session),
 ) -> ContentListResponse:
     """List content with optional filters."""
+    from app.services import read_status
+
+    # Get read content IDs first
+    read_content_ids = read_status.get_read_content_ids(db)
+
     # Get available dates for the dropdown
     available_dates_query = (
         db.query(func.date(Content.created_at).label("date"))
+        .filter(
+            Content.content_metadata["summary"].is_not(None)
+            & (Content.content_metadata["summary"] != "null")
+        )
+        .filter((Content.classification != "skip") | (Content.classification.is_(None)))
         .distinct()
         .order_by(func.date(Content.created_at).desc())
     )
@@ -178,7 +217,13 @@ async def list_contents(
     query = db.query(Content)
 
     # Filter out "skip" classification articles
-    query = query.filter((Content.classification != "skip") | (Content.classification == None))
+    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
+
+    # Only show content that has been summarized (match HTML view)
+    query = query.filter(
+        Content.content_metadata["summary"].is_not(None)
+        & (Content.content_metadata["summary"] != "null")
+    )
 
     # Apply content type filter
     if content_type and content_type != "all":
@@ -189,11 +234,18 @@ async def list_contents(
         try:
             filter_date = datetime.strptime(date, "%Y-%m-%d").date()
             query = query.filter(func.date(Content.created_at) == filter_date)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="Invalid date format") from e
 
     # Order by most recent first
     contents = query.order_by(Content.created_at.desc()).all()
+
+    # Filter based on read status if needed
+    if read_filter == "unread":
+        contents = [c for c in contents if c.id not in read_content_ids]
+    elif read_filter == "read":
+        contents = [c for c in contents if c.id in read_content_ids]
+    # If read_filter is "all", don't filter
 
     # Convert to domain objects and then to response format
     content_summaries = []
@@ -224,6 +276,8 @@ async def list_contents(
                     if domain_content.processed_at
                     else None,
                     classification=classification,
+                    publication_date=c.publication_date.isoformat() if c.publication_date else None,
+                    is_read=c.id in read_content_ids,
                 )
             )
         except Exception as e:
@@ -240,6 +294,35 @@ async def list_contents(
         available_dates=available_dates,
         content_types=content_types,
     )
+
+
+@router.post(
+    "/{content_id}/mark-read",
+    summary="Mark content as read",
+    description="Mark a specific content item as read.",
+    responses={
+        200: {"description": "Content marked as read successfully"},
+        404: {"description": "Content not found"},
+    },
+)
+async def mark_content_read(
+    content_id: int = Path(..., description="Content ID", gt=0),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Mark content as read."""
+    from app.services import read_status
+
+    # Check if content exists
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # Mark as read
+    result = read_status.mark_content_as_read(db, content_id)
+    if result:
+        return {"status": "success", "content_id": content_id}
+    else:
+        return {"status": "error", "message": "Failed to mark as read"}
 
 
 @router.get(
@@ -259,10 +342,15 @@ async def get_content_detail(
     db: Session = Depends(get_db_session),
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
+    from app.services import read_status
+
     content = db.query(Content).filter(Content.id == content_id).first()
 
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
+
+    # Check if content is read
+    is_read = read_status.is_content_read(db, content_id)
 
     # Convert to domain object to validate metadata
     try:
@@ -284,6 +372,10 @@ async def get_content_detail(
             processed_at=content.processed_at.isoformat() if content.processed_at else None,
             checked_out_by=content.checked_out_by,
             checked_out_at=content.checked_out_at.isoformat() if content.checked_out_at else None,
+            publication_date=content.publication_date.isoformat()
+            if content.publication_date
+            else None,
+            is_read=is_read,
         )
 
     # Return the validated content
@@ -304,4 +396,83 @@ async def get_content_detail(
         else None,
         checked_out_by=content.checked_out_by,
         checked_out_at=content.checked_out_at.isoformat() if content.checked_out_at else None,
+        publication_date=content.publication_date.isoformat() if content.publication_date else None,
+        is_read=is_read,
     )
+
+
+@router.post(
+    "/bulk-mark-read",
+    summary="Bulk mark content as read",
+    description="Mark multiple content items as read in a single request.",
+    responses={
+        200: {"description": "Content items marked as read successfully"},
+        400: {"description": "Invalid content IDs provided"},
+    },
+)
+async def bulk_mark_read(
+    request: BulkMarkReadRequest,
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Mark multiple content items as read."""
+    from app.services import read_status
+
+    # Validate that all content IDs exist
+    existing_ids = db.query(Content.id).filter(Content.id.in_(request.content_ids)).all()
+    existing_ids = {row[0] for row in existing_ids}
+
+    invalid_ids = set(request.content_ids) - existing_ids
+    if invalid_ids:
+        raise HTTPException(status_code=400, detail=f"Invalid content IDs: {sorted(invalid_ids)}")
+
+    # Mark all as read
+    success_count = 0
+    failed_ids = []
+
+    for content_id in request.content_ids:
+        result = read_status.mark_content_as_read(db, content_id)
+        if result:
+            success_count += 1
+        else:
+            failed_ids.append(content_id)
+
+    return {
+        "status": "success",
+        "marked_count": success_count,
+        "failed_ids": failed_ids,
+        "total_requested": len(request.content_ids),
+    }
+
+
+@router.delete(
+    "/{content_id}/mark-unread",
+    summary="Mark content as unread",
+    description="Remove the read status from a specific content item.",
+    responses={
+        200: {"description": "Content marked as unread successfully"},
+        404: {"description": "Content not found"},
+    },
+)
+async def mark_content_unread(
+    content_id: int = Path(..., description="Content ID", gt=0),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Mark content as unread by removing its read status."""
+    from sqlalchemy import delete
+
+    from app.models.schema import ContentReadStatus
+
+    # Check if content exists
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # Delete read status
+    result = db.execute(delete(ContentReadStatus).where(ContentReadStatus.content_id == content_id))
+    db.commit()
+
+    return {
+        "status": "success",
+        "content_id": content_id,
+        "removed_records": result.rowcount,
+    }

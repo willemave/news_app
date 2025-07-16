@@ -67,27 +67,35 @@
       </div>
     {% else %}
       {% for content in contents %}
-        <div class="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow {% if content.id in read_content_ids %}opacity-75{% endif %}">
+        <div class="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow {% if content.id in read_content_ids %}opacity-75{% endif %}" id="content-{{ content.id }}">
           <div class="flex items-start justify-between mb-2">
             <h2 class="text-lg font-semibold flex-1 flex items-center gap-2">
               <a href="/content/{{ content.id }}" class="{% if content.id in read_content_ids %}text-gray-600{% else %}text-gray-900{% endif %} hover:text-blue-600 transition-colors">
-                {{ content.title or "Untitled" }}
+                {{ content.display_title }}
               </a>
               {% if content.id in read_content_ids %}
                 <span class="text-xs text-gray-500 font-normal">(read)</span>
               {% endif %}
             </h2>
-            <span class="ml-4 px-2 py-1 text-xs font-medium rounded-full 
-                         {% if content.content_type == 'article' %}bg-blue-100 text-blue-800
-                         {% elif content.content_type == 'podcast' %}bg-purple-100 text-purple-800
-                         {% else %}bg-gray-100 text-gray-800{% endif %}">
-              {{ content.content_type.replace('_', ' ').title() }}
-            </span>
+            <div class="flex items-center gap-2">
+              {% if content.id not in read_content_ids %}
+                <button onclick="markAsRead({{ content.id }}, document.getElementById('content-{{ content.id }}'))" 
+                        class="text-xs text-gray-500 hover:text-gray-700 underline">
+                  mark as read
+                </button>
+              {% endif %}
+              <span class="px-2 py-1 text-xs font-medium rounded-full 
+                           {% if content.content_type == 'article' %}bg-blue-100 text-blue-800
+                           {% elif content.content_type == 'podcast' %}bg-purple-100 text-purple-800
+                           {% else %}bg-gray-100 text-gray-800{% endif %}">
+                {{ content.content_type.replace('_', ' ').title() }}
+              </span>
+            </div>
           </div>
           
           <div class="text-sm text-gray-600 mb-2">
-            <time datetime="{{ content.created_at }}">
-              {{ content.created_at.strftime('%B %d, %Y at %I:%M %p') if content.created_at else 'Date unknown' }}
+            <time datetime="{{ content.publication_date or content.created_at }}">
+              {{ (content.publication_date or content.created_at).strftime('%B %d, %Y at %I:%M %p') if (content.publication_date or content.created_at) else 'Date unknown' }}
             </time>
             {% if content.source %}
               <span class="mx-1">•</span>

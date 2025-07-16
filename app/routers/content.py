@@ -62,8 +62,11 @@ async def list_content(
     # Get available dates for the dropdown
     available_dates_query = (
         db.query(func.date(Content.created_at).label("date"))
-        .filter(Content.content_metadata["summary"] != None)
-        .filter((Content.classification != "skip") | (Content.classification == None))
+        .filter(
+            Content.content_metadata["summary"].is_not(None) &
+            (Content.content_metadata["summary"] != "null")
+        )
+        .filter((Content.classification != "skip") | (Content.classification.is_(None)))
         .distinct()
         .order_by(func.date(Content.created_at).desc())
     )
@@ -80,10 +83,13 @@ async def list_content(
     query = db.query(Content)
 
     # Filter out "skip" classification articles
-    query = query.filter((Content.classification != "skip") | (Content.classification == None))
+    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
     
     # Only show content that has been summarized
-    query = query.filter(Content.content_metadata["summary"] != None)
+    query = query.filter(
+        Content.content_metadata["summary"].is_not(None) &
+        (Content.content_metadata["summary"] != "null")
+    )
 
     # Apply content type filter
     if content_type and content_type != "all":

@@ -71,6 +71,72 @@
     </div>
   </div>
   
+  <!-- Content Without Summary Section -->
+  {% if content_without_summary %}
+  <div class="bg-white rounded-lg shadow mb-8">
+    <div class="px-6 py-4 border-b border-gray-200">
+      <h3 class="text-lg font-semibold text-gray-900">Content Without Summary (With Errors)</h3>
+      <p class="text-sm text-gray-500 mt-1">Content that failed to generate summaries</p>
+    </div>
+    
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Created
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Type
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Title
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Error Message
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+          {% for content in content_without_summary %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+              {{ content.created_at.strftime('%Y-%m-%d %H:%M') }}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {{ content.content_type }}
+              </span>
+            </td>
+            <td class="px-6 py-4 text-sm text-gray-900">
+              <div class="max-w-xs truncate" title="{{ content.title }}">
+                {{ content.title }}
+              </div>
+            </td>
+            <td class="px-6 py-4 text-sm text-red-600">
+              <div class="max-w-md">
+                {{ content.error_message }}
+              </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              <a href="{{ content.url }}" target="_blank" class="text-blue-600 hover:text-blue-800 mr-3">
+                View Source
+              </a>
+              <a href="/content/{{ content.id }}/json" target="_blank" class="text-gray-600 hover:text-gray-800">
+                View JSON
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  
   <!-- Event Logs Section -->
   <div class="bg-white rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200">
