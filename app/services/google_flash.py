@@ -51,6 +51,8 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         
         Important:
         - Generate a descriptive title that captures the main theme (10-200 chars)
+        - Include the blog/site name at the beginning of the title in the format "Site Name: Generated Title"
+        - Extract the site name from the content if present (look for site headers, footers, or bylines)
         - Extract actual quotes when available, don't paraphrase
         - Make bullet points specific and information dense
         - Ensure the overview provides context for someone who hasn't read the content
@@ -85,6 +87,8 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         
         Important:
         - Generate a descriptive title that captures the main theme (10-200 chars)
+        - Include the blog/site name at the beginning of the title in the format "Site Name: Generated Title"
+        - Extract the site name from the content if present (look for site headers, footers, or bylines)
         - Extract actual quotes when available, don't paraphrase
         - Make bullet points specific and information dense
         - Ensure the overview provides context for someone who hasn't read the content

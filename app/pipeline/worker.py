@@ -91,7 +91,7 @@ class ContentWorker:
             if not strategy:
                 logger.error(f"No strategy for URL: {content.url}")
                 return False
-            
+
             logger.info(f"Using {strategy.__class__.__name__} for {content.url}")
 
             # Preprocess URL if needed
@@ -122,7 +122,9 @@ class ContentWorker:
 
             # Check if this is a delegation case (e.g., from PubMed)
             if extracted_data.get("next_url_to_process"):
-                logger.info(f"Delegation detected. Processing next URL: {extracted_data['next_url_to_process']}")
+                logger.info(
+                    f"Delegation detected. Processing next URL: {extracted_data['next_url_to_process']}"
+                )
                 # Update the URL and process recursively
                 content.url = extracted_data["next_url_to_process"]
                 return self._process_article(content)
@@ -154,7 +156,9 @@ class ContentWorker:
                     # Extract full_markdown before storing summary
                     content.metadata["full_markdown"] = summary_dict.pop("full_markdown", "")
                     content.metadata["summary"] = summary_dict
-                    logger.info(f"Generated summary and formatted markdown for content {content.id}")
+                    logger.info(
+                        f"Generated summary and formatted markdown for content {content.id}"
+                    )
                 else:
                     logger.warning(f"Failed to generate summary for content {content.id}")
 
@@ -164,6 +168,25 @@ class ContentWorker:
             )
             if internal_urls:
                 content.metadata["internal_urls"] = internal_urls
+
+            # Update publication_date from metadata
+            pub_date = extracted_data.get("publication_date")
+            if pub_date:
+                if isinstance(pub_date, str):
+                    try:
+                        from dateutil import parser
+
+                        content.publication_date = parser.parse(pub_date)
+                    except Exception:
+                        logger.warning(f"Could not parse publication date: {pub_date}")
+                        content.publication_date = content.created_at
+                elif isinstance(pub_date, datetime):
+                    content.publication_date = pub_date
+                else:
+                    content.publication_date = content.created_at
+            else:
+                # Fallback to created_at if no publication date
+                content.publication_date = content.created_at
 
             # Update status
             content.status = ContentStatus.COMPLETED

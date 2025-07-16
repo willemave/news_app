@@ -20,6 +20,7 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             retry_count=db_content.retry_count or 0,
             created_at=db_content.created_at,
             processed_at=db_content.processed_at,
+            publication_date=db_content.publication_date,
         )
     except Exception as e:
         # Log the error with details

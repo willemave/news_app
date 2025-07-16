@@ -26,6 +26,10 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
         """Check if this strategy can handle the given URL."""
+        # Exclude arxiv URLs - they should be handled by ArxivProcessorStrategy
+        if "arxiv.org" in url.lower():
+            return False
+
         # Check URL extension
         if url.lower().endswith(".pdf"):
             return True
@@ -35,15 +39,12 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
             content_type = response_headers.get("content-type", "").lower()
             return "application/pdf" in content_type
 
-        # Check for arXiv PDF URLs
-        return "arxiv.org/pdf/" in url.lower()
+        return False
 
     def preprocess_url(self, url: str) -> str:
-        """Preprocess PDF URLs (e.g., convert arXiv abstract to PDF)."""
-        # Convert arXiv abstract URLs to PDF URLs
-        if "arxiv.org/abs/" in url:
-            return url.replace("/abs/", "/pdf/") + ".pdf"
-
+        """Preprocess PDF URLs."""
+        # No special preprocessing needed for general PDFs
+        # Arxiv URLs are handled by ArxivProcessorStrategy
         return url
 
     def download_content(self, url: str) -> bytes:
@@ -108,10 +109,9 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
 
     def prepare_for_llm(self, extracted_data: dict[str, Any]) -> dict[str, Any]:
         """Prepare extracted PDF data for LLM processing."""
-        logger.info(
-            f"PdfStrategy: Preparing data for LLM for URL: {extracted_data.get('final_url_after_redirects')}"
-        )
-        text_content = extracted_data.get("text_content", "")
+        final_url = extracted_data.get("final_url_after_redirects", "Unknown URL")
+        logger.info(f"PdfStrategy: Preparing data for LLM for URL: {final_url}")
+        text_content = extracted_data.get("text_content") or ""
 
         return {
             "content_to_filter": text_content,

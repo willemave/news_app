@@ -147,7 +147,9 @@ class ArticleMetadata(BaseContentMetadata):
     )
 
     content: str | None = Field(None, description="Full article text content")
-    full_markdown: str | None = Field(None, description="Full article content formatted as markdown")
+    full_markdown: str | None = Field(
+        None, description="Full article content formatted as markdown"
+    )
 
     @field_validator("content")
     @classmethod
@@ -242,6 +244,7 @@ class ContentData(BaseModel):
     # Timestamps
     created_at: datetime | None = None
     processed_at: datetime | None = None
+    publication_date: datetime | None = None
 
     @field_validator("metadata")
     @classmethod
@@ -302,6 +305,14 @@ class ContentData(BaseModel):
         return None
 
     @property
+    def display_title(self) -> str:
+        """Get title to display - prefer summary title over content title."""
+        summary_data = self.metadata.get("summary")
+        if isinstance(summary_data, dict) and summary_data.get("title"):
+            return summary_data["title"]
+        return self.title or "Untitled"
+
+    @property
     def short_summary(self) -> str | None:
         """Get short version of summary for list view."""
         summary = self.summary
@@ -347,7 +358,7 @@ class ContentData(BaseModel):
     def source(self) -> str | None:
         """Get content source (substack name, podcast name, subreddit)."""
         return self.metadata.get("source")
-    
+
     @property
     def full_markdown(self) -> str | None:
         """Get full article content formatted as markdown."""

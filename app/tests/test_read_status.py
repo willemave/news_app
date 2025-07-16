@@ -26,35 +26,30 @@ def sample_content(db_session: Session) -> Content:
 
 def test_mark_content_as_read(db_session: Session, sample_content: Content):
     """Test marking content as read."""
-    session_id = "test_session_123"
-    
     # Mark content as read
-    result = read_status.mark_content_as_read(db_session, session_id, sample_content.id)
+    result = read_status.mark_content_as_read(db_session, sample_content.id)
     
     assert result is not None
-    assert result.session_id == session_id
+    assert result.session_id == "default"
     assert result.content_id == sample_content.id
     assert isinstance(result.read_at, datetime)
 
 
 def test_mark_content_as_read_idempotent(db_session: Session, sample_content: Content):
     """Test marking content as read multiple times updates the timestamp."""
-    session_id = "test_session_123"
-    
     # Mark content as read first time
-    result1 = read_status.mark_content_as_read(db_session, session_id, sample_content.id)
+    result1 = read_status.mark_content_as_read(db_session, sample_content.id)
     first_read_at = result1.read_at
     
     # Mark same content as read again
-    result2 = read_status.mark_content_as_read(db_session, session_id, sample_content.id)
+    result2 = read_status.mark_content_as_read(db_session, sample_content.id)
     
     # Should update the timestamp
     assert result2.read_at >= first_read_at
 
 
 def test_get_read_content_ids(db_session: Session):
-    """Test getting all read content IDs for a session."""
-    session_id = "test_session_123"
+    """Test getting all read content IDs."""
     
     # Create multiple content items
     content_ids = []
@@ -72,11 +67,11 @@ def test_get_read_content_ids(db_session: Session):
         content_ids.append(content.id)
     
     # Mark first two as read
-    read_status.mark_content_as_read(db_session, session_id, content_ids[0])
-    read_status.mark_content_as_read(db_session, session_id, content_ids[1])
+    read_status.mark_content_as_read(db_session, content_ids[0])
+    read_status.mark_content_as_read(db_session, content_ids[1])
     
     # Get read content IDs
-    read_ids = read_status.get_read_content_ids(db_session, session_id)
+    read_ids = read_status.get_read_content_ids(db_session)
     
     assert len(read_ids) == 2
     assert content_ids[0] in read_ids
@@ -86,16 +81,14 @@ def test_get_read_content_ids(db_session: Session):
 
 def test_is_content_read(db_session: Session, sample_content: Content):
     """Test checking if content is read."""
-    session_id = "test_session_123"
-    
     # Initially not read
-    assert not read_status.is_content_read(db_session, session_id, sample_content.id)
+    assert not read_status.is_content_read(db_session, sample_content.id)
     
     # Mark as read
-    read_status.mark_content_as_read(db_session, session_id, sample_content.id)
+    read_status.mark_content_as_read(db_session, sample_content.id)
     
     # Now should be read
-    assert read_status.is_content_read(db_session, session_id, sample_content.id)
+    assert read_status.is_content_read(db_session, sample_content.id)
 
 
 def test_clear_read_status(db_session: Session):
@@ -113,29 +106,32 @@ def test_clear_read_status(db_session: Session):
         )
         db_session.add(content)
         db_session.commit()
-        read_status.mark_content_as_read(db_session, session_id, content.id)
+        read_status.mark_content_as_read(db_session, content.id)
     
     # Verify they are marked as read
-    read_ids = read_status.get_read_content_ids(db_session, session_id)
+    read_ids = read_status.get_read_content_ids(db_session)
     assert len(read_ids) == 3
     
     # Clear read status
-    cleared_count = read_status.clear_read_status(db_session, session_id)
+    cleared_count = read_status.clear_read_status(db_session, "default")
     assert cleared_count == 3
     
     # Verify all are cleared
-    read_ids = read_status.get_read_content_ids(db_session, session_id)
+    read_ids = read_status.get_read_content_ids(db_session)
     assert len(read_ids) == 0
 
 
-def test_different_sessions_isolated(db_session: Session, sample_content: Content):
-    """Test that read status is isolated between different sessions."""
-    session1 = "session_1"
-    session2 = "session_2"
+def test_single_user_read_status(db_session: Session, sample_content: Content):
+    """Test that read status works for single user (default session)."""
+    # Mark as read
+    read_status.mark_content_as_read(db_session, sample_content.id)
     
-    # Mark as read in session 1
-    read_status.mark_content_as_read(db_session, session1, sample_content.id)
+    # Should be read
+    assert read_status.is_content_read(db_session, sample_content.id)
     
-    # Should be read in session 1 but not session 2
-    assert read_status.is_content_read(db_session, session1, sample_content.id)
-    assert not read_status.is_content_read(db_session, session2, sample_content.id)
+    # Clear read status
+    cleared_count = read_status.clear_read_status(db_session, "default")
+    assert cleared_count == 1
+    
+    # Should no longer be read
+    assert not read_status.is_content_read(db_session, sample_content.id)

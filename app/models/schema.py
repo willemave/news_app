@@ -48,6 +48,7 @@ class Content(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
+    publication_date = Column(DateTime, nullable=True, index=True)
 
     # Indexes for performance
     __table_args__ = (

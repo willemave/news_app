@@ -66,6 +66,19 @@ def admin_dashboard(
     event_types_result = db.query(EventLog.event_type).distinct().all()
     event_types = [row[0] for row in event_types_result if row[0]]
 
+    # Get content without summaries (with error messages)
+    content_without_summary = (
+        db.query(Content)
+        .filter(
+            (Content.content_metadata["summary"].is_(None)) | 
+            (Content.content_metadata["summary"] == "null")
+        )
+        .filter(Content.error_message.is_not(None))
+        .order_by(desc(Content.created_at))
+        .limit(20)
+        .all()
+    )
+
     return templates.TemplateResponse(
         "admin_dashboard.html",
         {
@@ -79,5 +92,6 @@ def admin_dashboard(
             "event_types": event_types,
             "selected_event_type": event_type,
             "limit": limit,
+            "content_without_summary": content_without_summary,
         },
     )
