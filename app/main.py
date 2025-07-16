@@ -50,6 +50,22 @@ async def health_check():
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Check if SSL certificates exist
+    cert_file = "certs/cert.pem"
+    key_file = "certs/key.pem"
+    
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        # Run with HTTPS
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=8000,
+            ssl_certfile=cert_file,
+            ssl_keyfile=key_file
+        )
+    else:
+        # Run without HTTPS
+        uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -29,9 +29,23 @@
 		E6CB70202E1DBAD9001AB7F2 /* newslyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = newslyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		E64CC0352E1F5DFA00692D28 /* Exceptions for "newsly" folder in "newsly" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				Info.plist.backup,
+			);
+			target = E6CB70082E1DBAD7001AB7F2 /* newsly */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E6CB700B2E1DBAD7001AB7F2 /* newsly */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E64CC0352E1F5DFA00692D28 /* Exceptions for "newsly" folder in "newsly" target */,
+			);
 			path = newsly;
 			sourceTree = "<group>";
 		};
@@ -111,8 +125,6 @@
 				E6CB700B2E1DBAD7001AB7F2 /* newsly */,
 			);
 			name = newsly;
-			packageProductDependencies = (
-			);
 			productName = newsly;
 			productReference = E6CB70092E1DBAD7001AB7F2 /* newsly.app */;
 			productType = "com.apple.product-type.application";
@@ -134,8 +146,6 @@
 				E6CB70192E1DBAD9001AB7F2 /* newslyTests */,
 			);
 			name = newslyTests;
-			packageProductDependencies = (
-			);
 			productName = newslyTests;
 			productReference = E6CB70162E1DBAD9001AB7F2 /* newslyTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,8 +167,6 @@
 				E6CB70232E1DBAD9001AB7F2 /* newslyUITests */,
 			);
 			name = newslyUITests;
-			packageProductDependencies = (
-			);
 			productName = newslyUITests;
 			productReference = E6CB70202E1DBAD9001AB7F2 /* newslyUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -395,13 +403,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VP6398XD9K;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = newsly/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -422,13 +427,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VP6398XD9K;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = newsly/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

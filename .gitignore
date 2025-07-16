@@ -38,3 +38,9 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# SSL certificates
+certs/
+*.pem
+*.key
+*.crt

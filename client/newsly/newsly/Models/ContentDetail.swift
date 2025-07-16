@@ -1,0 +1,66 @@
+//
+//  ContentDetail.swift
+//  newsly
+//
+//  Created by Assistant on 7/8/25.
+//
+
+import Foundation
+
+struct ContentDetail: Codable, Identifiable {
+    let id: Int
+    let contentType: String
+    let url: String
+    let title: String?
+    let displayTitle: String
+    let source: String?
+    let status: String
+    let errorMessage: String?
+    let retryCount: Int
+    let metadata: [String: AnyCodable]
+    let createdAt: String
+    let updatedAt: String?
+    let processedAt: String?
+    let checkedOutBy: String?
+    let checkedOutAt: String?
+    let publicationDate: String?
+    let isRead: Bool
+    let summary: String?
+    let shortSummary: String?
+    let structuredSummary: StructuredSummary?
+    let bulletPoints: [BulletPoint]
+    let quotes: [Quote]
+    let topics: [String]
+    let fullMarkdown: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case contentType = "content_type"
+        case url
+        case title
+        case displayTitle = "display_title"
+        case source
+        case status
+        case errorMessage = "error_message"
+        case retryCount = "retry_count"
+        case metadata
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case processedAt = "processed_at"
+        case checkedOutBy = "checked_out_by"
+        case checkedOutAt = "checked_out_at"
+        case publicationDate = "publication_date"
+        case isRead = "is_read"
+        case summary
+        case shortSummary = "short_summary"
+        case structuredSummary = "structured_summary"
+        case bulletPoints = "bullet_points"
+        case quotes
+        case topics
+        case fullMarkdown = "full_markdown"
+    }
+    
+    var contentTypeEnum: ContentType? {
+        ContentType(rawValue: contentType)
+    }
+}

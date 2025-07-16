@@ -136,6 +136,18 @@ class PodcastDownloadWorker:
 
                 logger.info(f"Downloaded {os.path.getsize(file_path)} bytes to {file_path}")
 
+    def _is_youtube_url(self, url: str) -> bool:
+        """Check if URL is a YouTube URL."""
+        youtube_patterns = [
+            r'youtube\.com/watch\?v=',
+            r'youtu\.be/',
+            r'youtube\.com/embed/',
+            r'm\.youtube\.com/watch\?v=',
+            r'youtube\.com/v/',
+            r'youtube\.com/shorts/',
+        ]
+        return any(re.search(pattern, url) for pattern in youtube_patterns)
+
     def process_download_task(self, content_id: int) -> bool:
         """
         Download a podcast audio file.
@@ -168,6 +180,24 @@ class PodcastDownloadWorker:
                     db_content.error_message = "No audio URL found"
                     db.commit()
                     return False
+                
+                # Check if this is a YouTube URL
+                if self._is_youtube_url(audio_url):
+                    logger.info(f"Detected YouTube URL for content {content_id}, skipping download")
+                    
+                    # Update metadata to indicate no download needed
+                    content.metadata["youtube_video"] = True
+                    content.metadata["download_skipped"] = True
+                    content.metadata["skip_reason"] = "YouTube videos processed without downloading"
+                    
+                    # Update database
+                    domain_to_content(content, db_content)
+                    db.commit()
+                    
+                    # Queue transcription task directly (transcriber will handle YouTube)
+                    self.queue_service.enqueue(TaskType.TRANSCRIBE, content_id=content_id)
+                    
+                    return True
 
                 # Extract actual audio URL if it's a redirect
                 audio_url = self._extract_actual_audio_url(audio_url)
@@ -280,6 +310,8 @@ class PodcastTranscribeWorker:
     """Worker for transcribing podcast audio files using OpenAI."""
 
     def __init__(self):
+        self.base_dir = "data/podcasts"
+        os.makedirs(self.base_dir, exist_ok=True)
         self.queue_service = get_queue_service()
         self.transcription_service = None
 
@@ -315,8 +347,43 @@ class PodcastTranscribeWorker:
                     return False
 
                 content = content_to_domain(db_content)
+                
+                # Check if this is a YouTube video with existing transcript
+                if content.metadata.get("youtube_video") and content.metadata.get("transcript"):
+                    logger.info(f"Using existing YouTube transcript for content {content_id}")
+                    
+                    # YouTube transcript already available from strategy processing
+                    transcript_text = content.metadata.get("transcript")
+                    
+                    # Create directory for YouTube transcripts
+                    youtube_dir = os.path.join(self.base_dir, "youtube")
+                    os.makedirs(youtube_dir, exist_ok=True)
+                    
+                    # Create text file path
+                    sanitized_title = sanitize_filename(content.title or f"youtube_{content_id}")
+                    text_path = os.path.join(youtube_dir, f"{sanitized_title}.txt")
+                    
+                    # Write transcript to file
+                    with open(text_path, "w", encoding="utf-8") as f:
+                        f.write(transcript_text.strip())
+                    
+                    logger.info(f"YouTube transcript saved to: {text_path}")
+                    
+                    # Update content metadata
+                    content.metadata["transcript_path"] = text_path
+                    content.metadata["transcription_date"] = datetime.utcnow().isoformat()
+                    content.metadata["transcription_service"] = "youtube"
+                    
+                    # Update database
+                    domain_to_content(content, db_content)
+                    db.commit()
+                    
+                    # Queue summarization task
+                    self.queue_service.enqueue(TaskType.SUMMARIZE, content_id=content_id)
+                    
+                    return True
 
-                # Get file path from metadata
+                # Get file path from metadata for regular podcasts
                 file_path = content.metadata.get("file_path")
                 if not file_path or not os.path.exists(file_path):
                     error_msg = f"Audio file not found: {file_path}"

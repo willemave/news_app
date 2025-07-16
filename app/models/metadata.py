@@ -198,6 +198,15 @@ class PodcastMetadata(BaseContentMetadata):
     transcript: str | None = Field(None, description="Full transcript text")
     duration: int | None = Field(None, ge=0, description="Duration in seconds")
     episode_number: int | None = Field(None, ge=0)
+    
+    # YouTube-specific fields
+    video_url: str | None = Field(None, max_length=2000, description="Original YouTube video URL")
+    video_id: str | None = Field(None, max_length=50, description="YouTube video ID")
+    channel_name: str | None = Field(None, max_length=200, description="YouTube channel name")
+    thumbnail_url: str | None = Field(None, max_length=2000, description="Video thumbnail URL")
+    view_count: int | None = Field(None, ge=0, description="Number of views")
+    like_count: int | None = Field(None, ge=0, description="Number of likes")
+    has_transcript: bool | None = Field(None, description="Whether transcript is available")
 
 
 # Processing result from app/domain/content.py
