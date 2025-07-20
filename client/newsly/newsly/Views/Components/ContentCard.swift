@@ -14,30 +14,37 @@ struct ContentCard: View {
     @State private var isMarking = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             // Header
-            VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top) {
                 Text(content.displayTitle)
-                    .font(.headline)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
                     .foregroundColor(content.isRead ? .secondary : .primary)
                     .fixedSize(horizontal: false, vertical: true)
                 
+                Spacer()
+                
                 if content.isRead {
-                    Text("(read)")
-                        .font(.caption)
+                    Text("read")
+                        .font(.caption2)
                         .foregroundColor(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(4)
                 }
             }
             
             // Metadata
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Text(content.formattedDate)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundColor(.secondary)
                 
                 if let source = content.source {
                     Text("• \(source)")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.secondary)
                 }
             }
@@ -45,15 +52,16 @@ struct ContentCard: View {
             // Summary
             if let summary = content.shortSummary {
                 Text(summary)
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundColor(.secondary)
-                    .lineLimit(3)
-                    .padding(.top, 4)
+                    .lineLimit(2)
+                    .padding(.top, 2)
             }
         }
-        .padding()
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
-        .opacity(content.isRead ? 0.75 : 1.0)
+        .cornerRadius(10)
+        .opacity(content.isRead ? 0.7 : 1.0)
     }
 }

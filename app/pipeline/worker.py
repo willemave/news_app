@@ -134,21 +134,36 @@ class ContentWorker:
 
             # Update content with extracted data
             content.title = extracted_data.get("title") or content.title
-            content.metadata.update(
-                {
-                    "content": extracted_data.get("text_content", ""),
-                    "author": extracted_data.get("author"),
-                    "publication_date": extracted_data.get("publication_date"),
-                    "content_type": extracted_data.get("content_type", "html"),
-                    "source": extracted_data.get("source"),
-                    "final_url": extracted_data.get("final_url_after_redirects", str(content.url)),
-                }
-            )
+            
+            # Build metadata update dict
+            metadata_update = {
+                "content": extracted_data.get("text_content", ""),
+                "author": extracted_data.get("author"),
+                "publication_date": extracted_data.get("publication_date"),
+                "content_type": extracted_data.get("content_type", "html"),
+                "source": extracted_data.get("source"),
+                "final_url": extracted_data.get("final_url_after_redirects", str(content.url)),
+            }
+            
+            # Add HackerNews-specific metadata if present
+            hn_fields = [
+                "hn_score", "hn_comments_count", "hn_submitter", "hn_discussion_url",
+                "hn_item_type", "hn_linked_url", "is_hn_text_post"
+            ]
+            for field in hn_fields:
+                if field in extracted_data:
+                    metadata_update[field] = extracted_data[field]
+            
+            content.metadata.update(metadata_update)
 
             # Generate structured summary using LLM service
             if llm_data.get("content_to_summarize"):
+                # Determine content type for summarization
+                summarization_content_type = llm_data.get("content_type", "article")
+                
                 summary = self.llm_service.summarize_content(
-                    content=llm_data["content_to_summarize"]
+                    content=llm_data["content_to_summarize"],
+                    content_type=summarization_content_type
                 )
                 if summary:
                     # Convert StructuredSummary to dict and store

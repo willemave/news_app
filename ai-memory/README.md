@@ -246,8 +246,3 @@
 * **Implemented**: Google Gemini Flash integration with structured output
 * **Implemented**: Markdown rendering in templates with multiple extensions
 * **Implemented**: Sequential task processor with adaptive polling
-* **In Progress**: Migration from old models to unified schema
-* **In Progress**: Templates for log viewer (logs_list.html, log_detail.html)
-* **Planned**: Additional LLM providers (Anthropic, local models)
-* **Planned**: Enhanced content filtering based on classification
-* **Planned**: Concurrent task processing (currently sequential)

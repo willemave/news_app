@@ -46,7 +46,7 @@ class SummaryBulletPoint(BaseModel):
 class ContentQuote(BaseModel):
     """Notable quote extracted from content."""
 
-    text: str = Field(..., min_length=10, max_length=1000)
+    text: str = Field(..., min_length=10, max_length=5000)
     context: str | None = Field(None, description="Context or attribution for the quote")
 
 
@@ -74,7 +74,7 @@ class StructuredSummary(BaseModel):
         ..., min_length=10, max_length=200, description="Descriptive title for the content"
     )
     overview: str = Field(
-        ..., min_length=50, max_length=2000, description="Brief overview paragraph"
+        ..., min_length=50, max_length=5000, description="Brief overview paragraph (longer for podcasts)"
     )
     bullet_points: list[SummaryBulletPoint] = Field(..., min_items=3, max_items=10)
     quotes: list[ContentQuote] = Field(default_factory=list, max_items=5)
