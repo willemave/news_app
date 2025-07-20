@@ -16,9 +16,14 @@
   <div class="bg-white rounded-lg shadow-sm">
     <!-- Header Section -->
     <div class="border-b border-gray-200 p-6">
-      <h1 class="text-2xl font-bold text-gray-900 mb-4">
-        {{ content.title or "Untitled" }}
+      <h1 class="text-2xl font-bold text-gray-900 mb-2">
+        {{ content.display_title }}
       </h1>
+      {% if content.title and content.title != content.display_title %}
+      <p class="text-sm text-gray-500 mb-4">
+        (Original: {{ content.title }})
+      </p>
+      {% endif %}
       
       <!-- Full URL -->
       {% if content.url %}
@@ -78,6 +83,21 @@
           <span>{{ content.source }}</span>
         </div>
         {% endif %}
+        
+        <!-- HackerNews Metadata -->
+        {% if content.metadata.hn_score is defined %}
+        <div class="flex items-center">
+          <span class="font-medium text-gray-700 mr-1">HN Score:</span>
+          <span>{{ content.metadata.hn_score }} points</span>
+        </div>
+        {% endif %}
+        
+        {% if content.metadata.hn_comments_count is defined %}
+        <div class="flex items-center">
+          <span class="font-medium text-gray-700 mr-1">HN Comments:</span>
+          <span>{{ content.metadata.hn_comments_count }}</span>
+        </div>
+        {% endif %}
       </div>
       
       <!-- URL and Share Buttons -->
@@ -91,6 +111,17 @@
                   d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
           </svg>
         </a>
+        
+        {% if content.metadata.hn_discussion_url %}
+        <a href="{{ content.metadata.hn_discussion_url }}" target="_blank" rel="noopener noreferrer" 
+           class="inline-flex items-center text-orange-600 hover:text-orange-800 transition-colors">
+          <span class="mr-1">View HN Discussion</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+          </svg>
+        </a>
+        {% endif %}
         
         <button onclick="shareContent('{{ content.display_title }}', '{{ content.url }}', {{ content.bullet_points | tojson }})" 
                 class="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors">
@@ -111,6 +142,14 @@
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-4">Summary</h2>
       
+        <!-- Overview -->
+        {% if content.structured_summary.overview %}
+        <div class="mb-6">
+          <div class="prose prose-sm max-w-none text-gray-700">
+            {{ content.structured_summary.overview | safe }}
+          </div>
+        </div>
+        {% endif %}
         
         <!-- Key Points -->
         {% if content.bullet_points %}

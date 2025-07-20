@@ -20,6 +20,7 @@ class TestStructuredSummary:
     def test_valid_structured_summary(self):
         """Test creating a valid structured summary."""
         summary = StructuredSummary(
+            title="Test Article Title for Validation",
             overview="This is a comprehensive test overview of the content that provides sufficient detail to meet the minimum length requirement",
             bullet_points=[
                 SummaryBulletPoint(text="First key point", category="key_finding"),
@@ -32,6 +33,7 @@ class TestStructuredSummary:
             topics=["AI", "Technology", "Innovation"]
         )
         
+        assert summary.title == "Test Article Title for Validation"
         assert summary.overview == "This is a comprehensive test overview of the content that provides sufficient detail to meet the minimum length requirement"
         assert len(summary.bullet_points) == 3
         assert summary.bullet_points[0].category == "key_finding"
@@ -42,7 +44,8 @@ class TestStructuredSummary:
         """Test that at least 3 bullet points are required."""
         with pytest.raises(ValidationError) as exc_info:
             StructuredSummary(
-                overview="Test overview",
+                title="Test Title for Validation",
+                overview="Test overview that meets the minimum length requirement for this validation test",
                 bullet_points=[
                     SummaryBulletPoint(text="Only one point", category="key_finding")
                 ]
@@ -54,7 +57,8 @@ class TestStructuredSummary:
         # Too many bullet points
         with pytest.raises(ValidationError):
             StructuredSummary(
-                overview="Test",
+                title="Test Title for Validation",
+                overview="Test overview that meets the minimum length requirement for this validation test",
                 bullet_points=[
                     SummaryBulletPoint(text=f"Point {i}", category="key_finding")
                     for i in range(11)  # 11 points, max is 10
@@ -64,16 +68,59 @@ class TestStructuredSummary:
         # Too many quotes
         with pytest.raises(ValidationError):
             StructuredSummary(
-                overview="Test",
+                title="Test Title for Validation",
+                overview="Test overview that meets the minimum length requirement for this validation test",
                 bullet_points=[
                     SummaryBulletPoint(text=f"Point {i}", category="key_finding")
                     for i in range(3)
                 ],
                 quotes=[
-                    ContentQuote(text=f"Quote {i}", context="Author")
+                    ContentQuote(text=f"Quote {i} with enough text", context="Author")
                     for i in range(6)  # 6 quotes, max is 5
                 ]
             )
+    
+    def test_long_quotes_allowed(self):
+        """Test that quotes up to 5000 characters are allowed."""
+        # Create a quote with 2000 characters (previously would have failed)
+        long_quote_text = "This is a very long quote that contains meaningful content. " * 30
+        assert len(long_quote_text) > 1000  # Confirm it's over the old limit
+        assert len(long_quote_text) < 5000  # But within the new limit
+        
+        summary = StructuredSummary(
+            title="Test Article with Long Quote",
+            overview="This is a test overview with a very long quote to ensure the new character limit works correctly",
+            bullet_points=[
+                SummaryBulletPoint(text="First key point", category="key_finding"),
+                SummaryBulletPoint(text="Second key point", category="methodology"),
+                SummaryBulletPoint(text="Third key point", category="conclusion")
+            ],
+            quotes=[
+                ContentQuote(text=long_quote_text, context="Author Name")
+            ]
+        )
+        
+        assert len(summary.quotes[0].text) > 1000
+        assert summary.quotes[0].text == long_quote_text
+    
+    def test_quote_exceeding_max_length(self):
+        """Test that quotes exceeding 5000 characters are rejected."""
+        # Create a quote with more than 5000 characters
+        too_long_quote = "x" * 5001
+        
+        with pytest.raises(ValidationError) as exc_info:
+            StructuredSummary(
+                title="Test Title for Validation",
+                overview="Test overview that meets the minimum length requirement for this validation test",
+                bullet_points=[
+                    SummaryBulletPoint(text=f"Point number {i} with enough text", category="key_finding")
+                    for i in range(3)
+                ],
+                quotes=[
+                    ContentQuote(text=too_long_quote, context="Author")
+                ]
+            )
+        assert "at most 5000 characters" in str(exc_info.value)
 
 
 class TestArticleMetadata:
@@ -97,11 +144,12 @@ class TestArticleMetadata:
     def test_article_with_structured_summary(self):
         """Test article metadata with structured summary."""
         structured_summary = StructuredSummary(
+            title="Technology Analysis Article",
             overview="This article provides a comprehensive analysis of recent technological developments and their impact on society",
             bullet_points=[
                 SummaryBulletPoint(text="Key finding 1", category="key_finding"),
                 SummaryBulletPoint(text="Key finding 2", category="key_finding"),
-                SummaryBulletPoint(text="Conclusion", category="conclusion")
+                SummaryBulletPoint(text="Conclusion point", category="conclusion")
             ],
             topics=["Technology", "AI"]
         )
@@ -154,11 +202,12 @@ class TestPodcastMetadata:
     def test_podcast_with_structured_summary(self):
         """Test podcast metadata with structured summary."""
         structured_summary = StructuredSummary(
+            title="Technology and Innovation Podcast",
             overview="This podcast episode explores various topics related to technology and innovation with expert insights",
             bullet_points=[
                 SummaryBulletPoint(text="Topic 1 discussed", category="insight"),
                 SummaryBulletPoint(text="Topic 2 discussed", category="insight"),
-                SummaryBulletPoint(text="Key takeaway", category="conclusion")
+                SummaryBulletPoint(text="Key takeaway point", category="conclusion")
             ],
             quotes=[
                 ContentQuote(

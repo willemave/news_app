@@ -69,14 +69,21 @@
       {% for content in contents %}
         <div class="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow {% if content.id in read_content_ids %}opacity-75{% endif %}" id="content-{{ content.id }}">
           <div class="flex items-start justify-between mb-2">
-            <h2 class="text-lg font-semibold flex-1 flex items-center gap-2">
-              <a href="/content/{{ content.id }}" class="{% if content.id in read_content_ids %}text-gray-600{% else %}text-gray-900{% endif %} hover:text-blue-600 transition-colors">
-                {{ content.display_title }}
-              </a>
-              {% if content.id in read_content_ids %}
-                <span class="text-xs text-gray-500 font-normal">(read)</span>
+            <div class="flex-1">
+              <h2 class="text-lg font-semibold flex items-center gap-2">
+                <a href="/content/{{ content.id }}" class="{% if content.id in read_content_ids %}text-gray-600{% else %}text-gray-900{% endif %} hover:text-blue-600 transition-colors">
+                  {{ content.display_title }}
+                </a>
+                {% if content.id in read_content_ids %}
+                  <span class="text-xs text-gray-500 font-normal">(read)</span>
+                {% endif %}
+              </h2>
+              {% if content.title and content.title != content.display_title %}
+              <p class="text-xs text-gray-500 mt-1">
+                (Original: {{ content.title }})
+              </p>
               {% endif %}
-            </h2>
+            </div>
             <div class="flex items-center gap-2">
               {% if content.id not in read_content_ids %}
                 <button onclick="markAsRead({{ content.id }}, document.getElementById('content-{{ content.id }}'))" 

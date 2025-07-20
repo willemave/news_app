@@ -1,0 +1,83 @@
+//
+//  ArticlesView.swift
+//  newsly
+//
+//  Created by Assistant on 7/20/25.
+//
+
+import SwiftUI
+
+struct ArticlesView: View {
+    @StateObject private var viewModel = ContentListViewModel()
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                VStack(spacing: 0) {
+                    if viewModel.isLoading && viewModel.contents.isEmpty {
+                        LoadingView()
+                    } else if let error = viewModel.errorMessage, viewModel.contents.isEmpty {
+                        ErrorView(message: error) {
+                            Task { await viewModel.loadContent() }
+                        }
+                    } else {
+                        // Content List
+                        if viewModel.contents.isEmpty {
+                            VStack(spacing: 16) {
+                                Spacer()
+                                Image(systemName: "doc.text.magnifyingglass")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.secondary)
+                                Text("No articles found.")
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            List {
+                                ForEach(viewModel.contents) { content in
+                                    ZStack {
+                                        NavigationLink(destination: ContentDetailView(contentId: content.id)) {
+                                            EmptyView()
+                                        }
+                                        .opacity(0)
+                                        .buttonStyle(PlainButtonStyle())
+                                        
+                                        ContentCard(content: content) {
+                                            await viewModel.markAsRead(content.id)
+                                        }
+                                    }
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                        if !content.isRead {
+                                            Button {
+                                                Task {
+                                                    await viewModel.markAsRead(content.id)
+                                                }
+                                            } label: {
+                                                Label("Mark as Read", systemImage: "checkmark.circle.fill")
+                                            }
+                                            .tint(.green)
+                                        }
+                                    }
+                                }
+                            }
+                            .listStyle(.plain)
+                            .navigationBarHidden(true)
+                            .refreshable {
+                                await viewModel.refresh()
+                            }
+                        }
+                    }
+                }
+                .task {
+                    viewModel.selectedContentType = "article"
+                    viewModel.selectedReadFilter = "unread"
+                    await viewModel.loadContent()
+                }
+            }
+        }
+    }
+}

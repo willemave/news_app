@@ -44,19 +44,54 @@ def log_json_error(
 
 def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quotes: int, content: str) -> str:
     """Generate prompt based on content type"""
-    if content_type == "podcast":
+    if content_type == "hackernews":
+        return f"""
+        You are an expert content analyst. Analyze the following HackerNews discussion, which includes 
+        the linked article content (if any) and community comments. Provide a structured summary that 
+        captures both the main content and key insights from the discussion.
+        
+        Important:
+        - Generate a descriptive title that captures the main theme (50-150 chars)
+        - Start the title with "HN: " to indicate this is from HackerNews
+        - The title should summarize both the article topic AND the key discussion theme
+        - Make it compelling - focus on the insight or controversy that sparked discussion
+        - In the overview, include both article summary AND key discussion themes from comments
+        - Extract actual quotes from both the article and notable comments
+        - Make bullet points capture insights from BOTH content and discussion
+        - Include {max_bullet_points} bullet points that blend article + comment insights
+        - Include up to {max_quotes} notable quotes (can be from article or comments)
+        - For quotes from comments, use format "HN user [username]" as context
+        - Include 3-8 relevant topic tags
+        - Add a "classification" field with either "to_read" or "skip"
+        - Add a special section in the overview about the HN community response
+        - Set "full_markdown" to include the article content AND a summary of key comments
+        
+        Classification Guidelines:
+        - Consider both article quality AND discussion quality
+        - High-quality technical discussions should be "to_read" even if article is average
+        - Set to "skip" if both article and comments lack substance
+        
+        HackerNews Content and Discussion:
+        {content}
+        """
+    elif content_type == "podcast":
         return f"""
         You are an expert content analyst. Analyze the following podcast transcript and provide a 
         structured summary with classification.
         
         Important:
-        - Generate a descriptive title that captures the main theme (10-200 chars)
-        - Include the blog/site name at the beginning of the title in the format "Site Name: Generated Title"
-        - Extract the site name from the content if present (look for site headers, footers, or bylines)
+        - Generate a descriptive title that captures the main theme (50-150 chars)
+        - The title should be compelling and informative, summarizing the key point or insight
+        - Include the blog/site name at the beginning in format "Site Name: Generated Title"
+        - Extract the site name from the content (look for site headers, URL domain, bylines)
+        - If no site name is found, use the domain name from the URL if available
+        - The generated title should be different from the original article title - make it more descriptive
+        - Focus on the "why it matters" aspect rather than just restating the topic
         - Extract actual quotes when available, don't paraphrase
         - Make bullet points specific and information dense
-        - Ensure the overview provides context for someone who hasn't read the content
-        - Overview should be 50-100 words, short and punchy
+        - For the overview field: Start with a 50-100 word summary, then add 2-3 paragraphs (200-400 words) 
+          that provide a comprehensive overview of the entire podcast conversation. This should allow 
+          someone to quickly skim and understand the full context, main themes, and key takeaways.
         - Include {max_bullet_points} bullet points
         - Include up to {max_quotes} notable quotes if available - each quote should be 
           at least 2-3 sentences long to provide meaningful context and insight
@@ -86,9 +121,12 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         structured summary with classification AND format the full text as clean markdown.
         
         Important:
-        - Generate a descriptive title that captures the main theme (10-200 chars)
-        - Include the blog/site name at the beginning of the title in the format "Site Name: Generated Title"
-        - Extract the site name from the content if present (look for site headers, footers, or bylines)
+        - Generate a descriptive title that captures the main theme (50-150 chars)
+        - The title should be compelling and informative, summarizing the key point or insight
+        - Extract the site name from the content (look for site headers, URL domain, bylines)
+        - If no site name is found, use the domain name from the URL if available
+        - The generated title should be different from the original article title - make it more descriptive
+        - Focus on the "why it matters" aspect rather than just restating the topic
         - Extract actual quotes when available, don't paraphrase
         - Make bullet points specific and information dense
         - Ensure the overview provides context for someone who hasn't read the content
@@ -212,25 +250,15 @@ class GoogleFlashService:
             if isinstance(content, bytes):
                 content = content.decode("utf-8", errors="ignore")
 
-            # Truncate content if too long to fit in context window
-            # Be more aggressive with truncation for very long content (like podcasts)
-            max_content_length = 15000
-            if len(content) > 50000:
-                max_content_length = 10000  # Use shorter limit for very long content
-                logger.info(f"Using reduced content limit for very long content ({len(content)} chars)")
-            
-            if len(content) > max_content_length:
-                content = content[:max_content_length] + "..."
-
             # Generate prompt based on content type
             prompt = generate_summary_prompt(content_type, max_bullet_points, max_quotes, content)
 
             # Define the schema for structured output
             # Use reasonable token limit for summaries
             if content_type == "podcast":
-                max_tokens = 4000  # Smaller for podcasts since no full_markdown
+                max_tokens = 30000  # Smaller for podcasts since no full_markdown
             else:
-                max_tokens = 30000  # Larger for articles to include full_markdown
+                max_tokens = 50000  # Larger for articles to include full_markdown
             
             config = {
                 "temperature": 0.7,

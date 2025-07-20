@@ -2,6 +2,7 @@ from app.core.logging import get_logger
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.arxiv_strategy import ArxivProcessorStrategy
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
+from app.processing_strategies.hackernews_strategy import HackerNewsProcessorStrategy
 from app.processing_strategies.html_strategy import HtmlProcessorStrategy
 from app.processing_strategies.image_strategy import ImageProcessorStrategy
 from app.processing_strategies.pdf_strategy import PdfProcessorStrategy
@@ -22,12 +23,14 @@ class StrategyRegistry:
     def _initialize_default_strategies(self):
         """Initialize with default strategies."""
         # Order is important: more specific strategies should come before general ones.
+        # HackerNewsStrategy for HN item URLs (needs to be early to intercept HN links)
         # ArxivStrategy for /abs/ links, which then become PDF links.
         # PubMedStrategy for specific domain.
         # YouTubeStrategy for YouTube video URLs.
         # PdfProcessorStrategy for direct .pdf links or Content-Type PDF.
         # ImageProcessorStrategy for image files.
         # HtmlProcessorStrategy should be checked before URL strategy fallback.
+        self.register(HackerNewsProcessorStrategy(self.http_client))  # HackerNews discussions
         self.register(ArxivProcessorStrategy(self.http_client))  # Handles arxiv.org/abs/ links
         self.register(PubMedProcessorStrategy(self.http_client))  # Specific domain
         self.register(YouTubeProcessorStrategy())  # YouTube videos
