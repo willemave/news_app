@@ -6,92 +6,111 @@
 //
 
 import SwiftUI
+import MarkdownUI
 
 struct ContentDetailView: View {
-    let contentId: Int
-    @StateObject private var viewModel: ContentDetailViewModel
+    let initialContentId: Int
+    let allContentIds: [Int]
+    @StateObject private var viewModel = ContentDetailViewModel()
     @Environment(\.dismiss) private var dismiss
+    @State private var dragAmount: CGFloat = 0
+    @State private var currentIndex: Int
     
-    init(contentId: Int) {
-        self.contentId = contentId
-        self._viewModel = StateObject(wrappedValue: ContentDetailViewModel(contentId: contentId))
+    init(contentId: Int, allContentIds: [Int] = []) {
+        self.initialContentId = contentId
+        self.allContentIds = allContentIds.isEmpty ? [contentId] : allContentIds
+        if let index = allContentIds.firstIndex(of: contentId) {
+            self._currentIndex = State(initialValue: index)
+        } else {
+            self._currentIndex = State(initialValue: 0)
+        }
     }
     
     var body: some View {
         ScrollView {
-            if viewModel.isLoading {
-                LoadingView()
+            VStack(spacing: 10) {
+                if viewModel.isLoading {
+                    LoadingView()
+                        .frame(minHeight: 400)
+                } else if let error = viewModel.errorMessage {
+                    ErrorView(message: error) {
+                        Task { await viewModel.loadContent() }
+                    }
                     .frame(minHeight: 400)
-            } else if let error = viewModel.errorMessage {
-                ErrorView(message: error) {
-                    Task { await viewModel.loadContent() }
-                }
-                .frame(minHeight: 400)
-            } else if let content = viewModel.content {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Header Section
-                    VStack(alignment: .leading, spacing: 12) {
+                } else if let content = viewModel.content {
+                    VStack(alignment: .leading, spacing: 20) {
+                    // Compact Header Section
+                    VStack(alignment: .leading, spacing: 8) {
                         Text(content.displayTitle)
-                            .font(.largeTitle)
+                            .font(.title2)
                             .fontWeight(.bold)
                         
-                        // URL
-                        if let url = URL(string: content.url) {
-                            HStack {
-                                Text("URL:")
-                                    .fontWeight(.medium)
-                                Link(content.url, destination: url)
-                                    .font(.caption)
-                                    .foregroundColor(.accentColor)
-                                    .lineLimit(2)
-                            }
-                        }
-                        
-                        // Metadata
-                        HStack(spacing: 16) {
+                        // Compact Metadata Row
+                        HStack(spacing: 12) {
                             if let contentType = content.contentTypeEnum {
                                 ContentTypeBadge(contentType: contentType)
                             }
                             
-                            Label(content.status.capitalized, systemImage: statusIcon)
-                                .font(.caption)
-                                .foregroundColor(statusColor)
-                            
                             if let source = content.source {
-                                Label(source, systemImage: "newspaper")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        // Dates
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let pubDate = content.publicationDate {
-                                Label("Published: \(formatDate(pubDate))", systemImage: "calendar")
+                                Text(source)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                             
-                            Label("Added: \(formatDate(content.createdAt))", systemImage: "clock")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            if let pubDate = content.publicationDate {
+                                Text(formatDate(pubDate))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
                         }
                         
-                        // Action Buttons
-                        HStack(spacing: 12) {
+                        // Compact Action Buttons Row
+                        HStack(spacing: 8) {
                             if let url = URL(string: content.url) {
                                 Link(destination: url) {
-                                    Label("View Original", systemImage: "arrow.up.right.square")
-                                        .font(.subheadline)
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.system(size: 20))
                                 }
                                 .buttonStyle(.borderedProminent)
                             }
                             
                             Button(action: { viewModel.shareContent() }) {
-                                Label("Share", systemImage: "square.and.arrow.up")
-                                    .font(.subheadline)
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 20))
                             }
                             .buttonStyle(.bordered)
+                            
+                            // Copy button for podcasts only
+                            if content.contentTypeEnum == .podcast {
+                                Button(action: { viewModel.copyPodcastContent() }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 20))
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                            
+                            // Favorite button
+                            Button(action: { 
+                                Task { 
+                                    await viewModel.toggleFavorite() 
+                                }
+                            }) {
+                                Image(systemName: content.isFavorited ? "star.fill" : "star")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(content.isFavorited ? .yellow : .primary)
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Spacer()
+                            
+                            // Navigation indicators
+                            if allContentIds.count > 1 {
+                                Text("\(currentIndex + 1) / \(allContentIds.count)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                     .padding()
@@ -119,8 +138,8 @@ struct ContentDetailView: View {
                                 .font(.title2)
                                 .fontWeight(.semibold)
                             
-                            Text(fullMarkdown)
-                                .font(.body)
+                            Markdown(fullMarkdown)
+                                .markdownTheme(.gitHub)
                         }
                         .padding()
                         .background(Color(UIColor.secondarySystemBackground))
@@ -129,7 +148,54 @@ struct ContentDetailView: View {
                 }
                 .padding()
             }
+            }
         }
+        .offset(x: dragAmount)
+        .animation(.spring(), value: dragAmount)
+        .gesture(
+            DragGesture(minimumDistance: 30)
+                .onChanged { value in
+                    // Only allow horizontal swipes that are more horizontal than vertical
+                    if abs(value.translation.width) > abs(value.translation.height) {
+                        dragAmount = value.translation.width * 0.5 // Add some resistance
+                    }
+                }
+                .onEnded { value in
+                    
+                    // Check if it's a horizontal swipe
+                    if abs(value.translation.width) > abs(value.translation.height) {
+                        if value.translation.width > 80 && currentIndex > 0 {
+                            // Swipe right - previous article
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                dragAmount = UIScreen.main.bounds.width
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                dragAmount = 0
+                                navigateToPrevious()
+                            }
+                        } else if value.translation.width < -80 && currentIndex < allContentIds.count - 1 {
+                            // Swipe left - next article
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                dragAmount = -UIScreen.main.bounds.width
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                dragAmount = 0
+                                navigateToNext()
+                            }
+                        } else {
+                            // Snap back if not enough swipe
+                            withAnimation(.spring()) {
+                                dragAmount = 0
+                            }
+                        }
+                    } else {
+                        // Not a horizontal swipe, snap back
+                        withAnimation(.spring()) {
+                            dragAmount = 0
+                        }
+                    }
+                }
+        )
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -143,7 +209,16 @@ struct ContentDetailView: View {
             }
         }
         .task {
+            let idToLoad = allContentIds.isEmpty ? initialContentId : allContentIds[currentIndex]
+            viewModel.updateContentId(idToLoad)
             await viewModel.loadContent()
+        }
+        .onChange(of: currentIndex) { oldValue, newValue in
+            Task {
+                let newContentId = allContentIds[newValue]
+                viewModel.updateContentId(newContentId)
+                await viewModel.loadContent()
+            }
         }
     }
     
@@ -183,196 +258,21 @@ struct ContentDetailView: View {
         
         let displayFormatter = DateFormatter()
         displayFormatter.dateStyle = .medium
-        displayFormatter.timeStyle = .short
+        displayFormatter.timeStyle = .none
         return displayFormatter.string(from: date)
     }
-}
-
-struct ContentDetailView_Previews: PreviewProvider {
-    static var previews: some View {
-        NavigationView {
-            ContentDetailViewPreview()
+    
+    private func navigateToNext() {
+        guard currentIndex < allContentIds.count - 1 else {
+            return
         }
+        currentIndex += 1
     }
-}
-
-// Preview wrapper to provide mock data
-private struct ContentDetailViewPreview: View {
-    @StateObject private var mockViewModel = MockContentDetailViewModel()
     
-    var body: some View {
-        ScrollView {
-            if let content = mockViewModel.content {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Header Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(content.displayTitle)
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        
-                        // URL
-                        if let url = URL(string: content.url) {
-                            HStack {
-                                Text("URL:")
-                                    .fontWeight(.medium)
-                                Link(content.url, destination: url)
-                                    .font(.caption)
-                                    .foregroundColor(.accentColor)
-                                    .lineLimit(2)
-                            }
-                        }
-                        
-                        // Metadata
-                        HStack(spacing: 16) {
-                            if let contentType = content.contentTypeEnum {
-                                ContentTypeBadge(contentType: contentType)
-                            }
-                            
-                            Label(content.status.capitalized, systemImage: "checkmark.circle.fill")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                            
-                            if let source = content.source {
-                                Label(source, systemImage: "newspaper")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        // Dates
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let pubDate = content.publicationDate {
-                                Label("Published: \(formatDate(pubDate))", systemImage: "calendar")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Label("Added: \(formatDate(content.createdAt))", systemImage: "clock")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        // Action Buttons
-                        HStack(spacing: 12) {
-                            if let url = URL(string: content.url) {
-                                Link(destination: url) {
-                                    Label("View Original", systemImage: "arrow.up.right.square")
-                                        .font(.subheadline)
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                            
-                            Button(action: { }) {
-                                Label("Share", systemImage: "square.and.arrow.up")
-                                    .font(.subheadline)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                    .padding()
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .cornerRadius(12)
-                    
-                    // Structured Summary Section
-                    if let structuredSummary = content.structuredSummary {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Summary")
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                            
-                            StructuredSummaryView(summary: structuredSummary)
-                        }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(12)
-                    }
-                    
-                    // Full Content Section
-                    if let fullMarkdown = content.fullMarkdown {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Full Article")
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                            
-                            Text(fullMarkdown)
-                                .font(.body)
-                        }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(12)
-                    }
-                }
-                .padding()
-            }
+    private func navigateToPrevious() {
+        guard currentIndex > 0 else {
+            return
         }
-        .navigationBarTitleDisplayMode(.inline)
-    }
-    
-    private func formatDate(_ dateString: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        guard let date = formatter.date(from: dateString) else { return dateString }
-        
-        let displayFormatter = DateFormatter()
-        displayFormatter.dateStyle = .medium
-        displayFormatter.timeStyle = .short
-        return displayFormatter.string(from: date)
-    }
-}
-
-// Mock ViewModel for previews
-private class MockContentDetailViewModel: ObservableObject {
-    @Published var content: ContentDetail?
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    
-    init() {
-        // Create mock content
-        self.content = ContentDetail(
-            id: 1,
-            contentType: "article",
-            url: "https://example.com/article",
-            title: "Sample Article Title",
-            displayTitle: "Sample Article Title",
-            source: "Example News",
-            status: "completed",
-            errorMessage: nil,
-            retryCount: 0,
-            metadata: [:],
-            createdAt: "2025-07-09T10:00:00.000Z",
-            updatedAt: "2025-07-09T10:30:00.000Z",
-            processedAt: "2025-07-09T10:30:00.000Z",
-            checkedOutBy: nil,
-            checkedOutAt: nil,
-            publicationDate: "2025-07-09T09:00:00.000Z",
-            isRead: false,
-            summary: "This is a sample article summary that demonstrates the preview functionality.",
-            shortSummary: "Sample article summary",
-            structuredSummary: StructuredSummary(
-                title: "Sample Article",
-                overview: "This article discusses important topics in technology and innovation.",
-                bulletPoints: [
-                    BulletPoint(text: "First key takeaway from the article", category: "Main Point"),
-                    BulletPoint(text: "Second important point to remember", category: "Supporting Detail"),
-                    BulletPoint(text: "Third crucial insight", category: "Conclusion")
-                ],
-                quotes: [
-                    Quote(text: "This is an important quote from the article.", context: "Said during the keynote presentation")
-                ],
-                topics: ["Technology", "Innovation", "Future"],
-                summarizationDate: "2025-07-09T10:30:00.000Z",
-                classification: "technology"
-            ),
-            bulletPoints: [
-                BulletPoint(text: "Main argument of the article", category: "Key Point"),
-                BulletPoint(text: "Secondary point with evidence", category: "Supporting")
-            ],
-            quotes: [
-                Quote(text: "This is a standalone quote from the article.", context: "Introduction paragraph")
-            ],
-            topics: ["tech", "news", "innovation"],
-            fullMarkdown: "# Sample Article\n\nThis is the full content of the article in markdown format.\n\n## Section 1\n\nContent goes here...\n\n## Section 2\n\nMore content..."
-        )
+        currentIndex -= 1
     }
 }

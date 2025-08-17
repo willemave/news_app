@@ -61,6 +61,7 @@ def get_recent_logs(logs_dir: Path, hours: int = 24) -> List[Dict[str, Any]]:
     # Process error directory
     errors_dir = logs_dir / 'errors'
     if errors_dir.exists():
+        # Process JSONL files
         for file_path in sorted(errors_dir.glob('*.jsonl'), reverse=True):
             # Skip very old files based on filename timestamp
             if '_' in file_path.stem:
@@ -96,6 +97,30 @@ def get_recent_logs(logs_dir: Path, hours: int = 24) -> List[Dict[str, Any]]:
                     error['source_file'] = file_path.name
                     error['timestamp_parse_error'] = str(e)
                     all_errors.append(error)
+        
+        # Process llm_json_errors.log specifically
+        llm_errors_file = errors_dir / 'llm_json_errors.log'
+        if llm_errors_file.exists():
+            errors = parse_log_file(llm_errors_file)
+            for error in errors:
+                try:
+                    timestamp_str = error.get('timestamp', '')
+                    if timestamp_str:
+                        if 'Z' in timestamp_str:
+                            error_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        elif '+' in timestamp_str or timestamp_str.endswith('00:00'):
+                            error_time = datetime.fromisoformat(timestamp_str)
+                        else:
+                            error_time = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
+                        
+                        if error_time > cutoff_time:
+                            error['source_file'] = llm_errors_file.name
+                            all_errors.append(error)
+                except Exception as e:
+                    # Include if we can't parse timestamp
+                    error['source_file'] = llm_errors_file.name
+                    error['timestamp_parse_error'] = str(e)
+                    all_errors.append(error)
     
     # Process main log files
     for file_path in logs_dir.glob('*.log'):
@@ -128,7 +153,8 @@ def group_errors(errors: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]
         error_msg = error.get('error_message', '')
         operation = error.get('operation', '')
         
-        # Enhanced error categorization based on patterns
+        # Create more specific keys using full error message pattern
+        # This will reduce aggregation and preserve more context
         if 'BrowserType.launch' in error_msg or 'playwright' in error_msg.lower():
             key = 'playwright_browser_errors'
         elif 'crawl4ai' in error_msg.lower():
@@ -227,64 +253,105 @@ I need help fixing errors that occurred in my FastAPI news aggregation applicati
     for error_type, errors in grouped_errors.items():
         prompt += f"### {error_type.replace('_', ' ').title()} ({len(errors)} occurrences)\n\n"
         
-        # Group by unique error patterns
+        # Group by unique error patterns - use more of the error message for better uniqueness
         error_patterns = defaultdict(list)
         for error in errors:
-            msg = error.get('error_message', '').split('\n')[0][:200]  # First line, truncated
+            # Use first 500 chars of error message as key for less aggregation
+            msg = error.get('error_message', '')[:500]
             error_patterns[msg].append(error)
         
-        # Show top patterns
-        for msg, pattern_errors in list(error_patterns.items())[:3]:
-            prompt += f"- **{msg}** ({len(pattern_errors)} times)\n"
+        # Show top patterns with more detail
+        for msg, pattern_errors in list(error_patterns.items())[:5]:  # Show top 5 instead of 3
+            # Show full error message (up to 1000 chars)
+            full_msg = pattern_errors[0].get('error_message', '')[:1000]
+            prompt += f"- **Error** ({len(pattern_errors)} times):\n"
+            prompt += f"  ```\n  {full_msg}\n  ```\n"
             
-            # Show context from first occurrence
+            # Show context from first occurrence with more details
             first_error = pattern_errors[0]
+            
+            # Add all available context
+            context_items = []
             if first_error.get('context_data'):
-                context = first_error['context_data']
-                relevant_context = []
-                if 'url' in context:
-                    relevant_context.append(f"URL: {context['url']}")
-                if 'strategy' in context:
-                    relevant_context.append(f"Strategy: {context['strategy']}")
-                if 'method' in context:
-                    relevant_context.append(f"Method: {context['method']}")
-                if 'item_id' in first_error:
-                    relevant_context.append(f"Item: {first_error['item_id']}")
+                context = first_error.get('context_data', {})
+                for key, value in context.items():
+                    if value and key not in ['error', 'traceback']:  # Skip redundant fields
+                        context_items.append(f"{key}: {str(value)[:100]}")
+            
+            # Add other metadata
+            if first_error.get('item_id'):
+                context_items.append(f"item_id: {first_error['item_id']}")
+            if first_error.get('operation'):
+                context_items.append(f"operation: {first_error['operation']}")
+            if first_error.get('component'):
+                context_items.append(f"component: {first_error['component']}")
+            
+            if context_items:
+                prompt += "  - **Context**:\n"
+                for item in context_items[:8]:  # Show up to 8 context items
+                    prompt += f"    - {item}\n"
+            
+            # Include partial stack trace for first occurrence
+            if first_error.get('stack_trace'):
+                stack_lines = first_error['stack_trace'].split('\n')
+                # Find the most relevant lines (those with file references from our codebase)
+                relevant_lines = []
+                for line in stack_lines:
+                    if '/app/' in line or 'app/' in line or 'File "' in line:
+                        relevant_lines.append(line.strip())
                 
-                if relevant_context:
-                    prompt += f"  - Context: {', '.join(relevant_context)}\n"
+                if relevant_lines:
+                    prompt += "  - **Stack trace excerpt**:\n"
+                    for line in relevant_lines[:5]:  # Show up to 5 relevant stack lines
+                        prompt += f"    {line}\n"
+            
+            prompt += "\n"
         
         prompt += "\n"
     
     # Add detailed examples for top error categories
     prompt += "## Detailed Error Analysis\n\n"
     
-    # Show details for top 3 error categories
-    for i, (error_type, errors) in enumerate(list(grouped_errors.items())[:3]):
+    # Show details for top 5 error categories with more complete information
+    for i, (error_type, errors) in enumerate(list(grouped_errors.items())[:5]):
         prompt += f"### {i+1}. {error_type.replace('_', ' ').title()}\n\n"
         
-        # Show most recent error with full details
+        # Show most recent error with full details - include ALL fields
         error = errors[0]
-        prompt += "**Most Recent Occurrence:**\n```json\n"
-        prompt += json.dumps({
-            'timestamp': error.get('timestamp'),
-            'component': error.get('component'),
-            'operation': error.get('operation'),
-            'error_type': error.get('error_type'),
-            'error_message': error.get('error_message'),
-            'context_data': error.get('context_data'),
-            'item_id': error.get('item_id')
-        }, indent=2, default=str)
+        
+        # Build complete error dict with all available fields
+        error_details = {}
+        for key, value in error.items():
+            if value is not None and key != 'source_file':  # Skip internal tracking fields
+                if isinstance(value, str) and len(value) > 2000:
+                    # Truncate very long strings but keep more content
+                    error_details[key] = value[:2000] + "... (truncated)"
+                else:
+                    error_details[key] = value
+        
+        prompt += "**Most Recent Full Error:**\n```json\n"
+        prompt += json.dumps(error_details, indent=2, default=str)
         prompt += "\n```\n\n"
         
-        # Add stack trace if available
+        # Add full stack trace if available (show more lines)
         if error.get('stack_trace'):
-            prompt += "**Stack Trace:**\n```python\n"
-            stack_lines = error['stack_trace'].split('\n')[:15]
+            prompt += "**Complete Stack Trace:**\n```python\n"
+            stack_lines = error['stack_trace'].split('\n')[:30]  # Show 30 lines instead of 15
             prompt += '\n'.join(stack_lines)
-            if len(error['stack_trace'].split('\n')) > 15:
-                prompt += "\n... (truncated)"
+            if len(error['stack_trace'].split('\n')) > 30:
+                prompt += "\n... (truncated - " + str(len(error['stack_trace'].split('\n')) - 30) + " more lines)"
             prompt += "\n```\n\n"
+        
+        # Show a few more examples if they exist
+        if len(errors) > 1:
+            prompt += f"**Additional Examples** (showing 2 more of {len(errors)-1} remaining):\n\n"
+            for j, other_error in enumerate(errors[1:3], 1):
+                prompt += f"Example {j+1}:\n"
+                prompt += f"- Timestamp: {other_error.get('timestamp', 'N/A')}\n"
+                prompt += f"- Error Message: {other_error.get('error_message', '')[:500]}\n"
+                if other_error.get('context_data'):
+                    prompt += f"- Context: {json.dumps(other_error['context_data'], default=str)[:300]}\n"
+                prompt += "\n"
         
         # HTTP details if relevant
         if error.get('http_details'):

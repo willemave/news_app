@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ArticlesView: View {
     @StateObject private var viewModel = ContentListViewModel()
+    @ObservedObject private var settings = AppSettings.shared
     
     var body: some View {
         NavigationView {
@@ -37,7 +38,10 @@ struct ArticlesView: View {
                             List {
                                 ForEach(viewModel.contents) { content in
                                     ZStack {
-                                        NavigationLink(destination: ContentDetailView(contentId: content.id)) {
+                                        NavigationLink(destination: ContentDetailView(
+                                            contentId: content.id,
+                                            allContentIds: viewModel.contents.map { $0.id }
+                                        )) {
                                             EmptyView()
                                         }
                                         .opacity(0)
@@ -62,6 +66,17 @@ struct ArticlesView: View {
                                             .tint(.green)
                                         }
                                     }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button {
+                                            Task {
+                                                await viewModel.toggleFavorite(content.id)
+                                            }
+                                        } label: {
+                                            Label(content.isFavorited ? "Unfavorite" : "Favorite", 
+                                                  systemImage: content.isFavorited ? "star.slash.fill" : "star.fill")
+                                        }
+                                        .tint(content.isFavorited ? .gray : .yellow)
+                                    }
                                 }
                             }
                             .listStyle(.plain)
@@ -74,8 +89,11 @@ struct ArticlesView: View {
                 }
                 .task {
                     viewModel.selectedContentType = "article"
-                    viewModel.selectedReadFilter = "unread"
+                    viewModel.selectedReadFilter = settings.showReadContent ? "all" : "unread"
                     await viewModel.loadContent()
+                }
+                .onChange(of: settings.showReadContent) { _, showRead in
+                    viewModel.selectedReadFilter = showRead ? "all" : "unread"
                 }
             }
         }

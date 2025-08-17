@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "Bash(ruby:*)"
+      "Bash(ruby:*)",
+      "Bash(source:*)",
+      "Bash(uv add:*)",
+      "Bash(grep:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(rm:*)",
+      "Bash(mv:*)",
+      "Bash(python:*)",
+      "Bash(alembic:*)",
+      "Bash(PYTHONPATH=/Users/willem/Development/news_app alembic -c /Users/willem/Development/news_app/alembic.ini upgrade head)",
+      "Bash(PYTHONPATH=/Users/willem/Development/news_app alembic -c /Users/willem/Development/news_app/alembic.ini current)",
+      "Bash(sqlite3:*)"
     ],
     "deny": []
   }

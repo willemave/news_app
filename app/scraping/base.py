@@ -11,6 +11,29 @@ from app.services.queue import TaskType, get_queue_service
 
 logger = get_logger(__name__)
 
+"""
+Source and Platform Conventions:
+--------------------------------
+All scrapers must set both 'platform' and 'source' fields in metadata:
+
+1. Platform Field:
+   - Identifies the high-level platform (reddit, substack, hackernews, podcast, youtube)
+   - Used for UI icons and platform-level filtering
+   - Always lowercase
+
+2. Source Field:
+   - Format: "platform:specific_source"
+   - Examples:
+     - "reddit:MachineLearning" (subreddit name)
+     - "substack:Import AI" (newsletter name)
+     - "hackernews:HackerNews" (always HackerNews)
+     - "podcast:Lenny's Podcast" (podcast name)
+     - "youtube:TechChannel" (channel name)
+   - Provides granular filtering within platforms
+
+This standardized format ensures consistency across all content sources.
+"""
+
 
 class BaseScraper(ABC):
     """Base class for all scrapers."""
@@ -42,7 +65,6 @@ class BaseScraper(ABC):
         logger.info(f"Running {self.name} scraper")
 
         stats = ScraperStats()
-        error_details = []
 
         try:
             # Scrape items
@@ -58,7 +80,8 @@ class BaseScraper(ABC):
             stats.error_details = save_stats["error_details"]
 
             logger.info(
-                f"Saved {stats.saved} new items from {self.name} (duplicates: {stats.duplicates}, errors: {stats.errors})"
+                f"Saved {stats.saved} new items from {self.name} "
+                f"(duplicates: {stats.duplicates}, errors: {stats.errors})"
             )
 
         except Exception as e:
@@ -98,6 +121,7 @@ class BaseScraper(ABC):
                         url=item["url"],
                         title=item.get("title"),
                         source=metadata.get("source"),  # Extract source from metadata
+                        platform=metadata.get("platform"),  # Extract platform from metadata
                         status=ContentStatus.NEW.value,
                         content_metadata=metadata,
                         created_at=datetime.utcnow(),

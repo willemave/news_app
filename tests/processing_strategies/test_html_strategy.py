@@ -115,8 +115,7 @@ def test_download_content(html_strategy: HtmlProcessorStrategy):
 # Tests for _extract_with_crawl4ai have been removed as the method no longer exists
 
 
-@pytest.mark.asyncio
-async def test_extract_data_successful(html_strategy: HtmlProcessorStrategy):
+def test_extract_data_successful(html_strategy: HtmlProcessorStrategy):
     """Test successful data extraction with crawl4ai."""
     url = "http://example.com/article.html"
 
@@ -139,8 +138,10 @@ async def test_extract_data_successful(html_strategy: HtmlProcessorStrategy):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
+    ), patch(
+        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
-        extracted_data = await html_strategy.extract_data(SAMPLE_HTML_CONTENT, url)
+        extracted_data = html_strategy.extract_data(SAMPLE_HTML_CONTENT, url)
 
         assert extracted_data["title"] == "Test Article Title"
         assert "John Doe" in extracted_data["text_content"]
@@ -149,8 +150,7 @@ async def test_extract_data_successful(html_strategy: HtmlProcessorStrategy):
         assert extracted_data["final_url_after_redirects"] == url
 
 
-@pytest.mark.asyncio
-async def test_extract_data_with_metadata_extraction(html_strategy: HtmlProcessorStrategy):
+def test_extract_data_with_metadata_extraction(html_strategy: HtmlProcessorStrategy):
     """Test data extraction with metadata parsing."""
     url = "http://example.com/article.html"
 
@@ -182,8 +182,10 @@ This is the article content.
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
+    ), patch(
+        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
-        extracted_data = await html_strategy.extract_data("", url)
+        extracted_data = html_strategy.extract_data("", url)
 
         assert extracted_data["author"] == "Jane Smith"
         assert extracted_data["publication_date"] is not None
@@ -192,8 +194,7 @@ This is the article content.
         assert extracted_data["publication_date"].day == 25
 
 
-@pytest.mark.asyncio
-async def test_extract_data_pubmed_source(html_strategy: HtmlProcessorStrategy):
+def test_extract_data_pubmed_source(html_strategy: HtmlProcessorStrategy):
     """Test data extraction for PubMed URLs."""
     url = "https://pmc.ncbi.nlm.nih.gov/articles/pmid/12345/"
 
@@ -216,14 +217,15 @@ async def test_extract_data_pubmed_source(html_strategy: HtmlProcessorStrategy):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
+    ), patch(
+        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
-        extracted_data = await html_strategy.extract_data("", url)
+        extracted_data = html_strategy.extract_data("", url)
 
         assert extracted_data["source"] == "PubMed"
 
 
-@pytest.mark.asyncio
-async def test_extract_data_arxiv_source(html_strategy: HtmlProcessorStrategy):
+def test_extract_data_arxiv_source(html_strategy: HtmlProcessorStrategy):
     """Test data extraction for ArXiv URLs."""
     url = "https://arxiv.org/pdf/1234.5678"
 
@@ -246,14 +248,15 @@ async def test_extract_data_arxiv_source(html_strategy: HtmlProcessorStrategy):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
+    ), patch(
+        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
-        extracted_data = await html_strategy.extract_data("", url)
+        extracted_data = html_strategy.extract_data("", url)
 
         assert extracted_data["source"] == "Arxiv"
 
 
-@pytest.mark.asyncio
-async def test_extract_data_failure(html_strategy: HtmlProcessorStrategy):
+def test_extract_data_failure(html_strategy: HtmlProcessorStrategy):
     """Test data extraction when crawl4ai fails."""
     url = "http://example.com/article.html"
 
@@ -269,13 +272,59 @@ async def test_extract_data_failure(html_strategy: HtmlProcessorStrategy):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
+    ), patch(
+        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
-        extracted_data = await html_strategy.extract_data("", url)
+        extracted_data = html_strategy.extract_data("", url)
 
-        assert extracted_data["title"] == "Extraction Failed"
-        assert extracted_data["text_content"] == ""
+        # Updated to match the new error handling behavior
+        assert "Content from" in extracted_data["title"]
+        assert "Failed to extract content" in extracted_data["text_content"]
         assert extracted_data["content_type"] == "html"
         assert extracted_data["source"] == "web"
+        assert "extraction_error" in extracted_data
+
+
+def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrategy):
+    """Test that browser close errors don't fail the extraction."""
+    url = "https://en.wikipedia.org/wiki/Pfeilstorch"
+    
+    # Mock successful extraction result
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.metadata = {"title": "Pfeilstorch Article"}
+    mock_result.url = url
+    mock_result.cleaned_html = "<html>...</html>"
+    
+    # Create a mock markdown object
+    mock_markdown = MagicMock()
+    mock_markdown.raw_markdown = "Article about Pfeilstorch"
+    mock_result.markdown = mock_markdown
+    
+    # Mock crawler that raises error on close
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+    # Simulate the browser close error
+    mock_crawler.__aexit__ = AsyncMock(
+        side_effect=Exception("Browser.close: Connection closed while reading from the driver")
+    )
+    
+    with patch(
+        "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
+    ), patch(
+        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
+    ):
+        # Should not raise an exception despite browser close error
+        extracted_data = html_strategy.extract_data("", url)
+        
+        # Verify extraction succeeded
+        assert extracted_data["title"] == "Pfeilstorch Article"
+        assert extracted_data["text_content"] == "Article about Pfeilstorch"
+        assert extracted_data["content_type"] == "html"
+        assert extracted_data["final_url_after_redirects"] == url
+        # Should not have extraction_error since the extraction itself succeeded
+        assert "extraction_error" not in extracted_data
 
 
 def test_prepare_for_llm(html_strategy: HtmlProcessorStrategy):

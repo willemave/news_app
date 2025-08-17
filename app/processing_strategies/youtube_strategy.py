@@ -4,8 +4,10 @@ import re
 from datetime import datetime
 from typing import Any
 
+import httpx
 import yt_dlp
 
+from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 
 logger = logging.getLogger(__name__)
@@ -14,7 +16,8 @@ logger = logging.getLogger(__name__)
 class YouTubeProcessorStrategy(UrlProcessorStrategy):
     """Processing strategy for YouTube videos using yt-dlp."""
 
-    def __init__(self):
+    def __init__(self, http_client: RobustHttpClient):
+        super().__init__(http_client)
         self.ydl_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -28,7 +31,7 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
             "skip_download": True,  # Don't download video
         }
 
-    def can_handle_url(self, url: str) -> bool:
+    def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
         """Check if this strategy can handle the given URL."""
         patterns = [
             r"youtube\.com/watch\?v=",
@@ -80,6 +83,8 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                     # Use transcript if available, else description
                     "text": transcript or description,
                     "metadata": {
+                        "platform": "youtube",  # Platform identifier
+                        "source": f"youtube:{uploader}",  # Standardized format: platform:channel
                         "video_id": video_id,
                         "channel": uploader,
                         "duration": duration,
@@ -223,7 +228,7 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
             # Return as-is if format unknown
             return data
 
-    async def prepare_for_llm(self, extracted_data: dict[str, Any]) -> str:
+    async def prepare_for_llm(self, extracted_data: dict[str, Any]) -> dict[str, Any]:
         """Prepare the extracted data for LLM processing."""
         metadata = extracted_data.get("metadata", {})
         title = extracted_data.get("title", "Untitled")
@@ -256,4 +261,10 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                 "Note: No transcript available. Summary based on title and description only."
             )
 
-        return "\n".join(parts)
+        content_text = "\n".join(parts)
+
+        return {
+            "content_to_filter": content_text,
+            "content_to_summarize": content_text,
+            "is_pdf": False,
+        }

@@ -44,7 +44,9 @@ class HackerNewsUnifiedScraper(BaseScraper):
                         "title": story.get("title"),
                         "content_type": ContentType.ARTICLE,
                         "metadata": {
-                            "source": "hackernews",
+                            "platform": "hackernews",  # Platform identifier
+                            # Standardized format: platform:source
+                            "source": "hackernews:HackerNews",
                             "hn_id": story_id,
                             "hn_url": f"{self.hn_base_url}/item?id={story_id}",
                             "score": story.get("score", 0),

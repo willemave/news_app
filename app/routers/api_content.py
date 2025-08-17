@@ -39,6 +39,7 @@ class ContentSummaryResponse(BaseModel):
         None, description="ISO timestamp of when content was published"
     )
     is_read: bool = Field(False, description="Whether the content has been marked as read")
+    is_favorited: bool = Field(False, description="Whether the content has been favorited")
 
     class Config:
         json_schema_extra = {
@@ -117,6 +118,7 @@ class ContentDetailResponse(BaseModel):
         None, description="ISO timestamp of when content was published"
     )
     is_read: bool = Field(False, description="Whether the content has been marked as read")
+    is_favorited: bool = Field(False, description="Whether the content has been favorited")
     # Additional useful properties from ContentData
     summary: str | None = Field(None, description="Summary text")
     short_summary: str | None = Field(None, description="Short version of summary for list view")
@@ -227,10 +229,13 @@ async def list_contents(
     db: Session = Depends(get_db_session),
 ) -> ContentListResponse:
     """List content with optional filters."""
-    from app.services import read_status
+    from app.services import read_status, favorites
 
     # Get read content IDs first
     read_content_ids = read_status.get_read_content_ids(db)
+    
+    # Get favorited content IDs
+    favorite_content_ids = favorites.get_favorite_content_ids(db)
 
     # Get available dates for the dropdown
     available_dates_query = (
@@ -317,6 +322,7 @@ async def list_contents(
                     if domain_content.publication_date
                     else None,
                     is_read=c.id in read_content_ids,
+                    is_favorited=c.id in favorite_content_ids,
                 )
             )
         except Exception as e:
@@ -381,7 +387,7 @@ async def get_content_detail(
     db: Session = Depends(get_db_session),
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
-    from app.services import read_status
+    from app.services import read_status, favorites
 
     content = db.query(Content).filter(Content.id == content_id).first()
 
@@ -390,6 +396,9 @@ async def get_content_detail(
 
     # Check if content is read
     is_read = read_status.is_content_read(db, content_id)
+    
+    # Check if content is favorited
+    is_favorited = favorites.is_content_favorited(db, content_id)
 
     # Convert to domain object to validate metadata
     try:
@@ -423,6 +432,7 @@ async def get_content_detail(
         if domain_content.publication_date
         else None,
         is_read=is_read,
+        is_favorited=is_favorited,
         # Additional properties from ContentData
         summary=domain_content.summary,
         short_summary=domain_content.short_summary,
@@ -509,3 +519,133 @@ async def mark_content_unread(
         "content_id": content_id,
         "removed_records": result.rowcount,
     }
+
+
+@router.post(
+    "/{content_id}/favorite",
+    summary="Toggle favorite status",
+    description="Toggle the favorite status of a specific content item.",
+    responses={
+        200: {"description": "Favorite status toggled successfully"},
+        404: {"description": "Content not found"},
+    },
+)
+async def toggle_favorite(
+    content_id: int = Path(..., description="Content ID", gt=0),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Toggle favorite status for content."""
+    from app.services import favorites
+
+    # Check if content exists
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # Toggle favorite
+    is_favorited, _ = favorites.toggle_favorite(db, content_id)
+    return {
+        "status": "success",
+        "content_id": content_id,
+        "is_favorited": is_favorited,
+    }
+
+
+@router.delete(
+    "/{content_id}/unfavorite", 
+    summary="Remove from favorites",
+    description="Remove a specific content item from favorites.",
+    responses={
+        200: {"description": "Content removed from favorites successfully"},
+        404: {"description": "Content not found"},
+    },
+)
+async def unfavorite_content(
+    content_id: int = Path(..., description="Content ID", gt=0),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Remove content from favorites."""
+    from app.services import favorites
+
+    # Check if content exists
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # Remove from favorites
+    removed = favorites.remove_favorite(db, content_id)
+    return {
+        "status": "success" if removed else "not_found",
+        "content_id": content_id,
+        "message": "Removed from favorites" if removed else "Content was not favorited",
+    }
+
+
+@router.get(
+    "/favorites/list",
+    response_model=ContentListResponse,
+    summary="Get favorited content",
+    description="Retrieve all favorited content items.",
+)
+async def get_favorites(
+    db: Session = Depends(get_db_session),
+) -> ContentListResponse:
+    """Get all favorited content."""
+    from app.services import read_status, favorites
+
+    # Get favorited content IDs
+    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    
+    # Get read content IDs
+    read_content_ids = read_status.get_read_content_ids(db)
+
+    # Query favorited content
+    contents = db.query(Content).filter(Content.id.in_(favorite_content_ids)).order_by(Content.created_at.desc()).all() if favorite_content_ids else []
+
+    # Convert to response format
+    content_summaries = []
+    for c in contents:
+        try:
+            domain_content = content_to_domain(c)
+
+            # Get classification from metadata
+            classification = None
+            if domain_content.structured_summary:
+                classification = domain_content.structured_summary.get("classification")
+
+            content_summaries.append(
+                ContentSummaryResponse(
+                    id=domain_content.id,
+                    content_type=domain_content.content_type.value,
+                    url=str(domain_content.url),
+                    title=domain_content.display_title,
+                    source=domain_content.source,
+                    status=domain_content.status.value,
+                    short_summary=domain_content.short_summary,
+                    created_at=domain_content.created_at.isoformat()
+                    if domain_content.created_at
+                    else "",
+                    processed_at=domain_content.processed_at.isoformat()
+                    if domain_content.processed_at
+                    else None,
+                    classification=classification,
+                    publication_date=domain_content.publication_date.isoformat()
+                    if domain_content.publication_date
+                    else None,
+                    is_read=c.id in read_content_ids,
+                    is_favorited=True,  # All items in this list are favorited
+                )
+            )
+        except Exception as e:
+            print(f"Skipping content {c.id} due to validation error: {e}")
+            continue
+
+    # Get content types for filter
+    content_types = [ct.value for ct in ContentType]
+
+    return ContentListResponse(
+        contents=content_summaries,
+        total=len(content_summaries),
+        available_dates=[],  # Not needed for favorites list
+        content_types=content_types,
+    )

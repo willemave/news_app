@@ -17,3 +17,6 @@ feeds:
   - name: "Knowledge Project with Shane Paris"
     url: "https://feeds.megaphone.fm/FSMI7575968096"
     limit: 3
+  - name: "Stratechery"
+    url: "https://stratechery.passport.online/feed/podcast/WkzDqJizGHEHcS9zgFmBPJ"
+    limit: 3

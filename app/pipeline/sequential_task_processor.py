@@ -13,7 +13,7 @@ from app.models.schema import Content
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker
 from app.scraping.runner import ScraperRunner
-from app.services.google_flash import GoogleFlashService
+from app.services.openai_llm import get_openai_summarization_service
 from app.services.queue import QueueService, TaskType
 
 logger = get_logger(__name__)
@@ -26,8 +26,8 @@ class SequentialTaskProcessor:
         logger.debug("Initializing SequentialTaskProcessor...")
         self.queue_service = QueueService()
         logger.debug("QueueService initialized")
-        self.llm_service = GoogleFlashService()
-        logger.debug("GoogleFlashService initialized")
+        self.llm_service = get_openai_summarization_service()
+        logger.debug("OpenAI summarization service initialized")
         self.settings = get_settings()
         logger.debug("Settings loaded")
         self.running = True

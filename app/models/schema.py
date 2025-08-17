@@ -26,6 +26,7 @@ class Content(Base):
     url = Column(String(2048), nullable=False, unique=True)
     title = Column(String(500), nullable=True)
     source = Column(String(100), nullable=True, index=True)
+    platform = Column(String(50), nullable=True, index=True)
 
     # Status tracking
     status = Column(String(20), default=ContentStatus.NEW.value, nullable=False, index=True)
@@ -145,6 +146,22 @@ class ContentReadStatus(Base):
     
     __table_args__ = (
         Index("idx_content_read_session_content", "session_id", "content_id", unique=True),
+    )
+
+
+class ContentFavorites(Base):
+    """Track which content has been favorited by which session."""
+    
+    __tablename__ = "content_favorites"
+    
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String(255), nullable=False, index=True)
+    content_id = Column(Integer, nullable=False, index=True)
+    favorited_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index("idx_content_favorites_session_content", "session_id", "content_id", unique=True),
     )
 
 

@@ -33,13 +33,19 @@ class RedditUnifiedScraper(BaseScraper):
             with open(config_path) as f:
                 config = yaml.safe_load(f)
 
-            subreddits = config.get("subreddits", {})
+            subreddits_list = config.get("subreddits", [])
+            subreddits = {}
 
-            # Validate that all values are integers
-            for subreddit, limit in subreddits.items():
-                if not isinstance(limit, int) or limit <= 0:
-                    logger.warning(f"Invalid limit for subreddit {subreddit}: {limit}")
-                    subreddits[subreddit] = 10  # Default to 10 if invalid
+            # Convert list format to dict
+            for sub in subreddits_list:
+                if isinstance(sub, dict) and "name" in sub and "limit" in sub:
+                    name = sub["name"]
+                    limit = sub["limit"]
+                    if isinstance(limit, int) and limit > 0:
+                        subreddits[name] = limit
+                    else:
+                        logger.warning(f"Invalid limit for subreddit {name}: {limit}")
+                        subreddits[name] = 10  # Default to 10 if invalid
 
             logger.info(f"Loaded {len(subreddits)} subreddits from config")
             return subreddits
@@ -85,9 +91,7 @@ class RedditUnifiedScraper(BaseScraper):
 
             params = {"limit": min(limit, 100)}  # Reddit API limit
 
-            response = client.get(
-                url, params=params, headers={"User-Agent": "NewsAggregator/1.0"}
-            )
+            response = client.get(url, params=params, headers={"User-Agent": "NewsAggregator/1.0"})
             response.raise_for_status()
 
             data = response.json()
@@ -109,9 +113,9 @@ class RedditUnifiedScraper(BaseScraper):
                     "title": post.get("title"),
                     "content_type": ContentType.ARTICLE,
                     "metadata": {
-                        "source": post.get(
-                            "subreddit", subreddit_name
-                        ),  # Use subreddit name as source
+                        "platform": "reddit",  # Platform identifier
+                        # Standardized format: platform:source
+                        "source": f"reddit:{post.get('subreddit', subreddit_name)}",
                         "subreddit": post.get("subreddit", subreddit_name),
                         "reddit_id": post.get("id"),
                         "reddit_url": f"https://reddit.com{post.get('permalink', '')}",

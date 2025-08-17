@@ -1,4 +1,5 @@
-from datetime import datetime
+import asyncio
+from datetime import datetime, timezone
 
 from app.core.db import get_db
 from app.core.logging import get_logger
@@ -9,7 +10,7 @@ from app.models.schema import Content
 from app.pipeline.checkout import get_checkout_manager
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.processing_strategies.registry import get_strategy_registry
-from app.services.google_flash import get_google_flash_service
+from app.services.openai_llm import get_openai_summarization_service
 from app.services.http import NonRetryableError, get_http_service
 from app.services.queue import TaskType, get_queue_service
 from app.utils.error_logger import create_error_logger
@@ -24,7 +25,7 @@ class ContentWorker:
     def __init__(self):
         self.checkout_manager = get_checkout_manager()
         self.http_service = get_http_service()
-        self.llm_service = get_google_flash_service()
+        self.llm_service = get_openai_summarization_service()
         self.queue_service = get_queue_service()
         self.strategy_registry = get_strategy_registry()
         self.podcast_download_worker = PodcastDownloadWorker()
@@ -99,7 +100,11 @@ class ContentWorker:
 
             # Download content using strategy (HTML strategy uses crawl4ai)
             try:
-                raw_content = strategy.download_content(processed_url)
+                # Handle async methods from YouTubeStrategy
+                if asyncio.iscoroutinefunction(strategy.download_content):
+                    raw_content = asyncio.run(strategy.download_content(processed_url))
+                else:
+                    raw_content = strategy.download_content(processed_url)
             except NonRetryableError as e:
                 logger.warning(f"Non-retryable error for {processed_url}: {e}")
                 # Mark as failed but don't retry
@@ -118,7 +123,11 @@ class ContentWorker:
                 return False
 
             # Extract data using strategy
-            extracted_data = strategy.extract_data(raw_content, processed_url)
+            # Handle async methods from YouTubeStrategy
+            if asyncio.iscoroutinefunction(strategy.extract_data):
+                extracted_data = asyncio.run(strategy.extract_data(raw_content, processed_url))
+            else:
+                extracted_data = strategy.extract_data(raw_content, processed_url)
 
             # Check if this is a delegation case (e.g., from PubMed)
             if extracted_data.get("next_url_to_process"):
@@ -134,7 +143,7 @@ class ContentWorker:
 
             # Update content with extracted data
             content.title = extracted_data.get("title") or content.title
-            
+
             # Build metadata update dict
             metadata_update = {
                 "content": extracted_data.get("text_content", ""),
@@ -144,26 +153,31 @@ class ContentWorker:
                 "source": extracted_data.get("source"),
                 "final_url": extracted_data.get("final_url_after_redirects", str(content.url)),
             }
-            
+
             # Add HackerNews-specific metadata if present
             hn_fields = [
-                "hn_score", "hn_comments_count", "hn_submitter", "hn_discussion_url",
-                "hn_item_type", "hn_linked_url", "is_hn_text_post"
+                "hn_score",
+                "hn_comments_count",
+                "hn_submitter",
+                "hn_discussion_url",
+                "hn_item_type",
+                "hn_linked_url",
+                "is_hn_text_post",
             ]
             for field in hn_fields:
                 if field in extracted_data:
                     metadata_update[field] = extracted_data[field]
-            
+
             content.metadata.update(metadata_update)
 
             # Generate structured summary using LLM service
             if llm_data.get("content_to_summarize"):
                 # Determine content type for summarization
                 summarization_content_type = llm_data.get("content_type", "article")
-                
+
                 summary = self.llm_service.summarize_content(
                     content=llm_data["content_to_summarize"],
-                    content_type=summarization_content_type
+                    content_type=summarization_content_type,
                 )
                 if summary:
                     # Convert StructuredSummary to dict and store
@@ -205,7 +219,7 @@ class ContentWorker:
 
             # Update status
             content.status = ContentStatus.COMPLETED
-            content.processed_at = datetime.utcnow()
+            content.processed_at = datetime.now(timezone.utc)
 
             logger.info(
                 f"Successfully processed article {content.id} [{strategy.__class__.__name__}] "
@@ -236,7 +250,7 @@ class ContentWorker:
 
             # Mark as in progress
             content.status = ContentStatus.PROCESSING
-            content.processed_at = datetime.utcnow()
+            content.processed_at = datetime.now(timezone.utc)
 
             # Save initial state to DB
             with get_db() as db:

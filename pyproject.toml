@@ -29,6 +29,7 @@ dependencies = [
     "python-dateutil>=2.9.0.post0",
     "playwright>=1.53.0",
     "yt-dlp>=2025.6.30",
+    "openai-whisper>=20250625",
 ]
 
 [tool.setuptools.packages.find]

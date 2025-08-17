@@ -16,9 +16,16 @@
   <div class="bg-white rounded-lg shadow-sm">
     <!-- Header Section -->
     <div class="border-b border-gray-200 p-6">
-      <h1 class="text-2xl font-bold text-gray-900 mb-2">
-        {{ content.display_title }}
-      </h1>
+      <div class="flex items-start justify-between mb-2">
+        <h1 class="text-2xl font-bold text-gray-900 flex-1">
+          {{ content.display_title }}
+        </h1>
+        <button onclick="toggleFavorite({{ content.id }})" 
+                class="text-2xl hover:scale-110 transition-transform ml-4"
+                title="{% if is_favorited %}Remove from favorites{% else %}Add to favorites{% endif %}">
+          {% if is_favorited %}⭐{% else %}☆{% endif %}
+        </button>
+      </div>
       {% if content.title and content.title != content.display_title %}
       <p class="text-sm text-gray-500 mb-4">
         (Original: {{ content.title }})
@@ -142,14 +149,6 @@
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-4">Summary</h2>
       
-        <!-- Overview -->
-        {% if content.structured_summary.overview %}
-        <div class="mb-6">
-          <div class="prose prose-sm max-w-none text-gray-700">
-            {{ content.structured_summary.overview | safe }}
-          </div>
-        </div>
-        {% endif %}
         
         <!-- Key Points -->
         {% if content.bullet_points %}
@@ -220,11 +219,11 @@
       {% endif %}
 
       <!-- Raw Content or Transcript -->
-      {% if content.content_type == 'article' and content.metadata.full_markdown %}
+      {% if content.content_type == 'article' and content.full_markdown %}
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-2">Full Article</h2>
         <div class="prose prose-sm max-w-none text-gray-700 bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
-          {{ content.metadata.full_markdown | markdown }}
+          {{ content.full_markdown | markdown }}
         </div>
       </section>
       {% elif content.content_type == 'podcast' and content.transcript %}
@@ -245,4 +244,27 @@
     </div>
   </div>
 </div>
+
+<script>
+async function toggleFavorite(contentId) {
+    try {
+        const response = await fetch(`/api/content/${contentId}/favorite`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            // Reload the page to update the UI
+            window.location.reload();
+        } else {
+            console.error('Failed to toggle favorite');
+        }
+    } catch (error) {
+        console.error('Error toggling favorite:', error);
+    }
+}
+</script>
 {% endblock %}

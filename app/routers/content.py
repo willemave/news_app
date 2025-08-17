@@ -11,7 +11,7 @@ from app.core.db import get_db_session
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
 from app.models.schema import Content
-from app.services import read_status
+from app.services import read_status, favorites
 from app.templates import templates
 
 router = APIRouter()
@@ -111,6 +111,9 @@ async def list_content(
     read_content_ids = read_status.get_read_content_ids(db)
     print(f"DEBUG: Found {len(read_content_ids)} read items: {read_content_ids}")
     
+    # Get favorite content IDs
+    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    
     # Filter based on read status if needed
     if read_filter == "unread":
         contents = [c for c in contents if c.id not in read_content_ids]
@@ -143,6 +146,7 @@ async def list_content(
             "available_dates": available_dates,
             "selected_read_filter": read_filter,
             "read_content_ids": read_content_ids,
+            "favorite_content_ids": favorite_content_ids,
         },
     )
 
@@ -168,9 +172,71 @@ async def content_detail(
 
     # Convert to domain object
     domain_content = content_to_domain(content)
+    
+    # Check if content is favorited
+    is_favorited = favorites.is_content_favorited(db, content_id)
 
     return templates.TemplateResponse(
-        "content_detail.html", {"request": request, "content": domain_content}
+        "content_detail.html", 
+        {
+            "request": request, 
+            "content": domain_content,
+            "is_favorited": is_favorited,
+        }
+    )
+
+
+@router.get("/favorites", response_class=HTMLResponse)
+async def favorites_list(
+    request: Request,
+    db: Session = Depends(get_db_session),
+    read_filter: str = "all",
+):
+    """List favorited content."""
+    # Get favorited content IDs
+    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    
+    # Query favorited content
+    if favorite_content_ids:
+        query = db.query(Content).filter(Content.id.in_(favorite_content_ids))
+        
+        # Order by most recent first
+        contents = query.order_by(Content.created_at.desc()).all()
+    else:
+        contents = []
+    
+    # Get read content IDs
+    read_content_ids = read_status.get_read_content_ids(db)
+    
+    # Filter based on read status if needed
+    if read_filter == "unread":
+        contents = [c for c in contents if c.id not in read_content_ids]
+    elif read_filter == "read":
+        contents = [c for c in contents if c.id in read_content_ids]
+    
+    # Convert to domain objects
+    domain_contents = []
+    for c in contents:
+        try:
+            domain_content = content_to_domain(c)
+            domain_contents.append(domain_content)
+        except Exception as e:
+            print(f"Skipping content {c.id} due to validation error: {e}")
+            continue
+    
+    # Get content types for filter
+    content_types = [ct.value for ct in ContentType]
+    
+    return templates.TemplateResponse(
+        "favorites.html",
+        {
+            "request": request,
+            "contents": domain_contents,
+            "content_types": content_types,
+            "selected_read_filter": read_filter,
+            "read_content_ids": read_content_ids,
+            "favorite_content_ids": favorite_content_ids,
+        },
     )
 
 

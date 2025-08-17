@@ -10,9 +10,11 @@ import SwiftUI
 struct ContentListView: View {
     @StateObject private var viewModel = ContentListViewModel()
     @State private var showingFilters = false
+    @State private var selectedContentId: Int?
+    @State private var navigationPath = NavigationPath()
     
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $navigationPath) {
             ZStack {
                 VStack(spacing: 0) {
                     if viewModel.isLoading && viewModel.contents.isEmpty {
@@ -37,14 +39,16 @@ struct ContentListView: View {
                         } else {
                             List {
                                 ForEach(viewModel.contents) { content in
-                                    NavigationLink(destination: ContentDetailView(contentId: content.id)) {
+                                    Button(action: {
+                                        selectedContentId = content.id
+                                    }) {
                                         ContentCard(content: content) {
                                             await viewModel.markAsRead(content.id)
                                         }
                                     }
                                     .buttonStyle(PlainButtonStyle())
-                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                                    .listRowSeparator(.visible)
                                     .listRowBackground(Color.clear)
                                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                         if !content.isRead {
@@ -61,7 +65,7 @@ struct ContentListView: View {
                                 }
                             }
                             .listStyle(.plain)
-                            .padding(.top, 20) // Add top padding since we removed the navigation bar
+                            .padding(.top, 20)
                             .refreshable {
                                 await viewModel.refresh()
                             }
@@ -71,6 +75,16 @@ struct ContentListView: View {
                 .navigationBarHidden(true)
                 .task {
                     await viewModel.loadContent()
+                }
+                .navigationDestination(for: Int.self) { contentId in
+                    let allIds = viewModel.contents.map { $0.id }
+                    ContentDetailView(contentId: contentId, allContentIds: allIds)
+                }
+                .onChange(of: selectedContentId) { _, newId in
+                    if let id = newId {
+                        navigationPath.append(id)
+                        selectedContentId = nil
+                    }
                 }
                 
                 // Floating menu button
@@ -96,10 +110,17 @@ struct ContentListView: View {
                     selectedContentType: $viewModel.selectedContentType,
                     selectedDate: $viewModel.selectedDate,
                     selectedReadFilter: $viewModel.selectedReadFilter,
-                    isPresented: $showingFilters, contentTypes: viewModel.contentTypes,
+                    isPresented: $showingFilters,
+                    contentTypes: viewModel.contentTypes,
                     availableDates: viewModel.availableDates
                 )
             }
         }
+    }
+}
+
+struct ContentListView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentListView()
     }
 }

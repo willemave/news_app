@@ -215,22 +215,37 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 original_level = crawl4ai_logger.level
                 crawl4ai_logger.setLevel(logging.WARNING)
                 
+                crawler = None
                 try:
-                    async with AsyncWebCrawler(config=browser_config) as crawler:
-                        return await crawler.arun(url=url, config=run_config)
+                    crawler = AsyncWebCrawler(config=browser_config)
+                    await crawler.__aenter__()
+                    result = await crawler.arun(url=url, config=run_config)
+                    return result
+                except Exception as e:
+                    logger.debug(f"Error during crawl: {e}")
+                    raise
                 finally:
+                    if crawler:
+                        try:
+                            await crawler.__aexit__(None, None, None)
+                        except Exception as close_error:
+                            # Log browser close errors but don't fail the extraction
+                            logger.debug(f"Error closing browser (non-critical): {close_error}")
                     crawl4ai_logger.setLevel(original_level)
             
             result = asyncio.run(crawl())
 
             # Check if result is None
             if result is None:
-                raise Exception("Crawl4ai extraction returned None")
+                error_msg = "Crawl4ai extraction returned None - possible timeout or network issue"
+                logger.warning(f"{error_msg} for URL: {url}")
+                raise Exception(error_msg)
 
             if not result.success:
-                raise Exception(
-                    f"Crawl4ai extraction failed: {getattr(result, 'error', 'Unknown error')}"
-                )
+                error_detail = getattr(result, 'error', 'Unknown error')
+                error_msg = f"Crawl4ai extraction failed: {error_detail}"
+                logger.warning(f"{error_msg} for URL: {url}")
+                raise Exception(error_msg)
 
             # Extract metadata from content if not provided
             extracted_text = result.markdown.raw_markdown if result.markdown else ""
@@ -302,9 +317,12 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
         except Exception as e:
             import traceback
+            from app.services.http import NonRetryableError
 
             error_msg = f"Content extraction failed for {url}: {str(e)}"
             traceback_str = traceback.format_exc()
+            
+            # Log the error
             self.error_logger.log_processing_error(
                 item_id=url,
                 error=e,
@@ -318,13 +336,25 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 },
             )
             logger.error(f"HtmlStrategy: {error_msg}\nTraceback: {traceback_str}")
-
+            
+            # Check if this is a non-retryable error
+            error_str = str(e).lower()
+            if any(term in error_str for term in [
+                "403", "401", "404", "blocked", "forbidden", 
+                "access denied", "not found", "paywall"
+            ]):
+                # Raise NonRetryableError to prevent infinite retries
+                raise NonRetryableError(f"Non-retryable error: {error_msg}")
+            
+            # For other errors, return a minimal response to allow processing to continue
+            # with fallback content
             return {
-                "title": "Extraction Failed",
-                "text_content": "",
+                "title": f"Content from {url}",
+                "text_content": f"Failed to extract content from {url}. Error: {str(e)}",
                 "content_type": "html",
                 "source": source,
                 "final_url_after_redirects": url,
+                "extraction_error": str(e),
             }
 
     def prepare_for_llm(self, extracted_data: dict[str, Any]) -> dict[str, Any]:

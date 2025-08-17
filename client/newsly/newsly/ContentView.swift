@@ -20,6 +20,11 @@ struct ContentView: View {
                     Label("Podcasts", systemImage: "mic")
                 }
             
+            FavoritesView()
+                .tabItem {
+                    Label("Favorites", systemImage: "star.fill")
+                }
+            
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")
