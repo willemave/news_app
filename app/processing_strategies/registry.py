@@ -33,7 +33,7 @@ class StrategyRegistry:
         self.register(HackerNewsProcessorStrategy(self.http_client))  # HackerNews discussions
         self.register(ArxivProcessorStrategy(self.http_client))  # Handles arxiv.org/abs/ links
         self.register(PubMedProcessorStrategy(self.http_client))  # Specific domain
-        self.register(YouTubeProcessorStrategy())  # YouTube videos
+        self.register(YouTubeProcessorStrategy(self.http_client))  # YouTube videos
         self.register(
             PdfProcessorStrategy(self.http_client)
         )  # Specific content type by extension/common URL pattern

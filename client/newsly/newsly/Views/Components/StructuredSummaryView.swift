@@ -18,12 +18,6 @@ struct StructuredSummaryView: View {
                     .fontWeight(.semibold)
             }
             
-            if let overview = summary.overview {
-                Text(overview)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-            }
-            
             if !summary.bulletPoints.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Key Points")

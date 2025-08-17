@@ -1,3 +1,4 @@
+import contextlib
 import re
 from datetime import datetime
 from typing import Any
@@ -66,13 +67,39 @@ class PodcastUnifiedScraper(BaseScraper):
 
                 # Check for parsing issues
                 if parsed_feed.bozo:
+                    exception_str = str(parsed_feed.bozo_exception).lower()
+                    
+                    # Check for critical errors that should skip processing
+                    is_critical_error = False
+                    
+                    # Check if it's HTML instead of XML
+                    if "is not an xml media type" in exception_str:
+                        logger.error(f"Feed {feed_url} returned HTML instead of XML. Skipping.")
+                        self.error_logger.log_feed_error(
+                            feed_url=feed_url,
+                            error=parsed_feed.bozo_exception,
+                            feed_name=feed_name,
+                            operation="feed_parsing",
+                        )
+                        continue
+                    
+                    # Check for malformed XML
+                    if "not well-formed" in exception_str or "saxparseexception" in exception_str:
+                        logger.error(f"Feed {feed_url} contains malformed XML. Skipping.")
+                        self.error_logger.log_feed_error(
+                            feed_url=feed_url,
+                            error=parsed_feed.bozo_exception,
+                            feed_name=feed_name,
+                            operation="feed_parsing",
+                        )
+                        continue
+                    
                     # Check if it's just an encoding mismatch (not critical)
                     is_encoding_issue = False
-                    exception_str = str(parsed_feed.bozo_exception).lower()
                     if "encoding" in exception_str or "declared as" in exception_str:
                         is_encoding_issue = True
 
-                    # Only log serious errors, not encoding mismatches
+                    # Only log other errors
                     if not is_encoding_issue:
                         self.error_logger.log_feed_error(
                             feed_url=feed_url,
@@ -85,12 +112,18 @@ class PodcastUnifiedScraper(BaseScraper):
                         )
                     else:
                         logger.debug(
-                            f"Feed {feed_url} has encoding declaration mismatch (not critical): {parsed_feed.bozo_exception}"
+                            f"Feed {feed_url} has encoding declaration mismatch "
+                            f"(not critical): {parsed_feed.bozo_exception}"
                         )
 
                 feed_info = getattr(parsed_feed, "feed", {})
                 logger.debug(f"Feed title: {feed_info.get('title', 'N/A')}")
                 logger.debug(f"Total entries: {len(parsed_feed.entries)}")
+                
+                # Check if feed has entries
+                if not parsed_feed.entries:
+                    logger.warning(f"Feed {feed_url} has no entries. Skipping.")
+                    continue
 
                 # Process entries (limited)
                 entries_to_process = parsed_feed.entries[:limit]
@@ -156,10 +189,8 @@ class PodcastUnifiedScraper(BaseScraper):
         episode_number = None
         episode_str = entry.get("itunes_episode") or entry.get("episode")
         if episode_str:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 episode_number = int(episode_str)
-            except (ValueError, TypeError):
-                pass
 
         # Extract duration if available
         duration = None
@@ -169,6 +200,8 @@ class PodcastUnifiedScraper(BaseScraper):
 
         # Build metadata
         metadata = {
+            "platform": "podcast",  # Platform identifier
+            "source": f"podcast:{feed_name}",  # Standardized format: platform:source
             "audio_url": enclosure_url,
             "publication_date": publication_date.isoformat() if publication_date else None,
             "episode_number": episode_number,
@@ -178,7 +211,6 @@ class PodcastUnifiedScraper(BaseScraper):
             "feed_description": feed_info.get("description"),
             "author": entry.get("author") or feed_info.get("author"),
             "description": entry.get("description") or entry.get("summary"),
-            "source": feed_name,  # Use the podcast name from config as source
         }
 
         return {

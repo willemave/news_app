@@ -32,7 +32,7 @@ struct FilterBar: View {
                     }
                 }
                 .pickerStyle(SegmentedPickerStyle())
-                .onChange(of: selectedContentType) { _ in
+                .onChange(of: selectedContentType) { _, _ in
                     Task { await onFilterChange() }
                 }
             }
@@ -52,7 +52,7 @@ struct FilterBar: View {
                     }
                     .pickerStyle(MenuPickerStyle())
                     .frame(maxWidth: .infinity)
-                    .onChange(of: selectedDate) { _ in
+                    .onChange(of: selectedDate) { _, _ in
                         Task { await onFilterChange() }
                     }
                 }
@@ -70,7 +70,7 @@ struct FilterBar: View {
                     }
                     .pickerStyle(MenuPickerStyle())
                     .frame(maxWidth: .infinity)
-                    .onChange(of: selectedReadFilter) { _ in
+                    .onChange(of: selectedReadFilter) { _, _ in
                         Task { await onFilterChange() }
                     }
                 }

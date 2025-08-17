@@ -53,7 +53,7 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         Important:
         - Generate a descriptive title that captures the main theme (50-150 chars)
         - Start the title with "HN: " to indicate this is from HackerNews
-        - The title should summarize both the article topic AND the key discussion theme
+        - The title should summoarize both the article topic AND the key discussion theme
         - Make it compelling - focus on the insight or controversy that sparked discussion
         - In the overview, include both article summary AND key discussion themes from comments
         - Extract actual quotes from both the article and notable comments

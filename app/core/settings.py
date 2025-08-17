@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
 
+    # Whisper transcription settings
+    whisper_model_size: str = "base"  # tiny, base, small, medium, large
+    whisper_device: str = "auto"  # auto, cpu, cuda, mps
+
     # HTTP client
     http_timeout_seconds: int = 30
     http_max_retries: int = 3

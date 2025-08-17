@@ -19,4 +19,11 @@ enum APIEndpoints {
         return "/api/content/\(id)/mark-unread"
     }
     static let bulkMarkRead = "/api/content/bulk-mark-read"
+    static func toggleFavorite(id: Int) -> String {
+        return "/api/content/\(id)/favorite"
+    }
+    static func removeFavorite(id: Int) -> String {
+        return "/api/content/\(id)/unfavorite"
+    }
+    static let favoritesList = "/api/content/favorites/list"
 }

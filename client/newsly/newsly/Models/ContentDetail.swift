@@ -25,6 +25,7 @@ struct ContentDetail: Codable, Identifiable {
     let checkedOutAt: String?
     let publicationDate: String?
     let isRead: Bool
+    var isFavorited: Bool
     let summary: String?
     let shortSummary: String?
     let structuredSummary: StructuredSummary?
@@ -51,6 +52,7 @@ struct ContentDetail: Codable, Identifiable {
         case checkedOutAt = "checked_out_at"
         case publicationDate = "publication_date"
         case isRead = "is_read"
+        case isFavorited = "is_favorited"
         case summary
         case shortSummary = "short_summary"
         case structuredSummary = "structured_summary"
@@ -62,5 +64,29 @@ struct ContentDetail: Codable, Identifiable {
     
     var contentTypeEnum: ContentType? {
         ContentType(rawValue: contentType)
+    }
+    
+    var articleMetadata: ArticleMetadata? {
+        guard contentType == "article" else { return nil }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        if let jsonData = try? JSONSerialization.data(withJSONObject: metadata.mapValues { $0.value }) {
+            return try? decoder.decode(ArticleMetadata.self, from: jsonData)
+        }
+        return nil
+    }
+    
+    var podcastMetadata: PodcastMetadata? {
+        guard contentType == "podcast" else { return nil }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        if let jsonData = try? JSONSerialization.data(withJSONObject: metadata.mapValues { $0.value }) {
+            return try? decoder.decode(PodcastMetadata.self, from: jsonData)
+        }
+        return nil
     }
 }

@@ -12,7 +12,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
-from app.services.openai_llm import get_openai_transcription_service
+from app.services.whisper_local import get_whisper_local_service
 from app.services.queue import TaskType, get_queue_service
 from app.utils.error_logger import create_error_logger
 
@@ -316,13 +316,13 @@ class PodcastTranscribeWorker:
         self.transcription_service = None
 
     def _get_transcription_service(self):
-        """Lazy load the OpenAI transcription service."""
+        """Lazy load the transcription service."""
         if self.transcription_service is None:
             try:
-                self.transcription_service = get_openai_transcription_service()
-                logger.info("OpenAI transcription service initialized")
-            except ValueError as e:
-                logger.error(f"Failed to initialize OpenAI transcription service: {e}")
+                self.transcription_service = get_whisper_local_service()
+                logger.info("Local Whisper transcription service initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize transcription service: {e}")
                 raise
 
     def process_transcribe_task(self, content_id: int) -> bool:
@@ -398,7 +398,7 @@ class PodcastTranscribeWorker:
 
                 logger.info(f"Starting transcription of: {file_path}")
 
-                # Transcribe the audio using OpenAI
+                # Transcribe the audio
                 transcript_text, detected_language = self.transcription_service.transcribe_audio(
                     Path(file_path)
                 )
@@ -421,7 +421,7 @@ class PodcastTranscribeWorker:
                 content.metadata["transcription_date"] = datetime.utcnow().isoformat()
                 if detected_language:
                     content.metadata["detected_language"] = detected_language
-                content.metadata["transcription_service"] = "openai"
+                content.metadata["transcription_service"] = "whisper_local"
 
                 # Update database
                 domain_to_content(content, db_content)
@@ -453,6 +453,9 @@ class PodcastTranscribeWorker:
 
     def cleanup_service(self):
         """Clean up the transcription service."""
-        # OpenAI service doesn't need cleanup as it's API-based
-        self.transcription_service = None
+        if self.transcription_service is not None:
+            # Clean up local whisper model
+            if hasattr(self.transcription_service, 'cleanup_service'):
+                self.transcription_service.cleanup_service()
+            self.transcription_service = None
         logger.info("Transcription service cleaned up")

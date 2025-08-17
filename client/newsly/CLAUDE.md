@@ -8,7 +8,19 @@ Newsly is a SwiftUI iOS application that serves as a client for the FastAPI back
 
 ### Main Entry Points
 - `newslyApp.swift`: App entry point with @main decorator
-- `ContentView.swift`: Root view container
+- `ContentView.swift`: Root view container with TabView containing ArticlesView, PodcastsView, and SettingsView
+
+### ⚠️ IMPORTANT: Navigation Architecture
+The app uses **TabView** with three main views:
+1. **ArticlesView** - Displays articles (NOT ContentListView)
+2. **PodcastsView** - Displays podcasts (NOT ContentListView)
+3. **SettingsView** - App settings
+
+**Critical for Swipe Navigation:**
+- When passing content to ContentDetailView, ALWAYS pass the full array of content IDs
+- ArticlesView and PodcastsView must use: `ContentDetailView(contentId: content.id, allContentIds: viewModel.contents.map { $0.id })`
+- NOT just: `ContentDetailView(contentId: content.id)` - this breaks swipe navigation!
+- ContentListView exists but is NOT used in the current TabView structure
 
 ### Architecture Pattern: MVVM
 
@@ -71,6 +83,7 @@ The iOS app connects to the Python FastAPI backend at `http://localhost:8000`:
 - **Pull to Refresh**: SwiftUI native refresh support
 - **Error Handling**: Graceful error states with retry options
 - **Responsive Design**: Adapts to different iOS device sizes
+- **Swipe Navigation**: Swipe left/right between articles in detail view (requires passing all content IDs)
 
 ### Build Configuration
 - `newsly.xcodeproj`: Xcode project file
@@ -81,6 +94,12 @@ The iOS app connects to the Python FastAPI backend at `http://localhost:8000`:
 ### Testing
 - `newslyTests/`: Unit tests
 - `newslyUITests/`: UI automation tests
+
+### Common Pitfalls to Avoid
+1. **Navigation Issues**: Always check if you're modifying the correct view (ArticlesView/PodcastsView vs ContentListView)
+2. **Swipe Navigation**: Must pass ALL content IDs to ContentDetailView, not just the single content ID
+3. **View Hierarchy**: Remember that ContentView → TabView → ArticlesView/PodcastsView → ContentDetailView
+4. **State Management**: NavigationLinks are created when the list builds, not when tapped - ensure all needed data is passed
 
 ---
 # Original Python/FastAPI Guidelines

@@ -196,8 +196,9 @@ class SubstackScraper(BaseScraper):
             "title": title,
             "content_type": ContentType.ARTICLE,
             "metadata": {
-                # Use configured source name or fallback to feed name
-                "source": source_name or feed_name,
+                "platform": "substack",  # Platform identifier
+                # Standardized format: platform:source
+                "source": f"substack:{source_name or feed_name}",
                 "feed_name": feed_name,
                 "feed_description": feed_description,
                 "author": entry.get("author"),

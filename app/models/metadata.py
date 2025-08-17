@@ -71,14 +71,14 @@ class StructuredSummary(BaseModel):
     )
 
     title: str = Field(
-        ..., min_length=10, max_length=200, description="Descriptive title for the content"
+        ..., min_length=5, max_length=1000, description="Descriptive title for the content"
     )
     overview: str = Field(
-        ..., min_length=50, max_length=5000, description="Brief overview paragraph (longer for podcasts)"
+        ..., min_length=50,  description="Brief overview paragraph (longer for podcasts)"
     )
-    bullet_points: list[SummaryBulletPoint] = Field(..., min_items=3, max_items=10)
-    quotes: list[ContentQuote] = Field(default_factory=list, max_items=5)
-    topics: list[str] = Field(default_factory=list, max_items=10)
+    bullet_points: list[SummaryBulletPoint] = Field(..., min_items=3, max_items=50)
+    quotes: list[ContentQuote] = Field(default_factory=list, max_items=50)
+    topics: list[str] = Field(default_factory=list, max_items=50)
     summarization_date: datetime = Field(default_factory=datetime.utcnow)
     classification: str = Field(
         default="to_read", description="Content classification: 'to_read' or 'skip'"
@@ -371,6 +371,11 @@ class ContentData(BaseModel):
     @property
     def full_markdown(self) -> str | None:
         """Get full article content formatted as markdown."""
+        # Check if full_markdown is in summary object
+        summary_data = self.metadata.get("summary")
+        if isinstance(summary_data, dict) and "full_markdown" in summary_data:
+            return summary_data.get("full_markdown")
+        # Fallback to checking metadata directly (for legacy data)
         return self.metadata.get("full_markdown")
 
 

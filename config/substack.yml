@@ -18,9 +18,6 @@ feeds:
   - url: "https://epochai.substack.com/feed"
     name: "Epoch AI"
     limit: 5
-  - url: "https://www.techemails.com/feed"
-    name: "Tech Emails"
-    limit: 5
   - url: "https://ojiudezue.substack.com/feed"
     name: "Product Mind"
     limit: 5
@@ -39,3 +36,18 @@ feeds:
   - url: "https://www.techmeme.com/feed.xml"
     name: "Techmeme"
     limit: 1
+  - url: "https://www.latent.space/feed"
+    name: "Latent Space"
+    limit: 3
+  - url: "https://aiascendant.com/feed"
+    name: "Gradient Ascent"
+    limit: 3
+  - url: "https://jurgengravestein.substack.com/feed"
+    name: "Teaching computers how to talk"
+    limit: 3
+  - url: "https://www.understandingai.org/feed"
+    name: "Understanding AI"
+    limit: 3
+  - url: "https://contraptions.venkateshrao.com/feed"
+    name: "Contraptions"
+    limit: 3

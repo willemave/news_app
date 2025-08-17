@@ -61,7 +61,7 @@ class ContentListViewModel: ObservableObject {
             
             // Update local state to reflect the change
             if let index = contents.firstIndex(where: { $0.id == contentId }) {
-                var updatedContent = contents[index]
+                let updatedContent = contents[index]
                 // Create a new instance with updated isRead status
                 let newContent = ContentSummary(
                     id: updatedContent.id,
@@ -75,13 +75,14 @@ class ContentListViewModel: ObservableObject {
                     processedAt: updatedContent.processedAt,
                     classification: updatedContent.classification,
                     publicationDate: updatedContent.publicationDate,
-                    isRead: true
+                    isRead: true,
+                    isFavorited: updatedContent.isFavorited
                 )
                 contents[index] = newContent
                 
                 // If filtering by unread, remove from list with animation
                 if selectedReadFilter == "unread" {
-                    withAnimation(.easeOut(duration: 0.3)) {
+                    _ = withAnimation(.easeOut(duration: 0.3)) {
                         contents.remove(at: index)
                     }
                 }
@@ -89,6 +90,51 @@ class ContentListViewModel: ObservableObject {
         } catch {
             errorMessage = "Failed to mark as read: \(error.localizedDescription)"
         }
+    }
+    
+    func toggleFavorite(_ contentId: Int) async {
+        do {
+            // Find the content
+            guard let index = contents.firstIndex(where: { $0.id == contentId }) else { return }
+            let currentContent = contents[index]
+            
+            // Optimistically update the UI
+            var updatedContent = currentContent
+            updatedContent.isFavorited.toggle()
+            contents[index] = updatedContent
+            
+            // Make API call
+            let response = try await contentService.toggleFavorite(id: contentId)
+            
+            // Update with server response
+            if let isFavorited = response["is_favorited"] as? Bool {
+                var finalContent = currentContent
+                finalContent.isFavorited = isFavorited
+                contents[index] = finalContent
+            }
+        } catch {
+            // Revert on error
+            if let index = contents.firstIndex(where: { $0.id == contentId }) {
+                contents[index].isFavorited.toggle()
+            }
+            errorMessage = "Failed to update favorite status"
+        }
+    }
+    
+    func loadFavorites() async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            let response = try await contentService.fetchFavoritesList()
+            contents = response.contents
+            availableDates = response.availableDates
+            contentTypes = response.contentTypes
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        
+        isLoading = false
     }
     
     func refresh() async {

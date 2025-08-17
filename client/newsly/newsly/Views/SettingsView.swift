@@ -49,6 +49,13 @@ struct SettingsView: View {
                     }
                 }
                 
+                Section(header: Text("Display Preferences")) {
+                    Toggle("Show Read Articles", isOn: $settings.showReadContent)
+                    Text("When enabled, both read and unread articles will be displayed")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
                 Section {
                     Button(action: saveSettings) {
                         HStack {

@@ -119,4 +119,51 @@ class APIClient {
             throw APIError.networkError(error)
         }
     }
+    
+    func requestRaw(_ endpoint: String, 
+                    method: String = "GET",
+                    body: Data? = nil,
+                    queryItems: [URLQueryItem]? = nil) async throws -> [String: Any] {
+        guard var components = URLComponents(string: AppSettings.shared.baseURL + endpoint) else {
+            throw APIError.invalidURL
+        }
+        
+        if let queryItems = queryItems {
+            components.queryItems = queryItems
+        }
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        if let body = body {
+            request.httpBody = body
+        }
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.unknown
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw APIError.httpError(statusCode: httpResponse.statusCode)
+            }
+            
+            guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+                throw APIError.decodingError(NSError(domain: "APIClient", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON response"]))
+            }
+            
+            return json
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw APIError.networkError(error)
+        }
+    }
 }

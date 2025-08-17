@@ -58,4 +58,16 @@ class ContentService {
         
         try await client.requestVoid(APIEndpoints.bulkMarkRead, method: "POST", body: body)
     }
+    
+    func toggleFavorite(id: Int) async throws -> [String: Any] {
+        return try await client.requestRaw(APIEndpoints.toggleFavorite(id: id), method: "POST")
+    }
+    
+    func removeFavorite(id: Int) async throws {
+        try await client.requestVoid(APIEndpoints.removeFavorite(id: id), method: "DELETE")
+    }
+    
+    func fetchFavoritesList() async throws -> ContentListResponse {
+        return try await client.request(APIEndpoints.favoritesList)
+    }
 }

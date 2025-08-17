@@ -25,14 +25,22 @@ struct ContentCard: View {
                 
                 Spacer()
                 
-                if content.isRead {
-                    Text("read")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(4)
+                HStack(spacing: 8) {
+                    if content.isFavorited {
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundColor(.yellow)
+                    }
+                    
+                    if content.isRead {
+                        Text("read")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(4)
+                    }
                 }
             }
             
@@ -58,10 +66,8 @@ struct ContentCard: View {
                     .padding(.top, 2)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .opacity(content.isRead ? 0.7 : 1.0)
     }
 }
