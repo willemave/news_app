@@ -21,6 +21,7 @@ settings = get_settings()
 MAX_FILE_SIZE_MB = 25
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 CHUNK_DURATION_SECONDS = 10 * 60  # 10 minutes in seconds
+MAX_CONTENT_LENGTH = 200000  # Maximum characters to prevent token limit errors
 
 # Create logs directory if it doesn't exist
 LOG_DIR = Path("logs")
@@ -517,6 +518,7 @@ def generate_summary_prompt(
         - Make bullet points capture insights from BOTH content and discussion
         - Include {max_bullet_points} bullet points that blend article + comment insights
         - Include up to {max_quotes} notable quotes (can be from article or comments)
+        - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
         - For quotes from comments, use format "HN user [username]" as context
         - Include 3-8 relevant topic tags
         - Add a "classification" field with either "to_read" or "skip"
@@ -549,6 +551,7 @@ def generate_summary_prompt(
           This should allow someone to read it and understand the full context.
         - Include up to {max_quotes} notable quotes - each quote should be 
           at least 2-3 sentences long to provide meaningful context and insight
+        - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
         - Include 3-8 relevant topic tags
         - Add a "classification" field with either "to_read" or "skip"
         - Set "full_markdown" to an empty string "" (do not include the full transcript)
@@ -584,6 +587,7 @@ def generate_summary_prompt(
         - Overview should be 50-100 words, short and punchy
         - Include {max_bullet_points} bullet points.
         - Include up to {max_quotes} notable quotes.
+        - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
         - Include 3-8 relevant topic tags
         - Add a "classification" field with either "to_read" or "skip"
         - Add a "full_markdown" field with the entire content formatted as clean, readable markdown
@@ -627,7 +631,39 @@ def try_repair_truncated_json(json_str: str) -> str | None:
     except json.JSONDecodeError:
         pass
 
-    # Count open brackets/braces
+    # Check if we're in the middle of the full_markdown field
+    # Look for the last occurrence of "full_markdown"
+    full_markdown_pos = json_str.rfind('"full_markdown"')
+    if full_markdown_pos != -1:
+        # Check if we're likely in the middle of its value
+        after_field = json_str[full_markdown_pos:]
+        if after_field.count('"') >= 2:  # Field name and start of value
+            # Find where the value starts
+            value_start = after_field.find(':"') + 2 + full_markdown_pos
+            if value_start > full_markdown_pos + 2:
+                # We're in the middle of full_markdown, add truncation notice
+                repaired = json_str[:value_start]
+                repaired += json_str[value_start:].rstrip()
+                if not repaired.endswith('"'):
+                    repaired += '\\n\\n[Content truncated due to length]"'
+                else:
+                    # Already has closing quote, insert before it
+                    repaired = repaired[:-1] + '\\n\\n[Content truncated due to length]"'
+
+                # Now close the remaining structures
+                open_braces = repaired.count("{") - repaired.count("}")
+                open_brackets = repaired.count("[") - repaired.count("]")
+                repaired += "]" * open_brackets
+                repaired += "}" * open_braces
+
+                try:
+                    json.loads(repaired)
+                    logger.info("Successfully repaired truncated JSON with full_markdown field")
+                    return repaired
+                except json.JSONDecodeError:
+                    pass  # Fall through to general repair
+
+    # Count open brackets/braces for general repair
     open_braces = json_str.count("{") - json_str.count("}")
     open_brackets = json_str.count("[") - json_str.count("]")
 
@@ -704,11 +740,15 @@ class OpenAISummarizationService:
             if isinstance(content, bytes):
                 content = content.decode("utf-8", errors="ignore")
 
+            # Truncate content to prevent token limit errors
+            if len(content) > MAX_CONTENT_LENGTH:
+                logger.warning(
+                    f"Content length ({len(content)} chars) exceeds max ({MAX_CONTENT_LENGTH} chars), truncating"
+                )
+                content = content[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated due to length]"
+
             # Generate prompt based on content type
             prompt = generate_summary_prompt(content_type, max_bullet_points, max_quotes, content)
-
-            # Use reasonable token limit for summaries
-            max_completion_tokens = 16000 if content_type == "podcast" else 32000
 
             # Create the response format schema for OpenAI
             response_format = {
@@ -769,12 +809,18 @@ class OpenAISummarizationService:
                     {"role": "system", "content": "You are an expert content analyst."},
                     {"role": "user", "content": prompt},
                 ],
-                max_completion_tokens=max_completion_tokens,
                 response_format=response_format,
             )
 
             # Extract response text
             response_text = response.choices[0].message.content
+
+            # Check if response was truncated
+            if response.choices[0].finish_reason == "length":
+                logger.warning(
+                    f"Response was truncated due to token limit for content_type={content_type}"
+                )
+                # This will help us track if 128k is still not enough
 
             if not response_text:
                 logger.error(f"No text found in response: {response}")
@@ -822,6 +868,20 @@ class OpenAISummarizationService:
                         raise e from None  # Re-raise original error
                 else:
                     raise e from None  # Re-raise original error
+
+            # Filter out any quotes that are too short (validation safety)
+            if "quotes" in summary_data and isinstance(summary_data["quotes"], list):
+                valid_quotes = []
+                for quote in summary_data["quotes"]:
+                    if isinstance(quote, dict) and "text" in quote:
+                        # Ensure quote text meets minimum length
+                        if len(quote.get("text", "")) >= 10:
+                            valid_quotes.append(quote)
+                        else:
+                            logger.warning(
+                                f"Filtered out short quote: {quote.get('text', '')[:50]}"
+                            )
+                summary_data["quotes"] = valid_quotes
 
             # Create and return StructuredSummary
             return StructuredSummary(**summary_data)

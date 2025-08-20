@@ -139,7 +139,11 @@ class ContentWorker:
                 return self._process_article(content)
 
             # Prepare for LLM processing
-            llm_data = strategy.prepare_for_llm(extracted_data)
+            # Handle async methods from strategies like YouTubeStrategy
+            if asyncio.iscoroutinefunction(strategy.prepare_for_llm):
+                llm_data = asyncio.run(strategy.prepare_for_llm(extracted_data))
+            else:
+                llm_data = strategy.prepare_for_llm(extracted_data)
 
             # Update content with extracted data
             content.title = extracted_data.get("title") or content.title
@@ -182,8 +186,7 @@ class ContentWorker:
                 if summary:
                     # Convert StructuredSummary to dict and store
                     summary_dict = summary.model_dump()
-                    # Extract full_markdown before storing summary
-                    content.metadata["full_markdown"] = summary_dict.pop("full_markdown", "")
+                    # Keep full_markdown inside the summary where it belongs
                     content.metadata["summary"] = summary_dict
                     logger.info(
                         f"Generated summary and formatted markdown for content {content.id}"
