@@ -123,7 +123,6 @@ class ArticleMetadata(BaseContentMetadata):
             "example": {
                 "source": "Import AI",
                 "content": "Full article text...",
-                "full_markdown": "# Full Article\n\nMarkdown formatted content...",
                 "author": "John Doe",
                 "publication_date": "2025-06-14T00:00:00",
                 "content_type": "html",
@@ -147,9 +146,6 @@ class ArticleMetadata(BaseContentMetadata):
     )
 
     content: str | None = Field(None, description="Full article text content")
-    full_markdown: str | None = Field(
-        None, description="Full article content formatted as markdown"
-    )
 
     @field_validator("content")
     @classmethod
@@ -370,13 +366,11 @@ class ContentData(BaseModel):
 
     @property
     def full_markdown(self) -> str | None:
-        """Get full article content formatted as markdown."""
-        # Check if full_markdown is in summary object
+        """Get full article content formatted as markdown from StructuredSummary."""
         summary_data = self.metadata.get("summary")
-        if isinstance(summary_data, dict) and "full_markdown" in summary_data:
+        if isinstance(summary_data, dict):
             return summary_data.get("full_markdown")
-        # Fallback to checking metadata directly (for legacy data)
-        return self.metadata.get("full_markdown")
+        return None
 
 
 # Helper functions from app/schemas/metadata.py
