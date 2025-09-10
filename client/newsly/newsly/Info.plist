@@ -46,39 +46,37 @@
     </array>
     <key>NSAppTransportSecurity</key>
     <dict>
+        <!-- Disallow arbitrary HTTP; only allow specific hosts below -->
         <key>NSAllowsArbitraryLoads</key>
         <false/>
         <key>NSExceptionDomains</key>
         <dict>
-            <key>localhost</key>
+            <key>192.3.250.10</key>
             <dict>
                 <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
                 <true/>
                 <key>NSIncludesSubdomains</key>
                 <true/>
             </dict>
-            <key>127.0.0.1</key>
+            <key>192.3.250.102</key>
             <dict>
                 <key>NSExceptionAllowsInsecureHTTPLoads</key>
                 <true/>
-                <key>NSIncludesSubdomains</key>
-                <true/>
-            </dict>
-            <key>100.126.166.1</key>
-            <dict>
-                <key>NSExceptionAllowsInsecureHTTPLoads</key>
-                <true/>
-                <key>NSIncludesSubdomains</key>
-                <true/>
-            </dict>
-            <key>100.114.51.78</key>
-            <dict>
-                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
                 <true/>
                 <key>NSIncludesSubdomains</key>
                 <true/>
             </dict>
         </dict>
     </dict>
+    <!-- Allow canOpenURL for ChatGPT schemes so deep links can be detected -->
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>chatgpt</string>
+        <string>openai</string>
+        <string>com.openai.chat</string>
+    </array>
 </dict>
 </plist>

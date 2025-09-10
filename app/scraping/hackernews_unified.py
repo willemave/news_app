@@ -24,7 +24,7 @@ class HackerNewsUnifiedScraper(BaseScraper):
         with httpx.Client() as client:
             # Get top story IDs
             response = client.get(f"{self.base_url}/topstories.json")
-            story_ids = response.json()[:30]  # Top 30 stories
+            story_ids = response.json()[:10]  # Top 30 stories
 
             # Fetch each story
             for story_id in story_ids:

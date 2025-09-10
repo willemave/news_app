@@ -9,13 +9,18 @@ from app.models.schema import Content as DBContent
 def content_to_domain(db_content: DBContent) -> ContentData:
     """Convert database Content to domain ContentData."""
     try:
+        # Include platform information in metadata if available
+        metadata = db_content.content_metadata or {}
+        if db_content.platform and 'platform' not in metadata:
+            metadata = {**metadata, 'platform': db_content.platform}
+            
         return ContentData(
             id=db_content.id,
             content_type=ContentType(db_content.content_type),
             url=db_content.url,
             title=db_content.title,
             status=ContentStatus(db_content.status),
-            metadata=db_content.content_metadata or {},
+            metadata=metadata,
             error_message=db_content.error_message,
             retry_count=db_content.retry_count or 0,
             created_at=db_content.created_at,

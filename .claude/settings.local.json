@@ -42,7 +42,21 @@
       "Bash(alembic current:*)",
       "Bash(xcodebuild:*)",
       "Bash(ruby:*)",
-      "Bash(openssl req:*)"
+      "Bash(openssl req:*)",
+      "WebSearch",
+      "Bash(playwright install:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker run:*)",
+      "Bash(docker-compose exec:*)",
+      "Bash(docker build:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker-compose:*)",
+      "Bash(./scripts/docker-build.sh:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker system prune:*)"
     ],
     "deny": []
   }

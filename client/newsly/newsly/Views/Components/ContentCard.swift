@@ -51,9 +51,17 @@ struct ContentCard: View {
                     .foregroundColor(.secondary)
                 
                 if let source = content.source {
-                    Text("• \(source)")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 4) {
+                        Text("•")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        
+                        PlatformIcon(platform: content.platform)
+                        
+                        Text(source)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             

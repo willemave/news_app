@@ -111,7 +111,26 @@
             </time>
             {% if content.source %}
               <span class="mx-1">•</span>
-              <span>{{ content.source }}</span>
+              {% if content.platform %}
+                <span class="inline-flex items-center gap-1">
+                  {% if content.platform == 'twitter' %}
+                    <span class="platform-icon">🐦</span>
+                  {% elif content.platform == 'substack' %}
+                    <span class="platform-icon">📝</span>
+                  {% elif content.platform == 'youtube' %}
+                    <span class="platform-icon">▶️</span>
+                  {% elif content.platform == 'reddit' %}
+                    <span class="platform-icon">🔺</span>
+                  {% elif content.platform == 'hackernews' %}
+                    <span class="platform-icon text-orange-500 font-bold text-xs">Y</span>
+                  {% elif content.platform == 'podcast' %}
+                    <span class="platform-icon">🎙️</span>
+                  {% endif %}
+                  <span>{{ content.source }}</span>
+                </span>
+              {% else %}
+                <span>{{ content.source }}</span>
+              {% endif %}
             {% endif %}
           </div>
           

@@ -138,6 +138,14 @@
                   d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
           </svg>
         </button>
+        
+        <button onclick="openInChatGPT({{ content.id }})" 
+                class="inline-flex items-center text-purple-600 hover:text-purple-800 transition-colors">
+          <span class="mr-1">Chat with AI</span>
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2C10.34 2 9 3.34 9 5c0 .38.07.75.21 1.09C8.5 6.38 7.81 6.5 7.16 6.82c-.47-.98-1.48-1.66-2.66-1.66C2.84 5.16 1.5 6.5 1.5 8.16c0 .51.13.99.36 1.42C1.33 10.34 1 11.31 1 12.33c0 1.02.33 1.99.86 2.75-.23.43-.36.91-.36 1.42 0 1.66 1.34 3 3 3 .72 0 1.38-.25 1.91-.67.65.32 1.34.5 2.09.5.38 0 .75-.07 1.09-.21.29.7.99 1.21 1.82 1.21 1.08 0 1.96-.88 1.96-1.96 0-.27-.06-.53-.16-.77.51-.23.98-.58 1.35-1.01.43.23.91.36 1.42.36 1.66 0 3-1.34 3-3 0-1.18-.68-2.19-1.66-2.68.01-.11.01-.21.01-.32 0-1.02-.33-1.99-.86-2.75.23-.43.36-.91.36-1.42 0-1.66-1.34-3-3-3-.72 0-1.38.25-1.91.67C14.34 2.88 13.75 2.5 13 2.38 12.75 2.14 12.38 2 12 2zm0 2.5c.28 0 .5.22.5.5v3c0 .28-.22.5-.5.5s-.5-.22-.5-.5V5c0-.28.22-.5.5-.5zm-3.5 2c.18 0 .35.06.5.16l2.12 2.12c.2.2.2.51 0 .71-.2.2-.51.2-.71 0L8.29 7.37c-.2-.2-.2-.51 0-.71.1-.1.26-.16.41-.16h.8zm7 0h.8c.15 0 .31.06.41.16.2.2.2.51 0 .71l-2.12 2.12c-.2.2-.51.2-.71 0-.2-.2-.2-.51 0-.71l2.12-2.12c.15-.1.32-.16.5-.16zM4.5 10.5c.28 0 .5.22.5.5s-.22.5-.5.5H3c-.28 0-.5-.22-.5-.5s.22-.5.5-.5h1.5zm16.5 0c.28 0 .5.22.5.5s-.22.5-.5.5h-1.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5H21zM8.5 14.5c.18 0 .35.06.5.16.2.2.2.51 0 .71l-2.12 2.12c-.2.2-.51.2-.71 0-.2-.2-.2-.51 0-.71l2.12-2.12c.1-.1.26-.16.41-.16h.8zm7 0h.8c.15 0 .31.06.41.16l2.12 2.12c.2.2.2.51 0 .71-.2.2-.51.2-.71 0l-2.12-2.12c-.2-.2-.2-.51 0-.71.15-.1.32-.16.5-.16zM12 15.5c.28 0 .5.22.5.5v3c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-3c0-.28.22-.5.5-.5z"/>
+          </svg>
+        </button>
       </div>
       {% endif %}
     </div>
@@ -265,6 +273,48 @@ async function toggleFavorite(contentId) {
     } catch (error) {
         console.error('Error toggling favorite:', error);
     }
+}
+
+async function openInChatGPT(contentId) {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const appStoreURL = 'https://apps.apple.com/us/app/chatgpt/id6448311069';
+  const deepLink = 'chatgpt://chat/new';
+
+  if (isIOS) {
+    // Try native app first
+    window.location.href = deepLink;
+    // After a short delay, fall back to the App Store if the app isn't installed
+    setTimeout(async () => {
+      try {
+        const resp = await fetch(`/api/content/${contentId}/chat-url`);
+        if (resp.ok) {
+          const data = await resp.json();
+          // Offer App Store as primary fallback on iOS, but if user returns, open web
+          window.location.href = appStoreURL;
+          // As a secondary fallback (e.g., user cancels App Store), open web URL
+          setTimeout(() => window.open(data.chat_url, '_blank'), 1800);
+        } else {
+          window.location.href = appStoreURL;
+        }
+      } catch (_) {
+        window.location.href = appStoreURL;
+      }
+    }, 1200);
+    return;
+  }
+
+  // Non‑iOS: open the web URL
+  try {
+    const response = await fetch(`/api/content/${contentId}/chat-url`);
+    if (response.ok) {
+      const data = await response.json();
+      window.open(data.chat_url, '_blank');
+    } else {
+      console.error('Failed to get ChatGPT URL');
+    }
+  } catch (error) {
+    console.error('Error opening ChatGPT:', error);
+  }
 }
 </script>
 {% endblock %}
