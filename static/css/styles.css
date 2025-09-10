@@ -1905,3 +1905,11 @@ nav a {
     max-width: 150px;
   }
 }
+
+/* Platform Icons */
+.platform-icon {
+  display: inline-block;
+  font-size: 0.875rem;
+  line-height: 1;
+  vertical-align: middle;
+}

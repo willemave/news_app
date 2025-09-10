@@ -33,6 +33,7 @@ class ContentListViewModel: ObservableObject {
     }
     
     private let contentService = ContentService.shared
+    private let unreadCountService = UnreadCountService.shared
     
     func loadContent() async {
         isLoading = true
@@ -69,6 +70,7 @@ class ContentListViewModel: ObservableObject {
                     url: updatedContent.url,
                     title: updatedContent.title,
                     source: updatedContent.source,
+                    platform: updatedContent.platform,
                     status: updatedContent.status,
                     shortSummary: updatedContent.shortSummary,
                     createdAt: updatedContent.createdAt,
@@ -79,6 +81,13 @@ class ContentListViewModel: ObservableObject {
                     isFavorited: updatedContent.isFavorited
                 )
                 contents[index] = newContent
+                
+                // Update unread count based on content type
+                if updatedContent.contentType == "article" {
+                    unreadCountService.decrementArticleCount()
+                } else if updatedContent.contentType == "podcast" {
+                    unreadCountService.decrementPodcastCount()
+                }
                 
                 // If filtering by unread, remove from list with animation
                 if selectedReadFilter == "unread" {

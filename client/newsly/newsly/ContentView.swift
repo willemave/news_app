@@ -8,17 +8,24 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var unreadCountService = UnreadCountService.shared
+    
+    private var articleBadge: String? { unreadCountService.articleCount > 0 ? String(unreadCountService.articleCount) : nil }
+    private var podcastBadge: String? { unreadCountService.podcastCount > 0 ? String(unreadCountService.podcastCount) : nil }
+    
     var body: some View {
         TabView {
             ArticlesView()
                 .tabItem {
                     Label("Articles", systemImage: "doc.text")
                 }
+                .badge(articleBadge)
             
             PodcastsView()
                 .tabItem {
                     Label("Podcasts", systemImage: "mic")
                 }
+                .badge(podcastBadge)
             
             FavoritesView()
                 .tabItem {
@@ -29,6 +36,9 @@ struct ContentView: View {
                 .tabItem {
                     Label("Settings", systemImage: "gear")
                 }
+        }
+        .task {
+            await unreadCountService.refreshCounts()
         }
     }
 }

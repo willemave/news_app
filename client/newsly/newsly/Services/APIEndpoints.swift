@@ -26,4 +26,7 @@ enum APIEndpoints {
         return "/api/content/\(id)/unfavorite"
     }
     static let favoritesList = "/api/content/favorites/list"
+    static func chatGPTUrl(id: Int) -> String {
+        return "/api/content/\(id)/chat-url"
+    }
 }

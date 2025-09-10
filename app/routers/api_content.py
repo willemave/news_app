@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
@@ -30,6 +31,9 @@ class ContentSummaryResponse(BaseModel):
     source: str | None = Field(
         None, description="Content source (e.g., substack name, podcast name)"
     )
+    platform: str | None = Field(
+        None, description="Content platform (e.g., twitter, substack, youtube)"
+    )
     status: str = Field(..., description="Processing status")
     short_summary: str | None = Field(None, description="Short summary (max 200 chars)")
     created_at: str = Field(..., description="ISO timestamp when content was created")
@@ -49,6 +53,7 @@ class ContentSummaryResponse(BaseModel):
                 "url": "https://example.com/article",
                 "title": "Understanding AI in 2025",
                 "source": "Tech Blog",
+                "platform": "substack",
                 "status": "completed",
                 "short_summary": "This article explores the latest developments in AI...",
                 "created_at": "2025-06-19T10:30:00Z",
@@ -78,6 +83,7 @@ class ContentListResponse(BaseModel):
                         "url": "https://example.com/article",
                         "title": "Understanding AI in 2025",
                         "source": "Tech Blog",
+                        "platform": "substack",
                         "status": "completed",
                         "short_summary": "This article explores...",
                         "created_at": "2025-06-19T10:30:00Z",
@@ -206,6 +212,21 @@ class BulkMarkReadRequest(BaseModel):
         json_schema_extra = {"example": {"content_ids": [123, 456, 789]}}
 
 
+class ChatGPTUrlResponse(BaseModel):
+    """Response containing the ChatGPT URL for chatting with content."""
+
+    chat_url: str = Field(..., description="URL to open ChatGPT with the content")
+    truncated: bool = Field(..., description="Whether the content was truncated to fit URL limits")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "chat_url": "https://chat.openai.com/?q=Chat+about+this+article...",
+                "truncated": False
+            }
+        }
+
+
 @router.get(
     "/",
     response_model=ContentListResponse,
@@ -309,6 +330,7 @@ async def list_contents(
                     url=str(domain_content.url),
                     title=domain_content.display_title,
                     source=domain_content.source,
+                    platform=c.platform,
                     status=domain_content.status.value,
                     short_summary=domain_content.short_summary,
                     created_at=domain_content.created_at.isoformat()
@@ -648,4 +670,115 @@ async def get_favorites(
         total=len(content_summaries),
         available_dates=[],  # Not needed for favorites list
         content_types=content_types,
+    )
+
+
+@router.get(
+    "/{content_id}/chat-url",
+    response_model=ChatGPTUrlResponse,
+    summary="Get ChatGPT URL for content",
+    description="Generate a URL to open ChatGPT with the content's full text for discussion.",
+    responses={
+        404: {"description": "Content not found"},
+    },
+)
+async def get_chatgpt_url(
+    content_id: int = Path(..., description="Content ID", gt=0),
+    db: Session = Depends(get_db_session),
+) -> ChatGPTUrlResponse:
+    """Generate ChatGPT URL for chatting about the content."""
+    content = db.query(Content).filter(Content.id == content_id).first()
+    
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    
+    try:
+        domain_content = content_to_domain(content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process content metadata: {str(e)}"
+        ) from e
+    
+    # Build the prompt with context
+    prompt_parts = []
+    
+    # Add title and source context
+    prompt_parts.append(f"I'd like to discuss this {domain_content.content_type.value}:")
+    prompt_parts.append(f"Title: {domain_content.display_title}")
+    
+    if domain_content.source:
+        prompt_parts.append(f"Source: {domain_content.source}")
+    
+    if domain_content.publication_date:
+        prompt_parts.append(f"Published: {domain_content.publication_date.strftime('%B %d, %Y')}")
+    
+    prompt_parts.append("")  # Empty line for separation
+    
+    # Add the main content
+    if domain_content.content_type.value == "podcast" and domain_content.transcript:
+        prompt_parts.append("TRANSCRIPT:")
+        content_text = domain_content.transcript
+    elif domain_content.full_markdown:
+        prompt_parts.append("ARTICLE:")
+        content_text = domain_content.full_markdown
+    elif domain_content.summary:
+        prompt_parts.append("SUMMARY:")
+        content_text = domain_content.summary
+    else:
+        # Fallback to structured summary if available
+        if domain_content.structured_summary:
+            prompt_parts.append("KEY POINTS:")
+            if domain_content.bullet_points:
+                for bullet in domain_content.bullet_points:
+                    prompt_parts.append(f"• {bullet.get('text', '')}")
+            if domain_content.quotes:
+                prompt_parts.append("\nQUOTES:")
+                for quote in domain_content.quotes:
+                    prompt_parts.append(f'"{quote.get("text", "")}"')
+                    if quote.get("context"):
+                        prompt_parts.append(f"  - {quote['context']}")
+        content_text = ""
+    
+    # Combine all parts
+    full_prompt = "\n".join(prompt_parts)
+    
+    # Add content text if available
+    if content_text:
+        full_prompt += "\n" + content_text
+    
+    # URL length limit (conservative estimate for browser compatibility)
+    max_url_length = 8000
+    base_url = "https://chat.openai.com/?q="
+    
+    # Check if we need to truncate
+    truncated = False
+    encoded_prompt = quote_plus(full_prompt)
+    full_url = base_url + encoded_prompt
+    
+    if len(full_url) > max_url_length:
+        # Truncate the content to fit
+        truncated = True
+        available_space = max_url_length - len(base_url) - 100  # Leave some buffer
+        
+        # Try to keep the context and truncate the content
+        context_part = "\n".join(prompt_parts)
+        encoded_context = quote_plus(context_part)
+        
+        if len(encoded_context) < available_space:
+            # Add as much content as possible
+            remaining_space = available_space - len(encoded_context)
+            truncated_content = content_text[:remaining_space // 3]  # Rough estimate for encoding
+            truncated_prompt = context_part + "\n" + truncated_content + "\n\n[Content truncated for URL length...]"
+        else:
+            # Even context is too long, just use title and basic info
+            truncated_prompt = f"Chat about: {domain_content.display_title}"
+            if domain_content.source:
+                truncated_prompt += f" from {domain_content.source}"
+        
+        encoded_prompt = quote_plus(truncated_prompt)
+        full_url = base_url + encoded_prompt
+    
+    return ChatGPTUrlResponse(
+        chat_url=full_url,
+        truncated=truncated
     )

@@ -15,6 +15,7 @@ class ContentDetailViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     private let contentService = ContentService.shared
+    private let unreadCountService = UnreadCountService.shared
     private var contentId: Int = 0
     
     init(contentId: Int = 0) {
@@ -37,6 +38,13 @@ class ContentDetailViewModel: ObservableObject {
             // Auto-mark as read if not already read
             if let content = content, !content.isRead {
                 try await contentService.markContentAsRead(id: contentId)
+                
+                // Update unread count based on content type
+                if content.contentType == "article" {
+                    unreadCountService.decrementArticleCount()
+                } else if content.contentType == "podcast" {
+                    unreadCountService.decrementPodcastCount()
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -148,5 +156,24 @@ class ContentDetailViewModel: ObservableObject {
         
         // Optionally, you could show a confirmation using a toast or alert
         // For now, the copy happens silently
+    }
+    
+    func openInChatGPT() async {
+        guard let content = content else { return }
+        do {
+            let chatURLString = try await contentService.getChatGPTUrl(id: content.id)
+            guard let webURL = URL(string: chatURLString) else {
+                errorMessage = "Invalid ChatGPT URL returned by API"
+                return
+            }
+            ChatGPTDeepLink.openPreferApp(fallbackWebURL: webURL) { success in
+                if !success {
+                    // Finally fall back to web URL
+                    ChatGPTDeepLink.openWeb(webURL)
+                }
+            }
+        } catch {
+            errorMessage = "Failed to open ChatGPT: \(error.localizedDescription)"
+        }
     }
 }

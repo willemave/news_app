@@ -70,4 +70,19 @@ class ContentService {
     func fetchFavoritesList() async throws -> ContentListResponse {
         return try await client.request(APIEndpoints.favoritesList)
     }
+    
+    func getChatGPTUrl(id: Int) async throws -> String {
+        struct ChatGPTUrlResponse: Codable {
+            let chatUrl: String
+            let truncated: Bool
+            
+            enum CodingKeys: String, CodingKey {
+                case chatUrl = "chat_url"
+                case truncated
+            }
+        }
+        
+        let response: ChatGPTUrlResponse = try await client.request(APIEndpoints.chatGPTUrl(id: id))
+        return response.chatUrl
+    }
 }

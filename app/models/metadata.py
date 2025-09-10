@@ -365,6 +365,11 @@ class ContentData(BaseModel):
         return self.metadata.get("source")
 
     @property
+    def platform(self) -> str | None:
+        """Get content platform (twitter, substack, youtube, etc)."""
+        return self.metadata.get("platform")
+
+    @property
     def full_markdown(self) -> str | None:
         """Get full article content formatted as markdown from StructuredSummary."""
         summary_data = self.metadata.get("summary")

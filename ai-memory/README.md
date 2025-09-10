@@ -2,7 +2,7 @@
 
 ## Purpose
 
-* Aggregate news from web sites, RSS feeds, PDFs, Reddit, and other sources
+* Aggregate news from web sites, RSS feeds, PDFs, Reddit, Twitter, and other sources
 * Auto-scrape, filter with LLM, generate short + detailed summaries, store, and display in web UI
 * Provide intelligent content filtering based on user preferences (tech, AI, business strategy)
 * Enable fast scanning via AI-generated summaries with admin pipeline visibility
@@ -86,6 +86,7 @@
 * **LLM**: google-genai (Gemini 2.5 Flash Lite), httpx for HTTP
 * **Queue**: Database-backed queue (replaced Huey)
 * **Transcription**: faster-whisper for podcast processing
+* **Twitter Scraping**: Playwright (browser automation), jmespath (JSON processing)
 * **Frontend**: Jinja2 with markdown filter, TailwindCSS, HTMX
 * **Testing**: pytest, pytest-asyncio, pytest-mock, pytest-cov
 * **Development**: ruff (linting), uv (package management)
@@ -115,6 +116,7 @@
 * [`app/scraping/reddit_unified.py`](app/scraping/reddit_unified.py) - Reddit scraper (multi-subreddit)
 * [`app/scraping/substack_unified.py`](app/scraping/substack_unified.py) - RSS feed scraper for Substack
 * [`app/scraping/podcast_unified.py`](app/scraping/podcast_unified.py) - Podcast RSS scraper
+* [`app/scraping/twitter_unified.py`](app/scraping/twitter_unified.py) - Twitter scraper (search-based aggregation)
 
 ### Processing Pipeline
 * [`app/pipeline/sequential_task_processor.py`](app/pipeline/sequential_task_processor.py) - Sequential task processor with adaptive polling
@@ -137,6 +139,8 @@
 * [`app/services/openai_llm.py`](app/services/openai_llm.py) - OpenAI service (optional, for transcription)
 * [`app/services/http.py`](app/services/http.py) - HTTP service wrapper
 * [`app/services/event_logger.py`](app/services/event_logger.py) - Generic event logging with timing and stats
+* [`app/services/read_status.py`](app/services/read_status.py) - Read/unread status management
+* [`app/services/favorites.py`](app/services/favorites.py) - Favorites toggle functionality
 
 ### Domain Models
 * [`app/models/metadata.py`](app/models/metadata.py) - Unified metadata models (merged from schemas/metadata.py and domain/content.py)
@@ -159,9 +163,19 @@
 ### Web Interface
 * [`app/main.py`](app/main.py) - FastAPI application entry point with middleware and router setup
 * [`app/routers/content.py`](app/routers/content.py) - Unified content viewing endpoints
-* [`app/routers/api_content.py`](app/routers/api_content.py) - RESTful API endpoints for content
+* [`app/routers/api_content.py`](app/routers/api_content.py) - RESTful API endpoints for content (iOS client integration)
 * [`app/routers/admin.py`](app/routers/admin.py) - Admin dashboard with pipeline controls
 * [`app/routers/logs.py`](app/routers/logs.py) - Log file viewer interface (templates missing)
+
+### iOS Client
+* [`client/newsly/newslyApp.swift`](client/newsly/newslyApp.swift) - App entry point
+* [`client/newsly/ContentView.swift`](client/newsly/ContentView.swift) - Root TabView container
+* [`client/newsly/Views/ArticlesView.swift`](client/newsly/Views/ArticlesView.swift) - Article list view
+* [`client/newsly/Views/PodcastsView.swift`](client/newsly/Views/PodcastsView.swift) - Podcast list view
+* [`client/newsly/Views/ContentDetailView.swift`](client/newsly/Views/ContentDetailView.swift) - Detail view with swipe navigation
+* [`client/newsly/ViewModels/ContentListViewModel.swift`](client/newsly/ViewModels/ContentListViewModel.swift) - List state management
+* [`client/newsly/Services/APIClient.swift`](client/newsly/Services/APIClient.swift) - Network layer
+* [`client/newsly/Services/ContentService.swift`](client/newsly/Services/ContentService.swift) - Content API operations
 
 ### Scripts
 * [`scripts/run_scrapers.py`](scripts/run_scrapers.py) - Run scrapers manually
@@ -175,6 +189,7 @@
 * [`config/podcasts.yml`](config/podcasts.yml) - Podcast RSS feed URLs
 * [`config/substack.yml`](config/substack.yml) - Substack RSS feed URLs with source names
 * [`config/reddit.yml`](config/reddit.yml) - Reddit subreddit configuration
+* [`config/twitter.yml`](config/twitter.yml) - Twitter search queries and list configuration
 * [`pyproject.toml`](pyproject.toml) - Project dependencies and configuration
 * [`.env.example`](.env.example) - Environment variable template
 
@@ -223,6 +238,39 @@
 * **Type Safety**: Pydantic models for all settings and configurations
 * **TailwindCSS Build**: `npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css`
 
+## iOS Client Application
+
+### Newsly iOS App
+* **Location**: [`client/newsly/`](client/newsly/) - Native iOS SwiftUI application
+* **Architecture**: MVVM pattern with SwiftUI and async/await networking
+* **Navigation**: TabView with ArticlesView, PodcastsView, and SettingsView
+* **API Integration**: Connects to FastAPI backend at `/api/content/` endpoints
+* **Key Features**:
+  - Content browsing with card-based list view
+  - Filtering by content type and date
+  - Read/unread status tracking with visual indicators
+  - Favorites management
+  - Pull-to-refresh support
+  - Swipe navigation between articles in detail view
+  - Responsive design for all iOS devices
+* **Build Requirements**: iOS 15.0+, Swift 5.5+, Xcode
+* **Critical Implementation Note**: When passing content to detail view, MUST pass full array of content IDs for swipe navigation
+
+## API Endpoints
+
+### Content API (`/api/content/`)
+* **List Content**: `GET /api/content/` - Returns content with filters (type, date, read status)
+* **Content Detail**: `GET /api/content/{id}` - Full content details with structured summary
+* **Mark Read**: `POST /api/content/{id}/mark-read` - Mark single item as read
+* **Mark Unread**: `DELETE /api/content/{id}/mark-unread` - Mark single item as unread
+* **Bulk Mark Read**: `POST /api/content/bulk-mark-read` - Mark multiple items as read
+* **Toggle Favorite**: `POST /api/content/{id}/toggle-favorite` - Toggle favorite status
+* **ChatGPT URL**: `GET /api/content/{id}/chatgpt-url` - Generate ChatGPT chat URL for content
+* **Response Models**: Pydantic models with full OpenAPI documentation
+  - [`ContentSummaryResponse`](app/routers/api_content.py:24) - List view summary
+  - [`ContentDetailResponse`](app/routers/api_content.py:96) - Full content details
+  - [`ContentListResponse`](app/routers/api_content.py:64) - List endpoint response
+
 ## Current Development Status
 
 * **Implemented**: Unified content model replacing separate Article/Podcast models
@@ -242,7 +290,13 @@
 * **Implemented**: Enhanced error logging with JSON Lines format
 * **Implemented**: Content classification system (TO_READ/SKIP)
 * **Implemented**: Generic event logging system with timing and stats
-* **Implemented**: Admin log file viewer interface
+* **Implemented**: Admin log file viewer interface (templates missing)
 * **Implemented**: Google Gemini Flash integration with structured output
 * **Implemented**: Markdown rendering in templates with multiple extensions
 * **Implemented**: Sequential task processor with adaptive polling
+* **Implemented**: Read status tracking with ContentReadStatus table
+* **Implemented**: Favorites management with ContentFavorites table
+* **Implemented**: Full-featured iOS client application with SwiftUI
+* **Implemented**: RESTful API with OpenAPI documentation
+* **Implemented**: Full markdown content storage for articles
+* **Implemented**: Twitter scraper using Playwright to intercept GraphQL API calls for list aggregation

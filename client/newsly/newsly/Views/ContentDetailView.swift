@@ -82,6 +82,17 @@ struct ContentDetailView: View {
                             }
                             .buttonStyle(.bordered)
                             
+                            // Chat with AI button
+                            Button(action: { 
+                                Task { 
+                                    await viewModel.openInChatGPT() 
+                                }
+                            }) {
+                                Image(systemName: "brain")
+                                    .font(.system(size: 20))
+                            }
+                            .buttonStyle(.bordered)
+                            
                             // Copy button for podcasts only
                             if content.contentTypeEnum == .podcast {
                                 Button(action: { viewModel.copyPodcastContent() }) {
@@ -132,7 +143,20 @@ struct ContentDetailView: View {
                     }
                     
                     // Full Content Section
-                    if let fullMarkdown = content.fullMarkdown {
+                    // For podcasts, check podcastMetadata.transcript first, then fall back to fullMarkdown
+                    if content.contentTypeEnum == .podcast, let podcastMetadata = content.podcastMetadata, let transcript = podcastMetadata.transcript {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Transcript")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                            
+                            Markdown(transcript)
+                                .markdownTheme(.gitHub)
+                        }
+                        .padding()
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .cornerRadius(12)
+                    } else if let fullMarkdown = content.fullMarkdown {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(content.contentTypeEnum == .podcast ? "Transcript" : "Full Article")
                                 .font(.title2)
@@ -153,18 +177,25 @@ struct ContentDetailView: View {
         .offset(x: dragAmount)
         .animation(.spring(), value: dragAmount)
         .gesture(
-            DragGesture(minimumDistance: 30)
+            DragGesture(minimumDistance: 50, coordinateSpace: .global)
                 .onChanged { value in
-                    // Only allow horizontal swipes that are more horizontal than vertical
-                    if abs(value.translation.width) > abs(value.translation.height) {
-                        dragAmount = value.translation.width * 0.5 // Add some resistance
+                    // Only respond to fast, clearly horizontal swipes
+                    let horizontalAmount = abs(value.translation.width)
+                    let verticalAmount = abs(value.translation.height)
+                    
+                    // Require the swipe to be significantly more horizontal than vertical
+                    // and have sufficient velocity to distinguish from text selection
+                    if horizontalAmount > verticalAmount * 2 && horizontalAmount > 50 {
+                        dragAmount = value.translation.width * 0.3
                     }
                 }
                 .onEnded { value in
+                    let horizontalAmount = abs(value.translation.width)
+                    let verticalAmount = abs(value.translation.height)
                     
-                    // Check if it's a horizontal swipe
-                    if abs(value.translation.width) > abs(value.translation.height) {
-                        if value.translation.width > 80 && currentIndex > 0 {
+                    // Only process as navigation if it's a clear horizontal swipe
+                    if horizontalAmount > verticalAmount * 2 && horizontalAmount > 100 {
+                        if value.translation.width > 100 && currentIndex > 0 {
                             // Swipe right - previous article
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 dragAmount = UIScreen.main.bounds.width
@@ -173,7 +204,7 @@ struct ContentDetailView: View {
                                 dragAmount = 0
                                 navigateToPrevious()
                             }
-                        } else if value.translation.width < -80 && currentIndex < allContentIds.count - 1 {
+                        } else if value.translation.width < -100 && currentIndex < allContentIds.count - 1 {
                             // Swipe left - next article
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 dragAmount = -UIScreen.main.bounds.width
@@ -182,17 +213,12 @@ struct ContentDetailView: View {
                                 dragAmount = 0
                                 navigateToNext()
                             }
-                        } else {
-                            // Snap back if not enough swipe
-                            withAnimation(.spring()) {
-                                dragAmount = 0
-                            }
                         }
-                    } else {
-                        // Not a horizontal swipe, snap back
-                        withAnimation(.spring()) {
-                            dragAmount = 0
-                        }
+                    }
+                    
+                    // Always snap back
+                    withAnimation(.spring()) {
+                        dragAmount = 0
                     }
                 }
         )

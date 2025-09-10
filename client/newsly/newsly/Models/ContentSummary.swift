@@ -13,6 +13,7 @@ struct ContentSummary: Codable, Identifiable {
     let url: String
     let title: String?
     let source: String?
+    let platform: String?
     let status: String
     let shortSummary: String?
     let createdAt: String
@@ -28,6 +29,7 @@ struct ContentSummary: Codable, Identifiable {
         case url
         case title
         case source
+        case platform
         case status
         case shortSummary = "short_summary"
         case createdAt = "created_at"
