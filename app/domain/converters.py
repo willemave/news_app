@@ -9,10 +9,12 @@ from app.models.schema import Content as DBContent
 def content_to_domain(db_content: DBContent) -> ContentData:
     """Convert database Content to domain ContentData."""
     try:
-        # Include platform information in metadata if available
+        # Include platform/source in metadata if stored on the row but missing in metadata
         metadata = db_content.content_metadata or {}
-        if db_content.platform and 'platform' not in metadata:
+        if db_content.platform and metadata.get('platform') is None:
             metadata = {**metadata, 'platform': db_content.platform}
+        if db_content.source and metadata.get('source') is None:
+            metadata = {**metadata, 'source': db_content.source}
             
         return ContentData(
             id=db_content.id,
@@ -42,7 +44,15 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
         existing.status = content_data.status.value
         # Serialize metadata to ensure datetime objects are handled
         dumped_data = content_data.model_dump(mode="json")
-        existing.content_metadata = dumped_data["metadata"]
+        md = dumped_data["metadata"] or {}
+        # Keep DB columns for platform/source in sync with metadata if provided
+        plat = md.get("platform")
+        src = md.get("source")
+        if isinstance(plat, str) and plat.strip():
+            existing.platform = plat.strip().lower()
+        if isinstance(src, str) and src.strip():
+            existing.source = src.strip()
+        existing.content_metadata = md
         existing.error_message = content_data.error_message
         existing.retry_count = content_data.retry_count
         if content_data.processed_at:
@@ -51,12 +61,18 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
         return existing
     else:
         # Create new
+        dumped = content_data.model_dump(mode="json")
+        md = dumped.get("metadata") or {}
+        plat = md.get("platform")
+        src = md.get("source")
         return DBContent(
             content_type=content_data.content_type.value,
             url=str(content_data.url),
             title=content_data.title,
             status=content_data.status.value,
-            content_metadata=content_data.model_dump(mode="json")["metadata"],
+            platform=(plat.strip().lower() if isinstance(plat, str) and plat.strip() else None),
+            source=(src.strip() if isinstance(src, str) and src.strip() else None),
+            content_metadata=md,
             error_message=content_data.error_message,
             retry_count=content_data.retry_count,
             created_at=content_data.created_at or datetime.utcnow(),

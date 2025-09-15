@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-semibold text-gray-900">Error Analysis</h1>
+    <a href="/admin/logs" class="text-sm text-blue-600 hover:text-blue-800 underline">View Raw Logs</a>
+  </div>
+
+  <!-- Filters -->
+  <form method="get" class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Hours</label>
+        <input type="number" name="hours" value="{{ hours }}" min="1" class="mt-1 w-full border-gray-300 rounded-md" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Min Errors / Category</label>
+        <input type="number" name="min_errors" value="{{ min_errors }}" min="1" class="mt-1 w-full border-gray-300 rounded-md" />
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-gray-700">Component (optional)</label>
+        <input type="text" name="component" value="{{ component }}" placeholder="e.g., html_strategy" class="mt-1 w-full border-gray-300 rounded-md" />
+      </div>
+    </div>
+    <div class="mt-4">
+      <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">Apply Filters</button>
+    </div>
+  </form>
+
+  <!-- Summary Cards -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+      <div class="text-sm text-gray-500">Total Errors</div>
+      <div class="text-2xl font-semibold">{{ total_errors }}</div>
+    </div>
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+      <div class="text-sm text-gray-500">Error Categories</div>
+      <div class="text-2xl font-semibold">{{ category_count }}</div>
+    </div>
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+      <div class="text-sm text-gray-500">Time Window</div>
+      <div class="text-2xl font-semibold">Last {{ hours }}h</div>
+    </div>
+  </div>
+
+  <!-- Quick Summary (Markdown) -->
+  <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6 prose max-w-none">
+    {{ summary_markdown | markdown }}
+  </div>
+
+  <!-- Top Categories -->
+  <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+    <h2 class="text-lg font-semibold mb-4">Top Categories</h2>
+    {% if categories %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Count</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sample</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+          {% for c in categories %}
+          <tr>
+            <td class="px-4 py-2 whitespace-nowrap font-medium text-gray-900">{{ c.key.replace('_',' ') }}</td>
+            <td class="px-4 py-2 text-gray-700">{{ c.count }}</td>
+            <td class="px-4 py-2 text-gray-600">{{ c.sample_message }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="text-gray-600">No errors found for the selected time period.</p>
+    {% endif %}
+  </div>
+
+  <!-- Most Affected Files -->
+  {% if affected_files %}
+  <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+    <h2 class="text-lg font-semibold mb-4">Most Affected Files</h2>
+    <ul class="list-disc pl-6 text-gray-700">
+      {% for f in affected_files[:10] %}
+        <li><code>{{ f }}</code> ({{ file_counts[f] }} errors)</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Recent Samples -->
+  {% if recent_samples %}
+  <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+    <h2 class="text-lg font-semibold mb-4">Recent Samples</h2>
+    <div class="space-y-3">
+      {% for e in recent_samples %}
+      <div class="border border-gray-200 rounded-md p-3">
+        <div class="text-xs text-gray-500 mb-1">{{ e.timestamp }} • {{ e.component }} • {{ e.error_type }}</div>
+        <div class="text-sm text-gray-800">{{ e.message }}</div>
+        {% if e.file_link %}
+        <div class="mt-1">
+          <a href="/admin/logs/{{ e.file_link }}" class="text-xs text-blue-600 hover:text-blue-800 underline">Open log file</a>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Copyable LLM Prompt (Markdown) -->
+  <details class="bg-white border border-gray-200 rounded-lg p-4">
+    <summary class="cursor-pointer text-lg font-semibold">LLM Prompt (copy & paste)</summary>
+    <div class="prose max-w-none mt-4">
+      {{ llm_prompt_markdown | markdown }}
+    </div>
+  </details>
+</div>
+{% endblock %}
+

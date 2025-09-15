@@ -10,9 +10,10 @@ import SwiftUI
 struct FavoritesView: View {
     @StateObject private var viewModel = ContentListViewModel()
     @ObservedObject private var settings = AppSettings.shared
+    @State private var showingFilters = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 VStack(spacing: 0) {
                     if viewModel.isLoading && viewModel.contents.isEmpty {
@@ -52,9 +53,12 @@ struct FavoritesView: View {
                                         .opacity(0)
                                         .buttonStyle(PlainButtonStyle())
                                         
-                                        ContentCard(content: content) {
-                                            await viewModel.markAsRead(content.id)
-                                        }
+                                        ContentCard(
+                                            content: content,
+                                            onMarkAsRead: { await viewModel.markAsRead(content.id) },
+                                            onToggleFavorite: { await viewModel.toggleFavorite(content.id) },
+                                            onToggleUnlike: { await viewModel.toggleUnlike(content.id) }
+                                        )
                                     }
                                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                     .listRowSeparator(.hidden)
@@ -91,28 +95,34 @@ struct FavoritesView: View {
                             .refreshable {
                                 await viewModel.loadFavorites()
                             }
-                            .padding(.top, 80)
                         }
                     }
                 }
                 .task {
                     await viewModel.loadFavorites()
                 }
-                
-                // Filter Bar
-                VStack {
-                    FilterBar(
-                        selectedContentType: .constant("all"),
-                        selectedDate: .constant(""),
-                        selectedReadFilter: $viewModel.selectedReadFilter,
-                        contentTypes: viewModel.contentTypes,
-                        availableDates: viewModel.availableDates,
-                        onFilterChange: {
-                            await viewModel.loadFavorites()
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            showingFilters = true
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
                         }
+                        .accessibilityLabel("Filters")
+                    }
+                }
+                .sheet(isPresented: $showingFilters) {
+                    FilterSheet(
+                        selectedContentType: $viewModel.selectedContentType,
+                        selectedDate: $viewModel.selectedDate,
+                        selectedReadFilter: $viewModel.selectedReadFilter,
+                        isPresented: $showingFilters,
+                        contentTypes: viewModel.contentTypes,
+                        availableDates: viewModel.availableDates
                     )
-                    
-                    Spacer()
+                    .onDisappear {
+                        Task { await viewModel.loadFavorites() }
+                    }
                 }
             }
         }

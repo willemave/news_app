@@ -22,6 +22,7 @@ struct ContentSummary: Codable, Identifiable {
     let publicationDate: String?
     let isRead: Bool
     var isFavorited: Bool
+    var isUnliked: Bool
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -38,6 +39,7 @@ struct ContentSummary: Codable, Identifiable {
         case publicationDate = "publication_date"
         case isRead = "is_read"
         case isFavorited = "is_favorited"
+        case isUnliked = "is_unliked"
     }
     
     var contentTypeEnum: ContentType? {

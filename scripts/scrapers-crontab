@@ -1,0 +1,4 @@
+# Crontab for scrapers - will be dynamically generated in container
+# This file serves as a template
+# Default schedule: every 4 hours
+0 */4 * * * cd /app && python scripts/run_scrapers.py --show-stats >> /logs/scrapers-cron.log 2>&1

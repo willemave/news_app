@@ -39,14 +39,23 @@ struct ContentListView: View {
                         } else {
                             List {
                                 ForEach(viewModel.contents) { content in
-                                    Button(action: {
-                                        selectedContentId = content.id
-                                    }) {
-                                        ContentCard(content: content) {
-                                            await viewModel.markAsRead(content.id)
-                                        }
+                                    ZStack {
+                                        // Invisible navigation link to enable row tap navigation
+                                        NavigationLink(destination: ContentDetailView(
+                                            contentId: content.id,
+                                            allContentIds: viewModel.contents.map { $0.id }
+                                        )) { EmptyView() }
+                                        .opacity(0)
+                                        .buttonStyle(PlainButtonStyle())
+
+                                        ContentCard(
+                                            content: content,
+                                            onMarkAsRead: { await viewModel.markAsRead(content.id) },
+                                            onToggleFavorite: { await viewModel.toggleFavorite(content.id) },
+                                            onToggleUnlike: { await viewModel.toggleUnlike(content.id) }
+                                        )
+                                        .contentShape(Rectangle())
                                     }
-                                    .buttonStyle(PlainButtonStyle())
                                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                                     .listRowSeparator(.visible)
                                     .listRowBackground(Color.clear)
@@ -80,12 +89,7 @@ struct ContentListView: View {
                     let allIds = viewModel.contents.map { $0.id }
                     ContentDetailView(contentId: contentId, allContentIds: allIds)
                 }
-                .onChange(of: selectedContentId) { _, newId in
-                    if let id = newId {
-                        navigationPath.append(id)
-                        selectedContentId = nil
-                    }
-                }
+                                    // Row tap handled by the invisible NavigationLink above
                 
                 // Floating menu button
                 VStack {

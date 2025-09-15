@@ -10,72 +10,115 @@ import SwiftUI
 struct ContentCard: View {
     let content: ContentSummary
     let onMarkAsRead: () async -> Void
-    
+    let onToggleFavorite: () async -> Void
+    let onToggleUnlike: () async -> Void
+
     @State private var isMarking = false
-    
+    @State private var isTogglingFavorite = false
+    @State private var isTogglingUnlike = false
+
+    // Larger touch targets for better ergonomics (slightly narrower)
+    private let actionSize: CGFloat = 36
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Header
-            HStack(alignment: .top) {
+        HStack(alignment: .center, spacing: 12) {
+            // Main content
+            VStack(alignment: .leading, spacing: 6) {
+                // Title (truncate to 2 lines)
                 Text(content.displayTitle)
                     .font(.subheadline)
-                    .fontWeight(.medium)
+                    .fontWeight(.semibold)
                     .foregroundColor(content.isRead ? .secondary : .primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                
-                Spacer()
-                
-                HStack(spacing: 8) {
-                    if content.isFavorited {
-                        Image(systemName: "star.fill")
-                            .font(.caption)
-                            .foregroundColor(.yellow)
-                    }
-                    
-                    if content.isRead {
-                        Text("read")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.1))
-                            .cornerRadius(4)
-                    }
-                }
-            }
-            
-            // Metadata
-            HStack(spacing: 8) {
-                Text(content.formattedDate)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                
-                if let source = content.source {
-                    HStack(spacing: 4) {
-                        Text("•")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        
-                        PlatformIcon(platform: content.platform)
-                        
+                    .lineLimit(5)
+                    .truncationMode(.tail)
+
+                // Platform • Source (replaces description)
+                HStack(spacing: 6) {
+                    PlatformIcon(platform: content.platform)
+                        .opacity(content.platform == nil ? 0 : 1)
+                    if let source = content.source {
                         Text(source)
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
             }
-            
-            // Summary
-            if let summary = content.shortSummary {
-                Text(summary)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-                    .padding(.top, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Trailing action buttons (stacked vertically)
+            VStack(spacing: 8) {
+                // Favorite toggle
+                Button(action: {
+                    guard !isTogglingFavorite else { return }
+                    isTogglingFavorite = true
+                    Task {
+                        await onToggleFavorite()
+                        isTogglingFavorite = false
+                    }
+                }) {
+                    Image(systemName: content.isFavorited ? "star.fill" : "star")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(content.isFavorited ? .yellow : .secondary)
+                        .frame(width: actionSize, height: actionSize)
+                        .background(
+                            Circle()
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(content.isFavorited ? "Unfavorite" : "Favorite")
+
+                // Unlike toggle
+                Button(action: {
+                    guard !isTogglingUnlike else { return }
+                    isTogglingUnlike = true
+                    Task {
+                        await onToggleUnlike()
+                        isTogglingUnlike = false
+                    }
+                }) {
+                    Image(systemName: content.isUnliked ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(content.isUnliked ? .red : .secondary)
+                        .frame(width: actionSize, height: actionSize)
+                        .background(
+                            Circle()
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(content.isUnliked ? "Remove Unlike" : "Unlike")
+
+                // Mark as read
+                Button(action: {
+                    guard !content.isRead, !isMarking else { return }
+                    isMarking = true
+                    Task {
+                        await onMarkAsRead()
+                        isMarking = false
+                    }
+                }) {
+                    Image(systemName: content.isRead ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(content.isRead ? .green : .secondary)
+                        .frame(width: actionSize, height: actionSize)
+                        .background(
+                            Circle()
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.borderless)
+                .disabled(content.isRead)
+                .opacity(content.isRead ? 0.5 : 1)
+                .accessibilityLabel("Mark as Read")
             }
+            .frame(width: actionSize)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .opacity(content.isRead ? 0.7 : 1.0)
+        .frame(minHeight: 84, alignment: .center)
+        .opacity(content.isRead ? 0.85 : 1.0)
     }
 }

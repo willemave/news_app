@@ -158,6 +158,8 @@ class ContentWorker:
                 "final_url": extracted_data.get("final_url_after_redirects", str(content.url)),
             }
 
+            # Do not override platform here; platform should reflect the scraper.
+
             # Add HackerNews-specific metadata if present
             hn_fields = [
                 "hn_score",

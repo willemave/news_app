@@ -191,14 +191,20 @@ class SubstackScraper(BaseScraper):
                 publication_date = datetime(*entry["published_parsed"][:6])
 
         # Create item for unified system
+        # Determine domain for source (full domain name)
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(link).netloc or ""
+        except Exception:
+            host = ""
         item = {
             "url": self._normalize_url(link),
             "title": title,
             "content_type": ContentType.ARTICLE,
             "metadata": {
-                "platform": "substack",  # Platform identifier
-                # Standardized format: platform:source
-                "source": f"substack:{source_name or feed_name}",
+                "platform": "substack",  # Scraper identifier
+                # Source is the full domain name (e.g., importai.substack.com)
+                "source": host,
                 "feed_name": feed_name,
                 "feed_description": feed_description,
                 "author": entry.get("author"),

@@ -113,9 +113,9 @@ class RedditUnifiedScraper(BaseScraper):
                     "title": post.get("title"),
                     "content_type": ContentType.ARTICLE,
                     "metadata": {
-                        "platform": "reddit",  # Platform identifier
-                        # Standardized format: platform:source
-                        "source": f"reddit:{post.get('subreddit', subreddit_name)}",
+                        "platform": "reddit",  # Scraper identifier
+                        # Source should be the subreddit name only
+                        "source": post.get('subreddit', subreddit_name),
                         "subreddit": post.get("subreddit", subreddit_name),
                         "reddit_id": post.get("id"),
                         "reddit_url": f"https://reddit.com{post.get('permalink', '')}",

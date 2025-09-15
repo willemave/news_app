@@ -12,26 +12,22 @@ from app.services.queue import TaskType, get_queue_service
 logger = get_logger(__name__)
 
 """
-Source and Platform Conventions:
---------------------------------
+Source and Platform Conventions (updated):
+-----------------------------------------
 All scrapers must set both 'platform' and 'source' fields in metadata:
 
-1. Platform Field:
-   - Identifies the high-level platform (reddit, substack, hackernews, podcast, youtube)
-   - Used for UI icons and platform-level filtering
-   - Always lowercase
+1) platform: the scraper identifier (lowercase), e.g.
+   - hackernews, reddit, substack, podcast, twitter, youtube
 
-2. Source Field:
-   - Format: "platform:specific_source"
+2) source: the full domain name of the linked content, except for Reddit
+   - For Reddit only, source is the subreddit name (e.g., MachineLearning)
    - Examples:
-     - "reddit:MachineLearning" (subreddit name)
-     - "substack:Import AI" (newsletter name)
-     - "hackernews:HackerNews" (always HackerNews)
-     - "podcast:Lenny's Podcast" (podcast name)
-     - "youtube:TechChannel" (channel name)
-   - Provides granular filtering within platforms
+     - Hacker News link to https://github.com/... → platform=hackernews, source=github.com
+     - Substack link https://importai.substack.com/... → platform=substack, source=importai.substack.com
+     - Reddit post in r/MachineLearning → platform=reddit, source=MachineLearning
+     - Podcast episode page https://stratechery.com/... → platform=podcast, source=stratechery.com
 
-This standardized format ensures consistency across all content sources.
+This convention keeps platform stable for filtering (by scraper) and source useful for grouping by site.
 """
 
 

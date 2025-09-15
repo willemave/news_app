@@ -165,6 +165,22 @@ class ContentFavorites(Base):
     )
 
 
+class ContentUnlikes(Base):
+    """Track which content has been unliked by which session."""
+    
+    __tablename__ = "content_unlikes"
+    
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String(255), nullable=False, index=True)
+    content_id = Column(Integer, nullable=False, index=True)
+    unliked_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index("idx_content_unlikes_session_content", "session_id", "content_id", unique=True),
+    )
+
+
 class EventLog(Base):
     """Generic event logging table for all system events, stats, and errors."""
     

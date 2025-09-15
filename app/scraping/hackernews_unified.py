@@ -39,14 +39,21 @@ class HackerNewsUnifiedScraper(BaseScraper):
                     if "url" not in story:
                         continue
 
+                    # Derive source domain from the linked URL
+                    try:
+                        from urllib.parse import urlparse
+                        host = urlparse(story["url"]).netloc or ""
+                    except Exception:
+                        host = ""
+
                     item = {
                         "url": self._normalize_url(story["url"]),
                         "title": story.get("title"),
                         "content_type": ContentType.ARTICLE,
                         "metadata": {
-                            "platform": "hackernews",  # Platform identifier
-                            # Standardized format: platform:source
-                            "source": "hackernews:HackerNews",
+                            "platform": "hackernews",  # Scraper identifier
+                            # Source is the full domain of the linked article
+                            "source": host,
                             "hn_id": story_id,
                             "hn_url": f"{self.hn_base_url}/item?id={story_id}",
                             "score": story.get("score", 0),

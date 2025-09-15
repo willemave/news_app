@@ -6,7 +6,7 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_, cast, String
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -44,6 +44,7 @@ class ContentSummaryResponse(BaseModel):
     )
     is_read: bool = Field(False, description="Whether the content has been marked as read")
     is_favorited: bool = Field(False, description="Whether the content has been favorited")
+    is_unliked: bool = Field(False, description="Whether the content has been unliked")
 
     class Config:
         json_schema_extra = {
@@ -125,6 +126,7 @@ class ContentDetailResponse(BaseModel):
     )
     is_read: bool = Field(False, description="Whether the content has been marked as read")
     is_favorited: bool = Field(False, description="Whether the content has been favorited")
+    is_unliked: bool = Field(False, description="Whether the content has been unliked")
     # Additional useful properties from ContentData
     summary: str | None = Field(None, description="Summary text")
     short_summary: str | None = Field(None, description="Short version of summary for list view")
@@ -250,13 +252,16 @@ async def list_contents(
     db: Session = Depends(get_db_session),
 ) -> ContentListResponse:
     """List content with optional filters."""
-    from app.services import read_status, favorites
+    from app.services import read_status, favorites, unlikes
 
     # Get read content IDs first
     read_content_ids = read_status.get_read_content_ids(db)
     
     # Get favorited content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
+
+    # Get unliked content IDs
+    unliked_content_ids = unlikes.get_unliked_content_ids(db)
 
     # Get available dates for the dropdown
     available_dates_query = (
@@ -345,6 +350,7 @@ async def list_contents(
                     else None,
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
+                    is_unliked=c.id in unliked_content_ids,
                 )
             )
         except Exception as e:
@@ -360,6 +366,119 @@ async def list_contents(
         total=len(content_summaries),
         available_dates=available_dates,
         content_types=content_types,
+    )
+ 
+@router.get(
+    "/search",
+    response_model=ContentListResponse,
+    summary="Search content across articles and podcasts",
+    description=(
+        "Case-insensitive string search across titles, sources, and summaries. "
+        "Results exclude items classified as 'skip' and only include summarized content."
+    ),
+)
+async def search_contents(
+    q: str = Query(
+        ..., min_length=2, max_length=200, description="Search query (min 2 characters)"
+    ),
+    type: str = Query(
+        "all",
+        regex=r"^(all|article|podcast)$",
+        description="Optional content type filter",
+    ),
+    limit: int = Query(25, ge=1, le=100, description="Max results to return"),
+    offset: int = Query(0, ge=0, description="Results offset for pagination"),
+    db: Session = Depends(get_db_session),
+) -> ContentListResponse:
+    """Search content with portable SQL patterns.
+
+    This uses case-insensitive LIKE over title/source and selected JSON fields
+    (summary.title/summary.overview) with a safe String cast for portability
+    between SQLite and Postgres. As a fallback, the entire JSON is also matched
+    as text to catch legacy structures.
+    """
+    from app.services import favorites, read_status, unlikes
+
+    # Preload state flags
+    read_content_ids = read_status.get_read_content_ids(db)
+    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    unliked_content_ids = unlikes.get_unliked_content_ids(db)
+
+    # Base query aligning with list endpoint visibility rules
+    query = db.query(Content)
+    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
+    query = query.filter(
+        Content.content_metadata["summary"].is_not(None)
+        & (Content.content_metadata["summary"] != "null")
+    )
+
+    if type and type != "all":
+        query = query.filter(Content.content_type == type)
+
+    search = f"%{q.lower()}%"
+
+    # Build portable search OR-clause
+    conditions = or_(
+        func.lower(Content.title).like(search),
+        func.lower(Content.source).like(search),
+        # Prefer targeted JSON fields when present
+        func.lower(cast(Content.content_metadata["summary"]["title"], String)).like(search),
+        func.lower(cast(Content.content_metadata["summary"]["overview"], String)).like(search),
+        # Podcasts may have transcript text in metadata
+        func.lower(cast(Content.content_metadata["transcript"], String)).like(search),
+        # Fallback: scan entire JSON blob as text (portable, but slower)
+        func.lower(cast(Content.content_metadata, String)).like(search),
+    )
+
+    search_query = query.filter(conditions)
+
+    total = search_query.count()
+    results = (
+        search_query.order_by(Content.created_at.desc()).offset(offset).limit(limit).all()
+    )
+
+    content_summaries: list[ContentSummaryResponse] = []
+    for c in results:
+        try:
+            domain_content = content_to_domain(c)
+            classification = None
+            if domain_content.structured_summary:
+                classification = domain_content.structured_summary.get("classification")
+
+            content_summaries.append(
+                ContentSummaryResponse(
+                    id=domain_content.id,
+                    content_type=domain_content.content_type.value,
+                    url=str(domain_content.url),
+                    title=domain_content.display_title,
+                    source=domain_content.source,
+                    platform=c.platform,
+                    status=domain_content.status.value,
+                    short_summary=domain_content.short_summary,
+                    created_at=domain_content.created_at.isoformat()
+                    if domain_content.created_at
+                    else "",
+                    processed_at=domain_content.processed_at.isoformat()
+                    if domain_content.processed_at
+                    else None,
+                    classification=classification,
+                    publication_date=domain_content.publication_date.isoformat()
+                    if domain_content.publication_date
+                    else None,
+                    is_read=c.id in read_content_ids,
+                    is_favorited=c.id in favorite_content_ids,
+                    is_unliked=c.id in unliked_content_ids,
+                )
+            )
+        except Exception as e:
+            print(f"Skipping content {c.id} due to validation error: {e}")
+            continue
+
+    return ContentListResponse(
+        contents=content_summaries,
+        total=total,
+        available_dates=[],  # Not applicable for search
+        content_types=[ct.value for ct in ContentType],
     )
 
 
@@ -409,7 +528,7 @@ async def get_content_detail(
     db: Session = Depends(get_db_session),
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
-    from app.services import read_status, favorites
+    from app.services import read_status, favorites, unlikes
 
     content = db.query(Content).filter(Content.id == content_id).first()
 
@@ -421,6 +540,8 @@ async def get_content_detail(
     
     # Check if content is favorited
     is_favorited = favorites.is_content_favorited(db, content_id)
+    # Check if content is unliked
+    is_unliked = unlikes.is_content_unliked(db, content_id)
 
     # Convert to domain object to validate metadata
     try:
@@ -455,6 +576,7 @@ async def get_content_detail(
         else None,
         is_read=is_read,
         is_favorited=is_favorited,
+        is_unliked=is_unliked,
         # Additional properties from ContentData
         summary=domain_content.summary,
         short_summary=domain_content.short_summary,
@@ -540,6 +662,73 @@ async def mark_content_unread(
         "status": "success",
         "content_id": content_id,
         "removed_records": result.rowcount,
+    }
+
+
+@router.post(
+    "/{content_id}/unlike",
+    summary="Toggle unlike status",
+    description="Toggle the unlike status of a specific content item. Also marks the item as read when unliked.",
+    responses={
+        200: {"description": "Unlike status toggled successfully"},
+        404: {"description": "Content not found"},
+    },
+)
+async def toggle_unlike(
+    content_id: int = Path(..., description="Content ID", gt=0),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Toggle unlike status for content and mark as read when unliked."""
+    from app.services import unlikes, read_status
+
+    # Check if content exists
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # Toggle unlike
+    is_unliked, _ = unlikes.toggle_unlike(db, content_id)
+
+    # If now unliked, mark as read
+    is_read = False
+    if is_unliked:
+        is_read = read_status.mark_content_as_read(db, content_id) is not None
+
+    return {
+        "status": "success",
+        "content_id": content_id,
+        "is_unliked": is_unliked,
+        "is_read": is_read,
+    }
+
+
+@router.delete(
+    "/{content_id}/remove-unlike",
+    summary="Remove unlike",
+    description="Remove the unlike status for a specific content item.",
+    responses={
+        200: {"description": "Content removed from unlikes successfully"},
+        404: {"description": "Content not found"},
+    },
+)
+async def remove_unlike_content(
+    content_id: int = Path(..., description="Content ID", gt=0),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Remove content from unlikes."""
+    from app.services import unlikes
+
+    # Check if content exists
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # Remove from unlikes
+    removed = unlikes.remove_unlike(db, content_id)
+    return {
+        "status": "success" if removed else "not_found",
+        "content_id": content_id,
+        "message": "Removed unlike" if removed else "Content was not unliked",
     }
 
 
@@ -656,6 +845,7 @@ async def get_favorites(
                     else None,
                     is_read=c.id in read_content_ids,
                     is_favorited=True,  # All items in this list are favorited
+                    is_unliked=False,
                 )
             )
         except Exception as e:
@@ -782,3 +972,6 @@ async def get_chatgpt_url(
         chat_url=full_url,
         truncated=truncated
     )
+
+
+ 

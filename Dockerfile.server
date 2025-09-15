@@ -1,0 +1,64 @@
+# FastAPI server container (standalone, no base inheritance)
+FROM python:3.13-slim
+
+# Install system dependencies including Playwright browser dependencies
+RUN apt-get update && apt-get install -y \
+    bash \
+    gcc \
+    g++ \
+    git \
+    curl \
+    ffmpeg \
+    libnspr4 \
+    libnss3 \
+    libxss1 \
+    libasound2 \
+    libxrandr2 \
+    libatk1.0-0 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libgtk-3-0 \
+    libgbm1 \
+    libxkbcommon0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for package management
+RUN pip install uv
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files and install into a venv
+COPY pyproject.toml ./
+COPY uv.lock ./
+RUN uv sync --frozen
+RUN .venv/bin/playwright install chromium
+
+# Copy application code and assets
+COPY app/ ./app/
+COPY scripts/ ./scripts/
+COPY config/ ./config/
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
+COPY static/ ./static/
+COPY templates/ ./templates/
+
+# Create data and logs directories
+RUN mkdir -p /data /logs
+
+# Runtime env
+ENV PYTHONPATH=/app
+ENV PATH="/app/.venv/bin:${PATH}"
+ENV SERVICE_TYPE=server
+
+# Expose port for FastAPI
+EXPOSE 8000
+
+# Health check for server
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Start using project script (runs migrations, then Uvicorn)
+CMD ["/bin/bash", "/app/scripts/start_server.sh"]

@@ -15,6 +15,9 @@ struct ContentDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var dragAmount: CGFloat = 0
     @State private var currentIndex: Int
+    // Navigation skipping state
+    @State private var didTriggerNavigation: Bool = false
+    @State private var navigationDirection: Int = 0 // +1 next, -1 previous
     
     init(contentId: Int, allContentIds: [Int] = []) {
         self.initialContentId = contentId
@@ -111,6 +114,18 @@ struct ContentDetailView: View {
                                 Image(systemName: content.isFavorited ? "star.fill" : "star")
                                     .font(.system(size: 20))
                                     .foregroundColor(content.isFavorited ? .yellow : .primary)
+                            }
+                            .buttonStyle(.bordered)
+
+                            // Unlike button
+                            Button(action: {
+                                Task {
+                                    await viewModel.toggleUnlike()
+                                }
+                            }) {
+                                Image(systemName: content.isUnliked ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(content.isUnliked ? .red : .primary)
                             }
                             .buttonStyle(.bordered)
                             
@@ -223,21 +238,35 @@ struct ContentDetailView: View {
                 }
         )
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: { dismiss() }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
-                    }
-                }
-            }
+        // Hide the main tab bar while viewing details
+        .toolbar(.hidden, for: .tabBar)
+        // Sticky bottom action bar
+        .safeAreaInset(edge: .bottom) {
+            bottomBar
         }
         .task {
             let idToLoad = allContentIds.isEmpty ? initialContentId : allContentIds[currentIndex]
             viewModel.updateContentId(idToLoad)
             await viewModel.loadContent()
+        }
+        // If user is navigating (chevrons or swipe), skip items that were already read
+        .onChange(of: viewModel.wasAlreadyReadWhenLoaded) { _, wasRead in
+            guard didTriggerNavigation, viewModel.content?.contentTypeEnum == .podcast else { return }
+            if wasRead {
+                let nextIndex = currentIndex + navigationDirection
+                guard nextIndex >= 0 && nextIndex < allContentIds.count else {
+                    // Reached the end; stop skipping further
+                    didTriggerNavigation = false
+                    navigationDirection = 0
+                    return
+                }
+                currentIndex = nextIndex
+                // Keep didTriggerNavigation/naviationDirection to allow cascading skips
+            } else {
+                // Landed on an unread item; reset navigation flags
+                didTriggerNavigation = false
+                navigationDirection = 0
+            }
         }
         .onChange(of: currentIndex) { oldValue, newValue in
             Task {
@@ -246,6 +275,60 @@ struct ContentDetailView: View {
                 await viewModel.loadContent()
             }
         }
+    }
+
+    // MARK: - Bottom Bar
+    private var bottomBar: some View {
+        let canGoPrev = currentIndex > 0
+        let canGoNext = currentIndex < allContentIds.count - 1
+
+        return HStack(spacing: 12) {
+            // Previous (icon only)
+            Button {
+                withAnimation(.easeInOut) { navigateToPrevious() }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.blue)
+            .disabled(!canGoPrev)
+            .accessibilityLabel("Previous Article")
+
+            // Favorite (icon only)
+            Button {
+                Task { await viewModel.toggleFavorite() }
+            } label: {
+                Image(systemName: (viewModel.content?.isFavorited ?? false) ? "star.fill" : "star")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint((viewModel.content?.isFavorited ?? false) ? .yellow : .gray)
+            .accessibilityLabel("Favorite")
+
+            // Next (icon only)
+            Button {
+                withAnimation(.easeInOut) { navigateToNext() }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.blue)
+            .disabled(!canGoNext)
+            .accessibilityLabel("Next Article")
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background(.ultraThinMaterial)
+        .overlay(
+            Divider()
+                .background(Color.secondary.opacity(0.4)), alignment: .top
+        )
     }
     
     private var statusIcon: String {
@@ -292,6 +375,8 @@ struct ContentDetailView: View {
         guard currentIndex < allContentIds.count - 1 else {
             return
         }
+        didTriggerNavigation = true
+        navigationDirection = 1
         currentIndex += 1
     }
     
@@ -299,6 +384,8 @@ struct ContentDetailView: View {
         guard currentIndex > 0 else {
             return
         }
+        didTriggerNavigation = true
+        navigationDirection = -1
         currentIndex -= 1
     }
 }

@@ -1,0 +1,85 @@
+# Scrapers container with cron scheduling
+FROM python:3.13-slim
+
+# Install system dependencies and curl for supercronic fetch
+RUN apt-get update && apt-get install -y \
+    bash \
+    gcc \
+    g++ \
+    git \
+    curl \
+    ffmpeg \
+    libnspr4 \
+    libnss3 \
+    libxss1 \
+    libasound2 \
+    libxrandr2 \
+    libatk1.0-0 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libgtk-3-0 \
+    libgbm1 \
+    libxkbcommon0 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install uv
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+COPY uv.lock ./
+RUN uv sync --frozen
+RUN .venv/bin/playwright install chromium
+
+COPY app/ ./app/
+COPY scripts/ ./scripts/
+COPY config/ ./config/
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
+COPY static/ ./static/
+COPY templates/ ./templates/
+
+RUN mkdir -p /data /logs
+
+ENV PYTHONPATH=/app
+ENV PATH="/app/.venv/bin:${PATH}"
+ENV SERVICE_TYPE=scrapers
+ENV SCRAPER_CRON_SCHEDULE="0 */4 * * *"
+ENV SCRAPER_RUN_ON_START="true"
+
+# Install supercronic for cron functionality
+RUN curl -fsSLO https://github.com/aptible/supercronic/releases/download/v0.2.29/supercronic-linux-amd64 \
+  && echo "cd48d45c4b10f3f0bfdd3a57d054cd05ac96812b  supercronic-linux-amd64" | sha1sum -c - \
+  && chmod +x supercronic-linux-amd64 \
+  && mv supercronic-linux-amd64 /usr/local/bin/supercronic
+
+# Copy crontab file
+COPY scripts/scrapers-crontab /app/scrapers-crontab
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "Starting scrapers service..."\n\
+\n\
+# Run scrapers once on startup if enabled\n\
+if [ "$SCRAPER_RUN_ON_START" = "true" ]; then\n\
+  echo "Running initial scraper run..."\n\
+  python scripts/run_scrapers.py --show-stats || echo "Initial scraper run failed"\n\
+fi\n\
+\n\
+# Generate crontab with environment variable\n\
+echo "$SCRAPER_CRON_SCHEDULE cd /app && python scripts/run_scrapers.py --show-stats >> /logs/scrapers-cron.log 2>&1" > /app/scrapers-crontab\n\
+\n\
+# Start supercronic with crontab\n\
+echo "Starting cron scheduler with schedule: $SCRAPER_CRON_SCHEDULE"\n\
+exec supercronic /app/scrapers-crontab\n\
+' > /app/start-scrapers.sh && chmod +x /app/start-scrapers.sh
+
+# Health check - check if supercronic is running
+HEALTHCHECK --interval=120s --timeout=30s --start-period=60s --retries=3 \
+  CMD pgrep -f "supercronic" || exit 1
+
+# Start command
+CMD ["/app/start-scrapers.sh"]
