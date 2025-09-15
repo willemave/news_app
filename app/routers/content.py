@@ -11,7 +11,7 @@ from app.core.db import get_db_session
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
 from app.models.schema import Content
-from app.services import read_status, favorites
+from app.services import read_status, favorites, unlikes
 from app.templates import templates
 
 router = APIRouter()
@@ -57,6 +57,7 @@ async def list_content(
     content_type: str | None = None,
     date: str | None = None,
     read_filter: str = "unread",
+    unliked_only: int = 0,
 ):
     """List content with optional filters."""
     # Get available dates for the dropdown
@@ -113,6 +114,8 @@ async def list_content(
     
     # Get favorite content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
+    # Get unliked content IDs
+    unliked_content_ids = unlikes.get_unliked_content_ids(db)
     
     # Filter based on read status if needed
     if read_filter == "unread":
@@ -120,6 +123,10 @@ async def list_content(
     elif read_filter == "read":
         contents = [c for c in contents if c.id in read_content_ids]
     # If read_filter is "all", don't filter
+
+    # Filter based on unliked if requested
+    if unliked_only:
+        contents = [c for c in contents if c.id in unliked_content_ids]
 
     # Convert to domain objects, skipping invalid ones
     domain_contents = []
@@ -147,6 +154,8 @@ async def list_content(
             "selected_read_filter": read_filter,
             "read_content_ids": read_content_ids,
             "favorite_content_ids": favorite_content_ids,
+            "unliked_content_ids": unliked_content_ids,
+            "selected_unliked_only": bool(unliked_only),
         },
     )
 

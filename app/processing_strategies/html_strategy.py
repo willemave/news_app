@@ -53,6 +53,27 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         else:
             return "web"
 
+    def _map_platform(self, source: str, url: str) -> str | None:
+        """Map a high-level platform from the detected source/URL.
+
+        Keeps platform taxonomy consistent with scrapers (substack, medium, arxiv, pubmed, youtube, etc.).
+        Returns None for generic web.
+        """
+        s = (source or "").lower()
+        if s == "substack":
+            return "substack"
+        if s == "medium":
+            return "medium"
+        if s == "arxiv":
+            return "arxiv"
+        if s in ("pubmed", "pmc"):
+            return "pubmed"
+        # Some Substack publications use custom domains (e.g., chinatalk.media)
+        if any(h in url for h in (".substack.com", "chinatalk.media")):
+            return "substack"
+        # Fallback: no clear platform
+        return None
+
     def preprocess_url(self, url: str) -> str:
         """
         Preprocess URLs to ensure we get the full content.
@@ -305,14 +326,23 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 f"Title: {title[:50] if title else 'None'}... Source: {source}"
             )
 
+            # Map source to full domain name of final URL
+            try:
+                from urllib.parse import urlparse
+                final_url = result.url if hasattr(result, 'url') and result.url else url
+                host = urlparse(final_url).netloc or ""
+            except Exception:
+                final_url = url
+                host = ""
             return {
                 "title": title,
                 "author": author,
                 "publication_date": publication_date,
                 "text_content": extracted_text,
                 "content_type": "html",
-                "source": source,  # Source field for categorization
-                "final_url_after_redirects": result.url if hasattr(result, 'url') else url,
+                # Source should be full domain name, leave platform to the scraper convention
+                "source": host,
+                "final_url_after_redirects": final_url,
             }
 
         except Exception as e:
@@ -348,11 +378,17 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             
             # For other errors, return a minimal response to allow processing to continue
             # with fallback content
+            # Failure path: still try to emit domain for source
+            try:
+                from urllib.parse import urlparse
+                host = urlparse(url).netloc or ""
+            except Exception:
+                host = ""
             return {
                 "title": f"Content from {url}",
                 "text_content": f"Failed to extract content from {url}. Error: {str(e)}",
                 "content_type": "html",
-                "source": source,
+                "source": host,
                 "final_url_after_redirects": url,
                 "extraction_error": str(e),
             }

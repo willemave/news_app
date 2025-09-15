@@ -51,6 +51,15 @@
         </select>
       </div>
 
+      <!-- Unliked Only Toggle -->
+      <div class="flex items-center gap-2 min-w-[180px]">
+        <input type="checkbox" id="unliked_only" name="unliked_only" value="1" 
+               class="h-4 w-4 text-blue-600 border-gray-300 rounded"
+               onchange="document.getElementById('filterForm').submit()"
+               {% if selected_unliked_only %}checked{% endif %}>
+        <label for="unliked_only" class="text-sm font-medium text-gray-700">Unliked Only</label>
+      </div>
+
       <!-- Filter Button -->
       <button type="submit" 
               class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
@@ -90,6 +99,9 @@
                       title="{% if content.id in favorite_content_ids %}Remove from favorites{% else %}Add to favorites{% endif %}">
                 {% if content.id in favorite_content_ids %}⭐{% else %}☆{% endif %}
               </button>
+              {% if content.id in unliked_content_ids %}
+                <span title="Unliked" class="text-lg" aria-label="unliked">👎</span>
+              {% endif %}
               {% if content.id not in read_content_ids %}
                 <button onclick="markAsRead({{ content.id }}, document.getElementById('content-{{ content.id }}'))" 
                         class="text-xs text-gray-500 hover:text-gray-700 underline">

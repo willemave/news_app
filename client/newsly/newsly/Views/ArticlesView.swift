@@ -12,7 +12,7 @@ struct ArticlesView: View {
     @ObservedObject private var settings = AppSettings.shared
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 VStack(spacing: 0) {
                     if viewModel.isLoading && viewModel.contents.isEmpty {
@@ -47,9 +47,12 @@ struct ArticlesView: View {
                                         .opacity(0)
                                         .buttonStyle(PlainButtonStyle())
                                         
-                                        ContentCard(content: content) {
-                                            await viewModel.markAsRead(content.id)
-                                        }
+                                        ContentCard(
+                                            content: content,
+                                            onMarkAsRead: { await viewModel.markAsRead(content.id) },
+                                            onToggleFavorite: { await viewModel.toggleFavorite(content.id) },
+                                            onToggleUnlike: { await viewModel.toggleUnlike(content.id) }
+                                        )
                                     }
                                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                     .listRowSeparator(.hidden)
@@ -80,7 +83,7 @@ struct ArticlesView: View {
                                 }
                             }
                             .listStyle(.plain)
-                            .navigationBarHidden(true)
+                            // Keep the tab bar visible on list screens by default.
                             .refreshable {
                                 await viewModel.refresh()
                             }

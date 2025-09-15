@@ -13,6 +13,19 @@ class ContentService {
     
     private init() {}
     
+    func searchContent(query: String,
+                       contentType: String = "all",
+                       limit: Int = 25,
+                       offset: Int = 0) async throws -> ContentListResponse {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "type", value: contentType),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
+        return try await client.request(APIEndpoints.searchContent, queryItems: queryItems)
+    }
+
     func fetchContentList(contentType: String? = nil,
                          date: String? = nil,
                          readFilter: String = "all") async throws -> ContentListResponse {
@@ -65,6 +78,14 @@ class ContentService {
     
     func removeFavorite(id: Int) async throws {
         try await client.requestVoid(APIEndpoints.removeFavorite(id: id), method: "DELETE")
+    }
+    
+    func toggleUnlike(id: Int) async throws -> [String: Any] {
+        return try await client.requestRaw(APIEndpoints.toggleUnlike(id: id), method: "POST")
+    }
+    
+    func removeUnlike(id: Int) async throws {
+        try await client.requestVoid(APIEndpoints.removeUnlike(id: id), method: "DELETE")
     }
     
     func fetchFavoritesList() async throws -> ContentListResponse {

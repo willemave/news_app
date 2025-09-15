@@ -13,6 +13,8 @@ class ContentDetailViewModel: ObservableObject {
     @Published var content: ContentDetail?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    // Indicates if the item was already marked as read when it was fetched
+    @Published var wasAlreadyReadWhenLoaded: Bool = false
     
     private let contentService = ContentService.shared
     private let unreadCountService = UnreadCountService.shared
@@ -33,16 +35,20 @@ class ContentDetailViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            content = try await contentService.fetchContentDetail(id: contentId)
+            let fetched = try await contentService.fetchContentDetail(id: contentId)
+            content = fetched
+            
+            // Capture read state as returned by the server BEFORE any auto-marking
+            wasAlreadyReadWhenLoaded = fetched.isRead
             
             // Auto-mark as read if not already read
-            if let content = content, !content.isRead {
+            if !fetched.isRead {
                 try await contentService.markContentAsRead(id: contentId)
                 
                 // Update unread count based on content type
-                if content.contentType == "article" {
+                if fetched.contentType == "article" {
                     unreadCountService.decrementArticleCount()
-                } else if content.contentType == "podcast" {
+                } else if fetched.contentType == "podcast" {
                     unreadCountService.decrementPodcastCount()
                 }
             }
@@ -88,92 +94,102 @@ class ContentDetailViewModel: ObservableObject {
         }
     }
     
-    func copyPodcastContent() {
-        guard let content = content else { return }
-        
+    func toggleUnlike() async {
+        guard let currentContent = content else { return }
+        do {
+            // Optimistic UI update
+            content?.isUnliked.toggle()
+            if content?.isUnliked == true {
+                // Mark as read locally
+                if content?.isRead == false {
+                    content?.isRead = true
+                    // Update unread count based on content type
+                    if currentContent.contentType == "article" {
+                        unreadCountService.decrementArticleCount()
+                    } else if currentContent.contentType == "podcast" {
+                        unreadCountService.decrementPodcastCount()
+                    }
+                }
+            }
+
+            // API call
+            let response = try await contentService.toggleUnlike(id: currentContent.id)
+            if let isUnliked = response["is_unliked"] as? Bool {
+                content?.isUnliked = isUnliked
+            }
+            if let isRead = response["is_read"] as? Bool, isRead {
+                content?.isRead = true
+            }
+        } catch {
+            // Revert on error
+            content?.isUnliked = currentContent.isUnliked
+            errorMessage = "Failed to update unlike status"
+        }
+    }
+    
+    private func buildFullMarkdown() -> String? {
+        guard let content = content else { return nil }
+
         var fullText = "# \(content.displayTitle)\n\n"
-        
+
         // Add metadata
-        if let source = content.source {
-            fullText += "Source: \(source)\n"
-        }
-        if let pubDate = content.publicationDate {
-            fullText += "Published: \(pubDate)\n"
-        }
-        if !content.url.isEmpty {
-            fullText += "URL: \(content.url)\n"
-        }
+        if let source = content.source { fullText += "Source: \(source)\n" }
+        if let pubDate = content.publicationDate { fullText += "Published: \(pubDate)\n" }
+        if !content.url.isEmpty { fullText += "URL: \(content.url)\n" }
         fullText += "\n---\n\n"
-        
-        // Add structured summary if available
+
+        // Structured summary
         if let structuredSummary = content.structuredSummary {
             fullText += "## Summary\n\n"
-            
             if !structuredSummary.topics.isEmpty {
-                fullText += "### Key Topics\n"
-                for topic in structuredSummary.topics {
-                    fullText += "- \(topic)\n"
-                }
-                fullText += "\n"
+                fullText += "### Key Topics\n" + structuredSummary.topics.map { "- \($0)" }.joined(separator: "\n") + "\n\n"
             }
-            
             if !structuredSummary.bulletPoints.isEmpty {
-                fullText += "### Main Points\n"
-                for point in structuredSummary.bulletPoints {
-                    fullText += "- \(point.text)\n"
-                }
-                fullText += "\n"
+                fullText += "### Main Points\n" + structuredSummary.bulletPoints.map { "- \($0.text)" }.joined(separator: "\n") + "\n\n"
             }
-            
             if !structuredSummary.quotes.isEmpty {
-                fullText += "### Notable Quotes\n"
-                for quote in structuredSummary.quotes {
-                    fullText += "> \(quote.text)\n\n"
-                }
+                fullText += "### Notable Quotes\n" + structuredSummary.quotes.map { "> \($0.text)\n" }.joined() + "\n"
             }
-            
-            // Add overview if available
             if let overview = structuredSummary.overview {
-                fullText += "### Overview\n"
-                fullText += "\(overview)\n\n"
+                fullText += "### Overview\n\(overview)\n\n"
             }
-            
             fullText += "---\n\n"
         }
-        
-        // Add full transcript
-        // For podcasts, check podcastMetadata.transcript first, then fall back to fullMarkdown
+
+        // Full content / transcript
         if content.contentType == "podcast", let podcastMetadata = content.podcastMetadata, let transcript = podcastMetadata.transcript {
-            fullText += "## Full Transcript\n\n"
-            fullText += transcript
+            fullText += "## Full Transcript\n\n" + transcript
         } else if let fullMarkdown = content.fullMarkdown {
-            fullText += "## Full Transcript\n\n"
+            fullText += (content.contentType == "podcast" ? "## Transcript\n\n" : "## Full Article\n\n")
             fullText += fullMarkdown
         }
-        
-        // Copy to clipboard
+        return fullText
+    }
+
+    func copyPodcastContent() {
+        guard let fullText = buildFullMarkdown() else { return }
         UIPasteboard.general.string = fullText
-        
-        // Optionally, you could show a confirmation using a toast or alert
-        // For now, the copy happens silently
     }
     
     func openInChatGPT() async {
+        // Strategy:
+        // 1) Build full markdown and offer it via the share sheet so ChatGPT's share extension can receive the text.
+        // 2) As a convenience, also put the text on the clipboard (user can paste if needed in the app).
+        // 3) Try to open the ChatGPT app using universal link (web URL) so that, if supported, it lands in-app.
+
         guard let content = content else { return }
-        do {
-            let chatURLString = try await contentService.getChatGPTUrl(id: content.id)
-            guard let webURL = URL(string: chatURLString) else {
-                errorMessage = "Invalid ChatGPT URL returned by API"
-                return
-            }
-            ChatGPTDeepLink.openPreferApp(fallbackWebURL: webURL) { success in
-                if !success {
-                    // Finally fall back to web URL
-                    ChatGPTDeepLink.openWeb(webURL)
-                }
-            }
-        } catch {
-            errorMessage = "Failed to open ChatGPT: \(error.localizedDescription)"
+        let fullText = buildFullMarkdown() ?? content.displayTitle
+
+        // Put on clipboard (helps in case target app reads clipboard or the user wants to paste manually)
+        UIPasteboard.general.string = fullText
+
+        // Prepare share sheet with the full markdown text
+        let activityVC = UIActivityViewController(activityItems: [fullText], applicationActivities: nil)
+        activityVC.excludedActivityTypes = [.assignToContact, .saveToCameraRoll, .addToReadingList, .postToFacebook, .postToTwitter]
+
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = windowScene.windows.first?.rootViewController {
+            root.present(activityVC, animated: true)
         }
     }
 }

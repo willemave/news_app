@@ -26,6 +26,11 @@ struct ContentView: View {
                     Label("Podcasts", systemImage: "mic")
                 }
                 .badge(podcastBadge)
+
+            SearchView()
+                .tabItem {
+                    Label("Search", systemImage: "magnifyingglass")
+                }
             
             FavoritesView()
                 .tabItem {

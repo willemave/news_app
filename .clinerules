@@ -122,3 +122,101 @@
 
 **Keep all replies short, technical, and complete.**
 ```
+---
+#### 11  Latest Project Structure (Sept 2025)
+Use this as the authoritative layout (supersedes earlier sketch if different).
+
+- app/
+  - core/            : settings (Pydantic v2), logging, db init
+  - routers/         : `content`, `admin`, `logs`, `api_content` (mounted in `app/main.py`)
+  - services/        : LLM integrations (OpenAI, Google), event logger, HTTP helpers
+  - pipeline/        : sequential task processor, workers
+  - scraping/        : unified scrapers (podcast, substack) + runner
+  - processing_strategies/: HTML/HN strategies and parsers
+  - http_client/     : robust http client with retries
+  - models/          : domain models and structured summary
+  - repositories/    : data access
+  - utils/           : `error_logger.py` (JSONL), misc helpers
+  - domain/          : domain-specific entities
+  - templates/       : module-scoped views (e.g., favorites)
+  - tests/           : unit/integration for routers and pipeline
+- templates/         : primary Jinja templates (admin dashboard, logs, lists)
+- static/            : tailwind sources and compiled CSS
+- scripts/           : start/ops (`start_server.sh`, `start_workers.sh`, `start_scrapers.sh`, `run_*`)
+- alembic/ + alembic.ini : database migrations
+- docker-compose.yml : server/workers/scrapers with shared logs mount
+- Dockerfile.*       : container builds (Playwright deps installed)
+- logs/              : JSONL and service logs (host-mounted)
+
+---
+#### 12  Key Tools & Services
+- Package/venv: `uv` (uses `pyproject.toml` + `uv.lock`).
+- Web: FastAPI, CORS, mounted static and templated views.
+- Data: SQLAlchemy 2.x, Alembic migrations.
+- Settings: `app/core/settings.py` (Pydantic v2, `.env`), required `DATABASE_URL`.
+- Workers: `scripts/run_workers.py` via SequentialTaskProcessor.
+- Scrapers: `scripts/run_scrapers.py` (cron in Docker uses supercronic).
+- LLM: OpenAI client, Tenacity for retries; Google Flash service wrapper.
+- Logging: `app/utils/error_logger.GenericErrorLogger` writes JSONL to `logs/errors/*.jsonl` and creates directories automatically.
+
+---
+#### 13  Running & Ops
+- Dev (local):
+  - `uv sync` then `. .venv/bin/activate`
+  - Apply DB upgrades: `python -m alembic upgrade head`
+  - Start API: `scripts/start_server.sh` (uses uvicorn)
+  - Run workers: `scripts/start_workers.sh --stats-interval 60`
+  - Run scrapers: `scripts/start_scrapers.sh --show-stats`
+- Docker Compose:
+  - Services: `server`, `workers`, `scrapers`
+  - Shared logs: `./logs:/logs` and `./logs:/app/logs` (both paths map to the same host dir)
+  - Up: `docker compose up -d` (use `--build` when Dockerfiles change)
+- Supervisor (bare metal): point to `scripts/start_server.sh` and `scripts/start_workers.sh` (see deployment snippet in convo), write logs to `/var/log/newsly/` and symlink `/opt/newsly/logs -> /var/log/newsly` if desired.
+
+---
+#### 14  UI & Assets
+- Jinja templates under `/templates` with Tailwind CSS.
+- Build CSS: `npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css`.
+
+---
+#### 15  Observability & Logs
+- JSONL error logs: `logs/errors/<component>_YYYYmmdd_HHMMSS.jsonl`.
+- LLM parse issues: `logs/errors/llm_json_errors.log`.
+- Admin views: `/admin/logs` includes JSON and JSONL formatting helpers.
+- When running in Docker or Supervisor, ensure `logs/` is writable and shared as above.
+
+---
+#### 16  Quick Links (Fast Onboarding)
+- Entry
+  - `app/main.py` — FastAPI app wiring (routers, CORS, static, health)
+- Routers
+  - `app/routers/content.py` — public content endpoints
+  - `app/routers/admin.py` — admin dashboard and tooling
+  - `app/routers/logs.py` — logs list/detail, JSONL formatting, analytics
+  - `app/routers/api_content.py` — JSON API under `/api/content`
+- Core
+  - `app/core/settings.py` — Pydantic v2 settings, `.env`
+  - `app/core/logging.py` — root logger/formatter setup
+  - `app/core/db.py` — SQLAlchemy engine/session, `init_db()`, migrations helper
+- Pipeline & Workers
+  - `app/pipeline/sequential_task_processor.py` — main run loop and orchestration
+  - `app/pipeline/worker.py` — `ContentWorker`
+  - `app/pipeline/podcast_workers.py` — download/transcribe workers
+  - `app/services/queue.py` — queue service, `get_queue_stats()`
+- Scrapers
+  - `app/scraping/runner.py` — orchestrates scrapers
+  - `app/scraping/substack_unified.py` — Substack scraping
+  - `app/scraping/podcast_unified.py` — Podcast feed/download handling
+- HTTP & LLM
+  - `app/http_client/robust_http_client.py` — resilient HTTP client with retries
+  - `app/services/openai_llm.py` — OpenAI integration, JSON error logging
+  - `app/services/google_flash.py` — Google model wrapper, JSON error logging
+- Logging Utility
+  - `app/utils/error_logger.py` — JSONL error logger (auto-creates `logs/errors`)
+- Start/Ops Scripts
+  - `scripts/start_server.sh` — migrations + uvicorn
+  - `scripts/start_workers.sh` — sequential task processor
+  - `scripts/start_scrapers.sh` — scrapers with preflight checks
+- Containers & Compose
+  - `docker-compose.yml` — shared logs mounts for all services
+  - `Dockerfile.server`, `Dockerfile.workers`, `Dockerfile.scrapers`
