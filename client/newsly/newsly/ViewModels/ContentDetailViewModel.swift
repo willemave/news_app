@@ -50,6 +50,8 @@ class ContentDetailViewModel: ObservableObject {
                     unreadCountService.decrementArticleCount()
                 } else if fetched.contentType == "podcast" {
                     unreadCountService.decrementPodcastCount()
+                } else if fetched.contentType == "news" {
+                    unreadCountService.decrementNewsCount()
                 }
             }
         } catch {
@@ -108,6 +110,8 @@ class ContentDetailViewModel: ObservableObject {
                         unreadCountService.decrementArticleCount()
                     } else if currentContent.contentType == "podcast" {
                         unreadCountService.decrementPodcastCount()
+                    } else if currentContent.contentType == "news" {
+                        unreadCountService.decrementNewsCount()
                     }
                 }
             }

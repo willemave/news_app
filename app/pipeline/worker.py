@@ -13,6 +13,7 @@ from app.processing_strategies.registry import get_strategy_registry
 from app.services.openai_llm import get_openai_summarization_service
 from app.services.http import NonRetryableError, get_http_service
 from app.services.queue import TaskType, get_queue_service
+from app.services.news_formatter import render_news_markdown
 from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
@@ -57,6 +58,8 @@ class ContentWorker:
                 success = self._process_article(content)
             elif content.content_type == ContentType.PODCAST:
                 success = self._process_podcast(content)
+            elif content.content_type == ContentType.NEWS:
+                success = self._process_news(content)
             else:
                 logger.error(f"Unknown content type: {content.content_type}")
                 success = False
@@ -245,6 +248,48 @@ class ContentWorker:
             )
             logger.error(f"Error processing article {content.url}: {e}")
             return False
+
+    def _process_news(self, content: ContentData) -> bool:
+        """Process news content, generating markdown lists for aggregates."""
+        try:
+            news_metadata = content.to_news_metadata()
+        except Exception as exc:
+            logger.error(f"Invalid news metadata for content {content.id}: {exc}")
+            return False
+
+        items = news_metadata.items
+        if not items:
+            logger.warning(f"No news items available for content {content.id}")
+            content.status = ContentStatus.SKIPPED
+            content.error_message = "news content missing items"
+            return False
+
+        # Render markdown list regardless of aggregate flag for consistent display
+        item_dicts = [item.model_dump(mode="json", exclude_none=True) for item in items]
+        rendered_markdown = render_news_markdown(
+            item_dicts,
+            heading=content.title,
+        )
+
+        # Prepare excerpt for list view if missing
+        excerpt = news_metadata.excerpt
+        if not excerpt:
+            first_item = items[0]
+            if content.is_aggregate:
+                excerpt = f"{len(items)} updates curated from {content.source or 'aggregate source'}"
+            else:
+                excerpt = first_item.summary or first_item.title
+
+        # Update metadata dict for persistence
+        metadata_dict = news_metadata.model_dump(mode="json", exclude_none=True)
+        metadata_dict["items"] = item_dicts
+        metadata_dict["rendered_markdown"] = rendered_markdown
+        metadata_dict.setdefault("excerpt", excerpt)
+
+        content.metadata = metadata_dict
+        content.status = ContentStatus.COMPLETED
+        content.processed_at = datetime.utcnow()
+        return True
 
     def _process_podcast(self, content: ContentData) -> bool:
         """Process podcast content."""

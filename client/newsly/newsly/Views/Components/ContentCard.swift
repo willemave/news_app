@@ -43,6 +43,24 @@ struct ContentCard: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
+                    if content.isAggregate {
+                        Text("Aggregate")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundColor(.blue)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                if let secondary = content.secondaryLine {
+                    Text(secondary)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

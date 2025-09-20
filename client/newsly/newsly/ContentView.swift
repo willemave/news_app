@@ -12,6 +12,7 @@ struct ContentView: View {
     
     private var articleBadge: String? { unreadCountService.articleCount > 0 ? String(unreadCountService.articleCount) : nil }
     private var podcastBadge: String? { unreadCountService.podcastCount > 0 ? String(unreadCountService.podcastCount) : nil }
+    private var newsBadge: String? { unreadCountService.newsCount > 0 ? String(unreadCountService.newsCount) : nil }
     
     var body: some View {
         TabView {
@@ -26,6 +27,12 @@ struct ContentView: View {
                     Label("Podcasts", systemImage: "mic")
                 }
                 .badge(podcastBadge)
+
+            NewsView()
+                .tabItem {
+                    Label("News", systemImage: "newspaper")
+                }
+                .badge(newsBadge)
 
             SearchView()
                 .tabItem {

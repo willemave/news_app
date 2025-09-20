@@ -118,6 +118,7 @@ class BaseScraper(ABC):
                         title=item.get("title"),
                         source=metadata.get("source"),  # Extract source from metadata
                         platform=metadata.get("platform"),  # Extract platform from metadata
+                        is_aggregate=bool(item.get("is_aggregate", False)),
                         status=ContentStatus.NEW.value,
                         content_metadata=metadata,
                         created_at=datetime.utcnow(),

@@ -10,6 +10,7 @@ import Foundation
 enum ContentType: String, Codable, CaseIterable {
     case article = "article"
     case podcast = "podcast"
+    case news = "news"
     
     var displayName: String {
         switch self {
@@ -17,6 +18,8 @@ enum ContentType: String, Codable, CaseIterable {
             return "Article"
         case .podcast:
             return "Podcast"
+        case .news:
+            return "News"
         }
     }
 }

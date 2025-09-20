@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 class ContentType(str, Enum):
     ARTICLE = "article"
     PODCAST = "podcast"
+    NEWS = "news"
 
 
 class ContentStatus(str, Enum):
@@ -205,6 +206,54 @@ class PodcastMetadata(BaseContentMetadata):
     has_transcript: bool | None = Field(None, description="Whether transcript is available")
 
 
+class NewsItem(BaseModel):
+    """Individual item within a news collection."""
+
+    title: str = Field(..., min_length=3, max_length=500)
+    url: HttpUrl
+    summary: str | None = Field(None, description="One-line summary or excerpt")
+    source: str | None = Field(None, max_length=200)
+    author: str | None = Field(None, max_length=200)
+    score: int | None = Field(None, ge=0)
+    comments_url: HttpUrl | None = Field(None, description="Discussion URL such as HN or Reddit")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional source-specific data")
+
+
+class NewsMetadata(BaseContentMetadata):
+    """Metadata structure for news content collections."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "source": "twitter.com",
+                "platform": "twitter",
+                "items": [
+                    {
+                        "title": "@openai: GPT-5 launch",
+                        "url": "https://twitter.com/openai/status/123",
+                        "summary": "Key announcement thread",
+                        "author": "OpenAI",
+                        "metadata": {"likes": 1200},
+                    }
+                ],
+                "rendered_markdown": "- [@openai: GPT-5 launch](https://twitter.com/...)",
+                "primary_url": "https://twitter.com/i/lists/123",
+            }
+        }
+    )
+
+    items: list[NewsItem] = Field(default_factory=list, description="Collection of news items")
+    rendered_markdown: str | None = Field(
+        None, description="Pre-rendered markdown for aggregate display"
+    )
+    primary_url: HttpUrl | None = Field(
+        None, description="Canonical URL for the aggregate source if applicable"
+    )
+    excerpt: str | None = Field(
+        None, description="Optional short summary for list displays"
+    )
+
+
 # Processing result from app/domain/content.py
 class ProcessingResult(BaseModel):
     """Result from content processing."""
@@ -241,6 +290,10 @@ class ContentData(BaseModel):
     title: str | None = None
     status: ContentStatus = ContentStatus.NEW
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    platform: str | None = None
+    source: str | None = None
+    is_aggregate: bool = False
 
     # Processing metadata
     error_message: str | None = None
@@ -280,6 +333,11 @@ class ContentData(BaseModel):
                     PodcastMetadata(**v)
                 except Exception as e:
                     raise ValueError(f"Invalid podcast metadata: {e}") from e
+            elif content_type == ContentType.NEWS:
+                try:
+                    NewsMetadata(**v)
+                except Exception as e:
+                    raise ValueError(f"Invalid news metadata: {e}") from e
         return v
 
     def to_article_metadata(self) -> ArticleMetadata:
@@ -294,6 +352,12 @@ class ContentData(BaseModel):
             raise ValueError("Not a podcast")
         return PodcastMetadata(**self.metadata)
 
+    def to_news_metadata(self) -> NewsMetadata:
+        """Convert metadata to NewsMetadata."""
+        if self.content_type != ContentType.NEWS:
+            raise ValueError("Not news content")
+        return NewsMetadata(**self.metadata)
+
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
 
@@ -302,6 +366,15 @@ class ContentData(BaseModel):
         """Get summary text (either simple or overview from structured)."""
         summary_data = self.metadata.get("summary")
         if not summary_data:
+            if self.content_type == ContentType.NEWS:
+                excerpt = self.metadata.get("excerpt")
+                if excerpt:
+                    return excerpt
+                items = self.news_items
+                if items:
+                    first = items[0]
+                    if isinstance(first, dict):
+                        return first.get("summary") or first.get("title")
             return None
         if isinstance(summary_data, str):
             return summary_data
@@ -377,11 +450,29 @@ class ContentData(BaseModel):
             return summary_data.get("full_markdown")
         return None
 
+    @property
+    def news_items(self) -> list[dict[str, Any]]:
+        """Return news items list when available."""
+        if self.content_type != ContentType.NEWS:
+            return []
+        items = self.metadata.get("items")
+        return items if isinstance(items, list) else []
+
+    @property
+    def rendered_news_markdown(self) -> str | None:
+        """Return rendered markdown for aggregate news."""
+        if self.content_type != ContentType.NEWS:
+            return None
+        rendered = self.metadata.get("rendered_markdown")
+        if isinstance(rendered, str) and rendered.strip():
+            return rendered
+        return None
+
 
 # Helper functions from app/schemas/metadata.py
 def validate_content_metadata(
     content_type: str, metadata: dict
-) -> ArticleMetadata | PodcastMetadata:
+) -> ArticleMetadata | PodcastMetadata | NewsMetadata:
     """
     Validate and parse metadata based on content type.
 
@@ -399,12 +490,13 @@ def validate_content_metadata(
     # Remove error fields if present (they should be in separate columns)
     cleaned_metadata = {k: v for k, v in metadata.items() if k not in ["error", "error_type"]}
 
-    if content_type == "article":
+    if content_type == ContentType.ARTICLE.value:
         return ArticleMetadata(**cleaned_metadata)
-    elif content_type == "podcast":
+    if content_type == ContentType.PODCAST.value:
         return PodcastMetadata(**cleaned_metadata)
-    else:
-        raise ValueError(f"Unknown content type: {content_type}")
+    if content_type == ContentType.NEWS.value:
+        return NewsMetadata(**cleaned_metadata)
+    raise ValueError(f"Unknown content type: {content_type}")
 
 
 def migrate_legacy_metadata(content_type: str, metadata: dict) -> dict:

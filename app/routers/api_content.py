@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.domain.converters import content_to_domain
-from app.models.metadata import ContentType
+from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 
 router = APIRouter(
@@ -25,7 +25,7 @@ class ContentSummaryResponse(BaseModel):
     """Summary information for a content item in list view."""
 
     id: int = Field(..., description="Unique identifier")
-    content_type: str = Field(..., description="Type of content (article/podcast)")
+    content_type: str = Field(..., description="Type of content (article/podcast/news)")
     url: str = Field(..., description="Original URL of the content")
     title: str | None = Field(None, description="Content title")
     source: str | None = Field(
@@ -35,7 +35,12 @@ class ContentSummaryResponse(BaseModel):
         None, description="Content platform (e.g., twitter, substack, youtube)"
     )
     status: str = Field(..., description="Processing status")
-    short_summary: str | None = Field(None, description="Short summary (max 200 chars)")
+    short_summary: str | None = Field(
+        None,
+        description=(
+            "Short summary for display; for news items this returns the excerpt or first item text"
+        ),
+    )
     created_at: str = Field(..., description="ISO timestamp when content was created")
     processed_at: str | None = Field(None, description="ISO timestamp when content was processed")
     classification: str | None = Field(None, description="Content classification (to_read/skip)")
@@ -45,6 +50,10 @@ class ContentSummaryResponse(BaseModel):
     is_read: bool = Field(False, description="Whether the content has been marked as read")
     is_favorited: bool = Field(False, description="Whether the content has been favorited")
     is_unliked: bool = Field(False, description="Whether the content has been unliked")
+    is_aggregate: bool = Field(False, description="Whether this news item aggregates multiple links")
+    item_count: int | None = Field(
+        None, description="Number of child items when content_type is news"
+    )
 
     class Config:
         json_schema_extra = {
@@ -62,6 +71,8 @@ class ContentSummaryResponse(BaseModel):
                 "classification": "to_read",
                 "publication_date": "2025-06-18T12:00:00Z",
                 "is_read": False,
+                "is_aggregate": False,
+                "item_count": None,
             }
         }
 
@@ -94,7 +105,7 @@ class ContentListResponse(BaseModel):
                 ],
                 "total": 1,
                 "available_dates": ["2025-06-19", "2025-06-18"],
-                "content_types": ["article", "podcast"],
+                "content_types": ["article", "podcast", "news"],
             }
         }
 
@@ -103,7 +114,7 @@ class ContentDetailResponse(BaseModel):
     """Detailed response for a single content item."""
 
     id: int = Field(..., description="Unique identifier")
-    content_type: str = Field(..., description="Type of content (article/podcast)")
+    content_type: str = Field(..., description="Type of content (article/podcast/news)")
     url: str = Field(..., description="Original URL of the content")
     title: str | None = Field(None, description="Content title")
     display_title: str = Field(
@@ -140,6 +151,14 @@ class ContentDetailResponse(BaseModel):
     topics: list[str] = Field(..., description="Topics from structured summary")
     full_markdown: str | None = Field(
         None, description="Full article content formatted as markdown"
+    )
+    is_aggregate: bool = Field(False, description="Whether this content aggregates multiple items")
+    rendered_markdown: str | None = Field(
+        None, description="Rendered markdown list for news aggregates"
+    )
+    news_items: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Structured child items for news content",
     )
 
     class Config:
@@ -198,6 +217,9 @@ class ContentDetailResponse(BaseModel):
                 "quotes": [{"text": "The future is now", "context": "Jane Doe"}],
                 "topics": ["AI", "Technology", "Future"],
                 "full_markdown": "# Understanding AI in 2025\n\nFull article content...",
+                "is_aggregate": False,
+                "rendered_markdown": None,
+                "news_items": [],
             }
         }
 
@@ -263,13 +285,17 @@ async def list_contents(
     # Get unliked content IDs
     unliked_content_ids = unlikes.get_unliked_content_ids(db)
 
+    # Visibility clause: include summarized content or any news item
+    summarized_clause = (
+        Content.content_metadata["summary"].is_not(None)
+        & (Content.content_metadata["summary"] != "null")
+    )
+    news_clause = Content.content_type == ContentType.NEWS.value
+
     # Get available dates for the dropdown
     available_dates_query = (
         db.query(func.date(Content.created_at).label("date"))
-        .filter(
-            Content.content_metadata["summary"].is_not(None)
-            & (Content.content_metadata["summary"] != "null")
-        )
+        .filter(or_(summarized_clause, news_clause))
         .filter((Content.classification != "skip") | (Content.classification.is_(None)))
         .distinct()
         .order_by(func.date(Content.created_at).desc())
@@ -289,11 +315,8 @@ async def list_contents(
     # Filter out "skip" classification articles
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
 
-    # Only show content that has been summarized (match HTML view)
-    query = query.filter(
-        Content.content_metadata["summary"].is_not(None)
-        & (Content.content_metadata["summary"] != "null")
-    )
+    # Only show content that has summary or is news (match HTML view)
+    query = query.filter(or_(summarized_clause, news_clause))
 
     # Apply content type filter
     if content_type and content_type != "all":
@@ -335,7 +358,7 @@ async def list_contents(
                     url=str(domain_content.url),
                     title=domain_content.display_title,
                     source=domain_content.source,
-                    platform=c.platform,
+                    platform=domain_content.platform or c.platform,
                     status=domain_content.status.value,
                     short_summary=domain_content.short_summary,
                     created_at=domain_content.created_at.isoformat()
@@ -351,6 +374,10 @@ async def list_contents(
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
                     is_unliked=c.id in unliked_content_ids,
+                    is_aggregate=domain_content.is_aggregate,
+                    item_count=len(domain_content.news_items)
+                    if domain_content.content_type == ContentType.NEWS
+                    else None,
                 )
             )
         except Exception as e:
@@ -383,7 +410,7 @@ async def search_contents(
     ),
     type: str = Query(
         "all",
-        regex=r"^(all|article|podcast)$",
+        regex=r"^(all|article|podcast|news)$",
         description="Optional content type filter",
     ),
     limit: int = Query(25, ge=1, le=100, description="Max results to return"),
@@ -407,10 +434,13 @@ async def search_contents(
     # Base query aligning with list endpoint visibility rules
     query = db.query(Content)
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
-    query = query.filter(
+
+    summarized_clause = (
         Content.content_metadata["summary"].is_not(None)
         & (Content.content_metadata["summary"] != "null")
     )
+    news_clause = Content.content_type == ContentType.NEWS.value
+    query = query.filter(or_(summarized_clause, news_clause))
 
     if type and type != "all":
         query = query.filter(Content.content_type == type)
@@ -452,7 +482,7 @@ async def search_contents(
                     url=str(domain_content.url),
                     title=domain_content.display_title,
                     source=domain_content.source,
-                    platform=c.platform,
+                    platform=domain_content.platform or c.platform,
                     status=domain_content.status.value,
                     short_summary=domain_content.short_summary,
                     created_at=domain_content.created_at.isoformat()
@@ -468,6 +498,10 @@ async def search_contents(
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
                     is_unliked=c.id in unliked_content_ids,
+                    is_aggregate=domain_content.is_aggregate,
+                    item_count=len(domain_content.news_items)
+                    if domain_content.content_type == ContentType.NEWS
+                    else None,
                 )
             )
         except Exception as e:
@@ -585,6 +619,9 @@ async def get_content_detail(
         quotes=domain_content.quotes,
         topics=domain_content.topics,
         full_markdown=domain_content.full_markdown,
+        is_aggregate=domain_content.is_aggregate,
+        rendered_markdown=domain_content.rendered_news_markdown,
+        news_items=domain_content.news_items,
     )
 
 

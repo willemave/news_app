@@ -13,6 +13,7 @@ class UnreadCountService: ObservableObject {
     
     @Published var articleCount: Int = 0
     @Published var podcastCount: Int = 0
+    @Published var newsCount: Int = 0
     
     private let client = APIClient.shared
     private var refreshTimer: Timer?
@@ -28,12 +29,9 @@ class UnreadCountService: ObservableObject {
     
     func refreshCounts() async {
         await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                await self.fetchArticleCount()
-            }
-            group.addTask {
-                await self.fetchPodcastCount()
-            }
+            group.addTask { await self.fetchArticleCount() }
+            group.addTask { await self.fetchPodcastCount() }
+            group.addTask { await self.fetchNewsCount() }
         }
     }
     
@@ -66,6 +64,21 @@ class UnreadCountService: ObservableObject {
             print("Failed to fetch podcast count: \(error)")
         }
     }
+
+    private func fetchNewsCount() async {
+        do {
+            let response: ContentListResponse = try await client.request(
+                APIEndpoints.contentList,
+                queryItems: [
+                    URLQueryItem(name: "content_type", value: "news"),
+                    URLQueryItem(name: "read_filter", value: "unread")
+                ]
+            )
+            newsCount = response.total
+        } catch {
+            print("Failed to fetch news count: \(error)")
+        }
+    }
     
     private func startPeriodicRefresh() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
@@ -86,6 +99,12 @@ class UnreadCountService: ObservableObject {
             podcastCount -= 1
         }
     }
+
+    func decrementNewsCount() {
+        if newsCount > 0 {
+            newsCount -= 1
+        }
+    }
     
     func incrementArticleCount() {
         articleCount += 1
@@ -93,5 +112,9 @@ class UnreadCountService: ObservableObject {
     
     func incrementPodcastCount() {
         podcastCount += 1
+    }
+
+    func incrementNewsCount() {
+        newsCount += 1
     }
 }

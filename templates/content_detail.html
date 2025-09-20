@@ -216,6 +216,56 @@
         {% endif %}
       </section>
       
+      <!-- News presentation -->
+      {% elif content.content_type == 'news' %}
+      <section>
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">News Items</h2>
+        {% if content.rendered_news_markdown %}
+        <div class="prose prose-sm max-w-none text-gray-700">
+          {{ content.rendered_news_markdown | markdown }}
+        </div>
+        {% elif content.news_items %}
+        <ul class="list-disc pl-6 space-y-3 text-gray-700">
+          {% for item in content.news_items %}
+          <li>
+            <a href="{{ item.url }}" class="text-blue-600 hover:text-blue-800" target="_blank" rel="noopener">
+              {{ item.title or item.url }}
+            </a>
+            {% if item.summary %}
+            <div class="text-sm text-gray-500">{{ item.summary }}</div>
+            {% endif %}
+            {% if item.metadata %}
+            <div class="text-xs text-gray-400 mt-1 space-x-2">
+              {% if item.metadata.score %}
+                <span>Score: {{ item.metadata.score }}</span>
+              {% endif %}
+              {% if item.metadata.comments %}
+                <span>Comments: {{ item.metadata.comments }}</span>
+              {% endif %}
+              {% if item.metadata.likes %}
+                <span>Likes: {{ item.metadata.likes }}</span>
+              {% endif %}
+              {% if item.metadata.retweets %}
+                <span>Retweets: {{ item.metadata.retweets }}</span>
+              {% endif %}
+              {% if item.metadata.replies %}
+                <span>Replies: {{ item.metadata.replies }}</span>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% if item.comments_url %}
+            <div class="text-xs mt-1">
+              <a href="{{ item.comments_url }}" class="text-blue-500 hover:text-blue-700" target="_blank" rel="noopener">Discussion</a>
+            </div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-gray-500 italic">No news items available.</p>
+        {% endif %}
+      </section>
+
       <!-- Fallback to simple summary -->
       {% elif content.summary %}
       <section>

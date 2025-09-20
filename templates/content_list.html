@@ -146,7 +146,34 @@
             {% endif %}
           </div>
           
-          {% if content.summary %}
+          {% if content.content_type == 'news' %}
+            {% set items = content.news_items %}
+            {% if items %}
+              <ul class="list-disc pl-5 space-y-2 text-gray-700">
+                {% for item in items[:5] %}
+                  <li>
+                    <a href="{{ item.url }}" class="text-blue-600 hover:text-blue-800" target="_blank" rel="noopener">
+                      {{ item.title }}
+                    </a>
+                    {% if item.summary %}
+                      <div class="text-sm text-gray-500">
+                        {{ item.summary }}
+                      </div>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+              {% if items|length > 5 %}
+                <p class="text-xs text-gray-500 mt-2">
+                  + {{ items|length - 5 }} more updates in detail view
+                </p>
+              {% endif %}
+            {% elif content.summary %}
+              <p class="text-gray-700">{{ content.summary }}</p>
+            {% else %}
+              <p class="text-gray-500 italic">No news items available</p>
+            {% endif %}
+          {% elif content.summary %}
             <p class="text-gray-700">{{ content.summary }}</p>
           {% else %}
             <p class="text-gray-500 italic">No summary available</p>
