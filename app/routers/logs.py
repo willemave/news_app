@@ -7,11 +7,13 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
 from app.templates import templates
+from app.core.settings import get_settings
 
 router = APIRouter(prefix="/admin")
 
 # Get logs directory
-LOGS_DIR = Path("logs")
+settings = get_settings()
+LOGS_DIR = settings.logs_dir
 ERRORS_DIR = LOGS_DIR / "errors"
 
 

@@ -10,23 +10,31 @@ from app.core.settings import get_settings
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 
+REDDIT_USER_AGENT = "linux:news_app.scraper:v1.0 (by /u/willemaw)"
+
 logger = get_logger(__name__)
 settings = get_settings()
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "reddit.yml"
 
 
 class RedditUnifiedScraper(BaseScraper):
     """Unified scraper for Reddit using the new architecture."""
 
-    def __init__(self):
+    def __init__(self, config_path: str | Path = DEFAULT_CONFIG_PATH):
         super().__init__("Reddit")
+        resolved_path = Path(config_path)
+        if not resolved_path.is_absolute():
+            resolved_path = PROJECT_ROOT / resolved_path
+        self.config_path = resolved_path
         self.subreddits = self._load_subreddit_config()
 
     def _load_subreddit_config(self) -> dict[str, int]:
         """Load subreddit configuration from YAML file."""
-        config_path = Path("config/reddit.yml")
+        config_path = self.config_path
 
         if not config_path.exists():
-            logger.error(f"Reddit config file not found: {config_path}")
+            logger.warning(f"Reddit config file not found: {config_path}")
             return {}
 
         try:
@@ -91,7 +99,11 @@ class RedditUnifiedScraper(BaseScraper):
 
             params = {"limit": min(limit, 100)}  # Reddit API limit
 
-            response = client.get(url, params=params, headers={"User-Agent": "NewsAggregator/1.0"})
+            response = client.get(
+                url,
+                params=params,
+                headers={"User-Agent": REDDIT_USER_AGENT},
+            )
             response.raise_for_status()
 
             data = response.json()

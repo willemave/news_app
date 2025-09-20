@@ -1,6 +1,7 @@
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -38,6 +39,20 @@ class Settings(BaseSettings):
     http_timeout_seconds: int = 30
     http_max_retries: int = 3
 
+    # Storage paths
+    media_base_dir: Path = Field(default_factory=lambda: Path.cwd() / "data" / "media")
+    logs_base_dir: Path = Field(default_factory=lambda: Path.cwd() / "logs")
+
+    # crawl4ai table extraction
+    crawl4ai_enable_table_extraction: bool = False
+    crawl4ai_table_provider: str | None = None
+    crawl4ai_table_css_selector: str | None = None
+    crawl4ai_table_enable_chunking: bool = True
+    crawl4ai_table_chunk_token_threshold: int = 3000
+    crawl4ai_table_min_rows_per_chunk: int = 10
+    crawl4ai_table_max_parallel_chunks: int = 5
+    crawl4ai_table_verbose: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -52,6 +67,36 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.startswith("sqlite:"):
             return v
         return v
+
+    @property
+    def podcast_media_dir(self) -> Path:
+        """Return the directory for storing podcast media files.
+
+        Returns:
+            Path: Absolute directory path for podcast media output.
+        """
+
+        return (self.media_base_dir / "podcasts").resolve()
+
+    @property
+    def substack_media_dir(self) -> Path:
+        """Return the directory for storing Substack assets.
+
+        Returns:
+            Path: Absolute directory path for Substack media output.
+        """
+
+        return (self.media_base_dir / "substack").resolve()
+
+    @property
+    def logs_dir(self) -> Path:
+        """Return the root directory for all log files.
+
+        Returns:
+            Path: Absolute directory path for log storage.
+        """
+
+        return self.logs_base_dir.resolve()
 
 
 @lru_cache

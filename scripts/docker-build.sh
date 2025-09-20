@@ -3,6 +3,13 @@
 
 set -e
 
+export DOCKER_BUILDKIT=1
+
+if ! docker buildx version >/dev/null 2>&1; then
+    echo "❌ docker buildx is not available. Install Buildx or update Docker Desktop before running this script."
+    exit 1
+fi
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 
@@ -22,7 +29,14 @@ build_image() {
     echo "Dockerfile: $dockerfile"
     echo "Tag: $tag"
     
-    if docker build -f "$dockerfile" -t "$tag" .; then
+    local build_args=(
+        --load
+        --file "$dockerfile"
+        --tag "$tag"
+        --build-arg BUILDKIT_INLINE_CACHE=1
+    )
+
+    if docker buildx build "${build_args[@]}" .; then
         echo "✅ Successfully built $tag"
     else
         echo "❌ Failed to build $tag"

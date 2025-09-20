@@ -14,6 +14,8 @@ from crawl4ai import (
     BrowserConfig,
     CacheMode,
     CrawlerRunConfig,
+    LLMConfig,
+    LLMTableExtraction,
 )
 from dateutil import parser as date_parser  # For parsing dates from metadata
 
@@ -172,6 +174,58 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
         return config
 
+    def _resolve_llm_api_token(self, provider: str) -> str | None:
+        """Resolve the API token to use for the configured LLM provider."""
+        provider_name = provider.split("/", 1)[0].lower()
+        if provider_name == "openai":
+            return self.settings.openai_api_key
+        if provider_name == "google":
+            return self.settings.google_api_key
+        if provider_name in {"anthropic", "claude"}:
+            return self.settings.anthropic_api_key
+        return None
+
+    def _build_table_extraction_strategy(self) -> LLMTableExtraction | None:
+        """Create an optional table extraction strategy for crawl4ai."""
+        if not getattr(self.settings, "crawl4ai_enable_table_extraction", False):
+            return None
+
+        provider = getattr(self.settings, "crawl4ai_table_provider", None)
+        if not provider:
+            logger.debug("crawl4ai table extraction enabled but provider not configured")
+            return None
+
+        api_token = self._resolve_llm_api_token(provider)
+        llm_config_kwargs: dict[str, Any] = {"provider": provider}
+        if api_token:
+            llm_config_kwargs["api_token"] = api_token
+
+        css_selector = getattr(self.settings, "crawl4ai_table_css_selector", None)
+        if css_selector:
+            css_selector = css_selector.strip() or None
+
+        try:
+            return LLMTableExtraction(
+                llm_config=LLMConfig(**llm_config_kwargs),
+                css_selector=css_selector,
+                enable_chunking=getattr(self.settings, "crawl4ai_table_enable_chunking", True),
+                chunk_token_threshold=getattr(
+                    self.settings, "crawl4ai_table_chunk_token_threshold", 3000
+                ),
+                min_rows_per_chunk=getattr(
+                    self.settings, "crawl4ai_table_min_rows_per_chunk", 10
+                ),
+                max_parallel_chunks=getattr(
+                    self.settings, "crawl4ai_table_max_parallel_chunks", 5
+                ),
+                verbose=getattr(self.settings, "crawl4ai_table_verbose", False),
+            )
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning(
+                "Failed to initialize crawl4ai table extraction strategy: %s", exc
+            )
+            return None
+
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
         Extracts data from HTML content using crawl4ai.
@@ -182,6 +236,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
         # Detect source for metadata
         source = self._detect_source(url)
+        table_strategy = self._build_table_extraction_strategy()
 
         try:
             # Configure browser
@@ -227,6 +282,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 # Special handling
                 pdf=source_config.get("pdf", False),
                 check_robots_txt=False,
+                table_extraction=table_strategy,
             )
 
             # Use AsyncWebCrawler with asyncio.run
@@ -263,7 +319,28 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 raise Exception(error_msg)
 
             if not result.success:
-                error_detail = getattr(result, 'error', 'Unknown error')
+                error_detail = (
+                    getattr(result, "error_message", None)
+                    or getattr(result, "error", None)
+                )
+
+                if not error_detail:
+                    # Some crawl4ai failures surface an `errors` list
+                    errors = getattr(result, "errors", None)
+                    if errors:
+                        error_detail = "; ".join(str(e) for e in errors if e)
+
+                if not error_detail:
+                    error_detail = "Unknown error"
+
+                status_code = getattr(result, "status_code", None)
+                if status_code:
+                    error_detail = f"{error_detail} (status_code={status_code})"
+
+                redirected_url = getattr(result, "redirected_url", None)
+                if redirected_url and redirected_url != url:
+                    error_detail = f"{error_detail} [redirected to {redirected_url}]"
+
                 error_msg = f"Crawl4ai extraction failed: {error_detail}"
                 logger.warning(f"{error_msg} for URL: {url}")
                 raise Exception(error_msg)
@@ -276,6 +353,13 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             title = (result.metadata.get("title") if result.metadata else None) or "Untitled"
             author = None
             publication_date = None
+            table_markdown: list[str] = []
+
+            if table_strategy and getattr(result, "tables", None):
+                for table in result.tables or []:
+                    table_md = getattr(table, "markdown", None)
+                    if table_md:
+                        table_markdown.append(table_md.strip())
 
             # Try to extract metadata from the content
             if extracted_text:
@@ -343,6 +427,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 # Source should be full domain name, leave platform to the scraper convention
                 "source": host,
                 "final_url_after_redirects": final_url,
+                "table_markdown": table_markdown or None,
             }
 
         except Exception as e:
@@ -401,7 +486,23 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             f"HtmlStrategy: Preparing data for LLM for URL: "
             f"{extracted_data.get('final_url_after_redirects')}"
         )
-        text_content = extracted_data.get("text_content", "")
+        text_content = extracted_data.get("text_content", "") or ""
+
+        table_markdown = extracted_data.get("table_markdown")
+        if table_markdown:
+            if isinstance(table_markdown, list):
+                combined_tables = "\n\n".join(
+                    table for table in table_markdown if isinstance(table, str) and table
+                )
+            else:
+                combined_tables = str(table_markdown)
+
+            if combined_tables:
+                text_content = (
+                    f"{text_content}\n\n## Extracted Tables\n{combined_tables}"
+                    if text_content
+                    else f"## Extracted Tables\n{combined_tables}"
+                )
 
         # Based on app.llm.py, filter_article and summarize_article take the content string.
         return {

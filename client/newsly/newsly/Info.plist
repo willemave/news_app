@@ -69,6 +69,15 @@
                 <key>NSIncludesSubdomains</key>
                 <true/>
             </dict>
+            <key>100.103.186.67</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+            </dict>
         </dict>
     </dict>
     <!-- Allow canOpenURL for ChatGPT schemes so deep links can be detected -->

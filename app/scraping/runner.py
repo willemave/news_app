@@ -6,6 +6,7 @@ from app.scraping.podcast_unified import PodcastUnifiedScraper
 from app.scraping.reddit_unified import RedditUnifiedScraper
 from app.scraping.substack_unified import SubstackScraper
 from app.scraping.twitter_unified import TwitterUnifiedScraper
+from app.scraping.youtube_unified import YouTubeUnifiedScraper
 from app.services.event_logger import log_event
 
 logger = get_logger(__name__)
@@ -21,6 +22,7 @@ class ScraperRunner:
             SubstackScraper(),
             PodcastUnifiedScraper(),
             TwitterUnifiedScraper(),
+            YouTubeUnifiedScraper(),
         ]
 
     def run_all(self) -> dict[str, int]:

@@ -1,64 +1,82 @@
-# FastAPI server container (standalone, no base inheritance)
-FROM python:3.13-slim
+# syntax=docker/dockerfile:1.7
 
-# Install system dependencies including Playwright browser dependencies
-RUN apt-get update && apt-get install -y \
-    bash \
-    gcc \
-    g++ \
-    git \
-    curl \
-    ffmpeg \
-    libnspr4 \
-    libnss3 \
-    libxss1 \
-    libasound2 \
-    libxrandr2 \
-    libatk1.0-0 \
-    libdrm2 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libgtk-3-0 \
-    libgbm1 \
-    libxkbcommon0 \
-    && rm -rf /var/lib/apt/lists/*
+FROM python:3.13-slim AS base
 
-# Install uv for package management
-RUN pip install uv
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=hardlink \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Set working directory
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        bash \
+        gcc \
+        g++ \
+        git \
+        curl \
+        ffmpeg \
+        libnspr4 \
+        libnss3 \
+        libxss1 \
+        libasound2 \
+        libxrandr2 \
+        libatk1.0-0 \
+        libdrm2 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libgtk-3-0 \
+        libgbm1 \
+        libxkbcommon0 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir uv
+
+FROM base AS builder
+
 WORKDIR /app
 
-# Copy dependency files and install into a venv
-COPY pyproject.toml ./
-COPY uv.lock ./
-RUN uv sync --frozen
-RUN .venv/bin/playwright install chromium
+COPY pyproject.toml uv.lock ./
 
-# Copy application code and assets
-COPY app/ ./app/
-COPY scripts/ ./scripts/
-COPY config/ ./config/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    uv sync --frozen
+
+RUN .venv/bin/playwright install chromium && ls /ms-playwright >/dev/null
+
+COPY app ./app
+COPY scripts ./scripts
+COPY config ./config
 COPY alembic.ini ./
-COPY alembic/ ./alembic/
-COPY static/ ./static/
-COPY templates/ ./templates/
+COPY alembic ./alembic
+COPY static ./static
+COPY templates ./templates
 
-# Create data and logs directories
+FROM base AS runtime
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /ms-playwright /ms-playwright
+COPY --from=builder /app/app ./app
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/config ./config
+COPY --from=builder /app/alembic.ini ./
+COPY --from=builder /app/alembic ./alembic
+COPY --from=builder /app/static ./static
+COPY --from=builder /app/templates ./templates
+
 RUN mkdir -p /data /logs
 
-# Runtime env
-ENV PYTHONPATH=/app
-ENV PATH="/app/.venv/bin:${PATH}"
-ENV SERVICE_TYPE=server
+ENV PYTHONPATH=/app \
+    PATH="/app/.venv/bin:${PATH}" \
+    SERVICE_TYPE=server
 
-# Expose port for FastAPI
 EXPOSE 8000
 
-# Health check for server
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
-# Start using project script (runs migrations, then Uvicorn)
 CMD ["/bin/bash", "/app/scripts/start_server.sh"]

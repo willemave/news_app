@@ -37,7 +37,7 @@ struct SearchView: View {
                                 .fontWeight(.semibold)
                             Text(error).font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
                             Button("Try Again") {
-                                Task { await viewModel.performSearch(viewModel.searchText) }
+                                viewModel.retrySearch()
                             }.buttonStyle(.borderedProminent)
                         }
                         .padding()
@@ -95,10 +95,11 @@ struct SearchView: View {
                 }
             }
             .navigationTitle("Search")
+            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
         .searchable(text: $viewModel.searchText, prompt: "Search articles and podcasts")
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)
     }
 }
-

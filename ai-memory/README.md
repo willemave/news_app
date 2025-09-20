@@ -29,6 +29,7 @@
 ### API & UI
 * **FastAPI**: [`main.py`](app/main.py:15) with routers for content, admin, logs, and API
 * **Routers**: [`content`](app/routers/content.py), [`api_content`](app/routers/api_content.py), [`admin`](app/routers/admin.py), [`logs`](app/routers/logs.py)
+* **Admin Prompt Tuning**: `/admin/prompt-tuning` view aggregates recent unliked content and surfaces LLM-generated summarization prompt revisions.
 * **Templates**: Jinja2 with markdown filter support, HTMX for dynamic actions
 * **Static**: TailwindCSS for styling
 
@@ -82,7 +83,7 @@
 ## Tech Stack
 
 * **Core**: Python 3.13, FastAPI, SQLAlchemy, Pydantic v2, SQLite/PostgreSQL
-* **Content Processing**: trafilatura, PyPDF2, feedparser, beautifulsoup4, crawl4ai
+* **Content Processing**: trafilatura, PyPDF2, feedparser, beautifulsoup4, crawl4ai (0.7.4 with optional LLM table extraction toggle)
 * **LLM**: google-genai (Gemini 2.5 Flash Lite), httpx for HTTP
 * **Queue**: Database-backed queue (replaced Huey)
 * **Transcription**: faster-whisper for podcast processing
@@ -117,6 +118,7 @@
 * [`app/scraping/substack_unified.py`](app/scraping/substack_unified.py) - RSS feed scraper for Substack
 * [`app/scraping/podcast_unified.py`](app/scraping/podcast_unified.py) - Podcast RSS scraper
 * [`app/scraping/twitter_unified.py`](app/scraping/twitter_unified.py) - Twitter scraper (search-based aggregation)
+* [`app/scraping/youtube_unified.py`](app/scraping/youtube_unified.py) - Unified YouTube channel scraper using yt-dlp
 
 ### Processing Pipeline
 * [`app/pipeline/sequential_task_processor.py`](app/pipeline/sequential_task_processor.py) - Sequential task processor with adaptive polling
@@ -141,6 +143,7 @@
 * [`app/services/event_logger.py`](app/services/event_logger.py) - Generic event logging with timing and stats
 * [`app/services/read_status.py`](app/services/read_status.py) - Read/unread status management
 * [`app/services/favorites.py`](app/services/favorites.py) - Favorites toggle functionality
+* [`app/services/prompt_tuning.py`](app/services/prompt_tuning.py) - Builds summarization prompt update suggestions from unliked content using Google Flash
 
 ### Domain Models
 * [`app/models/metadata.py`](app/models/metadata.py) - Unified metadata models (merged from schemas/metadata.py and domain/content.py)
@@ -153,6 +156,7 @@
   - `templates/admin/` - Admin interface templates (missing logs templates)
   - `static/css/` - TailwindCSS styles (styles.css → app.css build)
   - `static/js/` - HTMX for dynamic interactions
+  - `templates/admin_prompt_tuning.html` - Summarization prompt tuning dashboard
 
 ### HTTP Client
 * [`app/http_client/robust_http_client.py`](app/http_client/robust_http_client.py) - Async HTTP client with retry logic
@@ -181,9 +185,13 @@
 * [`scripts/run_scrapers.py`](scripts/run_scrapers.py) - Run scrapers manually
 * [`scripts/run_workers.py`](scripts/run_workers.py) - Run processing pipeline workers
 * [`scripts/run_pending_tasks.py`](scripts/run_pending_tasks.py) - Process pending tasks
+* [`scripts/mark_completed_structured_summary.py`](scripts/mark_completed_structured_summary.py) - Backfill completed status when structured summaries are present
 * [`scripts/reset_content_processing.py`](scripts/reset_content_processing.py) - Reset content processing status
 * [`scripts/resummarize_podcasts.py`](scripts/resummarize_podcasts.py) - Re-run summarization for podcasts
 * [`scripts/retranscribe_podcasts.py`](scripts/retranscribe_podcasts.py) - Re-run transcription for podcasts
+* [`scripts/test_youtube_scraper.py`](scripts/test_youtube_scraper.py) - Dry-run utility for individual YouTube channels
+* [`scripts/deploy/push_app.sh`](scripts/deploy/push_app.sh) - Deploys app to remote host and always mirrors `.env` from `.env.racknerd` via `sudo cp`
+* [`scripts/deploy/push_envs.sh`](scripts/deploy/push_envs.sh) - Minimal helper to re-copy `.env.racknerd` to `.env` without rsync
 
 ### Configuration
 * [`config/podcasts.yml`](config/podcasts.yml) - Podcast RSS feed URLs
@@ -236,6 +244,7 @@
 * **Environment Variables**: Settings via [`pydantic-settings`](app/core/settings.py)
 * **YAML Configuration**: External config for feeds (config/*.yml)
 * **Type Safety**: Pydantic models for all settings and configurations
+* **Storage Overrides**: `MEDIA_BASE_DIR` (defaults to `<cwd>/data/media`) controls podcast/Substack media storage and exposes `settings.podcast_media_dir`; `LOGS_BASE_DIR` (defaults to `<cwd>/logs`) feeds `settings.logs_dir` for error logger + admin UI paths.
 * **TailwindCSS Build**: `npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css`
 
 ## iOS Client Application
@@ -300,3 +309,11 @@
 * **Implemented**: RESTful API with OpenAPI documentation
 * **Implemented**: Full markdown content storage for articles
 * **Implemented**: Twitter scraper using Playwright to intercept GraphQL API calls for list aggregation
+
+## Container Build & Deployment
+
+* **Multi-stage Dockerfiles**: `Dockerfile.server`, `Dockerfile.workers`, and `Dockerfile.scrapers` now share a common base layer that pre-installs Playwright system deps, `uv`, and use a builder stage to materialize the project `.venv` before copying minimal runtime assets.
+* **Playwright assets**: Browser binaries are installed once in the builder stage (`PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`) and copied into runtime images to avoid repeating downloads during rebuilds.
+* **Build caching**: `uv sync` runs with BuildKit cache mounts for dependency wheels; Docker scripts default to `docker buildx build` with inline cache export so incremental rebuilds are nearly instant when code changes only.
+* **Scripts updated**: `scripts/docker-build.sh` and `scripts/deploy-multi.sh` export `DOCKER_BUILDKIT=1` and leverage `buildx --cache-to type=inline` for consistent caching between local and remote builds.
+* **Deploy env retention**: `scripts/deploy/push_app.sh` now hashes `uv.lock` and only removes the remote `.venv` when the lock contents change, letting deployments skip costly environment rebuilds when dependencies are unchanged.

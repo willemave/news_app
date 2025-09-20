@@ -2,10 +2,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 import hashlib
+import json
 
 import yaml
 import jmespath
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Response, sync_playwright
 
 from app.core.db import get_db
 from app.core.logging import get_logger
@@ -14,6 +15,8 @@ from app.models.schema import Content
 from app.scraping.base import BaseScraper
 
 logger = get_logger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = PROJECT_ROOT / "config" / "twitter.yml"
 
 
 class TwitterUnifiedScraper(BaseScraper):
@@ -28,7 +31,7 @@ class TwitterUnifiedScraper(BaseScraper):
 
     def _load_config(self) -> dict[str, Any]:
         """Load Twitter configuration from YAML file."""
-        config_path = Path("config/twitter.yml")
+        config_path = CONFIG_PATH
 
         if not config_path.exists():
             logger.warning(f"Twitter config file not found: {config_path}")
@@ -184,8 +187,16 @@ class TwitterUnifiedScraper(BaseScraper):
                 for call in xhr_calls:
                     try:
                         if call.status == 200:
-                            data = call.json()
-                            logger.info(f"Processing API response from {call.url[:50]}... with {len(str(data))} characters")
+                            decoded = self._decode_response_json(call)
+                            if not decoded:
+                                continue
+
+                            data, payload_size = decoded
+                            logger.info(
+                                "Processing API response from %s... (~%s chars)",
+                                call.url[:50],
+                                payload_size,
+                            )
                             
                             list_tweets = self._extract_tweets_from_response(data)
                             logger.info(f"Extracted {len(list_tweets)} tweets from this response")
@@ -217,7 +228,11 @@ class TwitterUnifiedScraper(BaseScraper):
                                 logger.debug(f"Added tweet from @{tweet_data.get('username', 'unknown')}")
                                 
                     except Exception as e:
-                        logger.warning(f"Error processing API response from {call.url[:50]}: {e}")
+                        logger.warning(
+                            "Error processing API response from %s: %s",
+                            call.url[:50],
+                            e,
+                        )
                         continue
                 
                 # Now close browser after processing responses
@@ -261,7 +276,7 @@ class TwitterUnifiedScraper(BaseScraper):
         }
         
         return item
-    
+
     def _extract_tweets_from_response(self, data: dict) -> list[dict[str, Any]]:
         """Extract tweet data from Twitter API response using JMESPath."""
         tweets = []
@@ -311,38 +326,141 @@ class TwitterUnifiedScraper(BaseScraper):
         # Process tweets to standardize format
         processed_tweets = []
         for tweet_result in tweets:
-            if not tweet_result or not isinstance(tweet_result, dict):
+            normalized = self._normalize_tweet_result(tweet_result)
+            if not normalized:
                 continue
-            
-            # Handle both new GraphQL format and legacy format
-            legacy_data = tweet_result.get("legacy", tweet_result)
-            user_data = tweet_result.get("core", {}).get("user_results", {}).get("result", {}).get("legacy", {})
-            
-            if not user_data and "user" in legacy_data:
-                user_data = legacy_data["user"]
-            
+
+            legacy_data = normalized.get("legacy", {})
+            user_data = normalized.get("user", {})
+
             # Skip if no text content
-            if not legacy_data.get("full_text") and not legacy_data.get("text"):
+            content_value = legacy_data.get("full_text") or legacy_data.get("text")
+            if not content_value:
                 continue
-            
+
+            tweet_id = legacy_data.get("id_str") or legacy_data.get("id") or normalized.get("rest_id", "")
+            username = user_data.get("screen_name") or user_data.get("username") or "unknown"
+
             processed_tweet = {
-                "id": str(legacy_data.get("id_str", legacy_data.get("id", ""))),
-                "url": f"https://twitter.com/{user_data.get('screen_name', 'unknown')}/status/{legacy_data.get('id_str', legacy_data.get('id', ''))}",
+                "id": str(tweet_id),
+                "url": f"https://twitter.com/{username}/status/{tweet_id}",
                 "date": legacy_data.get("created_at", ""),
-                "username": user_data.get("screen_name", "unknown"),
+                "username": username,
                 "display_name": user_data.get("name", "Unknown User"),
-                "content": legacy_data.get("full_text", legacy_data.get("text", "")),
+                "content": content_value,
                 "likes": legacy_data.get("favorite_count", 0),
                 "retweets": legacy_data.get("retweet_count", 0),
                 "replies": legacy_data.get("reply_count", 0),
                 "quotes": legacy_data.get("quote_count", 0),
                 "created_at": legacy_data.get("created_at", ""),
-                "is_retweet": "retweeted_status" in legacy_data,
-                "in_reply_to_status_id": legacy_data.get("in_reply_to_status_id_str"),
+                "is_retweet": bool(legacy_data.get("retweeted_status_result") or legacy_data.get("retweeted_status")),
+                "in_reply_to_status_id": legacy_data.get("in_reply_to_status_id_str") or legacy_data.get("in_reply_to_status_id"),
             }
             processed_tweets.append(processed_tweet)
-        
+
         return processed_tweets
+
+    def _decode_response_json(self, response: Response) -> tuple[Any, int] | None:
+        """Safely decode JSON payloads captured by Playwright responses."""
+
+        url = response.url
+
+        if response.status != 200:
+            logger.debug("Skipping non-success response from %s (status %s)", url, response.status)
+            return None
+
+        content_type = (response.header_value("content-type") or "").lower()
+        should_attempt = (
+            "json" in content_type
+            or "graphql" in url.lower()
+            or url.lower().endswith(".json")
+        )
+
+        if not should_attempt:
+            logger.debug(
+                "Skipping response from %s due to content-type '%s'",
+                url,
+                content_type or "unknown",
+            )
+            return None
+
+        try:
+            body_text = response.text()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Unable to read response body from %s: %s", url, exc)
+            return None
+
+        if not body_text.strip():
+            logger.debug("Skipping empty response body from %s", url)
+            return None
+
+        try:
+            data = json.loads(body_text)
+        except json.JSONDecodeError as exc:
+            logger.info("JSON decode failed for %s: %s", url, exc)
+            return None
+
+        return data, len(body_text)
+
+    def _normalize_tweet_result(self, tweet_result: dict[str, Any]) -> dict[str, Any] | None:
+        """Normalize tweet payloads from GraphQL responses into a consistent shape."""
+        if not tweet_result or not isinstance(tweet_result, dict):
+            return None
+
+        current: dict[str, Any] | None = tweet_result
+        max_depth = 6
+        depth = 0
+
+        while isinstance(current, dict) and depth < max_depth:
+            typename = current.get("__typename")
+            if typename == "TweetTombstone":
+                return None
+
+            if "tweet" in current and isinstance(current["tweet"], dict):
+                current = current["tweet"]
+                depth += 1
+                continue
+
+            if "result" in current and isinstance(current["result"], dict):
+                current = current["result"]
+                depth += 1
+                continue
+
+            break
+
+        if not isinstance(current, dict):
+            return None
+
+        legacy_data = current.get("legacy")
+        if not isinstance(legacy_data, dict):
+            if "full_text" in current or "text" in current:
+                legacy_data = current
+            else:
+                return None
+
+        core_data = current.get("core", {})
+        user_results = core_data.get("user_results", {}).get("result", {})
+        if isinstance(user_results, dict) and "legacy" in user_results:
+            user_data = user_results["legacy"]
+        elif isinstance(user_results, dict):
+            user_data = user_results
+        else:
+            user_data = {}
+
+        if not user_data and isinstance(legacy_data.get("user"), dict):
+            user_data = legacy_data["user"]
+
+        if not user_data and isinstance(current.get("author"), dict):
+            user_data = current["author"].get("legacy", {}) or current["author"].get("result", {})
+
+        rest_id = current.get("rest_id") or legacy_data.get("id_str") or legacy_data.get("id")
+
+        return {
+            "legacy": legacy_data,
+            "core": core_data,
+            "user": user_data,
+            "rest_id": rest_id,
+        }
     
     def _parse_tweet_date(self, date_str: str) -> datetime | None:
         """Parse Twitter's date format to datetime."""

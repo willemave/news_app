@@ -1,7 +1,10 @@
 import pytest
+import feedparser
+from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 from datetime import datetime
 
+from app.scraping import substack_unified
 from app.scraping.substack_unified import SubstackScraper, load_substack_feeds
 from app.models.schema import Content, ContentStatus
 from app.models.metadata import ContentType
@@ -67,7 +70,8 @@ def test_load_substack_feeds():
         assert feeds[0]['url'] == 'http://test.com/feed'
         assert feeds[0]['name'] == 'Unknown Substack'  # Default name when not specified
         assert feeds[0]['limit'] == 10  # Default limit when not specified
-        mock_file.assert_called_once_with('dummy/path.yml')
+        expected_path = substack_unified.PROJECT_ROOT / Path('dummy/path.yml')
+        mock_file.assert_called_once_with(expected_path)
 
 
 def test_load_substack_feeds_with_limit():
@@ -78,7 +82,8 @@ def test_load_substack_feeds_with_limit():
         assert feeds[0]['url'] == 'http://test.com/feed'
         assert feeds[0]['name'] == 'Test Feed'
         assert feeds[0]['limit'] == 2  # Specific limit from config
-        mock_file.assert_called_once_with('dummy/path.yml')
+        expected_path = substack_unified.PROJECT_ROOT / Path('dummy/path.yml')
+        mock_file.assert_called_once_with(expected_path)
 
 
 @pytest.mark.asyncio
@@ -138,6 +143,35 @@ async def test_scrape_filters_podcasts(mock_feedparser_parse, mock_db_session, m
 
         # Verify podcast was filtered out
         assert len(items) == 0
+
+
+@pytest.mark.asyncio
+@patch('app.scraping.substack_unified.feedparser.parse')
+async def test_scrape_skips_logging_for_encoding_override(
+    mock_feedparser_parse, mock_db_session, mock_queue_service
+):
+    """Verify CharacterEncodingOverride is treated as non-critical and not logged as an error."""
+    mock_feed_result = MagicMock()
+    mock_feed_result.bozo = 1
+    mock_feed_result.bozo_exception = feedparser.exceptions.CharacterEncodingOverride(
+        "document declared as us-ascii, but parsed as ISO-8859-1"
+    )
+    mock_feed_result.entries = []
+    mock_feed_result.feed = {
+        'title': 'Encoding Test Feed',
+        'description': 'Feed with encoding mismatch'
+    }
+    mock_feedparser_parse.return_value = mock_feed_result
+
+    with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
+        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Encoding Feed', 'limit': 10}]
+
+        scraper = SubstackScraper()
+        scraper.error_logger = MagicMock()
+
+        scraper.scrape()
+
+        scraper.error_logger.log_feed_error.assert_not_called()
 
 
 @pytest.mark.asyncio

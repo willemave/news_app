@@ -1,6 +1,7 @@
 import contextlib
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import feedparser
@@ -11,15 +12,20 @@ from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 from app.utils.error_logger import create_error_logger
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 logger = get_logger(__name__)
 
 
 class PodcastUnifiedScraper(BaseScraper):
     """Unified podcast RSS scraper following new architecture."""
 
-    def __init__(self, config_path: str = "config/podcasts.yml"):
+    def __init__(self, config_path: str | Path = "config/podcasts.yml"):
         super().__init__("Podcast")
-        self.config_path = config_path
+        resolved_path = Path(config_path)
+        if not resolved_path.is_absolute():
+            resolved_path = PROJECT_ROOT / resolved_path
+        self.config_path = resolved_path
         self.feeds = self._load_podcast_feeds()
         self.error_logger = create_error_logger("podcast_scraper", "logs/errors")
 
@@ -32,7 +38,7 @@ class PodcastUnifiedScraper(BaseScraper):
             logger.info(f"Loaded {len(feeds)} podcast feeds from config")
             return feeds
         except FileNotFoundError:
-            logger.error(f"Podcast config file not found at: {self.config_path}")
+            logger.warning(f"Podcast config file not found at: {self.config_path}")
             return []
         except Exception as e:
             logger.error(f"Error loading podcast config: {e}")

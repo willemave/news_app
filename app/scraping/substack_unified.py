@@ -1,10 +1,9 @@
-"""
-Unified Substack scraper following the new architecture.
-"""
+"""Unified Substack scraper following the new architecture."""
 
 import contextlib
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import feedparser
@@ -15,13 +14,26 @@ from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 from app.utils.error_logger import create_error_logger
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENCODING_OVERRIDE_EXCEPTIONS = tuple(
+    exc
+    for exc in (
+        getattr(feedparser, "CharacterEncodingOverride", None),
+        getattr(getattr(feedparser, "exceptions", None), "CharacterEncodingOverride", None),
+    )
+    if isinstance(exc, type)
+)
+
 logger = get_logger(__name__)
 
 
 def load_substack_feeds(config_path: str = "config/substack.yml") -> list[dict[str, Any]]:
     """Loads Substack feed URLs, names, and limits from a YAML file."""
     try:
-        with open(config_path) as f:
+        path = Path(config_path)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+        with open(path) as f:
             config = yaml.safe_load(f)
         feeds = config.get("feeds", [])
         # Return list of dicts with url, name, and limit
@@ -46,7 +58,7 @@ def load_substack_feeds(config_path: str = "config/substack.yml") -> list[dict[s
                 )
         return result
     except FileNotFoundError:
-        logger.error(f"Substack config file not found at: {config_path}")
+        logger.warning(f"Substack config file not found at: {path}")
         return []
     except Exception as e:
         logger.error(f"Error loading Substack config: {e}", exc_info=True)
@@ -87,25 +99,26 @@ class SubstackScraper(BaseScraper):
 
                 # Check for parsing issues
                 if parsed_feed.bozo:
-                    # Log detailed parsing error with new logger
-                    self.error_logger.log_feed_error(
-                        feed_url=feed_url,
-                        error=parsed_feed.bozo_exception,
-                        feed_name=parsed_feed.feed.get("title", "Unknown Feed"),
-                        operation="feed_parsing",
-                    )
-                    # Only warn for serious parsing errors, not encoding issues
-                    encoding_override = getattr(
-                        feedparser.exceptions, "CharacterEncodingOverride", type(None)
-                    )
-                    if not isinstance(parsed_feed.bozo_exception, encoding_override):
-                        logger.warning(
-                            f"Feed {feed_url} may be ill-formed: {parsed_feed.bozo_exception}"
+                    bozo_exc = parsed_feed.bozo_exception
+
+                    if ENCODING_OVERRIDE_EXCEPTIONS and isinstance(
+                        bozo_exc, ENCODING_OVERRIDE_EXCEPTIONS
+                    ):
+                        logger.debug(
+                            "Feed %s has encoding declaration mismatch (CharacterEncodingOverride): %s",
+                            feed_url,
+                            bozo_exc,
                         )
                     else:
-                        logger.debug(
-                            f"Feed {feed_url} has encoding declaration mismatch (not critical): "
-                            f"{parsed_feed.bozo_exception}"
+                        # Log detailed parsing error with new logger
+                        self.error_logger.log_feed_error(
+                            feed_url=feed_url,
+                            error=bozo_exc,
+                            feed_name=parsed_feed.feed.get("title", "Unknown Feed"),
+                            operation="feed_parsing",
+                        )
+                        logger.warning(
+                            "Feed %s may be ill-formed: %s", feed_url, bozo_exc
                         )
 
                 # Extract feed name and description from the RSS feed
