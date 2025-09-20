@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import JSON, Column, DateTime, Index, Integer, String, Text
+from sqlalchemy import Boolean, JSON, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import validates
 
@@ -27,6 +27,7 @@ class Content(Base):
     title = Column(String(500), nullable=True)
     source = Column(String(100), nullable=True, index=True)
     platform = Column(String(50), nullable=True, index=True)
+    is_aggregate = Column(Boolean, default=False, nullable=False, index=True)
 
     # Status tracking
     status = Column(String(20), default=ContentStatus.NEW.value, nullable=False, index=True)
@@ -56,6 +57,7 @@ class Content(Base):
         Index("idx_content_type_status", "content_type", "status"),
         Index("idx_checkout", "checked_out_by", "checked_out_at"),
         Index("idx_created_at", "created_at"),
+        Index("idx_content_aggregate", "content_type", "is_aggregate"),
     )
 
     @validates("content_metadata")

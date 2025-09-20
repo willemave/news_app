@@ -247,19 +247,41 @@ class TwitterUnifiedScraper(BaseScraper):
             logger.info(f"No tweets found for list: {list_name}")
             return None
         
-        # Create aggregated content
-        content = self._format_tweet_content(tweets, list_name)
-        
         # Generate unique URL
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         url_hash = hashlib.md5(f"{list_id}_{date_str}".encode()).hexdigest()[:8]
         unique_url = f"twitter://list/{list_id}/{date_str}/{url_hash}"
-        
+
+        news_items = []
+        for tweet in tweets:
+            content_text = tweet.get("content", "").strip()
+            headline = content_text.split("\n", 1)[0] if content_text else tweet.get("url")
+            display_title = f"@{tweet.get('username', 'unknown')}: {headline}" if headline else f"@{tweet.get('username', 'unknown')}"
+
+            news_items.append(
+                {
+                    "title": display_title[:280],
+                    "url": tweet.get("url"),
+                    "summary": content_text,
+                    "source": "twitter.com",
+                    "author": tweet.get("display_name"),
+                    "metadata": {
+                        "likes": tweet.get("likes"),
+                        "retweets": tweet.get("retweets"),
+                        "replies": tweet.get("replies"),
+                        "quotes": tweet.get("quotes"),
+                    },
+                }
+            )
+
+        rendered_markdown = self._format_tweet_content(tweets, list_name)
+
         # Create content item
         item = {
             "url": unique_url,
             "title": f"Twitter List: {list_name} - {date_str}",
-            "content_type": ContentType.ARTICLE,
+            "content_type": ContentType.NEWS,
+            "is_aggregate": True,
             "metadata": {
                 "platform": "twitter",  # Scraper identifier
                 # Source uses a domain per convention; list aggregations have no external domain, use twitter.com
@@ -267,14 +289,15 @@ class TwitterUnifiedScraper(BaseScraper):
                 "list_id": list_id,
                 "list_name": list_name,
                 "tweet_count": len(tweets),
-                "tweets": tweets,
                 "aggregation_date": date_str,
                 "hours_back": hours_back,
-                "content": content,
+                "items": news_items,
+                "rendered_markdown": rendered_markdown,
+                "primary_url": f"https://twitter.com/i/lists/{list_id}",
                 "scraped_with": "playwright",
             }
         }
-        
+
         return item
 
     def _extract_tweets_from_response(self, data: dict) -> list[dict[str, Any]]:

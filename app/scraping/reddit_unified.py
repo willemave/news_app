@@ -120,27 +120,37 @@ class RedditUnifiedScraper(BaseScraper):
                 if post.get("removed_by_category") or not post.get("title"):
                     continue
 
+                normalized_url = self._normalize_url(post["url"])
+                discussion_url = f"https://reddit.com{post.get('permalink', '')}"
+
                 item = {
-                    "url": self._normalize_url(post["url"]),
+                    "url": normalized_url,
                     "title": post.get("title"),
-                    "content_type": ContentType.ARTICLE,
+                    "content_type": ContentType.NEWS,
+                    "is_aggregate": False,
                     "metadata": {
                         "platform": "reddit",  # Scraper identifier
-                        # Source should be the subreddit name only
-                        "source": post.get('subreddit', subreddit_name),
-                        "subreddit": post.get("subreddit", subreddit_name),
-                        "reddit_id": post.get("id"),
-                        "reddit_url": f"https://reddit.com{post.get('permalink', '')}",
-                        "score": post.get("score", 0),
-                        "num_comments": post.get("num_comments", 0),
-                        "author": post.get("author"),
-                        "created_utc": datetime.fromtimestamp(
-                            post.get("created_utc", 0)
-                        ).isoformat()
-                        if post.get("created_utc")
-                        else None,
-                        "domain": post.get("domain"),
-                        "upvote_ratio": post.get("upvote_ratio"),
+                        "source": post.get("subreddit", subreddit_name),
+                        "items": [
+                            {
+                                "title": post.get("title"),
+                                "url": normalized_url,
+                                "summary": None,
+                                "source": post.get("domain"),
+                                "author": post.get("author"),
+                                "score": post.get("score", 0),
+                                "comments_url": discussion_url,
+                                "metadata": {
+                                    "score": post.get("score", 0),
+                                    "comments": post.get("num_comments", 0),
+                                    "upvote_ratio": post.get("upvote_ratio"),
+                                    "reddit_id": post.get("id"),
+                                },
+                            }
+                        ],
+                        "primary_url": discussion_url,
+                        "excerpt": post.get("selftext"),
+                        "scraped_at": datetime.utcnow().isoformat(),
                     },
                 }
 

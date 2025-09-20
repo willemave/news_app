@@ -46,19 +46,35 @@ class HackerNewsUnifiedScraper(BaseScraper):
                     except Exception:
                         host = ""
 
+                    normalized_url = self._normalize_url(story["url"])
+                    discussion_url = f"{self.hn_base_url}/item?id={story_id}"
+
                     item = {
-                        "url": self._normalize_url(story["url"]),
+                        "url": normalized_url,
                         "title": story.get("title"),
-                        "content_type": ContentType.ARTICLE,
+                        "content_type": ContentType.NEWS,
+                        "is_aggregate": False,
                         "metadata": {
                             "platform": "hackernews",  # Scraper identifier
-                            # Source is the full domain of the linked article
                             "source": host,
-                            "hn_id": story_id,
-                            "hn_url": f"{self.hn_base_url}/item?id={story_id}",
-                            "score": story.get("score", 0),
-                            "comments": story.get("descendants", 0),
-                            "author": story.get("by"),
+                            "items": [
+                                {
+                                    "title": story.get("title"),
+                                    "url": normalized_url,
+                                    "summary": story.get("text"),
+                                    "source": host,
+                                    "author": story.get("by"),
+                                    "score": story.get("score", 0),
+                                    "comments_url": discussion_url,
+                                    "metadata": {
+                                        "hn_id": story_id,
+                                        "comments": story.get("descendants", 0),
+                                        "score": story.get("score", 0),
+                                    },
+                                }
+                            ],
+                            "primary_url": discussion_url,
+                            "excerpt": story.get("text"),
                         },
                     }
 

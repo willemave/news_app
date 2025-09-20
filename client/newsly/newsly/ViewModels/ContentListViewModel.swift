@@ -59,38 +59,22 @@ class ContentListViewModel: ObservableObject {
     func markAsRead(_ contentId: Int) async {
         do {
             try await contentService.markContentAsRead(id: contentId)
-            
-            // Update local state to reflect the change
+
             if let index = contents.firstIndex(where: { $0.id == contentId }) {
-                let updatedContent = contents[index]
-                // Create a new instance with updated isRead status
-                let newContent = ContentSummary(
-                    id: updatedContent.id,
-                    contentType: updatedContent.contentType,
-                    url: updatedContent.url,
-                    title: updatedContent.title,
-                    source: updatedContent.source,
-                    platform: updatedContent.platform,
-                    status: updatedContent.status,
-                    shortSummary: updatedContent.shortSummary,
-                    createdAt: updatedContent.createdAt,
-                    processedAt: updatedContent.processedAt,
-                    classification: updatedContent.classification,
-                    publicationDate: updatedContent.publicationDate,
-                    isRead: true,
-                    isFavorited: updatedContent.isFavorited,
-                    isUnliked: updatedContent.isUnliked
-                )
-                contents[index] = newContent
-                
-                // Update unread count based on content type
-                if updatedContent.contentType == "article" {
+                let current = contents[index]
+                contents[index] = current.updating(isRead: true)
+
+                switch current.contentType {
+                case "article":
                     unreadCountService.decrementArticleCount()
-                } else if updatedContent.contentType == "podcast" {
+                case "podcast":
                     unreadCountService.decrementPodcastCount()
+                case "news":
+                    unreadCountService.decrementNewsCount()
+                default:
+                    break
                 }
-                
-                // If filtering by unread, remove from list with animation
+
                 if selectedReadFilter == "unread" {
                     _ = withAnimation(.easeOut(duration: 0.3)) {
                         contents.remove(at: index)
@@ -109,23 +93,19 @@ class ContentListViewModel: ObservableObject {
             let currentContent = contents[index]
             
             // Optimistically update the UI
-            var updatedContent = currentContent
-            updatedContent.isFavorited.toggle()
-            contents[index] = updatedContent
+            contents[index] = currentContent.updating(isFavorited: !currentContent.isFavorited)
             
             // Make API call
             let response = try await contentService.toggleFavorite(id: contentId)
             
             // Update with server response
             if let isFavorited = response["is_favorited"] as? Bool {
-                var finalContent = currentContent
-                finalContent.isFavorited = isFavorited
-                contents[index] = finalContent
+                contents[index] = currentContent.updating(isFavorited: isFavorited)
             }
         } catch {
             // Revert on error
             if let index = contents.firstIndex(where: { $0.id == contentId }) {
-                contents[index].isFavorited.toggle()
+                contents[index] = contents[index].updating(isFavorited: !contents[index].isFavorited)
             }
             errorMessage = "Failed to update favorite status"
         }
@@ -138,34 +118,20 @@ class ContentListViewModel: ObservableObject {
             let currentContent = contents[index]
 
             // Optimistically update the UI
-            var updatedContent = currentContent
-            updatedContent.isUnliked.toggle()
+            var updatedContent = currentContent.updating(isUnliked: !currentContent.isUnliked)
             if updatedContent.isUnliked {
-                // When unliked, mark as read in UI immediately
                 if !updatedContent.isRead {
-                    updatedContent = ContentSummary(
-                        id: updatedContent.id,
-                        contentType: updatedContent.contentType,
-                        url: updatedContent.url,
-                        title: updatedContent.title,
-                        source: updatedContent.source,
-                        platform: updatedContent.platform,
-                        status: updatedContent.status,
-                        shortSummary: updatedContent.shortSummary,
-                        createdAt: updatedContent.createdAt,
-                        processedAt: updatedContent.processedAt,
-                        classification: updatedContent.classification,
-                        publicationDate: updatedContent.publicationDate,
-                        isRead: true,
-                        isFavorited: updatedContent.isFavorited,
-                        isUnliked: true
-                    )
+                    updatedContent = updatedContent.updating(isRead: true, isUnliked: true)
 
-                    // Update unread counts
-                    if updatedContent.contentType == "article" {
+                    switch updatedContent.contentType {
+                    case "article":
                         unreadCountService.decrementArticleCount()
-                    } else if updatedContent.contentType == "podcast" {
+                    case "podcast":
                         unreadCountService.decrementPodcastCount()
+                    case "news":
+                        unreadCountService.decrementNewsCount()
+                    default:
+                        break
                     }
                 }
             }
@@ -179,26 +145,10 @@ class ContentListViewModel: ObservableObject {
             let isUnliked = (response["is_unliked"] as? Bool) ?? updatedContent.isUnliked
             let isRead = (response["is_read"] as? Bool) ?? updatedContent.isRead
 
-            var finalContent = updatedContent
-            finalContent.isUnliked = isUnliked
-            // Respect server read flag
-            if isRead { finalContent = ContentSummary(
-                id: finalContent.id,
-                contentType: finalContent.contentType,
-                url: finalContent.url,
-                title: finalContent.title,
-                source: finalContent.source,
-                platform: finalContent.platform,
-                status: finalContent.status,
-                shortSummary: finalContent.shortSummary,
-                createdAt: finalContent.createdAt,
-                processedAt: finalContent.processedAt,
-                classification: finalContent.classification,
-                publicationDate: finalContent.publicationDate,
-                isRead: true,
-                isFavorited: finalContent.isFavorited,
-                isUnliked: finalContent.isUnliked
-            ) }
+            var finalContent = updatedContent.updating(isUnliked: isUnliked)
+            if isRead {
+                finalContent = finalContent.updating(isRead: true)
+            }
 
             if selectedReadFilter == "unread" && isRead {
                 // Remove from list when filtering by unread
@@ -211,7 +161,7 @@ class ContentListViewModel: ObservableObject {
         } catch {
             // Revert on error
             if let idx = contents.firstIndex(where: { $0.id == contentId }) {
-                contents[idx].isUnliked.toggle()
+                contents[idx] = contents[idx].updating(isUnliked: !contents[idx].isUnliked)
             }
             errorMessage = "Failed to update unlike status"
         }

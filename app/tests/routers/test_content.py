@@ -175,3 +175,41 @@ def test_session_persistence(
     # Verify read status persists
     response4 = client.get("/?read_filter=read", cookies={"news_app_session": session_cookie1})
     assert "Test Article" in response4.text
+
+
+def test_news_content_rendering(client, db_session: Session):
+    """Ensure news content displays aggregated items."""
+    news_content = Content(
+        content_type="news",
+        url="https://example.com/news",
+        title="Morning Digest",
+        status="completed",
+        is_aggregate=True,
+        content_metadata={
+            "platform": "twitter",
+            "source": "twitter.com",
+            "items": [
+                {
+                    "title": "Launch announcement",
+                    "url": "https://twitter.com/example/status/1",
+                    "summary": "Key highlight",
+                }
+            ],
+            "rendered_markdown": "- [Launch announcement](https://twitter.com/example/status/1)",
+            "excerpt": "1 updates curated from twitter",
+        },
+    )
+
+    db_session.add(news_content)
+    db_session.commit()
+    db_session.refresh(news_content)
+
+    list_response = client.get("/")
+    assert list_response.status_code == 200
+    assert "Morning Digest" in list_response.text
+    assert "Launch announcement" in list_response.text
+
+    detail_response = client.get(f"/content/{news_content.id}")
+    assert detail_response.status_code == 200
+    assert "News Items" in detail_response.text
+    assert "Launch announcement" in detail_response.text

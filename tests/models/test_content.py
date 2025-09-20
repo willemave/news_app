@@ -36,7 +36,7 @@ class TestContentModel:
             "duration_seconds": 3600,
             "episode_number": 1
         }
-        
+
         content = Content(
             content_type=ContentType.PODCAST.value,
             url="https://example.com/podcast/episode1",
@@ -45,7 +45,7 @@ class TestContentModel:
             status=ContentStatus.NEW.value,
             content_metadata=metadata
         )
-        
+
         assert content.content_type == ContentType.PODCAST.value
         assert content.url == "https://example.com/podcast/episode1"
         assert content.title == "Test Podcast Episode"
@@ -57,6 +57,38 @@ class TestContentModel:
         assert content.content_metadata['episode_number'] == 1
         assert content.content_metadata["audio_url"] == "https://example.com/audio.mp3"
         assert content.content_metadata["duration_seconds"] == 3600
+
+    def test_content_creation_news(self):
+        """Test creating a Content object for news content."""
+        metadata = {
+            "platform": "twitter",
+            "source": "twitter.com",
+            "items": [
+                {
+                    "title": "Update",
+                    "url": "https://twitter.com/example/status/1",
+                    "summary": "Short summary",
+                    "metadata": {"likes": 10},
+                }
+            ],
+            "rendered_markdown": "- [Update](https://twitter.com/example/status/1)"
+        }
+
+        content = Content(
+            content_type=ContentType.NEWS.value,
+            url="twitter://list/example",
+            title="Daily List",
+            platform="twitter",
+            source="twitter.com",
+            status=ContentStatus.NEW.value,
+            is_aggregate=True,
+            content_metadata=metadata,
+        )
+
+        assert content.content_type == ContentType.NEWS.value
+        assert content.is_aggregate is True
+        assert content.content_metadata["items"][0]["url"] == "https://twitter.com/example/status/1"
+        assert content.content_metadata["rendered_markdown"].startswith("-")
     
     def test_content_metadata_json_field(self):
         """Test that metadata is stored as JSON."""
@@ -185,15 +217,16 @@ class TestContentTypeEnum:
         """Test ContentType enum values."""
         assert ContentType.ARTICLE.value == "article"
         assert ContentType.PODCAST.value == "podcast"
-    
+        assert ContentType.NEWS.value == "news"
+
     def test_content_type_count(self):
         """Test that we have exactly 2 content types."""
         content_types = list(ContentType)
-        assert len(content_types) == 2
-    
+        assert len(content_types) == 3
+
     def test_content_type_iteration(self):
         """Test iterating over ContentType enum."""
-        expected_values = {"article", "podcast"}
+        expected_values = {"article", "podcast", "news"}
         actual_values = {ct.value for ct in ContentType}
         assert actual_values == expected_values
 

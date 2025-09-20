@@ -3,6 +3,7 @@
 import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
+from pydantic import HttpUrl
 
 from app.pipeline.worker import ContentWorker
 from app.models.metadata import ContentData, ContentStatus, ContentType
@@ -217,6 +218,40 @@ class TestContentWorker:
             result = worker.process_content(123, "test-worker")
 
         assert result is False
+
+    def test_process_news_aggregate(self, mock_dependencies):
+        """Test processing of aggregate news content."""
+        worker = ContentWorker()
+
+        news_metadata = {
+            "platform": "twitter",
+            "source": "twitter.com",
+            "items": [
+                {
+                    "title": "Tweet summary",
+                    "url": "https://twitter.com/example/status/1",
+                    "summary": "Important update",
+                    "metadata": {"likes": 10},
+                }
+            ],
+        }
+
+        content_data = ContentData(
+            id=999,
+            url=HttpUrl("https://example.com/news"),
+            content_type=ContentType.NEWS,
+            status=ContentStatus.NEW,
+            metadata=news_metadata,
+            title="Twitter List",
+            created_at=datetime.utcnow(),
+            is_aggregate=True,
+        )
+
+        assert worker._process_news(content_data) is True
+        assert content_data.status == ContentStatus.COMPLETED
+        assert content_data.processed_at is not None
+        assert content_data.metadata.get("rendered_markdown")
+        assert content_data.metadata.get("items")[0]["url"] == "https://twitter.com/example/status/1"
         assert mock_content.status == ContentStatus.FAILED.value
         mock_db.commit.assert_called()
 

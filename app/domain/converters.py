@@ -23,6 +23,9 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             title=db_content.title,
             status=ContentStatus(db_content.status),
             metadata=metadata,
+            platform=db_content.platform,
+            source=db_content.source,
+            is_aggregate=bool(getattr(db_content, "is_aggregate", False)),
             error_message=db_content.error_message,
             retry_count=db_content.retry_count or 0,
             created_at=db_content.created_at,
@@ -53,6 +56,8 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
         if isinstance(src, str) and src.strip():
             existing.source = src.strip()
         existing.content_metadata = md
+        if hasattr(existing, "is_aggregate"):
+            existing.is_aggregate = content_data.is_aggregate
         existing.error_message = content_data.error_message
         existing.retry_count = content_data.retry_count
         if content_data.processed_at:
@@ -73,6 +78,7 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
             platform=(plat.strip().lower() if isinstance(plat, str) and plat.strip() else None),
             source=(src.strip() if isinstance(src, str) and src.strip() else None),
             content_metadata=md,
+            is_aggregate=content_data.is_aggregate,
             error_message=content_data.error_message,
             retry_count=content_data.retry_count,
             created_at=content_data.created_at or datetime.utcnow(),

@@ -34,6 +34,9 @@ struct ContentDetail: Codable, Identifiable {
     let quotes: [Quote]
     let topics: [String]
     let fullMarkdown: String?
+    let isAggregate: Bool
+    let renderedMarkdown: String?
+    let newsItems: [NewsItem]?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -62,6 +65,9 @@ struct ContentDetail: Codable, Identifiable {
         case quotes
         case topics
         case fullMarkdown = "full_markdown"
+        case isAggregate = "is_aggregate"
+        case renderedMarkdown = "rendered_markdown"
+        case newsItems = "news_items"
     }
     
     var contentTypeEnum: ContentType? {
@@ -91,4 +97,26 @@ struct ContentDetail: Codable, Identifiable {
         }
         return nil
     }
+}
+
+struct NewsItem: Codable, Identifiable {
+    let title: String?
+    let url: String
+    let summary: String?
+    let source: String?
+    let author: String?
+    let metadata: [String: AnyCodable]?
+    let commentsUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case url
+        case summary
+        case source
+        case author
+        case metadata
+        case commentsUrl = "comments_url"
+    }
+
+    var id: String { url }
 }

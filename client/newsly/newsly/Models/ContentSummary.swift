@@ -23,6 +23,8 @@ struct ContentSummary: Codable, Identifiable {
     let isRead: Bool
     var isFavorited: Bool
     var isUnliked: Bool
+    let isAggregate: Bool
+    let itemCount: Int?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -40,16 +42,30 @@ struct ContentSummary: Codable, Identifiable {
         case isRead = "is_read"
         case isFavorited = "is_favorited"
         case isUnliked = "is_unliked"
+        case isAggregate = "is_aggregate"
+        case itemCount = "item_count"
     }
-    
+
     var contentTypeEnum: ContentType? {
         ContentType(rawValue: contentType)
     }
-    
+
     var displayTitle: String {
         title ?? "Untitled"
     }
-    
+
+    var secondaryLine: String? {
+        if let summary = shortSummary, !summary.isEmpty {
+            return summary
+        }
+        if contentType == "news" {
+            if let count = itemCount, count > 0 {
+                return isAggregate ? "\(count) updates" : nil
+            }
+        }
+        return nil
+    }
+
     var formattedDate: String {
         let dateString = processedAt ?? createdAt
         
@@ -93,5 +109,31 @@ struct ContentSummary: Codable, Identifiable {
         displayFormatter.timeStyle = .short
         displayFormatter.timeZone = TimeZone.current
         return displayFormatter.string(from: date)
+    }
+
+    func updating(
+        isRead: Bool? = nil,
+        isFavorited: Bool? = nil,
+        isUnliked: Bool? = nil
+    ) -> ContentSummary {
+        ContentSummary(
+            id: id,
+            contentType: contentType,
+            url: url,
+            title: title,
+            source: source,
+            platform: platform,
+            status: status,
+            shortSummary: shortSummary,
+            createdAt: createdAt,
+            processedAt: processedAt,
+            classification: classification,
+            publicationDate: publicationDate,
+            isRead: isRead ?? self.isRead,
+            isFavorited: isFavorited ?? self.isFavorited,
+            isUnliked: isUnliked ?? self.isUnliked,
+            isAggregate: isAggregate,
+            itemCount: itemCount
+        )
     }
 }
