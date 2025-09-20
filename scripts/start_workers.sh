@@ -16,9 +16,6 @@ if [ ! -f ".venv/bin/python" ]; then
     exit 1
 fi
 
-# Activate virtual environment
-source .venv/bin/activate
-
 # Function to run commands with nice output
 run_command() {
     local description="$1"
@@ -36,6 +33,41 @@ run_command() {
         return 1
     fi
 }
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Display database target for transparency
+DATABASE_TARGET=$(PROJECT_ROOT="$PROJECT_ROOT" python <<'PY'
+import os
+from pathlib import Path
+from sqlalchemy.engine.url import make_url
+from app.core.settings import get_settings
+
+project_root = Path(os.environ["PROJECT_ROOT"]).resolve()
+settings = get_settings()
+url = str(settings.database_url)
+parsed = make_url(url)
+
+if parsed.drivername.startswith("sqlite"):
+    database = parsed.database or ""
+    db_path = Path(database).expanduser()
+    if not db_path.is_absolute():
+        db_path = (project_root / db_path).resolve()
+    else:
+        db_path = db_path.resolve()
+    print(db_path)
+else:
+    print(url)
+PY
+)
+echo "Database target: ${DATABASE_TARGET}"
+
+# Ensure only Playwright Chromium browser is installed; other browsers not needed
+echo "Ensuring Playwright Chromium browser is available (other browsers not required)..."
+if ! run_command "Install Playwright Chromium browser" .venv/bin/playwright install chromium; then
+    exit 1
+fi
 
 # Parse command line arguments
 MAX_TASKS=""
@@ -123,12 +155,7 @@ else
         echo ""
         echo "⚠️  No pending tasks in queue!"
         echo "💡 Run './scripts/start_scrapers.sh' first to populate content"
-        echo ""
-        echo "Do you want to continue anyway? (y/N)"
-        read -r response
-        if [[ ! "$response" =~ ^[Yy]$ ]]; then
-            exit 0
-        fi
+        echo "↪️  Continuing without prompt; workers will wait for new tasks."
     fi
 fi
 

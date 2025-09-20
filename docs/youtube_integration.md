@@ -37,25 +37,31 @@ We've successfully integrated YouTube video processing into the news app, treati
 ### config/youtube.yml
 
 ```yaml
-youtube_channels:
-  - name: "Channel Name"
-    channel_id: "UCxxxxxx"  # YouTube channel ID
-    url: "https://www.youtube.com/@channelname"  # Alternative to channel_id
-    max_videos: 5  # Maximum videos to fetch
-    min_duration: 600  # Minimum duration in seconds
+channels:
+  - name: "Lex Fridman Podcast"
+    channel_id: "UCgxzjK6GuOHVKR_08TT4hJQ"
+    url: "https://www.youtube.com/@lexfridman"
+    limit: 5
+    max_age_days: 30
+    language: "en"
 
-youtube_playlists:
-  - name: "Playlist Name"
-    playlist_id: "PLxxxxxx"  # YouTube playlist ID
-    max_videos: 10
-    min_duration: 300
-
-settings:
-  download_audio: false  # Only get transcripts
-  prefer_auto_captions: true  # Use auto-generated captions
-  languages: ["en"]  # Preferred subtitle languages
-  max_age_days: 30  # Only process recent videos
+  - name: "All-In Podcast"
+    url: "https://www.youtube.com/@allinpodcast"
+    limit: 3
+    max_age_days: 7
 ```
+
+**Field reference**
+
+| Field | Description |
+| --- | --- |
+| `name` | Friendly label displayed in logs and admin views |
+| `url` | Channel/handle/playlist URL (optional if `channel_id` or `playlist_id` present) |
+| `channel_id` | Raw channel identifier (e.g., `UC...`) |
+| `playlist_id` | Optional playlist identifier to override the channel feed |
+| `limit` | Maximum videos ingested per run (default 10, max 50) |
+| `max_age_days` | Skip videos older than the threshold (`0` disables filtering) |
+| `language` | Preferred transcript language hint propagated to metadata |
 
 ## Metadata Fields
 
@@ -75,8 +81,11 @@ YouTube videos are stored as podcasts with additional metadata:
 ### Running the YouTube Scraper
 
 ```bash
-# Run only YouTube scraper
+# Run only the YouTube scraper and persist to the DB
 python scripts/run_scrapers.py --scrapers youtube
+
+# Dry-run a single channel without writing to the DB
+python scripts/test_youtube_scraper.py --name "Example" --url "https://www.youtube.com/@Example" --limit 2
 
 # Run all scrapers including YouTube
 python scripts/run_scrapers.py
@@ -120,12 +129,12 @@ YouTube URLs are automatically detected and processed when:
 ### Debug Commands
 
 ```bash
-# Test YouTube URL detection
-python scripts/test_youtube_simple.py
+# Dry-run the scraper for a single channel and print results
+python scripts/test_youtube_scraper.py --name "Example" --url "https://www.youtube.com/@Example" --limit 1
 
-# Test full YouTube functionality
-python scripts/test_youtube.py
+# Run only the YouTube scraper via the runner
+python scripts/run_scrapers.py --scrapers youtube --show-stats
 
-# Check YouTube content in database
-python scripts/check_content.py --type podcast --source youtube
+# Inspect stored YouTube content
+python scripts/check_content.py --type podcast --platform youtube
 ```

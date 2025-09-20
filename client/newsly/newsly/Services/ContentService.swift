@@ -17,7 +17,7 @@ class ContentService {
                        contentType: String = "all",
                        limit: Int = 25,
                        offset: Int = 0) async throws -> ContentListResponse {
-        var queryItems: [URLQueryItem] = [
+        let queryItems: [URLQueryItem] = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "type", value: contentType),
             URLQueryItem(name: "limit", value: String(limit)),

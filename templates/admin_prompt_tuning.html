@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+  <div class="mb-8">
+    <a href="/admin" class="text-sm text-indigo-600 hover:text-indigo-500">&larr; Back to Admin Dashboard</a>
+  </div>
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h2 class="text-2xl font-semibold text-gray-900">Summarization Prompt Tuning</h2>
+      <p class="text-sm text-gray-600 mt-1">Analyze unliked content and draft improvements to the summarization prompt.</p>
+    </div>
+  </div>
+
+  <div class="bg-white shadow rounded-lg p-6 mb-8">
+    <form method="get" action="/admin/prompt-tuning" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div>
+        <label for="lookback_days" class="block text-sm font-medium text-gray-700">Lookback Window (days)</label>
+        <select id="lookback_days" name="lookback_days" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+          {% for option in [3, 7, 14, 30, 45, 60] %}
+          <option value="{{ option }}" {% if prompt_request.lookback_days == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label for="max_examples" class="block text-sm font-medium text-gray-700">Max Examples</label>
+        <select id="max_examples" name="max_examples" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+          {% for option in [10, 15, 20, 25, 40, 60, 80, 100] %}
+          <option value="{{ option }}" {% if prompt_request.max_examples == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="md:col-span-2 flex items-end justify-end space-x-3">
+        <input type="hidden" name="generate" value="1">
+        <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+          Generate Prompt Suggestions
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+    <div class="bg-white shadow rounded-lg p-6 lg:col-span-2">
+      <h3 class="text-lg font-semibold text-gray-900 mb-2">Unliked Content Overview</h3>
+      <p class="text-sm text-gray-600 mb-4">Total items analyzed: <span class="font-medium text-gray-900">{{ result.examples | length }}</span></p>
+
+      {% if result.examples %}
+      <div class="space-y-4">
+        {% for example in result.examples[:6] %}
+        <div class="border border-gray-200 rounded-md p-4">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-indigo-600 font-semibold">{{ example.content_type }}</p>
+              <h4 class="text-base font-medium text-gray-900 mt-1">{{ example.title }}</h4>
+              {% if example.source %}
+              <p class="text-sm text-gray-500 mt-1">{{ example.source }}</p>
+              {% endif %}
+            </div>
+            <span class="text-xs text-gray-500">Unliked {{ example.unliked_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+          </div>
+          {% if example.short_summary %}
+          <p class="text-sm text-gray-700 mt-3">{{ example.short_summary }}</p>
+          {% endif %}
+          {% if example.bullet_points %}
+          <ul class="mt-3 space-y-1">
+            {% for bullet in example.bullet_points[:3] %}
+            <li class="text-sm text-gray-600 flex items-start"><span class="text-indigo-500 mr-2">•</span><span>{{ bullet }}</span></li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          {% if example.topics %}
+          <div class="mt-3 flex flex-wrap gap-2">
+            {% for topic in example.topics %}
+            <span class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">{{ topic }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-sm text-gray-500">No unliked items found in the selected window.</p>
+      {% endif %}
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-3">Signals</h3>
+
+      <div class="mb-5">
+        <h4 class="text-sm font-medium text-gray-700 mb-2">By Source</h4>
+        {% if analytics.sources %}
+        <ul class="space-y-2">
+          {% for source, count in analytics.sources %}
+          <li class="flex justify-between text-sm text-gray-600">
+            <span class="truncate pr-2">{{ source }}</span>
+            <span class="font-medium text-gray-900">{{ count }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-gray-500">No source information available.</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <h4 class="text-sm font-medium text-gray-700 mb-2">By Content Type</h4>
+        {% if analytics.content_types %}
+        <ul class="space-y-2">
+          {% for content_type, count in analytics.content_types %}
+          <li class="flex justify-between text-sm text-gray-600">
+            <span class="uppercase tracking-wide text-xs text-gray-500">{{ content_type }}</span>
+            <span class="font-medium text-gray-900">{{ count }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-gray-500">No content type data available.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if result.error %}
+  <div class="bg-red-50 border border-red-200 text-red-700 rounded-md px-4 py-3 mb-8">
+    {{ result.error }}
+  </div>
+  {% endif %}
+
+  {% if result.suggestion %}
+  <div class="bg-white shadow rounded-lg p-6 space-y-6">
+    <div>
+      <h3 class="text-lg font-semibold text-gray-900">Analysis</h3>
+      <p class="text-sm text-gray-700 mt-2 whitespace-pre-line">{{ result.suggestion.analysis }}</p>
+    </div>
+
+    {% if result.suggestion.change_recommendations %}
+    <div>
+      <h4 class="text-sm font-medium text-gray-700 mb-2">Recommended Changes</h4>
+      <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+        {% for change in result.suggestion.change_recommendations %}
+        <li>{{ change }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div>
+      <h4 class="text-sm font-medium text-gray-700 mb-2">Suggested Prompt</h4>
+      <textarea class="w-full rounded-md border-gray-300 text-sm text-gray-800 p-3 bg-gray-50" rows="14" readonly>{{ result.suggestion.revised_prompt }}</textarea>
+    </div>
+
+    {% if result.suggestion.guardrails %}
+    <div>
+      <h4 class="text-sm font-medium text-gray-700 mb-2">Guardrails</h4>
+      <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+        {% for guardrail in result.suggestion.guardrails %}
+        <li>{{ guardrail }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if result.suggestion.evaluation_plan %}
+    <div>
+      <h4 class="text-sm font-medium text-gray-700 mb-2">Evaluation Plan</h4>
+      <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+        {% for step in result.suggestion.evaluation_plan %}
+        <li>{{ step }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% elif not result.error and result.examples %}
+  <div class="bg-blue-50 border border-blue-200 text-blue-700 rounded-md px-4 py-3">
+    Generate a prompt suggestion to see analysis and recommended updates.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

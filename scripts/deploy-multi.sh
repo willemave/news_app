@@ -6,6 +6,13 @@
 
 set -euo pipefail
 
+export DOCKER_BUILDKIT=1
+
+if ! docker buildx version >/dev/null 2>&1; then
+  echo "$(date +'%Y-%m-%d %H:%M:%S') docker buildx is not available. Install Buildx or update Docker before running this script." >&2
+  exit 1
+fi
+
 # Lenient .env loader that doesn't "source" the file
 # and supports values with spaces, parentheses, and quotes.
 load_env_file() {
@@ -121,7 +128,13 @@ build_images() {
         local dockerfile="Dockerfile.${service}"
         
         info "Building ${service} service image for AMD64: ${image_name}:${IMAGE_TAG}"
-        if ! docker build --platform linux/amd64 -f "${dockerfile}" -t "${image_name}:${IMAGE_TAG}" .; then
+        if ! docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --file "${dockerfile}" \
+            --tag "${image_name}:${IMAGE_TAG}" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            .; then
             error "Failed to build ${service} Docker image"
         fi
     done

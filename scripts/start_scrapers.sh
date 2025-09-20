@@ -19,6 +19,32 @@ fi
 # Activate virtual environment
 source .venv/bin/activate
 
+# Display database target for transparency
+DATABASE_TARGET=$(PROJECT_ROOT="$PROJECT_ROOT" python <<'PY'
+import os
+from pathlib import Path
+from sqlalchemy.engine.url import make_url
+from app.core.settings import get_settings
+
+project_root = Path(os.environ["PROJECT_ROOT"]).resolve()
+settings = get_settings()
+url = str(settings.database_url)
+parsed = make_url(url)
+
+if parsed.drivername.startswith("sqlite"):
+    database = parsed.database or ""
+    db_path = Path(database).expanduser()
+    if not db_path.is_absolute():
+        db_path = (project_root / db_path).resolve()
+    else:
+        db_path = db_path.resolve()
+    print(db_path)
+else:
+    print(url)
+PY
+)
+echo "Database target: ${DATABASE_TARGET}"
+
 # Function to run commands with nice output
 run_command() {
     local description="$1"

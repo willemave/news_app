@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.core.settings import get_settings
 
 logger = get_logger(__name__)
 
@@ -35,9 +36,11 @@ class GenericErrorLogger:
     Designed to replace complex RSS-specific logger with better debugging info.
     """
 
-    def __init__(self, component: str, log_dir: str = "logs/errors"):
+    def __init__(self, component: str, log_dir: str | Path | None = None):
         self.component = component
-        self.log_dir = Path(log_dir)
+        settings = get_settings()
+        base_dir = Path(log_dir) if log_dir else settings.logs_dir / "errors"
+        self.log_dir = base_dir.resolve()
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # Create timestamped log file
@@ -201,6 +204,15 @@ class GenericErrorLogger:
         return errors
 
 
-def create_error_logger(component: str, log_dir: str = "logs/errors") -> GenericErrorLogger:
-    """Factory function to create error logger."""
+def create_error_logger(component: str, log_dir: str | Path | None = None) -> GenericErrorLogger:
+    """Factory function to create error logger.
+
+    Args:
+        component: Component name for scoping log files.
+        log_dir: Optional override for the log directory.
+
+    Returns:
+        GenericErrorLogger: Configured error logger instance.
+    """
+
     return GenericErrorLogger(component, log_dir)

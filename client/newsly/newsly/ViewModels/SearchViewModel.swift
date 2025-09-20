@@ -47,6 +47,10 @@ class SearchViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    func retrySearch() {
+        performSearch(searchText)
+    }
+
     private func performSearch(_ query: String) {
         searchTask?.cancel()
         guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
@@ -139,4 +143,3 @@ class SearchViewModel: ObservableObject {
         }
     }
 }
-

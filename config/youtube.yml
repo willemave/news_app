@@ -1,0 +1,18 @@
+# YouTube channel configuration
+# Provide one entry per channel you'd like to ingest.
+#
+# Fields:
+#   name          - Human-friendly label for the channel
+#   url           - Full YouTube channel, handle, or playlist URL (optional if channel_id provided)
+#   channel_id    - Raw channel ID (optional; used when url omitted)
+#   playlist_id   - Optional playlist identifier to ingest from
+#   limit         - Maximum number of videos to ingest per run (default 10)
+#   max_age_days  - Skip videos older than this many days (default 30)
+#   language      - Preferred transcript language hint (optional)
+
+channels:
+  - name: "Sample Channel"
+    url: "https://www.youtube.com/@YouTubeCreators"
+    limit: 3
+    max_age_days: 30
+    language: "en"

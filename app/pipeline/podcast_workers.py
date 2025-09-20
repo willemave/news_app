@@ -16,6 +16,9 @@ from app.services.whisper_local import get_whisper_local_service
 from app.services.queue import TaskType, get_queue_service
 from app.utils.error_logger import create_error_logger
 
+# Resolve project root (two levels up from this file: app/ → project root)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 logger = get_logger(__name__)
 settings = get_settings()
 
@@ -43,8 +46,10 @@ class PodcastDownloadWorker:
     """Worker for downloading podcast audio files."""
 
     def __init__(self):
-        self.base_dir = "data/podcasts"
-        os.makedirs(self.base_dir, exist_ok=True)
+        # Resolve to an absolute path so downstream workers can rely on it even if
+        # the process is started from a different working directory.
+        self.base_dir = settings.podcast_media_dir
+        self.base_dir.mkdir(parents=True, exist_ok=True)
         self.queue_service = get_queue_service()
         self.error_logger = create_error_logger("podcast_download_worker")
 
@@ -97,7 +102,7 @@ class PodcastDownloadWorker:
             )
         ),
     )
-    def _download_with_retry(self, audio_url: str, file_path: str) -> None:
+    def _download_with_retry(self, audio_url: str, file_path: Path) -> None:
         """Download file with retry logic for network issues."""
         logger.info(f"Attempting download from {audio_url}")
 
@@ -127,14 +132,14 @@ class PodcastDownloadWorker:
                 response.raise_for_status()
 
                 # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                file_path.parent.mkdir(parents=True, exist_ok=True)
 
                 # Write file in chunks
                 with open(file_path, "wb") as f:
                     for chunk in response.iter_bytes(chunk_size=8192):
                         f.write(chunk)
 
-                logger.info(f"Downloaded {os.path.getsize(file_path)} bytes to {file_path}")
+                logger.info(f"Downloaded {file_path.stat().st_size} bytes to {file_path}")
 
     def _is_youtube_url(self, url: str) -> bool:
         """Check if URL is a YouTube URL."""
@@ -218,21 +223,21 @@ class PodcastDownloadWorker:
                 )
 
                 # Create directory structure
-                feed_dir = os.path.join(self.base_dir, sanitize_filename(feed_name))
-                os.makedirs(feed_dir, exist_ok=True)
+                feed_dir = self.base_dir / sanitize_filename(feed_name)
+                feed_dir.mkdir(parents=True, exist_ok=True)
 
                 # Determine file extension and create file path
                 file_extension = get_file_extension_from_url(audio_url)
                 sanitized_title = sanitize_filename(content.title or f"podcast_{content_id}")
                 filename = f"{sanitized_title}{file_extension}"
-                file_path = os.path.join(feed_dir, filename)
+                file_path = feed_dir / filename
 
                 # Check if file already exists
-                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                if file_path.exists() and file_path.stat().st_size > 0:
                     logger.info(f"File already exists: {file_path}")
-                    content.metadata["file_path"] = file_path
+                    content.metadata["file_path"] = str(file_path)
                     content.metadata["download_date"] = datetime.utcnow().isoformat()
-                    content.metadata["file_size"] = os.path.getsize(file_path)
+                    content.metadata["file_size"] = file_path.stat().st_size
 
                     # Update database
                     domain_to_content(content, db_content)
@@ -247,19 +252,19 @@ class PodcastDownloadWorker:
                 self._download_with_retry(audio_url, file_path)
 
                 # Verify file was written correctly
-                if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+                if not file_path.exists() or file_path.stat().st_size == 0:
                     raise Exception("Downloaded file is empty or doesn't exist")
 
                 # Update content metadata
-                content.metadata["file_path"] = file_path
+                content.metadata["file_path"] = str(file_path)
                 content.metadata["download_date"] = datetime.utcnow().isoformat()
-                content.metadata["file_size"] = os.path.getsize(file_path)
+                content.metadata["file_size"] = file_path.stat().st_size
 
                 # Update database
                 domain_to_content(content, db_content)
                 db.commit()
 
-                file_size = os.path.getsize(file_path)
+                file_size = file_path.stat().st_size
                 logger.info(f"Successfully downloaded podcast to {file_path} ({file_size} bytes)")
 
                 # Queue transcription task
@@ -278,15 +283,15 @@ class PodcastDownloadWorker:
                 operation="podcast_download",
                 context={
                     "audio_url": audio_url if "audio_url" in locals() else None,
-                    "file_path": file_path,
+                    "file_path": str(file_path) if file_path else None,
                     "error_type": type(e).__name__,
                 },
             )
 
             # Clean up partial download if exists
-            if file_path and os.path.exists(file_path):
+            if file_path and Path(file_path).exists():
                 try:
-                    os.remove(file_path)
+                    Path(file_path).unlink()
                     logger.info(f"Cleaned up partial download: {file_path}")
                 except Exception as cleanup_error:
                     logger.warning(f"Failed to clean up partial download: {cleanup_error}")
@@ -310,8 +315,8 @@ class PodcastTranscribeWorker:
     """Worker for transcribing podcast audio files using OpenAI."""
 
     def __init__(self):
-        self.base_dir = "data/podcasts"
-        os.makedirs(self.base_dir, exist_ok=True)
+        self.base_dir = settings.podcast_media_dir
+        self.base_dir.mkdir(parents=True, exist_ok=True)
         self.queue_service = get_queue_service()
         self.transcription_service = None
 
@@ -356,21 +361,21 @@ class PodcastTranscribeWorker:
                     transcript_text = content.metadata.get("transcript")
                     
                     # Create directory for YouTube transcripts
-                    youtube_dir = os.path.join(self.base_dir, "youtube")
-                    os.makedirs(youtube_dir, exist_ok=True)
-                    
+                    youtube_dir = self.base_dir / "youtube"
+                    youtube_dir.mkdir(parents=True, exist_ok=True)
+
                     # Create text file path
                     sanitized_title = sanitize_filename(content.title or f"youtube_{content_id}")
-                    text_path = os.path.join(youtube_dir, f"{sanitized_title}.txt")
-                    
+                    text_path = youtube_dir / f"{sanitized_title}.txt"
+
                     # Write transcript to file
                     with open(text_path, "w", encoding="utf-8") as f:
                         f.write(transcript_text.strip())
-                    
+
                     logger.info(f"YouTube transcript saved to: {text_path}")
-                    
+
                     # Update content metadata
-                    content.metadata["transcript_path"] = text_path
+                    content.metadata["transcript_path"] = str(text_path)
                     content.metadata["transcription_date"] = datetime.utcnow().isoformat()
                     content.metadata["transcription_service"] = "youtube"
                     
@@ -384,28 +389,57 @@ class PodcastTranscribeWorker:
                     return True
 
                 # Get file path from metadata for regular podcasts
-                file_path = content.metadata.get("file_path")
-                if not file_path or not os.path.exists(file_path):
-                    error_msg = f"Audio file not found: {file_path}"
+                file_path_value = content.metadata.get("file_path")
+                if not file_path_value:
+                    error_msg = "Audio file path missing in metadata"
                     logger.error(error_msg)
                     db_content.status = ContentStatus.FAILED.value
                     db_content.error_message = error_msg
                     db.commit()
                     return False
 
+                original_path = Path(file_path_value)
+                if original_path.is_absolute():
+                    audio_path = original_path
+                else:
+                    # Treat stored path as relative to the project root first
+                    audio_path = (PROJECT_ROOT / original_path).resolve()
+
+                    if not audio_path.exists():
+                        parts = original_path.parts
+                        if len(parts) >= 2 and parts[0:2] == ("data", "podcasts"):
+                            tail = Path(*parts[2:])
+                            audio_path = (self.base_dir / tail).resolve()
+                        else:
+                            audio_path = (self.base_dir / original_path).resolve()
+
+                if not audio_path.exists():
+                    error_msg = f"Audio file not found: {audio_path}"
+                    logger.error(error_msg)
+                    db_content.status = ContentStatus.FAILED.value
+                    db_content.error_message = error_msg
+                    db.commit()
+                    return False
+
+                # Normalise metadata so future retries use the absolute path
+                if str(audio_path) != file_path_value:
+                    content.metadata["file_path"] = str(audio_path)
+                    domain_to_content(content, db_content)
+                    db.commit()
+
                 # Get transcription service and transcribe
                 self._get_transcription_service()
 
-                logger.info(f"Starting transcription of: {file_path}")
+                logger.info(f"Starting transcription of: {audio_path}")
 
                 # Transcribe the audio
                 transcript_text, detected_language = self.transcription_service.transcribe_audio(
-                    Path(file_path)
+                    audio_path
                 )
 
                 # Create text file path (same directory as audio, but with .txt extension)
-                base_path = os.path.splitext(file_path)[0]
-                text_path = f"{base_path}.txt"
+                base_path = audio_path.with_suffix("")
+                text_path = base_path.with_suffix(".txt")
 
                 # Write transcript to file
                 with open(text_path, "w", encoding="utf-8") as f:
@@ -416,7 +450,7 @@ class PodcastTranscribeWorker:
                     logger.info(f"Detected language: {detected_language}")
 
                 # Update content metadata
-                content.metadata["transcript_path"] = text_path
+                content.metadata["transcript_path"] = str(text_path)
                 content.metadata["transcript"] = transcript_text.strip()
                 content.metadata["transcription_date"] = datetime.utcnow().isoformat()
                 if detected_language:

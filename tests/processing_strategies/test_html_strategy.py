@@ -146,7 +146,7 @@ def test_extract_data_successful(html_strategy: HtmlProcessorStrategy):
         assert extracted_data["title"] == "Test Article Title"
         assert "John Doe" in extracted_data["text_content"]
         assert extracted_data["content_type"] == "html"
-        assert extracted_data["source"] == "web"
+        assert extracted_data["source"] == "example.com"
         assert extracted_data["final_url_after_redirects"] == url
 
 
@@ -222,7 +222,7 @@ def test_extract_data_pubmed_source(html_strategy: HtmlProcessorStrategy):
     ):
         extracted_data = html_strategy.extract_data("", url)
 
-        assert extracted_data["source"] == "PubMed"
+    assert extracted_data["source"] == "pmc.ncbi.nlm.nih.gov"
 
 
 def test_extract_data_arxiv_source(html_strategy: HtmlProcessorStrategy):
@@ -253,7 +253,7 @@ def test_extract_data_arxiv_source(html_strategy: HtmlProcessorStrategy):
     ):
         extracted_data = html_strategy.extract_data("", url)
 
-        assert extracted_data["source"] == "Arxiv"
+    assert extracted_data["source"] == "arxiv.org"
 
 
 def test_extract_data_failure(html_strategy: HtmlProcessorStrategy):
@@ -281,8 +281,38 @@ def test_extract_data_failure(html_strategy: HtmlProcessorStrategy):
         assert "Content from" in extracted_data["title"]
         assert "Failed to extract content" in extracted_data["text_content"]
         assert extracted_data["content_type"] == "html"
-        assert extracted_data["source"] == "web"
+        assert extracted_data["source"] == "example.com"
         assert "extraction_error" in extracted_data
+
+
+def test_extract_data_failure_includes_error_message_details(
+    html_strategy: HtmlProcessorStrategy,
+):
+    """Ensure crawl4ai failure surfaces detailed error metadata."""
+    url = "http://example.com/article.html"
+
+    mock_result = MagicMock()
+    mock_result.success = False
+    mock_result.error_message = "Timed out while waiting for page"
+    mock_result.status_code = 504
+    mock_result.redirected_url = "https://redirected.example.com/article"
+
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+    mock_crawler.__aexit__ = AsyncMock(return_value=None)
+
+    with patch(
+        "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
+    ), patch(
+        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
+    ):
+        extracted_data = html_strategy.extract_data("", url)
+
+        failure_message = extracted_data["text_content"]
+        assert "Timed out while waiting for page" in failure_message
+        assert "status_code=504" in failure_message
+        assert "redirected.example.com" in failure_message
 
 
 def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrategy):
@@ -376,3 +406,81 @@ def test_get_source_specific_config(html_strategy: HtmlProcessorStrategy):
     # Test Arxiv config
     arxiv_config = html_strategy._get_source_specific_config("Arxiv")
     assert arxiv_config.get("pdf") is True
+
+
+def test_extract_data_includes_table_strategy(monkeypatch, mock_http_client):
+    """Ensure table extraction strategy wiring when enabled."""
+    url = "http://example.com/tables"
+
+    settings_stub = MagicMock()
+    settings_stub.crawl4ai_enable_table_extraction = True
+    settings_stub.crawl4ai_table_provider = "openai/gpt-4.1-mini"
+    settings_stub.crawl4ai_table_css_selector = None
+    settings_stub.crawl4ai_table_enable_chunking = True
+    settings_stub.crawl4ai_table_chunk_token_threshold = 3200
+    settings_stub.crawl4ai_table_min_rows_per_chunk = 5
+    settings_stub.crawl4ai_table_max_parallel_chunks = 2
+    settings_stub.crawl4ai_table_verbose = False
+    settings_stub.openai_api_key = "sk-test"
+    settings_stub.google_api_key = None
+    settings_stub.anthropic_api_key = None
+
+    monkeypatch.setattr(
+        "app.processing_strategies.html_strategy.get_settings", lambda: settings_stub
+    )
+
+    strategy = HtmlProcessorStrategy(http_client=mock_http_client)
+
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.metadata = {"title": "Table Article"}
+    mock_result.url = url
+    mock_result.cleaned_html = "<html></html>"
+    mock_markdown = MagicMock()
+    mock_markdown.raw_markdown = "Content"
+    mock_result.markdown = mock_markdown
+    mock_table = MagicMock()
+    mock_table.markdown = "|A|"
+    mock_result.tables = [mock_table]
+
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+    mock_crawler.__aexit__ = AsyncMock(return_value=None)
+
+    table_strategy = MagicMock(name="table_strategy")
+    run_config_instance = MagicMock(name="run_config")
+
+    with patch(
+        "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
+    ), patch(
+        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
+    ), patch(
+        "app.processing_strategies.html_strategy.LLMConfig", return_value=MagicMock()
+    ) as llm_config_cls, patch(
+        "app.processing_strategies.html_strategy.LLMTableExtraction",
+        return_value=table_strategy,
+    ) as table_extraction_cls, patch(
+        "app.processing_strategies.html_strategy.CrawlerRunConfig",
+        return_value=run_config_instance,
+    ) as run_config_cls:
+        extracted_data = strategy.extract_data("", url)
+
+    table_extraction_cls.assert_called_once()
+    llm_config_cls.assert_called_once()
+    assert run_config_cls.call_args.kwargs["table_extraction"] is table_strategy
+    assert extracted_data["table_markdown"] == ["|A|"]
+
+
+def test_prepare_for_llm_merges_table_markdown(html_strategy: HtmlProcessorStrategy):
+    """Verify that extracted tables are appended for LLM consumption."""
+    extracted = {
+        "text_content": "Base content",
+        "table_markdown": ["| A |", "| 1 |"],
+        "final_url_after_redirects": "http://example.com",
+    }
+
+    prepared = html_strategy.prepare_for_llm(extracted)
+
+    assert "## Extracted Tables" in prepared["content_to_summarize"]
+    assert "| A |" in prepared["content_to_summarize"]
