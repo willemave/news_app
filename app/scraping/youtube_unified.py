@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import time
 from pathlib import Path
 from typing import Any, Final
 
@@ -74,6 +75,59 @@ class YouTubeChannelConfig(BaseModel):
         return str(self.url)
 
 
+class YouTubeClientConfig(BaseModel):
+    """Runtime client/auth configuration for the YouTube scraper."""
+
+    cookies_path: str | Path | None = None
+    po_token_provider: str | None = None
+    po_token_base_url: HttpUrl | str | None = Field(default="http://127.0.0.1:4416")
+    throttle_seconds: float = Field(default=6.0, ge=0.0, le=60.0)
+    player_client: str = Field(default="mweb", min_length=2, max_length=32)
+
+    _SUPPORTED_PROVIDERS: Final[set[str]] = {"bgutilhttp", "webpoclient"}
+
+    @field_validator("cookies_path")
+    @classmethod
+    def normalize_cookies_path(cls, value: str | Path | None) -> str | None:
+        if value in (None, ""):
+            return None
+        return str(value)
+
+    @field_validator("po_token_provider")
+    @classmethod
+    def normalize_provider(cls, value: str | None) -> str | None:
+        if value in (None, ""):
+            return None
+        normalized = value.strip().lower()
+        if normalized in {"none", "null"}:
+            return None
+        if normalized not in cls._SUPPORTED_PROVIDERS:
+            raise ValueError(
+                f"Unsupported po_token_provider '{value}'. Supported: {sorted(cls._SUPPORTED_PROVIDERS)}"
+            )
+        return normalized
+
+    @field_validator("po_token_base_url")
+    @classmethod
+    def normalize_base_url(cls, value: HttpUrl | str | None) -> str | None:
+        if value in (None, ""):
+            return None
+        return str(value)
+
+    @field_validator("player_client")
+    @classmethod
+    def normalize_player_client(cls, value: str) -> str:
+        return value.strip()
+
+    def resolved_cookies_path(self) -> Path | None:
+        if self.cookies_path is None:
+            return None
+        candidate = Path(self.cookies_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = PROJECT_ROOT / candidate
+        return candidate
+
+
 class YouTubeUnifiedScraper(BaseScraper):
     """Scraper that ingests recent videos from configured YouTube channels."""
 
@@ -88,7 +142,7 @@ class YouTubeUnifiedScraper(BaseScraper):
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0 Safari/537.36"
+                "Chrome/128.0.6613.120 Safari/537.36"
             )
         },
     }
@@ -105,7 +159,7 @@ class YouTubeUnifiedScraper(BaseScraper):
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0 Safari/537.36"
+                "Chrome/128.0.6613.120 Safari/537.36"
             )
         },
     }
@@ -114,11 +168,29 @@ class YouTubeUnifiedScraper(BaseScraper):
         self,
         config_path: str | Path = "config/youtube.yml",
         channels: list[YouTubeChannelConfig] | None = None,
+        client_config: YouTubeClientConfig | None = None,
     ):
         super().__init__("YouTube")
         self.config_path = self._resolve_config_path(config_path)
-        self.channels = channels or self._load_channels(self.config_path)
+
+        discovered_channels, discovered_client = self._load_config(self.config_path)
+
+        self.channels = channels or discovered_channels
+        self.client_config = client_config or discovered_client
         self.error_logger = create_error_logger("youtube_scraper")
+
+        cookies_path = self.client_config.resolved_cookies_path()
+        if cookies_path and cookies_path.exists():
+            self._cookiefile = str(cookies_path)
+        else:
+            if cookies_path and not cookies_path.exists():
+                logger.warning(
+                    "YouTube cookies file not found at %s; continuing without authenticated requests",
+                    cookies_path,
+                )
+            self._cookiefile = None
+
+        self._throttle_seconds = self.client_config.throttle_seconds
 
     def scrape(self) -> list[dict[str, Any]]:
         if not self.channels:
@@ -142,6 +214,52 @@ class YouTubeUnifiedScraper(BaseScraper):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _build_listing_opts(self, playlist_end: int) -> dict[str, Any]:
+        opts = self._build_ytdlp_options(self._LISTING_OPTS)
+        opts["playlistend"] = playlist_end
+        return opts
+
+    def _build_video_opts(self) -> dict[str, Any]:
+        return self._build_ytdlp_options(self._VIDEO_OPTS)
+
+    def _build_ytdlp_options(self, base_opts: dict[str, Any]) -> dict[str, Any]:
+        opts = {**base_opts}
+        if "http_headers" in base_opts:
+            opts["http_headers"] = dict(base_opts["http_headers"])
+
+        extractor_args = self._build_extractor_args()
+        if extractor_args:
+            opts["extractor_args"] = extractor_args
+
+        if self._cookiefile:
+            opts["cookiefile"] = self._cookiefile
+
+        return opts
+
+    def _build_extractor_args(self) -> dict[str, dict[str, list[str]]]:
+        extractor_args: dict[str, dict[str, list[str]]] = {
+            "youtube": {
+                "player_client": [self.client_config.player_client],
+                "player_skip": ["configs"],
+            }
+        }
+
+        provider = self.client_config.po_token_provider
+        if provider:
+            provider_key = f"youtubepot-{provider}"
+            provider_args: dict[str, list[str]] = {}
+            if self.client_config.po_token_base_url:
+                provider_args["base_url"] = [str(self.client_config.po_token_base_url)]
+            extractor_args[provider_key] = provider_args
+
+        return extractor_args
+
+    def _throttle_if_needed(self, iteration: int) -> None:
+        if iteration == 0:
+            return
+        if self._throttle_seconds > 0:
+            time.sleep(self._throttle_seconds)
+
     def _scrape_channel(self, channel: YouTubeChannelConfig) -> list[dict[str, Any]]:
         logger.info("Scraping YouTube channel %s", channel.name)
 
@@ -162,7 +280,7 @@ class YouTubeUnifiedScraper(BaseScraper):
         items: list[dict[str, Any]] = []
         seen_urls: set[str] = set()
 
-        for entry in entries:
+        for idx, entry in enumerate(entries):
             if len(items) >= channel.limit:
                 break
 
@@ -174,7 +292,8 @@ class YouTubeUnifiedScraper(BaseScraper):
 
             if video_info is None:
                 try:
-                    video_info = self._extract_video_info(video_url)
+                    self._throttle_if_needed(idx)
+                video_info = self._extract_video_info(video_url)
                 except Exception as exc:  # pragma: no cover - yt-dlp errors hard to replicate
                     self.error_logger.log_error(
                         error=exc,
@@ -203,7 +322,7 @@ class YouTubeUnifiedScraper(BaseScraper):
         logger.debug("Fetching channel listing for %s", channel.target_url)
         if yt_dlp is None:  # pragma: no cover - runtime safeguard when dependency missing
             raise RuntimeError("yt-dlp is required to run the YouTube scraper")
-        listing_opts = {**self._LISTING_OPTS, "playlistend": channel.limit}
+        listing_opts = self._build_listing_opts(channel.limit)
         with yt_dlp.YoutubeDL(listing_opts) as ydl:
             info = ydl.extract_info(channel.target_url, download=False)
 
@@ -221,7 +340,7 @@ class YouTubeUnifiedScraper(BaseScraper):
     def _extract_video_info(self, video_url: str) -> dict[str, Any]:
         if yt_dlp is None:  # pragma: no cover - runtime safeguard when dependency missing
             raise RuntimeError("yt-dlp is required to run the YouTube scraper")
-        with yt_dlp.YoutubeDL(self._VIDEO_OPTS) as ydl:
+        with yt_dlp.YoutubeDL(self._build_video_opts()) as ydl:
             return ydl.extract_info(video_url, download=False)
 
     def _passes_filters(
@@ -325,17 +444,26 @@ class YouTubeUnifiedScraper(BaseScraper):
         return PROJECT_ROOT / provided
 
     @classmethod
-    def _load_channels(cls, config_path: Path) -> list[YouTubeChannelConfig]:
+    def _load_config(
+        cls, config_path: Path
+    ) -> tuple[list[YouTubeChannelConfig], YouTubeClientConfig]:
         if not config_path.exists():
             logger.warning("YouTube config file not found at %s", config_path)
-            return []
+            return [], YouTubeClientConfig()
 
         try:
             with open(config_path, "r", encoding="utf-8") as fh:
                 raw_config = yaml.safe_load(fh) or {}
         except Exception as exc:
             logger.error("Failed to read YouTube config %s: %s", config_path, exc)
-            return []
+            return [], YouTubeClientConfig()
+
+        client_section = raw_config.get("client") or {}
+        try:
+            client_config = YouTubeClientConfig.model_validate(client_section)
+        except ValidationError as exc:
+            logger.error("Invalid YouTube client config: %s", exc)
+            client_config = YouTubeClientConfig()
 
         channel_entries = raw_config.get("channels", [])
         channels: list[YouTubeChannelConfig] = []
@@ -347,6 +475,11 @@ class YouTubeUnifiedScraper(BaseScraper):
             except ValidationError as exc:
                 logger.error("Invalid YouTube channel config %s: %s", entry, exc)
 
+        return channels, client_config
+
+    @classmethod
+    def _load_channels(cls, config_path: Path) -> list[YouTubeChannelConfig]:
+        channels, _ = cls._load_config(config_path)
         return channels
 
     @staticmethod

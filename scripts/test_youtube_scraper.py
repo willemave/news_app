@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.logging import setup_logging  # noqa: E402
 from app.scraping.youtube_unified import (  # noqa: E402
     YouTubeChannelConfig,
+    YouTubeClientConfig,
     YouTubeUnifiedScraper,
 )
 
@@ -43,6 +44,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--throttle-seconds",
+        type=float,
+        default=YouTubeClientConfig().throttle_seconds,
+        help="Delay in seconds between video metadata fetches",
+    )
     return parser.parse_args()
 
 
@@ -61,7 +68,10 @@ def main() -> int:
         language=args.language,
     )
 
-    scraper = YouTubeUnifiedScraper(channels=[channel_config])
+    scraper = YouTubeUnifiedScraper(
+        channels=[channel_config],
+        client_config=YouTubeClientConfig(throttle_seconds=args.throttle_seconds),
+    )
 
     if args.persist:
         stats = scraper.run_with_stats()

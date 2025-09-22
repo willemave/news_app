@@ -309,6 +309,7 @@
 * **Implemented**: RESTful API with OpenAPI documentation
 * **Implemented**: Full markdown content storage for articles
 * **Implemented**: Twitter scraper using Playwright to intercept GraphQL API calls for list aggregation
+* **Implemented**: Standard logging for favorites/unlikes services using module loggers instead of prefixed print statements
 
 ## Container Build & Deployment
 

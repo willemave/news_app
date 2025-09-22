@@ -1,5 +1,6 @@
 """Repository for content unlikes operations."""
 
+import logging
 from datetime import datetime
 
 from sqlalchemy import delete, select
@@ -9,13 +10,16 @@ from sqlalchemy.orm import Session
 from app.models.schema import ContentUnlikes
 
 
+logger = logging.getLogger(__name__)
+
+
 def toggle_unlike(db: Session, content_id: int) -> tuple[bool, ContentUnlikes | None]:
     """Toggle unlike status for content (single user app, no session needed).
     
     Returns:
         Tuple of (is_unliked, unlike_record)
     """
-    print(f"[UNLIKES] Toggling unlike for content_id={content_id}")
+    logger.debug("Toggling unlike for content_id=%s", content_id)
     try:
         # Check if already unliked
         existing = db.execute(
@@ -24,13 +28,13 @@ def toggle_unlike(db: Session, content_id: int) -> tuple[bool, ContentUnlikes | 
 
         if existing:
             # Remove from unlikes
-            print("[UNLIKES] Content already unliked, removing from unlikes")
+            logger.debug("Content already unliked; removing content_id=%s", content_id)
             db.delete(existing)
             db.commit()
             return (False, None)
 
         # Add to unlikes
-        print("[UNLIKES] Adding content to unlikes")
+        logger.debug("Adding content_id=%s to unlikes", content_id)
         unlike = ContentUnlikes(
             session_id="default",  # Single user, use default session
             content_id=content_id,
@@ -39,41 +43,41 @@ def toggle_unlike(db: Session, content_id: int) -> tuple[bool, ContentUnlikes | 
         db.add(unlike)
         db.commit()
         db.refresh(unlike)
-        print(f"[UNLIKES] Successfully added to unlikes with id={unlike.id}")
+        logger.debug("Successfully added content_id=%s to unlikes with id=%s", content_id, unlike.id)
         return (True, unlike)
-    except IntegrityError as e:
-        print(f"[UNLIKES] IntegrityError: {e}")
+    except IntegrityError:
+        logger.exception("Integrity error toggling unlike for content_id=%s", content_id)
         db.rollback()
         return (False, None)
-    except Exception as e:
-        print(f"[UNLIKES] Unexpected error: {e}")
+    except Exception:
+        logger.exception("Unexpected error toggling unlike for content_id=%s", content_id)
         db.rollback()
         return (False, None)
 
 
 def remove_unlike(db: Session, content_id: int) -> bool:
     """Remove content from unlikes."""
-    print(f"[UNLIKES] Removing content_id={content_id} from unlikes")
+    logger.debug("Removing content_id=%s from unlikes", content_id)
     try:
         result = db.execute(
             delete(ContentUnlikes).where(ContentUnlikes.content_id == content_id)
         )
         db.commit()
         deleted = result.rowcount > 0
-        print(f"[UNLIKES] Removed from unlikes: {deleted}")
+        logger.debug("Removed content_id=%s from unlikes=%s", content_id, deleted)
         return deleted
-    except Exception as e:
-        print(f"[UNLIKES] Error removing from unlikes: {e}")
+    except Exception:
+        logger.exception("Error removing content_id=%s from unlikes", content_id)
         db.rollback()
         return False
 
 
 def get_unliked_content_ids(db: Session) -> list[int]:
     """Get all content IDs that have been unliked."""
-    print("[UNLIKES] Getting all unliked content IDs")
+    logger.debug("Fetching all unliked content IDs")
     result = db.execute(select(ContentUnlikes.content_id).distinct()).scalars().all()
     content_ids = list(result)
-    print(f"[UNLIKES] Found {len(content_ids)} unliked content IDs: {content_ids}")
+    logger.debug("Found %s unliked content IDs", len(content_ids))
     return content_ids
 
 
@@ -90,4 +94,3 @@ def clear_unlikes(db: Session, session_id: str = "default") -> int:
     result = db.execute(delete(ContentUnlikes).where(ContentUnlikes.session_id == session_id))
     db.commit()
     return result.rowcount
-

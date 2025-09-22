@@ -37,6 +37,13 @@ We've successfully integrated YouTube video processing into the news app, treati
 ### config/youtube.yml
 
 ```yaml
+client:
+  cookies_path: "secrets/youtube_cookies.txt"  # netscape cookie file exported from Firefox/Chrome
+  po_token_provider: "bgutilhttp"              # set to null to disable until provider is running
+  po_token_base_url: "http://127.0.0.1:4416"   # bgutil provider HTTP endpoint
+  throttle_seconds: 6                           # sleep between metadata fetches
+  player_client: "mweb"                        # YouTube player client hint
+
 channels:
   - name: "Lex Fridman Podcast"
     channel_id: "UCgxzjK6GuOHVKR_08TT4hJQ"
@@ -62,6 +69,16 @@ channels:
 | `limit` | Maximum videos ingested per run (default 10, max 50) |
 | `max_age_days` | Skip videos older than the threshold (`0` disables filtering) |
 | `language` | Preferred transcript language hint propagated to metadata |
+
+**Client block**
+
+| Field | Description |
+| --- | --- |
+| `cookies_path` | Optional path to a Netscape-format cookie jar authenticated against the target channels |
+| `po_token_provider` | Proof-of-origin provider slug. Supported: `bgutilhttp`, `webpoclient` (or `null` to disable) |
+| `po_token_base_url` | Override endpoint for the HTTP provider (default `http://127.0.0.1:4416`) |
+| `throttle_seconds` | Adds a delay between per-video metadata fetches to soften BotGuard scoring |
+| `player_client` | Player client hint forwarded to yt-dlp (`mweb` recommended for PO flow) |
 
 ## Metadata Fields
 
@@ -122,9 +139,32 @@ YouTube URLs are automatically detected and processed when:
 
 1. **No transcript available**: Some videos don't have captions. The system will use the video description instead.
 
-2. **Rate limiting**: YouTube may rate limit requests. Consider adding delays between requests.
+2. **Rate limiting / BotGuard**: If you see `HTTP Error 403: Forbidden` with `fragment 1 not found`, confirm the PO token provider is running and reachable at `po_token_base_url`.
 
 3. **Private/deleted videos**: These will be skipped automatically.
+
+### Proof-of-Origin (PO) token provider
+
+1. Install the yt-dlp plugin `bgutil-ytdlp-pot-provider` via `uv pip install bgutil-ytdlp-pot-provider` (already listed in `pyproject.toml`).
+2. Run the provider HTTP service locally. The quickest path is Docker:
+
+   ```bash
+   docker run --name bgutil-provider -d -p 4416:4416 --init brainicism/bgutil-ytdlp-pot-provider
+   ```
+
+   The service exposes `http://127.0.0.1:4416` by default; adjust `po_token_base_url` if you map a custom port.
+
+3. Alternatively, run the Node.js server natively (requires Node 18+):
+
+   ```bash
+   git clone --single-branch --branch 1.2.2 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git
+   cd bgutil-ytdlp-pot-provider/server/
+   yarn install --frozen-lockfile
+   npx tsc
+   node build/main.js --port 4416
+   ```
+
+4. Verify integration with `yt-dlp -v https://www.youtube.com/watch?v=...` and ensure the debug log shows `PO Token Providers: bgutil:http-…`.
 
 ### Debug Commands
 
