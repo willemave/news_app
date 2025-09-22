@@ -10,9 +10,23 @@
 #   max_age_days  - Skip videos older than this many days (default 30)
 #   language      - Preferred transcript language hint (optional)
 
+# Global client/auth configuration
+#
+# cookies_path         - Optional path to an exported YouTube cookies.txt file (netscape format)
+# po_token_provider    - Provider id for yt-dlp's PoToken integration (bgutilhttp, webpoclient, none)
+# po_token_base_url    - Base URL for the PoToken provider API (required when provider set)
+# throttle_seconds     - Delay between successive video metadata fetches (float seconds)
+# player_client        - YouTube player client hint passed to yt-dlp (defaults to mweb)
+
+client:
+  cookies_path: "secrets/youtube_cookies.txt"
+  po_token_provider: "bgutilhttp"
+  po_token_base_url: "http://127.0.0.1:4416"
+  throttle_seconds: 6
+  player_client: "mweb"
+
 channels:
-  - name: "Sample Channel"
-    url: "https://www.youtube.com/@YouTubeCreators"
-    limit: 3
+  - name: "AI Explained"
+    url: "https://www.youtube.com/channel/UCNJ1Ymd5yFuUPtn21xtRbbw"
+    limit: 5
     max_age_days: 30
-    language: "en"

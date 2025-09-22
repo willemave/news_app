@@ -7,11 +7,13 @@ try:  # Python 3.11+
 except ImportError:  # pragma: no cover
     UTC = timezone.utc  # type: ignore[assignment]
 from pathlib import Path
+import textwrap
 
 import pytest
 
 from app.scraping.youtube_unified import (
     YouTubeChannelConfig,
+    YouTubeClientConfig,
     YouTubeUnifiedScraper,
     load_youtube_channels,
 )
@@ -78,7 +80,10 @@ def test_scrape_returns_items(mocker, tmp_path: Path) -> None:
         },
     )
 
-    scraper = YouTubeUnifiedScraper(channels=[channel])
+    scraper = YouTubeUnifiedScraper(
+        channels=[channel],
+        client_config=YouTubeClientConfig(throttle_seconds=0),
+    )
 
     items = scraper.scrape()
 
@@ -122,11 +127,45 @@ def test_scrape_respects_max_age(mocker) -> None:
         max_age_days=30,
     )
 
-    scraper = YouTubeUnifiedScraper(channels=[channel])
+    scraper = YouTubeUnifiedScraper(
+        channels=[channel],
+        client_config=YouTubeClientConfig(throttle_seconds=0),
+    )
     items = scraper.scrape()
 
     assert len(items) == 1
     assert items[0]["metadata"]["video_id"] == "recent"
+
+
+def test_client_config_resolution(tmp_path: Path) -> None:
+    cookies = tmp_path / "cookies.txt"
+    cookies.write_text("# Netscape HTTP Cookie File", encoding="utf-8")
+
+    config = textwrap.dedent(
+        f"""
+        client:
+          cookies_path: "{cookies}"
+          po_token_provider: "bgutilhttp"
+          po_token_base_url: "http://127.0.0.1:4416"
+          throttle_seconds: 0
+          player_client: "mweb"
+
+        channels:
+          - name: "Example"
+            channel_id: "UC123"
+        """
+    )
+
+    config_path = write_config(tmp_path, config)
+
+    scraper = YouTubeUnifiedScraper(config_path=config_path)
+
+    assert scraper.client_config.po_token_provider == "bgutilhttp"
+    assert scraper.client_config.throttle_seconds == 0
+    assert scraper._cookiefile == str(cookies)
+    extractor_args = scraper._build_extractor_args()
+    assert extractor_args["youtube"]["player_client"] == ["mweb"]
+    assert "youtubepot-bgutilhttp" in extractor_args
 
 
 def test_missing_config_returns_empty(tmp_path: Path) -> None:

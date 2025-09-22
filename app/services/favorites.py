@@ -1,5 +1,6 @@
 """Repository for content favorites operations."""
 
+import logging
 from datetime import datetime
 
 from sqlalchemy import delete, select
@@ -9,13 +10,16 @@ from sqlalchemy.orm import Session
 from app.models.schema import ContentFavorites
 
 
+logger = logging.getLogger(__name__)
+
+
 def toggle_favorite(db: Session, content_id: int) -> tuple[bool, ContentFavorites | None]:
     """Toggle favorite status for content (single user app, no session needed).
     
     Returns:
         Tuple of (is_favorited, favorite_record)
     """
-    print(f"[FAVORITES] Toggling favorite for content_id={content_id}")
+    logger.debug("Toggling favorite for content_id=%s", content_id)
     try:
         # Check if already favorited
         existing = db.execute(
@@ -24,13 +28,13 @@ def toggle_favorite(db: Session, content_id: int) -> tuple[bool, ContentFavorite
 
         if existing:
             # Remove from favorites
-            print("[FAVORITES] Content already favorited, removing from favorites")
+            logger.debug("Content already favorited; removing content_id=%s", content_id)
             db.delete(existing)
             db.commit()
             return (False, None)
 
         # Add to favorites
-        print("[FAVORITES] Adding content to favorites")
+        logger.debug("Adding content_id=%s to favorites", content_id)
         favorite = ContentFavorites(
             session_id="default",  # Single user, use default session
             content_id=content_id,
@@ -39,21 +43,21 @@ def toggle_favorite(db: Session, content_id: int) -> tuple[bool, ContentFavorite
         db.add(favorite)
         db.commit()
         db.refresh(favorite)
-        print(f"[FAVORITES] Successfully added to favorites with id={favorite.id}")
+        logger.debug("Successfully added content_id=%s to favorites with id=%s", content_id, favorite.id)
         return (True, favorite)
-    except IntegrityError as e:
-        print(f"[FAVORITES] IntegrityError: {e}")
+    except IntegrityError:
+        logger.exception("Integrity error toggling favorite for content_id=%s", content_id)
         db.rollback()
         return (False, None)
-    except Exception as e:
-        print(f"[FAVORITES] Unexpected error: {e}")
+    except Exception:
+        logger.exception("Unexpected error toggling favorite for content_id=%s", content_id)
         db.rollback()
         return (False, None)
 
 
 def add_favorite(db: Session, content_id: int) -> ContentFavorites | None:
     """Add content to favorites."""
-    print(f"[FAVORITES] Adding content_id={content_id} to favorites")
+    logger.debug("Adding content_id=%s to favorites", content_id)
     try:
         # Check if already favorited
         existing = db.execute(
@@ -61,7 +65,7 @@ def add_favorite(db: Session, content_id: int) -> ContentFavorites | None:
         ).scalar_one_or_none()
 
         if existing:
-            print("[FAVORITES] Content already in favorites")
+            logger.debug("Content already in favorites; content_id=%s", content_id)
             return existing
 
         # Add to favorites
@@ -73,37 +77,37 @@ def add_favorite(db: Session, content_id: int) -> ContentFavorites | None:
         db.add(favorite)
         db.commit()
         db.refresh(favorite)
-        print(f"[FAVORITES] Successfully added to favorites with id={favorite.id}")
+        logger.debug("Successfully added content_id=%s to favorites with id=%s", content_id, favorite.id)
         return favorite
-    except Exception as e:
-        print(f"[FAVORITES] Error adding to favorites: {e}")
+    except Exception:
+        logger.exception("Error adding content_id=%s to favorites", content_id)
         db.rollback()
         return None
 
 
 def remove_favorite(db: Session, content_id: int) -> bool:
     """Remove content from favorites."""
-    print(f"[FAVORITES] Removing content_id={content_id} from favorites")
+    logger.debug("Removing content_id=%s from favorites", content_id)
     try:
         result = db.execute(
             delete(ContentFavorites).where(ContentFavorites.content_id == content_id)
         )
         db.commit()
         deleted = result.rowcount > 0
-        print(f"[FAVORITES] Removed from favorites: {deleted}")
+        logger.debug("Removed content_id=%s from favorites=%s", content_id, deleted)
         return deleted
-    except Exception as e:
-        print(f"[FAVORITES] Error removing from favorites: {e}")
+    except Exception:
+        logger.exception("Error removing content_id=%s from favorites", content_id)
         db.rollback()
         return False
 
 
 def get_favorite_content_ids(db: Session) -> list[int]:
     """Get all content IDs that have been favorited."""
-    print("[FAVORITES] Getting all favorited content IDs")
+    logger.debug("Fetching all favorited content IDs")
     result = db.execute(select(ContentFavorites.content_id).distinct()).scalars().all()
     content_ids = list(result)
-    print(f"[FAVORITES] Found {len(content_ids)} favorited content IDs: {content_ids}")
+    logger.debug("Found %s favorited content IDs", len(content_ids))
     return content_ids
 
 

@@ -155,6 +155,15 @@ wheels = [
 ]
 
 [[package]]
+name = "bgutil-ytdlp-pot-provider"
+version = "1.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/eb/2b/6ee7ce5eb7ec148ad43603f9ed6875c65f93668e62e41f3faae2abeeadca/bgutil_ytdlp_pot_provider-1.2.2.tar.gz", hash = "sha256:f597d7f453a3ceee24251405a5d769e1e3f31f39d5760670f273630fddae417e", size = 9372 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/68/665246c0469147cc431fcd6450ef03873de644c8d1510c25b1dfa80ce8ec/bgutil_ytdlp_pot_provider-1.2.2-py3-none-any.whl", hash = "sha256:f2ff0f340e36503f24119192c7dfa1c1957f37520e78764a3cdf3d99db46633a", size = 9983 },
+]
+
+[[package]]
 name = "brotli"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1042,6 +1051,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "bgutil-ytdlp-pot-provider" },
     { name = "crawl4ai" },
     { name = "fastapi" },
     { name = "feedparser" },
@@ -1080,6 +1090,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.16.1" },
+    { name = "bgutil-ytdlp-pot-provider", specifier = ">=1.2.2" },
     { name = "crawl4ai", specifier = ">=0.7.4,<0.8" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "feedparser", specifier = ">=6.0.11" },
@@ -1103,7 +1114,7 @@ requires-dist = [
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "torch", specifier = ">=2.8.0" },
     { name = "uvicorn", specifier = ">=0.34.2" },
-    { name = "yt-dlp", specifier = ">=2025.6.30" },
+    { name = "yt-dlp", git = "https://github.com/yt-dlp/yt-dlp.git" },
 ]
 
 [package.metadata.requires-dev]
@@ -2339,12 +2350,8 @@ wheels = [
 
 [[package]]
 name = "yt-dlp"
-version = "2025.6.30"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/23/9c/ff64c2fed7909f43a9a0aedb7395c65404e71c2439198764685a6e3b3059/yt_dlp-2025.6.30.tar.gz", hash = "sha256:6d0ae855c0a55bfcc28dffba804ec8525b9b955d34a41191a1561a4cec03d8bd", size = 3034364 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/41/2f048ae3f6d0fa2e59223f08ba5049dbcdac628b0a9f9deac722dd9260a5/yt_dlp-2025.6.30-py3-none-any.whl", hash = "sha256:541becc29ed7b7b3a08751c0a66da4b7f8ee95cb81066221c78e83598bc3d1f3", size = 3279333 },
-]
+version = "2025.9.5"
+source = { git = "https://github.com/yt-dlp/yt-dlp.git#bf5d18016b03a3f2fd5d3494d9efe85d3f8beeac" }
 
 [[package]]
 name = "zipp"
