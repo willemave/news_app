@@ -12,8 +12,8 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
-from app.services.whisper_local import get_whisper_local_service
 from app.services.queue import TaskType, get_queue_service
+from app.services.whisper_local import get_whisper_local_service
 from app.utils.error_logger import create_error_logger
 
 # Resolve project root (two levels up from this file: app/ → project root)

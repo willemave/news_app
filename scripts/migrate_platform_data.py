@@ -19,7 +19,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.models.schema import Base, Content
+from app.models.schema import Content
 
 logger = get_logger(__name__)
 settings = get_settings()

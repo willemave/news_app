@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import Boolean, JSON, Column, DateTime, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import validates
 
@@ -189,8 +189,10 @@ class EventLog(Base):
     __tablename__ = "event_logs"
     
     id = Column(Integer, primary_key=True)
-    event_type = Column(String(50), nullable=False, index=True)  # 'scraper_run', 'processing_batch', 'error', 'cleanup', etc.
-    event_name = Column(String(100), nullable=True, index=True)  # 'hackernews_scraper', 'pdf_processor', etc.
+    # Examples: 'scraper_run', 'processing_batch', 'error', 'cleanup'
+    event_type = Column(String(50), nullable=False, index=True)
+    # Examples: 'hackernews_scraper', 'pdf_processor'
+    event_name = Column(String(100), nullable=True, index=True)
     status = Column(String(20), nullable=True, index=True)  # 'started', 'completed', 'failed'
     
     # All data stored in one JSON field - completely flexible

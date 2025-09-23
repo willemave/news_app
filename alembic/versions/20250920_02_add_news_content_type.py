@@ -1,10 +1,10 @@
 """Add news content type support."""
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.engine import Connection
 
+from alembic import op
 
 revision = "20250920_02"
 down_revision = "20250910_01"

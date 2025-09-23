@@ -1,10 +1,10 @@
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 
-from app.scraping.podcast_unified import PodcastUnifiedScraper
-from app.models.schema import Content, ContentStatus
+import pytest
+
 from app.models.metadata import ContentType
+from app.models.schema import Content, ContentStatus
+from app.scraping.podcast_unified import PodcastUnifiedScraper
 from app.services.queue import TaskType
 
 

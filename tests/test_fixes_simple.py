@@ -2,8 +2,9 @@
 Test simple fixes that don't require external dependencies.
 Tests core functionality like URL patterns, model validation, and enum values.
 """
-import pytest
 import re
+
+import pytest
 
 from app.domain.summary import ArticleSummary
 from app.models.schema import ContentStatus

@@ -1,13 +1,13 @@
-import pytest
-import feedparser
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
-from datetime import datetime
+from unittest.mock import MagicMock, mock_open, patch
 
+import feedparser
+import pytest
+
+from app.models.metadata import ContentType
+from app.models.schema import Content, ContentStatus
 from app.scraping import substack_unified
 from app.scraping.substack_unified import SubstackScraper, load_substack_feeds
-from app.models.schema import Content, ContentStatus
-from app.models.metadata import ContentType
 
 # Sample YAML content
 SAMPLE_YAML = """

@@ -3,8 +3,8 @@
 Script to test OpenAI structured summary generation directly with mocked data.
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 
 # Add project root to path

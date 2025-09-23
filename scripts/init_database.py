@@ -14,9 +14,9 @@ sys.path.insert(0, str(project_root))
 
 from sqlalchemy import create_engine, text
 
-from app.core.settings import get_settings
-from app.models.schema import Base, Content, ProcessingTask
 from app.core.logging import get_logger
+from app.core.settings import get_settings
+from app.models.schema import Base
 
 logger = get_logger(__name__)
 

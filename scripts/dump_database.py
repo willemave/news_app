@@ -3,25 +3,24 @@
 Script to dump and pretty-print database state.
 """
 
-import sys
 import json
-from pathlib import Path
+import sys
 from datetime import datetime
-from typing import List, Dict, Any
+from pathlib import Path
+from typing import Any
 
 # Add the parent directory to the path so we can import from app
 sys.path.append(str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
 from rich.json import JSON
-from rich.columns import Columns
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from app.core.db import get_db
-from app.models.schema import Content, ProcessingTask
 from app.models.metadata import ContentStatus, ContentType
+from app.models.schema import Content, ProcessingTask
 
 
 def truncate_text(text: str, max_length: int = 50) -> str:
@@ -31,7 +30,7 @@ def truncate_text(text: str, max_length: int = 50) -> str:
     return text[:max_length] + "..." if len(text) > max_length else text
 
 
-def format_json_field(data: Dict[Any, Any], max_length: int = 100) -> str:
+def format_json_field(data: dict[Any, Any], max_length: int = 100) -> str:
     """Format JSON field for table display."""
     if not data:
         return ""

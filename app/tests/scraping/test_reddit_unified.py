@@ -8,7 +8,7 @@ from app.scraping.reddit_unified import REDDIT_USER_AGENT, RedditUnifiedScraper
 
 
 @pytest.fixture
-def mock_httpx_client(mocker: MockerFixture) -> Generator[Any, None, None]:
+def mock_httpx_client(mocker: MockerFixture) -> Generator[Any]:
     """Patch httpx.Client context manager to capture request arguments."""
     mock_client_instance = mocker.Mock()
     mock_response = mocker.Mock()

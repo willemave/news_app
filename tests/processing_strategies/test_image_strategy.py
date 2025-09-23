@@ -1,12 +1,13 @@
 """
 Tests for the ImageProcessorStrategy.
 """
-import pytest
 from unittest.mock import Mock
-import httpx
 
-from app.processing_strategies.image_strategy import ImageProcessorStrategy
+import httpx
+import pytest
+
 from app.http_client.robust_http_client import RobustHttpClient
+from app.processing_strategies.image_strategy import ImageProcessorStrategy
 
 
 class TestImageProcessorStrategy:

@@ -56,10 +56,10 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             return "web"
 
     def _map_platform(self, source: str, url: str) -> str | None:
-        """Map a high-level platform from the detected source/URL.
+        """Map platform from the detected source or URL.
 
-        Keeps platform taxonomy consistent with scrapers (substack, medium, arxiv, pubmed, youtube, etc.).
-        Returns None for generic web.
+        Keeps platform taxonomy consistent with scrapers (substack, medium,
+        arxiv, pubmed, youtube, etc.). Returns None for generic web.
         """
         s = (source or "").lower()
         if s == "substack":
@@ -87,15 +87,20 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         if pubmed_match:
             pmid = pubmed_match.group(1)
             pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/pmid/{pmid}/"
-            logger.debug(f"HtmlStrategy: Transforming PubMed URL {url} to PMC URL {pmc_url}")
+            logger.debug(
+                "HtmlStrategy: Transforming PubMed URL %s to PMC URL %s", url, pmc_url
+            )
             return pmc_url
 
         # Handle ArXiv URLs - transform abstract to PDF
         if "arxiv.org/abs/" in url:
-            logger.debug(f"HtmlStrategy: Transforming arXiv URL {url}")
+            logger.debug("HtmlStrategy: Transforming arXiv URL %s", url)
             return url.replace("/abs/", "/pdf/")
 
-        logger.debug(f"HtmlStrategy: preprocess_url called for {url}, no transformation applied.")
+        logger.debug(
+            "HtmlStrategy: preprocess_url called for %s, no transformation applied.",
+            url,
+        )
         return url
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
@@ -106,7 +111,11 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         if response_headers:
             content_type = response_headers.get("content-type", "").lower()
             if "text/html" in content_type:
-                logger.debug(f"HtmlStrategy can handle {url} based on Content-Type: {content_type}")
+                logger.debug(
+                    "HtmlStrategy can handle %s based on Content-Type: %s",
+                    url,
+                    content_type,
+                )
                 return True
 
         # Fallback: check URL pattern if no headers (e.g. direct call without HEAD)
@@ -432,6 +441,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
         except Exception as e:
             import traceback
+
             from app.services.http import NonRetryableError
 
             error_msg = f"Content extraction failed for {url}: {str(e)}"
@@ -450,16 +460,29 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                     "traceback": traceback_str,
                 },
             )
-            logger.error(f"HtmlStrategy: {error_msg}\nTraceback: {traceback_str}")
+            logger.error(
+                "HtmlStrategy: %s\nTraceback: %s",
+                error_msg,
+                traceback_str,
+            )
             
             # Check if this is a non-retryable error
             error_str = str(e).lower()
-            if any(term in error_str for term in [
-                "403", "401", "404", "blocked", "forbidden", 
-                "access denied", "not found", "paywall"
-            ]):
+            non_retryable_terms = [
+                "403",
+                "401",
+                "404",
+                "blocked",
+                "forbidden",
+                "access denied",
+                "not found",
+                "paywall",
+            ]
+            if any(term in error_str for term in non_retryable_terms):
                 # Raise NonRetryableError to prevent infinite retries
-                raise NonRetryableError(f"Non-retryable error: {error_msg}")
+                raise NonRetryableError(
+                    f"Non-retryable error: {error_msg}"
+                ) from e
             
             # For other errors, return a minimal response to allow processing to continue
             # with fallback content

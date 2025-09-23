@@ -4,14 +4,13 @@ Migration script to consolidate full_markdown into StructuredSummary.
 Moves full_markdown from metadata root level into summary.full_markdown.
 """
 
-import json
 import sys
 from pathlib import Path
 
 # Add the parent directory to the path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -99,7 +98,7 @@ def migrate_full_markdown():
                 error_count += 1
                 db.rollback()
         
-        print(f"\nMigration complete:")
+        print("\nMigration complete:")
         print(f"  Migrated: {migrated_count}")
         print(f"  Skipped: {skipped_count}")
         print(f"  Errors: {error_count}")

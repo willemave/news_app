@@ -1,12 +1,10 @@
-import os
 import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.openai_llm import OpenAITranscriptionService, MAX_FILE_SIZE_BYTES, CHUNK_DURATION_SECONDS
+from app.services.openai_llm import MAX_FILE_SIZE_BYTES, OpenAITranscriptionService
 
 
 class TestOpenAITranscriptionService:

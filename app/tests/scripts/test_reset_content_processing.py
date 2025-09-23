@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Generator
 from datetime import datetime, timedelta
-from typing import Generator
 
 import pytest
 from sqlalchemy import create_engine
@@ -23,7 +23,7 @@ SUMMARY_POINTS = [
 
 
 @pytest.fixture()
-def session_factory(tmp_path, monkeypatch) -> Generator[sessionmaker, None, None]:
+def session_factory(tmp_path, monkeypatch) -> Generator[sessionmaker]:
     """Provide an isolated SQLite database session factory for each test."""
 
     db_path = tmp_path / "reset_content.sqlite"

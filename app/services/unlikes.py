@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.models.schema import ContentUnlikes
 
-
 logger = logging.getLogger(__name__)
 
 

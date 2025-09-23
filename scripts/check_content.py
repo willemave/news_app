@@ -27,7 +27,7 @@ with get_db_session() as db:
         for content in db.query(Content).limit(20):
             if content.content_metadata and "publication_date" in content.content_metadata:
                 contents_with_meta_pub_date += 1
-                print(f"\nContent with metadata publication_date:")
+                print("\nContent with metadata publication_date:")
                 print(f"  ID: {content.id}")
                 print(f"  Title: {content.title[:50]}...")
                 print(f"  Created at: {content.created_at}")

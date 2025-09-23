@@ -51,12 +51,17 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         if match:
             paper_id = match.group(1)
             pdf_url = self.arxiv_pdf_template.format(paper_id=paper_id)
-            logger.info(f"ArxivStrategy: Converted arXiv abstract URL {url} to PDF URL {pdf_url}")
+            logger.info(
+                "ArxivStrategy: Converted arXiv abstract URL %s to PDF URL %s",
+                url,
+                pdf_url,
+            )
             return pdf_url
         # This case should ideally not be reached if can_handle_url was true,
         # but serves as a safeguard.
         logger.warning(
-            f"ArxivStrategy: preprocess_url called with non-matching URL {url}, returning unchanged."
+            "ArxivStrategy: preprocess_url called with non-matching URL %s; returning unchanged.",
+            url,
         )
         return url
 
@@ -79,7 +84,9 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         Prepares PDF data for LLM processing.
         No local text extraction - the LLM will handle everything from the PDF bytes.
         """
-        logger.info(f"ArxivStrategy: Preparing PDF data for LLM processing for URL: {url}")
+        logger.info(
+            "ArxivStrategy: Preparing PDF data for LLM processing for URL: %s", url
+        )
 
         if not content:
             logger.warning(f"ArxivStrategy: No PDF content provided for {url}")
@@ -98,7 +105,9 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
             filename += ".pdf"
 
         logger.info(
-            f"ArxivStrategy: Successfully prepared PDF data for {url}. Fallback title: {filename}"
+            "ArxivStrategy: Successfully prepared PDF data for %s. Fallback title: %s",
+            url,
+            filename,
         )
         return {
             "title": filename,  # Fallback title - LLM will extract the real title
@@ -113,14 +122,16 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
     def prepare_for_llm(self, extracted_data: dict[str, Any]) -> dict[str, Any]:
         """
         Prepares PDF data for LLM processing.
-        Passes raw PDF bytes directly to the LLM for all processing (title extraction, summarization).
+        Passes raw PDF bytes directly to the LLM for title extraction and summarization.
         """
         final_url = extracted_data.get("final_url_after_redirects", "Unknown URL")
-        logger.info(f"ArxivStrategy: Preparing PDF data for LLM for URL: {final_url}")
+        logger.info("ArxivStrategy: Preparing PDF data for LLM for URL: %s", final_url)
         pdf_bytes = extracted_data.get("pdf_bytes")
 
         if pdf_bytes is None:
-            logger.error(f"ArxivStrategy: PDF bytes not found in extracted_data for {final_url}")
+            logger.error(
+                "ArxivStrategy: PDF bytes not found in extracted_data for %s", final_url
+            )
             return {
                 "content_to_filter": None,  # PDFs skip text-based filtering
                 "content_to_summarize": b"",  # Empty bytes as fallback
@@ -139,6 +150,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         way as HTML, so an empty list is returned.
         """
         logger.info(
-            f"ArxivStrategy: extract_internal_urls called for {original_url} (PDF). Returning empty list."
+            "ArxivStrategy: extract_internal_urls called for %s (PDF). Returning empty list.",
+            original_url,
         )
         return []

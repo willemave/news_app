@@ -3,9 +3,8 @@ from datetime import datetime, timedelta
 try:  # Python 3.11+
     from datetime import UTC
 except ImportError:  # Fallback for Python 3.10
-    from datetime import timezone
 
-    UTC = timezone.utc
+    UTC = UTC
 from enum import Enum
 from typing import Any
 

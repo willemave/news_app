@@ -1,7 +1,7 @@
-import pytest
 from datetime import datetime
+
+from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ProcessingTask
-from app.models.metadata import ContentType, ContentStatus
 
 
 class TestContentModel:

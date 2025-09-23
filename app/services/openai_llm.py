@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO, Type
 
 from openai import OpenAI, OpenAIError
 from pydantic import ValidationError
@@ -14,6 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import NewsSummary, StructuredSummary
+from app.utils.json_repair import strip_json_wrappers, try_repair_truncated_json
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -514,6 +515,7 @@ def generate_summary_prompt(
         
         Important:
         - Generate a descriptive title that describes the article in detail.
+        - There may be technical terms in the content, please don't make any spelling errors.
         - Use the <title_examples> to see how to format the title. 
         - Extract actual quotes from both the article and notable comments
         - Make bullet points capture insights from BOTH content and discussion
@@ -555,6 +557,7 @@ def generate_summary_prompt(
 
         Guidelines:
         - Focus on why the story matters, not just what happened.
+        - There may be technical terms in the content, please don't make any spelling errors.
         - Keep each key point self-contained, concrete, and free of markdown or numbering.
         - Prefer action verbs, quantitative figures, and clear implications.
         - If the content is low-value or promotional, set classification to "skip" but still
@@ -573,6 +576,7 @@ def generate_summary_prompt(
         
         Important:
         - Generate a descriptive title that describes the article in detail.
+        - There may be technical terms in the content, please don't make any spelling errors.
         - Use the <title_examples> to see how to format the title. 
         - Focus on the "why it matters" aspect rather than just restating the topic
         - Extract actual quotes.
@@ -612,6 +616,7 @@ def generate_summary_prompt(
         
         Important:
         - Generate a descriptive title that describes the article in detail.
+        - There may be technical terms in the content, please don't make any spelling errors.
         - Use the <title_examples> to see how to format the title. 
         - Extract actual quotes.
         - Make bullet points specific and information dense.
@@ -648,93 +653,6 @@ def generate_summary_prompt(
         Content:
         {content}
         """
-
-
-def try_repair_truncated_json(json_str: str) -> str | None:
-    """
-    Attempt to repair truncated JSON by closing open structures.
-    This is a best-effort approach for handling responses cut off by token limits.
-    """
-    try:
-        # First, try to parse as-is
-        json.loads(json_str)
-        return json_str
-    except json.JSONDecodeError:
-        pass
-
-    # Check if we're in the middle of the full_markdown field
-    # Look for the last occurrence of "full_markdown"
-    full_markdown_pos = json_str.rfind('"full_markdown"')
-    if full_markdown_pos != -1:
-        # Check if we're likely in the middle of its value
-        after_field = json_str[full_markdown_pos:]
-        if after_field.count('"') >= 2:  # Field name and start of value
-            # Find where the value starts
-            value_start = after_field.find(':"') + 2 + full_markdown_pos
-            if value_start > full_markdown_pos + 2:
-                # We're in the middle of full_markdown, add truncation notice
-                repaired = json_str[:value_start]
-                repaired += json_str[value_start:].rstrip()
-                if not repaired.endswith('"'):
-                    repaired += '\\n\\n[Content truncated due to length]"'
-                else:
-                    # Already has closing quote, insert before it
-                    repaired = repaired[:-1] + '\\n\\n[Content truncated due to length]"'
-
-                # Now close the remaining structures
-                open_braces = repaired.count("{") - repaired.count("}")
-                open_brackets = repaired.count("[") - repaired.count("]")
-                repaired += "]" * open_brackets
-                repaired += "}" * open_braces
-
-                try:
-                    json.loads(repaired)
-                    logger.info("Successfully repaired truncated JSON with full_markdown field")
-                    return repaired
-                except json.JSONDecodeError:
-                    pass  # Fall through to general repair
-
-    # Count open brackets/braces for general repair
-    open_braces = json_str.count("{") - json_str.count("}")
-    open_brackets = json_str.count("[") - json_str.count("]")
-
-    # Try to repair by closing structures
-    repaired = json_str
-
-    # Close any open strings first
-    if repaired.count('"') % 2 != 0:
-        repaired += '"'
-
-    # Close arrays and objects
-    repaired += "]" * open_brackets
-    repaired += "}" * open_braces
-
-    try:
-        json.loads(repaired)
-        logger.info("Successfully repaired truncated JSON")
-        return repaired
-    except json.JSONDecodeError:
-        # If simple repair didn't work, try more aggressive approach
-        # Find the last complete element and truncate there
-        for i in range(len(json_str) - 1, 0, -1):
-            if json_str[i] in ["}", "]"]:
-                truncated = json_str[: i + 1]
-                # Balance the remaining structures
-                open_braces = truncated.count("{") - truncated.count("}")
-                open_brackets = truncated.count("[") - truncated.count("]")
-                truncated += "]" * open_brackets
-                truncated += "}" * open_braces
-
-                try:
-                    json.loads(truncated)
-                    logger.info(f"Repaired JSON by truncating at position {i}")
-                    return truncated
-                except json.JSONDecodeError:
-                    continue
-
-        return None
-
-
 class OpenAISummarizationService:
     """OpenAI service for content summarization using GPT-5-mini."""
 
@@ -746,6 +664,92 @@ class OpenAISummarizationService:
         self.client = OpenAI(api_key=openai_api_key)
         self.model_name = "gpt-5-mini"
         logger.info("Initialized OpenAI provider for summarization")
+
+    @staticmethod
+    def _extract_json_payload(validation_error: ValidationError) -> str | None:
+        """Return the raw JSON payload embedded in a ValidationError, if available."""
+
+        for error in validation_error.errors():
+            input_value = error.get("input")
+            if isinstance(input_value, str):
+                return input_value
+        return None
+
+    def _parse_summary_payload(
+        self,
+        raw_payload: str,
+        schema: Type[StructuredSummary] | Type[NewsSummary],
+        content_id: str,
+    ) -> StructuredSummary | NewsSummary | None:
+        """Clean and parse an OpenAI JSON payload into the target schema."""
+
+        cleaned_payload = strip_json_wrappers(raw_payload)
+        if not cleaned_payload:
+            logger.error("OpenAI response payload empty after cleanup")
+            log_json_error(
+                "openai_empty_payload",
+                raw_payload,
+                ValueError("Empty payload after cleanup"),
+                content_id=content_id,
+            )
+            return None
+
+        try:
+            summary_data: Any = json.loads(cleaned_payload)
+        except json.JSONDecodeError as decode_error:
+            repaired_payload = try_repair_truncated_json(cleaned_payload)
+            if not repaired_payload:
+                logger.error("Failed to repair truncated JSON from OpenAI response: %s", decode_error)
+                log_json_error(
+                    "openai_json_decode_error",
+                    cleaned_payload,
+                    decode_error,
+                    content_id=content_id,
+                )
+                return None
+
+            logger.info("Repaired OpenAI JSON payload after initial decode failure")
+
+            try:
+                summary_data = json.loads(repaired_payload)
+            except json.JSONDecodeError as repair_error:
+                logger.error("Failed to decode repaired OpenAI JSON payload: %s", repair_error)
+                log_json_error(
+                    "openai_json_repair_failed",
+                    repaired_payload,
+                    repair_error,
+                    content_id=content_id,
+                )
+                return None
+
+        try:
+            return schema.model_validate(summary_data)
+        except ValidationError as schema_error:
+            logger.error("OpenAI JSON payload failed schema validation: %s", schema_error)
+            log_json_error(
+                "openai_schema_validation_error",
+                json.dumps(summary_data, ensure_ascii=False)[:2000]
+                if isinstance(summary_data, dict)
+                else str(summary_data)[:2000],
+                schema_error,
+                content_id=content_id,
+            )
+            return None
+
+    @staticmethod
+    def _finalize_summary(
+        summary: StructuredSummary | NewsSummary,
+        content_type: str,
+    ) -> StructuredSummary | NewsSummary:
+        """Apply post-processing to the structured summary before returning it."""
+
+        if content_type != "news_digest" and hasattr(summary, "quotes") and summary.quotes:
+            filtered_quotes = [quote for quote in summary.quotes if len(quote.text or "") >= 10]
+            if len(filtered_quotes) != len(summary.quotes):
+                logger.warning("Filtered out quotes shorter than 10 characters")
+                summary.quotes = filtered_quotes
+
+        return summary
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def summarize_content(
@@ -766,21 +770,22 @@ class OpenAISummarizationService:
         Returns:
             StructuredSummary with bullet points, quotes, classification, and full_markdown
         """
+        content_identifier = str(id(content))
+
         try:
-            # Truncate content if too long
             if isinstance(content, bytes):
                 content = content.decode("utf-8", errors="ignore")
 
-            # Truncate content to prevent token limit errors
             if len(content) > MAX_CONTENT_LENGTH:
                 logger.warning(
-                    f"Content length ({len(content)} chars) exceeds max ({MAX_CONTENT_LENGTH} chars), truncating"
+                    "Content length (%s chars) exceeds max (%s chars), truncating",
+                    len(content),
+                    MAX_CONTENT_LENGTH,
                 )
                 content = content[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated due to length]"
 
-            # Generate prompt based on content type
             prompt = generate_summary_prompt(content_type, max_bullet_points, max_quotes, content)
-
+            schema: Type[StructuredSummary] | Type[NewsSummary]
             schema = NewsSummary if content_type == "news_digest" else StructuredSummary
 
             max_output_tokens = 5000
@@ -790,60 +795,78 @@ class OpenAISummarizationService:
                 max_output_tokens = 2500
             elif content_type == "hackernews":
                 max_output_tokens = 6000
-            response = self.client.responses.parse(
-                model=self.model_name,
-                input=[
-                    {"role": "system", "content": "You are an expert content analyst."},
-                    {"role": "user", "content": prompt},
-                ],
-                max_output_tokens=max_output_tokens,
-                text_format=schema,
-            )
+
+            try:
+                response = self.client.responses.parse(
+                    model=self.model_name,
+                    input=[
+                        {"role": "system", "content": "You are an expert content analyst."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_output_tokens=max_output_tokens,
+                    text_format=schema,
+                )
+            except ValidationError as validation_error:
+                logger.warning("OpenAI structured output validation failed: %s", validation_error)
+                raw_payload = self._extract_json_payload(validation_error)
+                if raw_payload is None:
+                    log_json_error(
+                        "openai_structured_output_error",
+                        "",
+                        validation_error,
+                        content_id=content_identifier,
+                    )
+                    return None
+
+                summary_from_payload = self._parse_summary_payload(
+                    raw_payload,
+                    schema,
+                    content_identifier,
+                )
+                if summary_from_payload is None:
+                    return None
+
+                return self._finalize_summary(summary_from_payload, content_type)
 
             if not response.output:
                 logger.error("LLM returned no choices")
+                log_json_error(
+                    "openai_no_output",
+                    "",
+                    ValueError("LLM returned no output"),
+                    content_id=content_identifier,
+                )
                 return None
 
             parsed_message = response.output_parsed
             if parsed_message is None:
                 logger.error("Parsed response missing from OpenAI response")
                 log_json_error(
-                    "no_parsed_message",
-                    "",
-                    Exception("Parsed response missing"),
-                    content_id=str(id(content)),
+                    "openai_missing_parsed_message",
+                    getattr(response, "output_text", ""),
+                    ValueError("Parsed response missing"),
+                    content_id=content_identifier,
                 )
                 return None
 
-            summary_obj = parsed_message
+            return self._finalize_summary(parsed_message, content_type)
 
-            if content_type == "news_digest":
-                return summary_obj
-
-            if summary_obj.quotes:
-                filtered_quotes = [quote for quote in summary_obj.quotes if len(quote.text or "") >= 10]
-                if len(filtered_quotes) != len(summary_obj.quotes):
-                    logger.warning("Filtered out quotes shorter than 10 characters")
-                    summary_obj.quotes = filtered_quotes
-
-            return summary_obj
-
-        except (OpenAIError, ValidationError) as e:
-            logger.error(f"OpenAI structured output error: {e}")
+        except OpenAIError as error:
+            logger.error("OpenAI structured output error: %s", error)
             log_json_error(
                 "openai_structured_output_error",
                 "",
-                e,
-                content_id=str(id(content)),
+                error,
+                content_id=content_identifier,
             )
             return None
-        except Exception as e:
-            logger.error(f"Error generating structured summary: {e}")
+        except Exception as error:  # noqa: BLE001
+            logger.error("Error generating structured summary: %s", error)
             log_json_error(
                 "unexpected_error",
                 "",
-                e,
-                content_id=str(id(content)),
+                error,
+                content_id=content_identifier,
             )
             return None
 

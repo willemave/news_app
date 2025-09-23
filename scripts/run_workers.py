@@ -3,18 +3,16 @@
 Run workers using the sequential task processor.
 """
 
-import sys
-import os
-
-
 import argparse
+import os
+import sys
 import time
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.logging import setup_logging, get_logger
 from app.core.db import init_db
+from app.core.logging import get_logger, setup_logging
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
 from app.services.queue import get_queue_service
 
@@ -56,7 +54,7 @@ def main():
     pending_total = sum(stats.get("pending_by_type", {}).values())
 
     by_status = stats.get("by_status", {})
-    logger.info(f"Initial queue state:")
+    logger.info("Initial queue state:")
     logger.info(f"  Total tasks: {sum(by_status.values())}")
     logger.info(f"  Pending: {by_status.get('pending', 0)}")
     logger.info(f"  Processing: {by_status.get('processing', 0)}")
@@ -64,12 +62,12 @@ def main():
     logger.info(f"  Failed: {by_status.get('failed', 0)}")
 
     if pending_total > 0:
-        logger.info(f"\nPending tasks by type:")
+        logger.info("\nPending tasks by type:")
         for task_type, count in stats.get("pending_by_type", {}).items():
             logger.info(f"  {task_type}: {count}")
 
     # Start processor
-    logger.info(f"\nStarting sequential task processor...")
+    logger.info("\nStarting sequential task processor...")
     if args.max_tasks:
         logger.info(f"Will process up to {args.max_tasks} tasks")
     logger.info("Press Ctrl+C to stop")

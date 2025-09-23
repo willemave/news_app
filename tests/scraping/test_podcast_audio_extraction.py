@@ -1,15 +1,13 @@
 """
 Tests for podcast audio URL extraction and download functionality.
 """
-import pytest
-import feedparser
-from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 
-from app.scraping.podcast_unified import PodcastUnifiedScraper
+import pytest
+
+from app.models.schema import ContentStatus, ContentType
 from app.pipeline.podcast_workers import PodcastDownloadWorker
-from app.models.schema import Content, ContentType, ContentStatus
-from app.models.metadata import ContentData
+from app.scraping.podcast_unified import PodcastUnifiedScraper
 
 
 class TestPodcastAudioExtraction:

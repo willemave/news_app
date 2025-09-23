@@ -5,8 +5,6 @@ import argparse
 import os
 import sys
 
-from pathlib import Path
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.logging import setup_logging  # noqa: E402

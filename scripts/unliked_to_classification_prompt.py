@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 
 # Local app imports
 from app.core.db import get_db_session
-from app.models.schema import Content, ContentUnlikes, ContentFavorites
 from app.domain.converters import content_to_domain
+from app.models.schema import Content, ContentFavorites, ContentUnlikes
 
 
 def fetch_unliked_articles(db: Session, days: int, limit: int | None) -> list[Content]:
@@ -69,7 +69,7 @@ def example_block(domain: Any, label: str) -> str:
         topics = ", ".join(domain.topics[:6])
         parts.append(f"topics: {topics}")
     if domain.bullet_points:
-        pts = "; ".join((bp.get("text", "") for bp in domain.bullet_points[:6]))
+        pts = "; ".join(bp.get("text", "") for bp in domain.bullet_points[:6])
         parts.append(f"bullets: {pts}")
     return "\n".join(parts)
 

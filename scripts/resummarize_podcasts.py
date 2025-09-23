@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Script to resummarize all podcast content."""
 
-import os
 import sys
 from pathlib import Path
 
@@ -17,8 +16,6 @@ if venv_path.exists():
         exec(open(activate_this).read(), {"__file__": str(activate_this)})
 
 from datetime import datetime
-
-from sqlalchemy import and_
 
 from app.core.db import get_db
 from app.core.logging import get_logger, setup_logging
@@ -124,7 +121,7 @@ def resummarize_podcasts(dry_run: bool = False, limit: int | None = None):
                 error_count += 1
                 db.rollback()
 
-        logger.info(f"\nSummary:")
+        logger.info("\nSummary:")
         logger.info(f"Total podcasts: {len(podcasts)}")
         logger.info(f"Successfully resummarized: {success_count}")
         logger.info(f"Errors: {error_count}")

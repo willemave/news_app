@@ -1,6 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import yaml
@@ -123,6 +124,13 @@ class RedditUnifiedScraper(BaseScraper):
                 normalized_url = self._normalize_url(post["url"])
                 discussion_url = f"https://reddit.com{post.get('permalink', '')}"
 
+                try:
+                    source_domain = urlparse(normalized_url).netloc or None
+                except Exception:
+                    source_domain = None
+
+                timestamp = datetime.now(UTC).isoformat()
+
                 item = {
                     "url": normalized_url,
                     "title": post.get("title"),
@@ -131,6 +139,25 @@ class RedditUnifiedScraper(BaseScraper):
                     "metadata": {
                         "platform": "reddit",  # Scraper identifier
                         "source": post.get("subreddit", subreddit_name),
+                        "article": {
+                            "url": normalized_url,
+                            "title": post.get("title"),
+                            "source_domain": source_domain,
+                        },
+                        "aggregator": {
+                            "name": "Reddit",
+                            "title": post.get("title"),
+                            "url": discussion_url,
+                            "external_id": post.get("id"),
+                            "author": post.get("author"),
+                            "metadata": {
+                                "score": post.get("score", 0),
+                                "comments": post.get("num_comments", 0),
+                                "upvote_ratio": post.get("upvote_ratio"),
+                                "subreddit": post.get("subreddit"),
+                                "over_18": post.get("over_18"),
+                            },
+                        },
                         "items": [
                             {
                                 "title": post.get("title"),
@@ -150,7 +177,8 @@ class RedditUnifiedScraper(BaseScraper):
                         ],
                         "primary_url": discussion_url,
                         "excerpt": post.get("selftext"),
-                        "scraped_at": datetime.utcnow().isoformat(),
+                        "discovery_time": timestamp,
+                        "scraped_at": timestamp,
                     },
                 }
 

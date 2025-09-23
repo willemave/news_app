@@ -244,6 +244,8 @@ ruff check
 mypy app
 ```
 
+> **Workflow requirement:** After every set of edits, run `ruff check` (without `--fix`) from the repository root, resolve every reported issue, and only then push changes.
+
 ### Database Operations
 ```bash
 # Create migration

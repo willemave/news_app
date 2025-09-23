@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.db import get_db
@@ -11,8 +11,8 @@ from app.models.schema import Content
 from app.pipeline.checkout import get_checkout_manager
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.processing_strategies.registry import get_strategy_registry
-from app.services.openai_llm import get_openai_summarization_service
 from app.services.http import NonRetryableError, get_http_service
+from app.services.openai_llm import get_openai_summarization_service
 from app.services.queue import TaskType, get_queue_service
 from app.utils.error_logger import create_error_logger
 
@@ -76,7 +76,7 @@ class ContentWorker:
 
         content.status = ContentStatus.FAILED
         content.error_message = reason
-        content.processed_at = datetime.now(timezone.utc)
+        content.processed_at = datetime.now(UTC)
 
     def _mark_summarization_failure(self, content: ContentData, reason: str) -> None:
         """Persist summarization failure details for the given content."""
@@ -95,15 +95,14 @@ class ContentWorker:
             metadata = dict(db_content.content_metadata or {})
             metadata.pop("summary", None)
             existing_errors = metadata.get("processing_errors")
-            if isinstance(existing_errors, list):
-                processing_errors = existing_errors.copy()
-            else:
-                processing_errors = []
+            processing_errors = (
+                existing_errors.copy() if isinstance(existing_errors, list) else []
+            )
             processing_errors.append(
                 {
                     "stage": "summarization",
                     "reason": reason,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }
             )
             metadata["processing_errors"] = processing_errors
@@ -111,7 +110,7 @@ class ContentWorker:
             db_content.content_metadata = metadata
             db_content.status = ContentStatus.FAILED.value
             db_content.error_message = reason
-            db_content.processed_at = datetime.now(timezone.utc)
+            db_content.processed_at = datetime.now(UTC)
             db.commit()
 
     def process_content(self, content_id: int, worker_id: str) -> bool:
@@ -214,12 +213,13 @@ class ContentWorker:
                 extracted_data = strategy.extract_data(raw_content, processed_url)
 
             # Check if this is a delegation case (e.g., from PubMed)
-            if extracted_data.get("next_url_to_process"):
+            delegated_url = extracted_data.get("next_url_to_process")
+            if delegated_url:
                 logger.info(
-                    f"Delegation detected. Processing next URL: {extracted_data['next_url_to_process']}"
+                    "Delegation detected. Processing next URL: %s", delegated_url
                 )
                 # Update the URL and process recursively
-                content.url = extracted_data["next_url_to_process"]
+                content.url = delegated_url
                 return self._process_article(content)
 
             # Prepare for LLM processing
@@ -311,7 +311,12 @@ class ContentWorker:
                     summarization_content_type = "news_digest"
                     aggregator_context = self._build_news_context(content.metadata)
                     if aggregator_context:
-                        llm_payload = f"Context:\n{aggregator_context}\n\nArticle Content:\n{llm_payload}"
+                        llm_payload = (
+                            "Context:\n"
+                            f"{aggregator_context}\n\n"
+                            "Article Content:\n"
+                            f"{llm_payload}"
+                        )
                     summary = self.llm_service.summarize_content(
                         content=llm_payload,
                         max_bullet_points=4,
@@ -381,7 +386,7 @@ class ContentWorker:
 
             # Update status
             content.status = ContentStatus.COMPLETED
-            content.processed_at = datetime.now(timezone.utc)
+            content.processed_at = datetime.now(UTC)
 
             logger.info(
                 f"Successfully processed article {content.id} [{strategy.__class__.__name__}] "
@@ -502,7 +507,7 @@ class ContentWorker:
 
             # Mark as in progress
             content.status = ContentStatus.PROCESSING
-            content.processed_at = datetime.now(timezone.utc)
+            content.processed_at = datetime.now(UTC)
 
             # Save initial state to DB
             with get_db() as db:

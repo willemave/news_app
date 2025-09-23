@@ -1,5 +1,4 @@
 """Tests for structured summarization in OpenAI LLM service."""
-import json
 from unittest.mock import Mock, patch
 
 import pytest

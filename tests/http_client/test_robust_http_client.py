@@ -1,9 +1,11 @@
-import pytest
-import httpx
 from unittest.mock import MagicMock
 
+import httpx
+import pytest
+
+from app.config import Settings  # To potentially override settings for testing
 from app.http_client.robust_http_client import RobustHttpClient
-from app.config import Settings # To potentially override settings for testing
+
 
 @pytest.fixture
 def mock_settings(mocker):

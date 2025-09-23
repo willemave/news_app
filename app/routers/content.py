@@ -11,7 +11,7 @@ from app.core.db import get_db_session
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
-from app.services import read_status, favorites, unlikes
+from app.services import favorites, read_status, unlikes
 from app.templates import templates
 
 router = APIRouter()
@@ -53,7 +53,7 @@ SessionDep = Annotated[str, Depends(get_or_create_session_id)]
 @router.get("/", response_class=HTMLResponse)
 async def list_content(
     request: Request,
-    db: Session = Depends(get_db_session),
+    db: Annotated[Session, Depends(get_db_session)],
     content_type: str | None = None,
     date: str | None = None,
     read_filter: str = "unread",
@@ -111,7 +111,7 @@ async def list_content(
     contents = query.order_by(Content.created_at.desc()).all()
     
     # Get read content IDs
-    print(f"DEBUG: Getting read content")
+    print("DEBUG: Getting read content")
     read_content_ids = read_status.get_read_content_ids(db)
     print(f"DEBUG: Found {len(read_content_ids)} read items: {read_content_ids}")
     
@@ -165,9 +165,9 @@ async def list_content(
 
 @router.get("/content/{content_id}", response_class=HTMLResponse)
 async def content_detail(
-    request: Request, 
-    content_id: int, 
-    db: Session = Depends(get_db_session)
+    request: Request,
+    content_id: int,
+    db: Annotated[Session, Depends(get_db_session)]
 ):
     """Get detailed view of a specific content item."""
     content = db.query(Content).filter(Content.id == content_id).first()
@@ -201,7 +201,7 @@ async def content_detail(
 @router.get("/favorites", response_class=HTMLResponse)
 async def favorites_list(
     request: Request,
-    db: Session = Depends(get_db_session),
+    db: Annotated[Session, Depends(get_db_session)],
     read_filter: str = "all",
 ):
     """List favorited content."""
@@ -253,7 +253,10 @@ async def favorites_list(
 
 
 @router.get("/content/{content_id}/json", response_class=JSONResponse)
-async def content_json(content_id: int, db: Session = Depends(get_db_session)):
+async def content_json(
+    content_id: int,
+    db: Annotated[Session, Depends(get_db_session)],
+):
     """Get content item with metadata as JSON."""
     content = db.query(Content).filter(Content.id == content_id).first()
 

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Final, ClassVar
+from typing import Any, ClassVar, Final
 
 import yaml
 from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
@@ -293,7 +293,7 @@ class YouTubeUnifiedScraper(BaseScraper):
             if video_info is None:
                 try:
                     self._throttle_if_needed(idx)
-                video_info = self._extract_video_info(video_url)
+                    video_info = self._extract_video_info(video_url)
                 except Exception as exc:  # pragma: no cover - yt-dlp errors hard to replicate
                     self.error_logger.log_error(
                         error=exc,
@@ -452,7 +452,7 @@ class YouTubeUnifiedScraper(BaseScraper):
             return [], YouTubeClientConfig()
 
         try:
-            with open(config_path, "r", encoding="utf-8") as fh:
+            with open(config_path, encoding="utf-8") as fh:
                 raw_config = yaml.safe_load(fh) or {}
         except Exception as exc:
             logger.error("Failed to read YouTube config %s: %s", config_path, exc)
@@ -489,7 +489,7 @@ class YouTubeUnifiedScraper(BaseScraper):
 
             return stdlib_utc
         except ImportError:  # pragma: no cover - python <3.11
-            return timezone.utc
+            return stdlib_utc
 
 
 def load_youtube_channels(config_path: str | Path = "config/youtube.yml") -> list[YouTubeChannelConfig]:

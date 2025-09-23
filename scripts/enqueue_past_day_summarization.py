@@ -2,7 +2,7 @@
 """Script to enqueue content from the past day for summarization."""
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # Add project root to path
@@ -44,9 +44,9 @@ def enqueue_past_day_for_summarization(
         days_back: Number of days to look back (default 1)
         content_types: List of content types to process (default all)
     """
-    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    cutoff_date = datetime.now(UTC) - timedelta(days=days_back)
     
-    print(f"Starting enqueue_past_day_for_summarization")
+    print("Starting enqueue_past_day_for_summarization")
     print(f"  dry_run={dry_run}")
     print(f"  limit={limit}")
     print(f"  days_back={days_back}")
@@ -126,7 +126,7 @@ def enqueue_past_day_for_summarization(
                     payload={
                         "force_resummarize": True,
                         "source": "enqueue_past_day_script",
-                        "enqueued_at": datetime.now(timezone.utc).isoformat(),
+                        "enqueued_at": datetime.now(UTC).isoformat(),
                     }
                 )
 
@@ -139,7 +139,7 @@ def enqueue_past_day_for_summarization(
                     exc_info=True
                 )
 
-        print(f"\nSummary:")
+        print("\nSummary:")
         print(f"Total content items: {len(content_items)}")
         print(f"Successfully enqueued: {enqueued_count}")
         print(f"Skipped (no content/transcript): {skipped_count}")
