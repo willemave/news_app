@@ -46,6 +46,88 @@ struct ContentSummary: Codable, Identifiable {
         case itemCount = "item_count"
     }
 
+    init(
+        id: Int,
+        contentType: String,
+        url: String,
+        title: String?,
+        source: String?,
+        platform: String?,
+        status: String,
+        shortSummary: String?,
+        createdAt: String,
+        processedAt: String?,
+        classification: String?,
+        publicationDate: String?,
+        isRead: Bool,
+        isFavorited: Bool,
+        isUnliked: Bool,
+        isAggregate: Bool = false,
+        itemCount: Int? = nil
+    ) {
+        self.id = id
+        self.contentType = contentType
+        self.url = url
+        self.title = title
+        self.source = source
+        self.platform = platform
+        self.status = status
+        self.shortSummary = shortSummary
+        self.createdAt = createdAt
+        self.processedAt = processedAt
+        self.classification = classification
+        self.publicationDate = publicationDate
+        self.isRead = isRead
+        self.isFavorited = isFavorited
+        self.isUnliked = isUnliked
+        self.isAggregate = isAggregate
+        self.itemCount = itemCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(Int.self, forKey: .id),
+            contentType: try container.decode(String.self, forKey: .contentType),
+            url: try container.decode(String.self, forKey: .url),
+            title: try container.decodeIfPresent(String.self, forKey: .title),
+            source: try container.decodeIfPresent(String.self, forKey: .source),
+            platform: try container.decodeIfPresent(String.self, forKey: .platform),
+            status: try container.decode(String.self, forKey: .status),
+            shortSummary: try container.decodeIfPresent(String.self, forKey: .shortSummary),
+            createdAt: try container.decode(String.self, forKey: .createdAt),
+            processedAt: try container.decodeIfPresent(String.self, forKey: .processedAt),
+            classification: try container.decodeIfPresent(String.self, forKey: .classification),
+            publicationDate: try container.decodeIfPresent(String.self, forKey: .publicationDate),
+            isRead: try container.decode(Bool.self, forKey: .isRead),
+            isFavorited: try container.decodeIfPresent(Bool.self, forKey: .isFavorited) ?? false,
+            isUnliked: try container.decodeIfPresent(Bool.self, forKey: .isUnliked) ?? false,
+            isAggregate: try container.decodeIfPresent(Bool.self, forKey: .isAggregate) ?? false,
+            itemCount: try container.decodeIfPresent(Int.self, forKey: .itemCount)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(contentType, forKey: .contentType)
+        try container.encode(url, forKey: .url)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(platform, forKey: .platform)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(shortSummary, forKey: .shortSummary)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(processedAt, forKey: .processedAt)
+        try container.encodeIfPresent(classification, forKey: .classification)
+        try container.encodeIfPresent(publicationDate, forKey: .publicationDate)
+        try container.encode(isRead, forKey: .isRead)
+        try container.encode(isFavorited, forKey: .isFavorited)
+        try container.encode(isUnliked, forKey: .isUnliked)
+        try container.encode(isAggregate, forKey: .isAggregate)
+        try container.encodeIfPresent(itemCount, forKey: .itemCount)
+    }
+
     var contentTypeEnum: ContentType? {
         ContentType(rawValue: contentType)
     }

@@ -86,9 +86,8 @@ def test_load_substack_feeds_with_limit():
         mock_file.assert_called_once_with(expected_path)
 
 
-@pytest.mark.asyncio
 @patch('app.scraping.substack_unified.feedparser.parse')
-async def test_scrape_process_and_filter(mock_feedparser_parse, mock_db_session, mock_queue_service):
+def test_scrape_process_and_filter(mock_feedparser_parse, mock_db_session, mock_queue_service):
     """Test the full scrape and process flow, including filtering."""
     # Mock feedparser results
     mock_feed_result = MagicMock()
@@ -106,7 +105,7 @@ async def test_scrape_process_and_filter(mock_feedparser_parse, mock_db_session,
         mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
         
         scraper = SubstackScraper()
-        items = await scraper.scrape()
+        items = scraper.scrape()
 
         # Verify one item was processed
         assert len(items) == 1
@@ -115,14 +114,13 @@ async def test_scrape_process_and_filter(mock_feedparser_parse, mock_db_session,
         assert item['url'] == 'https://test.com/article'  # Note: normalized to https
         assert item['title'] == 'Test Article'
         assert item['content_type'] == ContentType.ARTICLE
-        assert item['metadata']['source'] == 'Test Feed'
+        assert item['metadata']['source'] == 'test.com'
         assert item['metadata']['feed_name'] == 'Test Feed'
         assert item['metadata']['author'] == 'Test Author'
 
 
-@pytest.mark.asyncio
 @patch('app.scraping.substack_unified.feedparser.parse')
-async def test_scrape_filters_podcasts(mock_feedparser_parse, mock_db_session, mock_queue_service):
+def test_scrape_filters_podcasts(mock_feedparser_parse, mock_db_session, mock_queue_service):
     """Test that podcast entries are filtered out."""
     # Mock feedparser results with podcast entry
     mock_feed_result = MagicMock()
@@ -139,15 +137,14 @@ async def test_scrape_filters_podcasts(mock_feedparser_parse, mock_db_session, m
         mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
         
         scraper = SubstackScraper()
-        items = await scraper.scrape()
+        items = scraper.scrape()
 
         # Verify podcast was filtered out
         assert len(items) == 0
 
 
-@pytest.mark.asyncio
 @patch('app.scraping.substack_unified.feedparser.parse')
-async def test_scrape_skips_logging_for_encoding_override(
+def test_scrape_skips_logging_for_encoding_override(
     mock_feedparser_parse, mock_db_session, mock_queue_service
 ):
     """Verify CharacterEncodingOverride is treated as non-critical and not logged as an error."""
@@ -174,9 +171,8 @@ async def test_scrape_skips_logging_for_encoding_override(
         scraper.error_logger.log_feed_error.assert_not_called()
 
 
-@pytest.mark.asyncio
 @patch('app.scraping.substack_unified.feedparser.parse')
-async def test_scrape_handles_missing_link(mock_feedparser_parse, mock_db_session, mock_queue_service):
+def test_scrape_handles_missing_link(mock_feedparser_parse, mock_db_session, mock_queue_service):
     """Test handling of entries without links."""
     # Mock entry without link
     bad_entry = {
@@ -200,14 +196,13 @@ async def test_scrape_handles_missing_link(mock_feedparser_parse, mock_db_sessio
         mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
         
         scraper = SubstackScraper()
-        items = await scraper.scrape()
+        items = scraper.scrape()
 
         # Verify entry was skipped
         assert len(items) == 0
 
 
-@pytest.mark.asyncio
-async def test_run_saves_to_database(mock_db_session, mock_queue_service):
+def test_run_saves_to_database(mock_db_session, mock_queue_service):
     """Test that run() saves items to database and queues tasks."""
     with patch('app.scraping.substack_unified.feedparser.parse') as mock_feedparser_parse:
         # Mock feedparser results
@@ -225,7 +220,7 @@ async def test_run_saves_to_database(mock_db_session, mock_queue_service):
             mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
             
             scraper = SubstackScraper()
-            saved_count = await scraper.run()
+            saved_count = scraper.run()
 
             # Verify item was saved
             assert saved_count == 1
@@ -241,15 +236,14 @@ async def test_run_saves_to_database(mock_db_session, mock_queue_service):
             assert created_content.content_type == ContentType.ARTICLE.value
             assert created_content.url == 'https://test.com/article'
             assert created_content.title == 'Test Article'
-            assert created_content.source == 'Test Feed'  # Verify source field is set
+            assert created_content.source == 'test.com'  # Verify source field is set
             assert created_content.status == ContentStatus.NEW.value
             
             # Verify task was queued
             mock_queue_service.enqueue.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_run_skips_existing_urls(mock_db_session, mock_queue_service):
+def test_run_skips_existing_urls(mock_db_session, mock_queue_service):
     """Test that run() skips URLs that already exist."""
     with patch('app.scraping.substack_unified.feedparser.parse') as mock_feedparser_parse:
         # Mock feedparser results
@@ -272,7 +266,7 @@ async def test_run_skips_existing_urls(mock_db_session, mock_queue_service):
             mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
             
             scraper = SubstackScraper()
-            saved_count = await scraper.run()
+            saved_count = scraper.run()
 
             # Verify no new items were saved
             assert saved_count == 0
@@ -294,9 +288,8 @@ def test_url_normalization():
     assert scraper._normalize_url('http://test.com/article/') == 'https://test.com/article'
 
 
-@pytest.mark.asyncio
 @patch('app.scraping.substack_unified.feedparser.parse')
-async def test_scrape_respects_limit(mock_feedparser_parse, mock_db_session, mock_queue_service):
+def test_scrape_respects_limit(mock_feedparser_parse, mock_db_session, mock_queue_service):
     """Test that scraper respects the limit configuration."""
     # Create multiple entries
     entries = []
@@ -325,7 +318,7 @@ async def test_scrape_respects_limit(mock_feedparser_parse, mock_db_session, moc
         mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 2}]
         
         scraper = SubstackScraper()
-        items = await scraper.scrape()
+        items = scraper.scrape()
 
         # Verify only 2 items were processed despite having 5 entries
         assert len(items) == 2
@@ -333,13 +326,12 @@ async def test_scrape_respects_limit(mock_feedparser_parse, mock_db_session, moc
         assert items[1]['title'] == 'Test Article 1'
 
 
-@pytest.mark.asyncio
-async def test_no_feeds_configured():
+def test_no_feeds_configured():
     """Test behavior when no feeds are configured."""
     with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
         mock_load_feeds.return_value = []
         
         scraper = SubstackScraper()
-        items = await scraper.scrape()
+        items = scraper.scrape()
         
         assert len(items) == 0
