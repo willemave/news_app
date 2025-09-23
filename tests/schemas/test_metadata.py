@@ -1,14 +1,15 @@
 """Tests for metadata schema validation."""
-import pytest
 from datetime import datetime
+
+import pytest
 from pydantic import ValidationError
 
 from app.models.metadata import (
     ArticleMetadata,
+    ContentQuote,
     PodcastMetadata,
     StructuredSummary,
     SummaryBulletPoint,
-    ContentQuote,
     validate_content_metadata,
 )
 

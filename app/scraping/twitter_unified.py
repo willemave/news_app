@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-import json
 from urllib.parse import urlparse
 
-import yaml
 import jmespath
+import yaml
 from playwright.sync_api import Response, sync_playwright
 
 from app.core.db import get_db
@@ -78,7 +78,7 @@ class TwitterUnifiedScraper(BaseScraper):
     def _check_recent_scrape(self, list_id: str, list_name: str, hours: int = 6) -> bool:
         """Check if list was scraped recently."""
         with get_db() as db:
-            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+            cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
             existing = db.query(Content).filter(
                 Content.platform == "twitter",
                 Content.source == f"twitter:{list_name}",
@@ -105,7 +105,7 @@ class TwitterUnifiedScraper(BaseScraper):
         logger.info(f"Scraping Twitter list with Playwright: {list_name} ({list_id})")
         
         tweets = []
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=hours_back)
         
         try:
             with sync_playwright() as pw:
@@ -299,7 +299,7 @@ class TwitterUnifiedScraper(BaseScraper):
                             "hours_back": hours_back,
                         },
                     },
-                    "discovery_time": datetime.now(timezone.utc).isoformat(),
+                    "discovery_time": datetime.now(UTC).isoformat(),
                 }
 
                 news_entries.append(

@@ -34,17 +34,20 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
         Determines if this strategy can handle the given URL.
         Checks if the URL is a PubMed article page.
         """
-        # Check if it's a PubMed abstract/article page, not a direct PDF or other content link from PubMed.
-        # Example: https://pubmed.ncbi.nlm.nih.gov/1234567/
-        if "pubmed.ncbi.nlm.nih.gov" in url.lower() and not url.lower().endswith(
-            (".pdf", ".html", ".htm")
-        ):
-            # A more specific regex could be used if needed, e.g., to match /<PMID>/
-            if re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/\d+/?$", url.lower()):
-                logger.debug(f"PubMedStrategy can handle PubMed article page: {url}")
-                return True
+        url_lower = url.lower()
+        is_pubmed_page = "pubmed.ncbi.nlm.nih.gov" in url_lower
+        has_html_extension = url_lower.endswith((".pdf", ".html", ".htm"))
+        matches_pubmed_pattern = bool(
+            re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/\d+/?$", url_lower)
+        )
+
+        if is_pubmed_page and not has_html_extension and matches_pubmed_pattern:
+            logger.debug("PubMedStrategy can handle PubMed article page: %s", url)
+            return True
+
         logger.debug(
-            f"PubMedStrategy cannot handle URL: {url} (not a typical PubMed article page URL)"
+            "PubMedStrategy cannot handle URL: %s (not a typical PubMed article page URL)",
+            url,
         )
         return False
 
@@ -110,23 +113,30 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
                         "article" in href.lower() or href.endswith(".pdf")
                     ):
                         pmc_link = href
-                        logger.info(f"PubMedStrategy: Found PMC link: {pmc_link}")
+                        logger.info("PubMedStrategy: Found PMC link: %s", pmc_link)
                         return pmc_link  # Prioritize and return immediately
 
                 if first_link:  # If no PMC link, return the first one found
                     logger.info(
-                        f"PubMedStrategy: No PMC link found, returning first available link: {first_link}"
+                        "PubMedStrategy: No PMC link found, returning first available link: %s",
+                        first_link,
                     )
                     return first_link
 
             logger.warning(
-                f"PubMedStrategy: Could not find 'full-text-links' section or any links within it for {pubmed_url}"
+                (
+                    "PubMedStrategy: Could not find 'full-text-links' section or any links "
+                    "within it for %s"
+                ),
+                pubmed_url,
             )
             return None
 
         except Exception as e:
             logger.error(
-                f"PubMedStrategy: Error parsing PubMed HTML for full text link from {pubmed_url}: {e}",
+                "PubMedStrategy: Error parsing PubMed HTML for full text link from %s: %s",
+                pubmed_url,
+                e,
                 exc_info=True,
             )
             return None
@@ -138,7 +148,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
         'content' parameter is ignored as crawl4ai handles downloading.
         'url' here is the final URL of the PubMed page itself.
         """
-        logger.info(f"PubMedStrategy: Extracting full-text link from PubMed page: {url}")
+        logger.info("PubMedStrategy: Extracting full-text link from PubMed page: %s", url)
         
         try:
             # Configure browser for crawl4ai
@@ -177,19 +187,24 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
 
             full_text_url = self._extract_full_text_link_from_html(pubmed_page_html, url)
             
-        except Exception as e:
-            logger.error(f"PubMedStrategy: Error using crawl4ai for {url}: {e}")
+        except Exception as err:
+            logger.error("PubMedStrategy: Error using crawl4ai for %s: %s", url, err)
             # Fall back to returning an error
             return {
                 "title": f"PubMed Page Access Failed for {url.split('/')[-1]}",
-                "text_content": f"Could not access PubMed page: {str(e)}",
+                "text_content": f"Could not access PubMed page: {err}",
                 "content_type": "error_pubmed_extraction",
                 "final_url_after_redirects": url,
             }
 
         if full_text_url:
             logger.info(
-                f"PubMedStrategy: Extracted full-text URL '{full_text_url}' from PubMed page {url}. Delegating processing."
+                (
+                    "PubMedStrategy: Extracted full-text URL '%s' from PubMed page %s. "
+                    "Delegating processing."
+                ),
+                full_text_url,
+                url,
             )
             return {
                 "next_url_to_process": full_text_url,
@@ -199,7 +214,8 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
             }
         else:
             logger.warning(
-                f"PubMedStrategy: Could not extract any full-text link from {url}. Cannot delegate."
+                "PubMedStrategy: Could not extract any full-text link from %s. Cannot delegate.",
+                url,
             )
             # This is an extraction failure for this strategy.
             return {
@@ -214,7 +230,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
         This method should not be called directly if delegation occurs.
         If called (e.g., due to an extraction failure), it indicates no LLM processing.
         """
-        logger.info(f"PubMedStrategy: prepare_for_llm called. Data: {extracted_data}")
+        logger.info("PubMedStrategy: prepare_for_llm called. Data: %s", extracted_data)
         # If 'next_url_to_process' is present, this strategy's job is done.
         # If not, it means extraction failed, so no LLM processing for this step.
         return {  # Indicates no content for LLM from this PubMed *page* itself
@@ -231,6 +247,10 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
         # Placeholder, similar to HtmlStrategy.
         # Could parse 'content' (PubMed page HTML) for other links if needed.
         logger.info(
-            f"PubMedStrategy: extract_internal_urls called for {original_url}. (Placeholder - returning empty list)"
+            (
+                "PubMedStrategy: extract_internal_urls called for %s. "
+                "(Placeholder - returning empty list)"
+            ),
+            original_url,
         )
         return []

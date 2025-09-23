@@ -3,15 +3,15 @@
 Script to run pending tasks using the sequential task processor.
 """
 
-import sys
-import os
 import argparse
+import os
+import sys
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.logging import setup_logging, get_logger
 from app.core.db import init_db
+from app.core.logging import get_logger, setup_logging
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
 from app.services.queue import get_queue_service
 
@@ -59,7 +59,7 @@ def main():
         logger.info(f"  {task_type}: {count}")
     
     # Run sequential processor
-    logger.info(f"Starting sequential task processor...")
+    logger.info("Starting sequential task processor...")
     if args.max_tasks:
         logger.info(f"Will process up to {args.max_tasks} tasks")
     processor = SequentialTaskProcessor()

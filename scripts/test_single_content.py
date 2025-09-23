@@ -4,19 +4,19 @@ Script to test processing a single content item through the pipeline.
 Usage: python scripts/test_single_content.py <url>
 """
 
-import sys
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from datetime import datetime
+
 from app.core.db import get_session_factory, init_db
 from app.models.schema import Content, ContentStatus
 from app.pipeline.worker import ContentWorker
-from app.core.settings import get_settings
-from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -84,11 +84,11 @@ async def test_single_content(url: str):
             print(f"Title: {content.title}")
         
         if content.summary:
-            print(f"\nSummary Preview (first 500 chars):")
+            print("\nSummary Preview (first 500 chars):")
             print(content.summary[:500])
         
         if content.structured_summary:
-            print(f"\nStructured Summary Available: Yes")
+            print("\nStructured Summary Available: Yes")
             import json
             try:
                 summary_data = json.loads(content.structured_summary)
@@ -100,7 +100,7 @@ async def test_single_content(url: str):
             except json.JSONDecodeError:
                 print("  (Could not parse structured summary)")
         else:
-            print(f"\nStructured Summary Available: No")
+            print("\nStructured Summary Available: No")
         
         if content.error:
             print(f"\nError: {content.error}")
@@ -127,7 +127,7 @@ def main():
     url = sys.argv[1]
     
     if not url.startswith(('http://', 'https://')):
-        print(f"Error: URL must start with http:// or https://")
+        print("Error: URL must start with http:// or https://")
         sys.exit(1)
     
     print(f"Testing content processing for URL: {url}")

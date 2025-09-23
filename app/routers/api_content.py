@@ -1,12 +1,12 @@
 """API endpoints for content with OpenAPI documentation."""
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, or_, cast, String
+from sqlalchemy import String, and_, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -50,7 +50,9 @@ class ContentSummaryResponse(BaseModel):
     is_read: bool = Field(False, description="Whether the content has been marked as read")
     is_favorited: bool = Field(False, description="Whether the content has been favorited")
     is_unliked: bool = Field(False, description="Whether the content has been unliked")
-    is_aggregate: bool = Field(False, description="Whether this news item aggregates multiple links")
+    is_aggregate: bool = Field(
+        False, description="Whether this news item aggregates multiple links"
+    )
     item_count: int | None = Field(
         None, description="Number of child items when content_type is news"
     )
@@ -284,6 +286,7 @@ class ChatGPTUrlResponse(BaseModel):
     ),
 )
 async def list_contents(
+    db: Annotated[Session, Depends(get_db_session)],
     content_type: str | None = Query(None, description="Filter by content type (article/podcast)"),
     date: str | None = Query(
         None,
@@ -295,10 +298,9 @@ async def list_contents(
         description="Filter by read status (all/read/unread)",
         regex="^(all|read|unread)$",
     ),
-    db: Session = Depends(get_db_session),
 ) -> ContentListResponse:
     """List content with optional filters."""
-    from app.services import read_status, favorites, unlikes
+    from app.services import favorites, read_status, unlikes
 
     # Get read content IDs first
     read_content_ids = read_status.get_read_content_ids(db)
@@ -457,6 +459,7 @@ async def list_contents(
     ),
 )
 async def search_contents(
+    db: Annotated[Session, Depends(get_db_session)],
     q: str = Query(
         ..., min_length=2, max_length=200, description="Search query (min 2 characters)"
     ),
@@ -467,7 +470,6 @@ async def search_contents(
     ),
     limit: int = Query(25, ge=1, le=100, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Results offset for pagination"),
-    db: Session = Depends(get_db_session),
 ) -> ContentListResponse:
     """Search content with portable SQL patterns.
 
@@ -581,8 +583,8 @@ async def search_contents(
     },
 )
 async def mark_content_read(
-    content_id: int = Path(..., description="Content ID", gt=0),
-    db: Session = Depends(get_db_session),
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> dict:
     """Mark content as read."""
     from app.services import read_status
@@ -613,11 +615,11 @@ async def mark_content_read(
     },
 )
 async def get_content_detail(
-    content_id: int = Path(..., description="Content ID", gt=0),
-    db: Session = Depends(get_db_session),
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
-    from app.services import read_status, favorites, unlikes
+    from app.services import favorites, read_status, unlikes
 
     content = db.query(Content).filter(Content.id == content_id).first()
 
@@ -729,7 +731,7 @@ async def get_content_detail(
 )
 async def bulk_mark_read(
     request: BulkMarkReadRequest,
-    db: Session = Depends(get_db_session),
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> dict:
     """Mark multiple content items as read."""
     from app.services import read_status
@@ -765,8 +767,8 @@ async def bulk_mark_read(
     },
 )
 async def mark_content_unread(
-    content_id: int = Path(..., description="Content ID", gt=0),
-    db: Session = Depends(get_db_session),
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> dict:
     """Mark content as unread by removing its read status."""
     from sqlalchemy import delete
@@ -799,11 +801,11 @@ async def mark_content_unread(
     },
 )
 async def toggle_unlike(
-    content_id: int = Path(..., description="Content ID", gt=0),
-    db: Session = Depends(get_db_session),
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> dict:
     """Toggle unlike status for content and mark as read when unliked."""
-    from app.services import unlikes, read_status
+    from app.services import read_status, unlikes
 
     # Check if content exists
     content = db.query(Content).filter(Content.id == content_id).first()
@@ -836,8 +838,8 @@ async def toggle_unlike(
     },
 )
 async def remove_unlike_content(
-    content_id: int = Path(..., description="Content ID", gt=0),
-    db: Session = Depends(get_db_session),
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> dict:
     """Remove content from unlikes."""
     from app.services import unlikes
@@ -866,8 +868,8 @@ async def remove_unlike_content(
     },
 )
 async def toggle_favorite(
-    content_id: int = Path(..., description="Content ID", gt=0),
-    db: Session = Depends(get_db_session),
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> dict:
     """Toggle favorite status for content."""
     from app.services import favorites
@@ -896,8 +898,8 @@ async def toggle_favorite(
     },
 )
 async def unfavorite_content(
-    content_id: int = Path(..., description="Content ID", gt=0),
-    db: Session = Depends(get_db_session),
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> dict:
     """Remove content from favorites."""
     from app.services import favorites
@@ -923,10 +925,10 @@ async def unfavorite_content(
     description="Retrieve all favorited content items.",
 )
 async def get_favorites(
-    db: Session = Depends(get_db_session),
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> ContentListResponse:
     """Get all favorited content."""
-    from app.services import read_status, favorites
+    from app.services import favorites, read_status
 
     # Get favorited content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
@@ -997,8 +999,8 @@ async def get_favorites(
     },
 )
 async def get_chatgpt_url(
-    content_id: int = Path(..., description="Content ID", gt=0),
-    db: Session = Depends(get_db_session),
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> ChatGPTUrlResponse:
     """Generate ChatGPT URL for chatting about the content."""
     content = db.query(Content).filter(Content.id == content_id).first()

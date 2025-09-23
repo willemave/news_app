@@ -1,14 +1,14 @@
 """Admin router for administrative functionality."""
 
 from datetime import datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
-
-from pydantic import ValidationError
 
 from app.core.db import get_db_session
 from app.models.schema import Content, EventLog, ProcessingTask
@@ -22,7 +22,7 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/", response_class=HTMLResponse)
 def admin_dashboard(
     request: Request,
-    db: Session = Depends(get_db_session),
+    db: Annotated[Session, Depends(get_db_session)],
     event_type: str | None = None,
     limit: int = 50,
 ):
@@ -104,10 +104,10 @@ def admin_dashboard(
 @router.get("/prompt-tuning", response_class=HTMLResponse)
 def prompt_tuning(
     request: Request,
+    db: Annotated[Session, Depends(get_db_session)],
     lookback_days: int = 7,
     max_examples: int = 25,
     generate: int = 0,
-    db: Session = Depends(get_db_session),
 ):
     """View for generating summarization prompt update suggestions."""
 
@@ -117,7 +117,7 @@ def prompt_tuning(
             max_examples=max_examples,
         )
     except ValidationError as validation_error:
-        raise HTTPException(status_code=400, detail=str(validation_error))
+        raise HTTPException(status_code=400, detail=str(validation_error)) from validation_error
 
     result = generate_prompt_update_result(db, prompt_request, should_generate=bool(generate))
     analytics = summarize_examples(result.examples)

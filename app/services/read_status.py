@@ -1,7 +1,7 @@
 """Repository for content read status operations."""
 
-from collections.abc import Iterable
 import logging
+from collections.abc import Iterable
 from datetime import datetime
 
 from sqlalchemy import delete, select

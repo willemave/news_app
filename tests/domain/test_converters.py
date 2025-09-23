@@ -1,9 +1,9 @@
-import pytest
 from datetime import datetime
+
 from pydantic import HttpUrl
 
 from app.domain.converters import content_to_domain, domain_to_content
-from app.models.metadata import ContentData, ContentType, ContentStatus
+from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
 
 

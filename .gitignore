@@ -45,3 +45,5 @@ certs/
 *.pem
 *.key
 *.crt
+
+client/newsly/newsly.xcodeproj/project.xcworkspace/xcuserdata/willem.xcuserdatad/UserInterfaceState.xcuserstate

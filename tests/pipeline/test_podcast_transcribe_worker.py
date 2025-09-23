@@ -1,6 +1,3 @@
-import os
-import tempfile
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -307,7 +304,7 @@ class TestOpenAITranscriptionService:
     @patch("app.services.openai_llm.get_settings")
     def test_check_file_size(self, mock_get_settings, mock_openai, mock_getsize):
         """Test file size checking."""
-        from app.services.openai_llm import OpenAITranscriptionService, MAX_FILE_SIZE_BYTES
+        from app.services.openai_llm import MAX_FILE_SIZE_BYTES, OpenAITranscriptionService
         
         mock_settings = MagicMock()
         mock_settings.openai_api_key = "test-key"
@@ -334,7 +331,7 @@ class TestOpenAITranscriptionService:
     @patch("app.services.openai_llm.get_settings")
     def test_split_audio_file(self, mock_get_settings, mock_openai, mock_mkdtemp, mock_audio_segment):
         """Test audio file splitting."""
-        from app.services.openai_llm import OpenAITranscriptionService, CHUNK_DURATION_MS
+        from app.services.openai_llm import OpenAITranscriptionService
         
         mock_settings = MagicMock()
         mock_settings.openai_api_key = "test-key"

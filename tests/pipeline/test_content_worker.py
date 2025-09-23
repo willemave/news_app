@@ -1,12 +1,12 @@
 """Tests for ContentWorker."""
 
-import pytest
 from datetime import datetime
-from unittest.mock import ANY, MagicMock, Mock, patch
-from pydantic import HttpUrl
+from unittest.mock import MagicMock, Mock, patch
 
-from app.pipeline.worker import ContentWorker
+import pytest
+
 from app.models.metadata import ContentData, ContentStatus, ContentType, NewsSummary
+from app.pipeline.worker import ContentWorker
 from app.services.http import NonRetryableError
 from app.services.queue import TaskType
 

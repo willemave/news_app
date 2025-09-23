@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import create_engine
@@ -191,7 +191,7 @@ def apply_completion_updates(content: Content, summary: StructuredSummary) -> No
 
     processed_at = summary.summarization_date or datetime.utcnow()
     if processed_at.tzinfo is not None:
-        processed_at = processed_at.astimezone(timezone.utc).replace(tzinfo=None)
+        processed_at = processed_at.astimezone(UTC).replace(tzinfo=None)
 
     content.processed_at = processed_at
 
@@ -243,14 +243,10 @@ def main(argv: list[str]) -> ScriptResult:
     )
 
     print(
-        (
-            "Processed {processed} rows | Updated {updated} | "
-            "Skipped (missing summary) {skipped}"
-        ).format(
-            processed=result.processed,
-            updated=result.updated,
-            skipped=result.skipped_missing_summary,
-        )
+        
+            f"Processed {result.processed} rows | Updated {result.updated} | "
+            f"Skipped (missing summary) {result.skipped_missing_summary}"
+        
     )
 
     return result

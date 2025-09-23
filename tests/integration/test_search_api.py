@@ -1,21 +1,22 @@
 import os
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-# Import router and models without importing app.main (avoids env/settings side effects)
-from app.routers import api_content
 from app.core.db import get_db_session
 from app.models.schema import Base, Content
 
+# Import router and models without importing app.main (avoids env/settings side effects)
+from app.routers import api_content
+
 
 @pytest.fixture(scope="module")
-def test_app() -> Generator[FastAPI, None, None]:
+def test_app() -> Generator[FastAPI]:
     # Set a safe DATABASE_URL for any code that might read it (defensive)
     os.environ.setdefault("DATABASE_URL", "sqlite://")
 
@@ -25,7 +26,7 @@ def test_app() -> Generator[FastAPI, None, None]:
 
 
 @pytest.fixture(scope="module")
-def db_session() -> Generator[Session, None, None]:
+def db_session() -> Generator[Session]:
     # In-memory SQLite shared across the module
     engine = create_engine(
         "sqlite://",
@@ -42,7 +43,7 @@ def db_session() -> Generator[Session, None, None]:
 
 
 @pytest.fixture(scope="module")
-def client(test_app: FastAPI, db_session: Session) -> Generator[TestClient, None, None]:
+def client(test_app: FastAPI, db_session: Session) -> Generator[TestClient]:
     # Override DB dependency for router endpoints
     def _get_db_session_override() -> Session:
         return db_session

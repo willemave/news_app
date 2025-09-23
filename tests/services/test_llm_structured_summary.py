@@ -1,11 +1,11 @@
 """Tests for structured summarization in LLM service."""
-import pytest
 import json
-from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
+from unittest.mock import Mock, patch
 
+import pytest
+
+from app.models.metadata import StructuredSummary
 from app.services.google_flash import GoogleFlashService
-from app.models.metadata import StructuredSummary, SummaryBulletPoint, ContentQuote
 
 
 class TestStructuredSummarization:

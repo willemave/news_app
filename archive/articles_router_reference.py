@@ -3,15 +3,16 @@ ARCHIVED FROM app/routers/articles.py
 This file contains reference code for article routing that can be reused in the new router structure.
 """
 
-from fastapi import APIRouter, Request, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from typing import Optional
 from datetime import datetime
+
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from app.database import SessionLocal
 from app.models import Articles, Links
 from app.templates import templates
-from fastapi.responses import HTMLResponse
 
 router = APIRouter()
 
@@ -26,8 +27,8 @@ def get_db():
 def get_daily_articles(
     request: Request,
     db: Session = Depends(get_db),
-    source: Optional[str] = None,
-    date: Optional[str] = None
+    source: str | None = None,
+    date: str | None = None
 ):
     """Get articles with optional source and date filtering."""
     

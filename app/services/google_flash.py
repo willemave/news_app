@@ -7,9 +7,15 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import NewsSummary, StructuredSummary
+from app.utils.json_repair import strip_json_wrappers, try_repair_truncated_json
 
 logger = get_logger(__name__)
 settings = get_settings()
+
+# Constants
+MAX_CONTENT_PREVIEW = 50000
+LONG_CONTENT_THRESHOLD = 12000
+LONG_CONTENT_MAX_TOKENS = 35000
 
 # Create logs directory if it doesn't exist
 LOG_DIR = Path("logs")
@@ -192,59 +198,6 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         """
 
 
-def try_repair_truncated_json(json_str: str) -> str | None:
-    """
-    Attempt to repair truncated JSON by closing open structures.
-    This is a best-effort approach for handling responses cut off by token limits.
-    """
-    try:
-        # First, try to parse as-is
-        json.loads(json_str)
-        return json_str
-    except json.JSONDecodeError:
-        pass
-    
-    # Count open brackets/braces
-    open_braces = json_str.count("{") - json_str.count("}")
-    open_brackets = json_str.count("[") - json_str.count("]")
-    
-    # Try to repair by closing structures
-    repaired = json_str
-    
-    # Close any open strings first
-    if repaired.count('"') % 2 != 0:
-        repaired += '"'
-    
-    # Close arrays and objects
-    repaired += "]" * open_brackets
-    repaired += "}" * open_braces
-    
-    try:
-        json.loads(repaired)
-        logger.info("Successfully repaired truncated JSON")
-        return repaired
-    except json.JSONDecodeError:
-        # If simple repair didn't work, try more aggressive approach
-        # Find the last complete element and truncate there
-        for i in range(len(json_str) - 1, 0, -1):
-            if json_str[i] in ['}', ']']:
-                truncated = json_str[:i+1]
-                # Balance the remaining structures
-                open_braces = truncated.count("{") - truncated.count("}")
-                open_brackets = truncated.count("[") - truncated.count("]")
-                truncated += "]" * open_brackets
-                truncated += "}" * open_braces
-                
-                try:
-                    json.loads(truncated)
-                    logger.info(f"Repaired JSON by truncating at position {i}")
-                    return truncated
-                except json.JSONDecodeError:
-                    continue
-        
-        return None
-
-
 class GoogleFlashService:
     """Google Flash (Gemini) service for content summarization."""
 
@@ -275,9 +228,17 @@ class GoogleFlashService:
             StructuredSummary with bullet points, quotes, classification, and full_markdown
         """
         try:
-            # Truncate content if too long
             if isinstance(content, bytes):
                 content = content.decode("utf-8", errors="ignore")
+
+            original_length = len(content)
+            if original_length > MAX_CONTENT_PREVIEW:
+                logger.warning(
+                    "Content length %s exceeds preview limit %s; truncating payload",
+                    original_length,
+                    MAX_CONTENT_PREVIEW,
+                )
+                content = content[:MAX_CONTENT_PREVIEW] + "..."
 
             # Generate prompt based on content type
             prompt = generate_summary_prompt(content_type, max_bullet_points, max_quotes, content)
@@ -293,7 +254,10 @@ class GoogleFlashService:
             else:
                 max_tokens = 50000  # Larger for articles to include full_markdown
                 response_schema = StructuredSummary
-            
+
+            if content_type not in {"podcast", "news_digest"} and len(content) > LONG_CONTENT_THRESHOLD:
+                max_tokens = min(max_tokens, LONG_CONTENT_MAX_TOKENS)
+
             config = {
                 "temperature": 0.7,
                 "max_output_tokens": max_tokens,
@@ -361,15 +325,7 @@ class GoogleFlashService:
                 )
                 return None
 
-            # Clean response if wrapped in markdown code blocks
-            cleaned_text = response_text.strip()
-            if cleaned_text.startswith("```json"):
-                cleaned_text = cleaned_text[7:]
-            elif cleaned_text.startswith("```"):
-                cleaned_text = cleaned_text[3:]
-            if cleaned_text.endswith("```"):
-                cleaned_text = cleaned_text[:-3]
-            cleaned_text = cleaned_text.strip()
+            cleaned_text = strip_json_wrappers(response_text)
             
             # Additional cleanup for common issues
             if not cleaned_text:

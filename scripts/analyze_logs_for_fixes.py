@@ -4,21 +4,19 @@ Script to analyze recent error logs and generate an LLM prompt for fixing errors
 Enhanced to work with the latest error logging structure and provide better insights.
 """
 
-import json
-import os
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from collections import defaultdict
-from typing import Dict, List, Any, Optional, Tuple
 import argparse
-import re
+import json
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 
-def parse_jsonl_file(file_path: Path) -> List[Dict[str, Any]]:
+def parse_jsonl_file(file_path: Path) -> list[dict[str, Any]]:
     """Parse a JSONL file and return list of error records."""
     errors = []
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path) as f:
             for line in f:
                 if line.strip():
                     try:
@@ -30,11 +28,11 @@ def parse_jsonl_file(file_path: Path) -> List[Dict[str, Any]]:
     return errors
 
 
-def parse_log_file(file_path: Path) -> List[Dict[str, Any]]:
+def parse_log_file(file_path: Path) -> list[dict[str, Any]]:
     """Parse a regular log file and return list of error records."""
     errors = []
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path) as f:
             for line in f:
                 if line.strip():
                     try:
@@ -52,10 +50,10 @@ def parse_log_file(file_path: Path) -> List[Dict[str, Any]]:
     return errors
 
 
-def get_recent_logs(logs_dir: Path, hours: int = 24) -> List[Dict[str, Any]]:
+def get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]:
     """Get all logs from the past N hours."""
     # Use timezone-aware datetime for better comparison
-    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
     all_errors = []
     
     # Process error directory
@@ -68,7 +66,7 @@ def get_recent_logs(logs_dir: Path, hours: int = 24) -> List[Dict[str, Any]]:
                 try:
                     file_timestamp = file_path.stem.split('_')[-2] + file_path.stem.split('_')[-1]
                     file_date = datetime.strptime(file_timestamp, '%Y%m%d%H%M%S')
-                    file_date = file_date.replace(tzinfo=timezone.utc)
+                    file_date = file_date.replace(tzinfo=UTC)
                     if file_date < cutoff_time:
                         continue  # Skip older files
                 except:
@@ -87,7 +85,7 @@ def get_recent_logs(logs_dir: Path, hours: int = 24) -> List[Dict[str, Any]]:
                             error_time = datetime.fromisoformat(timestamp_str)
                         else:
                             # Assume UTC if no timezone
-                            error_time = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
+                            error_time = datetime.fromisoformat(timestamp_str).replace(tzinfo=UTC)
                         
                         if error_time > cutoff_time:
                             error['source_file'] = file_path.name
@@ -111,7 +109,7 @@ def get_recent_logs(logs_dir: Path, hours: int = 24) -> List[Dict[str, Any]]:
                         elif '+' in timestamp_str or timestamp_str.endswith('00:00'):
                             error_time = datetime.fromisoformat(timestamp_str)
                         else:
-                            error_time = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
+                            error_time = datetime.fromisoformat(timestamp_str).replace(tzinfo=UTC)
                         
                         if error_time > cutoff_time:
                             error['source_file'] = llm_errors_file.name
@@ -131,7 +129,7 @@ def get_recent_logs(logs_dir: Path, hours: int = 24) -> List[Dict[str, Any]]:
                 if timestamp_str:
                     error_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                     if error_time.tzinfo is None:
-                        error_time = error_time.replace(tzinfo=timezone.utc)
+                        error_time = error_time.replace(tzinfo=UTC)
                     if error_time > cutoff_time:
                         error['source_file'] = file_path.name
                         all_errors.append(error)
@@ -142,7 +140,7 @@ def get_recent_logs(logs_dir: Path, hours: int = 24) -> List[Dict[str, Any]]:
     return all_errors
 
 
-def group_errors(errors: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def group_errors(errors: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """Group errors by type and component with enhanced categorization."""
     grouped = defaultdict(list)
     
@@ -191,7 +189,7 @@ def group_errors(errors: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]
     return sorted_grouped
 
 
-def extract_file_references(errors: List[Dict[str, Any]]) -> Tuple[List[str], Dict[str, int]]:
+def extract_file_references(errors: list[dict[str, Any]]) -> tuple[list[str], dict[str, int]]:
     """Extract unique file references from stack traces with occurrence counts."""
     files = set()
     file_counts = defaultdict(int)
@@ -221,7 +219,7 @@ def extract_file_references(errors: List[Dict[str, Any]]) -> Tuple[List[str], Di
     return [f[0] for f in sorted_files], dict(file_counts)
 
 
-def generate_llm_prompt(grouped_errors: Dict[str, List[Dict[str, Any]]], hours: int) -> str:
+def generate_llm_prompt(grouped_errors: dict[str, list[dict[str, Any]]], hours: int) -> str:
     """Generate a comprehensive prompt for an LLM to fix the errors."""
     
     # Calculate total errors
@@ -444,7 +442,7 @@ Please prioritize fixes based on:
     return prompt
 
 
-def analyze_error_trends(errors: List[Dict[str, Any]]) -> Dict[str, Any]:
+def analyze_error_trends(errors: list[dict[str, Any]]) -> dict[str, Any]:
     """Analyze error trends over time."""
     if not errors:
         return {}
@@ -472,21 +470,21 @@ def analyze_error_trends(errors: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def generate_summary_report(errors: List[Dict[str, Any]], grouped_errors: Dict[str, List[Dict[str, Any]]]) -> str:
+def generate_summary_report(errors: list[dict[str, Any]], grouped_errors: dict[str, list[dict[str, Any]]]) -> str:
     """Generate a concise summary report."""
     trends = analyze_error_trends(errors)
     
     report = "## Quick Summary\n\n"
     report += f"- **Total Errors**: {len(errors)}\n"
     report += f"- **Error Types**: {len(grouped_errors)}\n"
-    report += f"- **Top 3 Error Types**:\n"
+    report += "- **Top 3 Error Types**:\n"
     
     for error_type, error_list in list(grouped_errors.items())[:3]:
         percentage = (len(error_list) / len(errors)) * 100
         report += f"  - {error_type.replace('_', ' ').title()}: {len(error_list)} ({percentage:.1f}%)\n"
     
     if trends.get('component_distribution'):
-        report += f"\n- **Most Affected Components**:\n"
+        report += "\n- **Most Affected Components**:\n"
         for component, count in list(trends['component_distribution'].items())[:5]:
             report += f"  - {component}: {count} errors\n"
     
@@ -578,7 +576,7 @@ Examples:
     if args.summary:
         return
     
-    print(f"\nDetailed error breakdown:")
+    print("\nDetailed error breakdown:")
     for error_type, error_list in grouped_errors.items():
         print(f"- {error_type}: {len(error_list)} occurrences")
     
@@ -590,7 +588,7 @@ Examples:
         with open(args.output, 'w') as f:
             f.write(prompt)
         print(f"\nPrompt written to: {args.output}")
-        print(f"You can now paste this into an LLM to get fix recommendations.")
+        print("You can now paste this into an LLM to get fix recommendations.")
     else:
         print("\n" + "="*80)
         print("LLM PROMPT:")

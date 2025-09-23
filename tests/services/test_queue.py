@@ -1,9 +1,10 @@
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
-from app.services.queue import QueueService, TaskType, TaskStatus, get_queue_service
+import pytest
+
 from app.models.schema import ProcessingTask
+from app.services.queue import QueueService, TaskStatus, TaskType, get_queue_service
 
 
 class TestQueueService:
@@ -67,7 +68,7 @@ class TestQueueService:
         mock_task.payload = {'test': 'data'}
         mock_task.retry_count = 0
         mock_task.status = TaskStatus.PENDING.value
-        mock_task.created_at = datetime.now(timezone.utc)
+        mock_task.created_at = datetime.now(UTC)
 
         # Mock query chain
         mock_query = MagicMock()
@@ -185,7 +186,7 @@ class TestQueueService:
         assert mock_task.started_at is None
         assert mock_task.completed_at is None
         # created_at should be in the future
-        assert mock_task.created_at > datetime.now(timezone.utc)
+        assert mock_task.created_at > datetime.now(UTC)
         mock_db_session.commit.assert_called_once()
 
     def test_retry_task_not_found(self, mock_db_session):
@@ -304,7 +305,7 @@ class TestQueueServiceIntegration:
         mock_task.task_type = TaskType.PROCESS_CONTENT.value
         mock_task.content_id = 456
         mock_task.status = TaskStatus.PENDING.value
-        mock_task.created_at = datetime.now(timezone.utc)
+        mock_task.created_at = datetime.now(UTC)
 
         mock_query = MagicMock()
         mock_query.filter.return_value = mock_query

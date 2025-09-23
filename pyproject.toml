@@ -68,7 +68,16 @@ ignore_missing_imports = true
 [tool.ruff]
 target-version = "py313"
 line-length = 100
+exclude = [
+    ".git",
+    ".venv",
+    "node_modules",
+    "tests",
+]
+
+[tool.ruff.lint]
 select = ["E", "F", "UP", "B", "SIM", "I"]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*" = ["E501"]
 "migrations/*" = ["E501"]

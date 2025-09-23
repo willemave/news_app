@@ -1,7 +1,5 @@
 """Tests for the sequential task processor."""
 
-import time
-from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest

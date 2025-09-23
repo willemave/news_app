@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 try:  # Python 3.11+
     from datetime import UTC  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover
-    UTC = timezone.utc  # type: ignore[assignment]
-from pathlib import Path
+    UTC = UTC  # type: ignore[assignment]
 import textwrap
-
-import pytest
+from pathlib import Path
 
 from app.scraping.youtube_unified import (
     YouTubeChannelConfig,

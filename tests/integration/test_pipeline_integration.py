@@ -1,16 +1,15 @@
 """Integration tests for the complete processing pipeline."""
 
-import pytest
-import asyncio
-import time
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from app.pipeline.sequential_task_processor import SequentialTaskProcessor
-from app.services.queue import TaskType, QueueService
-from app.models.schema import Content, ProcessingTask
-from app.models.metadata import ContentStatus, ContentType
+import pytest
+
 from app.core.db import get_db
+from app.models.metadata import ContentStatus, ContentType
+from app.models.schema import Content, ProcessingTask
+from app.pipeline.sequential_task_processor import SequentialTaskProcessor
+from app.services.queue import QueueService, TaskType
 
 
 @pytest.fixture

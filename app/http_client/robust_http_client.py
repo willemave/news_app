@@ -13,7 +13,10 @@ logger = get_logger(__name__)
 
 # Default values, can be overridden by settings
 DEFAULT_TIMEOUT = 10.0
-DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36)"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36)"
+)
 
 
 class RobustHttpClient:
@@ -100,9 +103,14 @@ class RobustHttpClient:
             logger.info(f"GET request to {url} successful, status: {response.status_code}")
             if response.history:
                 logger.info(f"Request to {url} was redirected. Final URL: {response.url}")
-                for i, r in enumerate(response.history):
+                for index, redirect_response in enumerate(response.history, start=1):
+                    location_header = redirect_response.headers.get("Location")
                     logger.debug(
-                        f"Redirect {i + 1}: {r.url} ({r.status_code}) -> {r.headers.get('Location')}"
+                        "Redirect %s: %s (%s) -> %s",
+                        index,
+                        redirect_response.url,
+                        redirect_response.status_code,
+                        location_header,
                     )
             return response
         except httpx.HTTPStatusError as e:
@@ -154,9 +162,14 @@ class RobustHttpClient:
             logger.info(f"HEAD request to {url} successful, status: {response.status_code}")
             if response.history:
                 logger.info(f"HEAD request to {url} was redirected. Final URL: {response.url}")
-                for i, r in enumerate(response.history):
+                for index, redirect_response in enumerate(response.history, start=1):
+                    location_header = redirect_response.headers.get("Location")
                     logger.debug(
-                        f"Redirect {i + 1}: {r.url} ({r.status_code}) -> {r.headers.get('Location')}"
+                        "Redirect %s: %s (%s) -> %s",
+                        index,
+                        redirect_response.url,
+                        redirect_response.status_code,
+                        location_header,
                     )
             return response
         except httpx.HTTPStatusError as e:

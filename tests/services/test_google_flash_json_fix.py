@@ -1,11 +1,13 @@
 """Test cases for Google Flash service JSON parsing improvements."""
 
 import json
-import pytest
 from unittest.mock import Mock, patch
 
-from app.services.google_flash import GoogleFlashService, try_repair_truncated_json
+import pytest
+
 from app.models.metadata import StructuredSummary
+from app.services.google_flash import GoogleFlashService
+from app.utils.json_repair import try_repair_truncated_json
 
 
 class TestJSONRepair:

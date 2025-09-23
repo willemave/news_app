@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from typing import Optional, Tuple
 
 import torch
 import whisper
@@ -59,11 +58,11 @@ class WhisperLocalTranscriptionService:
                     )
                     self.device = "cpu"
                     self.model = whisper.load_model(self.model_name, device=self.device)
-                    logger.info(f"Model loaded successfully on CPU after MPS failure")
+                    logger.info("Model loaded successfully on CPU after MPS failure")
                 else:
                     raise
 
-    def transcribe_audio(self, audio_file_path: Path) -> Tuple[str, Optional[str]]:
+    def transcribe_audio(self, audio_file_path: Path) -> tuple[str, str | None]:
         """Transcribe audio file using local Whisper model.
 
         Args:

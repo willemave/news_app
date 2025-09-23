@@ -5,21 +5,22 @@ This script only runs the scrapers and saves content to the database.
 Use run_workers.py to process the scraped content.
 """
 
-import sys
-import os
 import argparse
+import os
+import sys
 from datetime import datetime
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.logging import setup_logging, get_logger
-from app.core.db import init_db, get_db
-from app.scraping.runner import ScraperRunner
-from app.services.event_logger import track_event, log_event
-from app.models.schema import Content
-from app.models.metadata import ContentStatus, ContentType
 from sqlalchemy import func
+
+from app.core.db import get_db, init_db
+from app.core.logging import get_logger, setup_logging
+from app.models.metadata import ContentStatus, ContentType
+from app.models.schema import Content
+from app.scraping.runner import ScraperRunner
+from app.services.event_logger import log_event, track_event
 
 logger = get_logger(__name__)
 
@@ -64,7 +65,7 @@ def main():
             with get_db() as db:
                 total_content = db.query(Content).count()
                 new_content = db.query(Content).filter(Content.status == ContentStatus.NEW.value).count()
-                logger.info(f"Initial database stats:")
+                logger.info("Initial database stats:")
                 logger.info(f"  Total content: {total_content}")
                 logger.info(f"  New content: {new_content}")
         
@@ -142,8 +143,8 @@ def main():
             
             # Summary
             total_scraped = sum(scraper_results.values())
-            logger.info(f"\n" + "=" * 60)
-            logger.info(f"Scraping completed. Summary:")
+            logger.info("\n" + "=" * 60)
+            logger.info("Scraping completed. Summary:")
             for scraper, count in scraper_results.items():
                 logger.info(f"  {scraper}: {count} new items")
             logger.info(f"  Total: {total_scraped} new items")

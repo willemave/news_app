@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -78,7 +78,7 @@ class HackerNewsUnifiedScraper(BaseScraper):
                                 },
                             },
                             "excerpt": story.get("text"),
-                            "discovery_time": datetime.now(timezone.utc).isoformat(),
+                            "discovery_time": datetime.now(UTC).isoformat(),
                         },
                     }
 

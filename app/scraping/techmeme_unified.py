@@ -60,7 +60,7 @@ def load_techmeme_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> Techm
         return TechmemeSettings()
 
     try:
-        with open(resolved_path, "r", encoding="utf-8") as fh:
+        with open(resolved_path, encoding="utf-8") as fh:
             raw_config = yaml.safe_load(fh) or {}
         return TechmemeSettings.model_validate(raw_config)
     except ValidationError as exc:

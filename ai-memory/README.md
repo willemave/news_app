@@ -64,6 +64,7 @@
   - Robust JSON parsing with truncation repair
   - Comprehensive error logging to `logs/errors/llm_json_errors.log`
   - Handles MAX_TOKENS response truncation gracefully
+* **JSON Repair Utility**: `app/utils/json_repair.py` provides shared cleanup and balancing for truncated JSON responses consumed by both OpenAI and Google providers
 
 ### Queue System
 * **Database-Backed Queue**: [`QueueService`](app/services/queue.py:27) replaces Huey with simple SQLite/PostgreSQL queue
@@ -167,6 +168,7 @@
 
 ### Utilities
 * [`app/utils/error_logger.py`](app/utils/error_logger.py) - Generic error logging with context
+* [`app/utils/json_repair.py`](app/utils/json_repair.py) - Shared helpers to strip code fences and repair truncated LLM JSON payloads
 
 ### Web Interface
 * [`app/main.py`](app/main.py) - FastAPI application entry point with middleware and router setup

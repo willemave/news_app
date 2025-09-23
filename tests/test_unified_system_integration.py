@@ -2,11 +2,11 @@
 """
 Integration test for the unified system with processing strategies and scrapers.
 """
-import pytest
 import asyncio
+
+from app.core.logging import get_logger
 from app.processing_strategies.registry import get_strategy_registry
 from app.scraping.runner import ScraperRunner
-from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,6 +1,5 @@
 """Tests for HackerNews processing strategy."""
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx

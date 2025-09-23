@@ -3,17 +3,19 @@
 
 import argparse
 import sys
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Iterable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import func  # noqa: E402
-from sqlalchemy import create_engine
+from sqlalchemy import (
+    create_engine,
+    func,  # noqa: E402
+)
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import get_settings  # noqa: E402

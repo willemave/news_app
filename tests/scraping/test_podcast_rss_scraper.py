@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
+
 from app.scraping.podcast_rss_scraper import PodcastRSSScraper
 
 

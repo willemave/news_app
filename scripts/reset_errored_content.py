@@ -8,19 +8,19 @@ This script:
 4. Creates new processing tasks for the content
 """
 
-import sys
-from pathlib import Path
-from datetime import datetime, timedelta
 import argparse
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import create_engine, and_
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import get_settings
-from app.models.schema import Content, ProcessingTask, ContentStatus
+from app.models.schema import Content, ContentStatus, ProcessingTask
 
 
 def reset_errored_content(days: int = None, dry_run: bool = False):

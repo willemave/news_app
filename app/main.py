@@ -51,6 +51,7 @@ async def health_check():
 
 if __name__ == "__main__":
     import os
+
     import uvicorn
 
     # Check if SSL certificates exist

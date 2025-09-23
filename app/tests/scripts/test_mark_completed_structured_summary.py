@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Generator
 from datetime import datetime, timedelta
-from typing import Generator
 
 import pytest
 from sqlalchemy import create_engine
@@ -11,7 +11,6 @@ from app.core.settings import get_settings
 from app.models.metadata import ContentStatus
 from app.models.schema import Base, Content
 from scripts.mark_completed_structured_summary import ScriptOptions, run
-
 
 SUMMARY_OVERVIEW = (
     "This overview contains sufficient detail to satisfy the validation minimum length."
@@ -33,7 +32,7 @@ SUMMARY_POINTS = [
 
 
 @pytest.fixture()
-def session_factory(tmp_path, monkeypatch) -> Generator[sessionmaker, None, None]:
+def session_factory(tmp_path, monkeypatch) -> Generator[sessionmaker]:
     """Provide isolated SQLite session factories for script tests."""
 
     db_path = tmp_path / "summary_status.sqlite"

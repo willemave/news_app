@@ -3,25 +3,23 @@ ARCHIVED FROM app/api/content.py
 This file contains reference code for content API endpoints that can be reused in the new router structure.
 """
 
-from typing import Optional, List
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
 from app.core.db import get_db_session
-from app.domain.content import ContentData, ContentType, ContentStatus
+from app.domain.content import ContentData, ContentStatus, ContentType
 from app.domain.converters import content_to_domain
 from app.models.schema import Content
 from app.pipeline.worker import get_worker
 
 router = APIRouter(prefix="/content", tags=["content"])
 
-@router.get("/", response_model=List[ContentData])
+@router.get("/", response_model=list[ContentData])
 async def list_content(
-    content_type: Optional[ContentType] = None,
-    status: Optional[ContentStatus] = None,
+    content_type: ContentType | None = None,
+    status: ContentStatus | None = None,
     limit: int = Query(default=50, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db_session)

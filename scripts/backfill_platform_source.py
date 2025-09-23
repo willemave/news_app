@@ -16,9 +16,8 @@ import json
 import os
 import re
 import sqlite3
-from urllib.parse import urlparse
-
 import sys
+from urllib.parse import urlparse
 
 
 def _db_path_from_env() -> str:

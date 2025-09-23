@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """
 Unified metadata models for content types.
 Merges functionality from app/schemas/metadata.py and app/domain/content.py.
 """
+
+from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
@@ -76,7 +76,10 @@ class StructuredSummary(BaseModel):
                 "quotes": [{"text": "Notable quote from the content", "context": "Author Name"}],
                 "topics": ["AI", "Technology", "Innovation"],
                 "summarization_date": "2025-06-14T10:30:00Z",
-                "full_markdown": "# AI Advances in Natural Language Processing\n\nFull article content in markdown format...",
+                "full_markdown": (
+                    "# AI Advances in Natural Language Processing\n\n"
+                    "Full article content in markdown format..."
+                ),
             }
         }
     )
@@ -85,7 +88,7 @@ class StructuredSummary(BaseModel):
         ..., min_length=5, max_length=1000, description="Descriptive title for the content"
     )
     overview: str = Field(
-        ..., min_length=50,  description="Brief overview paragraph (longer for podcasts)"
+        ..., min_length=50, description="Brief overview paragraph (longer for podcasts)"
     )
     bullet_points: list[SummaryBulletPoint] = Field(..., min_items=3, max_items=50)
     quotes: list[ContentQuote] = Field(default_factory=list, max_items=50)
@@ -116,7 +119,10 @@ class NewsSummary(BaseModel):
                     "Developers get first-party workflows that replace plug-ins",
                     "Initial rollout targets enterprise customers later expanding to prosumers",
                 ],
-                "overview": "OpenAI debuts GPT-5 with native multi-agent features and enterprise-first rollout.",
+                "overview": (
+                    "OpenAI debuts GPT-5 with native multi-agent features and "
+                    "enterprise-first rollout."
+                ),
                 "classification": "to_read",
                 "summarization_date": "2025-09-22T10:30:00Z",
             }
@@ -206,7 +212,7 @@ class BaseContentMetadata(BaseModel):
     @classmethod
     def validate_summary(cls, value: StructuredSummary | NewsSummary | dict[str, Any] | None):
         """Normalize summary payloads into structured models."""
-        if value is None or isinstance(value, (StructuredSummary, NewsSummary)):
+        if value is None or isinstance(value, StructuredSummary | NewsSummary):
             return value
         if isinstance(value, dict):
             summary_type = value.get("summary_type")
@@ -337,7 +343,10 @@ class NewsMetadata(BaseContentMetadata):
                         "Developers get first-party workflows that replace plug-ins",
                         "Initial rollout targets enterprise customers later expanding to prosumers",
                     ],
-                    "overview": "OpenAI debuts GPT-5 with native multi-agent features and enterprise-first rollout.",
+                    "overview": (
+                        "OpenAI debuts GPT-5 with native multi-agent features and enterprise-first "
+                        "rollout."
+                    ),
                     "classification": "to_read",
                     "summarization_date": "2025-09-22T10:30:00Z",
                 },
@@ -384,7 +393,9 @@ class ContentData(BaseModel):
     Unified content data model for passing between layers.
     """
 
-    model_config = ConfigDict(ignored_types=(property,), json_encoders={datetime: lambda v: v.isoformat()})
+    model_config = ConfigDict(
+        ignored_types=(property,), json_encoders={datetime: lambda value: value.isoformat()}
+    )
 
     id: int | None = None
     content_type: ContentType
@@ -542,12 +553,12 @@ class ContentData(BaseModel):
         return None
 
     @property
-    def source(self) -> str | None:
+    def source(self) -> str | None:  # noqa: F811
         """Get content source (substack name, podcast name, subreddit)."""
         return self.metadata.get("source")
 
     @property
-    def platform(self) -> str | None:
+    def platform(self) -> str | None:  # noqa: F811
         """Get content platform (twitter, substack, youtube, etc)."""
         return self.metadata.get("platform")
 

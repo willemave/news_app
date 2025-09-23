@@ -6,8 +6,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
-from app.templates import templates
 from app.core.settings import get_settings
+from app.templates import templates
 
 router = APIRouter(prefix="/admin")
 
@@ -176,8 +176,7 @@ async def errors_dashboard(request: Request, hours: int = 24, min_errors: int = 
 
 
 # ===== Helpers adapted from scripts/analyze_logs_for_fixes.py (trimmed for server use) =====
-from datetime import datetime, timezone, timedelta
-import json
+from datetime import UTC, timedelta
 
 
 def _an_parse_jsonl_file(file_path: Path) -> list[dict[str, Any]]:
@@ -222,7 +221,7 @@ def _an_parse_log_file(file_path: Path) -> list[dict[str, Any]]:
 
 
 def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]:
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
     all_errors: list[dict[str, Any]] = []
 
     errors_dir = logs_dir / "errors"
@@ -234,7 +233,7 @@ def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]
                 parts = fp.stem.split("_")
                 if len(parts) >= 2:
                     ts = parts[-2] + parts[-1]
-                    dt = datetime.strptime(ts, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                    dt = datetime.strptime(ts, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
                     if dt < cutoff:
                         continue
             except Exception:
@@ -248,7 +247,7 @@ def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]
                         else:
                             t = datetime.fromisoformat(ts)
                         if t.tzinfo is None:
-                            t = t.replace(tzinfo=timezone.utc)
+                            t = t.replace(tzinfo=UTC)
                         if t > cutoff:
                             e["source_file"] = fp.name
                             all_errors.append(e)
@@ -266,7 +265,7 @@ def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]
                     if ts:
                         t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                         if t.tzinfo is None:
-                            t = t.replace(tzinfo=timezone.utc)
+                            t = t.replace(tzinfo=UTC)
                         if t > cutoff:
                             e["source_file"] = llm.name
                             all_errors.append(e)
@@ -283,7 +282,7 @@ def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]
                 if ts:
                     t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                     if t.tzinfo is None:
-                        t = t.replace(tzinfo=timezone.utc)
+                        t = t.replace(tzinfo=UTC)
                     if t > cutoff:
                         e["source_file"] = fp.name
                         all_errors.append(e)

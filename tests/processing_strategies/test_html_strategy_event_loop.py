@@ -1,11 +1,11 @@
 """Test HTML strategy event loop handling."""
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 
 from app.processing_strategies.html_strategy import HtmlProcessorStrategy
-from app.models.schema import Content
 
 
 class TestHtmlStrategyEventLoop:
