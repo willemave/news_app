@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from typing import Any
 
 from app.core.db import get_db
 from app.core.logging import get_logger
@@ -32,6 +33,51 @@ class ContentWorker:
         self.podcast_download_worker = PodcastDownloadWorker()
         self.podcast_transcribe_worker = PodcastTranscribeWorker()
         self.error_logger = create_error_logger("content_worker")
+
+    def _mark_article_extraction_failure(
+        self,
+        content: ContentData,
+        extracted_data: dict[str, Any],
+        reason: str,
+        fallback_text: str | None,
+    ) -> None:
+        """Update content metadata and status when extraction fails."""
+        logger.warning(
+            "Marking content %s as failed due to extraction error: %s",
+            content.id,
+            reason,
+        )
+
+        failure_metadata = {
+            "extraction_failed": True,
+            "extraction_error": reason,
+            "extraction_failure_details": fallback_text.strip() if fallback_text else None,
+            "content_type": extracted_data.get("content_type", "html"),
+            "source": extracted_data.get("source"),
+            "final_url_after_redirects": extracted_data.get(
+                "final_url_after_redirects", str(content.url)
+            ),
+            "author": extracted_data.get("author"),
+            "publication_date": extracted_data.get("publication_date"),
+        }
+
+        # Remove summary/content snapshots so the UI does not render a success state.
+        content.metadata.pop("summary", None)
+        if "content" in content.metadata:
+            content.metadata["content"] = None
+
+        # Merge metadata while omitting empty values.
+        content.metadata.update(
+            {
+                key: value
+                for key, value in failure_metadata.items()
+                if value not in (None, "", {})
+            }
+        )
+
+        content.status = ContentStatus.FAILED
+        content.error_message = reason
+        content.processed_at = datetime.now(timezone.utc)
 
     def process_content(self, content_id: int, worker_id: str) -> bool:
         """
@@ -144,9 +190,9 @@ class ContentWorker:
             # Prepare for LLM processing
             # Handle async methods from strategies like YouTubeStrategy
             if asyncio.iscoroutinefunction(strategy.prepare_for_llm):
-                llm_data = asyncio.run(strategy.prepare_for_llm(extracted_data))
+                llm_data = asyncio.run(strategy.prepare_for_llm(extracted_data)) or {}
             else:
-                llm_data = strategy.prepare_for_llm(extracted_data)
+                llm_data = strategy.prepare_for_llm(extracted_data) or {}
 
             # Update content with extracted data
             content.title = extracted_data.get("title") or content.title
@@ -178,6 +224,30 @@ class ContentWorker:
                     metadata_update[field] = extracted_data[field]
 
             content.metadata.update(metadata_update)
+
+            extraction_error = extracted_data.get("extraction_error")
+            llm_content = llm_data.get("content_to_summarize")
+            llm_content_text = llm_content.strip() if isinstance(llm_content, str) else ""
+            text_content = (extracted_data.get("text_content") or "").strip()
+
+            failure_reason: str | None = None
+            if extraction_error:
+                failure_reason = extraction_error
+            elif not llm_content_text:
+                failure_reason = "extracted article contained no content to summarize"
+            elif llm_content_text.lower().startswith("failed to extract content"):
+                failure_reason = llm_content_text
+            elif text_content.lower().startswith("failed to extract content"):
+                failure_reason = text_content
+
+            if failure_reason:
+                self._mark_article_extraction_failure(
+                    content,
+                    extracted_data,
+                    failure_reason,
+                    llm_content_text or text_content,
+                )
+                return True
 
             # Generate structured summary using LLM service
             if llm_data.get("content_to_summarize"):

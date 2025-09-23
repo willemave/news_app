@@ -5,6 +5,7 @@ from app.scraping.hackernews_unified import HackerNewsUnifiedScraper
 from app.scraping.podcast_unified import PodcastUnifiedScraper
 from app.scraping.reddit_unified import RedditUnifiedScraper
 from app.scraping.substack_unified import SubstackScraper
+from app.scraping.techmeme_unified import TechmemeScraper
 from app.scraping.twitter_unified import TwitterUnifiedScraper
 from app.scraping.youtube_unified import YouTubeUnifiedScraper
 from app.services.event_logger import log_event
@@ -20,6 +21,7 @@ class ScraperRunner:
             HackerNewsUnifiedScraper(),
             RedditUnifiedScraper(),
             SubstackScraper(),
+            TechmemeScraper(),
             PodcastUnifiedScraper(),
             TwitterUnifiedScraper(),
             YouTubeUnifiedScraper(),

@@ -116,6 +116,7 @@
 * [`app/scraping/hackernews_unified.py`](app/scraping/hackernews_unified.py) - HackerNews scraper
 * [`app/scraping/reddit_unified.py`](app/scraping/reddit_unified.py) - Reddit scraper (multi-subreddit)
 * [`app/scraping/substack_unified.py`](app/scraping/substack_unified.py) - RSS feed scraper for Substack
+* [`app/scraping/techmeme_unified.py`](app/scraping/techmeme_unified.py) - Dedicated Techmeme cluster scraper with aggregator metadata
 * [`app/scraping/podcast_unified.py`](app/scraping/podcast_unified.py) - Podcast RSS scraper
 * [`app/scraping/twitter_unified.py`](app/scraping/twitter_unified.py) - Twitter scraper (search-based aggregation)
 * [`app/scraping/youtube_unified.py`](app/scraping/youtube_unified.py) - Unified YouTube channel scraper using yt-dlp
@@ -196,6 +197,7 @@
 ### Configuration
 * [`config/podcasts.yml`](config/podcasts.yml) - Podcast RSS feed URLs
 * [`config/substack.yml`](config/substack.yml) - Substack RSS feed URLs with source names
+* [`config/techmeme.yml`](config/techmeme.yml) - Techmeme feed settings (limit, related link toggles)
 * [`config/reddit.yml`](config/reddit.yml) - Reddit subreddit configuration
 * [`config/twitter.yml`](config/twitter.yml) - Twitter search queries and list configuration
 * [`pyproject.toml`](pyproject.toml) - Project dependencies and configuration

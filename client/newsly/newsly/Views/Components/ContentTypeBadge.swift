@@ -27,6 +27,8 @@ struct ContentTypeBadge: View {
             return Color.blue.opacity(0.1)
         case .podcast:
             return Color.purple.opacity(0.1)
+        case .news:
+            return Color.green.opacity(0.1)
         }
     }
     
@@ -36,6 +38,8 @@ struct ContentTypeBadge: View {
             return .blue
         case .podcast:
             return .purple
+        case .news:
+            return .green
         }
     }
 }

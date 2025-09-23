@@ -17,7 +17,7 @@ def mock_dependencies():
     with (
         patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
         patch("app.pipeline.worker.get_http_service") as mock_http,
-        patch("app.pipeline.worker.get_llm_service") as mock_llm,
+        patch("app.pipeline.worker.get_openai_summarization_service") as mock_llm,
         patch("app.pipeline.worker.get_queue_service") as mock_queue,
         patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
         patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
@@ -299,6 +299,78 @@ class TestContentWorker:
 
         assert result is False
         worker.error_logger.log_processing_error.assert_called()
+
+    def test_process_article_marks_failed_on_crawl_fallback(self, mock_dependencies):
+        """Ensure crawl fallback metadata marks the item as failed instead of completed."""
+        worker = ContentWorker()
+        worker.llm_service = MagicMock()
+
+        mock_content = Mock()
+        mock_content.id = 1472
+        mock_content.url = (
+            "https://signalsandthreads.com/why-ml-needs-a-new-programming-language"
+        )
+        mock_content.content_type = ContentType.ARTICLE.value
+
+        content_data = ContentData(
+            id=1472,
+            url="https://signalsandthreads.com/why-ml-needs-a-new-programming-language",
+            content_type=ContentType.ARTICLE,
+            status=ContentStatus.NEW,
+            metadata={},
+            title="Why ML Needs a New Programming Language",
+            created_at=datetime.utcnow(),
+        )
+
+        mock_db = Mock()
+        filter_result = mock_db.query.return_value.filter.return_value
+        filter_result.first.side_effect = [mock_content, mock_content]
+        mock_dependencies["get_db"].return_value.__enter__.return_value = mock_db
+
+        fallback_error = "Crawl4ai extraction failed (Unknown error)"
+
+        mock_strategy = Mock()
+        mock_strategy.preprocess_url.return_value = (
+            "https://signalsandthreads.com/why-ml-needs-a-new-programming-language"
+        )
+        mock_strategy.extract_data.return_value = {
+            "title": "Content from https://signalsandthreads.com/why-ml-needs-a-new-programming-language",
+            "text_content": (
+                "Failed to extract content from https://signalsandthreads.com/why-ml-needs-a-new-"
+                "programming-language. Error: Crawl4ai extraction failed (Unknown error)"
+            ),
+            "content_type": "html",
+            "source": "signalsandthreads.com",
+            "final_url_after_redirects": (
+                "https://signalsandthreads.com/why-ml-needs-a-new-programming-language"
+            ),
+            "extraction_error": fallback_error,
+        }
+        mock_strategy.prepare_for_llm.return_value = {
+            "content_to_summarize": (
+                "Failed to extract content from https://signalsandthreads.com/why-ml-needs-a-new-"
+                "programming-language. Error: Crawl4ai extraction failed (Unknown error)"
+            )
+        }
+        mock_strategy.extract_internal_urls.return_value = []
+        worker.strategy_registry.get_strategy.return_value = mock_strategy
+
+        with (
+            patch("app.pipeline.worker.content_to_domain") as mock_converter,
+            patch("app.pipeline.worker.domain_to_content") as mock_domain_to_content,
+        ):
+            mock_converter.return_value = content_data
+
+            result = worker.process_content(1472, "test-worker")
+
+        assert result is True
+        assert content_data.status == ContentStatus.FAILED
+        assert content_data.error_message == fallback_error
+        assert content_data.metadata.get("extraction_failed") is True
+        assert "summary" not in content_data.metadata
+        assert content_data.metadata.get("content") is None
+        worker.llm_service.summarize_content.assert_not_called()
+        mock_domain_to_content.assert_called_once_with(content_data, mock_content)
 
     def test_process_podcast_sync_success(self, mock_dependencies):
         """Test successful podcast processing."""
