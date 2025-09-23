@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -55,26 +56,29 @@ class HackerNewsUnifiedScraper(BaseScraper):
                         "content_type": ContentType.NEWS,
                         "is_aggregate": False,
                         "metadata": {
-                            "platform": "hackernews",  # Scraper identifier
+                            "platform": "hackernews",
                             "source": host,
-                            "items": [
-                                {
-                                    "title": story.get("title"),
-                                    "url": normalized_url,
-                                    "summary": story.get("text"),
-                                    "source": host,
-                                    "author": story.get("by"),
+                            "article": {
+                                "url": normalized_url,
+                                "title": story.get("title"),
+                                "source_domain": host,
+                            },
+                            "aggregator": {
+                                "name": "Hacker News",
+                                "title": story.get("title"),
+                                "url": discussion_url,
+                                "external_id": str(story_id),
+                                "author": story.get("by"),
+                                "metadata": {
                                     "score": story.get("score", 0),
-                                    "comments_url": discussion_url,
-                                    "metadata": {
-                                        "hn_id": story_id,
-                                        "comments": story.get("descendants", 0),
-                                        "score": story.get("score", 0),
-                                    },
-                                }
-                            ],
-                            "primary_url": discussion_url,
+                                    "comments_count": story.get("descendants", 0),
+                                    "item_type": story.get("type"),
+                                    "timestamp": story.get("time"),
+                                    "hn_linked_url": normalized_url,
+                                },
+                            },
                             "excerpt": story.get("text"),
+                            "discovery_time": datetime.now(timezone.utc).isoformat(),
                         },
                     }
 

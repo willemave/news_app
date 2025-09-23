@@ -6,7 +6,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.models.metadata import StructuredSummary
+from app.models.metadata import NewsSummary, StructuredSummary
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -112,6 +112,35 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
           * Has educational or informative value
         
         Podcast Transcript:
+        {content}
+        """
+    elif content_type == "news_digest":
+        return f"""
+        You are an expert news editor. Read the article content (and any provided context) and produce
+        a concise JSON object with the following fields:
+
+        {{
+          "title": "Descriptive headline (max 110 characters) highlighting the core takeaway",
+          "article_url": "Canonical article URL",
+          "key_points": [
+            "Bullet #1 in 160 characters or less",
+            "Bullet #2",
+            "Bullet #3 (add up to {max_bullet_points} bullets total, prioritizing impact/implications)"
+          ],
+          "summary": "Optional 2-sentence overview (<= 280 characters). Omit or set to null if redundant.",
+          "classification": "to_read" | "skip"
+        }}
+
+        Guidelines:
+        - Focus on why the story matters rather than restating headlines.
+        - Keep key points self-contained and specific. Do not start with repeated phrases.
+        - Prefer action verbs and concrete figures/dates. Avoid fluff.
+        - If context indicates low-quality or promotional content, set classification to "skip" and
+          keep key points factual.
+        - Never include markdown, topics, quotes, or code fences.
+        - Return valid JSON only.
+
+        Article & Context:
         {content}
         """
     else:
@@ -233,7 +262,7 @@ class GoogleFlashService:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def summarize_content(
         self, content: str, max_bullet_points: int = 6, max_quotes: int = 3, content_type: str = "article"
-    ) -> StructuredSummary | None:
+    ) -> StructuredSummary | NewsSummary | None:
         """Summarize content using LLM and classify it.
 
         Args:
@@ -257,14 +286,19 @@ class GoogleFlashService:
             # Use reasonable token limit for summaries
             if content_type == "podcast":
                 max_tokens = 30000  # Smaller for podcasts since no full_markdown
+                response_schema = StructuredSummary
+            elif content_type == "news_digest":
+                max_tokens = 8000
+                response_schema = NewsSummary
             else:
                 max_tokens = 50000  # Larger for articles to include full_markdown
+                response_schema = StructuredSummary
             
             config = {
                 "temperature": 0.7,
                 "max_output_tokens": max_tokens,
                 "response_mime_type": "application/json",
-                "response_schema": StructuredSummary,
+                "response_schema": response_schema,
             }
 
             response = self.client.models.generate_content(
@@ -375,8 +409,10 @@ class GoogleFlashService:
                 else:
                     raise e  # Re-raise original error
 
-            # Create and return StructuredSummary
-            return StructuredSummary(**summary_data)
+            # Instantiate the appropriate summary model
+            model_cls = response_schema
+            summary_obj = model_cls(**summary_data)
+            return summary_obj
 
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error in structured summary: {e}")

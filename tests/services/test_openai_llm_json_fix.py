@@ -1,8 +1,10 @@
 """Test cases for OpenAI LLM service JSON parsing improvements."""
 
 import json
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
+from openai import OpenAIError
 
 from app.services.openai_llm import OpenAISummarizationService, try_repair_truncated_json
 from app.models.metadata import StructuredSummary
@@ -59,6 +61,8 @@ class TestOpenAISummarizationServiceWithTruncation:
             with patch('openai.OpenAI'):
                 service = OpenAISummarizationService()
                 service.client = Mock()
+                service.client.beta = Mock()
+                service.client.beta.chat.completions.parse = Mock()
                 return service
     
     def test_handle_truncated_response(self, mock_service):
@@ -80,14 +84,11 @@ class TestOpenAISummarizationServiceWithTruncation:
     
     def test_handle_error_response(self, mock_service):
         """Test handling of error responses."""
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "This is not valid JSON"
-        
-        mock_service.client.chat.completions.create = Mock(return_value=mock_response)
-        
+        mock_service.client.beta.chat.completions.parse.side_effect = OpenAIError("invalid json")
+
         result = mock_service.summarize_content("Test content")
         assert result is None
+        mock_service.client.beta.chat.completions.parse.side_effect = None
     
     def test_handle_markdown_wrapped_json(self, mock_service):
         """Test handling of JSON wrapped in markdown code blocks."""
@@ -106,12 +107,22 @@ class TestOpenAISummarizationServiceWithTruncation:
         }
         
         # Test with ```json wrapper
+        structured = StructuredSummary(
+            title="Test Title",
+            overview=valid_json["overview"],
+            bullet_points=[{"text": bp["text"], "category": "test"} for bp in valid_json["bullet_points"]],
+            quotes=[],
+            topics=valid_json["topics"],
+            classification=valid_json["classification"],
+            full_markdown=valid_json["full_markdown"],
+        )
+        mock_choice = Mock()
+        mock_choice.message.parsed = structured
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = f"```json\n{json.dumps(valid_json)}\n```"
-        
-        mock_service.client.chat.completions.create = Mock(return_value=mock_response)
-        
+        mock_response.choices = [mock_choice]
+
+        mock_service.client.beta.chat.completions.parse.return_value = mock_response
+
         result = mock_service.summarize_content("Test content")
         assert isinstance(result, StructuredSummary)
         assert result.title == "Test Title"
@@ -121,26 +132,34 @@ class TestOpenAISummarizationServiceWithTruncation:
         # Set up a spy to capture the actual prompt sent
         prompt_sent = None
         
+        parse_mock = mock_service.client.beta.chat.completions.parse
+
         def capture_prompt(**kwargs):
             nonlocal prompt_sent
             messages = kwargs.get('messages', [])
             if messages:
                 prompt_sent = messages[-1]['content']
             # Return a valid response
+            structured = StructuredSummary(
+                title="Test Title",
+                overview="A" * 60,
+                bullet_points=[
+                    {"text": "Point 1", "category": "test"},
+                    {"text": "Point 2", "category": "test"},
+                    {"text": "Point 3", "category": "test"},
+                ],
+                quotes=[],
+                topics=["Test"],
+                classification="skip",
+                full_markdown="",
+            )
+            mock_choice = Mock()
+            mock_choice.message.parsed = structured
             mock_resp = Mock()
-            mock_resp.choices = [Mock()]
-            mock_resp.choices[0].message.content = json.dumps({
-                "title": "Test Title",
-                "overview": "A" * 60,
-                "bullet_points": [{"text": "Point 1"}, {"text": "Point 2"}, {"text": "Point 3"}],
-                "quotes": [],
-                "topics": ["Test"],
-                "classification": "skip",
-                "full_markdown": ""
-            })
+            mock_resp.choices = [mock_choice]
             return mock_resp
-        
-        mock_service.client.chat.completions.create = Mock(side_effect=capture_prompt)
+
+        parse_mock.side_effect = capture_prompt
         
         # Test with podcast content type
         result = mock_service.summarize_content("Test content", content_type="podcast")
@@ -148,34 +167,44 @@ class TestOpenAISummarizationServiceWithTruncation:
         # Verify podcast-specific prompt was used
         assert prompt_sent is not None
         assert "podcast" in prompt_sent.lower()
+        parse_mock.side_effect = None
     
     def test_token_limit_adjustment_for_podcasts(self, mock_service):
         """Test that token limits are adjusted for podcast content."""
         # For this test, we need to inspect the config passed to create
         config_used = None
         
+        parse_mock = mock_service.client.beta.chat.completions.parse
+
         def capture_config(**kwargs):
             nonlocal config_used
             config_used = kwargs
             # Return a valid response
+            structured = StructuredSummary(
+                title="Test",
+                overview="A" * 60,
+                bullet_points=[
+                    {"text": "A" * 15, "category": "test"},
+                    {"text": "B" * 15, "category": "test"},
+                    {"text": "C" * 15, "category": "test"},
+                ],
+                quotes=[],
+                topics=["Test"],
+                classification="skip",
+                full_markdown="",
+            )
+            mock_choice = Mock()
+            mock_choice.message.parsed = structured
             mock_resp = Mock()
-            mock_resp.choices = [Mock()]
-            mock_resp.choices[0].message.content = json.dumps({
-                "title": "Test",
-                "overview": "A" * 60,
-                "bullet_points": [{"text": "A" * 15}, {"text": "B" * 15}, {"text": "C" * 15}],
-                "quotes": [],
-                "topics": ["Test"],
-                "classification": "skip",
-                "full_markdown": ""
-            })
+            mock_resp.choices = [mock_choice]
             return mock_resp
-        
-        mock_service.client.chat.completions.create = Mock(side_effect=capture_config)
+
+        parse_mock.side_effect = capture_config
         
         # Test with podcast content
         result = mock_service.summarize_content("Test podcast", content_type="podcast")
         
         # Verify reduced token limit was used for podcasts
         assert config_used is not None
-        assert config_used.get('max_completion_tokens', 16000) == 8000  # Podcast limit
+        assert config_used.get('max_output_tokens') == 8000
+        parse_mock.side_effect = None

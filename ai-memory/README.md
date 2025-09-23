@@ -113,7 +113,7 @@
 
 ### Scrapers
 * [`app/scraping/runner.py`](app/scraping/runner.py) - Manages and runs all scrapers
-* [`app/scraping/hackernews_unified.py`](app/scraping/hackernews_unified.py) - HackerNews scraper
+* [`app/scraping/hackernews_unified.py`](app/scraping/hackernews_unified.py) - HackerNews scraper (emits `ContentType.NEWS` items but pipeline treats them like articles to pull the linked story)
 * [`app/scraping/reddit_unified.py`](app/scraping/reddit_unified.py) - Reddit scraper (multi-subreddit)
 * [`app/scraping/substack_unified.py`](app/scraping/substack_unified.py) - RSS feed scraper for Substack
 * [`app/scraping/techmeme_unified.py`](app/scraping/techmeme_unified.py) - Dedicated Techmeme cluster scraper with aggregator metadata
@@ -123,7 +123,10 @@
 
 ### Processing Pipeline
 * [`app/pipeline/sequential_task_processor.py`](app/pipeline/sequential_task_processor.py) - Sequential task processor with adaptive polling
-* [`app/pipeline/worker.py`](app/pipeline/worker.py) - Content processing worker with strategy pattern integration
+* [`app/pipeline/worker.py`](app/pipeline/worker.py) - Content processing worker with strategy pattern integration (NEWS items follow article flow unless marked aggregate)
+* [`app/services/google_flash.py`](app/services/google_flash.py) - Handles LLM summarization; includes `news_digest` mode for quick key points
+* [`app/scraping/techmeme_unified.py`](app/scraping/techmeme_unified.py) - Dedicated Techmeme cluster scraper emitting single-link news metadata
+* [`app/scraping/twitter_unified.py`](app/scraping/twitter_unified.py) - Twitter list scraper splitting each external link into its own news item
 * [`app/pipeline/checkout.py`](app/pipeline/checkout.py) - Content checkout management for concurrent processing
 * [`app/pipeline/podcast_workers.py`](app/pipeline/podcast_workers.py) - Podcast-specific workers (download, transcribe)
 
@@ -239,7 +242,7 @@
 4. **LLM Processing**: 
    - Articles: Full content summarization with markdown formatting
    - Podcasts: Transcript summarization without full markdown
-   - Classification: TO_READ vs SKIP based on content quality
+   - News digests (Twitter/HackerNews/Techmeme): `news_digest` prompt returns title + link + concise key points without topics/full markdown
 5. **Database Storage**: Transactional updates with JSON metadata validation
 
 ### Configuration Management
@@ -263,6 +266,7 @@
   - Favorites management
   - Pull-to-refresh support
   - Swipe navigation between articles in detail view
+  - Long press Articles/Podcasts/News lists to bulk mark visible items as read (uses API bulk response metrics)
   - Responsive design for all iOS devices
 * **Build Requirements**: iOS 15.0+, Swift 5.5+, Xcode
 * **Critical Implementation Note**: When passing content to detail view, MUST pass full array of content IDs for swipe navigation
@@ -274,7 +278,7 @@
 * **Content Detail**: `GET /api/content/{id}` - Full content details with structured summary
 * **Mark Read**: `POST /api/content/{id}/mark-read` - Mark single item as read
 * **Mark Unread**: `DELETE /api/content/{id}/mark-unread` - Mark single item as unread
-* **Bulk Mark Read**: `POST /api/content/bulk-mark-read` - Mark multiple items as read
+* **Bulk Mark Read**: `POST /api/content/bulk-mark-read` - Mark multiple items as read (now returns `marked_count`/`failed_ids` for long-press bulk actions)
 * **Toggle Favorite**: `POST /api/content/{id}/toggle-favorite` - Toggle favorite status
 * **ChatGPT URL**: `GET /api/content/{id}/chatgpt-url` - Generate ChatGPT chat URL for content
 * **Response Models**: Pydantic models with full OpenAPI documentation

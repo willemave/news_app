@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-import hashlib
 import json
+from urllib.parse import urlparse
 
 import yaml
 import jmespath
@@ -64,9 +64,9 @@ class TwitterUnifiedScraper(BaseScraper):
         # Scrape lists using Playwright
         for list_config in self.config.get("twitter_lists", []):
             try:
-                item = self._scrape_list_playwright(list_config)
-                if item:
-                    all_items.append(item)
+                items = self._scrape_list_playwright(list_config)
+                if items:
+                    all_items.extend(items)
                     logger.info(f"Scraped Twitter list: {list_config.get('name')}")
             except Exception as e:
                 logger.error(f"Error scraping Twitter list {list_config.get('name')}: {e}")
@@ -86,7 +86,7 @@ class TwitterUnifiedScraper(BaseScraper):
             ).first()
             return existing is not None
 
-    def _scrape_list_playwright(self, list_config: dict[str, Any]) -> dict[str, Any] | None:
+    def _scrape_list_playwright(self, list_config: dict[str, Any]) -> list[dict[str, Any]] | None:
         """Scrape a Twitter list using Playwright to intercept XHR requests."""
         list_name = list_config.get("name", "Unknown List")
         list_id = list_config.get("list_id")
@@ -247,58 +247,72 @@ class TwitterUnifiedScraper(BaseScraper):
             logger.info(f"No tweets found for list: {list_name}")
             return None
         
-        # Generate unique URL
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        url_hash = hashlib.md5(f"{list_id}_{date_str}".encode()).hexdigest()[:8]
-        unique_url = f"twitter://list/{list_id}/{date_str}/{url_hash}"
+        news_entries: list[dict[str, Any]] = []
+        seen_pairs: set[tuple[str, str]] = set()
 
-        news_items = []
         for tweet in tweets:
-            content_text = tweet.get("content", "").strip()
-            headline = content_text.split("\n", 1)[0] if content_text else tweet.get("url")
-            display_title = f"@{tweet.get('username', 'unknown')}: {headline}" if headline else f"@{tweet.get('username', 'unknown')}"
+            links = tweet.get("links", [])
+            if not links:
+                continue
 
-            news_items.append(
-                {
-                    "title": display_title[:280],
-                    "url": tweet.get("url"),
-                    "summary": content_text,
-                    "source": "twitter.com",
-                    "author": tweet.get("display_name"),
-                    "metadata": {
-                        "likes": tweet.get("likes"),
-                        "retweets": tweet.get("retweets"),
-                        "replies": tweet.get("replies"),
-                        "quotes": tweet.get("quotes"),
+            for link in links:
+                article_url = link.get("expanded_url") or link.get("url")
+                if not article_url:
+                    continue
+
+                normalized_article_url = self._normalize_external_url(article_url)
+                if not normalized_article_url:
+                    continue
+
+                unique_key = (normalized_article_url, str(tweet.get("id")))
+                if unique_key in seen_pairs:
+                    continue
+                seen_pairs.add(unique_key)
+
+                domain = self._extract_domain(normalized_article_url)
+                headline = tweet.get("content", "").split("\n", 1)[0].strip()
+                display_title = headline or link.get("title") or normalized_article_url
+
+                metadata = {
+                    "platform": "twitter",
+                    "source": domain,
+                    "article": {
+                        "url": normalized_article_url,
+                        "title": display_title,
+                        "source_domain": domain,
                     },
+                    "aggregator": {
+                        "name": "Twitter",
+                        "title": tweet.get("content", "").strip(),
+                        "url": tweet.get("url"),
+                        "external_id": str(tweet.get("id")),
+                        "author": tweet.get("display_name"),
+                        "metadata": {
+                            "username": tweet.get("username"),
+                            "likes": tweet.get("likes"),
+                            "retweets": tweet.get("retweets"),
+                            "replies": tweet.get("replies"),
+                            "quotes": tweet.get("quotes"),
+                            "tweet_created_at": tweet.get("created_at"),
+                            "list_id": list_id,
+                            "list_name": list_name,
+                            "hours_back": hours_back,
+                        },
+                    },
+                    "discovery_time": datetime.now(timezone.utc).isoformat(),
                 }
-            )
 
-        rendered_markdown = self._format_tweet_content(tweets, list_name)
+                news_entries.append(
+                    {
+                        "url": normalized_article_url,
+                        "title": display_title[:280],
+                        "content_type": ContentType.NEWS,
+                        "is_aggregate": False,
+                        "metadata": metadata,
+                    }
+                )
 
-        # Create content item
-        item = {
-            "url": unique_url,
-            "title": f"Twitter List: {list_name} - {date_str}",
-            "content_type": ContentType.NEWS,
-            "is_aggregate": True,
-            "metadata": {
-                "platform": "twitter",  # Scraper identifier
-                # Source uses a domain per convention; list aggregations have no external domain, use twitter.com
-                "source": "twitter.com",
-                "list_id": list_id,
-                "list_name": list_name,
-                "tweet_count": len(tweets),
-                "aggregation_date": date_str,
-                "hours_back": hours_back,
-                "items": news_items,
-                "rendered_markdown": rendered_markdown,
-                "primary_url": f"https://twitter.com/i/lists/{list_id}",
-                "scraped_with": "playwright",
-            }
-        }
-
-        return item
+        return news_entries or None
 
     def _extract_tweets_from_response(self, data: dict) -> list[dict[str, Any]]:
         """Extract tweet data from Twitter API response using JMESPath."""
@@ -376,8 +390,12 @@ class TwitterUnifiedScraper(BaseScraper):
                 "replies": legacy_data.get("reply_count", 0),
                 "quotes": legacy_data.get("quote_count", 0),
                 "created_at": legacy_data.get("created_at", ""),
-                "is_retweet": bool(legacy_data.get("retweeted_status_result") or legacy_data.get("retweeted_status")),
-                "in_reply_to_status_id": legacy_data.get("in_reply_to_status_id_str") or legacy_data.get("in_reply_to_status_id"),
+                "is_retweet": bool(
+                    legacy_data.get("retweeted_status_result") or legacy_data.get("retweeted_status")
+                ),
+                "in_reply_to_status_id": legacy_data.get("in_reply_to_status_id_str")
+                or legacy_data.get("in_reply_to_status_id"),
+                "links": self._extract_external_links(legacy_data),
             }
             processed_tweets.append(processed_tweet)
 
@@ -484,50 +502,72 @@ class TwitterUnifiedScraper(BaseScraper):
             "user": user_data,
             "rest_id": rest_id,
         }
+
+    def _extract_external_links(self, legacy_data: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract expanded external links from tweet entities."""
+
+        if not isinstance(legacy_data, dict):
+            return []
+
+        urls = legacy_data.get("entities", {}).get("urls", [])
+        links: list[dict[str, Any]] = []
+
+        for url_info in urls:
+            if not isinstance(url_info, dict):
+                continue
+            expanded = url_info.get("expanded_url") or url_info.get("unwound_url") or url_info.get("url")
+            if not expanded:
+                continue
+            normalized = self._normalize_external_url(expanded)
+            if not normalized:
+                continue
+            links.append(
+                {
+                    "url": url_info.get("url"),
+                    "expanded_url": normalized,
+                    "display_url": url_info.get("display_url"),
+                }
+            )
+
+        return links
+
+    def _normalize_external_url(self, url: str) -> str | None:
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            return None
+
+        if not parsed.netloc:
+            return None
+
+        domain = parsed.netloc.lower()
+        if domain.endswith("twitter.com") or domain.endswith("t.co"):
+            return None
+
+        scheme = parsed.scheme or "https"
+        normalized = parsed._replace(scheme=scheme)
+        url_str = normalized.geturl()
+        if url_str.startswith("http://"):
+            url_str = "https://" + url_str[len("http://") :]
+        return url_str
+
+    def _extract_domain(self, url: str) -> str:
+        try:
+            parsed = urlparse(url)
+            domain = parsed.netloc.lower()
+            if domain.startswith("www."):
+                domain = domain[4:]
+            return domain
+        except Exception:
+            return ""
     
     def _parse_tweet_date(self, date_str: str) -> datetime | None:
         """Parse Twitter's date format to datetime."""
         if not date_str:
             return None
-        
+
         try:
             # Twitter date format: "Wed Oct 05 20:17:27 +0000 2022"
             return datetime.strptime(date_str, "%a %b %d %H:%M:%S %z %Y")
         except Exception:
             return None
-    
-    def _format_tweet_content(self, tweets: list[dict[str, Any]], list_name: str) -> str:
-        """Format tweets into readable markdown content."""
-        lines = []
-        
-        # Header
-        lines.append(f"# Twitter List: {list_name}")
-        lines.append(f"\n*{len(tweets)} tweets from the last 24 hours*\n")
-        lines.append("---\n")
-        
-        # Format each tweet
-        for i, tweet in enumerate(tweets, 1):
-            # Tweet header
-            lines.append(f"## {i}. @{tweet['username']} ({tweet['display_name']})")
-            
-            # Timestamp and engagement
-            date_str = tweet.get('date', tweet.get('created_at', ''))
-            if date_str:
-                try:
-                    date = self._parse_tweet_date(date_str)
-                    if date:
-                        date_str = date.strftime("%Y-%m-%d %H:%M UTC")
-                except Exception:
-                    pass
-            
-            lines.append(f"*{date_str} • ❤️ {tweet['likes']} • 🔁 {tweet['retweets']} • 💬 {tweet['replies']}*\n")
-            
-            # Tweet content
-            lines.append(tweet['content'])
-            lines.append("")
-            
-            # Link to original tweet
-            lines.append(f"[View on Twitter]({tweet['url']})")
-            lines.append("\n---\n")
-        
-        return "\n".join(lines)

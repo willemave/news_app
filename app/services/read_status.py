@@ -1,5 +1,6 @@
 """Repository for content read status operations."""
 
+from collections.abc import Iterable
 import logging
 from datetime import datetime
 
@@ -62,6 +63,86 @@ def mark_content_as_read(db: Session, content_id: int) -> ContentReadStatus | No
         )
         db.rollback()
         return None
+
+
+def mark_contents_as_read(
+    db: Session,
+    content_ids: Iterable[int],
+    *,
+    session_id: str = "default",
+) -> tuple[int, list[int]]:
+    """Mark a batch of content items as read.
+
+    Args:
+        db: Active database session.
+        content_ids: Iterable of content IDs to mark as read.
+        session_id: Logical session identifier; defaults to single-user "default".
+
+    Returns:
+        A tuple containing the number of processed IDs and a list of IDs that failed.
+    """
+
+    unique_ids = {content_id for content_id in content_ids if content_id is not None}
+    if not unique_ids:
+        return 0, []
+
+    logger.info(
+        "[READ_STATUS] Bulk marking %s content items as read",
+        len(unique_ids),
+        extra={"content_ids": sorted(unique_ids)},
+    )
+
+    timestamp = datetime.utcnow()
+    try:
+        existing_records = db.execute(
+            select(ContentReadStatus).where(ContentReadStatus.content_id.in_(unique_ids))
+        ).scalars().all()
+
+        existing_ids = {record.content_id for record in existing_records}
+        for record in existing_records:
+            record.read_at = timestamp
+
+        new_ids = sorted(unique_ids - existing_ids)
+        if new_ids:
+            db.bulk_save_objects(
+                [
+                    ContentReadStatus(
+                        session_id=session_id,
+                        content_id=content_id,
+                        read_at=timestamp,
+                        created_at=timestamp,
+                    )
+                    for content_id in new_ids
+                ]
+            )
+
+        db.commit()
+        return len(unique_ids), []
+    except IntegrityError as exc:
+        logger.warning(
+            "[READ_STATUS] Integrity error during bulk mark; retrying individually",
+            extra={"error": str(exc)},
+            exc_info=True,
+        )
+        db.rollback()
+
+        failed_ids: list[int] = []
+        marked_count = 0
+        for content_id in sorted(unique_ids):
+            result = mark_content_as_read(db, content_id)
+            if result is None:
+                failed_ids.append(content_id)
+                continue
+            marked_count += 1
+
+        return marked_count, failed_ids
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "[READ_STATUS] Unexpected error during bulk mark",
+            extra={"error": str(exc)},
+        )
+        db.rollback()
+        return 0, sorted(unique_ids)
 
 
 def get_read_content_ids(db: Session) -> list[int]:

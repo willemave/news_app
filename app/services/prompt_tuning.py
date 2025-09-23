@@ -7,14 +7,8 @@ from collections import Counter
 from datetime import datetime, timedelta
 from typing import Iterable
 
-# google.api_core is optional in test environments; fall back to base Exception when unavailable.
-try:  # pragma: no cover - import guard
-    from google.api_core.exceptions import GoogleAPIError
-except Exception:  # pragma: no cover - dependency optional
-    class GoogleAPIError(Exception):
-        """Fallback error type used when google.api_core is unavailable."""
-
-        pass
+from openai import OpenAI, OpenAIError
+from pydantic import ValidationError
 from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session
 
@@ -27,7 +21,7 @@ from app.schemas.prompt_updates import (
     PromptUpdateResult,
     PromptUpdateSuggestion,
 )
-from app.services.google_flash import generate_summary_prompt, get_google_flash_service
+from app.services.openai_llm import generate_summary_prompt, get_openai_summarization_service
 
 logger = get_logger(__name__)
 
@@ -92,7 +86,7 @@ def build_prompt_update(
     *,
     current_prompt_instructions: str | None = None,
 ) -> PromptUpdateSuggestion:
-    """Generate a prompt update suggestion via the Google Flash model."""
+    """Generate a prompt update suggestion via the OpenAI model."""
 
     serialized_examples = [
         {
@@ -123,25 +117,34 @@ def build_prompt_update(
         serialized_examples=serialized_examples,
     )
 
-    service = get_google_flash_service()
-    client = service.client
-    config = {
-        "temperature": 0.35,
-        "max_output_tokens": 6000,
-        "response_mime_type": "application/json",
-        "response_schema": PromptUpdateSuggestion,
-    }
+    service = get_openai_summarization_service()
+    client: OpenAI = service.client
+    model_name = service.model_name
 
     try:
-        response = client.models.generate_content(
-            model=service.model_name,
-            contents=prompt_payload,
-            config=config,
+        response = client.beta.chat.completions.parse(
+            model=model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert summarization prompt engineer who outputs valid JSON suggestions.",
+                },
+                {"role": "user", "content": prompt_payload},
+            ],
+            temperature=0.35,
+            max_output_tokens=3500,
+            response_format=PromptUpdateSuggestion,
         )
-        response_text = _extract_response_text(response)
-        suggestion_data = json.loads(response_text)
-        return PromptUpdateSuggestion.model_validate(suggestion_data)
-    except (json.JSONDecodeError, GoogleAPIError) as exc:
+
+        if not response.choices:
+            raise PromptTuningError("Model returned no choices.")
+
+        parsed = getattr(response.choices[0].message, "parsed", None)
+        if parsed is None:
+            raise PromptTuningError("Model response missing parsed payload.")
+
+        return parsed
+    except (OpenAIError, ValidationError) as exc:
         logger.exception("Failed to parse prompt update suggestion: %s", exc)
         raise PromptTuningError("Model response could not be parsed as JSON.") from exc
     except Exception as exc:  # pragma: no cover - unanticipated errors logged
@@ -190,29 +193,6 @@ def summarize_examples(examples: Iterable[PromptExample]) -> dict[str, list[tupl
         "sources": top_sources,
         "content_types": type_breakdown,
     }
-
-
-def _extract_response_text(response: object) -> str:
-    """Extract raw text from the Google generative response."""
-
-    if hasattr(response, "text") and response.text:
-        return response.text.strip()
-
-    if hasattr(response, "candidates") and response.candidates:
-        candidate = response.candidates[0]
-        if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
-            parts = [getattr(part, "text", "") for part in candidate.content.parts]
-            joined = "".join(parts).strip()
-            if joined:
-                return joined
-
-    if hasattr(response, "parts"):
-        parts = [getattr(part, "text", "") for part in getattr(response, "parts")]
-        joined = "".join(parts).strip()
-        if joined:
-            return joined
-
-    raise PromptTuningError("Received empty response from the model.")
 
 
 def _render_tuning_prompt(

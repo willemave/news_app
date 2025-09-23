@@ -88,22 +88,19 @@ class UnreadCountService: ObservableObject {
         }
     }
     
-    func decrementArticleCount() {
-        if articleCount > 0 {
-            articleCount -= 1
-        }
+    func decrementArticleCount(by amount: Int = 1) {
+        guard amount > 0 else { return }
+        articleCount = max(articleCount - amount, 0)
     }
     
-    func decrementPodcastCount() {
-        if podcastCount > 0 {
-            podcastCount -= 1
-        }
+    func decrementPodcastCount(by amount: Int = 1) {
+        guard amount > 0 else { return }
+        podcastCount = max(podcastCount - amount, 0)
     }
 
-    func decrementNewsCount() {
-        if newsCount > 0 {
-            newsCount -= 1
-        }
+    func decrementNewsCount(by amount: Int = 1) {
+        guard amount > 0 else { return }
+        newsCount = max(newsCount - amount, 0)
     }
     
     func incrementArticleCount() {

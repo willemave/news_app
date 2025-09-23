@@ -88,12 +88,24 @@ struct ContentDetail: Codable, Identifiable {
     
     var podcastMetadata: PodcastMetadata? {
         guard contentType == "podcast" else { return nil }
-        
+
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        
+
         if let jsonData = try? JSONSerialization.data(withJSONObject: metadata.mapValues { $0.value }) {
             return try? decoder.decode(PodcastMetadata.self, from: jsonData)
+        }
+        return nil
+    }
+
+    var newsMetadata: NewsMetadata? {
+        guard contentType == "news" else { return nil }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: metadata.mapValues { $0.value }) {
+            return try? decoder.decode(NewsMetadata.self, from: jsonData)
         }
         return nil
     }
@@ -107,6 +119,7 @@ struct NewsItem: Codable, Identifiable {
     let author: String?
     let metadata: [String: AnyCodable]?
     let commentsUrl: String?
+    let bulletPoints: [BulletPoint]?
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -116,6 +129,7 @@ struct NewsItem: Codable, Identifiable {
         case author
         case metadata
         case commentsUrl = "comments_url"
+        case bulletPoints = "bullet_points"
     }
 
     var id: String { url }

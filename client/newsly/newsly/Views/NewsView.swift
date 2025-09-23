@@ -10,6 +10,8 @@ import SwiftUI
 struct NewsView: View {
     @StateObject private var viewModel = ContentListViewModel()
     @ObservedObject private var settings = AppSettings.shared
+    @State private var showMarkAllConfirmation = false
+    @State private var isProcessingBulk = false
 
     var body: some View {
         NavigationStack {
@@ -59,6 +61,31 @@ struct NewsView: View {
                         .refreshable {
                             await viewModel.refresh()
                         }
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.8).onEnded { _ in
+                                if viewModel.contents.contains(where: { !$0.isRead }) {
+                                    showMarkAllConfirmation = true
+                                }
+                            }
+                        )
+                        .confirmationDialog(
+                            "Mark all news digests as read?",
+                            isPresented: $showMarkAllConfirmation
+                        ) {
+                            Button("Mark All as Read", role: .destructive) {
+                                showMarkAllConfirmation = false
+                                Task {
+                                    isProcessingBulk = true
+                                    defer { isProcessingBulk = false }
+                                    await viewModel.markAllAsRead()
+                                }
+                            }
+                            Button("Cancel", role: .cancel) {
+                                showMarkAllConfirmation = false
+                            }
+                        } message: {
+                            Text("Long press to clear every unread news digest from the current list.")
+                        }
                     }
                 }
                 .task {
@@ -68,6 +95,15 @@ struct NewsView: View {
                 }
                 .onChange(of: settings.showReadContent) { _, showRead in
                     viewModel.selectedReadFilter = showRead ? "all" : "unread"
+                }
+
+                if isProcessingBulk {
+                    Color.black.opacity(0.15)
+                        .ignoresSafeArea()
+                    ProgressView("Marking news")
+                        .padding(16)
+                        .background(Color(.systemBackground))
+                        .cornerRadius(12)
                 }
             }
         }
