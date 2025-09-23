@@ -2,9 +2,10 @@
 from datetime import datetime
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.schema import Content
+from app.models.schema import Content, ContentReadStatus
 from app.services import read_status
 
 
@@ -135,3 +136,41 @@ def test_single_user_read_status(db_session: Session, sample_content: Content):
     
     # Should no longer be read
     assert not read_status.is_content_read(db_session, sample_content.id)
+
+
+def test_mark_contents_as_read_bulk(db_session: Session):
+    """Test bulk marking multiple content items as read."""
+    contents: list[Content] = []
+    for index in range(3):
+        content = Content(
+            content_type="article",
+            url=f"https://example.com/bulk-{index}",
+            title=f"Bulk Article {index}",
+            status="completed",
+            content_metadata={"summary": f"Summary {index}"},
+        )
+        db_session.add(content)
+        db_session.commit()
+        db_session.refresh(content)
+        contents.append(content)
+
+    first_entry = read_status.mark_content_as_read(db_session, contents[0].id)
+    assert first_entry is not None
+    first_timestamp = first_entry.read_at
+
+    marked_count, failed_ids = read_status.mark_contents_as_read(
+        db_session,
+        [content.id for content in contents] + [contents[0].id],
+    )
+
+    assert failed_ids == []
+    assert marked_count == 3
+
+    statuses = db_session.execute(
+        select(ContentReadStatus).order_by(ContentReadStatus.content_id)
+    ).scalars().all()
+    assert len(statuses) == 3
+
+    updated_first = next(status for status in statuses if status.content_id == contents[0].id)
+    assert updated_first.read_at >= first_timestamp
+

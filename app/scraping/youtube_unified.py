@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import time
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, ClassVar
 
 import yaml
 from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
@@ -84,7 +84,7 @@ class YouTubeClientConfig(BaseModel):
     throttle_seconds: float = Field(default=6.0, ge=0.0, le=60.0)
     player_client: str = Field(default="mweb", min_length=2, max_length=32)
 
-    _SUPPORTED_PROVIDERS: Final[set[str]] = {"bgutilhttp", "webpoclient"}
+    SUPPORTED_PROVIDERS: ClassVar[set[str]] = {"bgutilhttp", "webpoclient"}
 
     @field_validator("cookies_path")
     @classmethod
@@ -101,9 +101,9 @@ class YouTubeClientConfig(BaseModel):
         normalized = value.strip().lower()
         if normalized in {"none", "null"}:
             return None
-        if normalized not in cls._SUPPORTED_PROVIDERS:
+        if normalized not in cls.SUPPORTED_PROVIDERS:
             raise ValueError(
-                f"Unsupported po_token_provider '{value}'. Supported: {sorted(cls._SUPPORTED_PROVIDERS)}"
+                f"Unsupported po_token_provider '{value}'. Supported: {sorted(cls.SUPPORTED_PROVIDERS)}"
             )
         return normalized
 

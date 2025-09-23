@@ -52,6 +52,15 @@ def build_sample_graphql_payload() -> dict[str, Any]:
                                                                 "retweet_count": 7,
                                                                 "reply_count": 3,
                                                                 "quote_count": 1,
+                                                                "entities": {
+                                                                    "urls": [
+                                                                        {
+                                                                            "url": "https://t.co/example",
+                                                                            "expanded_url": "http://example.com/story",
+                                                                            "display_url": "example.com/story",
+                                                                        }
+                                                                    ]
+                                                                },
                                                             },
                                                             "core": {
                                                                 "user_results": {
@@ -106,6 +115,7 @@ def test_extract_tweets_from_visibility_results() -> None:
     assert tweet["content"] == "Sample tweet body"
     assert tweet["likes"] == 42
     assert tweet["retweets"] == 7
+    assert tweet["links"][0]["expanded_url"] == "https://example.com/story"
 
 
 def test_decode_response_json_skips_non_json() -> None:

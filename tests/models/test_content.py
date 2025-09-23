@@ -62,16 +62,25 @@ class TestContentModel:
         """Test creating a Content object for news content."""
         metadata = {
             "platform": "twitter",
-            "source": "twitter.com",
-            "items": [
-                {
-                    "title": "Update",
-                    "url": "https://twitter.com/example/status/1",
-                    "summary": "Short summary",
-                    "metadata": {"likes": 10},
-                }
-            ],
-            "rendered_markdown": "- [Update](https://twitter.com/example/status/1)"
+            "source": "example.com",
+            "article": {
+                "url": "https://example.com/story",
+                "title": "Example Story",
+                "source_domain": "example.com",
+            },
+            "aggregator": {
+                "name": "Twitter",
+                "title": "@news_bot: Example Story",
+                "url": "https://twitter.com/news_bot/status/1",
+                "metadata": {"likes": 10},
+            },
+            "summary": {
+                "title": "Twitter: Example Story",
+                "article_url": "https://example.com/story",
+                "key_points": ["Key takeaway one", "Key takeaway two"],
+                "classification": "to_read",
+                "generated_at": datetime.utcnow().isoformat(),
+            },
         }
 
         content = Content(
@@ -79,16 +88,15 @@ class TestContentModel:
             url="twitter://list/example",
             title="Daily List",
             platform="twitter",
-            source="twitter.com",
+            source="example.com",
             status=ContentStatus.NEW.value,
-            is_aggregate=True,
+            is_aggregate=False,
             content_metadata=metadata,
         )
 
         assert content.content_type == ContentType.NEWS.value
-        assert content.is_aggregate is True
-        assert content.content_metadata["items"][0]["url"] == "https://twitter.com/example/status/1"
-        assert content.content_metadata["rendered_markdown"].startswith("-")
+        assert content.is_aggregate is False
+        assert content.content_metadata["article"]["url"] == "https://example.com/story"
     
     def test_content_metadata_json_field(self):
         """Test that metadata is stored as JSON."""

@@ -28,7 +28,11 @@ def test_content_list_with_read_filter(
                         {
                             "text": f"Key point {i}.2: Additional details about the subject matter",
                             "category": "key_finding"
-                        }
+                        },
+                        {
+                            "text": f"Key point {i}.3: Broader implications for topic {i}",
+                            "category": "conclusion"
+                        },
                     ],
                     "quotes": [],
                     "topics": ["Testing", f"Topic{i}"],
@@ -92,19 +96,27 @@ def test_content_detail_marks_as_read(
         title="Test Article",
         status="completed",
         content_metadata={
-            "summary": {
-                "title": "Test Article",
-                "overview": "This is a comprehensive test summary that contains detailed information about the content to meet the minimum length requirement for validation.",
-                "bullet_points": [
-                    {
-                        "text": "Key point 1: Important information about the topic",
-                        "category": "key_finding"
-                    }
-                ],
-                "quotes": [],
-                "topics": ["Testing"],
-                "summarization_date": "2025-01-04T12:00:00Z"
-            }
+                "summary": {
+                    "title": "Test Article",
+                    "overview": "This is a comprehensive test summary that contains detailed information about the content to meet the minimum length requirement for validation.",
+                    "bullet_points": [
+                        {
+                            "text": "Key point 1: Important information about the topic",
+                            "category": "key_finding"
+                        },
+                        {
+                            "text": "Key point 2: Supporting evidence for the topic",
+                            "category": "analysis"
+                        },
+                        {
+                            "text": "Key point 3: Why this matters for readers",
+                            "category": "conclusion"
+                        },
+                    ],
+                    "quotes": [],
+                    "topics": ["Testing"],
+                    "summarization_date": "2025-01-04T12:00:00Z"
+                }
         },
     )
     db_session.add(content)
@@ -139,19 +151,27 @@ def test_session_persistence(
         title="Test Article",
         status="completed",
         content_metadata={
-            "summary": {
-                "title": "Test Article",
-                "overview": "This is a comprehensive test summary that contains detailed information about the content to meet the minimum length requirement for validation.",
-                "bullet_points": [
-                    {
-                        "text": "Key point 1: Important information about the topic",
-                        "category": "key_finding"
-                    }
-                ],
-                "quotes": [],
-                "topics": ["Testing"],
-                "summarization_date": "2025-01-04T12:00:00Z"
-            }
+                "summary": {
+                    "title": "Test Article",
+                    "overview": "This is a comprehensive test summary that contains detailed information about the content to meet the minimum length requirement for validation.",
+                    "bullet_points": [
+                        {
+                            "text": "Key point 1: Important information about the topic",
+                            "category": "key_finding"
+                        },
+                        {
+                            "text": "Key point 2: Supporting evidence for the topic",
+                            "category": "analysis"
+                        },
+                        {
+                            "text": "Key point 3: Why this matters for readers",
+                            "category": "conclusion"
+                        },
+                    ],
+                    "quotes": [],
+                    "topics": ["Testing"],
+                    "summarization_date": "2025-01-04T12:00:00Z"
+                }
         },
     )
     db_session.add(content)
@@ -188,6 +208,10 @@ def test_news_content_rendering(client, db_session: Session):
         content_metadata={
             "platform": "twitter",
             "source": "twitter.com",
+            "article": {
+                "url": "https://example.com/news/primary",
+                "title": "Primary Story",
+            },
             "items": [
                 {
                     "title": "Launch announcement",
@@ -213,3 +237,67 @@ def test_news_content_rendering(client, db_session: Session):
     assert detail_response.status_code == 200
     assert "News Items" in detail_response.text
     assert "Launch announcement" in detail_response.text
+
+
+def test_unprocessed_news_excluded_from_list(client, db_session: Session):
+    """News items without summaries should remain hidden until summarization completes."""
+
+    pending_news = Content(
+        content_type="news",
+        url="https://www.techmeme.com/cluster/pending",
+        title="Pending Cluster",
+        status="new",
+        content_metadata={
+            "platform": "techmeme",
+            "source": "example.com",
+            "article": {
+                "url": "https://example.com/pending",
+                "title": "Pending Article",
+            },
+            "aggregator": {
+                "name": "Techmeme",
+                "url": "https://www.techmeme.com/cluster/pending",
+            },
+        },
+    )
+
+    completed_news = Content(
+        content_type="news",
+        url="https://www.techmeme.com/cluster/processed",
+        title="Processed Cluster",
+        status="completed",
+        content_metadata={
+            "platform": "techmeme",
+            "source": "processed.com",
+            "article": {
+                "url": "https://processed.com/story",
+                "title": "Processed Article",
+            },
+            "aggregator": {
+                "name": "Techmeme",
+                "url": "https://www.techmeme.com/cluster/processed",
+            },
+            "summary": {
+                "title": "Processed Digest",
+                "article_url": "https://processed.com/story",
+                "key_points": [
+                    "Headline takeaway",
+                    "Secondary insight",
+                ],
+                "summary": "Short overview of the processed item.",
+                "classification": "to_read",
+                "summarization_date": "2025-09-23T00:00:00Z",
+            },
+        },
+    )
+
+    db_session.add_all([pending_news, completed_news])
+    db_session.commit()
+
+    response = client.get("/?content_type=news&read_filter=all")
+    assert response.status_code == 200
+    page = response.text
+
+    assert "Processed Digest" in page
+    assert "Pending Article" not in page
+    assert "Pending Cluster" not in page

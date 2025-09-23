@@ -158,21 +158,18 @@ struct ContentDetailView: View {
                     }
 
                     if content.contentTypeEnum == .news {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("News Items")
-                                .font(.title2)
-                                .fontWeight(.semibold)
+                        if let newsMetadata = content.newsMetadata {
+                            NewsDigestDetailView(content: content, metadata: newsMetadata)
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("News Updates")
+                                    .font(.title2)
+                                    .fontWeight(.semibold)
 
-                            if let markdown = content.renderedMarkdown, !markdown.isEmpty {
-                                Markdown(markdown)
-                                    .markdownTheme(.gitHub)
-                            } else {
-                                let items = content.newsItems ?? []
-                                if items.isEmpty {
-                                    Text("No news items available.")
-                                        .font(.callout)
-                                        .foregroundColor(.secondary)
-                                } else {
+                                if let markdown = content.renderedMarkdown, !markdown.isEmpty {
+                                    Markdown(markdown)
+                                        .markdownTheme(.gitHub)
+                                } else if let items = content.newsItems, !items.isEmpty {
                                     VStack(alignment: .leading, spacing: 12) {
                                         ForEach(items) { item in
                                             VStack(alignment: .leading, spacing: 6) {
@@ -189,43 +186,20 @@ struct ContentDetailView: View {
                                                         .font(.subheadline)
                                                         .foregroundColor(.secondary)
                                                 }
-
-                                                if let metadata = item.metadata {
-                                                    let score = metadata["score"]?.value as? Int
-                                                    let comments = metadata["comments"]?.value as? Int
-                                                    let likes = metadata["likes"]?.value as? Int
-                                                    let retweets = metadata["retweets"]?.value as? Int
-                                                    let replies = metadata["replies"]?.value as? Int
-
-                                                    let parts = [
-                                                        score.map { "Score: \($0)" },
-                                                        comments.map { "Comments: \($0)" },
-                                                        likes.map { "Likes: \($0)" },
-                                                        retweets.map { "Retweets: \($0)" },
-                                                        replies.map { "Replies: \($0)" }
-                                                    ].compactMap { $0 }
-
-                                                    if !parts.isEmpty {
-                                                        Text(parts.joined(separator: " • "))
-                                                            .font(.caption)
-                                                            .foregroundColor(.secondary)
-                                                    }
-                                                }
-
-                                                if let commentsUrl = item.commentsUrl, let url = URL(string: commentsUrl) {
-                                                    Link("Discussion", destination: url)
-                                                        .font(.caption)
-                                                }
                                             }
                                             Divider()
                                         }
                                     }
+                                } else {
+                                    Text("No news metadata available.")
+                                        .font(.callout)
+                                        .foregroundColor(.secondary)
                                 }
                             }
+                            .padding()
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .cornerRadius(12)
                         }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(12)
                     }
 
                     // Full Content Section
@@ -260,9 +234,10 @@ struct ContentDetailView: View {
             }
             }
         }
+        .textSelection(.enabled)
         .offset(x: dragAmount)
         .animation(.spring(), value: dragAmount)
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 50, coordinateSpace: .global)
                 .onChanged { value in
                     // Only respond to fast, clearly horizontal swipes

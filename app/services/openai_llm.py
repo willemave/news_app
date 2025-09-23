@@ -7,12 +7,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO
 
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
+from pydantic import ValidationError
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.models.metadata import StructuredSummary
+from app.models.metadata import NewsSummary, StructuredSummary
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -535,6 +536,36 @@ def generate_summary_prompt(
         Content and Discussion:
         {content}
         """
+    elif content_type == "news_digest":
+        return f"""
+        You are an expert news editor. Read the provided article content and any additional
+        aggregator context, then produce a concise JSON object with the following fields:
+
+        {{
+          "title": "Descriptive headline (max 110 characters) highlighting the core takeaway",
+          "article_url": "Canonical article URL",
+          "key_points": [
+            "Bullet #1 in 160 characters or less",
+            "Bullet #2",
+            "Bullet #3"  // include up to {max_bullet_points} total, prioritising impact
+          ],
+          "summary": "Optional 2-sentence overview (≤ 280 characters). Use null if redundant.",
+          "classification": "to_read" | "skip"
+        }}
+
+        Guidelines:
+        - Focus on why the story matters, not just what happened.
+        - Keep each key point self-contained, concrete, and free of markdown or numbering.
+        - Prefer action verbs, quantitative figures, and clear implications.
+        - If the content is low-value or promotional, set classification to "skip" but still
+          surface truthful key points.
+        - Never include markdown, topics, quotes, or any extra fields.
+
+        {TITLE_EXAMPLES}
+
+        Article & Aggregator Context:
+        {content}
+        """
     elif content_type == "podcast":
         return f"""
         You are an expert content analyst. Analyze the following podcast transcript and provide a 
@@ -705,7 +736,7 @@ def try_repair_truncated_json(json_str: str) -> str | None:
 
 
 class OpenAISummarizationService:
-    """OpenAI service for content summarization using GPT-4o-mini."""
+    """OpenAI service for content summarization using GPT-5-mini."""
 
     def __init__(self):
         openai_api_key = getattr(settings, "openai_api_key", None)
@@ -723,7 +754,7 @@ class OpenAISummarizationService:
         max_bullet_points: int = 6,
         max_quotes: int = 3,
         content_type: str = "article",
-    ) -> StructuredSummary | None:
+    ) -> StructuredSummary | NewsSummary | None:
         """Summarize content using LLM and classify it.
 
         Args:
@@ -750,151 +781,58 @@ class OpenAISummarizationService:
             # Generate prompt based on content type
             prompt = generate_summary_prompt(content_type, max_bullet_points, max_quotes, content)
 
-            # Create the response format schema for OpenAI
-            response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "structured_summary",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "title": {"type": "string"},
-                            "overview": {"type": "string"},
-                            "bullet_points": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "text": {"type": "string"},
-                                        "category": {"type": "string"},
-                                    },
-                                    "required": ["text", "category"],
-                                    "additionalProperties": False,
-                                },
-                            },
-                            "quotes": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "text": {"type": "string"},
-                                        "context": {"type": "string"},
-                                    },
-                                    "required": ["text", "context"],
-                                    "additionalProperties": False,
-                                },
-                            },
-                            "topics": {"type": "array", "items": {"type": "string"}},
-                            "classification": {"type": "string", "enum": ["to_read", "skip"]},
-                            "full_markdown": {"type": "string"},
-                        },
-                        "required": [
-                            "title",
-                            "overview",
-                            "bullet_points",
-                            "quotes",
-                            "topics",
-                            "classification",
-                            "full_markdown",
-                        ],
-                        "additionalProperties": False,
-                    },
-                },
-            }
+            schema = NewsSummary if content_type == "news_digest" else StructuredSummary
 
-            response = self.client.chat.completions.create(
+            max_output_tokens = 5000
+            if content_type == "podcast":
+                max_output_tokens = 8000
+            elif content_type == "news_digest":
+                max_output_tokens = 2500
+            elif content_type == "hackernews":
+                max_output_tokens = 6000
+            response = self.client.responses.parse(
                 model=self.model_name,
-                messages=[
+                input=[
                     {"role": "system", "content": "You are an expert content analyst."},
                     {"role": "user", "content": prompt},
                 ],
-                response_format=response_format,
+                max_output_tokens=max_output_tokens,
+                text_format=schema,
             )
 
-            # Extract response text
-            response_text = response.choices[0].message.content
+            if not response.output:
+                logger.error("LLM returned no choices")
+                return None
 
-            # Check if response was truncated
-            if response.choices[0].finish_reason == "length":
-                logger.warning(
-                    f"Response was truncated due to token limit for content_type={content_type}"
-                )
-                # This will help us track if 128k is still not enough
-
-            if not response_text:
-                logger.error(f"No text found in response: {response}")
+            parsed_message = response.output_parsed
+            if parsed_message is None:
+                logger.error("Parsed response missing from OpenAI response")
                 log_json_error(
-                    "no_response_text",
-                    str(response)[:1000],
-                    Exception("No text in response"),
+                    "no_parsed_message",
+                    "",
+                    Exception("Parsed response missing"),
                     content_id=str(id(content)),
                 )
                 return None
 
-            # Clean response if wrapped in markdown code blocks
-            cleaned_text = response_text.strip()
-            if cleaned_text.startswith("```json"):
-                cleaned_text = cleaned_text[7:]
-            elif cleaned_text.startswith("```"):
-                cleaned_text = cleaned_text[3:]
-            if cleaned_text.endswith("```"):
-                cleaned_text = cleaned_text[:-3]
-            cleaned_text = cleaned_text.strip()
+            summary_obj = parsed_message
 
-            # Additional cleanup for common issues
-            if not cleaned_text:
-                logger.error("Cleaned text is empty after removing markdown blocks")
-                log_json_error(
-                    "empty_cleaned_text",
-                    response_text,
-                    Exception("Empty text after cleanup"),
-                    content_id=str(id(content)),
-                )
-                return None
+            if content_type == "news_digest":
+                return summary_obj
 
-            # Parse the structured response
-            try:
-                summary_data = json.loads(cleaned_text)
-            except json.JSONDecodeError as e:
-                logger.warning(f"Initial JSON parse failed: {e}")
-                # Try to repair truncated JSON
-                repaired_text = try_repair_truncated_json(cleaned_text)
-                if repaired_text:
-                    try:
-                        summary_data = json.loads(repaired_text)
-                        logger.info("Successfully parsed repaired JSON")
-                    except json.JSONDecodeError:
-                        raise e from None  # Re-raise original error
-                else:
-                    raise e from None  # Re-raise original error
+            if summary_obj.quotes:
+                filtered_quotes = [quote for quote in summary_obj.quotes if len(quote.text or "") >= 10]
+                if len(filtered_quotes) != len(summary_obj.quotes):
+                    logger.warning("Filtered out quotes shorter than 10 characters")
+                    summary_obj.quotes = filtered_quotes
 
-            # Filter out any quotes that are too short (validation safety)
-            if "quotes" in summary_data and isinstance(summary_data["quotes"], list):
-                valid_quotes = []
-                for quote in summary_data["quotes"]:
-                    if isinstance(quote, dict) and "text" in quote:
-                        # Ensure quote text meets minimum length
-                        if len(quote.get("text", "")) >= 10:
-                            valid_quotes.append(quote)
-                        else:
-                            logger.warning(
-                                f"Filtered out short quote: {quote.get('text', '')[:50]}"
-                            )
-                summary_data["quotes"] = valid_quotes
+            return summary_obj
 
-            # Create and return StructuredSummary
-            return StructuredSummary(**summary_data)
-
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error in structured summary: {e}")
-            logger.error(
-                f"Response was: "
-                f"{response_text[:500] if 'response_text' in locals() else 'No response'}"
-            )
+        except (OpenAIError, ValidationError) as e:
+            logger.error(f"OpenAI structured output error: {e}")
             log_json_error(
-                "json_decode_error",
-                response_text if "response_text" in locals() else "No response text",
+                "openai_structured_output_error",
+                "",
                 e,
                 content_id=str(id(content)),
             )
@@ -903,7 +841,7 @@ class OpenAISummarizationService:
             logger.error(f"Error generating structured summary: {e}")
             log_json_error(
                 "unexpected_error",
-                response_text if "response_text" in locals() else "No response text",
+                "",
                 e,
                 content_id=str(id(content)),
             )

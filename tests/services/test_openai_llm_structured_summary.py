@@ -1,10 +1,12 @@
 """Tests for structured summarization in OpenAI LLM service."""
-import pytest
 import json
 from unittest.mock import Mock, patch
 
+import pytest
+from openai import OpenAIError
+
+from app.models.metadata import NewsSummary, StructuredSummary
 from app.services.openai_llm import OpenAISummarizationService
-from app.models.metadata import StructuredSummary
 
 
 class TestOpenAIStructuredSummarization:
@@ -15,9 +17,11 @@ class TestOpenAIStructuredSummarization:
         """Create LLM service with mocked OpenAI client."""
         with patch('app.services.openai_llm.get_settings') as mock_settings:
             mock_settings.return_value.openai_api_key = 'test-key'
-            with patch('openai.OpenAI'):
+            with patch('app.services.openai_llm.OpenAI'):
                 service = OpenAISummarizationService()
                 service.client = Mock()
+                service.client.responses = Mock()
+                service.client.responses.parse = Mock()
                 return service
     
     @pytest.fixture
@@ -75,13 +79,14 @@ class TestOpenAIStructuredSummarization:
     ):
         """Test successful generation of structured summary."""
         # Mock the OpenAI client's response
+        structured = StructuredSummary(**mock_structured_response)
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = json.dumps(mock_structured_response)
-        mock_llm_service.client.chat.completions.create = Mock(return_value=mock_response)
-        
+        mock_response.output = [Mock()]
+        mock_response.output_parsed = structured
+        mock_llm_service.client.responses.parse.return_value = mock_response
+
         result = mock_llm_service.summarize_content(sample_content)
-        
+
         # Verify result is a StructuredSummary
         assert isinstance(result, StructuredSummary)
         assert result.title == mock_structured_response["title"]
@@ -106,47 +111,75 @@ class TestOpenAIStructuredSummarization:
     ):
         """Test handling of JSON wrapped in markdown code blocks."""
         # Mock response with markdown code blocks
-        wrapped_response = f"```json\n{json.dumps(mock_structured_response)}\n```"
+        structured = StructuredSummary(**mock_structured_response)
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = wrapped_response
-        mock_llm_service.client.chat.completions.create = Mock(return_value=mock_response)
+        mock_response.output = [Mock()]
+        mock_response.output_parsed = structured
+        mock_llm_service.client.responses.parse.return_value = mock_response
         
         result = mock_llm_service.summarize_content(sample_content)
         
         assert isinstance(result, StructuredSummary)
         assert result.title == mock_structured_response["title"]
         assert result.overview == mock_structured_response["overview"]
-    
+
     def test_generate_structured_summary_invalid_json(
         self, mock_llm_service, sample_content
     ):
         """Test handling of invalid JSON response."""
         # Mock invalid JSON response
         invalid_response = "This is not valid JSON"
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = invalid_response
-        mock_llm_service.client.chat.completions.create = Mock(return_value=mock_response)
-        
+        mock_llm_service.client.responses.parse.side_effect = OpenAIError(invalid_response)
+
         result = mock_llm_service.summarize_content(sample_content)
-        
-        # Should return None on error
+
         assert result is None
+        mock_llm_service.client.responses.parse.side_effect = None
     
     def test_summarize_content(
         self, mock_llm_service, sample_content, mock_structured_response
     ):
         """Test summarize_content returns structured summary."""
+        structured = StructuredSummary(**mock_structured_response)
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = json.dumps(mock_structured_response)
-        mock_llm_service.client.chat.completions.create = Mock(return_value=mock_response)
+        mock_response.output = [Mock()]
+        mock_response.output_parsed = structured
+        mock_llm_service.client.responses.parse.return_value = mock_response
         
         result = mock_llm_service.summarize_content(sample_content)
         
         assert isinstance(result, StructuredSummary)
         assert len(result.bullet_points) >= 3
+
+    def test_news_digest_summary(
+        self, mock_llm_service
+    ):
+        """Ensure news digest requests return NewsSummary objects."""
+        news_payload = {
+            "title": "TechMeme: EU backs landmark AI audit rules",
+            "article_url": "https://example.com/eu-ai-audit-rules",
+            "key_points": [
+                "EU regulators approve binding AI audit framework with phased rollout",
+                "Compliance obligations begin Q1 2026 for frontier model providers",
+                "Framework mandates independent model evaluations and public reporting",
+            ],
+            "summary": "EU lawmakers approve a binding audit regime for high-risk AI systems, forcing major vendors to submit to independent evaluations starting in 2026.",
+            "classification": "to_read",
+        }
+        news_summary = NewsSummary(**news_payload)
+        mock_response = Mock()
+        mock_response.output = [Mock()]
+        mock_response.output_parsed = news_summary
+        mock_llm_service.client.responses.parse.return_value = mock_response
+
+        result = mock_llm_service.summarize_content(
+            "Article Content", content_type="news_digest", max_bullet_points=4, max_quotes=0
+        )
+
+        assert isinstance(result, NewsSummary)
+        assert result.title == news_payload["title"]
+        assert str(result.article_url) == news_payload["article_url"]
+        assert len(result.key_points) == 3
     
     def test_summarize_content_with_parameters(
         self, mock_llm_service, sample_content
@@ -165,10 +198,11 @@ class TestOpenAIStructuredSummarization:
             "classification": "to_read",
             "full_markdown": ""
         }
+        structured = StructuredSummary(**mock_response)
         mock_resp = Mock()
-        mock_resp.choices = [Mock()]
-        mock_resp.choices[0].message.content = json.dumps(mock_response)
-        mock_llm_service.client.chat.completions.create = Mock(return_value=mock_resp)
+        mock_resp.output = [Mock()]
+        mock_resp.output_parsed = structured
+        mock_llm_service.client.responses.parse.return_value = mock_resp
         
         result = mock_llm_service.summarize_content(
             sample_content,
@@ -195,31 +229,26 @@ class TestOpenAIStructuredSummarization:
             "full_markdown": ""
         }
         
+        structured = StructuredSummary(**mock_response)
         mock_resp = Mock()
-        mock_resp.choices = [Mock()]
-        mock_resp.choices[0].message.content = json.dumps(mock_response)
-        
-        # Capture the call arguments
-        call_args = None
-        def capture_args(**kwargs):
-            nonlocal call_args
-            call_args = kwargs
-            return mock_resp
-        
-        mock_llm_service.client.chat.completions.create = Mock(side_effect=capture_args)
-        
+        mock_resp.output = [Mock()]
+        mock_resp.output_parsed = structured
+
+        parse_mock = mock_llm_service.client.responses.parse
+        parse_mock.return_value = mock_resp
+
         result = mock_llm_service.summarize_content(
             sample_content,
             content_type="podcast"
         )
-        
+
         # Verify podcast-specific handling
         assert isinstance(result, StructuredSummary)
-        assert call_args is not None
-        assert call_args['max_completion_tokens'] == 8000  # Podcast-specific limit
+        call_kwargs = parse_mock.call_args.kwargs
+        assert call_kwargs['max_output_tokens'] == 8000
         
         # Check that the prompt mentions podcast
-        messages = call_args['messages']
+        messages = call_kwargs['input']
         user_message = next((m for m in messages if m['role'] == 'user'), None)
         assert user_message is not None
         assert 'podcast' in user_message['content'].lower()
@@ -238,18 +267,13 @@ class TestOpenAIStructuredSummarization:
             "full_markdown": "Article and comments"
         }
         
+        structured = StructuredSummary(**mock_response)
         mock_resp = Mock()
-        mock_resp.choices = [Mock()]
-        mock_resp.choices[0].message.content = json.dumps(mock_response)
-        
-        # Capture the call arguments
-        call_args = None
-        def capture_args(**kwargs):
-            nonlocal call_args
-            call_args = kwargs
-            return mock_resp
-        
-        mock_llm_service.client.chat.completions.create = Mock(side_effect=capture_args)
+        mock_resp.output = [Mock()]
+        mock_resp.output_parsed = structured
+
+        parse_mock = mock_llm_service.client.responses.parse
+        parse_mock.return_value = mock_resp
         
         result = mock_llm_service.summarize_content(
             sample_content,
@@ -258,10 +282,8 @@ class TestOpenAIStructuredSummarization:
         
         # Verify HackerNews-specific handling
         assert isinstance(result, StructuredSummary)
-        assert call_args is not None
-        
-        # Check that the prompt mentions HackerNews
-        messages = call_args['messages']
+
+        messages = parse_mock.call_args.kwargs['input']
         user_message = next((m for m in messages if m['role'] == 'user'), None)
         assert user_message is not None
         assert 'hackernews' in user_message['content'].lower()

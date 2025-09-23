@@ -6,7 +6,7 @@ from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
-from app.models.metadata import ContentData, ContentStatus, ContentType
+from app.models.metadata import ContentData, ContentStatus, ContentType, NewsSummary
 from app.models.schema import Content
 from app.pipeline.checkout import get_checkout_manager
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
@@ -14,7 +14,6 @@ from app.processing_strategies.registry import get_strategy_registry
 from app.services.openai_llm import get_openai_summarization_service
 from app.services.http import NonRetryableError, get_http_service
 from app.services.queue import TaskType, get_queue_service
-from app.services.news_formatter import render_news_markdown
 from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
@@ -79,6 +78,42 @@ class ContentWorker:
         content.error_message = reason
         content.processed_at = datetime.now(timezone.utc)
 
+    def _mark_summarization_failure(self, content: ContentData, reason: str) -> None:
+        """Persist summarization failure details for the given content."""
+        logger.warning("Marking content %s as failed due to summarization error", content.id)
+
+        content.status = ContentStatus.FAILED
+        content.error_message = reason
+        content.metadata.pop("summary", None)
+
+        with get_db() as db:
+            db_content = db.query(Content).filter(Content.id == content.id).first()
+            if not db_content:
+                logger.error("Content %s disappeared before failure persistence", content.id)
+                return
+
+            metadata = dict(db_content.content_metadata or {})
+            metadata.pop("summary", None)
+            existing_errors = metadata.get("processing_errors")
+            if isinstance(existing_errors, list):
+                processing_errors = existing_errors.copy()
+            else:
+                processing_errors = []
+            processing_errors.append(
+                {
+                    "stage": "summarization",
+                    "reason": reason,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+            metadata["processing_errors"] = processing_errors
+
+            db_content.content_metadata = metadata
+            db_content.status = ContentStatus.FAILED.value
+            db_content.error_message = reason
+            db_content.processed_at = datetime.now(timezone.utc)
+            db.commit()
+
     def process_content(self, content_id: int, worker_id: str) -> bool:
         """
         Process a single content item.
@@ -100,12 +135,10 @@ class ContentWorker:
                 content = content_to_domain(db_content)
 
             # Process based on type
-            if content.content_type == ContentType.ARTICLE:
+            if content.content_type in {ContentType.ARTICLE, ContentType.NEWS}:
                 success = self._process_article(content)
             elif content.content_type == ContentType.PODCAST:
                 success = self._process_podcast(content)
-            elif content.content_type == ContentType.NEWS:
-                success = self._process_news(content)
             else:
                 logger.error(f"Unknown content type: {content.content_type}")
                 success = False
@@ -136,16 +169,18 @@ class ContentWorker:
     def _process_article(self, content: ContentData) -> bool:
         """Process article content."""
         try:
+            target_url = self._resolve_article_url(content)
+
             # Get processing strategy first (before downloading)
-            strategy = self.strategy_registry.get_strategy(str(content.url))
+            strategy = self.strategy_registry.get_strategy(target_url)
             if not strategy:
-                logger.error(f"No strategy for URL: {content.url}")
+                logger.error(f"No strategy for URL: {target_url}")
                 return False
 
-            logger.info(f"Using {strategy.__class__.__name__} for {content.url}")
+            logger.info(f"Using {strategy.__class__.__name__} for {target_url}")
 
             # Preprocess URL if needed
-            processed_url = strategy.preprocess_url(str(content.url))
+            processed_url = strategy.preprocess_url(target_url)
 
             # Download content using strategy (HTML strategy uses crawl4ai)
             try:
@@ -198,14 +233,32 @@ class ContentWorker:
             content.title = extracted_data.get("title") or content.title
 
             # Build metadata update dict
+            final_url = extracted_data.get("final_url_after_redirects") or processed_url
+            final_url = str(final_url)
+
+            existing_metadata = content.metadata or {}
+
             metadata_update = {
                 "content": extracted_data.get("text_content", ""),
                 "author": extracted_data.get("author"),
                 "publication_date": extracted_data.get("publication_date"),
                 "content_type": extracted_data.get("content_type", "html"),
-                "source": extracted_data.get("source"),
-                "final_url": extracted_data.get("final_url_after_redirects", str(content.url)),
+                "source": extracted_data.get("source") or existing_metadata.get("source"),
+                "final_url": final_url,
             }
+
+            original_url = str(content.url)
+            if content.content_type == ContentType.NEWS and original_url != final_url:
+                metadata_update.setdefault("news_original_url", original_url)
+
+            if content.content_type == ContentType.NEWS:
+                article_info = existing_metadata.get("article", {}).copy()
+                article_info.setdefault("url", final_url)
+                if extracted_data.get("title"):
+                    article_info["title"] = extracted_data.get("title")
+                if metadata_update.get("source"):
+                    article_info["source_domain"] = metadata_update.get("source")
+                metadata_update["article"] = article_info
 
             # Do not override platform here; platform should reflect the scraper.
 
@@ -251,27 +304,58 @@ class ContentWorker:
 
             # Generate structured summary using LLM service
             if llm_data.get("content_to_summarize"):
-                # Determine content type for summarization
-                summarization_content_type = llm_data.get("content_type", "article")
+                summarization_content_type = llm_data.get("content_type") or "article"
+                llm_payload = llm_data["content_to_summarize"]
 
-                summary = self.llm_service.summarize_content(
-                    content=llm_data["content_to_summarize"],
-                    content_type=summarization_content_type,
-                )
-                if summary:
-                    # Convert StructuredSummary to dict and store
-                    summary_dict = summary.model_dump()
-                    # Keep full_markdown inside the summary where it belongs
-                    content.metadata["summary"] = summary_dict
-                    logger.info(
-                        f"Generated summary and formatted markdown for content {content.id}"
+                if content.content_type == ContentType.NEWS:
+                    summarization_content_type = "news_digest"
+                    aggregator_context = self._build_news_context(content.metadata)
+                    if aggregator_context:
+                        llm_payload = f"Context:\n{aggregator_context}\n\nArticle Content:\n{llm_payload}"
+                    summary = self.llm_service.summarize_content(
+                        content=llm_payload,
+                        max_bullet_points=4,
+                        max_quotes=0,
+                        content_type=summarization_content_type,
                     )
                 else:
-                    logger.warning(f"Failed to generate summary for content {content.id}")
+                    summary = self.llm_service.summarize_content(
+                        content=llm_payload,
+                        content_type=summarization_content_type,
+                    )
+
+                if summary:
+                    summary_dict = summary.model_dump(mode="json", by_alias=True)
+
+                    if isinstance(summary, NewsSummary):
+                        news_summary_payload = summary_dict.copy()
+                        news_summary_payload.setdefault("classification", summary.classification)
+                        content.metadata["summary"] = news_summary_payload
+                        article_section = content.metadata.get("article", {})
+                        article_section.setdefault(
+                            "url",
+                            news_summary_payload.get("final_url_after_redirects")
+                            or news_summary_payload.get("article", {}).get("url"),
+                        )
+                        if summary.title and not article_section.get("title"):
+                            article_section["title"] = summary.title
+                        content.metadata["article"] = article_section
+                        content.title = summary.title
+                        logger.info(
+                            "Generated news digest summary for content %s", content.id
+                        )
+                    else:
+                        logger.info(
+                            f"Generated summary and formatted markdown for content {content.id}"
+                        )
+                else:
+                    failure_reason = "LLM summarization did not return a result"
+                    self._mark_summarization_failure(content, failure_reason)
+                    return False
 
             # Extract internal URLs for potential future crawling
             internal_urls = strategy.extract_internal_urls(
-                extracted_data.get("links", []), str(content.url)
+                extracted_data.get("links", []), final_url
             )
             if internal_urls:
                 content.metadata["internal_urls"] = internal_urls
@@ -319,47 +403,95 @@ class ContentWorker:
             logger.error(f"Error processing article {content.url}: {e}")
             return False
 
-    def _process_news(self, content: ContentData) -> bool:
-        """Process news content, generating markdown lists for aggregates."""
-        try:
-            news_metadata = content.to_news_metadata()
-        except Exception as exc:
-            logger.error(f"Invalid news metadata for content {content.id}: {exc}")
-            return False
+    def _resolve_article_url(self, content: ContentData) -> str:
+        """Select the best URL to fetch when processing an article/news item."""
 
-        items = news_metadata.items
-        if not items:
-            logger.warning(f"No news items available for content {content.id}")
-            content.status = ContentStatus.SKIPPED
-            content.error_message = "news content missing items"
-            return False
+        base_url = str(content.url)
 
-        # Render markdown list regardless of aggregate flag for consistent display
-        item_dicts = [item.model_dump(mode="json", exclude_none=True) for item in items]
-        rendered_markdown = render_news_markdown(
-            item_dicts,
-            heading=content.title,
+        if content.content_type != ContentType.NEWS:
+            return base_url
+
+        metadata = content.metadata or {}
+        platform = (metadata.get("platform") or content.platform or "").lower()
+
+        candidate_urls: list[str | None] = []
+
+        article_info = metadata.get("article", {})
+        candidate_urls.append(article_info.get("url"))
+
+        if platform == "hackernews":
+            aggregator_meta = metadata.get("aggregator", {})
+            candidate_urls.append(aggregator_meta.get("metadata", {}).get("hn_linked_url"))
+
+        candidate_urls.extend(
+            [
+                metadata.get("primary_article_url"),
+                metadata.get("primary_url"),
+                metadata.get("url"),
+            ]
         )
 
-        # Prepare excerpt for list view if missing
-        excerpt = news_metadata.excerpt
-        if not excerpt:
-            first_item = items[0]
-            if content.is_aggregate:
-                excerpt = f"{len(items)} updates curated from {content.source or 'aggregate source'}"
-            else:
-                excerpt = first_item.summary or first_item.title
+        for candidate in candidate_urls:
+            if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
+                return self._normalize_target_url(candidate)
 
-        # Update metadata dict for persistence
-        metadata_dict = news_metadata.model_dump(mode="json", exclude_none=True)
-        metadata_dict["items"] = item_dicts
-        metadata_dict["rendered_markdown"] = rendered_markdown
-        metadata_dict.setdefault("excerpt", excerpt)
+        return base_url
 
-        content.metadata = metadata_dict
-        content.status = ContentStatus.COMPLETED
-        content.processed_at = datetime.utcnow()
-        return True
+    @staticmethod
+    def _normalize_target_url(url: str) -> str:
+        normalized = url.strip()
+        if normalized.startswith("http://"):
+            normalized = "https://" + normalized[len("http://") :]
+        return normalized
+
+    def _build_news_context(self, metadata: dict[str, Any]) -> str:
+        article = metadata.get("article", {})
+        aggregator = metadata.get("aggregator", {})
+        lines: list[str] = []
+
+        article_title = article.get("title") or ""
+        article_url = article.get("url") or ""
+
+        if article_title:
+            lines.append(f"Article Title: {article_title}")
+        if article_url:
+            lines.append(f"Article URL: {article_url}")
+
+        if aggregator:
+            name = aggregator.get("name") or metadata.get("platform")
+            agg_title = aggregator.get("title")
+            agg_url = aggregator.get("url")
+            author = aggregator.get("author")
+
+            context_bits = []
+            if name:
+                context_bits.append(name)
+            if author:
+                context_bits.append(f"by {author}")
+            if agg_title and agg_title != article_title:
+                lines.append(f"Aggregator Headline: {agg_title}")
+            if context_bits:
+                lines.append("Aggregator Context: " + ", ".join(context_bits))
+            if agg_url:
+                lines.append(f"Aggregator URL: {agg_url}")
+
+            extra = aggregator.get("metadata") or {}
+            highlights = []
+            for field in ["score", "comments_count", "likes", "retweets", "replies"]:
+                value = extra.get(field)
+                if value is not None:
+                    highlights.append(f"{field}={value}")
+            if highlights:
+                lines.append("Signals: " + ", ".join(highlights))
+
+        summary_payload = metadata.get("summary") if isinstance(metadata, dict) else {}
+        excerpt = metadata.get("excerpt")
+        if not excerpt and isinstance(summary_payload, dict):
+            excerpt = summary_payload.get("overview") or summary_payload.get("summary")
+        if excerpt:
+            lines.append(f"Aggregator Summary: {excerpt}")
+
+        return "\n".join(lines)
 
     def _process_podcast(self, content: ContentData) -> bool:
         """Process podcast content."""
@@ -398,3 +530,8 @@ class ContentWorker:
             )
             logger.error(f"Error processing podcast {content.url}: {e}")
             return False
+
+    def _process_podcast_sync(self, content: ContentData) -> bool:
+        """Compatibility shim used by legacy tests."""
+
+        return self._process_podcast(content)

@@ -7,6 +7,20 @@
 
 import Foundation
 
+struct BulkMarkReadResponse: Codable {
+    let status: String
+    let markedCount: Int
+    let failedIds: [Int]
+    let totalRequested: Int
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case markedCount = "marked_count"
+        case failedIds = "failed_ids"
+        case totalRequested = "total_requested"
+    }
+}
+
 class ContentService {
     static let shared = ContentService()
     private let client = APIClient.shared
@@ -56,7 +70,7 @@ class ContentService {
         try await client.requestVoid(APIEndpoints.markContentUnread(id: id), method: "DELETE")
     }
     
-    func bulkMarkAsRead(contentIds: [Int]) async throws {
+    func bulkMarkAsRead(contentIds: [Int]) async throws -> BulkMarkReadResponse {
         struct BulkMarkReadRequest: Codable {
             let contentIds: [Int]
             
@@ -69,7 +83,11 @@ class ContentService {
         let encoder = JSONEncoder()
         let body = try encoder.encode(request)
         
-        try await client.requestVoid(APIEndpoints.bulkMarkRead, method: "POST", body: body)
+        return try await client.request(
+            APIEndpoints.bulkMarkRead,
+            method: "POST",
+            body: body
+        )
     }
     
     func toggleFavorite(id: Int) async throws -> [String: Any] {

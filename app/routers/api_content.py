@@ -6,7 +6,7 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, cast, String
+from sqlalchemy import and_, func, or_, cast, String
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -53,6 +53,18 @@ class ContentSummaryResponse(BaseModel):
     is_aggregate: bool = Field(False, description="Whether this news item aggregates multiple links")
     item_count: int | None = Field(
         None, description="Number of child items when content_type is news"
+    )
+    news_article_url: str | None = Field(
+        None, description="Canonical article link for news content"
+    )
+    news_discussion_url: str | None = Field(
+        None, description="Aggregator discussion URL (HN thread, tweet, etc.)"
+    )
+    news_key_points: list[str] | None = Field(
+        None, description="Key points provided for news digests"
+    )
+    news_summary: str | None = Field(
+        None, description="Short overview synthesized for news digests"
     )
 
     class Config:
@@ -154,11 +166,23 @@ class ContentDetailResponse(BaseModel):
     )
     is_aggregate: bool = Field(False, description="Whether this content aggregates multiple items")
     rendered_markdown: str | None = Field(
-        None, description="Rendered markdown list for news aggregates"
+        None, description="Rendered markdown list for legacy news aggregates"
     )
     news_items: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="Structured child items for news content",
+        description="Legacy structured child items for news content",
+    )
+    news_article_url: str | None = Field(
+        None, description="Canonical article link for news content"
+    )
+    news_discussion_url: str | None = Field(
+        None, description="Aggregator discussion URL (HN thread, tweet, etc.)"
+    )
+    news_key_points: list[str] | None = Field(
+        None, description="Key points provided for news digests"
+    )
+    news_summary: str | None = Field(
+        None, description="Short overview synthesized for news digests"
     )
 
     class Config:
@@ -285,17 +309,20 @@ async def list_contents(
     # Get unliked content IDs
     unliked_content_ids = unlikes.get_unliked_content_ids(db)
 
-    # Visibility clause: include summarized content or any news item
+    # Visibility clause: include summarized content or completed news
     summarized_clause = (
         Content.content_metadata["summary"].is_not(None)
         & (Content.content_metadata["summary"] != "null")
     )
-    news_clause = Content.content_type == ContentType.NEWS.value
+    completed_news_clause = and_(
+        Content.content_type == ContentType.NEWS.value,
+        Content.status == ContentStatus.COMPLETED.value,
+    )
 
     # Get available dates for the dropdown
     available_dates_query = (
         db.query(func.date(Content.created_at).label("date"))
-        .filter(or_(summarized_clause, news_clause))
+        .filter(or_(summarized_clause, completed_news_clause))
         .filter((Content.classification != "skip") | (Content.classification.is_(None)))
         .distinct()
         .order_by(func.date(Content.created_at).desc())
@@ -316,7 +343,7 @@ async def list_contents(
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
 
     # Only show content that has summary or is news (match HTML view)
-    query = query.filter(or_(summarized_clause, news_clause))
+    query = query.filter(or_(summarized_clause, completed_news_clause))
 
     # Apply content type filter
     if content_type and content_type != "all":
@@ -351,6 +378,29 @@ async def list_contents(
             if domain_content.structured_summary:
                 classification = domain_content.structured_summary.get("classification")
 
+            news_article_url = None
+            news_discussion_url = None
+            news_key_points = None
+            news_summary_text = domain_content.short_summary
+            item_count = None
+            is_aggregate = domain_content.is_aggregate
+
+            if domain_content.content_type == ContentType.NEWS:
+                article_meta = (domain_content.metadata or {}).get("article", {})
+                aggregator_meta = (domain_content.metadata or {}).get("aggregator", {})
+                summary_meta = (domain_content.metadata or {}).get("summary", {})
+                key_points = summary_meta.get("bullet_points")
+
+                news_article_url = article_meta.get("url")
+                news_discussion_url = aggregator_meta.get("url")
+                if key_points:
+                    news_key_points = [
+                        point["text"] if isinstance(point, dict) else point for point in key_points
+                    ]
+                classification = summary_meta.get("classification") or classification
+                news_summary_text = summary_meta.get("overview") or domain_content.summary
+                is_aggregate = False
+
             content_summaries.append(
                 ContentSummaryResponse(
                     id=domain_content.id,
@@ -360,7 +410,7 @@ async def list_contents(
                     source=domain_content.source,
                     platform=domain_content.platform or c.platform,
                     status=domain_content.status.value,
-                    short_summary=domain_content.short_summary,
+                    short_summary=news_summary_text,
                     created_at=domain_content.created_at.isoformat()
                     if domain_content.created_at
                     else "",
@@ -374,10 +424,12 @@ async def list_contents(
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
                     is_unliked=c.id in unliked_content_ids,
-                    is_aggregate=domain_content.is_aggregate,
-                    item_count=len(domain_content.news_items)
-                    if domain_content.content_type == ContentType.NEWS
-                    else None,
+                    is_aggregate=is_aggregate,
+                    item_count=item_count,
+                    news_article_url=news_article_url,
+                    news_discussion_url=news_discussion_url,
+                    news_key_points=news_key_points,
+                    news_summary=news_summary_text,
                 )
             )
         except Exception as e:
@@ -439,8 +491,11 @@ async def search_contents(
         Content.content_metadata["summary"].is_not(None)
         & (Content.content_metadata["summary"] != "null")
     )
-    news_clause = Content.content_type == ContentType.NEWS.value
-    query = query.filter(or_(summarized_clause, news_clause))
+    completed_news_clause = and_(
+        Content.content_type == ContentType.NEWS.value,
+        Content.status == ContentStatus.COMPLETED.value,
+    )
+    query = query.filter(or_(summarized_clause, completed_news_clause))
 
     if type and type != "all":
         query = query.filter(Content.content_type == type)
@@ -586,6 +641,40 @@ async def get_content_detail(
             status_code=500, detail=f"Failed to process content metadata: {str(e)}"
         ) from e
 
+    structured_summary = domain_content.structured_summary
+    bullet_points = domain_content.bullet_points
+    quotes = domain_content.quotes
+    topics = domain_content.topics
+    full_markdown = domain_content.full_markdown
+    rendered_markdown = domain_content.rendered_news_markdown
+    news_items = domain_content.news_items
+    news_article_url = None
+    news_discussion_url = None
+    news_key_points = None
+    news_summary_text = domain_content.summary
+
+    if domain_content.content_type == ContentType.NEWS:
+        metadata = domain_content.metadata or {}
+        article_meta = metadata.get("article", {})
+        aggregator_meta = metadata.get("aggregator", {})
+        summary_meta = metadata.get("summary", {})
+
+        news_article_url = article_meta.get("url")
+        news_discussion_url = aggregator_meta.get("url")
+        key_points = summary_meta.get("bullet_points")
+        if key_points:
+            news_key_points = [
+                point["text"] if isinstance(point, dict) else point for point in key_points
+            ]
+        news_summary_text = summary_meta.get("overview") or domain_content.summary
+        structured_summary = None
+        bullet_points = []
+        quotes = []
+        topics = []
+        full_markdown = None
+        rendered_markdown = None
+        news_items = []
+
     # Return the validated content with all properties from ContentData
     return ContentDetailResponse(
         id=domain_content.id,
@@ -612,16 +701,20 @@ async def get_content_detail(
         is_favorited=is_favorited,
         is_unliked=is_unliked,
         # Additional properties from ContentData
-        summary=domain_content.summary,
-        short_summary=domain_content.short_summary,
-        structured_summary=domain_content.structured_summary,
-        bullet_points=domain_content.bullet_points,
-        quotes=domain_content.quotes,
-        topics=domain_content.topics,
-        full_markdown=domain_content.full_markdown,
+        summary=news_summary_text,
+        short_summary=news_summary_text,
+        structured_summary=structured_summary,
+        bullet_points=bullet_points,
+        quotes=quotes,
+        topics=topics,
+        full_markdown=full_markdown,
         is_aggregate=domain_content.is_aggregate,
-        rendered_markdown=domain_content.rendered_news_markdown,
-        news_items=domain_content.news_items,
+        rendered_markdown=rendered_markdown,
+        news_items=news_items,
+        news_article_url=news_article_url,
+        news_discussion_url=news_discussion_url,
+        news_key_points=news_key_points,
+        news_summary=news_summary_text,
     )
 
 
@@ -649,16 +742,10 @@ async def bulk_mark_read(
     if invalid_ids:
         raise HTTPException(status_code=400, detail=f"Invalid content IDs: {sorted(invalid_ids)}")
 
-    # Mark all as read
-    success_count = 0
-    failed_ids = []
-
-    for content_id in request.content_ids:
-        result = read_status.mark_content_as_read(db, content_id)
-        if result:
-            success_count += 1
-        else:
-            failed_ids.append(content_id)
+    success_count, failed_ids = read_status.mark_contents_as_read(
+        db,
+        request.content_ids,
+    )
 
     return {
         "status": "success",

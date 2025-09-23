@@ -10,7 +10,6 @@ from app.models.metadata import (
     SummaryBulletPoint,
     ContentQuote,
     validate_content_metadata,
-    migrate_legacy_metadata
 )
 
 
@@ -275,49 +274,3 @@ class TestContentMetadataValidation:
         assert "error" not in result_dict
         assert "error_type" not in result_dict
 
-
-class TestMigrateLegacyMetadata:
-    """Test legacy metadata migration."""
-    
-    def test_migrate_datetime_fields(self):
-        """Test migration of datetime fields to ISO format."""
-        legacy_metadata = {
-            "content": "Article text",
-            "publication_date": "2025-06-14T10:30:00Z",
-            "summarization_date": "2025-06-14T11:00:00"
-        }
-        
-        migrated = migrate_legacy_metadata("article", legacy_metadata)
-        
-        # Should parse and reformat datetime strings
-        assert "publication_date" in migrated
-        assert "summarization_date" in migrated
-    
-    def test_migrate_invalid_datetime(self):
-        """Test that invalid datetime fields are removed."""
-        legacy_metadata = {
-            "content": "Article text",
-            "publication_date": "invalid-date",
-            "summarization_date": None
-        }
-        
-        migrated = migrate_legacy_metadata("article", legacy_metadata)
-        
-        # Invalid datetime should be removed
-        assert "publication_date" not in migrated
-        assert "summarization_date" not in migrated
-    
-    def test_migrate_converts_string_summary(self):
-        """Test that string summaries are converted to structured format during migration."""
-        legacy_metadata = {
-            "content": "Article text",
-            "summary": "This is a legacy string summary"
-        }
-        
-        migrated = migrate_legacy_metadata("article", legacy_metadata)
-        
-        # Should convert to structured format
-        assert isinstance(migrated["summary"], dict)
-        assert migrated["summary"]["overview"] == "This is a legacy string summary"
-        assert len(migrated["summary"]["bullet_points"]) >= 1
-        assert migrated["summary"]["bullet_points"][0]["text"] == "Legacy summary migrated - please re-summarize for better results"

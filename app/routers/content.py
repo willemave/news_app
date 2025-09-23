@@ -4,12 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.domain.converters import content_to_domain
-from app.models.metadata import ContentType
+from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.services import read_status, favorites, unlikes
 from app.templates import templates
@@ -65,11 +65,14 @@ async def list_content(
         Content.content_metadata["summary"].is_not(None)
         & (Content.content_metadata["summary"] != "null")
     )
-    news_clause = Content.content_type == ContentType.NEWS.value
+    completed_news_clause = and_(
+        Content.content_type == ContentType.NEWS.value,
+        Content.status == ContentStatus.COMPLETED.value,
+    )
 
     available_dates_query = (
         db.query(func.date(Content.created_at).label("date"))
-        .filter(or_(summarized_clause, news_clause))
+        .filter(or_(summarized_clause, completed_news_clause))
         .filter((Content.classification != "skip") | (Content.classification.is_(None)))
         .distinct()
         .order_by(func.date(Content.created_at).desc())
@@ -90,7 +93,7 @@ async def list_content(
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
     
     # Only show content that has been summarized
-    query = query.filter(or_(summarized_clause, news_clause))
+    query = query.filter(or_(summarized_clause, completed_news_clause))
 
     # Apply content type filter
     if content_type and content_type != "all":

@@ -196,4 +196,44 @@ class ContentListViewModel: ObservableObject {
     func refresh() async {
         await loadContent()
     }
+
+    func markAllAsRead() async {
+        let unreadIds = contents.filter { !$0.isRead }.map { $0.id }
+        if unreadIds.isEmpty {
+            return
+        }
+
+        do {
+            let response = try await contentService.bulkMarkAsRead(contentIds: unreadIds)
+            let markedSet = Set(unreadIds)
+
+            contents = contents.map { item in
+                if markedSet.contains(item.id) {
+                    return item.updating(isRead: true)
+                }
+                return item
+            }
+
+            if selectedReadFilter == "unread" {
+                _ = withAnimation(.easeOut(duration: 0.3)) {
+                    contents.removeAll { markedSet.contains($0.id) }
+                }
+            }
+
+            if response.markedCount > 0 {
+                switch selectedContentType {
+                case "article":
+                    unreadCountService.decrementArticleCount(by: response.markedCount)
+                case "podcast":
+                    unreadCountService.decrementPodcastCount(by: response.markedCount)
+                case "news":
+                    unreadCountService.decrementNewsCount(by: response.markedCount)
+                default:
+                    break
+                }
+            }
+        } catch {
+            errorMessage = "Failed to mark all as read: \(error.localizedDescription)"
+        }
+    }
 }

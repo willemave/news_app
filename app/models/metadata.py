@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Unified metadata models for content types.
 Merges functionality from app/schemas/metadata.py and app/domain/content.py.
@@ -7,7 +9,15 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    TypeAdapter,
+    field_validator,
+)
 
 
 # Enums from app/domain/content.py
@@ -89,6 +99,93 @@ class StructuredSummary(BaseModel):
     )
 
 
+# News digest summary used for fast-scanning feeds
+
+class NewsSummary(BaseModel):
+    """Compact summary payload for quick-glance news content."""
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "additionalProperties": False,
+            "example": {
+                "title": "Techmeme: OpenAI ships GPT-5 with native agents",
+                "article_url": "https://example.com/story",
+                "bullet_points": [
+                    "OpenAI launches GPT-5 with native agent orchestration",
+                    "Developers get first-party workflows that replace plug-ins",
+                    "Initial rollout targets enterprise customers later expanding to prosumers",
+                ],
+                "overview": "OpenAI debuts GPT-5 with native multi-agent features and enterprise-first rollout.",
+                "classification": "to_read",
+                "summarization_date": "2025-09-22T10:30:00Z",
+            }
+        },
+    )
+
+    title: str | None = Field(
+        None, min_length=5, max_length=240, description="Generated headline for the digest"
+    )
+    article_url: str | None = Field(
+        None,
+        min_length=1,
+        max_length=2083,
+        description="Canonical article URL referenced by the digest",
+    )
+    key_points: list[str] = Field(
+        default_factory=list,
+        min_length=0,
+        max_length=6,
+        description="Headline-ready bullet points summarizing the article",
+        validation_alias=AliasChoices("key_points", "bullet_points"),
+        serialization_alias="bullet_points",
+    )
+    summary: str | None = Field(
+        None,
+        min_length=0,
+        max_length=500,
+        description="Optional short overview paragraph",
+        validation_alias=AliasChoices("summary", "overview"),
+        serialization_alias="overview",
+    )
+    classification: str = Field(
+        default="to_read",
+        pattern="^(to_read|skip)$",
+        description="Read recommendation classification",
+    )
+    summarization_date: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="Timestamp when the digest was generated",
+    )
+
+    @field_validator("article_url")
+    @classmethod
+    def validate_article_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        adapter = TypeAdapter(HttpUrl)
+        return str(adapter.validate_python(value))
+
+
+class NewsArticleMetadata(BaseModel):
+    """Details about the linked article for a news item."""
+
+    url: HttpUrl = Field(..., description="Canonical article URL to summarize")
+    title: str | None = Field(None, max_length=500)
+    source_domain: str | None = Field(None, max_length=200)
+
+
+class NewsAggregatorMetadata(BaseModel):
+    """Context about the upstream aggregator (HN, Techmeme, Twitter)."""
+
+    name: str | None = Field(None, max_length=120)
+    title: str | None = Field(None, max_length=500)
+    url: HttpUrl | None = Field(None, description="Link back to the aggregator discussion/thread")
+    external_id: str | None = Field(None, max_length=200)
+    author: str | None = Field(None, max_length=200)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 # Base metadata with source field added
 class BaseContentMetadata(BaseModel):
     """Base metadata fields common to all content types."""
@@ -100,19 +197,26 @@ class BaseContentMetadata(BaseModel):
         None, description="Source of content (e.g., substack name, podcast name, subreddit name)"
     )
 
-    summary: StructuredSummary | None = Field(None, description="AI-generated structured summary")
-    summarization_date: datetime | None = None
+    summary: StructuredSummary | NewsSummary | None = Field(
+        None, description="AI-generated structured summary"
+    )
     word_count: int | None = Field(None, ge=0)
 
     @field_validator("summary", mode="before")
     @classmethod
-    def validate_summary(cls, v):
-        """Validate structured summary format."""
-        if v is None:
-            return None
-        if isinstance(v, dict):
-            return StructuredSummary(**v)
-        return v
+    def validate_summary(cls, value: StructuredSummary | NewsSummary | dict[str, Any] | None):
+        """Normalize summary payloads into structured models."""
+        if value is None or isinstance(value, (StructuredSummary, NewsSummary)):
+            return value
+        if isinstance(value, dict):
+            summary_type = value.get("summary_type")
+            if summary_type == "news_digest":
+                return NewsSummary.model_validate(value)
+            try:
+                return StructuredSummary.model_validate(value)
+            except Exception:
+                return NewsSummary.model_validate(value)
+        raise ValueError("Summary must be StructuredSummary, NewsSummary, or dict")
 
 
 # Article metadata from app/schemas/metadata.py
@@ -206,51 +310,47 @@ class PodcastMetadata(BaseContentMetadata):
     has_transcript: bool | None = Field(None, description="Whether transcript is available")
 
 
-class NewsItem(BaseModel):
-    """Individual item within a news collection."""
-
-    title: str = Field(..., min_length=3, max_length=500)
-    url: HttpUrl
-    summary: str | None = Field(None, description="One-line summary or excerpt")
-    source: str | None = Field(None, max_length=200)
-    author: str | None = Field(None, max_length=200)
-    score: int | None = Field(None, ge=0)
-    comments_url: HttpUrl | None = Field(None, description="Discussion URL such as HN or Reddit")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional source-specific data")
-
-
 class NewsMetadata(BaseContentMetadata):
-    """Metadata structure for news content collections."""
+    """Metadata structure for single-link news content."""
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "source": "twitter.com",
-                "platform": "twitter",
-                "items": [
-                    {
-                        "title": "@openai: GPT-5 launch",
-                        "url": "https://twitter.com/openai/status/123",
-                        "summary": "Key announcement thread",
-                        "author": "OpenAI",
-                        "metadata": {"likes": 1200},
-                    }
-                ],
-                "rendered_markdown": "- [@openai: GPT-5 launch](https://twitter.com/...)",
-                "primary_url": "https://twitter.com/i/lists/123",
+                "source": "example.com",
+                "platform": "hackernews",
+                "article": {
+                    "url": "https://example.com/story",
+                    "title": "Example Story",
+                    "source_domain": "example.com",
+                },
+                "aggregator": {
+                    "name": "Hacker News",
+                    "url": "https://news.ycombinator.com/item?id=123",
+                    "external_id": "123",
+                    "metadata": {"score": 420},
+                },
+                "summary": {
+                    "title": "Techmeme: OpenAI ships GPT-5 with native agents",
+                    "article_url": "https://example.com/story",
+                    "bullet_points": [
+                        "OpenAI launches GPT-5 with native agent orchestration",
+                        "Developers get first-party workflows that replace plug-ins",
+                        "Initial rollout targets enterprise customers later expanding to prosumers",
+                    ],
+                    "overview": "OpenAI debuts GPT-5 with native multi-agent features and enterprise-first rollout.",
+                    "classification": "to_read",
+                    "summarization_date": "2025-09-22T10:30:00Z",
+                },
             }
         }
     )
 
-    items: list[NewsItem] = Field(default_factory=list, description="Collection of news items")
-    rendered_markdown: str | None = Field(
-        None, description="Pre-rendered markdown for aggregate display"
+    article: NewsArticleMetadata = Field(..., description="Primary article information")
+    aggregator: NewsAggregatorMetadata | None = Field(
+        None, description="Upstream aggregator context"
     )
-    primary_url: HttpUrl | None = Field(
-        None, description="Canonical URL for the aggregate source if applicable"
-    )
-    excerpt: str | None = Field(
-        None, description="Optional short summary for list displays"
+    discovery_time: datetime | None = Field(
+        default_factory=datetime.utcnow, description="When the item was discovered"
     )
 
 
@@ -284,6 +384,8 @@ class ContentData(BaseModel):
     Unified content data model for passing between layers.
     """
 
+    model_config = ConfigDict(ignored_types=(property,), json_encoders={datetime: lambda v: v.isoformat()})
+
     id: int | None = None
     content_type: ContentType
     url: HttpUrl
@@ -291,8 +393,8 @@ class ContentData(BaseModel):
     status: ContentStatus = ContentStatus.NEW
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    platform: str | None = None
-    source: str | None = None
+    platform: str | None = Field(default=None, exclude=True)
+    source: str | None = Field(default=None, exclude=True)
     is_aggregate: bool = False
 
     # Processing metadata
@@ -358,9 +460,6 @@ class ContentData(BaseModel):
             raise ValueError("Not news content")
         return NewsMetadata(**self.metadata)
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
     @property
     def summary(self) -> str | None:
         """Get summary text (either simple or overview from structured)."""
@@ -379,7 +478,10 @@ class ContentData(BaseModel):
         if isinstance(summary_data, str):
             return summary_data
         if isinstance(summary_data, dict):
-            return summary_data.get("overview", "")
+            if "overview" in summary_data:
+                return summary_data.get("overview", "")
+            if summary_data.get("summary_type") == "news_digest":
+                return summary_data.get("summary")
         return None
 
     @property
@@ -393,8 +495,15 @@ class ContentData(BaseModel):
     @property
     def short_summary(self) -> str | None:
         """Get short version of summary for list view."""
-        summary = self.summary
-        return summary
+        summary = self.metadata.get("summary")
+        if isinstance(summary, dict):
+            if "overview" in summary:
+                return summary.get("overview")
+            if summary.get("summary_type") == "news_digest":
+                return summary.get("summary")
+        if isinstance(summary, str):
+            return summary
+        return None
 
     @property
     def structured_summary(self) -> dict[str, Any] | None:
@@ -468,6 +577,19 @@ class ContentData(BaseModel):
             return rendered
         return None
 
+    def model_dump(self, *args, **kwargs):  # type: ignore[override]
+        excludes = kwargs.pop("exclude", set())
+        excludes = set(excludes) | {"platform", "source"}
+        data = super().model_dump(*args, exclude=excludes, **kwargs)
+        metadata = data.get("metadata") or {}
+        platform = metadata.get("platform")
+        source = metadata.get("source")
+        if platform is not None:
+            data["platform"] = platform
+        if source is not None:
+            data["source"] = source
+        return data
+
 
 # Helper functions from app/schemas/metadata.py
 def validate_content_metadata(
@@ -497,50 +619,3 @@ def validate_content_metadata(
     if content_type == ContentType.NEWS.value:
         return NewsMetadata(**cleaned_metadata)
     raise ValueError(f"Unknown content type: {content_type}")
-
-
-def migrate_legacy_metadata(content_type: str, metadata: dict) -> dict:
-    """
-    Migrate legacy metadata format to new schema.
-
-    Args:
-        content_type: Type of content
-        metadata: Legacy metadata dictionary
-
-    Returns:
-        Migrated metadata dictionary
-    """
-    # Handle legacy summary format - convert string to structured
-    if "summary" in metadata and isinstance(metadata["summary"], str):
-        # Convert string summary to structured format
-        legacy_summary = metadata["summary"]
-        metadata["summary"] = {
-            "overview": legacy_summary[:500] if len(legacy_summary) > 500 else legacy_summary,
-            "bullet_points": [
-                {
-                    "text": "Legacy summary migrated - please re-summarize for better results",
-                    "category": "key_finding",
-                }
-            ],
-            "quotes": [],
-            "topics": ["Legacy"],
-            "summarization_date": metadata.get("summarization_date", datetime.utcnow().isoformat()),
-        }
-
-    # Ensure datetime fields are properly formatted
-    datetime_fields = ["publication_date", "summarization_date"]
-    for field in datetime_fields:
-        if field in metadata:
-            if metadata[field] is None:
-                # Remove None values
-                metadata.pop(field, None)
-            elif isinstance(metadata[field], str):
-                try:
-                    # Parse and reformat to ISO format
-                    dt = datetime.fromisoformat(metadata[field].replace("Z", "+00:00"))
-                    metadata[field] = dt.isoformat()
-                except (ValueError, AttributeError):
-                    # Remove invalid datetime
-                    metadata.pop(field, None)
-
-    return metadata
