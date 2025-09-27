@@ -1,8 +1,10 @@
 import contextlib
 import json
 import os
+import re
 import subprocess
 import tempfile
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, BinaryIO, Type
@@ -31,6 +33,11 @@ LOG_DIR.mkdir(exist_ok=True)
 ERRORS_DIR = LOG_DIR / "errors"
 ERRORS_DIR.mkdir(exist_ok=True)
 JSON_ERROR_LOG = ERRORS_DIR / "llm_json_errors.log"
+
+
+class StructuredSummaryRetryableError(Exception):
+    """Retryable summarization failure used to trigger Tenacity retries."""
+
 
 TITLE_EXAMPLES = """
 <title_examples> 
@@ -725,6 +732,14 @@ class OpenAISummarizationService:
         try:
             return schema.model_validate(summary_data)
         except ValidationError as schema_error:
+            recovered = self._attempt_structured_summary_recovery(
+                summary_data,
+                schema,
+                content_id,
+            )
+            if recovered is not None:
+                return recovered
+
             logger.error("OpenAI JSON payload failed schema validation: %s", schema_error)
             log_json_error(
                 "openai_schema_validation_error",
@@ -750,6 +765,129 @@ class OpenAISummarizationService:
                 summary.quotes = filtered_quotes
 
         return summary
+
+    @staticmethod
+    def _attempt_structured_summary_recovery(
+        summary_data: Any,
+        schema: Type[StructuredSummary] | Type[NewsSummary],
+        content_id: str,
+    ) -> StructuredSummary | None:
+        """Attempt to coerce partial payloads into a valid StructuredSummary."""
+
+        if schema is not StructuredSummary or not isinstance(summary_data, dict):
+            return None
+
+        normalized = deepcopy(summary_data)
+
+        # Always ensure classification defaults to to_read
+        classification = normalized.get("classification")
+        if not isinstance(classification, str) or not classification.strip():
+            normalized["classification"] = "to_read"
+
+        # Normalize bullet points: accept string lists or synthesize from overview/key points
+        bullet_points: list[dict[str, str]] = []
+        raw_bullets = normalized.get("bullet_points")
+
+        if isinstance(raw_bullets, list):
+            for entry in raw_bullets:
+                if isinstance(entry, dict):
+                    text = str(entry.get("text", "")).strip()
+                    if not text:
+                        continue
+                    category = str(entry.get("category", "insight")).strip() or "insight"
+                    bullet_points.append({"text": text, "category": category})
+                elif isinstance(entry, str) and entry.strip():
+                    bullet_points.append({"text": entry.strip(), "category": "insight"})
+
+        if not bullet_points:
+            key_points = normalized.get("key_points")
+            if isinstance(key_points, list):
+                bullet_points.extend(
+                    {"text": item.strip(), "category": "insight"}
+                    for item in key_points
+                    if isinstance(item, str) and item.strip()
+                )
+
+        if not bullet_points:
+            overview = normalized.get("overview")
+            if isinstance(overview, str):
+                overview_text = overview.strip()
+                sentences = [
+                    sentence.strip()
+                    for sentence in re.split(r"(?<=[.!?])\s+", overview_text)
+                    if sentence and len(sentence.strip()) >= 10
+                ]
+                if not sentences and len(overview_text) >= 10:
+                    sentences = [overview_text[:400]]
+
+                bullet_points.extend(
+                    {"text": sentence[:400], "category": "insight"}
+                    for sentence in sentences[:3]
+                )
+
+        if not bullet_points:
+            title = normalized.get("title")
+            if isinstance(title, str):
+                title_text = title.strip()
+                if len(title_text) >= 10:
+                    bullet_points.append({"text": title_text[:400], "category": "insight"})
+
+        if not bullet_points:
+            logger.error(
+                "Unable to synthesize bullet points for content %s during recovery", content_id
+            )
+            return None
+
+        # Ensure minimum bullet point count expected by schema (3)
+        while len(bullet_points) < 3:
+            bullet_points.append(dict(bullet_points[-1]))
+
+        normalized["bullet_points"] = bullet_points[:50]
+
+        # Normalize quotes to required shape
+        quotes = []
+        raw_quotes = normalized.get("quotes")
+        if isinstance(raw_quotes, list):
+            for item in raw_quotes:
+                if isinstance(item, dict):
+                    raw_text = str(item.get("text", "")).strip()
+                    if not raw_text:
+                        continue
+                    context = str(item.get("context", "Source unspecified")).strip() or "Source unspecified"
+                    quotes.append({"text": raw_text, "context": context})
+                elif isinstance(item, str) and item.strip():
+                    quotes.append({"text": item.strip(), "context": "Source unspecified"})
+        normalized["quotes"] = quotes[:50]
+
+        # Topics should be a list of strings
+        topics = normalized.get("topics")
+        if isinstance(topics, list):
+            normalized["topics"] = [str(topic).strip() for topic in topics if str(topic).strip()]
+        else:
+            normalized["topics"] = []
+
+        # Ensure full_markdown field exists even if empty string
+        if not isinstance(normalized.get("full_markdown"), str):
+            normalized["full_markdown"] = ""
+
+        # Remove helper fields not part of schema to avoid validation issues
+        normalized.pop("key_points", None)
+
+        try:
+            recovered = StructuredSummary.model_validate(normalized)
+        except ValidationError as recovery_error:
+            logger.error(
+                "Structured summary recovery failed for content %s: %s",
+                content_id,
+                recovery_error,
+            )
+            return None
+
+        logger.info(
+            "Recovered structured summary payload after schema failure for content %s",
+            content_id,
+        )
+        return recovered
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def summarize_content(
@@ -816,7 +954,9 @@ class OpenAISummarizationService:
                         validation_error,
                         content_id=content_identifier,
                     )
-                    return None
+                    raise StructuredSummaryRetryableError(
+                        "OpenAI structured output validation failed without payload"
+                    ) from validation_error
 
                 summary_from_payload = self._parse_summary_payload(
                     raw_payload,
@@ -824,7 +964,14 @@ class OpenAISummarizationService:
                     content_identifier,
                 )
                 if summary_from_payload is None:
-                    return None
+                    error_types = {error.get("type") for error in validation_error.errors()}
+                    if "json_invalid" in error_types:
+                        logger.warning("OpenAI returned irrecoverable JSON payload; skipping retry")
+                        return None
+
+                    raise StructuredSummaryRetryableError(
+                        "OpenAI structured output validation failed after repair"
+                    ) from validation_error
 
                 return self._finalize_summary(summary_from_payload, content_type)
 
@@ -851,6 +998,9 @@ class OpenAISummarizationService:
 
             return self._finalize_summary(parsed_message, content_type)
 
+        except StructuredSummaryRetryableError as retryable_error:
+            logger.warning("Retryable structured summary failure: %s", retryable_error)
+            raise
         except OpenAIError as error:
             logger.error("OpenAI structured output error: %s", error)
             log_json_error(

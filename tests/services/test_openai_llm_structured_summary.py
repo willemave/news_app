@@ -1,8 +1,10 @@
 """Tests for structured summarization in OpenAI LLM service."""
+import json
 from unittest.mock import Mock, patch
 
 import pytest
 from openai import OpenAIError
+from pydantic import ValidationError
 
 from app.models.metadata import NewsSummary, StructuredSummary
 from app.services.openai_llm import OpenAISummarizationService
@@ -287,3 +289,83 @@ class TestOpenAIStructuredSummarization:
         assert user_message is not None
         assert 'hackernews' in user_message['content'].lower()
         assert 'discussion' in user_message['content'].lower()
+
+    def test_retries_when_schema_validation_fails(
+        self,
+        mock_llm_service,
+        sample_content,
+        mock_structured_response,
+    ):
+        """Ensure schema validation failures trigger retry with repaired payloads."""
+
+        structured = StructuredSummary(**mock_structured_response)
+        success_response = Mock()
+        success_response.output = [Mock()]
+        success_response.output_parsed = structured
+
+        truncated_payload = (
+            '{"title": "Partial summary", "overview": '
+            '"This overview is present but bullet points are missing"}'
+        )
+        validation_error = ValidationError.from_exception_data(
+            "StructuredSummary",
+            [
+                {
+                    "type": "json_invalid",
+                    "loc": ("response",),
+                    "input": truncated_payload,
+                    "ctx": {"error": "EOF while parsing a string"},
+                }
+            ],
+        )
+
+        parse_mock = mock_llm_service.client.responses.parse
+        parse_mock.side_effect = [validation_error, success_response]
+
+        with patch("tenacity.nap.sleep", return_value=None):
+            result = mock_llm_service.summarize_content(sample_content)
+
+        assert isinstance(result, StructuredSummary)
+        assert parse_mock.call_count == 1
+        assert len(result.bullet_points) >= 3
+
+    def test_structured_summary_recovers_missing_bullet_points(
+        self,
+        mock_llm_service,
+        sample_content,
+    ):
+        """Service should repair payloads missing bullet_points."""
+
+        raw_payload = json.dumps(
+            {
+                "title": "AI Weekly: Frontier research roundup",
+                "overview": (
+                    "The article provides three major updates on frontier AI research. "
+                    "First, it covers scaling law breakthroughs. Second, it outlines "
+                    "new safety tooling deployments. Third, it summarizes regulatory "
+                    "coordination across labs and governments."
+                ),
+                "classification": "to_read",
+                "topics": ["ai", "research"],
+            }
+        )
+
+        validation_error = ValidationError.from_exception_data(
+            "StructuredSummary",
+            [
+                {
+                    "type": "missing",
+                    "loc": ("bullet_points",),
+                    "msg": "Field required",
+                    "input": raw_payload,
+                }
+            ],
+        )
+
+        mock_llm_service.client.responses.parse.side_effect = validation_error
+
+        result = mock_llm_service.summarize_content(sample_content)
+
+        assert isinstance(result, StructuredSummary)
+        assert len(result.bullet_points) == 3
+        assert {point.category for point in result.bullet_points} == {"insight"}

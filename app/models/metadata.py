@@ -5,9 +5,11 @@ Merges functionality from app/schemas/metadata.py and app/domain/content.py.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import (
     AliasChoices,
@@ -628,5 +630,106 @@ def validate_content_metadata(
     if content_type == ContentType.PODCAST.value:
         return PodcastMetadata(**cleaned_metadata)
     if content_type == ContentType.NEWS.value:
-        return NewsMetadata(**cleaned_metadata)
+        enriched = _ensure_news_article_metadata(cleaned_metadata)
+        return NewsMetadata(**enriched)
     raise ValueError(f"Unknown content type: {content_type}")
+
+
+def _ensure_news_article_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Backfill article fields for legacy news metadata lacking required structure."""
+
+    working_copy: dict[str, Any] = deepcopy(metadata)
+
+    article_data = working_copy.get("article")
+    if not isinstance(article_data, dict):
+        article_data = {}
+
+    article_url = _first_valid_url(
+        article_data.get("url"),
+        _first_item_url(working_copy.get("items")),
+        working_copy.get("primary_url"),
+        working_copy.get("url"),
+    )
+
+    if not article_url:
+        aggregator_url = None
+        aggregator = working_copy.get("aggregator")
+        if isinstance(aggregator, dict):
+            aggregator_url = aggregator.get("url")
+        article_url = _first_valid_url(aggregator_url)
+
+    if article_url:
+        article_data.setdefault("url", article_url)
+        article_data.setdefault("source_domain", _extract_source_domain(article_url))
+
+    title_candidates: list[str | None] = [
+        article_data.get("title"),
+        _first_item_title(working_copy.get("items")),
+        _summary_title_hint(working_copy.get("summary")),
+    ]
+    for candidate in title_candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            article_data.setdefault("title", candidate.strip())
+            break
+
+    if article_data.get("url"):
+        working_copy["article"] = article_data
+
+    return working_copy
+
+
+def _first_valid_url(*candidates: str | None) -> str | None:
+    for url in candidates:
+        if not isinstance(url, str):
+            continue
+        trimmed = url.strip()
+        if trimmed and trimmed.lower().startswith(("http://", "https://")):
+            return trimmed
+    return None
+
+
+def _first_item_url(items: Any) -> str | None:
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url") or item.get("expanded_url")
+        if isinstance(url, str) and url.strip():
+            return url.strip()
+    return None
+
+
+def _first_item_title(items: Any) -> str | None:
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title") or item.get("summary")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+    return None
+
+
+def _summary_title_hint(summary: Any) -> str | None:
+    if isinstance(summary, dict):
+        for key in ("title", "headline", "overview"):
+            value = summary.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    elif isinstance(summary, str) and summary.strip():
+        return summary.strip().splitlines()[0]
+    return None
+
+
+def _extract_source_domain(url: str) -> str | None:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None
+
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain or None

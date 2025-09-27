@@ -19,7 +19,6 @@ from app.utils.error_logger import create_error_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
-
 class ContentWorker:
     """Unified worker for processing all content types."""
 
@@ -27,6 +26,7 @@ class ContentWorker:
         self.checkout_manager = get_checkout_manager()
         self.http_service = get_http_service()
         self.llm_service = get_openai_summarization_service()
+        self.llm_provider = "openai"
         self.queue_service = get_queue_service()
         self.strategy_registry = get_strategy_registry()
         self.podcast_download_worker = PodcastDownloadWorker()
@@ -307,6 +307,14 @@ class ContentWorker:
                 summarization_content_type = llm_data.get("content_type") or "article"
                 llm_payload = llm_data["content_to_summarize"]
 
+                logger.debug(
+                    "Summarizing content %s using %s (payload_length=%s, type=%s)",
+                    content.id,
+                    getattr(self, "llm_provider", "unknown"),
+                    len(llm_payload) if isinstance(llm_payload, str) else "binary",
+                    summarization_content_type,
+                )
+
                 if content.content_type == ContentType.NEWS:
                     summarization_content_type = "news_digest"
                     aggregator_context = self._build_news_context(content.metadata)
@@ -350,6 +358,13 @@ class ContentWorker:
                             "Generated news digest summary for content %s", content.id
                         )
                     else:
+                        content.metadata["summary"] = summary_dict
+                        if summary_dict.get("classification"):
+                            content.metadata.setdefault("summary", {}).setdefault(
+                                "classification", summary_dict["classification"]
+                            )
+                        if summary_dict.get("title") and not content.title:
+                            content.title = summary_dict["title"]
                         logger.info(
                             f"Generated summary and formatted markdown for content {content.id}"
                         )
@@ -357,6 +372,12 @@ class ContentWorker:
                     failure_reason = "LLM summarization did not return a result"
                     self._mark_summarization_failure(content, failure_reason)
                     return False
+            else:
+                logger.error(
+                    "No LLM payload generated for content %s; keys=%s",
+                    content.id,
+                    sorted(llm_data.keys()),
+                )
 
             # Extract internal URLs for potential future crawling
             internal_urls = strategy.extract_internal_urls(

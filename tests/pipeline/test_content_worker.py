@@ -5,7 +5,15 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from app.models.metadata import ContentData, ContentStatus, ContentType, NewsSummary
+from app.models.metadata import (
+    ContentData,
+    ContentStatus,
+    ContentType,
+    ContentQuote,
+    NewsSummary,
+    StructuredSummary,
+    SummaryBulletPoint,
+)
 from app.pipeline.worker import ContentWorker
 from app.services.http import NonRetryableError
 from app.services.queue import TaskType
@@ -76,7 +84,7 @@ class TestContentWorker:
         mock_content.id = 123
         mock_content.url = "https://example.com/article"
         mock_content.content_type = ContentType.ARTICLE.value
-        mock_content.metadata = {}
+        mock_content.content_metadata = {}
 
         # Convert to domain model
         content_data = ContentData(
@@ -86,7 +94,6 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            source_feed="test",
             created_at=datetime.utcnow(),
             processed_at=None,
             retry_count=0,
@@ -117,9 +124,23 @@ class TestContentWorker:
         worker.strategy_registry.get_strategy.return_value = mock_strategy
 
         # Mock LLM service
-        mock_summary = Mock()
-        mock_summary.model_dump.return_value = {"summary": "Test summary"}
-        worker.llm_service.summarize_content.return_value = mock_summary
+        structured_summary = StructuredSummary(
+            title="Generated Summary Title",
+            overview=(
+                "This overview provides sufficient detail to exceed the minimum length "
+                "requirement for structured summaries."
+            ),
+            bullet_points=[
+                SummaryBulletPoint(text="Point one carries insight", category="key_finding"),
+                SummaryBulletPoint(text="Point two offers detail", category="insight"),
+                SummaryBulletPoint(text="Point three wraps up nicely", category="implication"),
+            ],
+            quotes=[ContentQuote(text="Notable quote for extra color", context="Author")],
+            topics=["ai", "news"],
+            classification="to_read",
+            full_markdown="# Heading\n\nDetailed markdown body.",
+        )
+        worker.llm_service.summarize_content.return_value = structured_summary
 
         # Mock content_to_domain function
         with patch("app.pipeline.worker.content_to_domain") as mock_converter:
@@ -134,6 +155,9 @@ class TestContentWorker:
             content="This is test content.", content_type="article"
         )
         mock_db.commit.assert_called()
+        expected_summary = structured_summary.model_dump(mode="json", by_alias=True)
+        assert content_data.metadata["summary"] == expected_summary
+        assert mock_content.content_metadata["summary"] == expected_summary
 
     def test_process_article_sync_no_strategy(self, mock_dependencies):
         """Test article processing when no strategy available."""

@@ -119,7 +119,7 @@
 * [`app/scraping/substack_unified.py`](app/scraping/substack_unified.py) - RSS feed scraper for Substack
 * [`app/scraping/techmeme_unified.py`](app/scraping/techmeme_unified.py) - Dedicated Techmeme cluster scraper with aggregator metadata
 * [`app/scraping/podcast_unified.py`](app/scraping/podcast_unified.py) - Podcast RSS scraper
-* [`app/scraping/twitter_unified.py`](app/scraping/twitter_unified.py) - Twitter scraper (search-based aggregation)
+* [`app/scraping/twitter_unified.py`](app/scraping/twitter_unified.py) - Twitter scraper (search-based aggregation); accepts authenticated cookies via `config/twitter.yml` → `client.cookies_path` (JSON or Netscape export) now that list timelines require login
 * [`app/scraping/youtube_unified.py`](app/scraping/youtube_unified.py) - Unified YouTube channel scraper using yt-dlp
 
 ### Processing Pipeline
@@ -127,7 +127,8 @@
 * [`app/pipeline/worker.py`](app/pipeline/worker.py) - Content processing worker with strategy pattern integration (NEWS items follow article flow unless marked aggregate)
 * [`app/services/google_flash.py`](app/services/google_flash.py) - Handles LLM summarization; includes `news_digest` mode for quick key points
 * [`app/scraping/techmeme_unified.py`](app/scraping/techmeme_unified.py) - Dedicated Techmeme cluster scraper emitting single-link news metadata
-* [`app/scraping/twitter_unified.py`](app/scraping/twitter_unified.py) - Twitter list scraper splitting each external link into its own news item
+* [`app/scraping/twitter_unified.py`](app/scraping/twitter_unified.py) - Twitter list scraper splitting each external link into its own news item; requires cookies for 404-guarded list timelines and falls back to cookie-less mode with explicit warning
+  - Lists now require authentication; configure `client.cookies_path` in `config/twitter.yml` with a JSON cookie export (`auth_token`, `ct0`) to enable scraping. Without cookies the scraper logs a warning and skips lists.
 * [`app/pipeline/checkout.py`](app/pipeline/checkout.py) - Content checkout management for concurrent processing
 * [`app/pipeline/podcast_workers.py`](app/pipeline/podcast_workers.py) - Podcast-specific workers (download, transcribe)
 
@@ -196,6 +197,8 @@
 * [`scripts/resummarize_podcasts.py`](scripts/resummarize_podcasts.py) - Re-run summarization for podcasts
 * [`scripts/retranscribe_podcasts.py`](scripts/retranscribe_podcasts.py) - Re-run transcription for podcasts
 * [`scripts/test_youtube_scraper.py`](scripts/test_youtube_scraper.py) - Dry-run utility for individual YouTube channels
+* [`scripts/dump_system_stats.py`](scripts/dump_system_stats.py) - CLI to emit aggregated database, queue, engagement, and event log statistics (table or JSON output)
+* [`scripts/pretty_print_content.py`](scripts/pretty_print_content.py) - Pretty prints a specified content ID or random sample for a content type with structured summary metadata
 * [`scripts/deploy/push_app.sh`](scripts/deploy/push_app.sh) - Deploys app to remote host and always mirrors `.env` from `.env.racknerd` via `sudo cp`
 * [`scripts/deploy/push_envs.sh`](scripts/deploy/push_envs.sh) - Minimal helper to re-copy `.env.racknerd` to `.env` without rsync
 

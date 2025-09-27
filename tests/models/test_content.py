@@ -97,6 +97,43 @@ class TestContentModel:
         assert content.content_type == ContentType.NEWS.value
         assert content.is_aggregate is False
         assert content.content_metadata["article"]["url"] == "https://example.com/story"
+
+    def test_news_metadata_backfills_article(self):
+        """Legacy news metadata without article should be backfilled automatically."""
+
+        legacy_metadata = {
+            "platform": "reddit",
+            "source": "MachineLearning",
+            "items": [
+                {
+                    "title": "OpenAI ships new model",
+                    "url": "https://example.ai/posts/openai-model",
+                    "summary": "OpenAI ships new model",
+                }
+            ],
+            "primary_url": "https://reddit.com/r/MachineLearning/comments/xyz",
+            "summary": {
+                "title": "OpenAI ships new model",
+                "overview": "Key highlights from the thread",
+            },
+        }
+
+        content = Content(
+            content_type=ContentType.NEWS.value,
+            url="https://example.ai/posts/openai-model",
+            title="OpenAI ships new model",
+            platform="reddit",
+            source="MachineLearning",
+            status=ContentStatus.NEW.value,
+            is_aggregate=False,
+            content_metadata=legacy_metadata,
+        )
+
+        article_metadata = content.content_metadata.get("article")
+        assert article_metadata is not None
+        assert article_metadata["url"] == "https://example.ai/posts/openai-model"
+        assert article_metadata["source_domain"] == "example.ai"
+        assert article_metadata["title"] == "OpenAI ships new model"
     
     def test_content_metadata_json_field(self):
         """Test that metadata is stored as JSON."""

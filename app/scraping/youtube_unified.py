@@ -201,6 +201,22 @@ class YouTubeUnifiedScraper(BaseScraper):
 
         for channel in self.channels:
             channel_results = self._scrape_channel(channel)
+
+            if channel_results is None:
+                logger.warning(
+                    "Channel %s returned no results (None); skipping extend to avoid runtime errors",
+                    channel.name,
+                )
+                continue
+
+            if not isinstance(channel_results, list):
+                logger.error(
+                    "Channel %s returned unexpected result type %s; skipping",
+                    channel.name,
+                    type(channel_results).__name__,
+                )
+                continue
+
             results.extend(channel_results)
 
         logger.info(
