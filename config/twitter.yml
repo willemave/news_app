@@ -2,6 +2,10 @@
 # This scraper uses Playwright to scrape Twitter lists by intercepting API calls
 # No authentication required, but may be rate-limited by Twitter
 
+client:
+  # Optional Playwright storage/cookies file (JSON or Netscape format) for authenticated access
+  cookies_path: "secrets/twitter_cookies.json"
+
 twitter_lists:
   - name: "FinTech"
     list_id: "1521123920950222849"  # The list you provided
@@ -36,3 +40,9 @@ settings:
   
   # Optional proxy configuration (format: "http://user:pass@host:port")
   # proxy: "http://user:pass@host:port"
+
+# Authentication (optional)
+# Provide a cookies export (JSON list or Chrome storage_state) to enable
+# scraping protected lists. Recommended path: secrets/twitter_cookies.json
+# client:
+#   cookies_path: "secrets/twitter_cookies.json"

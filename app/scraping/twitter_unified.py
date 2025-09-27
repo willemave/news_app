@@ -17,6 +17,11 @@ from app.scraping.base import BaseScraper
 logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = PROJECT_ROOT / "config" / "twitter.yml"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
 
 
 class TwitterUnifiedScraper(BaseScraper):
@@ -26,6 +31,10 @@ class TwitterUnifiedScraper(BaseScraper):
         super().__init__("Twitter")
         self.config = self._load_config()
         self.settings = self.config.get("settings", {})
+        client_section = self.config.get("client") or {}
+        cookies_path = client_section.get("cookies_path")
+        self.cookies_path = self._resolve_cookies_path(cookies_path) if cookies_path else None
+        self._auth_warning_lists: set[str] = set()
         # You can configure proxy here if needed
         self.proxy = self.settings.get("proxy")  # Format: "http://user:pass@host:port"
 
@@ -112,81 +121,98 @@ class TwitterUnifiedScraper(BaseScraper):
                 browser_args = {"headless": True}
                 if self.proxy:
                     browser_args["proxy"] = {"server": self.proxy}
-                
+
                 browser = pw.chromium.launch(**browser_args)
-                page = browser.new_page()
-                
-                # Set user agent to avoid detection
-                page.set_extra_http_headers({
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                })
-                
-                xhr_calls = []
-                
-                # Capture Twitter API calls (broader patterns)
-                def on_response(response):
-                    url = response.url
-                    # Look for Twitter API endpoints
-                    api_patterns = [
-                        "ListLatestTweets", "TweetResultByRestId", "UserTweets", 
-                        "HomeTimeline", "SearchTimeline", "ListTweets",
-                        "graphql", "api/graphql", "i/api/graphql"
-                    ]
-                    if any(pattern in url for pattern in api_patterns):
-                        xhr_calls.append(response)
-                        logger.info(f"Captured API call: {url[:100]}...")
-                    elif "twitter.com" in url and ("json" in response.headers.get("content-type", "") or "api" in url):
-                        xhr_calls.append(response)
-                        logger.info(f"Captured potential API call: {url[:100]}...")
-                
-                page.on("response", on_response)
-                
-                # Navigate to the list page
-                list_url = f"https://twitter.com/i/lists/{list_id}"
-                logger.info(f"Navigating to: {list_url}")
-                
+                context = browser.new_context(user_agent=DEFAULT_USER_AGENT)
                 try:
-                    # Try to navigate to the list page
-                    response = page.goto(list_url, wait_until="domcontentloaded", timeout=15000)
-                    logger.info(f"Page response status: {response.status if response else 'No response'}")
-                    
-                    # Check if we're redirected to login
-                    current_url = page.url
-                    if "login" in current_url.lower() or "authenticate" in current_url.lower():
-                        logger.warning(f"Twitter requires login to access this list. Current URL: {current_url}")
-                        raise Exception("Login required - cannot access list without authentication")
-                    
-                    # Wait for content to load (be more lenient with timeout)
+                    self._apply_cookies(context)
+                    page = context.new_page()
+
+                    # Set user agent to avoid detection
+                    page.set_extra_http_headers({
+                        "User-Agent": DEFAULT_USER_AGENT,
+                        "Accept-Language": "en-US,en;q=0.9",
+                    })
+
+                    xhr_calls = []
+
+                    # Capture Twitter API calls (broader patterns)
+                    def on_response(response):
+                        url = response.url
+                        # Look for Twitter API endpoints
+                        api_patterns = [
+                            "ListLatestTweets", "TweetResultByRestId", "UserTweets",
+                            "HomeTimeline", "SearchTimeline", "ListTweets",
+                            "graphql", "api/graphql", "i/api/graphql"
+                        ]
+                        if any(pattern in url for pattern in api_patterns):
+                            xhr_calls.append(response)
+                            logger.info(f"Captured API call: {url[:100]}...")
+                        elif "twitter.com" in url and ("json" in response.headers.get("content-type", "") or "api" in url):
+                            xhr_calls.append(response)
+                            logger.info(f"Captured potential API call: {url[:100]}...")
+
+                    page.on("response", on_response)
+
+                    # Navigate to the list page
+                    list_url = f"https://twitter.com/i/lists/{list_id}"
+                    logger.info(f"Navigating to: {list_url}")
+
                     try:
-                        page.wait_for_selector("[data-testid='tweet'], [data-testid='cellInnerDiv']", timeout=5000)
-                        logger.info("Found tweet elements on page")
-                    except Exception:
-                        logger.warning("Could not find tweet elements, but continuing...")
-                    
-                    # Give some time for dynamic content to load
-                    page.wait_for_timeout(3000)
-                    
-                    # Try scrolling to trigger more API calls
-                    max_scrolls = min(3, (limit // 20) + 1)
-                    for i in range(max_scrolls):
-                        page.mouse.wheel(0, 2000)
-                        page.wait_for_timeout(1500)
-                        logger.debug(f"Scroll {i+1}/{max_scrolls}")
-                    
-                    logger.info(f"Captured {len(xhr_calls)} API responses")
-                    
-                except Exception as e:
-                    logger.warning(f"Error loading Twitter list page: {e}")
-                    if "timeout" in str(e).lower():
-                        logger.info("Continuing with any captured API calls...")
-                    else:
-                        raise
-                
-                # Process captured API responses (before closing browser)
-                tweets_from_responses = []
-                for call in xhr_calls:
-                    try:
-                        if call.status == 200:
+                        # Try to navigate to the list page
+                        response = page.goto(list_url, wait_until="domcontentloaded", timeout=15000)
+                        logger.info(f"Page response status: {response.status if response else 'No response'}")
+
+                        # Check if we're redirected to login
+                        current_url = page.url
+                        if "login" in current_url.lower() or "authenticate" in current_url.lower():
+                            logger.warning(f"Twitter requires login to access this list. Current URL: {current_url}")
+                            raise Exception("Login required - cannot access list without authentication")
+
+                        # Wait for content to load (be more lenient with timeout)
+                        try:
+                            page.wait_for_selector("[data-testid='tweet'], [data-testid='cellInnerDiv']", timeout=5000)
+                            logger.info("Found tweet elements on page")
+                        except Exception:
+                            logger.warning("Could not find tweet elements, but continuing...")
+
+                        # Give some time for dynamic content to load
+                        page.wait_for_timeout(3000)
+
+                        # Try scrolling to trigger more API calls
+                        max_scrolls = min(3, (limit // 20) + 1)
+                        for i in range(max_scrolls):
+                            page.mouse.wheel(0, 2000)
+                            page.wait_for_timeout(1500)
+                            logger.debug(f"Scroll {i+1}/{max_scrolls}")
+
+                        logger.info(f"Captured {len(xhr_calls)} API responses")
+
+                    except Exception as e:
+                        logger.warning(f"Error loading Twitter list page: {e}")
+                        if "timeout" in str(e).lower():
+                            logger.info("Continuing with any captured API calls...")
+                        else:
+                            raise
+
+                    # Process captured API responses (before closing browser)
+                    auth_required = False
+                    tweets_from_responses = []
+                    for call in xhr_calls:
+                        try:
+                            if call.status != 200:
+                                if (
+                                    call.status in {401, 403, 404}
+                                    and "ListLatestTweetsTimeline" in call.url
+                                ):
+                                    auth_required = True
+                                logger.debug(
+                                    "Skipping response from %s due to status %s",
+                                    call.url[:80],
+                                    call.status,
+                                )
+                                continue
+
                             decoded = self._decode_response_json(call)
                             if not decoded:
                                 continue
@@ -197,46 +223,52 @@ class TwitterUnifiedScraper(BaseScraper):
                                 call.url[:50],
                                 payload_size,
                             )
-                            
+
                             list_tweets = self._extract_tweets_from_response(data)
                             logger.info(f"Extracted {len(list_tweets)} tweets from this response")
-                            
+
                             for tweet_data in list_tweets:
                                 if len(tweets) >= limit:
                                     break
-                                
-                                # Parse tweet date
+
                                 tweet_date = self._parse_tweet_date(tweet_data.get("created_at", ""))
                                 if tweet_date and tweet_date < cutoff_time:
                                     continue
-                                
-                                # Apply filters
-                                if not self.settings.get("include_retweets", False) and tweet_data.get("is_retweet"):
+
+                                if (
+                                    not self.settings.get("include_retweets", False)
+                                    and tweet_data.get("is_retweet")
+                                ):
                                     continue
-                                
-                                if not self.settings.get("include_replies", False) and tweet_data.get("in_reply_to_status_id"):
+
+                                if (
+                                    not self.settings.get("include_replies", False)
+                                    and tweet_data.get("in_reply_to_status_id")
+                                ):
                                     continue
-                                
-                                # Check engagement threshold
+
                                 min_engagement = self.settings.get("min_engagement", 0)
                                 likes = tweet_data.get("likes", tweet_data.get("favorite_count", 0))
                                 retweets = tweet_data.get("retweets", tweet_data.get("retweet_count", 0))
                                 if (likes + retweets) < min_engagement:
                                     continue
-                                
+
                                 tweets.append(tweet_data)
-                                logger.debug(f"Added tweet from @{tweet_data.get('username', 'unknown')}")
-                                
-                    except Exception as e:
-                        logger.warning(
-                            "Error processing API response from %s: %s",
-                            call.url[:50],
-                            e,
-                        )
-                        continue
-                
-                # Now close browser after processing responses
-                browser.close()
+                                logger.debug("Added tweet from @%s", tweet_data.get("username", "unknown"))
+
+                        except Exception as e:
+                            logger.warning(
+                                "Error processing API response from %s: %s",
+                                call.url[:50],
+                                e,
+                            )
+                            continue
+
+                    if auth_required and not tweets:
+                        self._emit_auth_warning(list_name, list_id)
+                finally:
+                    context.close()
+                    browser.close()
                 logger.info(f"Total tweets collected: {len(tweets)}")
         
         except Exception as e:
@@ -315,54 +347,70 @@ class TwitterUnifiedScraper(BaseScraper):
         return news_entries or None
 
     def _extract_tweets_from_response(self, data: dict) -> list[dict[str, Any]]:
-        """Extract tweet data from Twitter API response using JMESPath."""
-        tweets = []
-        
-        # Modern Twitter GraphQL API queries (updated for 2024/2025)
+        """Extract tweet data from Twitter API response using a resilient AST walk."""
+
+        candidate_nodes: list[dict[str, Any]] = []
+        seen_nodes: set[int] = set()
+
         queries = [
-            # New GraphQL format for list timeline
             "data.list.tweets_timeline.timeline.instructions[].entries[].content.itemContent.tweet_results.result",
-            # Alternative list timeline format
             "data.list.tweets_timeline.timeline.instructions[*].entries[*].content.itemContent.tweet_results.result",
-            # Timeline entries format
             "data.timeline.timeline.instructions[].entries[].content.itemContent.tweet_results.result",
-            # User timeline
             "data.user.result.timeline.timeline.instructions[].entries[].content.itemContent.tweet_results.result",
-            # Direct tweet results
             "data.tweetResult.result",
-            # Home timeline format
-            "data.home.home_timeline_urt.instructions[].entries[].content.itemContent.tweet_results.result"
+            "data.home.home_timeline_urt.instructions[].entries[].content.itemContent.tweet_results.result",
         ]
-        
+
         for query in queries:
             try:
                 results = jmespath.search(query, data)
-                if results:
-                    if isinstance(results, list):
-                        for result in results:
-                            if result and isinstance(result, dict):
-                                tweets.append(result)
-                    elif isinstance(results, dict):
-                        tweets.append(results)
-            except Exception as e:
-                logger.debug(f"Query '{query}' failed: {e}")
+            except Exception as exc:  # pragma: no cover - defensive logging only
+                logger.debug("Query '%s' failed: %s", query, exc)
                 continue
-        
-        # If no tweets found with specific queries, try generic search
-        if not tweets:
+
+            if isinstance(results, list):
+                for result in results:
+                    if isinstance(result, dict) and id(result) not in seen_nodes:
+                        candidate_nodes.append(result)
+                        seen_nodes.add(id(result))
+            elif isinstance(results, dict) and id(results) not in seen_nodes:
+                candidate_nodes.append(results)
+                seen_nodes.add(id(results))
+
+        # Depth-first walk to catch any new/unknown response shapes
+        for node in self._collect_tweet_result_nodes(data):
+            node_id = id(node)
+            if node_id in seen_nodes:
+                continue
+            candidate_nodes.append(node)
+            seen_nodes.add(node_id)
+
+        if not candidate_nodes:
             try:
-                # Look for any tweet-like objects with legacy data
                 generic_results = jmespath.search("**.legacy", data)
-                if isinstance(generic_results, list):
-                    tweets.extend([r for r in generic_results if r and isinstance(r, dict) and "full_text" in r])
-                elif isinstance(generic_results, dict) and "full_text" in generic_results:
-                    tweets.append({"legacy": generic_results})
-            except Exception:
-                pass
-        
-        # Process tweets to standardize format
-        processed_tweets = []
-        for tweet_result in tweets:
+            except Exception:  # pragma: no cover - defensive fallback
+                generic_results = None
+
+            if isinstance(generic_results, list):
+                for legacy in generic_results:
+                    if (
+                        isinstance(legacy, dict)
+                        and "full_text" in legacy
+                        and id(legacy) not in seen_nodes
+                    ):
+                        candidate_nodes.append({"legacy": legacy})
+                        seen_nodes.add(id(legacy))
+            elif (
+                isinstance(generic_results, dict)
+                and "full_text" in generic_results
+                and id(generic_results) not in seen_nodes
+            ):
+                candidate_nodes.append({"legacy": generic_results})
+                seen_nodes.add(id(generic_results))
+
+        processed_tweets: list[dict[str, Any]] = []
+        seen_tweet_ids: set[str] = set()
+        for tweet_result in candidate_nodes:
             normalized = self._normalize_tweet_result(tweet_result)
             if not normalized:
                 continue
@@ -370,36 +418,207 @@ class TwitterUnifiedScraper(BaseScraper):
             legacy_data = normalized.get("legacy", {})
             user_data = normalized.get("user", {})
 
-            # Skip if no text content
             content_value = legacy_data.get("full_text") or legacy_data.get("text")
             if not content_value:
                 continue
 
-            tweet_id = legacy_data.get("id_str") or legacy_data.get("id") or normalized.get("rest_id", "")
+            tweet_id = (
+                legacy_data.get("id_str")
+                or legacy_data.get("id")
+                or normalized.get("rest_id", "")
+            )
             username = user_data.get("screen_name") or user_data.get("username") or "unknown"
 
-            processed_tweet = {
-                "id": str(tweet_id),
-                "url": f"https://twitter.com/{username}/status/{tweet_id}",
-                "date": legacy_data.get("created_at", ""),
-                "username": username,
-                "display_name": user_data.get("name", "Unknown User"),
-                "content": content_value,
-                "likes": legacy_data.get("favorite_count", 0),
-                "retweets": legacy_data.get("retweet_count", 0),
-                "replies": legacy_data.get("reply_count", 0),
-                "quotes": legacy_data.get("quote_count", 0),
-                "created_at": legacy_data.get("created_at", ""),
-                "is_retweet": bool(
-                    legacy_data.get("retweeted_status_result") or legacy_data.get("retweeted_status")
-                ),
-                "in_reply_to_status_id": legacy_data.get("in_reply_to_status_id_str")
-                or legacy_data.get("in_reply_to_status_id"),
-                "links": self._extract_external_links(legacy_data),
-            }
-            processed_tweets.append(processed_tweet)
+            tweet_identifier = str(tweet_id)
+            if not tweet_identifier:
+                continue
+
+            if tweet_identifier in seen_tweet_ids:
+                continue
+            seen_tweet_ids.add(tweet_identifier)
+
+            processed_tweets.append(
+                {
+                    "id": tweet_identifier,
+                    "url": f"https://twitter.com/{username}/status/{tweet_identifier}",
+                    "date": legacy_data.get("created_at", ""),
+                    "username": username,
+                    "display_name": user_data.get("name", "Unknown User"),
+                    "content": content_value,
+                    "likes": legacy_data.get("favorite_count", 0),
+                    "retweets": legacy_data.get("retweet_count", 0),
+                    "replies": legacy_data.get("reply_count", 0),
+                    "quotes": legacy_data.get("quote_count", 0),
+                    "created_at": legacy_data.get("created_at", ""),
+                    "is_retweet": bool(
+                        legacy_data.get("retweeted_status_result")
+                        or legacy_data.get("retweeted_status")
+                    ),
+                    "in_reply_to_status_id": legacy_data.get("in_reply_to_status_id_str")
+                    or legacy_data.get("in_reply_to_status_id"),
+                    "links": self._extract_external_links(legacy_data),
+                }
+            )
 
         return processed_tweets
+
+    def _collect_tweet_result_nodes(self, payload: Any) -> list[dict[str, Any]]:
+        """Traverse payload recursively to gather tweet result dictionaries."""
+
+        stack: list[Any] = [payload]
+        collected: list[dict[str, Any]] = []
+        visited: set[int] = set()
+
+        while stack:
+            current = stack.pop()
+            node_id = id(current)
+            if node_id in visited:
+                continue
+            visited.add(node_id)
+
+            if isinstance(current, dict):
+                tweet_results = current.get("tweet_results")
+                if isinstance(tweet_results, dict):
+                    result = tweet_results.get("result")
+                    if isinstance(result, dict):
+                        collected.append(result)
+                        stack.append(result)
+
+                for value in current.values():
+                    stack.append(value)
+            elif isinstance(current, list):
+                stack.extend(current)
+
+        return collected
+
+    def _resolve_cookies_path(self, raw_path: str) -> Path | None:
+        path = Path(raw_path).expanduser()
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+        return path
+
+    def _apply_cookies(self, context) -> None:
+        if not self.cookies_path:
+            return
+
+        try:
+            raw_content = self.cookies_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            logger.warning(
+                "Twitter cookies file not found at %s; continuing without authentication",
+                self.cookies_path,
+            )
+            return
+        prepared = self._parse_cookie_file(raw_content)
+        if not prepared:
+            logger.warning(
+                "Twitter cookies file %s did not contain any usable cookies",
+                self.cookies_path,
+            )
+            return
+
+        context.add_cookies(prepared)
+        logger.info(
+            "Loaded %s Twitter cookies from %s", len(prepared), self.cookies_path
+        )
+
+    def _parse_cookie_file(self, raw_content: str) -> list[dict[str, Any]]:
+        """Parse cookie exports in either JSON or Netscape formats."""
+
+        json_cookies = self._parse_cookie_json(raw_content)
+        if json_cookies:
+            return json_cookies
+
+        netscape_cookies = self._parse_netscape_cookies(raw_content)
+        if netscape_cookies:
+            return netscape_cookies
+
+        return []
+
+    def _parse_cookie_json(self, raw_content: str) -> list[dict[str, Any]]:
+        try:
+            cookie_data = json.loads(raw_content)
+        except json.JSONDecodeError:
+            return []
+
+        cookies = (
+            cookie_data.get("cookies")
+            if isinstance(cookie_data, dict) and "cookies" in cookie_data
+            else cookie_data
+        )
+
+        if not isinstance(cookies, list):
+            return []
+
+        prepared: list[dict[str, Any]] = []
+        for entry in cookies:
+            if not isinstance(entry, dict):
+                continue
+
+            required_keys = {"name", "value", "domain"}
+            if not required_keys.issubset(entry):
+                continue
+
+            prepared_cookie = {
+                "name": entry["name"],
+                "value": entry["value"],
+                "domain": entry["domain"],
+                "path": entry.get("path", "/"),
+                "secure": entry.get("secure", False),
+                "httpOnly": entry.get("httpOnly", False),
+                "sameSite": entry.get("sameSite", "Lax"),
+            }
+
+            if "expires" in entry:
+                prepared_cookie["expires"] = entry["expires"]
+
+            prepared.append(prepared_cookie)
+
+        return prepared
+
+    def _parse_netscape_cookies(self, raw_content: str) -> list[dict[str, Any]]:
+        prepared: list[dict[str, Any]] = []
+
+        for line in raw_content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            parts = line.split("\t")
+            if len(parts) != 7:
+                continue
+
+            domain, _include, path, secure_flag, expires, name, value = parts
+            secure = secure_flag.upper() == "TRUE"
+
+            cookie: dict[str, Any] = {
+                "name": name,
+                "value": value,
+                "domain": domain,
+                "path": path or "/",
+                "secure": secure,
+                "httpOnly": False,
+                "sameSite": "Lax",
+            }
+
+            if expires and expires.isdigit():
+                cookie["expires"] = int(expires)
+
+            prepared.append(cookie)
+
+        return prepared
+
+    def _emit_auth_warning(self, list_name: str, list_id: str) -> None:
+        identifier = str(list_id)
+        if identifier in self._auth_warning_lists:
+            return
+        self._auth_warning_lists.add(identifier)
+        logger.warning(
+            "Twitter list '%s' (%s) appears to require authentication. "
+            "Provide a cookies export (auth_token + ct0) via config client.cookies_path to enable scraping.",
+            list_name,
+            list_id,
+        )
 
     def _decode_response_json(self, response: Response) -> tuple[Any, int] | None:
         """Safely decode JSON payloads captured by Playwright responses."""
@@ -428,8 +647,17 @@ class TwitterUnifiedScraper(BaseScraper):
         try:
             body_text = response.text()
         except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Unable to read response body from %s: %s", url, exc)
-            return None
+            logger.debug("Unable to read response text from %s: %s", url, exc)
+            try:
+                body_bytes = response.body()
+            except Exception as body_exc:  # pragma: no cover - defensive
+                logger.debug("Unable to read response bytes from %s: %s", url, body_exc)
+                return None
+
+            try:
+                body_text = body_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                body_text = body_bytes.decode("utf-8", errors="ignore")
 
         if not body_text.strip():
             logger.debug("Skipping empty response body from %s", url)

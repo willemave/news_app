@@ -1,11 +1,7 @@
-"""
-This module defines the strategy for processing arXiv web pages.
-Simplified to pass PDF bytes directly to the LLM without any local processing.
-"""
+"""Strategy for processing arXiv content URLs."""
 
-import re
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx  # For type hinting httpx.Headers
 
@@ -18,52 +14,77 @@ logger = get_logger(__name__)
 
 class ArxivProcessorStrategy(UrlProcessorStrategy):
     """
-    Strategy for processing arXiv abstract pages.
-    It identifies URLs like 'https://arxiv.org/abs/...' and transforms them
-    to their corresponding PDF URLs (e.g., 'https://arxiv.org/pdf/...'),
-    then downloads and extracts content from the PDF.
+    Strategy for processing arXiv URLs, whether they are abstract pages or direct PDFs.
+    Abstract links are normalized to their PDF counterparts before download.
     """
 
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
-        # Pattern to match arXiv abstract URLs, including potential version numbers
-        self.arxiv_abs_pattern = r"https://arxiv\.org/abs/(\d+\.\d+.*)"
-        self.arxiv_pdf_template = r"https://arxiv.org/pdf/{paper_id}"
+        self._logger_prefix = "ArxivStrategy"
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
         """
-        Determines if this strategy can handle the given URL, specifically looking for
-        arXiv abstract page patterns.
+        Determines if this strategy can handle the given URL.
         """
-        is_arxiv_abs = bool(re.match(self.arxiv_abs_pattern, url))
-        if is_arxiv_abs:
-            logger.debug(f"ArxivStrategy can handle URL (is arXiv abstract): {url}")
+        parsed = urlparse(url)
+        if not self._is_arxiv_host(parsed.netloc):
+            logger.debug("%s cannot handle URL (not arXiv host): %s", self._logger_prefix, url)
+            return False
+
+        path = parsed.path.lower()
+        if path.startswith("/abs/") or path.startswith("/pdf/"):
+            logger.debug("%s can handle URL: %s", self._logger_prefix, url)
             return True
-        logger.debug(f"ArxivStrategy cannot handle URL: {url}")
+
+        logger.debug("%s cannot handle URL (unsupported path): %s", self._logger_prefix, url)
         return False
 
     def preprocess_url(self, url: str) -> str:
         """
-        Transforms an arXiv abstract URL (e.g., /abs/...) to its PDF version (e.g., /pdf/...).
-        If the URL doesn't match the arXiv abstract pattern, it's returned unchanged.
+        Normalize arXiv URLs so downstream processing always receives a direct PDF URL.
         """
-        match = re.match(self.arxiv_abs_pattern, url)
-        if match:
-            paper_id = match.group(1)
-            pdf_url = self.arxiv_pdf_template.format(paper_id=paper_id)
-            logger.info(
-                "ArxivStrategy: Converted arXiv abstract URL %s to PDF URL %s",
+        parsed = urlparse(url)
+        if not self._is_arxiv_host(parsed.netloc):
+            logger.warning(
+                "%s: preprocess_url called with non-arXiv host %s; returning unchanged.",
+                self._logger_prefix,
                 url,
-                pdf_url,
             )
-            return pdf_url
-        # This case should ideally not be reached if can_handle_url was true,
-        # but serves as a safeguard.
-        logger.warning(
-            "ArxivStrategy: preprocess_url called with non-matching URL %s; returning unchanged.",
-            url,
+            return url
+
+        path = parsed.path
+        lower_path = path.lower()
+        target_path = path
+        target_query = parsed.query
+
+        if lower_path.startswith("/abs/"):
+            target_path = f"/pdf/{path[5:]}"
+            target_query = ""
+            logger.info(
+                "%s: Converted arXiv abstract URL %s to PDF path %s",
+                self._logger_prefix,
+                url,
+                target_path,
+            )
+        elif lower_path.startswith("/pdf/"):
+            target_path = f"/pdf/{path[5:]}"
+        else:
+            logger.warning(
+                "%s: preprocess_url received unsupported arXiv path %s; returning unchanged.",
+                self._logger_prefix,
+                url,
+            )
+            return url
+
+        normalized = parsed._replace(
+            scheme="https" if parsed.scheme in ("", "http") else parsed.scheme,
+            netloc="arxiv.org",
+            path=target_path,
+            params="",
+            query=target_query,
+            fragment="",
         )
-        return url
+        return urlunparse(normalized)
 
     def download_content(self, url: str) -> bytes:  # PDF content is bytes
         """
@@ -154,3 +175,8 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
             original_url,
         )
         return []
+
+    def _is_arxiv_host(self, netloc: str) -> bool:
+        """Return True if the provided netloc belongs to arxiv.org."""
+        normalized = netloc.lower()
+        return normalized == "arxiv.org" or normalized.endswith(".arxiv.org")

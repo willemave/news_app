@@ -17,6 +17,7 @@ from crawl4ai import (
     LLMConfig,
     LLMTableExtraction,
 )
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from dateutil import parser as date_parser  # For parsing dates from metadata
 
 from app.core.logging import get_logger
@@ -245,6 +246,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
         # Detect source for metadata
         source = self._detect_source(url)
+        logger.debug("HtmlStrategy: Starting extraction (url=%s, source=%s)", url, source)
         table_strategy = self._build_table_extraction_strategy()
 
         try:
@@ -283,7 +285,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 delay_before_return_html=1.0,
                 adjust_viewport_to_content=True,
                 # Performance
-                cache_mode=CacheMode.ENABLED,
+                cache_mode=CacheMode.BYPASS,
                 verbose=False,
                 # Link filtering
                 exclude_social_media_links=True,
@@ -292,6 +294,21 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 pdf=source_config.get("pdf", False),
                 check_robots_txt=False,
                 table_extraction=table_strategy,
+                markdown_generator=DefaultMarkdownGenerator(
+                    content_source="raw_html",
+                    options={
+                        "ignore_links": False,
+                        "ignore_images": False,
+                        "escape_html": False,
+                        "body_width": 0,
+                    },
+                ),
+            )
+            logger.debug(
+                "HtmlStrategy: Crawl config prepared (url=%s, word_count_threshold=%s, target_elements=%s)",
+                url,
+                run_config.word_count_threshold,
+                run_config.target_elements,
             )
 
             # Use AsyncWebCrawler with asyncio.run
@@ -306,6 +323,13 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                     crawler = AsyncWebCrawler(config=browser_config)
                     await crawler.__aenter__()
                     result = await crawler.arun(url=url, config=run_config)
+                    logger.debug(
+                        "HtmlStrategy: Crawl finished (url=%s, success=%s, status=%s, redirected=%s)",
+                        url,
+                        getattr(result, "success", None),
+                        getattr(result, "status_code", None),
+                        getattr(result, "redirected_url", None),
+                    )
                     return result
                 except Exception as e:
                     logger.debug(f"Error during crawl: {e}")
@@ -358,6 +382,26 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             extracted_text = result.markdown.raw_markdown if result.markdown else ""
             if not extracted_text:
                 raise Exception("No content extracted from the page")
+            logger.debug(
+                "HtmlStrategy: Extracted markdown length=%s cleaned_html_length=%s",
+                len(extracted_text),
+                len(result.cleaned_html or ""),
+            )
+            logger.debug(
+                "HtmlStrategy: Markdown preview: %s",
+                (extracted_text[:200] + "...") if len(extracted_text) > 200 else extracted_text,
+            )
+            if result.cleaned_html:
+                logger.debug(
+                    "HtmlStrategy: Cleaned HTML preview: %s",
+                    (
+                        result.cleaned_html[:200].replace("\n", " ") + "..."
+                        if len(result.cleaned_html) > 200
+                        else result.cleaned_html.replace("\n", " ")
+                    ),
+                )
+            if result.metadata:
+                logger.debug("HtmlStrategy: Raw metadata keys=%s", list(result.metadata.keys()))
 
             title = (result.metadata.get("title") if result.metadata else None) or "Untitled"
             author = None
@@ -418,7 +462,6 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 f"HtmlStrategy: Successfully extracted data for {url}. "
                 f"Title: {title[:50] if title else 'None'}... Source: {source}"
             )
-
             # Map source to full domain name of final URL
             try:
                 from urllib.parse import urlparse
@@ -427,6 +470,12 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             except Exception:
                 final_url = url
                 host = ""
+            logger.debug(
+                "HtmlStrategy: Extraction metadata (final_url=%s, publication_date=%s, author=%s)",
+                final_url,
+                publication_date,
+                author,
+            )
             return {
                 "title": title,
                 "author": author,
@@ -510,6 +559,9 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             f"{extracted_data.get('final_url_after_redirects')}"
         )
         text_content = extracted_data.get("text_content", "") or ""
+        logger.debug(
+            "HtmlStrategy: LLM preparation payload length=%s", len(text_content)
+        )
 
         table_markdown = extracted_data.get("table_markdown")
         if table_markdown:

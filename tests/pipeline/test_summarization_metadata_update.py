@@ -96,15 +96,11 @@ def test_summarize_task_updates_podcast_metadata(db_session, mock_structured_sum
         # Verify summary was added
         assert "summary" in content.content_metadata
         assert "summarization_date" in content.content_metadata
-        
-        # Verify summary content
+        expected_summary = mock_structured_summary.model_dump(mode="json")
+
+        # Verify summary content matches structured payload
         summary = content.content_metadata["summary"]
-        assert summary["title"] == "Test Summary Title"
-        assert summary["overview"] == ("This is a test overview of the content that provides "
-                                          "detailed information about the main topics discussed "
-                                          "in the material.")
-        assert len(summary["bullet_points"]) == 3
-        assert summary["classification"] == "to_read"
+        assert summary == expected_summary
         
         # Verify original metadata is preserved
         assert content.content_metadata["audio_url"] == "https://example.com/podcast.mp3"
@@ -155,7 +151,8 @@ def test_summarize_task_updates_article_metadata(db_session, mock_structured_sum
         
         # Verify metadata was updated with summary
         assert "summary" in content.content_metadata
-        assert content.content_metadata["summary"]["title"] == "Test Summary Title"
+        expected_summary = mock_structured_summary.model_dump(mode="json")
+        assert content.content_metadata["summary"] == expected_summary
         
         # Verify original metadata is preserved
         assert content.content_metadata["author"] == "Test Author"

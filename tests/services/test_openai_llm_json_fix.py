@@ -107,3 +107,23 @@ class TestOpenAiSummarizationFallback:
         result = summarization_service.summarize_content("Another sample article")
 
         assert result is None
+
+    def test_recovery_handles_short_overview_sentences(self) -> None:
+        """Recovery should synthesise bullet points even when sentences are terse."""
+
+        payload = {
+            "title": "Concise update on AI progress",
+            "overview": (
+                "Short. Short. Short. Short. Short. Short. Short. Short. Short. Short."
+            ),
+        }
+
+        repaired = OpenAISummarizationService._attempt_structured_summary_recovery(
+            payload,
+            StructuredSummary,
+            "demo",
+        )
+
+        assert repaired is not None
+        assert len(repaired.bullet_points) == 3
+        assert all(len(point.text) >= 10 for point in repaired.bullet_points)

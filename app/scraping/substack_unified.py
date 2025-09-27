@@ -97,6 +97,14 @@ class SubstackScraper(BaseScraper):
             try:
                 parsed_feed = feedparser.parse(feed_url)
 
+                logger.debug(
+                    "Parsed feed %s (entries=%s, bozo=%s, feed_title=%s)",
+                    feed_url,
+                    len(getattr(parsed_feed, "entries", []) or []),
+                    getattr(parsed_feed, "bozo", False),
+                    parsed_feed.feed.get("title") if parsed_feed.feed else "<no-title>",
+                )
+
                 # Check for parsing issues
                 if parsed_feed.bozo:
                     bozo_exc = parsed_feed.bozo_exception
@@ -197,6 +205,15 @@ class SubstackScraper(BaseScraper):
         if not content:
             content = entry.get("summary", "")
 
+        logger.debug(
+            "Entry debug: feed=%s title=%s content_chars=%s summary_chars=%s link=%s",
+            feed_name,
+            title,
+            len(content or ""),
+            len(entry.get("summary", "") or ""),
+            link,
+        )
+
         # Parse publication date
         publication_date = None
         if entry.get("published_parsed"):
@@ -228,6 +245,14 @@ class SubstackScraper(BaseScraper):
                 "tags": [tag.get("term") for tag in entry.get("tags", []) if tag.get("term")],
             },
         }
+
+        logger.debug(
+            "Emitted Substack item: url=%s word_count=%s publication_date=%s tags=%s",
+            item["url"],
+            item["metadata"].get("word_count"),
+            item["metadata"].get("publication_date"),
+            item["metadata"].get("tags"),
+        )
 
         return item
 
