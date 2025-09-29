@@ -4,18 +4,12 @@ feeds:
     limit: 20
   - name: "BG2 Pod"
     url: "https://anchor.fm/s/f06c2370/podcast/rss"
-    limit: 5
+    limit: 8
   - name: "Crucible Moments"
     url: "https://feeds.megaphone.fm/VMP5587961509"
-    limit: 5
+    limit: 8
   - name: "Knowledge Project with Shane Paris"
     url: "https://feeds.megaphone.fm/FSMI7575968096"
-    limit: 5
-  - name: "Knowledge Project with Shane Paris"
-    url: "https://feeds.megaphone.fm/FSMI7575968096"
-    limit: 5
-  - name: "Stratechery"
-    url: "https://stratechery.passport.online/feed/podcast/WkzDqJizGHEHcS9zgFmBPJ"
     limit: 5
   - name: This week in ML
     url: "https://feeds.megaphone.fm/MLN2155636147"

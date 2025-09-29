@@ -946,34 +946,16 @@ class OpenAISummarizationService:
                 )
             except ValidationError as validation_error:
                 logger.warning("OpenAI structured output validation failed: %s", validation_error)
-                raw_payload = self._extract_json_payload(validation_error)
-                if raw_payload is None:
-                    log_json_error(
-                        "openai_structured_output_error",
-                        "",
-                        validation_error,
-                        content_id=content_identifier,
-                    )
-                    raise StructuredSummaryRetryableError(
-                        "OpenAI structured output validation failed without payload"
-                    ) from validation_error
-
-                summary_from_payload = self._parse_summary_payload(
+                raw_payload = self._extract_json_payload(validation_error) or ""
+                log_json_error(
+                    "openai_structured_output_error",
                     raw_payload,
-                    schema,
-                    content_identifier,
+                    validation_error,
+                    content_id=content_identifier,
                 )
-                if summary_from_payload is None:
-                    error_types = {error.get("type") for error in validation_error.errors()}
-                    if "json_invalid" in error_types:
-                        logger.warning("OpenAI returned irrecoverable JSON payload; skipping retry")
-                        return None
-
-                    raise StructuredSummaryRetryableError(
-                        "OpenAI structured output validation failed after repair"
-                    ) from validation_error
-
-                return self._finalize_summary(summary_from_payload, content_type)
+                raise StructuredSummaryRetryableError(
+                    "OpenAI structured output validation failed; retrying"
+                ) from validation_error
 
             if not response.output:
                 logger.error("LLM returned no choices")

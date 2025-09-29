@@ -89,6 +89,23 @@ class ContentService {
             body: body
         )
     }
+
+    func markAllAsRead(contentType: String) async throws -> BulkMarkReadResponse? {
+        let response = try await fetchContentList(
+            contentType: contentType,
+            readFilter: "unread"
+        )
+
+        let unreadIds = response.contents
+            .filter { !$0.isRead }
+            .map { $0.id }
+
+        guard !unreadIds.isEmpty else {
+            return nil
+        }
+
+        return try await bulkMarkAsRead(contentIds: unreadIds)
+    }
     
     func toggleFavorite(id: Int) async throws -> [String: Any] {
         return try await client.requestRaw(APIEndpoints.toggleFavorite(id: id), method: "POST")

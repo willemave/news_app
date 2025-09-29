@@ -15,7 +15,11 @@ def _resolve_database_url() -> str:
     env_url = os.getenv("DATABASE_URL")
     if env_url and env_url.strip():
         return env_url.strip()
-    return config.get_main_option("sqlalchemy.url")
+    configured_url = config.get_main_option("sqlalchemy.url")
+    if configured_url and configured_url.strip() and "DATABASE_URL" not in configured_url:
+        return configured_url.strip()
+    msg = "DATABASE_URL environment variable is required for Alembic migrations."
+    raise RuntimeError(msg)
 
 # Ensure the resolved URL is set on the Alembic config so both
 # offline and online flows pick it up consistently

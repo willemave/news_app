@@ -5,10 +5,14 @@ from unittest.mock import Mock
 
 import pytest
 from pydantic import ValidationError
+from tenacity import RetryError
 
 from app.models.metadata import StructuredSummary
 from app.services import openai_llm
-from app.services.openai_llm import OpenAISummarizationService
+from app.services.openai_llm import (
+    OpenAISummarizationService,
+    StructuredSummaryRetryableError,
+)
 from app.utils.json_repair import try_repair_truncated_json
 
 
@@ -60,18 +64,22 @@ class TestJsonRepair:
         assert json.loads(repaired)["title"] == "Meta expands AI assistant for dating"
 
 
-class TestOpenAiSummarizationFallback:
-    """Behavioural tests for OpenAI fallback parsing."""
+class TestOpenAiSummarizationRetries:
+    """Behavioural tests for the retry path on structured output failures."""
 
-    def test_recovers_from_truncated_json(self, summarization_service: OpenAISummarizationService) -> None:
-        """Summarization should succeed when OpenAI returns truncated structured output."""
+    def test_retries_and_raises_after_exhaustion(
+        self,
+        summarization_service: OpenAISummarizationService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Service should retry and surface RetryError after repeated JSON failures."""
 
         payload_dict = _build_structured_payload()
         truncated_json = json.dumps(payload_dict)[:-1]
 
         try:
             StructuredSummary.model_validate_json(truncated_json)
-        except ValidationError as exc:  # pragma: no cover - only executed during test setup
+        except ValidationError as exc:  # pragma: no cover - only executed during setup
             validation_error = exc
         else:  # pragma: no cover
             pytest.fail("Expected StructuredSummary.model_validate_json to raise ValidationError")
@@ -80,33 +88,47 @@ class TestOpenAiSummarizationFallback:
             raise validation_error
 
         summarization_service.client.responses.parse.side_effect = raise_validation_error
+        monkeypatch.setattr("tenacity.nap.sleep", lambda _: None)
 
-        result = summarization_service.summarize_content("Sample article content for testing.")
+        with pytest.raises(RetryError) as exc_info:
+            summarization_service.summarize_content("Sample article content for testing.")
 
-        assert isinstance(result, StructuredSummary)
-        assert result.title == payload_dict["title"]
-        assert len(result.bullet_points) == len(payload_dict["bullet_points"])
+        assert summarization_service.client.responses.parse.call_count == 3
+        last_exception = exc_info.value.last_attempt.exception()
+        assert isinstance(last_exception, StructuredSummaryRetryableError)
 
-    def test_returns_none_when_payload_irreparable(
-        self, summarization_service: OpenAISummarizationService
+    def test_succeeds_after_retry(
+        self,
+        summarization_service: OpenAISummarizationService,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Summarization should fail gracefully when payload cannot be repaired."""
+        """Second attempt should succeed when OpenAI returns a valid payload after a retry."""
+
+        payload_dict = _build_structured_payload()
+        truncated_json = json.dumps(payload_dict)[:-1]
 
         try:
-            StructuredSummary.model_validate_json("this is not json")
-        except ValidationError as exc:  # pragma: no cover - test setup path
+            StructuredSummary.model_validate_json(truncated_json)
+        except ValidationError as exc:  # pragma: no cover - only executed during setup
             validation_error = exc
         else:  # pragma: no cover
             pytest.fail("Expected StructuredSummary.model_validate_json to raise ValidationError")
 
-        def raise_validation_error(*_: object, **__: object) -> None:
-            raise validation_error
+        structured = StructuredSummary(**payload_dict)
+        mock_response = Mock()
+        mock_response.output = [Mock()]
+        mock_response.output_parsed = structured
 
-        summarization_service.client.responses.parse.side_effect = raise_validation_error
+        summarization_service.client.responses.parse.side_effect = [
+            validation_error,
+            mock_response,
+        ]
+        monkeypatch.setattr("tenacity.nap.sleep", lambda _: None)
 
-        result = summarization_service.summarize_content("Another sample article")
+        result = summarization_service.summarize_content("Sample article content for retry.")
 
-        assert result is None
+        assert isinstance(result, StructuredSummary)
+        assert summarization_service.client.responses.parse.call_count == 2
 
     def test_recovery_handles_short_overview_sentences(self) -> None:
         """Recovery should synthesise bullet points even when sentences are terse."""

@@ -272,6 +272,7 @@
   - Pull-to-refresh support
   - Swipe navigation between articles in detail view
   - Long press Articles/Podcasts/News lists to bulk mark visible items as read (uses API bulk response metrics)
+  - Settings view provides mark-all-as-read actions for articles, podcasts, and news content types
   - Responsive design for all iOS devices
 * **Build Requirements**: iOS 15.0+, Swift 5.5+, Xcode
 * **Critical Implementation Note**: When passing content to detail view, MUST pass full array of content IDs for swipe navigation

@@ -45,6 +45,3 @@ feeds:
   - url: "https://www.understandingai.org/feed"
     name: "Understanding AI"
     limit: 3
-  - url: "https://contraptions.venkateshrao.com/feed"
-    name: "Contraptions"
-    limit: 3

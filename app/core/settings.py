@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     http_timeout_seconds: int = 30
     http_max_retries: int = 3
 
+    # Reddit / PRAW configuration (script flow)
+    reddit_client_id: str | None = None
+    reddit_client_secret: str | None = None
+    reddit_username: str | None = None
+    reddit_password: str | None = None
+    reddit_read_only: bool = True
+    reddit_user_agent: str | None = None
+
     # Storage paths
     media_base_dir: Path = Field(default_factory=lambda: Path.cwd() / "data" / "media")
     logs_base_dir: Path = Field(default_factory=lambda: Path.cwd() / "logs")
