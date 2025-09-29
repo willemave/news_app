@@ -4,20 +4,16 @@
 subreddits:
   # Reddit front page
   - name: "front"
-    limit: 50
+    limit: 10
   
   # AI and Machine Learning
   - name: "MachineLearning"
-    limit: 10
+    limit: 20
   - name: "artificial"
-    limit: 10
+    limit: 20
   - name: "ArtificialInteligence"
-    limit: 10
+    limit: 20
   - name: "reinforcementlearning"
-    limit: 10
+    limit: 20
   - name: "mlscaling"
-    limit: 10
-
-  # Specific Tools/Topics
-  - name: "NooTopics"
     limit: 10

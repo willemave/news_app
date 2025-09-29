@@ -5,25 +5,8 @@
 * **RORO** pattern (receive object, return object).
 * `lower_snake_case` for files/dirs; verbs in variables (`is_valid`, `has_permission`).
 * Guard-clause error handling; early returns over nested `else`.
-* Raise `HTTPException` for expected errors; log + wrap unexpected ones.
 * **Docstrings**: Use Google-style for all public functions/classes.
 * **Constants**: Define in `app/constants.py` or module-level UPPER_CASE.
-* Folder layout:
-  app/
-    routers/      # route groups
-    models/       # Pydantic + DB models
-    schemas/      # request/response schemas
-    services/     # business logic layer
-    repositories/ # data access layer
-    utils/        # pure helpers
-    types/        # shared type aliases
-    middleware/   # custom middleware
-    dependencies/ # FastAPI dependencies
-    exceptions/   # custom exceptions
-    static/
-    tests/        # pytest test files
-  logs/           # holds all log files
-  scripts/.       # holds all scripts     
 ---
 #### 2  FastAPI Best Practices
 * Use **lifespan** context, not `startup/shutdown` events.
@@ -54,19 +37,14 @@
   pytest app/tests/ -v  # verbose output
 
 * **Test data**: Use factories or fixtures, never production data.
----
-#### 5  Performance & Monitoring
-* **Database queries**: Use `select_related`/`prefetch_related` to avoid N+1.
-* **Connection pooling**: Configure appropriate pool sizes for DB/Redis.
-* **Pagination**: Always paginate list endpoints; use cursor-based for large datasets.
 
 ---
 #### 6  Dependencies
-* **Core**: fastapi, pydantic[email], pydantic-settings, python-multipart
+* **Core**: fastapi, pydantic, pydantic-settings, python-multipart
 * **Database**: sqlalchemy>=2.0, alembic
 * **Testing**: pytest, pytest-cov, httpx, pytest-mock
 * **Utils**: python-dateutil
-* **External**: httpx (HTTP), google-genai (not google-generativeai)
+* **External**: google-genai (not google-generativeai)
 * Package with **uv**:
   uv add <pkg>
   uv add --dev pytest httpx pytest-mock pytest-cov
@@ -74,23 +52,18 @@
 
 ---
 #### 7  Development Workflow
-* **Pre-commit hooks**: `ruff` for linting, `black` for formatting, `mypy` for types.
+* **Pre-commit hooks**: `ruff` for linting, `black` for formatting
 * **Environment management**: `.env.example` template; never commit `.env`. Use app/core/settings.py and Pydantic to store settings for the app. 
 * **Database migrations**: Alembic with descriptive revision messages.
-* **OpenAPI**: Customize with tags, descriptions; generate client SDKs.
 * **UI**: We use jinja and basic templates to render our html pages, we're not a javascript/react app. 
 * **Error responses**: Consistent format with error codes, messages, details.
 * We use tailwindcss, you write tailwind css to ./static/css/styles.css and then run `npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css` to build the ./static/css/styles.css
 ---
 #### 8  Memory-Bank Workflow (Stateless Agent)
 1. **At session start** read:
-   `ai-memory/README.md`, `ai-memory/TASKS.md`.
+   `ai-memory/README.md`
 2. **Treat `README.md` as canonical context**.
-3. **Maintain `TASKS.md`**:
-   * Fine-grained tasks with `- [ ]` / `- [x]`.
-   * Include test writing/running as explicit tasks.
-   * Group by feature/module for clarity.
-   * Last task in every phase → record key learnings before reset.
+3. **Treat `TASKS.md` as a log of things completed.
 4. **Propose updates** to memory files whenever you add patterns, finish major work, or clarify requirements.
 5. **Missing folder?** Create `ai-memory/`, stub the three files, notify user.
 ---
@@ -133,9 +106,7 @@ Use this as the authoritative layout (supersedes earlier sketch if different).
   - pipeline/        : sequential task processor, workers
   - scraping/        : unified scrapers (podcast, substack) + runner
   - processing_strategies/: HTML/HN strategies and parsers
-  - http_client/     : robust http client with retries
   - models/          : domain models and structured summary
-  - repositories/    : data access
   - utils/           : `error_logger.py` (JSONL), misc helpers
   - domain/          : domain-specific entities
   - templates/       : module-scoped views (e.g., favorites)
@@ -144,8 +115,6 @@ Use this as the authoritative layout (supersedes earlier sketch if different).
 - static/            : tailwind sources and compiled CSS
 - scripts/           : start/ops (`start_server.sh`, `start_workers.sh`, `start_scrapers.sh`, `run_*`)
 - alembic/ + alembic.ini : database migrations
-- docker-compose.yml : server/workers/scrapers with shared logs mount
-- Dockerfile.*       : container builds (Playwright deps installed)
 - logs/              : JSONL and service logs (host-mounted)
 
 ---

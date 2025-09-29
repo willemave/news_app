@@ -158,6 +158,10 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "excluded_tags": ["script", "style", "nav", "footer", "header"],
             "exclude_external_links": True,
             "remove_overlay_elements": True,
+            "page_timeout_ms": 90_000,
+            "wait_for_timeout_ms": 90_000,
+            "max_crawl_attempts": 1,
+            "crawl_retry_delay_seconds": 1.5,
         }
 
         # Source-specific adjustments
@@ -167,6 +171,9 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 ".subscribe-widget, .footer-wrap, .subscription-form-wrapper"
             )
             config["target_elements"] = [".post", ".post-content", "article"]
+            config["max_crawl_attempts"] = 2
+            config["page_timeout_ms"] = 120_000
+            config["wait_for_timeout_ms"] = 120_000
         elif source == "Medium":
             config["excluded_selector"] = ".metabar, .js-postActions, .js-stickyFooter"
             config["target_elements"] = ["article", ".postArticle", ".section-content"]
@@ -178,6 +185,9 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         elif source == "ChinaTalk":
             config["target_elements"] = [".post-content", ".post", "article"]
             config["excluded_selector"] = ".subscribe-widget, .comments-section"
+            config["max_crawl_attempts"] = 2
+            config["page_timeout_ms"] = 120_000
+            config["wait_for_timeout_ms"] = 120_000
         elif source == "Arxiv":
             # ArXiv PDFs need special handling
             config["pdf"] = True
@@ -236,6 +246,17 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             )
             return None
 
+    @staticmethod
+    def _is_retryable_crawl_error(error: Exception) -> bool:
+        """Return True when the crawl error looks transient and merits a retry."""
+
+        message = str(error).lower()
+        if "net::err_timed_out" in message:
+            return True
+        if "timeout" in message:
+            return True
+        return False
+
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
         Extracts data from HTML content using crawl4ai.
@@ -265,6 +286,14 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
             # Get source-specific configuration
             source_config = self._get_source_specific_config(source)
+            page_timeout_ms = int(source_config.get("page_timeout_ms", 90_000))
+            wait_for_timeout_ms = int(
+                source_config.get("wait_for_timeout_ms", page_timeout_ms)
+            )
+            max_crawl_attempts = max(1, int(source_config.get("max_crawl_attempts", 1)))
+            retry_delay_seconds = float(
+                source_config.get("crawl_retry_delay_seconds", 1.5)
+            )
 
             # Configure crawler run
             run_config = CrawlerRunConfig(
@@ -283,6 +312,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 wait_until="domcontentloaded",
                 wait_for="body",
                 delay_before_return_html=1.0,
+                page_timeout=page_timeout_ms,
+                wait_for_timeout=wait_for_timeout_ms,
                 adjust_viewport_to_content=True,
                 # Performance
                 cache_mode=CacheMode.BYPASS,
@@ -312,38 +343,65 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             )
 
             # Use AsyncWebCrawler with asyncio.run
-            async def crawl():
-                # Temporarily suppress crawl4ai's initialization messages
-                crawl4ai_logger = logging.getLogger('crawl4ai')
+            async def run_crawl_with_retries():
+                crawl4ai_logger = logging.getLogger("crawl4ai")
                 original_level = crawl4ai_logger.level
                 crawl4ai_logger.setLevel(logging.WARNING)
-                
-                crawler = None
                 try:
-                    crawler = AsyncWebCrawler(config=browser_config)
-                    await crawler.__aenter__()
-                    result = await crawler.arun(url=url, config=run_config)
-                    logger.debug(
-                        "HtmlStrategy: Crawl finished (url=%s, success=%s, status=%s, redirected=%s)",
-                        url,
-                        getattr(result, "success", None),
-                        getattr(result, "status_code", None),
-                        getattr(result, "redirected_url", None),
-                    )
-                    return result
-                except Exception as e:
-                    logger.debug(f"Error during crawl: {e}")
-                    raise
-                finally:
-                    if crawler:
+                    last_error: Exception | None = None
+                    for attempt in range(1, max_crawl_attempts + 1):
+                        crawler = None
+                        should_retry = False
                         try:
-                            await crawler.__aexit__(None, None, None)
-                        except Exception as close_error:
-                            # Log browser close errors but don't fail the extraction
-                            logger.debug(f"Error closing browser (non-critical): {close_error}")
+                            crawler = AsyncWebCrawler(config=browser_config)
+                            await crawler.__aenter__()
+                            result = await crawler.arun(url=url, config=run_config)
+                            logger.debug(
+                                "HtmlStrategy: Crawl finished (url=%s, success=%s, status=%s, redirected=%s)",
+                                url,
+                                getattr(result, "success", None),
+                                getattr(result, "status_code", None),
+                                getattr(result, "redirected_url", None),
+                            )
+                            return result
+                        except Exception as exc:  # noqa: BLE001
+                            last_error = exc
+                            logger.debug(
+                                "HtmlStrategy: Crawl attempt %s/%s failed for %s: %s",
+                                attempt,
+                                max_crawl_attempts,
+                                url,
+                                exc,
+                            )
+                            if self._is_retryable_crawl_error(exc) and attempt < max_crawl_attempts:
+                                should_retry = True
+                                logger.warning(
+                                    "HtmlStrategy: Retrying crawl for %s after timeout (attempt %s/%s)",
+                                    url,
+                                    attempt + 1,
+                                    max_crawl_attempts,
+                                )
+                            else:
+                                raise
+                        finally:
+                            if crawler:
+                                try:
+                                    await crawler.__aexit__(None, None, None)
+                                except Exception as close_error:  # noqa: BLE001
+                                    # Log browser close errors but don't fail the extraction
+                                    logger.debug(
+                                        "Error closing browser (non-critical): %s", close_error
+                                    )
+                        if should_retry:
+                            await asyncio.sleep(retry_delay_seconds)
+
+                    if last_error is not None:
+                        raise last_error
+                    raise RuntimeError("Crawl4ai retry loop exited without result")
+                finally:
                     crawl4ai_logger.setLevel(original_level)
-            
-            result = asyncio.run(crawl())
+
+            result = asyncio.run(run_crawl_with_retries())
 
             # Check if result is None
             if result is None:

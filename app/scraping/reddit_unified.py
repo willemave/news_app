@@ -1,34 +1,42 @@
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
+import praw
+import prawcore
 import yaml
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-
-REDDIT_USER_AGENT = "linux:news_app.scraper:v1.0 (by /u/willemaw)"
+from app.utils.error_logger import create_error_logger
+from app.utils.paths import resolve_config_path
 
 logger = get_logger(__name__)
 settings = get_settings()
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "reddit.yml"
+REDDIT_USER_AGENT = (
+    settings.reddit_user_agent
+    or "news_app.scraper/1.0 (by u/anonymous)"
+)
 
 
 class RedditUnifiedScraper(BaseScraper):
     """Unified scraper for Reddit using the new architecture."""
 
-    def __init__(self, config_path: str | Path = DEFAULT_CONFIG_PATH):
+    def __init__(self, config_path: str | Path | None = None):
         super().__init__("Reddit")
-        resolved_path = Path(config_path)
-        if not resolved_path.is_absolute():
-            resolved_path = PROJECT_ROOT / resolved_path
+        resolved_path = (
+            resolve_config_path("REDDIT_CONFIG_PATH", "config/reddit.yml")
+            if config_path is None
+            else Path(config_path).expanduser().resolve()
+        )
         self.config_path = resolved_path
         self.subreddits = self._load_subreddit_config()
+        self.error_logger = create_error_logger("reddit_scraper")
+        self._reddit_client: praw.Reddit | None = None
 
     def _load_subreddit_config(self) -> dict[str, int]:
         """Load subreddit configuration from YAML file."""
@@ -67,62 +75,60 @@ class RedditUnifiedScraper(BaseScraper):
         """Scrape Reddit posts from multiple subreddits."""
         all_items = []
 
-        # Check if we have Reddit API credentials
-        if not self._validate_reddit_config():
-            logger.warning("Reddit API credentials not configured, skipping Reddit scraper")
+        client = self._get_reddit_client()
+        if client is None:
             return []
 
-        with httpx.Client() as client:
-            for subreddit_name, limit in self.subreddits.items():
-                try:
-                    items = self._scrape_subreddit(client, subreddit_name, limit)
-                    all_items.extend(items)
-                    logger.info(f"Scraped {len(items)} items from r/{subreddit_name}")
-                except Exception as e:
-                    logger.error(f"Error scraping r/{subreddit_name}: {e}")
-                    continue
+        for subreddit_name, limit in self.subreddits.items():
+            try:
+                items = self._scrape_subreddit(client, subreddit_name, limit)
+                all_items.extend(items)
+                logger.info("Scraped %s items from r/%s", len(items), subreddit_name)
+            except prawcore.PrawcoreException as error:
+                self.error_logger.log_error(
+                    error=error,
+                    operation="scrape_subreddit",
+                    context={"subreddit": subreddit_name},
+                )
+                logger.error("Error scraping r/%s: %s", subreddit_name, error)
+                continue
+            except Exception as error:  # pragma: no cover - defensive
+                self.error_logger.log_error(
+                    error=error,
+                    operation="scrape_subreddit",
+                    context={"subreddit": subreddit_name},
+                )
+                logger.error("Unexpected error scraping r/%s: %s", subreddit_name, error)
+                continue
 
         logger.info(f"Total Reddit items scraped: {len(all_items)}")
         return all_items
 
     def _scrape_subreddit(
-        self, client: httpx.Client, subreddit_name: str, limit: int
+        self, client: praw.Reddit, subreddit_name: str, limit: int
     ) -> list[dict[str, Any]]:
         """Scrape a specific subreddit."""
         items = []
 
         try:
-            # Use Reddit JSON API (no authentication required for public posts)
-            if subreddit_name == "front":
-                url = "https://www.reddit.com/.json"
-            else:
-                url = f"https://www.reddit.com/r/{subreddit_name}/new.json"
-
-            params = {"limit": min(limit, 100)}  # Reddit API limit
-
-            response = client.get(
-                url,
-                params=params,
-                headers={"User-Agent": REDDIT_USER_AGENT},
+            subreddit = client.subreddit(
+                "popular" if subreddit_name == "front" else subreddit_name
             )
-            response.raise_for_status()
 
-            data = response.json()
-            posts = data.get("data", {}).get("children", [])
-
-            for post_data in posts:
-                post = post_data.get("data", {})
-
+            for submission in subreddit.new(limit=min(limit, 100)):
                 # Skip self posts and posts without external URLs
-                if post.get("is_self") or not self._is_external_url(post.get("url", "")):
+                if submission.is_self and subreddit_name != "front":
+                    continue
+
+                if not self._is_external_url(submission.url, allow_reddit_media=subreddit_name == "front"):
                     continue
 
                 # Skip deleted/removed posts
-                if post.get("removed_by_category") or not post.get("title"):
+                if submission.removed_by_category or not submission.title:
                     continue
 
-                normalized_url = self._normalize_url(post["url"])
-                discussion_url = f"https://reddit.com{post.get('permalink', '')}"
+                normalized_url = self._normalize_url(submission.url)
+                discussion_url = f"https://reddit.com{submission.permalink}"
 
                 try:
                     source_domain = urlparse(normalized_url).netloc or None
@@ -133,50 +139,52 @@ class RedditUnifiedScraper(BaseScraper):
 
                 item = {
                     "url": normalized_url,
-                    "title": post.get("title"),
+                    "title": submission.title,
                     "content_type": ContentType.NEWS,
                     "is_aggregate": False,
                     "metadata": {
                         "platform": "reddit",  # Scraper identifier
-                        "source": post.get("subreddit", subreddit_name),
+                        "source": submission.subreddit.display_name,
                         "article": {
                             "url": normalized_url,
-                            "title": post.get("title"),
+                            "title": submission.title,
                             "source_domain": source_domain,
                         },
                         "aggregator": {
                             "name": "Reddit",
-                            "title": post.get("title"),
+                            "title": submission.title,
                             "url": discussion_url,
-                            "external_id": post.get("id"),
-                            "author": post.get("author"),
+                            "external_id": submission.id,
+                            "author": getattr(submission, "author", None)
+                            and submission.author.name,
                             "metadata": {
-                                "score": post.get("score", 0),
-                                "comments": post.get("num_comments", 0),
-                                "upvote_ratio": post.get("upvote_ratio"),
-                                "subreddit": post.get("subreddit"),
-                                "over_18": post.get("over_18"),
+                                "score": submission.score,
+                                "comments": submission.num_comments,
+                                "upvote_ratio": submission.upvote_ratio,
+                                "subreddit": submission.subreddit.display_name,
+                                "over_18": submission.over_18,
                             },
                         },
                         "items": [
                             {
-                                "title": post.get("title"),
+                                "title": submission.title,
                                 "url": normalized_url,
                                 "summary": None,
-                                "source": post.get("domain"),
-                                "author": post.get("author"),
-                                "score": post.get("score", 0),
+                                "source": submission.domain,
+                                "author": getattr(submission, "author", None)
+                                and submission.author.name,
+                                "score": submission.score,
                                 "comments_url": discussion_url,
                                 "metadata": {
-                                    "score": post.get("score", 0),
-                                    "comments": post.get("num_comments", 0),
-                                    "upvote_ratio": post.get("upvote_ratio"),
-                                    "reddit_id": post.get("id"),
+                                    "score": submission.score,
+                                    "comments": submission.num_comments,
+                                    "upvote_ratio": submission.upvote_ratio,
+                                    "reddit_id": submission.id,
                                 },
                             }
                         ],
                         "primary_url": discussion_url,
-                        "excerpt": post.get("selftext"),
+                        "excerpt": submission.selftext or None,
                         "discovery_time": timestamp,
                         "scraped_at": timestamp,
                     },
@@ -187,39 +195,87 @@ class RedditUnifiedScraper(BaseScraper):
                 if len(items) >= limit:
                     break
 
-        except Exception as e:
-            logger.error(f"Error fetching from r/{subreddit_name}: {e}")
+        except prawcore.PrawcoreException as error:
+            self.error_logger.log_error(
+                error=error,
+                operation="fetch_subreddit",
+                context={"subreddit": subreddit_name},
+            )
+            logger.error("Error fetching from r/%s: %s", subreddit_name, error)
 
         return items
 
-    def _is_external_url(self, url: str) -> bool:
+    def _is_external_url(self, url: str, allow_reddit_media: bool = False) -> bool:
         """Check if URL is external (not a Reddit self-post or internal link)."""
         if not url:
             return False
 
-        # Skip Reddit internal links and self posts
-        reddit_domains = ["reddit.com", "www.reddit.com", "old.reddit.com", "redd.it"]
+        media_domains = {"i.redd.it", "v.redd.it", "preview.redd.it"}
+        reddit_domains = {"reddit.com", "www.reddit.com", "old.reddit.com", "redd.it"}
 
         try:
             from urllib.parse import urlparse
 
             parsed = urlparse(url)
+            netloc = (parsed.netloc or "").lower()
+            if parsed.scheme not in {"http", "https"} or not netloc:
+                return False
 
-            # Must have a valid domain and not be a Reddit domain
-            return bool(parsed.netloc and parsed.scheme in ["http", "https"]) and not any(
-                domain in parsed.netloc for domain in reddit_domains
-            )
+            if allow_reddit_media:
+                if netloc in media_domains or netloc == "redd.it":
+                    return True
+                if netloc in reddit_domains and "/gallery/" in parsed.path.lower():
+                    return True
+
+            return netloc not in reddit_domains
         except Exception:
             return False
 
-    def _validate_reddit_config(self) -> bool:
-        """
-        Validate Reddit configuration.
-        For the JSON API, we don't need authentication, just a user agent.
-        """
-        # For now, we'll use the public JSON API which doesn't require authentication
-        # If we want to use the full Reddit API later, we can check for:
-        # - REDDIT_CLIENT_ID
-        # - REDDIT_CLIENT_SECRET
-        # - REDDIT_USER_AGENT
-        return True
+    def _get_reddit_client(self) -> praw.Reddit | None:
+        if self._reddit_client:
+            return self._reddit_client
+
+        client_id = settings.reddit_client_id
+        client_secret = settings.reddit_client_secret
+        if not client_id or not client_secret:
+            logger.warning("Reddit credentials not configured; skipping Reddit scraper")
+            return None
+
+        requestor_kwargs: dict[str, Any] = {}
+        proxies: dict[str, str] = {}
+        for scheme in ("http", "https"):
+            env_value = os.getenv(f"{scheme.upper()}_PROXY") or os.getenv(f"{scheme}_proxy")
+            if env_value:
+                proxies[scheme] = env_value
+        if proxies:
+            requestor_kwargs["proxies"] = proxies
+
+        reddit_kwargs: dict[str, Any] = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "user_agent": REDDIT_USER_AGENT,
+            "check_for_updates": False,
+            "timeout": 30,
+        }
+
+        if requestor_kwargs:
+            reddit_kwargs["requestor_kwargs"] = requestor_kwargs
+
+        if not settings.reddit_read_only:
+            if settings.reddit_username and settings.reddit_password:
+                reddit_kwargs.update(
+                    username=settings.reddit_username,
+                    password=settings.reddit_password,
+                )
+            else:
+                logger.warning(
+                    "REDDIT_READ_ONLY is false but username/password missing; falling back to read-only"
+                )
+
+        reddit = praw.Reddit(**reddit_kwargs)
+        reddit.read_only = settings.reddit_read_only or not (
+            settings.reddit_username and settings.reddit_password
+        )
+
+        self._reddit_client = reddit
+        return reddit
