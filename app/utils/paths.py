@@ -4,11 +4,46 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Iterable
 
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_DIR_ENV = "NEWSAPP_CONFIG_DIR"
+
+
+def _resolve_candidate_paths(raw: str) -> Iterable[Path]:
+    candidate = Path(raw).expanduser()
+    if candidate.is_absolute():
+        yield candidate.resolve(strict=False)
+    else:
+        yield (Path.cwd() / candidate).resolve(strict=False)
+        yield (PROJECT_ROOT / candidate).resolve(strict=False)
+
+
+def resolve_config_directory() -> Path:
+    """Determine the base configuration directory with environment override."""
+
+    raw_dir = os.getenv(CONFIG_DIR_ENV)
+    if raw_dir:
+        candidates = list(_resolve_candidate_paths(raw_dir))
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_dir():
+                return candidate
+        logger.warning(
+            "%s=%s not found (checked: %s); falling back to default",
+            CONFIG_DIR_ENV,
+            raw_dir,
+            ", ".join(str(path) for path in candidates),
+        )
+        # return first candidate even if missing to aid path resolution below
+        return candidates[0]
+
+    default_dir = (PROJECT_ROOT / "config").resolve()
+    if not default_dir.exists():
+        logger.warning("Default config directory missing at %s", default_dir)
+    return default_dir
 
 
 def resolve_config_path(env_var: str, default_rel: str) -> Path:
@@ -24,29 +59,41 @@ def resolve_config_path(env_var: str, default_rel: str) -> Path:
 
     raw_value = os.getenv(env_var)
     if raw_value:
-        candidate = Path(raw_value).expanduser()
-        if candidate.is_absolute():
-            if not candidate.exists():
-                logger.warning("%s points to missing file %s", env_var, candidate)
-            return candidate
-
-        cwd_candidate = (Path.cwd() / candidate).resolve()
-        if cwd_candidate.exists():
-            return cwd_candidate
-
-        repo_candidate = (PROJECT_ROOT / candidate).resolve()
-        if repo_candidate.exists():
-            return repo_candidate
-
+        for candidate in _resolve_candidate_paths(raw_value):
+            candidate_resolved = candidate.resolve(strict=False)
+            if candidate_resolved.exists():
+                return candidate_resolved
         logger.warning(
-            "%s=%s not found in CWD (%s) or repo (%s); falling back to default",
+            "%s=%s did not resolve to an existing file; falling back to defaults",
             env_var,
             raw_value,
-            cwd_candidate,
-            repo_candidate,
         )
 
-    default_path = (PROJECT_ROOT / default_rel).resolve()
-    if not default_path.exists():
-        logger.warning("Default config missing at %s", default_path)
-    return default_path
+    config_dir = resolve_config_directory()
+    default_path = Path(default_rel)
+
+    candidates: list[Path] = []
+    if default_path.is_absolute():
+        candidates.append(default_path)
+    else:
+        candidates.append((config_dir / default_path.name).resolve(strict=False))
+        candidates.append((config_dir / default_path).resolve(strict=False))
+        candidates.append((PROJECT_ROOT / default_path).resolve(strict=False))
+
+    seen: set[str] = set()
+    ordered_candidates: list[Path] = []
+    for path in candidates:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            ordered_candidates.append(path)
+
+    for candidate in ordered_candidates:
+        if candidate.exists():
+            return candidate
+
+    logger.warning(
+        "Config file missing. Searched: %s",
+        ", ".join(str(path) for path in ordered_candidates),
+    )
+    return ordered_candidates[0]

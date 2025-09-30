@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,8 +13,8 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import create_error_logger
-from app.utils.paths import resolve_config_path
+from app.utils.error_logger import create_error_logger, log_scraper_event
+from app.utils.paths import resolve_config_directory, resolve_config_path
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -21,6 +22,33 @@ REDDIT_USER_AGENT = (
     settings.reddit_user_agent
     or "news_app.scraper/1.0 (by u/anonymous)"
 )
+_MISSING_CONFIG_WARNINGS: set[str] = set()
+
+
+def _resolve_reddit_config_path(config_path: str | Path | None) -> Path:
+    if config_path is None:
+        return resolve_config_path("REDDIT_CONFIG_PATH", "reddit.yml")
+
+    candidate = Path(config_path).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve(strict=False)
+
+    base_dir = resolve_config_directory()
+    return (base_dir / candidate).resolve(strict=False)
+
+
+def _emit_missing_config_warning(resolved_path: Path) -> None:
+    key = str(resolved_path.resolve(strict=False))
+    if key in _MISSING_CONFIG_WARNINGS:
+        return
+    _MISSING_CONFIG_WARNINGS.add(key)
+    log_scraper_event(
+        service="Reddit",
+        event="config_missing",
+        level=logging.WARNING,
+        metric="scrape_config_missing",
+        path=str(resolved_path.resolve(strict=False)),
+    )
 
 
 class RedditUnifiedScraper(BaseScraper):
@@ -28,12 +56,7 @@ class RedditUnifiedScraper(BaseScraper):
 
     def __init__(self, config_path: str | Path | None = None):
         super().__init__("Reddit")
-        resolved_path = (
-            resolve_config_path("REDDIT_CONFIG_PATH", "config/reddit.yml")
-            if config_path is None
-            else Path(config_path).expanduser().resolve()
-        )
-        self.config_path = resolved_path
+        self.config_path = _resolve_reddit_config_path(config_path)
         self.subreddits = self._load_subreddit_config()
         self.error_logger = create_error_logger("reddit_scraper")
         self._reddit_client: praw.Reddit | None = None
@@ -43,12 +66,12 @@ class RedditUnifiedScraper(BaseScraper):
         config_path = self.config_path
 
         if not config_path.exists():
-            logger.warning(f"Reddit config file not found: {config_path}")
+            _emit_missing_config_warning(config_path)
             return {}
 
         try:
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
+            with open(config_path, encoding="utf-8") as f:
+                config = yaml.safe_load(f) or {}
 
             subreddits_list = config.get("subreddits", [])
             subreddits = {}
@@ -68,7 +91,13 @@ class RedditUnifiedScraper(BaseScraper):
             return subreddits
 
         except Exception as e:
-            logger.error(f"Error loading Reddit config: {e}")
+            log_scraper_event(
+                service="Reddit",
+                event="config_load_failed",
+                level=logging.ERROR,
+                path=str(config_path),
+                error=str(e),
+            )
             return {}
 
     def scrape(self) -> list[dict[str, Any]]:

@@ -72,7 +72,7 @@ class SearchViewModel: ObservableObject {
                 query: query,
                 contentType: selectedContentType,
                 limit: 25,
-                offset: 0
+                cursor: nil
             )
             if !Task.isCancelled {
                 results = response.contents

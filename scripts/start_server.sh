@@ -10,6 +10,17 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 cd "$PROJECT_ROOT"
 echo "Working directory: $(pwd)"
 
+# Check if .env file exists
+if [ ! -f ".env" ]; then
+    echo "ERROR: .env file not found at $PROJECT_ROOT/.env"
+    echo ""
+    echo "Please ensure:"
+    echo "1. .env file exists in the project root: $PROJECT_ROOT/"
+    echo "2. Copy from .env.example if needed: cp .env.example .env"
+    echo "3. Configure DATABASE_URL and other required variables"
+    exit 1
+fi
+
 # Check if virtual environment exists
 if [ ! -f ".venv/bin/python" ]; then
     echo "ERROR: Virtual environment not found. Please run 'uv venv' first."

@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -10,39 +11,70 @@ import yaml
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import create_error_logger
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from app.utils.error_logger import create_error_logger, log_scraper_event
+from app.utils.paths import resolve_config_directory, resolve_config_path
 
 logger = get_logger(__name__)
+_MISSING_CONFIG_WARNINGS: set[str] = set()
+
+
+def _resolve_podcast_config_path(config_path: str | Path | None) -> Path:
+    if config_path is None:
+        return resolve_config_path("PODCAST_CONFIG_PATH", "podcasts.yml")
+
+    candidate = Path(config_path).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve(strict=False)
+
+    base_dir = resolve_config_directory()
+    return (base_dir / candidate).resolve(strict=False)
+
+
+def _emit_missing_config_warning(resolved_path: Path) -> None:
+    key = str(resolved_path.resolve(strict=False))
+    if key in _MISSING_CONFIG_WARNINGS:
+        return
+    _MISSING_CONFIG_WARNINGS.add(key)
+    log_scraper_event(
+        service="Podcast",
+        event="config_missing",
+        level=logging.WARNING,
+        metric="scrape_config_missing",
+        path=str(resolved_path.resolve(strict=False)),
+    )
 
 
 class PodcastUnifiedScraper(BaseScraper):
     """Unified podcast RSS scraper following new architecture."""
 
-    def __init__(self, config_path: str | Path = "config/podcasts.yml"):
+    def __init__(self, config_path: str | Path | None = None):
         super().__init__("Podcast")
-        resolved_path = Path(config_path)
-        if not resolved_path.is_absolute():
-            resolved_path = PROJECT_ROOT / resolved_path
-        self.config_path = resolved_path
+        self.config_path = _resolve_podcast_config_path(config_path)
         self.feeds = self._load_podcast_feeds()
         self.error_logger = create_error_logger("podcast_scraper", "logs/errors")
 
     def _load_podcast_feeds(self) -> list[dict]:
         """Load podcast feed URLs from YAML config."""
+        if not self.config_path.exists():
+            _emit_missing_config_warning(self.config_path)
+            return []
+
         try:
-            with open(self.config_path) as f:
-                config = yaml.safe_load(f)
-            feeds = config.get("feeds", [])
-            logger.info(f"Loaded {len(feeds)} podcast feeds from config")
-            return feeds
-        except FileNotFoundError:
-            logger.warning(f"Podcast config file not found at: {self.config_path}")
+            with open(self.config_path, encoding="utf-8") as f:
+                config = yaml.safe_load(f) or {}
+        except Exception as exc:
+            log_scraper_event(
+                service="Podcast",
+                event="config_load_failed",
+                level=logging.ERROR,
+                path=str(self.config_path),
+                error=str(exc),
+            )
             return []
-        except Exception as e:
-            logger.error(f"Error loading podcast config: {e}")
-            return []
+
+        feeds = config.get("feeds", [])
+        logger.info(f"Loaded {len(feeds)} podcast feeds from config")
+        return feeds
 
     def scrape(self) -> list[dict[str, Any]]:
         """Scrape all configured podcast feeds with comprehensive error logging."""

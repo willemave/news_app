@@ -48,7 +48,7 @@ struct PodcastsView: View {
                                         }
                                         .opacity(0)
                                         .buttonStyle(PlainButtonStyle())
-                                        
+
                                         ContentCard(
                                             content: content,
                                             onMarkAsRead: { await viewModel.markAsRead(content.id) },
@@ -77,11 +77,32 @@ struct PodcastsView: View {
                                                 await viewModel.toggleFavorite(content.id)
                                             }
                                         } label: {
-                                            Label(content.isFavorited ? "Unfavorite" : "Favorite", 
+                                            Label(content.isFavorited ? "Unfavorite" : "Favorite",
                                                   systemImage: content.isFavorited ? "star.slash.fill" : "star.fill")
                                         }
                                         .tint(content.isFavorited ? .gray : .yellow)
                                     }
+                                    .onAppear {
+                                        // Load more content when reaching near the end
+                                        if content.id == viewModel.contents.last?.id {
+                                            Task {
+                                                await viewModel.loadMoreContent()
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Loading indicator at bottom
+                                if viewModel.isLoadingMore {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView()
+                                            .padding()
+                                        Spacer()
+                                    }
+                                    .listRowInsets(EdgeInsets())
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
                                 }
                             }
                             .listStyle(.plain)

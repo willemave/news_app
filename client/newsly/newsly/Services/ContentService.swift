@@ -30,31 +30,42 @@ class ContentService {
     func searchContent(query: String,
                        contentType: String = "all",
                        limit: Int = 25,
-                       offset: Int = 0) async throws -> ContentListResponse {
-        let queryItems: [URLQueryItem] = [
+                       cursor: String? = nil) async throws -> ContentListResponse {
+        var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "type", value: contentType),
-            URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "offset", value: String(offset))
+            URLQueryItem(name: "limit", value: String(limit))
         ]
+
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+
         return try await client.request(APIEndpoints.searchContent, queryItems: queryItems)
     }
 
     func fetchContentList(contentType: String? = nil,
                          date: String? = nil,
-                         readFilter: String = "all") async throws -> ContentListResponse {
+                         readFilter: String = "all",
+                         cursor: String? = nil,
+                         limit: Int = 25) async throws -> ContentListResponse {
         var queryItems: [URLQueryItem] = []
-        
+
         if let contentType = contentType, contentType != "all" {
             queryItems.append(URLQueryItem(name: "content_type", value: contentType))
         }
-        
+
         if let date = date, !date.isEmpty {
             queryItems.append(URLQueryItem(name: "date", value: date))
         }
-        
+
         queryItems.append(URLQueryItem(name: "read_filter", value: readFilter))
-        
+        queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+
         return try await client.request(APIEndpoints.contentList, queryItems: queryItems)
     }
     
@@ -123,8 +134,16 @@ class ContentService {
         try await client.requestVoid(APIEndpoints.removeUnlike(id: id), method: "DELETE")
     }
     
-    func fetchFavoritesList() async throws -> ContentListResponse {
-        return try await client.request(APIEndpoints.favoritesList)
+    func fetchFavoritesList(cursor: String? = nil, limit: Int = 25) async throws -> ContentListResponse {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+
+        return try await client.request(APIEndpoints.favoritesList, queryItems: queryItems)
     }
     
     func getChatGPTUrl(id: Int) async throws -> String {

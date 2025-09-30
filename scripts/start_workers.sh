@@ -10,6 +10,17 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 cd "$PROJECT_ROOT"
 echo "Working directory: $(pwd)"
 
+# Check if .env file exists
+if [ ! -f ".env" ]; then
+    echo "ERROR: .env file not found at $PROJECT_ROOT/.env"
+    echo ""
+    echo "Please ensure:"
+    echo "1. .env file exists in the project root: $PROJECT_ROOT/"
+    echo "2. Copy from .env.example if needed: cp .env.example .env"
+    echo "3. Configure DATABASE_URL and other required variables"
+    exit 1
+fi
+
 # Check if virtual environment exists
 if [ ! -f ".venv/bin/python" ]; then
     echo "ERROR: Virtual environment not found. Please run 'uv venv' first."
@@ -63,7 +74,24 @@ PY
 )
 echo "Database target: ${DATABASE_TARGET}"
 
+# Check if alembic.ini exists
+if [ ! -f "alembic.ini" ]; then
+    echo "WARNING: alembic.ini not found. Skipping migration check."
+else
+    # Run migrations (idempotent - safe to run multiple times)
+    echo ""
+    echo "🔄 Running database migrations..."
+    if ! run_command "Alembic migrations" python -m alembic upgrade head; then
+        echo ""
+        echo "⚠️  Migration failed! Continuing anyway, but may encounter errors."
+        echo "    Check that DATABASE_URL is correct and database is accessible."
+    else
+        echo "✅ Migrations completed successfully!"
+    fi
+fi
+
 # Ensure only Playwright Chromium browser is installed; other browsers not needed
+echo ""
 echo "Ensuring Playwright Chromium browser is available (other browsers not required)..."
 if ! run_command "Install Playwright Chromium browser" .venv/bin/playwright install chromium; then
     exit 1

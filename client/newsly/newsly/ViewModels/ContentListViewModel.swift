@@ -14,8 +14,16 @@ class ContentListViewModel: ObservableObject {
     @Published var availableDates: [String] = []
     @Published var contentTypes: [String] = []
     @Published var isLoading = false
+    @Published var isLoadingMore = false
     @Published var errorMessage: String?
-    
+
+    // Pagination state
+    @Published var nextCursor: String?
+    @Published var hasMore: Bool = false
+
+    // Track if we're in favorites mode
+    private var isFavoritesMode: Bool = false
+
     @Published var selectedContentType: String = "all" {
         didSet {
             Task { await loadContent() }
@@ -31,29 +39,84 @@ class ContentListViewModel: ObservableObject {
             Task { await loadContent() }
         }
     }
-    
+
     private let contentService = ContentService.shared
     private let unreadCountService = UnreadCountService.shared
     
     func loadContent() async {
         isLoading = true
         errorMessage = nil
-        
+
+        // Reset pagination and favorites mode when loading fresh content
+        isFavoritesMode = false
+        nextCursor = nil
+        hasMore = false
+
         do {
             let response = try await contentService.fetchContentList(
                 contentType: selectedContentType,
                 date: selectedDate.isEmpty ? nil : selectedDate,
-                readFilter: selectedReadFilter
+                readFilter: selectedReadFilter,
+                cursor: nil  // Always start from beginning
             )
-            
+
             contents = response.contents
             availableDates = response.availableDates
             contentTypes = response.contentTypes
+            nextCursor = response.nextCursor
+            hasMore = response.hasMore
         } catch {
             errorMessage = error.localizedDescription
         }
-        
+
         isLoading = false
+    }
+
+    func loadMoreContent() async {
+        // Don't load more if already loading or no more content
+        guard !isLoadingMore, !isLoading, hasMore, let cursor = nextCursor else {
+            return
+        }
+
+        isLoadingMore = true
+
+        do {
+            let response: ContentListResponse
+
+            if isFavoritesMode {
+                response = try await contentService.fetchFavoritesList(cursor: cursor)
+            } else {
+                response = try await contentService.fetchContentList(
+                    contentType: selectedContentType,
+                    date: selectedDate.isEmpty ? nil : selectedDate,
+                    readFilter: selectedReadFilter,
+                    cursor: cursor
+                )
+            }
+
+            // Append new contents to existing list
+            var items = response.contents
+
+            // Apply read filter locally for favorites
+            if isFavoritesMode {
+                switch selectedReadFilter {
+                case "unread":
+                    items = items.filter { !$0.isRead }
+                case "read":
+                    items = items.filter { $0.isRead }
+                default:
+                    break
+                }
+            }
+
+            contents.append(contentsOf: items)
+            nextCursor = response.nextCursor
+            hasMore = response.hasMore
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoadingMore = false
     }
     
     func markAsRead(_ contentId: Int) async {
@@ -76,7 +139,7 @@ class ContentListViewModel: ObservableObject {
                 }
 
                 if selectedReadFilter == "unread" {
-                    _ = withAnimation(.easeOut(duration: 0.3)) {
+                    withAnimation(.easeOut(duration: 0.3)) {
                         contents.remove(at: index)
                     }
                 }
@@ -152,7 +215,7 @@ class ContentListViewModel: ObservableObject {
 
             if selectedReadFilter == "unread" && isRead {
                 // Remove from list when filtering by unread
-                _ = withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(.easeOut(duration: 0.3)) {
                     contents.remove(at: index)
                 }
             } else {
@@ -170,9 +233,14 @@ class ContentListViewModel: ObservableObject {
     func loadFavorites() async {
         isLoading = true
         errorMessage = nil
-        
+
+        // Set favorites mode and reset pagination
+        isFavoritesMode = true
+        nextCursor = nil
+        hasMore = false
+
         do {
-            let response = try await contentService.fetchFavoritesList()
+            let response = try await contentService.fetchFavoritesList(cursor: nil)
             var items = response.contents
             // Apply read filter locally for favorites
             switch selectedReadFilter {
@@ -186,14 +254,19 @@ class ContentListViewModel: ObservableObject {
             contents = items
             availableDates = response.availableDates
             contentTypes = response.contentTypes
+            nextCursor = response.nextCursor
+            hasMore = response.hasMore
         } catch {
             errorMessage = error.localizedDescription
         }
-        
+
         isLoading = false
     }
-    
+
     func refresh() async {
+        // Reset pagination and reload
+        nextCursor = nil
+        hasMore = false
         await loadContent()
     }
 
@@ -215,7 +288,7 @@ class ContentListViewModel: ObservableObject {
             }
 
             if selectedReadFilter == "unread" {
-                _ = withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(.easeOut(duration: 0.3)) {
                     contents.removeAll { markedSet.contains($0.id) }
                 }
             }
