@@ -1,7 +1,12 @@
 import json
+import logging
+import random
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib import error as urlerror
+from urllib import request as urlrequest
 from urllib.parse import urlparse
 
 import jmespath
@@ -13,6 +18,7 @@ from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.models.schema import Content
 from app.scraping.base import BaseScraper
+from app.utils.error_logger import log_scraper_event
 
 logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +28,13 @@ DEFAULT_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/122.0.0.0 Safari/537.36"
 )
+
+DEFAULT_GUEST_BEARER = (
+    "Bearer AAAAAAAAAAAAAAAAAAAAAANRILgAAAAA7dbR1mQ4pcFZscR0gLDOk4ew3E"
+)
+GUEST_TOKEN_TTL = timedelta(minutes=20)
+RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+
 
 
 class TwitterUnifiedScraper(BaseScraper):
@@ -35,6 +48,10 @@ class TwitterUnifiedScraper(BaseScraper):
         cookies_path = client_section.get("cookies_path")
         self.cookies_path = self._resolve_cookies_path(cookies_path) if cookies_path else None
         self._auth_warning_lists: set[str] = set()
+        self._guest_token: str | None = None
+        self._guest_token_acquired_at: datetime | None = None
+        self._has_auth_cookies = False
+        self._bearer_token = self.settings.get("default_bearer_token", DEFAULT_GUEST_BEARER)
         # You can configure proxy here if needed
         self.proxy = self.settings.get("proxy")  # Format: "http://user:pass@host:port"
 
@@ -126,13 +143,12 @@ class TwitterUnifiedScraper(BaseScraper):
                 context = browser.new_context(user_agent=DEFAULT_USER_AGENT)
                 try:
                     self._apply_cookies(context)
+                    headers = self._build_authenticated_headers()
+                    context.set_extra_http_headers(headers)
                     page = context.new_page()
 
-                    # Set user agent to avoid detection
-                    page.set_extra_http_headers({
-                        "User-Agent": DEFAULT_USER_AGENT,
-                        "Accept-Language": "en-US,en;q=0.9",
-                    })
+                    # Set user agent to avoid detection and include guest headers when needed
+                    page.set_extra_http_headers(headers)
 
                     xhr_calls = []
 
@@ -510,11 +526,15 @@ class TwitterUnifiedScraper(BaseScraper):
             )
             return
         prepared = self._parse_cookie_file(raw_content)
+        self._has_auth_cookies = any(
+            cookie.get("name") == "auth_token" for cookie in prepared
+        )
         if not prepared:
             logger.warning(
                 "Twitter cookies file %s did not contain any usable cookies",
                 self.cookies_path,
             )
+            self._has_auth_cookies = False
             return
 
         context.add_cookies(prepared)
@@ -620,16 +640,151 @@ class TwitterUnifiedScraper(BaseScraper):
             list_id,
         )
 
+    def _build_authenticated_headers(self) -> dict[str, str]:
+        headers = {
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "application/json, text/plain, */*",
+        }
+
+        if self._has_auth_cookies:
+            return headers
+
+        token = self._ensure_guest_token()
+        if token:
+            headers["Authorization"] = self._bearer_token
+            headers["x-guest-token"] = token
+            headers["x-twitter-active-user"] = "yes"
+
+        return headers
+
+    def _ensure_guest_token(self, force_refresh: bool = False) -> str | None:
+        if self._has_auth_cookies:
+            return None
+
+        now = datetime.now(UTC)
+        if (
+            not force_refresh
+            and self._guest_token
+            and self._guest_token_acquired_at
+            and now - self._guest_token_acquired_at < GUEST_TOKEN_TTL
+        ):
+            return self._guest_token
+
+        token = self._activate_guest_token()
+        if token:
+            self._guest_token = token
+            self._guest_token_acquired_at = now
+            logger.info("Acquired new Twitter guest token")
+            return token
+
+        self._guest_token = None
+        self._guest_token_acquired_at = None
+        log_scraper_event(
+            service="Twitter",
+            event="guest_token_unavailable",
+            level=logging.WARNING,
+            metric="scrape_transient_http",
+            endpoint="https://api.x.com/1.1/guest/activate.json",
+            retryable=False,
+            token_refreshed=False,
+        )
+        return None
+
+    def _activate_guest_token(self) -> str | None:
+        headers = {
+            "Authorization": self._bearer_token,
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+        }
+
+        status, content_type, body_text = self._perform_http_request(
+            "https://api.x.com/1.1/guest/activate.json",
+            "POST",
+            headers,
+            b"{}",
+        )
+
+        if status != 200:
+            log_scraper_event(
+                service="Twitter",
+                event="guest_activation_failed",
+                level=logging.WARNING,
+                metric="scrape_transient_http",
+                endpoint="https://api.x.com/1.1/guest/activate.json",
+                status=status,
+                content_type=content_type or "unknown",
+                retryable=status in RETRYABLE_STATUSES,
+                token_refreshed=False,
+            )
+            return None
+
+        try:
+            payload = json.loads(body_text)
+        except json.JSONDecodeError as exc:
+            log_scraper_event(
+                service="Twitter",
+                event="guest_activation_json_fail",
+                level=logging.WARNING,
+                metric="scrape_json_parse_fail",
+                endpoint="https://api.x.com/1.1/guest/activate.json",
+                status=status,
+                content_type=content_type or "unknown",
+                length=len(body_text),
+                preview=body_text[:200].replace("\n", " "),
+                retryable=False,
+                token_refreshed=False,
+                error=str(exc),
+            )
+            return None
+
+        token = payload.get("guest_token")
+        if not token:
+            log_scraper_event(
+                service="Twitter",
+                event="guest_activation_missing_token",
+                level=logging.WARNING,
+                metric="scrape_transient_http",
+                endpoint="https://api.x.com/1.1/guest/activate.json",
+                status=status,
+                content_type=content_type or "unknown",
+                retryable=False,
+                token_refreshed=False,
+            )
+            return None
+
+        return str(token)
+
     def _decode_response_json(self, response: Response) -> tuple[Any, int] | None:
         """Safely decode JSON payloads captured by Playwright responses."""
 
         url = response.url
+        status = response.status
+        content_type = (response.header_value("content-type") or "").lower()
+        hostname = urlparse(url).hostname or ""
 
-        if response.status != 200:
-            logger.debug("Skipping non-success response from %s (status %s)", url, response.status)
+        if hostname.endswith("abs.twimg.com"):
+            logger.debug("Skipping asset response from %s", url)
             return None
 
-        content_type = (response.header_value("content-type") or "").lower()
+        if status in RETRYABLE_STATUSES:
+            retry_decoded, _ = self._retry_fetch_json(response, status)
+            if retry_decoded:
+                return retry_decoded
+            return None
+
+        if status in {401, 403} and not self._has_auth_cookies:
+            retry_decoded, _ = self._retry_fetch_json(response, status)
+            if retry_decoded:
+                return retry_decoded
+            return None
+
+        if status != 200:
+            logger.debug("Skipping non-success response from %s (status %s)", url, status)
+            return None
+
         should_attempt = (
             "json" in content_type
             or "graphql" in url.lower()
@@ -644,20 +799,9 @@ class TwitterUnifiedScraper(BaseScraper):
             )
             return None
 
-        try:
-            body_text = response.text()
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Unable to read response text from %s: %s", url, exc)
-            try:
-                body_bytes = response.body()
-            except Exception as body_exc:  # pragma: no cover - defensive
-                logger.debug("Unable to read response bytes from %s: %s", url, body_exc)
-                return None
-
-            try:
-                body_text = body_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                body_text = body_bytes.decode("utf-8", errors="ignore")
+        body_text = self._read_response_text(response)
+        if body_text is None:
+            return None
 
         if not body_text.strip():
             logger.debug("Skipping empty response body from %s", url)
@@ -666,10 +810,271 @@ class TwitterUnifiedScraper(BaseScraper):
         try:
             data = json.loads(body_text)
         except json.JSONDecodeError as exc:
-            logger.info("JSON decode failed for %s: %s", url, exc)
+            preview = body_text[:200].replace("\n", " ")
+            log_scraper_event(
+                service="Twitter",
+                event="json_decode_failure",
+                level=logging.WARNING,
+                metric="scrape_json_parse_fail",
+                endpoint=url,
+                status=status,
+                content_type=content_type or "unknown",
+                length=len(body_text),
+                preview=preview,
+                retryable=False,
+                token_refreshed=False,
+                error=str(exc),
+            )
             return None
 
         return data, len(body_text)
+
+    def _read_response_text(self, response: Response) -> str | None:
+        """Return response text with a permissive fallback decoder."""
+        url = response.url
+        try:
+            return response.text()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Unable to read response text from %s: %s", url, exc)
+            try:
+                body_bytes = response.body()
+            except Exception as body_exc:  # pragma: no cover - defensive
+                logger.debug("Unable to read response bytes from %s: %s", url, body_exc)
+                return None
+            try:
+                return body_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                return body_bytes.decode("utf-8", errors="ignore")
+
+    def _retry_fetch_json(
+        self, response: Response, initial_status: int
+    ) -> tuple[tuple[Any, int] | None, dict[str, Any]]:
+        request_obj = getattr(response, "request", None)
+        if request_obj is None:
+            log_scraper_event(
+                service="Twitter",
+                event="retry_unavailable",
+                level=logging.DEBUG,
+                endpoint=response.url,
+                status=initial_status,
+                retryable=initial_status in RETRYABLE_STATUSES,
+                token_refreshed=False,
+            )
+            return None, {"status": initial_status, "token_refreshed": False}
+
+        method = getattr(request_obj, "method", "GET").upper()
+        post_data_attr = getattr(request_obj, "post_data", None)
+        post_data_value = post_data_attr() if callable(post_data_attr) else post_data_attr
+
+        if isinstance(post_data_value, str):
+            payload_bytes: bytes | None = post_data_value.encode("utf-8")
+        elif isinstance(post_data_value, bytes):
+            payload_bytes = post_data_value
+        else:
+            payload_bytes = None
+
+        max_attempts = 3
+        base_delay = 0.5
+        last_status = initial_status
+        last_content_type = response.header_value("content-type") or ""
+        last_body = ""
+        token_refreshed = False
+
+        for attempt in range(1, max_attempts + 1):
+            if attempt > 1:
+                sleep_for = base_delay * (2 ** (attempt - 2))
+                jitter = random.uniform(0, sleep_for * 0.25)
+                wait_time = sleep_for + jitter
+                log_scraper_event(
+                    service="Twitter",
+                    event="retry_backoff",
+                    level=logging.INFO,
+                    endpoint=response.url,
+                    attempt=attempt,
+                    wait_seconds=round(wait_time, 2),
+                    status=last_status,
+                    retryable=True,
+                    token_refreshed=token_refreshed,
+                )
+                time.sleep(wait_time)
+
+            headers = self._build_authenticated_headers()
+            if payload_bytes and not any(k.lower() == "content-type" for k in headers):
+                headers["Content-Type"] = "application/json"
+
+            request_body = payload_bytes if method != "GET" else None
+
+            status_code, resp_content_type, resp_body = self._perform_http_request(
+                response.url,
+                method,
+                headers,
+                request_body,
+            )
+            last_status = status_code
+            last_content_type = resp_content_type
+            last_body = resp_body
+
+            if status_code == 200:
+                try:
+                    data = json.loads(resp_body)
+                except json.JSONDecodeError as exc:
+                    log_scraper_event(
+                        service="Twitter",
+                        event="json_decode_retry_fail",
+                        level=logging.WARNING,
+                        metric="scrape_json_parse_fail",
+                        endpoint=response.url,
+                        status=status_code,
+                        content_type=resp_content_type,
+                        length=len(resp_body),
+                        preview=resp_body[:200].replace("\n", " "),
+                        retryable=False,
+                        token_refreshed=token_refreshed,
+                        error=str(exc),
+                    )
+                    return None, {
+                        "status": status_code,
+                        "content_type": resp_content_type,
+                        "token_refreshed": token_refreshed,
+                        "body_preview": resp_body[:200].replace("\n", " "),
+                    }
+                return (data, len(resp_body)), {
+                    "status": status_code,
+                    "content_type": resp_content_type,
+                    "token_refreshed": token_refreshed,
+                }
+
+            if status_code in RETRYABLE_STATUSES and attempt < max_attempts:
+                log_scraper_event(
+                    service="Twitter",
+                    event="retry_scheduled",
+                    level=logging.INFO,
+                    endpoint=response.url,
+                    attempt=attempt,
+                    status=status_code,
+                    retryable=True,
+                    token_refreshed=token_refreshed,
+                )
+                continue
+
+            if (
+                status_code in {401, 403}
+                and not self._has_auth_cookies
+                and attempt < max_attempts
+            ):
+                log_scraper_event(
+                    service="Twitter",
+                    event="retry_auth_refresh",
+                    level=logging.INFO,
+                    endpoint=response.url,
+                    attempt=attempt,
+                    status=status_code,
+                    retryable=True,
+                    token_refreshed=token_refreshed,
+                )
+                refreshed = self._ensure_guest_token(force_refresh=True)
+                if refreshed:
+                    token_refreshed = True
+                    continue
+                log_scraper_event(
+                    service="Twitter",
+                    event="retry_auth_refresh_failed",
+                    level=logging.WARNING,
+                    metric="scrape_transient_http",
+                    endpoint=response.url,
+                    status=status_code,
+                    retryable=False,
+                    token_refreshed=token_refreshed,
+                )
+                return None, {
+                    "status": status_code,
+                    "content_type": resp_content_type,
+                    "token_refreshed": token_refreshed,
+                    "body_preview": resp_body[:200].replace("\n", " "),
+                }
+
+            if status_code == 200:
+                continue
+
+            if status_code in RETRYABLE_STATUSES:
+                break
+
+            if status_code >= 400:
+                log_scraper_event(
+                    service="Twitter",
+                    event="retry_failed",
+                    level=logging.WARNING,
+                    metric="scrape_transient_http",
+                    endpoint=response.url,
+                    status=status_code,
+                    content_type=resp_content_type,
+                    retryable=False,
+                    token_refreshed=token_refreshed,
+                )
+                return None, {
+                    "status": status_code,
+                    "content_type": resp_content_type,
+                    "token_refreshed": token_refreshed,
+                    "body_preview": resp_body[:200].replace("\n", " "),
+                }
+
+        log_scraper_event(
+            service="Twitter",
+            event="retry_exhausted",
+            level=logging.WARNING,
+            metric="scrape_transient_http",
+            endpoint=response.url,
+            status=last_status,
+            content_type=last_content_type,
+            length=len(last_body),
+            preview=last_body[:200].replace("\n", " "),
+            retryable=last_status in RETRYABLE_STATUSES,
+            token_refreshed=token_refreshed,
+        )
+        return None, {
+            "status": last_status,
+            "content_type": last_content_type,
+            "token_refreshed": token_refreshed,
+            "body_preview": last_body[:200].replace("\n", " "),
+        }
+
+    def _perform_http_request(
+        self,
+        url: str,
+        method: str,
+        headers: dict[str, str],
+        data: bytes | None,
+    ) -> tuple[int, str, str]:
+        request_headers = headers.copy()
+        req = urlrequest.Request(url, data=data, headers=request_headers, method=method)
+
+        try:
+            with urlrequest.urlopen(req, timeout=15) as resp:
+                status = resp.status
+                content_type = resp.headers.get("Content-Type", "") or ""
+                body_bytes = resp.read()
+        except urlerror.HTTPError as exc:
+            status = exc.code
+            content_type = exc.headers.get("Content-Type", "") if exc.headers else ""
+            body_bytes = exc.read() if exc.fp else b""
+        except Exception as exc:  # pragma: no cover - defensive
+            log_scraper_event(
+                service="Twitter",
+                event="http_request_exception",
+                level=logging.WARNING,
+                metric="scrape_transient_http",
+                endpoint=url,
+                status=599,
+                content_type="",
+                retryable=True,
+                token_refreshed=False,
+                error=str(exc),
+            )
+            return 599, "", ""
+
+        body_text = body_bytes.decode("utf-8", errors="ignore") if body_bytes else ""
+        return status, content_type, body_text
+
 
     def _normalize_tweet_result(self, tweet_result: dict[str, Any]) -> dict[str, Any] | None:
         """Normalize tweet payloads from GraphQL responses into a consistent shape."""

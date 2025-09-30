@@ -246,6 +246,12 @@ mypy app
 
 > **Workflow requirement:** After every set of edits, run `ruff check` (without `--fix`) from the repository root, resolve every reported issue, and only then push changes.
 
+### Scraper Configuration & Guest Tokens
+- Set `NEWSAPP_CONFIG_DIR` to point at your config directory (defaults to `config/`).
+- Copy the provided examples (`config/reddit.example.yml`, `config/substack.example.yml`, `config/podcasts.example.yml`) into that directory and rename them to `*.yml` before running scrapers.
+- The Twitter scraper automatically activates an X guest token when cookies are not supplied. Structured warning logs include status, content type, retryability, and preview fields for troubleshooting.
+- To verify headers locally, run `python3 scripts/run_scrapers.py --scrapers twitter --debug` after exporting the required configs or simulate a dry-run with a small harness that calls `TwitterUnifiedScraper()._decode_response_json(...)`.
+
 ### Database Operations
 ```bash
 # Create migration

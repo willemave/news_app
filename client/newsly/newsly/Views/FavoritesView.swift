@@ -52,7 +52,7 @@ struct FavoritesView: View {
                                         }
                                         .opacity(0)
                                         .buttonStyle(PlainButtonStyle())
-                                        
+
                                         ContentCard(
                                             content: content,
                                             onMarkAsRead: { await viewModel.markAsRead(content.id) },
@@ -89,6 +89,27 @@ struct FavoritesView: View {
                                         }
                                         .tint(.red)
                                     }
+                                    .onAppear {
+                                        // Load more content when reaching near the end
+                                        if content.id == viewModel.contents.last?.id {
+                                            Task {
+                                                await viewModel.loadMoreContent()
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Loading indicator at bottom
+                                if viewModel.isLoadingMore {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView()
+                                            .padding()
+                                        Spacer()
+                                    }
+                                    .listRowInsets(EdgeInsets())
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
                                 }
                             }
                             .listStyle(.plain)

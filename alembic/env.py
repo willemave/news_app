@@ -1,24 +1,30 @@
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.models.schema import Base
+from app.core.settings import get_settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-# Prefer DATABASE_URL from environment if provided; fall back to alembic.ini
+# Get DATABASE_URL from settings (which loads from .env file)
 def _resolve_database_url() -> str:
-    env_url = os.getenv("DATABASE_URL")
-    if env_url and env_url.strip():
-        return env_url.strip()
-    configured_url = config.get_main_option("sqlalchemy.url")
-    if configured_url and configured_url.strip() and "DATABASE_URL" not in configured_url:
-        return configured_url.strip()
-    msg = "DATABASE_URL environment variable is required for Alembic migrations."
+    try:
+        settings = get_settings()
+        db_url = str(settings.database_url)
+        if db_url and db_url.strip():
+            return db_url.strip()
+    except Exception as e:
+        # Fall back to alembic.ini if settings fail to load
+        configured_url = config.get_main_option("sqlalchemy.url")
+        if configured_url and configured_url.strip() and "DATABASE_URL" not in configured_url:
+            return configured_url.strip()
+        raise RuntimeError(f"Failed to load DATABASE_URL from settings: {e}") from e
+
+    msg = "DATABASE_URL is required for Alembic migrations."
     raise RuntimeError(msg)
 
 # Ensure the resolved URL is set on the Alembic config so both

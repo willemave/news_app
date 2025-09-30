@@ -1,6 +1,7 @@
 """Unified Substack scraper following the new architecture."""
 
 import contextlib
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -12,9 +13,9 @@ import yaml
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import create_error_logger, log_scraper_event
+from app.utils.paths import resolve_config_directory, resolve_config_path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENCODING_OVERRIDE_EXCEPTIONS = tuple(
     exc
     for exc in (
@@ -25,50 +26,82 @@ ENCODING_OVERRIDE_EXCEPTIONS = tuple(
 )
 
 logger = get_logger(__name__)
+_MISSING_CONFIG_WARNINGS: set[str] = set()
 
 
-def load_substack_feeds(config_path: str = "config/substack.yml") -> list[dict[str, Any]]:
+def _resolve_substack_config_path(config_path: str | Path | None) -> Path:
+    if config_path is None:
+        return resolve_config_path("SUBSTACK_CONFIG_PATH", "substack.yml")
+
+    candidate = Path(config_path).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve(strict=False)
+
+    base_dir = resolve_config_directory()
+    return (base_dir / candidate).resolve(strict=False)
+
+
+def _emit_missing_config_warning(resolved_path: Path) -> None:
+    key = str(resolved_path.resolve(strict=False))
+    if key in _MISSING_CONFIG_WARNINGS:
+        return
+    _MISSING_CONFIG_WARNINGS.add(key)
+    log_scraper_event(
+        service="Substack",
+        event="config_missing",
+        level=logging.WARNING,
+        metric="scrape_config_missing",
+        path=str(resolved_path.resolve(strict=False)),
+    )
+
+
+def load_substack_feeds(config_path: str | Path | None = None) -> list[dict[str, Any]]:
     """Loads Substack feed URLs, names, and limits from a YAML file."""
+    resolved_path = _resolve_substack_config_path(config_path)
+
+    if not resolved_path.exists():
+        _emit_missing_config_warning(resolved_path)
+        return []
+
     try:
-        path = Path(config_path)
-        if not path.is_absolute():
-            path = PROJECT_ROOT / path
-        with open(path) as f:
-            config = yaml.safe_load(f)
-        feeds = config.get("feeds", [])
-        # Return list of dicts with url, name, and limit
-        result = []
-        for feed in feeds:
-            if isinstance(feed, dict) and feed.get("url"):
-                result.append(
-                    {
-                        "url": feed["url"],
-                        "name": feed.get("name", "Unknown Substack"),
-                        "limit": feed.get("limit", 10),  # Default limit of 10 if not specified
-                    }
-                )
-            elif isinstance(feed, str):
-                # Handle legacy format
-                result.append(
-                    {
-                        "url": feed,
-                        "name": "Unknown Substack",
-                        "limit": 10,  # Default limit for legacy format
-                    }
-                )
-        return result
-    except FileNotFoundError:
-        logger.warning(f"Substack config file not found at: {path}")
+        with open(resolved_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+    except Exception as exc:
+        log_scraper_event(
+            service="Substack",
+            event="config_load_failed",
+            level=logging.ERROR,
+            path=str(resolved_path),
+            error=str(exc),
+        )
         return []
-    except Exception as e:
-        logger.error(f"Error loading Substack config: {e}", exc_info=True)
-        return []
+
+    feeds = config.get("feeds", [])
+    result: list[dict[str, Any]] = []
+    for feed in feeds:
+        if isinstance(feed, dict) and feed.get("url"):
+            result.append(
+                {
+                    "url": feed["url"],
+                    "name": feed.get("name", "Unknown Substack"),
+                    "limit": feed.get("limit", 10),
+                }
+            )
+        elif isinstance(feed, str):
+            result.append(
+                {
+                    "url": feed,
+                    "name": "Unknown Substack",
+                    "limit": 10,
+                }
+            )
+    return result
 
 
 class SubstackScraper(BaseScraper):
     """Scraper for Substack RSS feeds."""
 
-    def __init__(self, config_path: str = "config/substack.yml"):
+    def __init__(self, config_path: str | Path | None = None):
         super().__init__("Substack")
         self.feeds = load_substack_feeds(config_path)
         self.podcast_filter = re.compile(r"\b(podcast|transcript)\b", re.IGNORECASE)

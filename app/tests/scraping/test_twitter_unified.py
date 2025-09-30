@@ -6,6 +6,20 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
+
+@dataclass
+class DummyRequest:
+    """Mimics minimal Playwright Request interface."""
+
+    url: str
+    method: str = "GET"
+    post_data_value: bytes | str | None = None
+
+    def post_data(self) -> bytes | str | None:
+        return self.post_data_value
+
 
 @dataclass
 class DummyResponse:
@@ -14,7 +28,8 @@ class DummyResponse:
     url: str
     status: int
     content_type: str | None
-    body: bytes
+    payload: bytes
+    request: DummyRequest | None = None
 
     def header_value(self, name: str) -> str | None:
         if name.lower() == "content-type" and self.content_type is not None:
@@ -22,9 +37,12 @@ class DummyResponse:
         return None
 
     def text(self) -> str:
-        return self.body.decode("utf-8", errors="ignore")
+        return self.payload.decode("utf-8", errors="ignore")
 
-from app.scraping.twitter_unified import TwitterUnifiedScraper
+    def body(self) -> bytes:
+        return self.payload
+
+from app.scraping.twitter_unified import DEFAULT_USER_AGENT, TwitterUnifiedScraper
 
 
 def build_sample_graphql_payload() -> dict[str, Any]:
@@ -201,7 +219,7 @@ def test_decode_response_json_skips_non_json() -> None:
         url="https://abs.twimg.com/responsive-web/client-web/sh",
         status=200,
         content_type="text/html",
-        body=b"<html></html>",
+        payload=b"<html></html>",
     )
 
     assert scraper._decode_response_json(response) is None
@@ -263,7 +281,7 @@ def test_decode_response_json_skips_empty_body() -> None:
         url="https://api.x.com/1.1/graphql/user_flow.json",
         status=200,
         content_type="application/json",
-        body=b"   ",
+        payload=b"   ",
     )
 
     assert scraper._decode_response_json(response) is None
@@ -277,7 +295,7 @@ def test_decode_response_json_returns_payload() -> None:
         url="https://api.x.com/1.1/graphql/user_flow.json",
         status=200,
         content_type="application/json",
-        body=body,
+        payload=body,
     )
 
     decoded = scraper._decode_response_json(response)
@@ -285,3 +303,229 @@ def test_decode_response_json_returns_payload() -> None:
     data, length = decoded
     assert data == {"data": {"hello": "world"}}
     assert length == len(body)
+
+
+def test_decode_response_json_logs_404_empty_body(caplog: pytest.LogCaptureFixture) -> None:
+    """Non-success responses log debug context and return None."""
+
+    scraper = TwitterUnifiedScraper()
+    response = DummyResponse(
+        url="https://api.x.com/1.1/graphql/user_flow.json",
+        status=404,
+        content_type="application/json",
+        payload=b"",
+    )
+
+    with caplog.at_level("DEBUG"):
+        assert scraper._decode_response_json(response) is None
+
+    assert any("Skipping non-success response" in message for message in caplog.messages)
+
+
+def test_decode_response_json_skips_abs_asset_logs(caplog: pytest.LogCaptureFixture) -> None:
+    """Static asset responses are ignored with a debug breadcrumb."""
+
+    scraper = TwitterUnifiedScraper()
+    response = DummyResponse(
+        url="https://abs.twimg.com/responsive-web/client-web/sh",
+        status=404,
+        content_type="text/html;charset=utf-8",
+        payload=b"<html>rate limit</html>",
+    )
+
+    with caplog.at_level("DEBUG"):
+        assert scraper._decode_response_json(response) is None
+
+    assert any("Skipping asset response" in message for message in caplog.messages)
+
+
+def test_decode_response_json_logs_transient_429(caplog: pytest.LogCaptureFixture) -> None:
+    """Transient rate-limit responses surface a warning preview."""
+
+    scraper = TwitterUnifiedScraper()
+    response = DummyResponse(
+        url="https://api.x.com/1.1/graphql/user_flow.json",
+        status=429,
+        content_type="application/json",
+        payload=b'{"errors": [{"message": "rate limit"}]}',
+        request=DummyRequest(
+            url="https://api.x.com/1.1/graphql/user_flow.json",
+            method="GET",
+        ),
+    )
+
+    with caplog.at_level("WARNING"):
+        assert scraper._decode_response_json(response) is None
+
+    assert any(
+        "retry_failed" in message or "retry_exhausted" in message
+        for message in caplog.messages
+    )
+
+
+def test_build_headers_activates_guest_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Guest activation endpoint should be called when no auth cookies are present."""
+
+    scraper = TwitterUnifiedScraper()
+    scraper._has_auth_cookies = False
+
+    activation_calls: list[tuple[str, str]] = []
+
+    def fake_request(url: str, method: str, headers: dict[str, str], data: bytes | None) -> tuple[int, str, str]:
+        activation_calls.append((url, method))
+        return 200, "application/json", json.dumps({"guest_token": "TOKEN123"})
+
+    monkeypatch.setattr(scraper, "_perform_http_request", fake_request)
+
+    headers = scraper._build_authenticated_headers()
+
+    assert headers["Authorization"] == scraper._bearer_token
+    assert headers["x-guest-token"] == "TOKEN123"
+    assert headers["x-twitter-active-user"] == "yes"
+    assert activation_calls == [("https://api.x.com/1.1/guest/activate.json", "POST")]
+
+
+def test_retry_fetch_json_recovers_after_rate_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retry helper should back off and eventually parse a successful payload."""
+
+    scraper = TwitterUnifiedScraper()
+    scraper._has_auth_cookies = False
+
+    monkeypatch.setattr(
+        "app.scraping.twitter_unified.random.uniform",
+        lambda _a, _b: 0.0,
+    )
+
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(
+        "app.scraping.twitter_unified.time.sleep",
+        lambda duration: sleep_calls.append(duration),
+    )
+
+    call_sequence = iter(
+        [
+            (429, "application/json", '{"errors":[{"message":"rate limit"}]}'),
+            (429, "application/json", '{"errors":[{"message":"rate limit"}]}'),
+            (200, "application/json", '{"data":{"ok":true}}'),
+        ]
+    )
+
+    def fake_headers() -> dict[str, str]:
+        return {
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "application/json, text/plain, */*",
+            "Authorization": scraper._bearer_token,
+            "x-guest-token": "TOKEN123",
+            "x-twitter-active-user": "yes",
+        }
+
+    monkeypatch.setattr(scraper, "_build_authenticated_headers", fake_headers)
+
+    tokens_seen: list[str | None] = []
+
+    def fake_request(url: str, method: str, headers: dict[str, str], data: bytes | None) -> tuple[int, str, str]:
+        tokens_seen.append(headers.get("x-guest-token"))
+        return next(call_sequence)
+
+    monkeypatch.setattr(scraper, "_perform_http_request", fake_request)
+
+    response = DummyResponse(
+        url="https://api.x.com/1.1/graphql/user_flow.json",
+        status=429,
+        content_type="application/json",
+        payload=b"",
+        request=DummyRequest(
+            url="https://api.x.com/1.1/graphql/user_flow.json",
+            method="GET",
+        ),
+    )
+
+    decoded, meta = scraper._retry_fetch_json(response, response.status)
+
+    assert decoded is not None
+    data, length = decoded
+    assert data == {"data": {"ok": True}}
+    assert length == len('{"data":{"ok":true}}')
+    assert sleep_calls == [0.5, 1.0]
+    assert tokens_seen == ["TOKEN123", "TOKEN123", "TOKEN123"]
+    assert meta["token_refreshed"] is False
+
+
+def test_retry_fetch_json_refreshes_guest_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """401 responses should trigger guest token refresh and retry."""
+
+    scraper = TwitterUnifiedScraper()
+    scraper._has_auth_cookies = False
+    scraper._guest_token = "TOKEN_OLD"
+
+    monkeypatch.setattr(
+        "app.scraping.twitter_unified.random.uniform",
+        lambda _a, _b: 0.0,
+    )
+
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(
+        "app.scraping.twitter_unified.time.sleep",
+        lambda duration: sleep_calls.append(duration),
+    )
+
+    def fake_ensure_guest_token(force_refresh: bool = False) -> str | None:
+        if force_refresh:
+            scraper._guest_token = "TOKEN_REFRESHED"
+        elif scraper._guest_token is None:
+            scraper._guest_token = "TOKEN_INITIAL"
+        return scraper._guest_token
+
+    monkeypatch.setattr(scraper, "_ensure_guest_token", fake_ensure_guest_token)
+
+    def real_headers() -> dict[str, str]:
+        headers = {
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "application/json, text/plain, */*",
+        }
+        token = scraper._guest_token
+        if token:
+            headers["Authorization"] = scraper._bearer_token
+            headers["x-guest-token"] = token
+            headers["x-twitter-active-user"] = "yes"
+        return headers
+
+    monkeypatch.setattr(scraper, "_build_authenticated_headers", real_headers)
+
+    call_sequence = iter(
+        [
+            (401, "application/json", '{"errors":[{"message":"invalid"}]}'),
+            (200, "application/json", '{"data":{"ok":true}}'),
+        ]
+    )
+
+    tokens_seen: list[str | None] = []
+
+    def fake_request(url: str, method: str, headers: dict[str, str], data: bytes | None) -> tuple[int, str, str]:
+        tokens_seen.append(headers.get("x-guest-token"))
+        return next(call_sequence)
+
+    monkeypatch.setattr(scraper, "_perform_http_request", fake_request)
+
+    response = DummyResponse(
+        url="https://api.x.com/1.1/graphql/user_flow.json",
+        status=401,
+        content_type="application/json",
+        payload=b"",
+        request=DummyRequest(
+            url="https://api.x.com/1.1/graphql/user_flow.json",
+            method="GET",
+        ),
+    )
+
+    decoded, meta = scraper._retry_fetch_json(response, response.status)
+
+    assert decoded is not None
+    data, length = decoded
+    assert data == {"data": {"ok": True}}
+    assert length == len('{"data":{"ok":true}}')
+    assert sleep_calls == [0.5]
+    assert tokens_seen == ["TOKEN_OLD", "TOKEN_REFRESHED"]
+    assert meta["token_refreshed"] is True

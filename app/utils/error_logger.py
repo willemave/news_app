@@ -3,7 +3,9 @@ Generic Error Logger - Simple, universal error logging with full context capture
 """
 
 import json
+import logging
 import traceback
+from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +15,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 
 logger = get_logger(__name__)
+SCRAPER_METRICS: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
 
 @dataclass
@@ -141,6 +144,47 @@ class GenericErrorLogger:
         }
 
         self.log_error(error=error, operation=operation or "feed_processing", context=context)
+
+
+def log_scraper_event(
+    *,
+    service: str,
+    event: str,
+    level: int = logging.INFO,
+    metric: str | None = None,
+    **fields: Any,
+) -> None:
+    """Emit a structured scraper event log and optionally increment metrics."""
+
+    payload = {
+        "timestamp": datetime.now().isoformat(),
+        "service": service,
+        "event": event,
+    }
+    payload.update({k: v for k, v in fields.items() if v is not None})
+
+    logger.log(level, "SCRAPER_EVENT %s", json.dumps(payload, ensure_ascii=False))
+
+    if metric:
+        SCRAPER_METRICS[service][metric] += 1
+
+
+def increment_scraper_metric(service: str, metric: str, amount: int = 1) -> None:
+    """Increment a scraper metric counter."""
+
+    SCRAPER_METRICS[service][metric] += amount
+
+
+def get_scraper_metrics() -> dict[str, dict[str, int]]:
+    """Return current scraper metric counters (primarily for tests)."""
+
+    return {service: dict(metrics) for service, metrics in SCRAPER_METRICS.items()}
+
+
+def reset_scraper_metrics() -> None:
+    """Clear scraper metrics. Useful in tests to avoid cross pollution."""
+
+    SCRAPER_METRICS.clear()
 
     def _extract_http_details(self, response: Any) -> dict[str, Any]:
         """Extract useful details from HTTP response object."""

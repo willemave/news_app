@@ -13,6 +13,7 @@ from app.core.db import get_db_session
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
+from app.utils.pagination import PaginationCursor
 
 router = APIRouter(
     tags=["content"],
@@ -98,6 +99,11 @@ class ContentListResponse(BaseModel):
     total: int = Field(..., description="Total number of items")
     available_dates: list[str] = Field(..., description="List of available dates (YYYY-MM-DD)")
     content_types: list[str] = Field(..., description="Available content types for filtering")
+    next_cursor: str | None = Field(
+        None, description="Opaque cursor token for next page (null if no more results)"
+    )
+    has_more: bool = Field(False, description="Whether more results are available")
+    page_size: int = Field(0, description="Number of items in current response")
 
     class Config:
         json_schema_extra = {
@@ -120,6 +126,9 @@ class ContentListResponse(BaseModel):
                 "total": 1,
                 "available_dates": ["2025-06-19", "2025-06-18"],
                 "content_types": ["article", "podcast", "news"],
+                "next_cursor": "eyJsYXN0X2lkIjoxMjMsImxhc3RfY3JlYXRlZF9hdCI6IjIwMjUtMDYtMTlUMTA6MzA6MDAifQ==",
+                "has_more": True,
+                "page_size": 25,
             }
         }
 
@@ -282,12 +291,13 @@ class ChatGPTUrlResponse(BaseModel):
     response_model=ContentListResponse,
     summary="List content items",
     description=(
-        "Retrieve a list of content items with optional filtering by content type and date."
+        "Retrieve a list of content items with optional filtering by content type and date. "
+        "Supports cursor-based pagination for efficient loading."
     ),
 )
 async def list_contents(
     db: Annotated[Session, Depends(get_db_session)],
-    content_type: str | None = Query(None, description="Filter by content type (article/podcast)"),
+    content_type: str | None = Query(None, description="Filter by content type (article/podcast/news)"),
     date: str | None = Query(
         None,
         description="Filter by date (YYYY-MM-DD format)",
@@ -298,13 +308,42 @@ async def list_contents(
         description="Filter by read status (all/read/unread)",
         regex="^(all|read|unread)$",
     ),
+    cursor: str | None = Query(None, description="Pagination cursor for next page"),
+    limit: int = Query(
+        25,
+        ge=1,
+        le=100,
+        description="Number of items per page (max 100)",
+    ),
 ) -> ContentListResponse:
-    """List content with optional filters."""
+    """List content with optional filters and cursor-based pagination."""
     from app.services import favorites, read_status, unlikes
+
+    # Decode cursor if provided
+    last_id = None
+    last_created_at = None
+    if cursor:
+        try:
+            cursor_data = PaginationCursor.decode_cursor(cursor)
+            # Validate cursor filters match current request
+            current_filters = {
+                "content_type": content_type,
+                "date": date,
+                "read_filter": read_filter,
+            }
+            if not PaginationCursor.validate_cursor(cursor_data, current_filters):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cursor invalid: filters have changed. Please start a new pagination sequence.",
+                )
+            last_id = cursor_data["last_id"]
+            last_created_at = cursor_data["last_created_at"]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Get read content IDs first
     read_content_ids = read_status.get_read_content_ids(db)
-    
+
     # Get favorited content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
 
@@ -321,22 +360,23 @@ async def list_contents(
         Content.status == ContentStatus.COMPLETED.value,
     )
 
-    # Get available dates for the dropdown
-    available_dates_query = (
-        db.query(func.date(Content.created_at).label("date"))
-        .filter(or_(summarized_clause, completed_news_clause))
-        .filter((Content.classification != "skip") | (Content.classification.is_(None)))
-        .distinct()
-        .order_by(func.date(Content.created_at).desc())
-    )
-
+    # Get available dates for the dropdown (only on first page)
     available_dates = []
-    for row in available_dates_query.all():
-        if row.date:
-            if isinstance(row.date, str):
-                available_dates.append(row.date)
-            else:
-                available_dates.append(row.date.strftime("%Y-%m-%d"))
+    if not cursor:
+        available_dates_query = (
+            db.query(func.date(Content.created_at).label("date"))
+            .filter(or_(summarized_clause, completed_news_clause))
+            .filter((Content.classification != "skip") | (Content.classification.is_(None)))
+            .distinct()
+            .order_by(func.date(Content.created_at).desc())
+        )
+
+        for row in available_dates_query.all():
+            if row.date:
+                if isinstance(row.date, str):
+                    available_dates.append(row.date)
+                else:
+                    available_dates.append(row.date.strftime("%Y-%m-%d"))
 
     # Query content
     query = db.query(Content)
@@ -359,8 +399,26 @@ async def list_contents(
         except ValueError as e:
             raise HTTPException(status_code=400, detail="Invalid date format") from e
 
-    # Order by most recent first
-    contents = query.order_by(Content.created_at.desc()).all()
+    # Apply cursor pagination
+    if last_id and last_created_at:
+        # Use keyset pagination: WHERE (created_at, id) < (last_created_at, last_id)
+        query = query.filter(
+            or_(
+                Content.created_at < last_created_at,
+                and_(Content.created_at == last_created_at, Content.id < last_id),
+            )
+        )
+
+    # Order by created_at DESC, id DESC for stable pagination
+    query = query.order_by(Content.created_at.desc(), Content.id.desc())
+
+    # Fetch limit + 1 to determine if there are more results
+    contents = query.limit(limit + 1).all()
+
+    # Check if there are more results
+    has_more = len(contents) > limit
+    if has_more:
+        contents = contents[:limit]  # Trim to requested limit
 
     # Filter based on read status if needed
     if read_filter == "unread":
@@ -442,11 +500,29 @@ async def list_contents(
     # Get content types for filter
     content_types = [ct.value for ct in ContentType]
 
+    # Generate next cursor if there are more results
+    next_cursor = None
+    if has_more and content_summaries:
+        last_item = contents[-1]  # Use original DB object, not domain object
+        current_filters = {
+            "content_type": content_type,
+            "date": date,
+            "read_filter": read_filter,
+        }
+        next_cursor = PaginationCursor.encode_cursor(
+            last_id=last_item.id,
+            last_created_at=last_item.created_at,
+            filters=current_filters,
+        )
+
     return ContentListResponse(
         contents=content_summaries,
         total=len(content_summaries),
         available_dates=available_dates,
         content_types=content_types,
+        next_cursor=next_cursor,
+        has_more=has_more,
+        page_size=len(content_summaries),
     )
  
 @router.get(
@@ -455,7 +531,8 @@ async def list_contents(
     summary="Search content across articles and podcasts",
     description=(
         "Case-insensitive string search across titles, sources, and summaries. "
-        "Results exclude items classified as 'skip' and only include summarized content."
+        "Results exclude items classified as 'skip' and only include summarized content. "
+        "Supports cursor-based pagination for efficient loading."
     ),
 )
 async def search_contents(
@@ -469,9 +546,15 @@ async def search_contents(
         description="Optional content type filter",
     ),
     limit: int = Query(25, ge=1, le=100, description="Max results to return"),
-    offset: int = Query(0, ge=0, description="Results offset for pagination"),
+    cursor: str | None = Query(None, description="Pagination cursor for next page"),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Results offset for pagination (deprecated, use cursor instead)",
+        deprecated=True,
+    ),
 ) -> ContentListResponse:
-    """Search content with portable SQL patterns.
+    """Search content with portable SQL patterns and cursor-based pagination.
 
     This uses case-insensitive LIKE over title/source and selected JSON fields
     (summary.title/summary.overview) with a safe String cast for portability
@@ -479,6 +562,27 @@ async def search_contents(
     as text to catch legacy structures.
     """
     from app.services import favorites, read_status, unlikes
+
+    # Decode cursor if provided (takes precedence over offset)
+    last_id = None
+    last_created_at = None
+    if cursor:
+        try:
+            cursor_data = PaginationCursor.decode_cursor(cursor)
+            # Validate cursor filters match current request
+            current_filters = {
+                "q": q,
+                "type": type,
+            }
+            if not PaginationCursor.validate_cursor(cursor_data, current_filters):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cursor invalid: search parameters have changed. Please start a new search.",
+                )
+            last_id = cursor_data["last_id"]
+            last_created_at = cursor_data["last_created_at"]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Preload state flags
     read_content_ids = read_status.get_read_content_ids(db)
@@ -519,10 +623,30 @@ async def search_contents(
 
     search_query = query.filter(conditions)
 
-    total = search_query.count()
-    results = (
-        search_query.order_by(Content.created_at.desc()).offset(offset).limit(limit).all()
-    )
+    # Order by created_at DESC, id DESC for stable pagination (must be before offset/limit)
+    search_query = search_query.order_by(Content.created_at.desc(), Content.id.desc())
+
+    # Apply cursor pagination if cursor is provided, otherwise use offset (deprecated)
+    if cursor and last_id and last_created_at:
+        search_query = search_query.filter(
+            or_(
+                Content.created_at < last_created_at,
+                and_(Content.created_at == last_created_at, Content.id < last_id),
+            )
+        )
+    elif not cursor and offset > 0:
+        # Use offset only if no cursor provided (backwards compatibility)
+        search_query = search_query.offset(offset)
+
+    # Fetch limit + 1 to determine if there are more results
+    results = search_query.limit(limit + 1).all()
+
+    # Check if there are more results
+    has_more = len(results) > limit
+    if has_more:
+        results = results[:limit]  # Trim to requested limit
+
+    total = len(results)  # Only count current page for performance
 
     content_summaries: list[ContentSummaryResponse] = []
     for c in results:
@@ -565,11 +689,28 @@ async def search_contents(
             print(f"Skipping content {c.id} due to validation error: {e}")
             continue
 
+    # Generate next cursor if there are more results
+    next_cursor = None
+    if has_more and content_summaries:
+        last_item = results[-1]  # Use original DB object
+        current_filters = {
+            "q": q,
+            "type": type,
+        }
+        next_cursor = PaginationCursor.encode_cursor(
+            last_id=last_item.id,
+            last_created_at=last_item.created_at,
+            filters=current_filters,
+        )
+
     return ContentListResponse(
         contents=content_summaries,
         total=total,
         available_dates=[],  # Not applicable for search
         content_types=[ct.value for ct in ContentType],
+        next_cursor=next_cursor,
+        has_more=has_more,
+        page_size=len(content_summaries),
     )
 
 
@@ -922,22 +1063,65 @@ async def unfavorite_content(
     "/favorites/list",
     response_model=ContentListResponse,
     summary="Get favorited content",
-    description="Retrieve all favorited content items.",
+    description="Retrieve all favorited content items with cursor-based pagination.",
 )
 async def get_favorites(
     db: Annotated[Session, Depends(get_db_session)],
+    cursor: str | None = Query(None, description="Pagination cursor for next page"),
+    limit: int = Query(
+        25,
+        ge=1,
+        le=100,
+        description="Number of items per page (max 100)",
+    ),
 ) -> ContentListResponse:
-    """Get all favorited content."""
+    """Get all favorited content with cursor-based pagination."""
     from app.services import favorites, read_status
+
+    # Decode cursor if provided
+    last_id = None
+    last_created_at = None
+    if cursor:
+        try:
+            cursor_data = PaginationCursor.decode_cursor(cursor)
+            # No filter validation needed for favorites (no filters)
+            last_id = cursor_data["last_id"]
+            last_created_at = cursor_data["last_created_at"]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Get favorited content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
-    
+
     # Get read content IDs
     read_content_ids = read_status.get_read_content_ids(db)
 
     # Query favorited content
-    contents = db.query(Content).filter(Content.id.in_(favorite_content_ids)).order_by(Content.created_at.desc()).all() if favorite_content_ids else []
+    if favorite_content_ids:
+        query = db.query(Content).filter(Content.id.in_(favorite_content_ids))
+
+        # Apply cursor pagination
+        if last_id and last_created_at:
+            query = query.filter(
+                or_(
+                    Content.created_at < last_created_at,
+                    and_(Content.created_at == last_created_at, Content.id < last_id),
+                )
+            )
+
+        # Order by created_at DESC, id DESC for stable pagination
+        query = query.order_by(Content.created_at.desc(), Content.id.desc())
+
+        # Fetch limit + 1 to determine if there are more results
+        contents = query.limit(limit + 1).all()
+
+        # Check if there are more results
+        has_more = len(contents) > limit
+        if has_more:
+            contents = contents[:limit]  # Trim to requested limit
+    else:
+        contents = []
+        has_more = False
 
     # Convert to response format
     content_summaries = []
@@ -981,11 +1165,24 @@ async def get_favorites(
     # Get content types for filter
     content_types = [ct.value for ct in ContentType]
 
+    # Generate next cursor if there are more results
+    next_cursor = None
+    if has_more and content_summaries:
+        last_item = contents[-1]  # Use original DB object
+        next_cursor = PaginationCursor.encode_cursor(
+            last_id=last_item.id,
+            last_created_at=last_item.created_at,
+            filters={},  # No filters for favorites
+        )
+
     return ContentListResponse(
         contents=content_summaries,
         total=len(content_summaries),
         available_dates=[],  # Not needed for favorites list
         content_types=content_types,
+        next_cursor=next_cursor,
+        has_more=has_more,
+        page_size=len(content_summaries),
     )
 
 

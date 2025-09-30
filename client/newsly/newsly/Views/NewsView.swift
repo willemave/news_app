@@ -55,6 +55,27 @@ struct NewsView: View {
                                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
+                                .onAppear {
+                                    // Load more content when reaching near the end
+                                    if content.id == viewModel.contents.last?.id {
+                                        Task {
+                                            await viewModel.loadMoreContent()
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Loading indicator at bottom
+                            if viewModel.isLoadingMore {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                        .padding()
+                                    Spacer()
+                                }
+                                .listRowInsets(EdgeInsets())
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                             }
                         }
                         .listStyle(.plain)
