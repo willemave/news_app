@@ -1,0 +1,8 @@
+# Atom Feed URLs
+# Format: Standard Atom feed URLs
+# Name and description will be extracted from the feed
+
+feeds:
+  - url: "https://example.com/feed.atom"
+    name: "Example Feed"
+    limit: 5
