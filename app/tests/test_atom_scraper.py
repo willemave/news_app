@@ -52,3 +52,13 @@ feeds:
     assert feeds[0]["url"] == "https://example.com/feed.atom"
     assert feeds[0]["name"] == "Unknown Atom"
     assert feeds[0]["limit"] == 10
+
+
+def test_atom_scraper_in_runner():
+    """Test that AtomScraper is registered in ScraperRunner."""
+    from app.scraping.runner import ScraperRunner
+
+    runner = ScraperRunner()
+    scraper_names = runner.list_scrapers()
+
+    assert "Atom" in scraper_names
