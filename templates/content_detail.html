@@ -156,37 +156,95 @@
       {% if content.structured_summary %}
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-4">Summary</h2>
-      
-        
-        <!-- Key Points -->
-        {% if content.bullet_points %}
-        <div class="mb-4">
-          <h3 class="text-md font-medium text-gray-800 mb-2">Key Points</h3>
-          <ul class="space-y-2">
-            {% for bullet in content.bullet_points %}
-            <li class="flex items-start">
-              <span class="text-blue-600 mr-2 mt-0.5">•</span>
-              <div>
-                <span class="text-gray-700">{{ bullet.text }}</span>
-                {% if bullet.category %}
-                <span class="ml-2 text-xs px-2 py-1 rounded-full 
-                            {% if bullet.category == 'key_finding' %}bg-green-100 text-green-700
-                            {% elif bullet.category == 'warning' %}bg-red-100 text-red-700
-                            {% elif bullet.category == 'recommendation' %}bg-blue-100 text-blue-700
-                            {% else %}bg-gray-100 text-gray-700{% endif %}">
-                  {{ bullet.category.replace('_', ' ').title() }}
-                </span>
-                {% endif %}
-              </div>
-            </li>
-            {% endfor %}
-          </ul>
+
+        <!-- Accordion for Summary Sections -->
+        <div class="space-y-2">
+          <!-- Key Points Section (expanded by default) -->
+          {% if content.bullet_points %}
+          <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <button onclick="toggleAccordion('key-points')"
+                    class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-md font-medium text-gray-800">Key Points</h3>
+              <svg id="key-points-icon" class="w-5 h-5 transform transition-transform"
+                   fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            <div id="key-points-content" class="p-4 border-t border-gray-200">
+              <ul class="space-y-2">
+                {% for bullet in content.bullet_points %}
+                <li class="flex items-start">
+                  <span class="text-blue-600 mr-2 mt-0.5">•</span>
+                  <div>
+                    <span class="text-gray-700">{{ bullet.text }}</span>
+                    {% if bullet.category %}
+                    <span class="ml-2 text-xs px-2 py-1 rounded-full
+                                {% if bullet.category == 'key_finding' %}bg-green-100 text-green-700
+                                {% elif bullet.category == 'warning' %}bg-red-100 text-red-700
+                                {% elif bullet.category == 'recommendation' %}bg-blue-100 text-blue-700
+                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                      {{ bullet.category.replace('_', ' ').title() }}
+                    </span>
+                    {% endif %}
+                  </div>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Questions Section -->
+          {% set questions = content.structured_summary.get('questions', []) %}
+          {% if questions %}
+          <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <button onclick="toggleAccordion('questions')"
+                    class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-md font-medium text-gray-800">Questions to Ask</h3>
+              <svg id="questions-icon" class="w-5 h-5 transform transition-transform rotate-180"
+                   fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            <div id="questions-content" class="hidden p-4 border-t border-gray-200">
+              <ol class="space-y-2 list-decimal list-inside">
+                {% for question in questions %}
+                <li class="text-gray-700">{{ question }}</li>
+                {% endfor %}
+              </ol>
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Counter Arguments Section -->
+          {% set counter_args = content.structured_summary.get('counter_arguments', []) %}
+          {% if counter_args %}
+          <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <button onclick="toggleAccordion('counter-args')"
+                    class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-md font-medium text-gray-800">Counter Arguments</h3>
+              <svg id="counter-args-icon" class="w-5 h-5 transform transition-transform rotate-180"
+                   fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            <div id="counter-args-content" class="hidden p-4 border-t border-gray-200">
+              <ul class="space-y-2">
+                {% for arg in counter_args %}
+                <li class="flex items-start">
+                  <span class="text-orange-600 mr-2 mt-0.5">⚠</span>
+                  <span class="text-gray-700">{{ arg }}</span>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          {% endif %}
         </div>
-        {% endif %}
-        
-        <!-- Quotes -->
+
+        <!-- Quotes (outside accordion, always visible if available) -->
         {% if content.quotes %}
-        <div class="mb-4">
+        <div class="mt-6">
           <h3 class="text-md font-medium text-gray-800 mb-2">Notable Quotes</h3>
           <div class="space-y-3">
             {% for quote in content.quotes %}
@@ -200,10 +258,10 @@
           </div>
         </div>
         {% endif %}
-        
-        <!-- Topics -->
+
+        <!-- Topics (outside accordion, always visible if available) -->
         {% if content.topics %}
-        <div class="mb-4">
+        <div class="mt-6">
           <h3 class="text-md font-medium text-gray-800 mb-2">Topics</h3>
           <div class="flex flex-wrap gap-2">
             {% for topic in content.topics %}
@@ -304,6 +362,19 @@
 </div>
 
 <script>
+function toggleAccordion(sectionId) {
+    const content = document.getElementById(`${sectionId}-content`);
+    const icon = document.getElementById(`${sectionId}-icon`);
+
+    if (content.classList.contains('hidden')) {
+        content.classList.remove('hidden');
+        icon.classList.remove('rotate-180');
+    } else {
+        content.classList.add('hidden');
+        icon.classList.add('rotate-180');
+    }
+}
+
 async function toggleFavorite(contentId) {
     try {
         const response = await fetch(`/api/content/${contentId}/favorite`, {
@@ -312,7 +383,7 @@ async function toggleFavorite(contentId) {
                 'Content-Type': 'application/json',
             }
         });
-        
+
         if (response.ok) {
             const data = await response.json();
             // Reload the page to update the UI

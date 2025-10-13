@@ -5,9 +5,8 @@ import re
 import subprocess
 import tempfile
 from copy import deepcopy
-from datetime import datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Type
+from typing import Any, BinaryIO
 
 from openai import OpenAI, OpenAIError
 from pydantic import ValidationError
@@ -16,23 +15,18 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import NewsSummary, StructuredSummary
+from app.utils.error_logger import GenericErrorLogger
 from app.utils.json_repair import strip_json_wrappers, try_repair_truncated_json
 
 logger = get_logger(__name__)
 settings = get_settings()
+error_logger = GenericErrorLogger("openai_llm")
 
 # Constants
 MAX_FILE_SIZE_MB = 25
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 CHUNK_DURATION_SECONDS = 10 * 60  # 10 minutes in seconds
 MAX_CONTENT_LENGTH = 200000  # Maximum characters to prevent token limit errors
-
-# Create logs directory if it doesn't exist
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
-ERRORS_DIR = LOG_DIR / "errors"
-ERRORS_DIR.mkdir(exist_ok=True)
-JSON_ERROR_LOG = ERRORS_DIR / "llm_json_errors.log"
 
 
 class StructuredSummaryRetryableError(Exception):
@@ -487,29 +481,6 @@ _This story was originally published in May 2023 and is updated regularly with n
 """
 
 
-def log_json_error(
-    error_type: str, response_text: str, error: Exception, content_id: str | None = None
-):
-    """Log JSON parsing errors to a file for debugging."""
-    timestamp = datetime.utcnow().isoformat()
-    log_entry = {
-        "timestamp": timestamp,
-        "error_type": error_type,
-        "content_id": content_id,
-        "error_message": str(error),
-        "response_text": response_text,
-        "response_length": len(response_text)
-        if response_text and isinstance(response_text, str)
-        else 0,
-    }
-
-    try:
-        with open(JSON_ERROR_LOG, "a") as f:
-            f.write(json.dumps(log_entry) + "\n")
-    except Exception as e:
-        logger.error(f"Failed to write to JSON error log: {e}")
-
-
 def generate_summary_prompt(
     content_type: str, max_bullet_points: int, max_quotes: int, content: str
 ) -> str:
@@ -519,11 +490,11 @@ def generate_summary_prompt(
         You are an expert content analyst. Analyze the following HackerNews discussion, which
         includes the linked article content (if any) and community comments. Provide a structured
         summary that captures both the main content and key insights from the discussion.
-        
+
         Important:
         - Generate a descriptive title that describes the article in detail.
         - There may be technical terms in the content, please don't make any spelling errors.
-        - Use the <title_examples> to see how to format the title. 
+        - Use the <title_examples> to see how to format the title.
         - Extract actual quotes from both the article and notable comments
         - Make bullet points capture insights from BOTH content and discussion
         - Include {max_bullet_points} bullet points that blend article + comment insights
@@ -531,17 +502,30 @@ def generate_summary_prompt(
         - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
         - For quotes from comments, use format "HN user [username]" as context
         - Include 3-8 relevant topic tags
+        - Generate 3-5 thought-provoking questions that help readers think critically about the content
+        - Identify 2-4 counter-arguments or alternative perspectives mentioned in comments or implied by the content
         - Add a "classification" field with either "to_read" or "skip"
         - Add a special section in the overview about the HN community response
         - Set "full_markdown" to include the article content AND the comments
-        
+
         {TITLE_EXAMPLES}
-        
+
+        Questions Guidelines:
+        - Questions should prompt critical thinking about implications, limitations, or applications
+        - Draw from both the article content and HN discussion
+        - Focus on "what if", "how might", "what are the implications" style questions
+
+        Counter Arguments Guidelines:
+        - Look for dissenting opinions or skeptical viewpoints in HN comments
+        - Identify assumptions that could be challenged
+        - Include technical critiques or alternative approaches mentioned
+        - If no strong counter-arguments exist, you may leave this list empty
+
         Classification Guidelines:
         - Consider both article quality AND discussion quality
         - High-quality technical discussions should be "to_read" even if article is average
         - Set to "skip" if both article and comments lack substance
-        
+
         Content and Discussion:
         {content}
         """
@@ -578,28 +562,42 @@ def generate_summary_prompt(
         """
     elif content_type == "podcast":
         return f"""
-        You are an expert content analyst. Analyze the following podcast transcript and provide a 
+        You are an expert content analyst. Analyze the following podcast transcript and provide a
         structured summary with classification.
-        
+
         Important:
         - Generate a descriptive title that describes the article in detail.
         - There may be technical terms in the content, please don't make any spelling errors.
-        - Use the <title_examples> to see how to format the title. 
+        - Use the <title_examples> to see how to format the title.
         - Focus on the "why it matters" aspect rather than just restating the topic
         - Extract actual quotes.
         - Make bullet points specific and information dense
-        - For the overview field: Write out as many paragraphs as needed to capture the conversations 
+        - For the overview field: Write out as many paragraphs as needed to capture the conversations
           and provide a comprehensive overview of the entire podcast conversation.
           This should allow someone to read it and understand the full context.
-        - Include up to {max_quotes} notable quotes - each quote should be 
+        - Include up to {max_quotes} notable quotes - each quote should be
           at least 2-3 sentences long to provide meaningful context and insight
         - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
         - Include 3-8 relevant topic tags
+        - Generate 3-5 thought-provoking questions that would help listeners reflect on the discussion
+        - Identify 2-4 counter-arguments or alternative perspectives to the main ideas discussed
         - Add a "classification" field with either "to_read" or "skip"
         - Set "full_markdown" to an empty string "" (do not include the full transcript)
-        
+
         {TITLE_EXAMPLES}
-        
+
+        Questions Guidelines:
+        - Questions should encourage deeper thinking about the topics discussed
+        - Consider implications for the listener's work, industry, or life
+        - Focus on "how could you apply", "what challenges might arise", "what would happen if" style questions
+
+        Counter Arguments Guidelines:
+        - Identify perspectives or viewpoints that weren't fully explored in the podcast
+        - Consider what skeptics or critics might say about the main claims
+        - Think about limitations or edge cases not addressed
+        - If the podcast is one-sided, what would the other side argue?
+        - If no strong counter-arguments exist, you may leave this list empty
+
         Classification Guidelines:
         - Set classification to "skip" if the content:
           * Is light on content or seems like marketing/promotional material
@@ -611,20 +609,20 @@ def generate_summary_prompt(
           * Provides technical or specialized knowledge
           * Offers original research or investigation
           * Has educational or informative value
-        
+
         Podcast Transcript:
         {content}
         """
     else:
         # For articles and other content types, include full markdown
         return f"""
-        You are an expert content analyst. Analyze the following content and provide a 
+        You are an expert content analyst. Analyze the following content and provide a
         structured summary with classification AND format the full text as clean markdown.
-        
+
         Important:
         - Generate a descriptive title that describes the article in detail.
         - There may be technical terms in the content, please don't make any spelling errors.
-        - Use the <title_examples> to see how to format the title. 
+        - Use the <title_examples> to see how to format the title.
         - Extract actual quotes.
         - Make bullet points specific and information dense.
         - Overview should be 50-100 words, short and punchy
@@ -632,11 +630,25 @@ def generate_summary_prompt(
         - Include up to {max_quotes} notable quotes.
         - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
         - Include 3-8 relevant topic tags
+        - Generate 3-5 thought-provoking questions that help readers think critically about the content
+        - Identify 2-4 counter-arguments or alternative perspectives to the main claims
         - Add a "classification" field with either "to_read" or "skip"
         - Add a "full_markdown" field with the entire content formatted as clean, readable markdown
-        
+
         {TITLE_EXAMPLES}
-        
+
+        Questions Guidelines:
+        - Questions should prompt critical thinking about implications, assumptions, or applications
+        - Consider "what if" scenarios, potential consequences, or unexplored angles
+        - Focus on helping readers engage more deeply with the material
+
+        Counter Arguments Guidelines:
+        - Look for assumptions that could be challenged
+        - Consider alternative interpretations of the evidence
+        - Think about what critics or skeptics might say
+        - Identify limitations or weaknesses in the argument
+        - If the content is balanced or no strong counter-arguments exist, you may leave this list empty
+
         Classification Guidelines:
         - Set classification to "skip" if the content:
           * Is light on content or seems like marketing/promotional material
@@ -648,7 +660,7 @@ def generate_summary_prompt(
           * Provides technical or specialized knowledge
           * Offers original research or investigation
           * Has educational or informative value
-        
+
         Markdown Formatting Guidelines:
         - Format the full content as clean, readable markdown
         - Use proper heading hierarchy (# for main title, ## for sections, ### for subsections)
@@ -656,10 +668,12 @@ def generate_summary_prompt(
         - Format lists, quotes, and code blocks appropriately
         - Remove any unnecessary HTML artifacts or formatting issues
         - Make the content easy to read in markdown format
-        
+
         Content:
         {content}
         """
+
+
 class OpenAISummarizationService:
     """OpenAI service for content summarization using GPT-5-mini."""
 
@@ -685,7 +699,7 @@ class OpenAISummarizationService:
     def _parse_summary_payload(
         self,
         raw_payload: str,
-        schema: Type[StructuredSummary] | Type[NewsSummary],
+        schema: type[StructuredSummary] | type[NewsSummary],
         content_id: str,
     ) -> StructuredSummary | NewsSummary | None:
         """Clean and parse an OpenAI JSON payload into the target schema."""
@@ -693,11 +707,12 @@ class OpenAISummarizationService:
         cleaned_payload = strip_json_wrappers(raw_payload)
         if not cleaned_payload:
             logger.error("OpenAI response payload empty after cleanup")
-            log_json_error(
-                "openai_empty_payload",
-                raw_payload,
-                ValueError("Empty payload after cleanup"),
-                content_id=content_id,
+            error = ValueError("Empty payload after cleanup")
+            error_logger.log_processing_error(
+                item_id=content_id or "unknown",
+                error=error,
+                operation="openai_empty_payload",
+                context={"raw_payload": raw_payload, "response_length": len(raw_payload)},
             )
             return None
 
@@ -706,12 +721,17 @@ class OpenAISummarizationService:
         except json.JSONDecodeError as decode_error:
             repaired_payload = try_repair_truncated_json(cleaned_payload)
             if not repaired_payload:
-                logger.error("Failed to repair truncated JSON from OpenAI response: %s", decode_error)
-                log_json_error(
-                    "openai_json_decode_error",
-                    cleaned_payload,
-                    decode_error,
-                    content_id=content_id,
+                logger.error(
+                    "Failed to repair truncated JSON from OpenAI response: %s", decode_error
+                )
+                error_logger.log_processing_error(
+                    item_id=content_id or "unknown",
+                    error=decode_error,
+                    operation="openai_json_decode_error",
+                    context={
+                        "cleaned_payload": cleaned_payload,
+                        "response_length": len(cleaned_payload),
+                    },
                 )
                 return None
 
@@ -721,11 +741,14 @@ class OpenAISummarizationService:
                 summary_data = json.loads(repaired_payload)
             except json.JSONDecodeError as repair_error:
                 logger.error("Failed to decode repaired OpenAI JSON payload: %s", repair_error)
-                log_json_error(
-                    "openai_json_repair_failed",
-                    repaired_payload,
-                    repair_error,
-                    content_id=content_id,
+                error_logger.log_processing_error(
+                    item_id=content_id or "unknown",
+                    error=repair_error,
+                    operation="openai_json_repair_failed",
+                    context={
+                        "repaired_payload": repaired_payload,
+                        "response_length": len(repaired_payload),
+                    },
                 )
                 return None
 
@@ -741,13 +764,16 @@ class OpenAISummarizationService:
                 return recovered
 
             logger.error("OpenAI JSON payload failed schema validation: %s", schema_error)
-            log_json_error(
-                "openai_schema_validation_error",
+            response_text = (
                 json.dumps(summary_data, ensure_ascii=False)[:2000]
                 if isinstance(summary_data, dict)
-                else str(summary_data)[:2000],
-                schema_error,
-                content_id=content_id,
+                else str(summary_data)[:2000]
+            )
+            error_logger.log_processing_error(
+                item_id=content_id or "unknown",
+                error=schema_error,
+                operation="openai_schema_validation_error",
+                context={"summary_data": response_text, "response_length": len(response_text)},
             )
             return None
 
@@ -769,7 +795,7 @@ class OpenAISummarizationService:
     @staticmethod
     def _attempt_structured_summary_recovery(
         summary_data: Any,
-        schema: Type[StructuredSummary] | Type[NewsSummary],
+        schema: type[StructuredSummary] | type[NewsSummary],
         content_id: str,
     ) -> StructuredSummary | None:
         """Attempt to coerce partial payloads into a valid StructuredSummary."""
@@ -821,8 +847,7 @@ class OpenAISummarizationService:
                     sentences = [overview_text[:400]]
 
                 bullet_points.extend(
-                    {"text": sentence[:400], "category": "insight"}
-                    for sentence in sentences[:3]
+                    {"text": sentence[:400], "category": "insight"} for sentence in sentences[:3]
                 )
 
         if not bullet_points:
@@ -853,7 +878,10 @@ class OpenAISummarizationService:
                     raw_text = str(item.get("text", "")).strip()
                     if not raw_text:
                         continue
-                    context = str(item.get("context", "Source unspecified")).strip() or "Source unspecified"
+                    context = (
+                        str(item.get("context", "Source unspecified")).strip()
+                        or "Source unspecified"
+                    )
                     quotes.append({"text": raw_text, "context": context})
                 elif isinstance(item, str) and item.strip():
                     quotes.append({"text": item.strip(), "context": "Source unspecified"})
@@ -923,16 +951,16 @@ class OpenAISummarizationService:
                 content = content[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated due to length]"
 
             prompt = generate_summary_prompt(content_type, max_bullet_points, max_quotes, content)
-            schema: Type[StructuredSummary] | Type[NewsSummary]
+            schema: type[StructuredSummary] | type[NewsSummary]
             schema = NewsSummary if content_type == "news_digest" else StructuredSummary
 
-            max_output_tokens = 5000
+            max_output_tokens = 25000  # Large limit for full_markdown support
             if content_type == "podcast":
-                max_output_tokens = 8000
+                max_output_tokens = 8000  # Podcasts don't include transcript in full_markdown
             elif content_type == "news_digest":
-                max_output_tokens = 2500
+                max_output_tokens = 4000  # Increased to reduce truncation errors
             elif content_type == "hackernews":
-                max_output_tokens = 6000
+                max_output_tokens = 30000  # Needs even more for article + comments
 
             try:
                 response = self.client.responses.parse(
@@ -947,11 +975,26 @@ class OpenAISummarizationService:
             except ValidationError as validation_error:
                 logger.warning("OpenAI structured output validation failed: %s", validation_error)
                 raw_payload = self._extract_json_payload(validation_error) or ""
-                log_json_error(
-                    "openai_structured_output_error",
-                    raw_payload,
-                    validation_error,
-                    content_id=content_identifier,
+
+                # Try to repair truncated JSON before failing
+                if "EOF while parsing" in str(validation_error) and raw_payload:
+                    try:
+                        repaired = try_repair_truncated_json(raw_payload)
+                        if repaired:
+                            logger.info("Attempting to use repaired JSON after truncation")
+                            # Attempt to validate the repaired JSON
+                            if content_type == "news_digest":
+                                return NewsSummary.model_validate_json(repaired)
+                            else:
+                                return StructuredSummary.model_validate_json(repaired)
+                    except Exception as repair_error:
+                        logger.warning("JSON repair failed: %s", repair_error)
+
+                error_logger.log_processing_error(
+                    item_id=content_identifier or "unknown",
+                    error=validation_error,
+                    operation="openai_structured_output_error",
+                    context={"raw_payload": raw_payload, "response_length": len(raw_payload)},
                 )
                 raise StructuredSummaryRetryableError(
                     "OpenAI structured output validation failed; retrying"
@@ -959,22 +1002,23 @@ class OpenAISummarizationService:
 
             if not response.output:
                 logger.error("LLM returned no choices")
-                log_json_error(
-                    "openai_no_output",
-                    "",
-                    ValueError("LLM returned no output"),
-                    content_id=content_identifier,
+                error_logger.log_processing_error(
+                    item_id=content_identifier or "unknown",
+                    error=ValueError("LLM returned no output"),
+                    operation="openai_no_output",
+                    context={},
                 )
                 return None
 
             parsed_message = response.output_parsed
             if parsed_message is None:
                 logger.error("Parsed response missing from OpenAI response")
-                log_json_error(
-                    "openai_missing_parsed_message",
-                    getattr(response, "output_text", ""),
-                    ValueError("Parsed response missing"),
-                    content_id=content_identifier,
+                output_text = getattr(response, "output_text", "")
+                error_logger.log_processing_error(
+                    item_id=content_identifier or "unknown",
+                    error=ValueError("Parsed response missing"),
+                    operation="openai_missing_parsed_message",
+                    context={"output_text": output_text},
                 )
                 return None
 
@@ -985,20 +1029,20 @@ class OpenAISummarizationService:
             raise
         except OpenAIError as error:
             logger.error("OpenAI structured output error: %s", error)
-            log_json_error(
-                "openai_structured_output_error",
-                "",
-                error,
-                content_id=content_identifier,
+            error_logger.log_processing_error(
+                item_id=content_identifier or "unknown",
+                error=error,
+                operation="openai_structured_output_error",
+                context={},
             )
             return None
         except Exception as error:  # noqa: BLE001
             logger.error("Error generating structured summary: %s", error)
-            log_json_error(
-                "unexpected_error",
-                "",
-                error,
-                content_id=content_identifier,
+            error_logger.log_processing_error(
+                item_id=content_identifier or "unknown",
+                error=error,
+                operation="unexpected_error",
+                context={},
             )
             return None
 

@@ -23,6 +23,8 @@ class ContentListViewModel: ObservableObject {
 
     // Track if we're in favorites mode
     private var isFavoritesMode: Bool = false
+    // Track if we're in recently read mode
+    private var isRecentlyReadMode: Bool = false
 
     @Published var selectedContentType: String = "all" {
         didSet {
@@ -47,8 +49,9 @@ class ContentListViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        // Reset pagination and favorites mode when loading fresh content
+        // Reset pagination and special modes when loading fresh content
         isFavoritesMode = false
+        isRecentlyReadMode = false
         nextCursor = nil
         hasMore = false
 
@@ -85,6 +88,8 @@ class ContentListViewModel: ObservableObject {
 
             if isFavoritesMode {
                 response = try await contentService.fetchFavoritesList(cursor: cursor)
+            } else if isRecentlyReadMode {
+                response = try await contentService.fetchRecentlyReadList(cursor: cursor)
             } else {
                 response = try await contentService.fetchContentList(
                     contentType: selectedContentType,
@@ -97,7 +102,7 @@ class ContentListViewModel: ObservableObject {
             // Append new contents to existing list
             var items = response.contents
 
-            // Apply read filter locally for favorites
+            // Apply read filter locally for favorites only (not recently read - all items are read by definition)
             if isFavoritesMode {
                 switch selectedReadFilter {
                 case "unread":
@@ -236,6 +241,7 @@ class ContentListViewModel: ObservableObject {
 
         // Set favorites mode and reset pagination
         isFavoritesMode = true
+        isRecentlyReadMode = false
         nextCursor = nil
         hasMore = false
 
@@ -252,6 +258,31 @@ class ContentListViewModel: ObservableObject {
                 break
             }
             contents = items
+            availableDates = response.availableDates
+            contentTypes = response.contentTypes
+            nextCursor = response.nextCursor
+            hasMore = response.hasMore
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
+    func loadRecentlyRead() async {
+        isLoading = true
+        errorMessage = nil
+
+        // Set recently read mode and reset pagination
+        isFavoritesMode = false
+        isRecentlyReadMode = true
+        nextCursor = nil
+        hasMore = false
+
+        do {
+            let response = try await contentService.fetchRecentlyReadList(cursor: nil)
+            // Don't apply read filter for recently read - all items are already read by definition
+            contents = response.contents
             availableDates = response.availableDates
             contentTypes = response.contentTypes
             nextCursor = response.nextCursor

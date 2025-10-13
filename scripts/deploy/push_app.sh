@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# SSH connection multiplexing for persistent connection
+SSH_CONTROL_PATH="/tmp/ssh-news-deploy-$$"
+
+establish_ssh_connection() {
+  echo "→ Establishing persistent SSH connection to $REMOTE_HOST"
+  ssh -M -o ControlPath="$SSH_CONTROL_PATH" -o ControlPersist=10m -fN "$REMOTE_HOST"
+
+  # Start sudo keepalive loop on remote host to prevent timeout
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo -v && nohup bash -c 'while true; do sleep 50; sudo -nv; done' >/dev/null 2>&1 &"
+  echo "→ SSH connection established and sudo authenticated (keepalive active)"
+}
+
 # Sync the entire app repo to a remote host and set ownership to newsapp.
 # Safe by default: excludes caches/venvs/git/node_modules/dbs.
 #
@@ -89,6 +101,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Set trap to clean up SSH connection and sudo keepalive on exit
+cleanup() {
+  # Kill remote sudo keepalive loop
+  ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "pkill -f 'while true; do sleep 50; sudo -nv; done'" 2>/dev/null || true
+  # Close SSH connection
+  ssh -O exit -o ControlPath="$SSH_CONTROL_PATH" "$REMOTE_HOST" 2>/dev/null || true
+  rm -f "$SSH_CONTROL_PATH"
+}
+trap cleanup EXIT
+
 # Resolve repo root (this script lives in scripts/deploy/)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
@@ -99,12 +121,35 @@ if [[ -f "uv.lock" ]]; then
   LOCAL_UV_LOCK_HASH="$(sha256sum uv.lock | awk '{print $1}')"
 fi
 
+if "$DEBUG"; then
+  set -x
+  echo "DEBUG: REMOTE_HOST=$REMOTE_HOST REMOTE_DIR=$REMOTE_DIR OWNER_GROUP=$OWNER_GROUP REMOTE_STAGING=$REMOTE_STAGING"
+  echo "DEBUG: RSYNC_DELETE=$RSYNC_DELETE DO_INSTALL=$DO_INSTALL PY_VER=$PY_VER RESTART_SUP=$RESTART_SUP"
+fi
+
+if [[ "$OWNER_GROUP" == *:* ]]; then
+  SERVICE_USER="${OWNER_GROUP%%:*}"
+  SERVICE_GROUP="${OWNER_GROUP##*:}"
+else
+  SERVICE_USER="$OWNER_GROUP"
+  SERVICE_GROUP="$OWNER_GROUP"
+fi
+
+if [[ -z "$SERVICE_USER" || -z "$SERVICE_GROUP" ]]; then
+  echo "Unable to determine service user/group from owner group: $OWNER_GROUP" >&2
+  exit 1
+fi
+
+# Establish persistent SSH connection and authenticate sudo once
+establish_ssh_connection
+
+# Check remote uv.lock hash to determine if venv needs refresh
 REMOTE_UV_LOCK_HASH=""
 REMOTE_HASH_CMD_SUDO=$(printf "sudo -n sha256sum %q" "$REMOTE_DIR/uv.lock")
 REMOTE_HASH_CMD=$(printf "sha256sum %q" "$REMOTE_DIR/uv.lock")
-if REMOTE_HASH_OUTPUT=$(ssh "$REMOTE_HOST" "$REMOTE_HASH_CMD_SUDO" 2>/dev/null); then
+if REMOTE_HASH_OUTPUT=$(ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "$REMOTE_HASH_CMD_SUDO" 2>/dev/null); then
   REMOTE_UV_LOCK_HASH="$(printf '%s' "$REMOTE_HASH_OUTPUT" | awk '{print $1}' | tr -d '\r')"
-elif REMOTE_HASH_OUTPUT=$(ssh "$REMOTE_HOST" "$REMOTE_HASH_CMD" 2>/dev/null); then
+elif REMOTE_HASH_OUTPUT=$(ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "$REMOTE_HASH_CMD" 2>/dev/null); then
   REMOTE_UV_LOCK_HASH="$(printf '%s' "$REMOTE_HASH_OUTPUT" | awk '{print $1}' | tr -d '\r')"
 else
   REMOTE_UV_LOCK_HASH=""
@@ -127,29 +172,10 @@ if "$FORCE_ENV"; then
   SHOULD_REMOVE_REMOTE_VENV=true
 fi
 
-if "$DEBUG"; then
-  set -x
-  echo "DEBUG: REMOTE_HOST=$REMOTE_HOST REMOTE_DIR=$REMOTE_DIR OWNER_GROUP=$OWNER_GROUP REMOTE_STAGING=$REMOTE_STAGING"
-  echo "DEBUG: RSYNC_DELETE=$RSYNC_DELETE DO_INSTALL=$DO_INSTALL PY_VER=$PY_VER RESTART_SUP=$RESTART_SUP"
-fi
-
-if [[ "$OWNER_GROUP" == *:* ]]; then
-  SERVICE_USER="${OWNER_GROUP%%:*}"
-  SERVICE_GROUP="${OWNER_GROUP##*:}"
-else
-  SERVICE_USER="$OWNER_GROUP"
-  SERVICE_GROUP="$OWNER_GROUP"
-fi
-
-if [[ -z "$SERVICE_USER" || -z "$SERVICE_GROUP" ]]; then
-  echo "Unable to determine service user/group from owner group: $OWNER_GROUP" >&2
-  exit 1
-fi
-
 echo "→ Preparing remote directories on $REMOTE_HOST"
 # Staging can be created without sudo; app dir typically needs sudo
-ssh "$REMOTE_HOST" "mkdir -p '$REMOTE_STAGING' && chmod 755 '$REMOTE_STAGING'" || true
-ssh -tt "$REMOTE_HOST" "sudo mkdir -p '$REMOTE_DIR' && sudo chown '$OWNER_GROUP' '$REMOTE_DIR' && sudo chmod 755 '$REMOTE_DIR' && echo 'Remote app dir prepared: $REMOTE_DIR'"
+ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "mkdir -p '$REMOTE_STAGING' && chmod 755 '$REMOTE_STAGING'" || true
+ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo mkdir -p '$REMOTE_DIR' && sudo chown '$OWNER_GROUP' '$REMOTE_DIR' && sudo chmod 755 '$REMOTE_DIR' && echo 'Remote app dir prepared: $REMOTE_DIR'"
 
 echo "→ Rsync to staging: $REMOTE_HOST:$REMOTE_STAGING (delete=$RSYNC_DELETE)"
 
@@ -162,13 +188,13 @@ for pat in "${EXCLUDES[@]}"; do
 done
 
 # Trailing slash sends repo contents (not the top-level dir)
-rsync "${RSYNC_ARGS[@]}" ./ "$REMOTE_HOST:$REMOTE_STAGING/"
+rsync "${RSYNC_ARGS[@]}" -e "ssh -S $SSH_CONTROL_PATH" ./ "$REMOTE_HOST:$REMOTE_STAGING/"
 
 echo "→ Promoting staging to app dir with proper ownership (rsync --chown)"
 REMOTE_PROMOTE_SCRIPT="/tmp/news_app_promote.sh"
 REMOTE_PROMOTE_USER="$PROMOTE_USER"
 
-ssh "$REMOTE_HOST" "cat > '$REMOTE_PROMOTE_SCRIPT'" <<'REMOTE_SCRIPT'
+ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "cat > '$REMOTE_PROMOTE_SCRIPT'" <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -219,19 +245,19 @@ rsync "${RSYNC_OPTS[@]}" "$REMOTE_STAGING/" "$REMOTE_DIR/"
 echo "[remote] rsync promotion done"
 REMOTE_SCRIPT
 
-ssh "$REMOTE_HOST" "chmod 750 '$REMOTE_PROMOTE_SCRIPT'"
-if ! ssh -tt "$REMOTE_HOST" "sudo -u ${REMOTE_PROMOTE_USER} '$REMOTE_PROMOTE_SCRIPT' '$REMOTE_STAGING' '$REMOTE_DIR' '$OWNER_GROUP' '$RSYNC_DELETE' '$DEBUG'"; then
+ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "chmod 750 '$REMOTE_PROMOTE_SCRIPT'"
+if ! ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo -u ${REMOTE_PROMOTE_USER} '$REMOTE_PROMOTE_SCRIPT' '$REMOTE_STAGING' '$REMOTE_DIR' '$OWNER_GROUP' '$RSYNC_DELETE' '$DEBUG'"; then
   PROMOTE_EXIT=$?
-  ssh "$REMOTE_HOST" "rm -f '$REMOTE_PROMOTE_SCRIPT'" || true
+  ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "rm -f '$REMOTE_PROMOTE_SCRIPT'" || true
   exit "$PROMOTE_EXIT"
 fi
-ssh "$REMOTE_HOST" "rm -f '$REMOTE_PROMOTE_SCRIPT'" || true
+ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "rm -f '$REMOTE_PROMOTE_SCRIPT'" || true
 
 if "$SHOULD_REMOVE_REMOTE_VENV"; then
   VENV_REASON=${REMOVE_REMOTE_VENV_REASON:-uv.lock changed}
   echo "→ Removing remote virtualenv at $REMOTE_DIR/.venv ($VENV_REASON)"
   REMOVE_VENV_CMD=$(printf "sudo bash -lc %q" "if [[ -d '$REMOTE_DIR/.venv' ]]; then rm -rf '$REMOTE_DIR/.venv'; fi")
-  ssh -tt "$REMOTE_HOST" "$REMOVE_VENV_CMD"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$REMOVE_VENV_CMD"
 else
   echo "→ uv.lock unchanged; preserving remote virtualenv"
 fi
@@ -242,24 +268,24 @@ if "$DO_INSTALL"; then
   printf -v REMOTE_CMD 'sudo -u %q -H bash -lc %q' \
     "$SERVICE_USER" \
     "set -euo pipefail; if [[ ! -x \"$ENV_SCRIPT\" ]]; then echo 'Env setup script missing or not executable: $ENV_SCRIPT' >&2; exit 1; fi; \"$ENV_SCRIPT\" --python-version \"$PY_VER\""
-  ssh -tt "$REMOTE_HOST" "$REMOTE_CMD"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$REMOTE_CMD"
   ENV_REFRESHED=true
 fi
 
-if [[ "$ENV_REFRESHED" != "true" ]]; then
-  echo "→ Finalizing remote uv environment via setup script"
+if [[ "$ENV_REFRESHED" != "true" && "$SHOULD_REMOVE_REMOTE_VENV" == "true" ]]; then
+  echo "→ Rebuilding remote uv environment via setup script (venv was removed)"
   ENV_SCRIPT="$REMOTE_DIR/scripts/setup_uv_env.sh"
   printf -v REMOTE_CMD 'sudo -u %q -H bash -lc %q' \
     "$SERVICE_USER" \
     "set -euo pipefail; if [[ ! -x \"$ENV_SCRIPT\" ]]; then echo 'Env setup script missing or not executable: $ENV_SCRIPT' >&2; exit 1; fi; \"$ENV_SCRIPT\" --python-version \"$PY_VER\""
-  ssh -tt "$REMOTE_HOST" "$REMOTE_CMD"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$REMOTE_CMD"
   ENV_REFRESHED=true
 fi
 
 PLAYWRIGHT_BIN="$REMOTE_DIR/.venv/bin/playwright"
 printf -v REMOTE_PLAYWRIGHT_CMD 'set -euo pipefail; if [[ -x %q ]]; then %q install chromium; else echo "Playwright CLI not found at %s; skipping install" >&2; fi' \
   "$PLAYWRIGHT_BIN" "$PLAYWRIGHT_BIN" "$PLAYWRIGHT_BIN"
-ssh -tt "$REMOTE_HOST" "$(printf "sudo -u %q -H bash -lc %q" "$SERVICE_USER" "$REMOTE_PLAYWRIGHT_CMD")"
+ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "sudo -u %q -H bash -lc %q" "$SERVICE_USER" "$REMOTE_PLAYWRIGHT_CMD")"
 
 if "$RESTART_SUP"; then
   echo "→ Reloading Supervisor and restarting programs: ${PROGRAMS[*]}"
@@ -268,11 +294,14 @@ if "$RESTART_SUP"; then
     printf -v REMOTE_SUP_CMD '%s && sudo supervisorctl restart %q' "$REMOTE_SUP_CMD" "$prog"
   done
   REMOTE_SUP_CMD+=" && sudo supervisorctl status"
-  ssh -tt "$REMOTE_HOST" "$(printf "bash -lc %q" "$REMOTE_SUP_CMD")"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "bash -lc %q" "$REMOTE_SUP_CMD")"
+
+  echo "→ Restarting all supervisor services"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart all"
 fi
 
 echo "→ Copying .env.racknerd to .env via sudo cp"
 CP_ENV_CMD=$(printf "bash -lc %q" "cd '$REMOTE_DIR' && if [[ -f .env.racknerd ]]; then sudo cp .env.racknerd .env && sudo chown '$SERVICE_USER:$SERVICE_GROUP' .env && sudo chmod 600 .env; else echo 'Warning: .env.racknerd missing; skipping copy' >&2; fi")
-ssh -tt "$REMOTE_HOST" "$CP_ENV_CMD"
+ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$CP_ENV_CMD"
 
 echo "✅ App sync completed to $REMOTE_HOST:$REMOTE_DIR"

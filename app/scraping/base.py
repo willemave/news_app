@@ -19,15 +19,18 @@ All scrapers must set both 'platform' and 'source' fields in metadata:
 1) platform: the scraper identifier (lowercase), e.g.
    - hackernews, reddit, substack, podcast, twitter, youtube
 
-2) source: the full domain name of the linked content, except for Reddit
-   - For Reddit only, source is the subreddit name (e.g., MachineLearning)
+2) source: the configured NAME from YAML for articles/podcasts, NEVER overwritten by processors
+   - For Substack/Podcasts: Use the "name" field from config YAML (e.g., "Import AI", "Stratechery")
+   - For Reddit: Use the subreddit name (e.g., "MachineLearning")
+   - For HackerNews/other aggregators: Use the source domain of the linked article
+   - The domain is preserved separately in 'source_domain' field for reference
    - Examples:
-     - Hacker News link to https://github.com/... → platform=hackernews, source=github.com
-     - Substack link https://importai.substack.com/... → platform=substack, source=importai.substack.com
+     - Substack configured as name="Import AI" → platform=substack, source=Import AI
+     - Podcast configured as name="Stratechery" → platform=podcast, source=Stratechery
      - Reddit post in r/MachineLearning → platform=reddit, source=MachineLearning
-     - Podcast episode page https://stratechery.com/... → platform=podcast, source=stratechery.com
+     - Hacker News link to github.com → platform=hackernews, source=github.com
 
-This convention keeps platform stable for filtering (by scraper) and source useful for grouping by site.
+The source field is IMMUTABLE after scraping - processors must preserve it.
 """
 
 

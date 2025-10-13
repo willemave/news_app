@@ -243,7 +243,7 @@ class ContentWorker:
                 "author": extracted_data.get("author"),
                 "publication_date": extracted_data.get("publication_date"),
                 "content_type": extracted_data.get("content_type", "html"),
-                "source": extracted_data.get("source") or existing_metadata.get("source"),
+                "source": existing_metadata.get("source"),  # Never overwrite source from scraper
                 "final_url": final_url,
             }
 
@@ -344,6 +344,7 @@ class ContentWorker:
                         news_summary_payload = summary_dict.copy()
                         news_summary_payload.setdefault("classification", summary.classification)
                         content.metadata["summary"] = news_summary_payload
+                        # Classification will be synced to DB column by domain_to_content
                         article_section = content.metadata.get("article", {})
                         article_section.setdefault(
                             "url",
@@ -359,10 +360,7 @@ class ContentWorker:
                         )
                     else:
                         content.metadata["summary"] = summary_dict
-                        if summary_dict.get("classification"):
-                            content.metadata.setdefault("summary", {}).setdefault(
-                                "classification", summary_dict["classification"]
-                            )
+                        # Classification will be synced to DB column by domain_to_content
                         if summary_dict.get("title") and not content.title:
                             content.title = summary_dict["title"]
                         logger.info(

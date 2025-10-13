@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from app.core.settings import get_settings
 from app.templates import templates
@@ -173,6 +173,45 @@ async def errors_dashboard(request: Request, hours: int = 24, min_errors: int = 
             "llm_prompt_markdown": prompt,
         },
     )
+
+
+@router.post("/errors/reset")
+async def reset_error_logs():
+    """Reset all error logs by deleting all log files in the errors directory.
+
+    Returns:
+        Redirect to errors dashboard
+
+    Raises:
+        HTTPException: If there's an error during deletion
+    """
+    deleted_count = 0
+    errors = []
+
+    if not ERRORS_DIR.exists():
+        raise HTTPException(status_code=404, detail="Errors directory not found")
+
+    try:
+        # Delete all .log files
+        for file_path in ERRORS_DIR.glob("*.log"):
+            try:
+                file_path.unlink()
+                deleted_count += 1
+            except Exception as e:
+                errors.append(f"Failed to delete {file_path.name}: {str(e)}")
+
+        # Delete all .jsonl files
+        for file_path in ERRORS_DIR.glob("*.jsonl"):
+            try:
+                file_path.unlink()
+                deleted_count += 1
+            except Exception as e:
+                errors.append(f"Failed to delete {file_path.name}: {str(e)}")
+
+        # Redirect back to errors page
+        return RedirectResponse(url="/admin/errors", status_code=303)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error resetting logs: {str(e)}")
 
 
 # ===== Helpers adapted from scripts/analyze_logs_for_fixes.py (trimmed for server use) =====

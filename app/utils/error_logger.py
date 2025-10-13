@@ -145,47 +145,6 @@ class GenericErrorLogger:
 
         self.log_error(error=error, operation=operation or "feed_processing", context=context)
 
-
-def log_scraper_event(
-    *,
-    service: str,
-    event: str,
-    level: int = logging.INFO,
-    metric: str | None = None,
-    **fields: Any,
-) -> None:
-    """Emit a structured scraper event log and optionally increment metrics."""
-
-    payload = {
-        "timestamp": datetime.now().isoformat(),
-        "service": service,
-        "event": event,
-    }
-    payload.update({k: v for k, v in fields.items() if v is not None})
-
-    logger.log(level, "SCRAPER_EVENT %s", json.dumps(payload, ensure_ascii=False))
-
-    if metric:
-        SCRAPER_METRICS[service][metric] += 1
-
-
-def increment_scraper_metric(service: str, metric: str, amount: int = 1) -> None:
-    """Increment a scraper metric counter."""
-
-    SCRAPER_METRICS[service][metric] += amount
-
-
-def get_scraper_metrics() -> dict[str, dict[str, int]]:
-    """Return current scraper metric counters (primarily for tests)."""
-
-    return {service: dict(metrics) for service, metrics in SCRAPER_METRICS.items()}
-
-
-def reset_scraper_metrics() -> None:
-    """Clear scraper metrics. Useful in tests to avoid cross pollution."""
-
-    SCRAPER_METRICS.clear()
-
     def _extract_http_details(self, response: Any) -> dict[str, Any]:
         """Extract useful details from HTTP response object."""
         details = {}
@@ -246,6 +205,47 @@ def reset_scraper_metrics() -> None:
             logger.error(f"Failed to read error log: {e}")
 
         return errors
+
+
+def log_scraper_event(
+    *,
+    service: str,
+    event: str,
+    level: int = logging.INFO,
+    metric: str | None = None,
+    **fields: Any,
+) -> None:
+    """Emit a structured scraper event log and optionally increment metrics."""
+
+    payload = {
+        "timestamp": datetime.now().isoformat(),
+        "service": service,
+        "event": event,
+    }
+    payload.update({k: v for k, v in fields.items() if v is not None})
+
+    logger.log(level, "SCRAPER_EVENT %s", json.dumps(payload, ensure_ascii=False))
+
+    if metric:
+        SCRAPER_METRICS[service][metric] += 1
+
+
+def increment_scraper_metric(service: str, metric: str, amount: int = 1) -> None:
+    """Increment a scraper metric counter."""
+
+    SCRAPER_METRICS[service][metric] += amount
+
+
+def get_scraper_metrics() -> dict[str, dict[str, int]]:
+    """Return current scraper metric counters (primarily for tests)."""
+
+    return {service: dict(metrics) for service, metrics in SCRAPER_METRICS.items()}
+
+
+def reset_scraper_metrics() -> None:
+    """Clear scraper metrics. Useful in tests to avoid cross pollution."""
+
+    SCRAPER_METRICS.clear()
 
 
 def create_error_logger(component: str, log_dir: str | Path | None = None) -> GenericErrorLogger:

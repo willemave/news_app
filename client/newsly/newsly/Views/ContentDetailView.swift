@@ -31,7 +31,7 @@ struct ContentDetailView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 10) {
+            VStack(spacing: 0) {
                 if viewModel.isLoading {
                     LoadingView()
                         .frame(minHeight: 400)
@@ -41,78 +41,84 @@ struct ContentDetailView: View {
                     }
                     .frame(minHeight: 400)
                 } else if let content = viewModel.content {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 0) {
                     // Compact Header Section
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text(content.displayTitle)
-                            .font(.title2)
+                            .font(.title)
                             .fontWeight(.bold)
-                        
+
                         // Compact Metadata Row
-                        HStack(spacing: 12) {
+                        HStack(spacing: 8) {
                             if let contentType = content.contentTypeEnum {
                                 ContentTypeBadge(contentType: contentType)
                             }
-                            
+
                             if let source = content.source {
                                 Text(source)
-                                    .font(.caption)
+                                    .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
-                            
+
+                            if content.source != nil && content.publicationDate != nil {
+                                Text("•")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+
                             if let pubDate = content.publicationDate {
                                 Text(formatDate(pubDate))
-                                    .font(.caption)
+                                    .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
-                            
+
                             Spacer()
                         }
-                        
+
                         // Compact Action Buttons Row
                         HStack(spacing: 8) {
                             if let url = URL(string: content.url) {
                                 Link(destination: url) {
                                     Image(systemName: "arrow.up.right.square")
-                                        .font(.system(size: 20))
+                                        .font(.system(size: 18))
                                 }
                                 .buttonStyle(.borderedProminent)
                             }
-                            
+
                             Button(action: { viewModel.shareContent() }) {
                                 Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 18))
                             }
                             .buttonStyle(.bordered)
-                            
+
                             // Chat with AI button
-                            Button(action: { 
-                                Task { 
-                                    await viewModel.openInChatGPT() 
+                            Button(action: {
+                                Task {
+                                    await viewModel.openInChatGPT()
                                 }
                             }) {
                                 Image(systemName: "brain")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 18))
                             }
                             .buttonStyle(.bordered)
-                            
+
                             // Copy button for podcasts only
                             if content.contentTypeEnum == .podcast {
                                 Button(action: { viewModel.copyPodcastContent() }) {
                                     Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 20))
+                                        .font(.system(size: 18))
                                 }
                                 .buttonStyle(.bordered)
                             }
-                            
+
                             // Favorite button
-                            Button(action: { 
-                                Task { 
-                                    await viewModel.toggleFavorite() 
+                            Button(action: {
+                                Task {
+                                    await viewModel.toggleFavorite()
                                 }
                             }) {
                                 Image(systemName: content.isFavorited ? "star.fill" : "star")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 18))
                                     .foregroundColor(content.isFavorited ? .yellow : .primary)
                             }
                             .buttonStyle(.bordered)
@@ -124,13 +130,13 @@ struct ContentDetailView: View {
                                 }
                             }) {
                                 Image(systemName: content.isUnliked ? "hand.thumbsdown.fill" : "hand.thumbsdown")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 18))
                                     .foregroundColor(content.isUnliked ? .red : .primary)
                             }
                             .buttonStyle(.bordered)
-                            
+
                             Spacer()
-                            
+
                             // Navigation indicators
                             if allContentIds.count > 1 {
                                 Text("\(currentIndex + 1) / \(allContentIds.count)")
@@ -139,40 +145,42 @@ struct ContentDetailView: View {
                             }
                         }
                     }
-                    .padding()
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .cornerRadius(12)
-                    
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+
+                    Divider()
+                        .padding(.vertical, 8)
+
                     // Structured Summary Section
                     if let structuredSummary = content.structuredSummary {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Summary")
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                            
-                            StructuredSummaryView(summary: structuredSummary)
-                        }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(12)
+                        StructuredSummaryView(summary: structuredSummary)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
                     }
 
                     if content.contentTypeEnum == .news {
                         if let newsMetadata = content.newsMetadata {
+                            Divider()
+                                .padding(.vertical, 8)
+
                             NewsDigestDetailView(content: content, metadata: newsMetadata)
+                                .padding(.horizontal, 20)
                         } else {
-                            VStack(alignment: .leading, spacing: 12) {
+                            Divider()
+                                .padding(.vertical, 8)
+
+                            VStack(alignment: .leading, spacing: 16) {
                                 Text("News Updates")
                                     .font(.title2)
-                                    .fontWeight(.semibold)
+                                    .fontWeight(.bold)
 
                                 if let markdown = content.renderedMarkdown, !markdown.isEmpty {
                                     Markdown(markdown)
                                         .markdownTheme(.gitHub)
                                 } else if let items = content.newsItems, !items.isEmpty {
-                                    VStack(alignment: .leading, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 16) {
                                         ForEach(items) { item in
-                                            VStack(alignment: .leading, spacing: 6) {
+                                            VStack(alignment: .leading, spacing: 8) {
                                                 if let url = URL(string: item.url) {
                                                     Link(item.title ?? item.url, destination: url)
                                                         .font(.headline)
@@ -183,54 +191,60 @@ struct ContentDetailView: View {
 
                                                 if let summary = item.summary, !summary.isEmpty {
                                                     Text(summary)
-                                                        .font(.subheadline)
+                                                        .font(.body)
                                                         .foregroundColor(.secondary)
                                                 }
                                             }
-                                            Divider()
+
+                                            if item.id != items.last?.id {
+                                                Divider()
+                                                    .padding(.vertical, 4)
+                                            }
                                         }
                                     }
                                 } else {
                                     Text("No news metadata available.")
-                                        .font(.callout)
+                                        .font(.body)
                                         .foregroundColor(.secondary)
                                 }
                             }
-                            .padding()
-                            .background(Color(UIColor.secondarySystemBackground))
-                            .cornerRadius(12)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
                         }
                     }
 
                     // Full Content Section
                     // For podcasts, check podcastMetadata.transcript first, then fall back to fullMarkdown
                     if content.contentTypeEnum == .podcast, let podcastMetadata = content.podcastMetadata, let transcript = podcastMetadata.transcript {
-                        VStack(alignment: .leading, spacing: 8) {
+                        Divider()
+                            .padding(.vertical, 8)
+
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Transcript")
                                 .font(.title2)
-                                .fontWeight(.semibold)
-                            
+                                .fontWeight(.bold)
+
                             Markdown(transcript)
                                 .markdownTheme(.gitHub)
                         }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(12)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
                     } else if let fullMarkdown = content.fullMarkdown {
-                        VStack(alignment: .leading, spacing: 8) {
+                        Divider()
+                            .padding(.vertical, 8)
+
+                        VStack(alignment: .leading, spacing: 12) {
                             Text(content.contentTypeEnum == .podcast ? "Transcript" : "Full Article")
                                 .font(.title2)
-                                .fontWeight(.semibold)
-                            
+                                .fontWeight(.bold)
+
                             Markdown(fullMarkdown)
                                 .markdownTheme(.gitHub)
                         }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(12)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
                     }
                 }
-                .padding()
             }
             }
         }
@@ -408,13 +422,38 @@ struct ContentDetailView: View {
     private func formatDate(_ dateString: String) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        guard let date = formatter.date(from: dateString) else { return dateString }
-        
+
+        var date = formatter.date(from: dateString)
+
+        // Try without fractional seconds if first attempt fails
+        if date == nil {
+            formatter.formatOptions = [.withInternetDateTime]
+            date = formatter.date(from: dateString)
+        }
+
+        guard let validDate = date else { return dateString }
+
+        let now = Date()
+        let timeInterval = now.timeIntervalSince(validDate)
+
+        // Use relative formatting for dates within the last 7 days
+        if timeInterval < 7 * 24 * 60 * 60 && timeInterval >= 0 {
+            let relativeFormatter = RelativeDateTimeFormatter()
+            relativeFormatter.unitsStyle = .short
+            return relativeFormatter.localizedString(for: validDate, relativeTo: now)
+        }
+
+        // Use compact format for older dates
         let displayFormatter = DateFormatter()
-        displayFormatter.dateStyle = .medium
-        displayFormatter.timeStyle = .none
-        return displayFormatter.string(from: date)
+        displayFormatter.dateFormat = "MMM d"
+
+        // Add year if not current year
+        let calendar = Calendar.current
+        if !calendar.isDate(validDate, equalTo: now, toGranularity: .year) {
+            displayFormatter.dateFormat = "MMM d, yyyy"
+        }
+
+        return displayFormatter.string(from: validDate)
     }
     
     private func navigateToNext() {
