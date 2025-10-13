@@ -1,5 +1,6 @@
 from app.core.logging import get_logger
 from app.models.scraper_runs import ScraperStats
+from app.scraping.atom_unified import AtomScraper
 from app.scraping.base import BaseScraper
 from app.scraping.hackernews_unified import HackerNewsUnifiedScraper
 from app.scraping.podcast_unified import PodcastUnifiedScraper
@@ -25,6 +26,7 @@ class ScraperRunner:
             PodcastUnifiedScraper(),
             TwitterUnifiedScraper(),
             YouTubeUnifiedScraper(),
+            AtomScraper(),
         ]
 
     def run_all(self) -> dict[str, int]:
