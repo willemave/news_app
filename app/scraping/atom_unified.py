@@ -2,7 +2,6 @@
 
 import contextlib
 import logging
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -125,9 +124,7 @@ class AtomScraper(BaseScraper):
                 logger.warning("Skipping empty feed URL.")
                 continue
 
-            logger.info(
-                f"Scraping Atom feed: {feed_url} (source: {source_name}, limit: {limit})"
-            )
+            logger.info(f"Scraping Atom feed: {feed_url} (source: {source_name}, limit: {limit})")
             try:
                 parsed_feed = feedparser.parse(feed_url)
 
@@ -147,7 +144,10 @@ class AtomScraper(BaseScraper):
                         bozo_exc, ENCODING_OVERRIDE_EXCEPTIONS
                     ):
                         logger.debug(
-                            "Feed %s has encoding declaration mismatch (CharacterEncodingOverride): %s",
+                            (
+                                "Feed %s has encoding declaration mismatch "
+                                "(CharacterEncodingOverride): %s"
+                            ),
                             feed_url,
                             bozo_exc,
                         )
@@ -159,13 +159,13 @@ class AtomScraper(BaseScraper):
                             feed_name=parsed_feed.feed.get("title", "Unknown Feed"),
                             operation="feed_parsing",
                         )
-                        logger.warning(
-                            "Feed %s may be ill-formed: %s", feed_url, bozo_exc
-                        )
+                        logger.warning("Feed %s may be ill-formed: %s", feed_url, bozo_exc)
 
                 # Extract feed name and description
                 feed_name = parsed_feed.feed.get("title", "Unknown Feed")
-                feed_description = parsed_feed.feed.get("subtitle", "") or parsed_feed.feed.get("description", "")
+                feed_description = parsed_feed.feed.get("subtitle", "") or parsed_feed.feed.get(
+                    "description", ""
+                )
 
                 logger.info(f"Processing feed: {feed_name} - {feed_description}")
 
@@ -253,6 +253,7 @@ class AtomScraper(BaseScraper):
         # Determine domain for metadata
         try:
             from urllib.parse import urlparse
+
             host = urlparse(link).netloc or ""
         except Exception:
             host = ""
