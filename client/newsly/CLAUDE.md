@@ -85,6 +85,31 @@ The iOS app connects to the Python FastAPI backend at `http://localhost:8000`:
 - **Responsive Design**: Adapts to different iOS device sizes
 - **Swipe Navigation**: Swipe left/right between articles in detail view (requires passing all content IDs)
 
+### News Grouped View Pattern
+
+The News tab uses a unique grouped display pattern different from Articles and Podcasts:
+
+**Pattern**:
+- Groups of exactly 5 news items displayed in cards
+- Auto-mark entire group as read when scrolled past (`.onDisappear`)
+- Replace individual "mark as read" with group-level actions
+
+**Models**:
+- `NewsGroup`: Wraps 5 `ContentSummary` items with group ID and read state
+- `groupedByFive()`: Extension method to chunk arrays into groups
+
+**ViewModels**:
+- `NewsGroupViewModel`: Specialized for grouped display
+  - Tracks `viewedGroupIds` to prevent duplicate marking
+  - Uses bulk mark-as-read endpoint for entire groups
+  - Handles pagination by loading 25 items (5 groups)
+
+**Views**:
+- `NewsGroupCard`: Custom card for 5-item groups
+- Actions: Favorite (first item), Convert (to article)
+
+**Critical**: Do NOT use `ContentListViewModel` for news tab - it's for infinite scroll patterns only.
+
 ### Build Configuration
 - `newsly.xcodeproj`: Xcode project file
 - `newsly.xcconfig`: Build configuration settings
