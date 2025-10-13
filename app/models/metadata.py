@@ -77,6 +77,14 @@ class StructuredSummary(BaseModel):
                 ],
                 "quotes": [{"text": "Notable quote from the content", "context": "Author Name"}],
                 "topics": ["AI", "Technology", "Innovation"],
+                "questions": [
+                    "How might these AI advances impact existing NLP applications?",
+                    "What are the potential ethical implications of this technology?"
+                ],
+                "counter_arguments": [
+                    "Critics argue that the claimed improvements may not generalize beyond specific benchmarks",
+                    "Alternative approaches like symbolic AI might offer more explainability"
+                ],
                 "summarization_date": "2025-06-14T10:30:00Z",
                 "full_markdown": (
                     "# AI Advances in Natural Language Processing\n\n"
@@ -95,6 +103,16 @@ class StructuredSummary(BaseModel):
     bullet_points: list[SummaryBulletPoint] = Field(..., min_items=3, max_items=50)
     quotes: list[ContentQuote] = Field(default_factory=list, max_items=50)
     topics: list[str] = Field(default_factory=list, max_items=50)
+    questions: list[str] = Field(
+        default_factory=list,
+        max_items=10,
+        description="Thought-provoking questions to help readers think critically about the content"
+    )
+    counter_arguments: list[str] = Field(
+        default_factory=list,
+        max_items=10,
+        description="Counter-arguments or alternative perspectives to the main claims"
+    )
     summarization_date: datetime = Field(default_factory=datetime.utcnow)
     classification: str = Field(
         default="to_read", description="Content classification: 'to_read' or 'skip'"

@@ -91,7 +91,7 @@ async def list_content(
 
     # Filter out "skip" classification articles
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
-    
+
     # Only show content that has been summarized
     query = query.filter(or_(summarized_clause, completed_news_clause))
 
@@ -211,7 +211,10 @@ async def favorites_list(
     # Query favorited content
     if favorite_content_ids:
         query = db.query(Content).filter(Content.id.in_(favorite_content_ids))
-        
+
+        # Filter out "skip" classification articles
+        query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
+
         # Order by most recent first
         contents = query.order_by(Content.created_at.desc()).all()
     else:

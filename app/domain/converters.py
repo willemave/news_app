@@ -146,6 +146,14 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
         if isinstance(src, str) and src.strip():
             existing.source = src.strip()
         existing.content_metadata = md
+
+        # Sync classification from summary metadata to DB column for filtering
+        summary = md.get("summary")
+        if isinstance(summary, dict):
+            classification = summary.get("classification")
+            if classification in ("to_read", "skip"):
+                existing.classification = classification
+
         if hasattr(existing, "is_aggregate"):
             existing.is_aggregate = content_data.is_aggregate
         existing.error_message = content_data.error_message

@@ -9,78 +9,165 @@ import SwiftUI
 
 struct StructuredSummaryView: View {
     let summary: StructuredSummary
-    
+    @State private var isKeyPointsExpanded = true
+    @State private var isQuestionsExpanded = false
+    @State private var isCounterArgsExpanded = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 20) {
+            // Key Points Section (expanded by default)
             if !summary.bulletPoints.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Key Points")
-                        .font(.headline)
-                    
-                    ForEach(summary.bulletPoints, id: \.text) { point in
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("•")
-                                .foregroundColor(.accentColor)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(point.text)
-                                    .font(.body)
-                                if let category = point.category {
-                                    Text(category.replacingOccurrences(of: "_", with: " ").capitalized)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                DisclosureGroup(isExpanded: $isKeyPointsExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(summary.bulletPoints, id: \.text) { point in
+                            HStack(alignment: .top, spacing: 12) {
+                                Circle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 6, height: 6)
+                                    .padding(.top, 7)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(point.text)
+                                        .font(.body)
+                                        .fixedSize(horizontal: false, vertical: true)
+
+                                    if let category = point.category {
+                                        Text(category.replacingOccurrences(of: "_", with: " ").capitalized)
+                                            .font(.caption)
+                                            .foregroundColor(categoryColor(for: category))
+                                            .fontWeight(.medium)
+                                    }
                                 }
                             }
                         }
                     }
+                    .padding(.top, 12)
+                } label: {
+                    Text("Key Points")
+                        .font(.title3)
+                        .fontWeight(.semibold)
                 }
+                .tint(.primary)
             }
-            
+
+            // Questions Section
+            if !summary.questions.isEmpty {
+                DisclosureGroup(isExpanded: $isQuestionsExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(Array(summary.questions.enumerated()), id: \.offset) { index, question in
+                            HStack(alignment: .top, spacing: 12) {
+                                Text("\(index + 1)")
+                                    .font(.body)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.accentColor)
+                                    .frame(width: 24, alignment: .trailing)
+
+                                Text(question)
+                                    .font(.body)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(.top, 12)
+                } label: {
+                    Text("Questions to Ask")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                }
+                .tint(.primary)
+            }
+
+            // Counter Arguments Section
+            if !summary.counterArguments.isEmpty {
+                DisclosureGroup(isExpanded: $isCounterArgsExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(summary.counterArguments, id: \.self) { argument in
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.body)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 20)
+
+                                Text(argument)
+                                    .font(.body)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(.top, 12)
+                } label: {
+                    Text("Counter Arguments")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                }
+                .tint(.primary)
+            }
+
             if !summary.quotes.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Notable Quotes")
-                        .font(.headline)
-                    
+                        .font(.title3)
+                        .fontWeight(.semibold)
+
                     ForEach(summary.quotes, id: \.text) { quote in
                         VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .top, spacing: 8) {
-                                Text("\u{201C}")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.accentColor)
+                            HStack(alignment: .top, spacing: 0) {
                                 Text(quote.text)
                                     .font(.body)
                                     .italic()
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
+
                             if let context = quote.context {
                                 Text("— \(context)")
-                                    .font(.caption)
+                                    .font(.callout)
                                     .foregroundColor(.secondary)
                             }
                         }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(8)
+                        .padding(.leading, 16)
+                        .overlay(
+                            Rectangle()
+                                .fill(Color.accentColor)
+                                .frame(width: 3),
+                            alignment: .leading
+                        )
                     }
                 }
             }
-            
+
             if !summary.topics.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Topics")
-                        .font(.headline)
-                    
+                        .font(.title3)
+                        .fontWeight(.semibold)
+
                     FlowLayout(spacing: 8) {
                         ForEach(summary.topics, id: \.self) { topic in
                             Text(topic)
-                                .font(.caption)
+                                .font(.subheadline)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(Color.accentColor.opacity(0.1))
+                                .background(Color.accentColor.opacity(0.15))
                                 .foregroundColor(.accentColor)
                                 .clipShape(Capsule())
                         }
                     }
                 }
             }
+        }
+    }
+
+    // Helper function for category colors
+    private func categoryColor(for category: String) -> Color {
+        switch category.lowercased() {
+        case "key_finding":
+            return .green
+        case "warning":
+            return .red
+        case "recommendation":
+            return .blue
+        default:
+            return .gray
         }
     }
 }
@@ -196,6 +283,14 @@ struct FlowLayout: Layout {
             Quote(text: "Sample quote", context: "John Doe")
         ],
         topics: ["Topic 1", "Topic 2"],
+        questions: [
+            "What are the implications of this approach?",
+            "How might this affect existing systems?"
+        ],
+        counterArguments: [
+            "Some critics argue that this approach is too complex",
+            "Alternative methods might be more efficient"
+        ],
         summarizationDate: nil,
         classification: "to_read"
     ))

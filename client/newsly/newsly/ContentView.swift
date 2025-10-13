@@ -43,7 +43,12 @@ struct ContentView: View {
                 .tabItem {
                     Label("Favorites", systemImage: "star.fill")
                 }
-            
+
+            RecentlyReadView()
+                .tabItem {
+                    Label("Recently Read", systemImage: "clock.fill")
+                }
+
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")

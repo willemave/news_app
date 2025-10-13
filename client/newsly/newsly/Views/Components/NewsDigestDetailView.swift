@@ -13,16 +13,20 @@ struct NewsDigestDetailView: View {
     let metadata: NewsMetadata
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 24) {
             if let summary = metadata.summary {
                 summarySection(summary: summary)
             }
 
             if let article = metadata.article {
+                Divider()
+                    .padding(.vertical, 4)
                 articleSection(article: article)
             }
 
             if let aggregator = metadata.aggregator {
+                Divider()
+                    .padding(.vertical, 4)
                 aggregatorSection(aggregator: aggregator)
             }
 
@@ -32,51 +36,42 @@ struct NewsDigestDetailView: View {
 
     @ViewBuilder
     private func summarySection(summary: NewsSummaryMetadata) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Digest Summary")
                     .font(.title2)
-                    .fontWeight(.semibold)
+                    .fontWeight(.bold)
 
-                if let classification = summary.classification {
-                    Text(classification.localizedCapitalized)
+                if let summarizationDate = summary.summarizationDate,
+                   let formatted = formatDate(summarizationDate) {
+                    Text("Generated \(formatted)")
                         .font(.caption)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(chipColor(for: classification))
-                        .foregroundColor(.white)
-                        .clipShape(Capsule())
+                        .foregroundColor(.secondary)
                 }
-            }
-
-            if let summarizationDate = summary.summarizationDate,
-               let formatted = formatDate(summarizationDate) {
-                Text("Generated \(formatted)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
 
             if let overview = summary.summary, !overview.isEmpty {
                 Text(overview)
                     .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if !summary.keyPoints.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Key Points")
                         .font(.headline)
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 10) {
                         ForEach(Array(summary.keyPoints.enumerated()), id: \.offset) { index, point in
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "circle.fill")
-                                    .font(.system(size: 6))
-                                    .padding(.top, 6)
+                            HStack(alignment: .top, spacing: 12) {
+                                Circle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 6, height: 6)
+                                    .padding(.top, 7)
+
                                 Text(point)
-                                    .font(.callout)
-                                    .foregroundColor(.primary)
-                                    .multilineTextAlignment(.leading)
+                                    .font(.body)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             .accessibilityElement(children: .combine)
                             .accessibilityLabel("Key point \(index + 1): \(point)")
@@ -89,163 +84,182 @@ struct NewsDigestDetailView: View {
                let articleURL = URL(string: articleURLString) {
                 let linkTitle = summary.title ?? content.displayTitle
                 Link(destination: articleURL) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "link")
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up.right.square")
                         Text(linkTitle)
                             .lineLimit(2)
                     }
                 }
-                .font(.footnote)
-                .foregroundColor(.blue)
+                .font(.callout)
             }
         }
-        .padding()
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
     }
 
     @ViewBuilder
     private func articleSection(article: NewsArticleMetadata) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Linked Article")
-                .font(.headline)
-                .fontWeight(.semibold)
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Linked Article")
+                    .font(.headline)
+                    .fontWeight(.semibold)
 
-            if let sourceDomain = article.sourceDomain {
-                Text(sourceDomain)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if let sourceDomain = article.sourceDomain {
+                    Text(sourceDomain)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             if let title = article.title, let urlString = article.url, let url = URL(string: urlString) {
                 Link(destination: url) {
-                    Text(title)
-                        .font(.body)
-                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.body)
+                        Text(title)
+                            .font(.body)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             } else if let urlString = article.url, let url = URL(string: urlString) {
                 Link(destination: url) {
-                    Text(urlString)
-                        .font(.body)
-                        .lineLimit(2)
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.body)
+                        Text(urlString)
+                            .font(.body)
+                            .lineLimit(2)
+                    }
                 }
             }
         }
-        .padding()
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
     }
 
     @ViewBuilder
     private func aggregatorSection(aggregator: NewsAggregatorMetadata) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Aggregator")
-                .font(.headline)
-                .fontWeight(.semibold)
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Aggregator")
+                    .font(.headline)
+                    .fontWeight(.semibold)
 
-            if let name = aggregator.name {
-                Text(name)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-            }
+                if let name = aggregator.name {
+                    Text(name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
 
-            if let feedName = aggregator.feedName {
-                Text(feedName)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if let feedName = aggregator.feedName {
+                    Text(feedName)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             if let title = aggregator.title {
                 Text(title)
-                    .font(.callout)
-                    .foregroundColor(.primary)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let summaryText = aggregator.summaryText {
                 Text(summaryText)
-                    .font(.callout)
+                    .font(.body)
                     .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let urlString = aggregator.url, let url = URL(string: urlString) {
-                Link("Open discussion", destination: url)
-                    .font(.footnote)
+                Link(destination: url) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up.right.square")
+                        Text("Open discussion")
+                    }
+                }
+                .font(.callout)
             }
 
             if !aggregator.relatedLinks.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Related links")
-                        .font(.caption)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Related Links")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
                         .foregroundColor(.secondary)
+
                     ForEach(aggregator.relatedLinks) { link in
                         if let url = URL(string: link.url) {
-                            Link(link.title ?? link.url, destination: url)
-                                .font(.footnote)
-                                .foregroundColor(.blue)
-                                .lineLimit(2)
+                            Link(destination: url) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "link")
+                                        .font(.caption)
+                                    Text(link.title ?? link.url)
+                                        .font(.callout)
+                                        .lineLimit(2)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        .padding()
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
     }
 
     @ViewBuilder
     private var legacyFallbackSection: some View {
         if let markdown = content.renderedMarkdown, !markdown.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            Divider()
+                .padding(.vertical, 8)
+
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Full Digest")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                    .font(.title2)
+                    .fontWeight(.bold)
 
                 Markdown(markdown)
                     .markdownTheme(.gitHub)
             }
-            .padding()
-            .background(Color(UIColor.secondarySystemBackground))
-            .cornerRadius(12)
         } else if let items = content.newsItems, !items.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Updates")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+            Divider()
+                .padding(.vertical, 8)
 
-                VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Updates")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                VStack(alignment: .leading, spacing: 16) {
                     ForEach(items) { item in
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 8) {
                             if let url = URL(string: item.url) {
-                                Link(item.title ?? item.url, destination: url)
-                                    .font(.subheadline)
+                                Link(destination: url) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.body)
+                                        Text(item.title ?? item.url)
+                                            .font(.body)
+                                            .fontWeight(.medium)
+                                    }
+                                }
                             } else {
                                 Text(item.title ?? item.url)
-                                    .font(.subheadline)
+                                    .font(.body)
+                                    .fontWeight(.medium)
                             }
 
                             if let summary = item.summary, !summary.isEmpty {
                                 Text(summary)
-                                    .font(.caption)
+                                    .font(.body)
                                     .foregroundColor(.secondary)
                             }
                         }
-                        Divider()
+
+                        if item.id != items.last?.id {
+                            Divider()
+                                .padding(.vertical, 4)
+                        }
                     }
                 }
             }
-            .padding()
-            .background(Color(UIColor.secondarySystemBackground))
-            .cornerRadius(12)
-        }
-    }
-
-    private func chipColor(for classification: String) -> Color {
-        switch classification.lowercased() {
-        case "skip":
-            return .gray
-        default:
-            return .blue
         }
     }
 

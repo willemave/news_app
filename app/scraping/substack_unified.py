@@ -254,7 +254,7 @@ class SubstackScraper(BaseScraper):
                 publication_date = datetime(*entry["published_parsed"][:6])
 
         # Create item for unified system
-        # Determine domain for source (full domain name)
+        # Determine domain for metadata
         try:
             from urllib.parse import urlparse
             host = urlparse(link).netloc or ""
@@ -266,8 +266,9 @@ class SubstackScraper(BaseScraper):
             "content_type": ContentType.ARTICLE,
             "metadata": {
                 "platform": "substack",  # Scraper identifier
-                # Source is the full domain name (e.g., importai.substack.com)
-                "source": host,
+                # Source is the configured name from YAML (never overwritten)
+                "source": source_name,
+                "source_domain": host,  # Store domain separately for reference
                 "feed_name": feed_name,
                 "feed_description": feed_description,
                 "author": entry.get("author"),

@@ -1,61 +1,33 @@
 import json
-from datetime import datetime
-from pathlib import Path
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import NewsSummary, StructuredSummary
+from app.utils.error_logger import GenericErrorLogger
 from app.utils.json_repair import strip_json_wrappers, try_repair_truncated_json
 
 logger = get_logger(__name__)
 settings = get_settings()
+error_logger = GenericErrorLogger("google_flash")
 
 # Constants
 MAX_CONTENT_PREVIEW = 50000
 LONG_CONTENT_THRESHOLD = 12000
 LONG_CONTENT_MAX_TOKENS = 35000
 
-# Create logs directory if it doesn't exist
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
-ERRORS_DIR = LOG_DIR / "errors"
-ERRORS_DIR.mkdir(exist_ok=True)
-JSON_ERROR_LOG = ERRORS_DIR / "llm_json_errors.log"
 
-
-def log_json_error(
-    error_type: str, response_text: str, error: Exception, content_id: str | None = None
-):
-    """Log JSON parsing errors to a file for debugging."""
-    timestamp = datetime.utcnow().isoformat()
-    log_entry = {
-        "timestamp": timestamp,
-        "error_type": error_type,
-        "content_id": content_id,
-        "error_message": str(error),
-        "response_text": response_text,
-        "response_length": len(response_text)
-        if response_text and isinstance(response_text, str)
-        else 0,
-    }
-
-    try:
-        with open(JSON_ERROR_LOG, "a") as f:
-            f.write(json.dumps(log_entry) + "\n")
-    except Exception as e:
-        logger.error(f"Failed to write to JSON error log: {e}")
-
-
-def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quotes: int, content: str) -> str:
+def generate_summary_prompt(
+    content_type: str, max_bullet_points: int, max_quotes: int, content: str
+) -> str:
     """Generate prompt based on content type"""
     if content_type == "hackernews":
         return f"""
-        You are an expert content analyst. Analyze the following HackerNews discussion, which includes 
-        the linked article content (if any) and community comments. Provide a structured summary that 
+        You are an expert content analyst. Analyze the following HackerNews discussion, which includes
+        the linked article content (if any) and community comments. Provide a structured summary that
         captures both the main content and key insights from the discussion.
-        
+
         Important:
         - Generate a descriptive title that captures the main theme (50-150 chars)
         - Start the title with "HN: " to indicate this is from HackerNews
@@ -68,23 +40,36 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         - Include up to {max_quotes} notable quotes (can be from article or comments)
         - For quotes from comments, use format "HN user [username]" as context
         - Include 3-8 relevant topic tags
+        - Generate 3-5 thought-provoking questions that help readers think critically about the content
+        - Identify 2-4 counter-arguments or alternative perspectives mentioned in comments or implied by the content
         - Add a "classification" field with either "to_read" or "skip"
         - Add a special section in the overview about the HN community response
         - Set "full_markdown" to include the article content AND a summary of key comments
-        
+
+        Questions Guidelines:
+        - Questions should prompt critical thinking about implications, limitations, or applications
+        - Draw from both the article content and HN discussion
+        - Focus on "what if", "how might", "what are the implications" style questions
+
+        Counter Arguments Guidelines:
+        - Look for dissenting opinions or skeptical viewpoints in HN comments
+        - Identify assumptions that could be challenged
+        - Include technical critiques or alternative approaches mentioned
+        - If no strong counter-arguments exist, you may leave this list empty
+
         Classification Guidelines:
         - Consider both article quality AND discussion quality
         - High-quality technical discussions should be "to_read" even if article is average
         - Set to "skip" if both article and comments lack substance
-        
+
         HackerNews Content and Discussion:
         {content}
         """
     elif content_type == "podcast":
         return f"""
-        You are an expert content analyst. Analyze the following podcast transcript and provide a 
+        You are an expert content analyst. Analyze the following podcast transcript and provide a
         structured summary with classification.
-        
+
         Important:
         - Generate a descriptive title that captures the main theme (50-150 chars)
         - The title should be compelling and informative, summarizing the key point or insight
@@ -95,16 +80,30 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         - Focus on the "why it matters" aspect rather than just restating the topic
         - Extract actual quotes when available, don't paraphrase
         - Make bullet points specific and information dense
-        - For the overview field: Start with a 50-100 word summary, then add 2-3 paragraphs (200-400 words) 
-          that provide a comprehensive overview of the entire podcast conversation. This should allow 
+        - For the overview field: Start with a 50-100 word summary, then add 2-3 paragraphs (200-400 words)
+          that provide a comprehensive overview of the entire podcast conversation. This should allow
           someone to quickly skim and understand the full context, main themes, and key takeaways.
         - Include {max_bullet_points} bullet points
-        - Include up to {max_quotes} notable quotes if available - each quote should be 
+        - Include up to {max_quotes} notable quotes if available - each quote should be
           at least 2-3 sentences long to provide meaningful context and insight
         - Include 3-8 relevant topic tags
+        - Generate 3-5 thought-provoking questions that would help listeners reflect on the discussion
+        - Identify 2-4 counter-arguments or alternative perspectives to the main ideas discussed
         - Add a "classification" field with either "to_read" or "skip"
         - Set "full_markdown" to an empty string "" (do not include the full transcript)
-        
+
+        Questions Guidelines:
+        - Questions should encourage deeper thinking about the topics discussed
+        - Consider implications for the listener's work, industry, or life
+        - Focus on "how could you apply", "what challenges might arise", "what would happen if" style questions
+
+        Counter Arguments Guidelines:
+        - Identify perspectives or viewpoints that weren't fully explored in the podcast
+        - Consider what skeptics or critics might say about the main claims
+        - Think about limitations or edge cases not addressed
+        - If the podcast is one-sided, what would the other side argue?
+        - If no strong counter-arguments exist, you may leave this list empty
+
         Classification Guidelines:
         - Set classification to "skip" if the content:
           * Is light on content or seems like marketing/promotional material
@@ -116,7 +115,7 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
           * Provides technical or specialized knowledge
           * Offers original research or investigation
           * Has educational or informative value
-        
+
         Podcast Transcript:
         {content}
         """
@@ -152,9 +151,9 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
     else:
         # For articles and other content types, include full markdown
         return f"""
-        You are an expert content analyst. Analyze the following content and provide a 
+        You are an expert content analyst. Analyze the following content and provide a
         structured summary with classification AND format the full text as clean markdown.
-        
+
         Important:
         - Generate a descriptive title that captures the main theme (50-150 chars)
         - The title should be compelling and informative, summarizing the key point or insight
@@ -167,12 +166,26 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         - Ensure the overview provides context for someone who hasn't read the content
         - Overview should be 50-100 words, short and punchy
         - Include {max_bullet_points} bullet points
-        - Include up to {max_quotes} notable quotes if available - each quote should be 
+        - Include up to {max_quotes} notable quotes if available - each quote should be
           at least 2-3 sentences long to provide meaningful context and insight
         - Include 3-8 relevant topic tags
+        - Generate 3-5 thought-provoking questions that help readers think critically about the content
+        - Identify 2-4 counter-arguments or alternative perspectives to the main claims
         - Add a "classification" field with either "to_read" or "skip"
         - Add a "full_markdown" field with the entire content formatted as clean, readable markdown
-        
+
+        Questions Guidelines:
+        - Questions should prompt critical thinking about implications, assumptions, or applications
+        - Consider "what if" scenarios, potential consequences, or unexplored angles
+        - Focus on helping readers engage more deeply with the material
+
+        Counter Arguments Guidelines:
+        - Look for assumptions that could be challenged
+        - Consider alternative interpretations of the evidence
+        - Think about what critics or skeptics might say
+        - Identify limitations or weaknesses in the argument
+        - If the content is balanced or no strong counter-arguments exist, you may leave this list empty
+
         Classification Guidelines:
         - Set classification to "skip" if the content:
           * Is light on content or seems like marketing/promotional material
@@ -184,7 +197,7 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
           * Provides technical or specialized knowledge
           * Offers original research or investigation
           * Has educational or informative value
-        
+
         Markdown Formatting Guidelines:
         - Format the full content as clean, readable markdown
         - Use proper heading hierarchy (# for main title, ## for sections, ### for subsections)
@@ -192,7 +205,7 @@ def generate_summary_prompt(content_type: str, max_bullet_points: int, max_quote
         - Format lists, quotes, and code blocks appropriately
         - Remove any unnecessary HTML artifacts or formatting issues
         - Make the content easy to read in markdown format
-        
+
         Content:
         {content}
         """
@@ -214,7 +227,11 @@ class GoogleFlashService:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def summarize_content(
-        self, content: str, max_bullet_points: int = 6, max_quotes: int = 3, content_type: str = "article"
+        self,
+        content: str,
+        max_bullet_points: int = 6,
+        max_quotes: int = 3,
+        content_type: str = "article",
     ) -> StructuredSummary | NewsSummary | None:
         """Summarize content using LLM and classify it.
 
@@ -255,7 +272,10 @@ class GoogleFlashService:
                 max_tokens = 50000  # Larger for articles to include full_markdown
                 response_schema = StructuredSummary
 
-            if content_type not in {"podcast", "news_digest"} and len(content) > LONG_CONTENT_THRESHOLD:
+            if (
+                content_type not in {"podcast", "news_digest"}
+                and len(content) > LONG_CONTENT_THRESHOLD
+            ):
                 max_tokens = min(max_tokens, LONG_CONTENT_MAX_TOKENS)
 
             config = {
@@ -271,31 +291,41 @@ class GoogleFlashService:
 
             # Handle response structure properly
             response_text = None
-            
+
             # Check if response was truncated due to MAX_TOKENS
             if hasattr(response, "candidates") and response.candidates:
                 candidate = response.candidates[0]
-                if hasattr(candidate, "finish_reason") and str(candidate.finish_reason) == "FinishReason.MAX_TOKENS":
+                if (
+                    hasattr(candidate, "finish_reason")
+                    and str(candidate.finish_reason) == "FinishReason.MAX_TOKENS"
+                ):
                     logger.warning("Response was truncated due to MAX_TOKENS limit")
                     # Try to extract partial response
-                    if hasattr(candidate, "content") and hasattr(candidate.content, "parts") and candidate.content.parts:
+                    if (
+                        hasattr(candidate, "content")
+                        and hasattr(candidate.content, "parts")
+                        and candidate.content.parts
+                    ):
                         parts_text = []
                         for part in candidate.content.parts:
                             if hasattr(part, "text"):
                                 parts_text.append(part.text)
                         response_text = "".join(parts_text)
                         if response_text:
-                            logger.info(f"Extracted partial response of length {len(response_text)}")
+                            logger.info(
+                                f"Extracted partial response of length {len(response_text)}"
+                            )
                         else:
                             logger.error("No text found in truncated response")
-                            log_json_error(
-                                "no_response_text", 
-                                str(response)[:1000],
-                                Exception("No text in truncated response"),
-                                content_id=str(id(content))
+                            response_str = str(response)[:1000]
+                            error_logger.log_processing_error(
+                                item_id=str(id(content)),
+                                error=Exception("No text in truncated response"),
+                                operation="no_response_text",
+                                context={"response": response_str},
                             )
                             return None
-            
+
             # Normal response extraction
             if not response_text:
                 if hasattr(response, "text"):
@@ -317,35 +347,36 @@ class GoogleFlashService:
 
             if not response_text:
                 logger.error(f"No text found in response: {response}")
-                log_json_error(
-                    "no_response_text", 
-                    str(response)[:1000],
-                    Exception("No text in response"),
-                    content_id=str(id(content))
+                response_str = str(response)[:1000]
+                error_logger.log_processing_error(
+                    item_id=str(id(content)),
+                    error=Exception("No text in response"),
+                    operation="no_response_text",
+                    context={"response": response_str},
                 )
                 return None
 
             cleaned_text = strip_json_wrappers(response_text)
-            
+
             # Additional cleanup for common issues
             if not cleaned_text:
                 logger.error("Cleaned text is empty after removing markdown blocks")
-                log_json_error(
-                    "empty_cleaned_text",
-                    response_text,
-                    Exception("Empty text after cleanup"),
-                    content_id=str(id(content))
+                error_logger.log_processing_error(
+                    item_id=str(id(content)),
+                    error=Exception("Empty text after cleanup"),
+                    operation="empty_cleaned_text",
+                    context={"response_text": response_text},
                 )
                 return None
-            
+
             # Check for common error responses
             if cleaned_text.lower() in ["this is not valid json", "invalid json", "error"]:
                 logger.error(f"LLM returned error response: {cleaned_text}")
-                log_json_error(
-                    "llm_error_response",
-                    response_text,
-                    Exception(f"LLM error: {cleaned_text}"),
-                    content_id=str(id(content))
+                error_logger.log_processing_error(
+                    item_id=str(id(content)),
+                    error=Exception(f"LLM error: {cleaned_text}"),
+                    operation="llm_error_response",
+                    context={"response_text": response_text},
                 )
                 return None
 
@@ -361,9 +392,9 @@ class GoogleFlashService:
                         summary_data = json.loads(repaired_text)
                         logger.info("Successfully parsed repaired JSON")
                     except json.JSONDecodeError:
-                        raise e  # Re-raise original error
+                        raise e from None  # Re-raise original error
                 else:
-                    raise e  # Re-raise original error
+                    raise e from None  # Re-raise original error
 
             # Instantiate the appropriate summary model
             model_cls = response_schema
@@ -372,24 +403,30 @@ class GoogleFlashService:
 
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error in structured summary: {e}")
-            logger.error(
-                f"Response was: "
-                f"{response_text[:500] if 'response_text' in locals() else 'No response'}"
-            )
-            log_json_error(
-                "json_decode_error",
-                response_text if "response_text" in locals() else "No response text",
-                e,
-                content_id=str(id(content)),
+            response_preview = response_text[:500] if "response_text" in locals() else "No response"
+            logger.error(f"Response was: {response_preview}")
+            error_logger.log_processing_error(
+                item_id=str(id(content)),
+                error=e,
+                operation="json_decode_error",
+                context={
+                    "response_text": response_text
+                    if "response_text" in locals()
+                    else "No response text"
+                },
             )
             return None
         except Exception as e:
             logger.error(f"Error generating structured summary: {e}")
-            log_json_error(
-                "unexpected_error",
-                response_text if "response_text" in locals() else "No response text",
-                e,
-                content_id=str(id(content)),
+            error_logger.log_processing_error(
+                item_id=str(id(content)),
+                error=e,
+                operation="unexpected_error",
+                context={
+                    "response_text": response_text
+                    if "response_text" in locals()
+                    else "No response text"
+                },
             )
             return None
 

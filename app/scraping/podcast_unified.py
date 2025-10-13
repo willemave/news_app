@@ -237,7 +237,7 @@ class PodcastUnifiedScraper(BaseScraper):
             duration = self._parse_duration(duration_str)
 
         # Build metadata
-        # Source should be full domain name of the episode link
+        # Determine domain for metadata
         try:
             from urllib.parse import urlparse
             host = urlparse(link).netloc or ""
@@ -245,7 +245,8 @@ class PodcastUnifiedScraper(BaseScraper):
             host = ""
         metadata = {
             "platform": "podcast",  # Scraper identifier
-            "source": host,
+            "source": feed_name,  # Configured name from YAML (never overwritten)
+            "source_domain": host,  # Store domain separately for reference
             "audio_url": enclosure_url,
             "publication_date": publication_date.isoformat() if publication_date else None,
             "episode_number": episode_number,

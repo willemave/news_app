@@ -13,15 +13,19 @@ struct StructuredSummary: Codable {
     let bulletPoints: [BulletPoint]
     let quotes: [Quote]
     let topics: [String]
+    let questions: [String]
+    let counterArguments: [String]
     let summarizationDate: String?
     let classification: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case title
         case overview
         case bulletPoints = "bullet_points"
         case quotes
         case topics
+        case questions
+        case counterArguments = "counter_arguments"
         case summarizationDate = "summarization_date"
         case classification
     }

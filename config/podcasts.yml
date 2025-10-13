@@ -1,6 +1,9 @@
 feeds:
   - name: "Lenny's Podcast"
-    url: "https://api.substack.com/feed/podcast/10845.rss"
+    url: "https://api.substack.com/feed/podcast/10845/private/461f0174-2a94-47a8-a4b5-ce9de0c6258c.rss"
+    limit: 20
+  - name: "How I AI -- Lenny"
+    url: "https://api.substack.com/feed/podcast/10845/s/198869/private/461f0174-2a94-47a8-a4b5-ce9de0c6258c.rss"
     limit: 20
   - name: "BG2 Pod"
     url: "https://anchor.fm/s/f06c2370/podcast/rss"
@@ -22,4 +25,10 @@ feeds:
     limit: 5
   - name: Huberman Lab
     url: "https://feeds.megaphone.fm/hubermanlab"
+    limit: 5
+  - name: Naval
+    url: "https://nav.al/feed"
+    limit: 5
+  - name: The Long Now
+    url: "https://longnow.org/podcast.xml"
     limit: 5

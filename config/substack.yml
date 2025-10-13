@@ -45,3 +45,6 @@ feeds:
   - url: "https://www.understandingai.org/feed"
     name: "Understanding AI"
     limit: 3
+  - url: "https://shishir.substack.com/feed"
+    name: "Shishir"
+    limit: 5

@@ -218,6 +218,14 @@
 * [`tests/scraping/`](tests/scraping/) - Scraper tests
 * [`tests/http_client/`](tests/http_client/) - HTTP client tests
 
+**Running Tests**:
+* **CRITICAL**: Always set PYTHONPATH when running pytest to ensure correct module resolution:
+  ```bash
+  . .venv/bin/activate && PYTHONPATH=/Users/willem/Development/news_app pytest <test_path> -v
+  ```
+* For local development, the project root path should be set as PYTHONPATH
+* Without PYTHONPATH, imports may fail or use wrong module paths
+
 ## System Patterns
 
 ### Unified Content Architecture

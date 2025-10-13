@@ -3,8 +3,21 @@
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-semibold text-gray-900">Error Analysis</h1>
-    <a href="/admin/logs" class="text-sm text-blue-600 hover:text-blue-800 underline">View Raw Logs</a>
+    <div class="flex items-center gap-3">
+      <a href="/admin/logs" class="text-sm text-blue-600 hover:text-blue-800 underline">View Raw Logs</a>
+      <form id="resetLogsForm" method="post" action="/admin/errors/reset" onsubmit="return confirmReset()">
+        <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700">
+          Reset All Logs
+        </button>
+      </form>
+    </div>
   </div>
+
+  <script>
+    function confirmReset() {
+      return confirm('Are you sure you want to delete all error logs? This action cannot be undone.');
+    }
+  </script>
 
   <!-- Filters -->
   <form method="get" class="bg-white border border-gray-200 rounded-lg p-4 mb-6">

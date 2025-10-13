@@ -7,76 +7,40 @@
 
 import Foundation
 
+struct UnreadCountsResponse: Codable {
+    let article: Int
+    let podcast: Int
+    let news: Int
+}
+
 @MainActor
 class UnreadCountService: ObservableObject {
     static let shared = UnreadCountService()
-    
+
     @Published var articleCount: Int = 0
     @Published var podcastCount: Int = 0
     @Published var newsCount: Int = 0
-    
+
     private let client = APIClient.shared
     private var refreshTimer: Timer?
-    
+
     private init() {
         // Start periodic refresh
         startPeriodicRefresh()
     }
-    
+
     deinit {
         refreshTimer?.invalidate()
     }
-    
-    func refreshCounts() async {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await self.fetchArticleCount() }
-            group.addTask { await self.fetchPodcastCount() }
-            group.addTask { await self.fetchNewsCount() }
-        }
-    }
-    
-    private func fetchArticleCount() async {
-        do {
-            let response: ContentListResponse = try await client.request(
-                APIEndpoints.contentList,
-                queryItems: [
-                    URLQueryItem(name: "content_type", value: "article"),
-                    URLQueryItem(name: "read_filter", value: "unread")
-                ]
-            )
-            articleCount = response.total
-        } catch {
-            print("Failed to fetch article count: \(error)")
-        }
-    }
-    
-    private func fetchPodcastCount() async {
-        do {
-            let response: ContentListResponse = try await client.request(
-                APIEndpoints.contentList,
-                queryItems: [
-                    URLQueryItem(name: "content_type", value: "podcast"),
-                    URLQueryItem(name: "read_filter", value: "unread")
-                ]
-            )
-            podcastCount = response.total
-        } catch {
-            print("Failed to fetch podcast count: \(error)")
-        }
-    }
 
-    private func fetchNewsCount() async {
+    func refreshCounts() async {
         do {
-            let response: ContentListResponse = try await client.request(
-                APIEndpoints.contentList,
-                queryItems: [
-                    URLQueryItem(name: "content_type", value: "news"),
-                    URLQueryItem(name: "read_filter", value: "unread")
-                ]
-            )
-            newsCount = response.total
+            let response: UnreadCountsResponse = try await client.request(APIEndpoints.unreadCounts)
+            articleCount = response.article
+            podcastCount = response.podcast
+            newsCount = response.news
         } catch {
-            print("Failed to fetch news count: \(error)")
+            print("Failed to fetch unread counts: \(error)")
         }
     }
     
