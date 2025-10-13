@@ -48,17 +48,22 @@ class ToastService: ObservableObject {
     static let shared = ToastService()
 
     @Published var currentToast: ToastMessage?
+    private var dismissTask: Task<Void, Never>?
 
     private init() {}
 
     func show(_ message: String, type: ToastType = .info, duration: TimeInterval = 3.0) {
-        currentToast = ToastMessage(message: message, type: type, duration: duration)
+        dismissTask?.cancel()  // Cancel any existing dismiss task
 
-        Task {
+        let newToast = ToastMessage(message: message, type: type, duration: duration)
+        currentToast = newToast
+
+        dismissTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
-            if currentToast?.id == currentToast?.id {
+            if currentToast?.id == newToast.id {
                 currentToast = nil
             }
+            dismissTask = nil
         }
     }
 
