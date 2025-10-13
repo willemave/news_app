@@ -1614,7 +1614,7 @@ async def convert_news_to_article(
             detail="No article URL found in news metadata"
         )
 
-    # Check if article already exists
+    # Check if article with this URL already exists (UNIQUE constraint on url + content_type)
     existing_article = (
         db.query(Content)
         .filter(Content.url == article_url)
@@ -1647,7 +1647,33 @@ async def convert_news_to_article(
     )
 
     db.add(new_article)
-    db.commit()
+
+    # Wrap commit in try/except to catch race conditions
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # Check if it's a UNIQUE constraint error
+        if "UNIQUE constraint failed" in str(e) or "duplicate key" in str(e).lower():
+            # Race condition: another request created this article between our check and insert
+            # Query again to get the existing article
+            existing_article = (
+                db.query(Content)
+                .filter(Content.url == article_url)
+                .filter(Content.content_type == ContentType.ARTICLE.value)
+                .first()
+            )
+            if existing_article:
+                return ConvertNewsResponse(
+                    status="success",
+                    new_content_id=existing_article.id,
+                    original_content_id=content_id,
+                    already_exists=True,
+                    message="Article already exists in system"
+                )
+        # Re-raise all exceptions (including non-duplicate constraint errors)
+        raise
+
     db.refresh(new_article)
 
     return ConvertNewsResponse(

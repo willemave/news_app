@@ -39,6 +39,9 @@
 * **Event Logging**: [`EventLog`](app/models/schema.py) for generic event tracking with JSON data
 * **Enums**: [`ContentType`](app/models/metadata.py:14), [`ContentStatus`](app/models/metadata.py:19), [`ContentClassification`](app/models/metadata.py) for type safety
 * **Database**: SQLite/PostgreSQL via SQLAlchemy with JSON metadata support
+  - Database file: `news_app.db` (SQLite)
+  - **Unique Constraint**: Composite unique index on `(url, content_type)` allows same URL for different content types (e.g., news item and article)
+  - **Migration**: `alembic/versions/2e0429feeff5_allow_same_url_different_content_types.py` changed from single URL unique to composite
 * **Schema Validation**: Pydantic models for metadata validation:
   - [`ArticleMetadata`](app/models/metadata.py:102) - Validates article-specific fields
   - [`PodcastMetadata`](app/models/metadata.py:148) - Validates podcast-specific fields
@@ -295,10 +298,12 @@
 * **Bulk Mark Read**: `POST /api/content/bulk-mark-read` - Mark multiple items as read (now returns `marked_count`/`failed_ids` for long-press bulk actions)
 * **Toggle Favorite**: `POST /api/content/{id}/toggle-favorite` - Toggle favorite status
 * **ChatGPT URL**: `GET /api/content/{id}/chatgpt-url` - Generate ChatGPT chat URL for content
+* **Convert to Article**: `POST /api/content/{id}/convert-to-article` - Convert news item to article for full processing (checks for existing article by URL+type)
 * **Response Models**: Pydantic models with full OpenAPI documentation
   - [`ContentSummaryResponse`](app/routers/api_content.py:24) - List view summary
   - [`ContentDetailResponse`](app/routers/api_content.py:96) - Full content details
   - [`ContentListResponse`](app/routers/api_content.py:64) - List endpoint response
+  - [`ConvertNewsResponse`](app/routers/api_content.py:1547) - News-to-article conversion response
 
 ## Current Development Status
 

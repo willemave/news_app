@@ -118,20 +118,39 @@ class ContentService {
     }
 
     func markAllAsRead(contentType: String) async throws -> BulkMarkReadResponse? {
-        let response = try await fetchContentList(
-            contentType: contentType,
-            readFilter: "unread"
-        )
+        var allUnreadIds: [Int] = []
+        var cursor: String? = nil
 
-        let unreadIds = response.contents
-            .filter { !$0.isRead }
-            .map { $0.id }
+        // Loop through all pages until hasMore is false
+        repeat {
+            let response = try await fetchContentList(
+                contentType: contentType,
+                readFilter: "unread",
+                cursor: cursor,
+                limit: 100  // Fetch larger batches for efficiency
+            )
 
-        guard !unreadIds.isEmpty else {
+            // Collect unread IDs from this page
+            let pageUnreadIds = response.contents
+                .filter { !$0.isRead }
+                .map { $0.id }
+
+            allUnreadIds.append(contentsOf: pageUnreadIds)
+
+            // Update cursor for next iteration
+            cursor = response.nextCursor
+
+            // Continue if there are more pages
+            if !response.hasMore {
+                break
+            }
+        } while cursor != nil
+
+        guard !allUnreadIds.isEmpty else {
             return nil
         }
 
-        return try await bulkMarkAsRead(contentIds: unreadIds)
+        return try await bulkMarkAsRead(contentIds: allUnreadIds)
     }
     
     func toggleFavorite(id: Int) async throws -> [String: Any] {
