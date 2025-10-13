@@ -23,7 +23,7 @@ class Content(Base):
     # Primary fields
     id = Column(Integer, primary_key=True)
     content_type = Column(String(20), nullable=False, index=True)
-    url = Column(String(2048), nullable=False, unique=True)
+    url = Column(String(2048), nullable=False)
     title = Column(String(500), nullable=True)
     source = Column(String(100), nullable=True, index=True)
     platform = Column(String(50), nullable=True, index=True)
@@ -58,6 +58,7 @@ class Content(Base):
         Index("idx_checkout", "checked_out_by", "checked_out_at"),
         Index("idx_created_at", "created_at"),
         Index("idx_content_aggregate", "content_type", "is_aggregate"),
+        Index("idx_url_content_type", "url", "content_type", unique=True),
     )
 
     @validates("content_metadata")

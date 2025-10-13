@@ -76,13 +76,13 @@ struct SwipeableCard<Content: View>: View {
             finalOffset = CGSize(width: direction.width, height: -offScreenDistance)
         }
 
-        withAnimation(.easeOut(duration: 0.4)) {
+        withAnimation(.easeOut(duration: 0.6)) {
             dragOffset = finalOffset
         }
 
         // Call onDismiss after animation
         Task {
-            try? await Task.sleep(nanoseconds: 400_000_000) // 0.4 seconds
+            try? await Task.sleep(nanoseconds: 600_000_000) // 0.6 seconds
             await onDismiss()
         }
     }
