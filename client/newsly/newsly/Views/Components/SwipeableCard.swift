@@ -32,22 +32,24 @@ struct SwipeableCard<Content: View>: View {
                     }
                     .onEnded { value in
                         guard !isRemoving else { return }
-                        handleGestureEnd(translation: value.translation, velocity: value.predictedEndTranslation)
+                        handleGestureEnd(translation: value.translation, predictedEnd: value.predictedEndTranslation)
                     }
             )
     }
 
-    private func handleGestureEnd(translation: CGSize, velocity: CGSize) {
+    private func handleGestureEnd(translation: CGSize, predictedEnd: CGSize) {
         let swipeThreshold: CGFloat = 100
         let velocityThreshold: CGFloat = 300
 
-        // Calculate velocity
-        let horizontalVelocity = velocity.width - translation.width
-        let verticalVelocity = velocity.height - translation.height
+        // Calculate velocity from difference between predicted end and current position
+        let horizontalVelocity = abs(predictedEnd.width - translation.width)
+        let verticalVelocity = abs(predictedEnd.height - translation.height)
 
         // Check if swipe left or up with sufficient distance or velocity
-        let shouldDismiss = (translation.width < -swipeThreshold || horizontalVelocity < -velocityThreshold) ||
-                            (translation.height < -swipeThreshold || verticalVelocity < -velocityThreshold)
+        let isSwipingLeft = translation.width < -swipeThreshold || (translation.width < 0 && horizontalVelocity > velocityThreshold)
+        let isSwipingUp = translation.height < -swipeThreshold || (translation.height < 0 && verticalVelocity > velocityThreshold)
+
+        let shouldDismiss = isSwipingLeft || isSwipingUp
 
         if shouldDismiss {
             dismissCard(in: translation)
