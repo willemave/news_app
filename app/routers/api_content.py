@@ -1544,8 +1544,30 @@ async def get_recently_read(
     )
 
 
+class ConvertNewsResponse(BaseModel):
+    """Response for converting news link to article."""
+
+    status: str = Field(..., description="Operation status")
+    new_content_id: int = Field(..., description="ID of the article content")
+    original_content_id: int = Field(..., description="ID of the original news content")
+    already_exists: bool = Field(..., description="Whether article already existed")
+    message: str = Field(..., description="Human-readable message")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "new_content_id": 123,
+                "original_content_id": 456,
+                "already_exists": False,
+                "message": "Article created and queued for processing"
+            }
+        }
+
+
 @router.post(
     "/{content_id}/convert-to-article",
+    response_model=ConvertNewsResponse,
     summary="Convert news link to article",
     description=(
         "Convert a news content item to a full article by extracting the article URL "
@@ -1561,7 +1583,7 @@ async def get_recently_read(
 async def convert_news_to_article(
     content_id: Annotated[int, Path(..., description="News content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
-) -> dict:
+) -> ConvertNewsResponse:
     """Convert a news link to a full article content entry.
 
     Extracts the article URL from the news metadata and creates a new
@@ -1601,13 +1623,13 @@ async def convert_news_to_article(
     )
 
     if existing_article:
-        return {
-            "status": "success",
-            "new_content_id": existing_article.id,
-            "original_content_id": content_id,
-            "already_exists": True,
-            "message": "Article already exists in system"
-        }
+        return ConvertNewsResponse(
+            status="success",
+            new_content_id=existing_article.id,
+            original_content_id=content_id,
+            already_exists=True,
+            message="Article already exists in system"
+        )
 
     # Create new article content entry
     article_title = article_meta.get("title")
@@ -1628,11 +1650,11 @@ async def convert_news_to_article(
     db.commit()
     db.refresh(new_article)
 
-    return {
-        "status": "success",
-        "new_content_id": new_article.id,
-        "original_content_id": content_id,
-        "already_exists": False,
-        "message": "Article created and queued for processing"
-    }
+    return ConvertNewsResponse(
+        status="success",
+        new_content_id=new_article.id,
+        original_content_id=content_id,
+        already_exists=False,
+        message="Article created and queued for processing"
+    )
 
