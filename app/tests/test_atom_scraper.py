@@ -1,7 +1,7 @@
 """Tests for Atom feed scraper."""
 
-import pytest
 from pathlib import Path
+
 from app.scraping.atom_unified import load_atom_feeds
 
 
