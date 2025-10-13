@@ -7,6 +7,8 @@ node_modules/
 # Environments
 .env
 .code/
+client/newsly/newsly.xcodeproj/project.xcworkspace/xcuserdata/willem.xcuserdatad/*.xcuserstate
+
 
 data/*
 
@@ -47,4 +49,5 @@ certs/
 *.key
 *.crt
 
-client/newsly/newsly.xcodeproj/project.xcworkspace/xcuserdata/willem.xcuserdatad/UserInterfaceState.xcuserstate
+# Xcode user data
+**/xcuserdata/

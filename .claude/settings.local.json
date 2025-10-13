@@ -77,7 +77,10 @@
       "Bash(xcrun simctl launch:*)",
       "Read(//Users/willem/.config/superpowers/skills/skills/collaboration/finishing-a-development-branch/**)",
       "Bash(git merge-base:*)",
-      "Bash(git worktree:*)"
+      "Bash(git worktree:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(git branch:*)"
     ],
     "deny": []
   }
