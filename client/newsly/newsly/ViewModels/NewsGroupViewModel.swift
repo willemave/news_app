@@ -8,6 +8,8 @@
 import Foundation
 import SwiftUI
 
+// Import ToastService for error notifications
+
 @MainActor
 class NewsGroupViewModel: ObservableObject {
     @Published var newsGroups: [NewsGroup] = []
@@ -98,24 +100,22 @@ class NewsGroupViewModel: ObservableObject {
             // Update unread counts
             unreadCountService.decrementNewsCount(by: itemIds.count)
 
-            // Remove from list after short delay (smooth UX)
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            withAnimation(.easeOut(duration: 0.3)) {
-                newsGroups.remove(at: groupIndex)
+            // Remove from list immediately (swipe handles animation)
+            // Find the index again after async operation
+            if let currentIndex = newsGroups.firstIndex(where: { $0.id == groupId }) {
+                newsGroups.remove(at: currentIndex)
             }
         } catch {
+            ToastService.shared.showError("Failed to mark as read")
             errorMessage = "Failed to mark group as read: \(error.localizedDescription)"
         }
     }
 
-    func onGroupScrolledPast(_ groupId: String) async {
-        // Only mark once per group
-        guard !viewedGroupIds.contains(groupId) else {
-            return
+    func preloadNextGroups() async {
+        // Trigger load when down to 2 cards
+        if newsGroups.count <= 2 && !isLoadingMore && hasMore {
+            await loadMoreGroups()
         }
-
-        viewedGroupIds.insert(groupId)
-        await markGroupAsRead(groupId)
     }
 
     func toggleFavorite(_ contentId: Int) async {
