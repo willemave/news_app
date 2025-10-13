@@ -33,51 +33,16 @@ struct NewsView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        ScrollView {
-                            LazyVStack(spacing: 16) {
-                                ForEach(viewModel.newsGroups) { group in
-                                    NewsGroupCard(
-                                        group: group,
-                                        onMarkAllAsRead: {
-                                            await viewModel.markGroupAsRead(group.id)
-                                        },
-                                        onToggleFavorite: { itemId in
-                                            await viewModel.toggleFavorite(itemId)
-                                        },
-                                        onConvert: { itemId in
-                                            await viewModel.convertToArticle(itemId)
-                                        }
-                                    )
-                                    .id(group.id)
-                                    .onDisappear {
-                                        // Mark as read when scrolled past
-                                        Task {
-                                            await viewModel.onGroupScrolledPast(group.id)
-                                        }
-                                    }
-                                    .onAppear {
-                                        // Load more when reaching near end
-                                        if group.id == viewModel.newsGroups.last?.id {
-                                            Task {
-                                                await viewModel.loadMoreGroups()
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Loading indicator at bottom
-                                if viewModel.isLoadingMore {
-                                    HStack {
-                                        Spacer()
-                                        ProgressView()
-                                            .padding()
-                                        Spacer()
-                                    }
-                                }
+                        CardStackView(
+                            groups: viewModel.newsGroups,
+                            onDismiss: { groupId in
+                                await viewModel.markGroupAsRead(groupId)
+                                await viewModel.preloadNextGroups()
+                            },
+                            onConvert: { itemId in
+                                await viewModel.convertToArticle(itemId)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                        }
+                        )
                         .refreshable {
                             await viewModel.refresh()
                         }
