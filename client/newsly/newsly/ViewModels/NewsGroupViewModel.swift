@@ -8,8 +8,6 @@
 import Foundation
 import SwiftUI
 
-// Import ToastService for error notifications
-
 @MainActor
 class NewsGroupViewModel: ObservableObject {
     @Published var newsGroups: [NewsGroup] = []
@@ -24,15 +22,11 @@ class NewsGroupViewModel: ObservableObject {
     private let contentService = ContentService.shared
     private let unreadCountService = UnreadCountService.shared
 
-    // Track which groups have been scrolled past
-    private var viewedGroupIds = Set<String>()
-
     func loadNewsGroups() async {
         isLoading = true
         errorMessage = nil
         nextCursor = nil
         hasMore = false
-        viewedGroupIds.removeAll()
 
         do {
             // Load news content (limit 25 to get 5 groups)
