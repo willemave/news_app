@@ -399,6 +399,13 @@ async def list_contents(
         except ValueError as e:
             raise HTTPException(status_code=400, detail="Invalid date format") from e
 
+    # Apply read status filter in SQL query
+    if read_filter == "unread":
+        query = query.filter(~Content.id.in_(read_content_ids))
+    elif read_filter == "read":
+        query = query.filter(Content.id.in_(read_content_ids))
+    # If read_filter is "all", don't filter
+
     # Apply cursor pagination
     if last_id and last_created_at:
         # Use keyset pagination: WHERE (created_at, id) < (last_created_at, last_id)
@@ -419,13 +426,6 @@ async def list_contents(
     has_more = len(contents) > limit
     if has_more:
         contents = contents[:limit]  # Trim to requested limit
-
-    # Filter based on read status if needed
-    if read_filter == "unread":
-        contents = [c for c in contents if c.id not in read_content_ids]
-    elif read_filter == "read":
-        contents = [c for c in contents if c.id in read_content_ids]
-    # If read_filter is "all", don't filter
 
     # Convert to domain objects and then to response format
     content_summaries = []
@@ -591,6 +591,8 @@ async def search_contents(
 
     # Base query aligning with list endpoint visibility rules
     query = db.query(Content)
+
+    # Filter out "skip" classification articles
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
 
     summarized_clause = (
@@ -711,6 +713,63 @@ async def search_contents(
         next_cursor=next_cursor,
         has_more=has_more,
         page_size=len(content_summaries),
+    )
+
+
+class UnreadCountsResponse(BaseModel):
+    """Response containing unread counts by content type."""
+
+    article: int = Field(..., description="Number of unread articles")
+    podcast: int = Field(..., description="Number of unread podcasts")
+    news: int = Field(..., description="Number of unread news items")
+
+
+@router.get(
+    "/unread-counts",
+    response_model=UnreadCountsResponse,
+    summary="Get unread content counts by type",
+    description="Get the total count of unread items for each content type.",
+)
+async def get_unread_counts(
+    db: Annotated[Session, Depends(get_db_session)],
+) -> UnreadCountsResponse:
+    """Get unread counts for each content type."""
+    from app.services import read_status
+
+    # Get read content IDs
+    read_content_ids = read_status.get_read_content_ids(db)
+
+    # Visibility clause: include summarized content or completed news
+    summarized_clause = (
+        Content.content_metadata["summary"].is_not(None)
+        & (Content.content_metadata["summary"] != "null")
+    )
+    completed_news_clause = and_(
+        Content.content_type == ContentType.NEWS.value,
+        Content.status == ContentStatus.COMPLETED.value,
+    )
+
+    # Base query for visible, non-skipped content
+    base_query = (
+        db.query(Content.id, Content.content_type)
+        .filter(or_(summarized_clause, completed_news_clause))
+        .filter((Content.classification != "skip") | (Content.classification.is_(None)))
+    )
+
+    # Get all visible content
+    all_content = base_query.all()
+
+    # Count unread items by type
+    counts = {"article": 0, "podcast": 0, "news": 0}
+    for content_id, content_type in all_content:
+        if content_id not in read_content_ids:
+            if content_type in counts:
+                counts[content_type] += 1
+
+    return UnreadCountsResponse(
+        article=counts["article"],
+        podcast=counts["podcast"],
+        news=counts["news"]
     )
 
 
@@ -1100,6 +1159,9 @@ async def get_favorites(
     if favorite_content_ids:
         query = db.query(Content).filter(Content.id.in_(favorite_content_ids))
 
+        # Filter out "skip" classification articles
+        query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
+
         # Apply cursor pagination
         if last_id and last_created_at:
             query = query.filter(
@@ -1201,32 +1263,32 @@ async def get_chatgpt_url(
 ) -> ChatGPTUrlResponse:
     """Generate ChatGPT URL for chatting about the content."""
     content = db.query(Content).filter(Content.id == content_id).first()
-    
+
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
-    
+
     try:
         domain_content = content_to_domain(content)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to process content metadata: {str(e)}"
         ) from e
-    
+
     # Build the prompt with context
     prompt_parts = []
-    
+
     # Add title and source context
     prompt_parts.append(f"I'd like to discuss this {domain_content.content_type.value}:")
     prompt_parts.append(f"Title: {domain_content.display_title}")
-    
+
     if domain_content.source:
         prompt_parts.append(f"Source: {domain_content.source}")
-    
+
     if domain_content.publication_date:
         prompt_parts.append(f"Published: {domain_content.publication_date.strftime('%B %d, %Y')}")
-    
+
     prompt_parts.append("")  # Empty line for separation
-    
+
     # Add the main content
     if domain_content.content_type.value == "podcast" and domain_content.transcript:
         prompt_parts.append("TRANSCRIPT:")
@@ -1251,32 +1313,32 @@ async def get_chatgpt_url(
                     if quote.get("context"):
                         prompt_parts.append(f"  - {quote['context']}")
         content_text = ""
-    
+
     # Combine all parts
     full_prompt = "\n".join(prompt_parts)
-    
+
     # Add content text if available
     if content_text:
         full_prompt += "\n" + content_text
-    
+
     # URL length limit (conservative estimate for browser compatibility)
     max_url_length = 8000
     base_url = "https://chat.openai.com/?q="
-    
+
     # Check if we need to truncate
     truncated = False
     encoded_prompt = quote_plus(full_prompt)
     full_url = base_url + encoded_prompt
-    
+
     if len(full_url) > max_url_length:
         # Truncate the content to fit
         truncated = True
         available_space = max_url_length - len(base_url) - 100  # Leave some buffer
-        
+
         # Try to keep the context and truncate the content
         context_part = "\n".join(prompt_parts)
         encoded_context = quote_plus(context_part)
-        
+
         if len(encoded_context) < available_space:
             # Add as much content as possible
             remaining_space = available_space - len(encoded_context)
@@ -1287,14 +1349,290 @@ async def get_chatgpt_url(
             truncated_prompt = f"Chat about: {domain_content.display_title}"
             if domain_content.source:
                 truncated_prompt += f" from {domain_content.source}"
-        
+
         encoded_prompt = quote_plus(truncated_prompt)
         full_url = base_url + encoded_prompt
-    
+
     return ChatGPTUrlResponse(
         chat_url=full_url,
         truncated=truncated
     )
 
 
- 
+@router.get(
+    "/recently-read/list",
+    response_model=ContentListResponse,
+    summary="Get recently read content",
+    description=(
+        "Retrieve all read content items sorted by read time "
+        "(most recent first) with cursor-based pagination."
+    ),
+)
+async def get_recently_read(
+    db: Annotated[Session, Depends(get_db_session)],
+    cursor: str | None = Query(None, description="Pagination cursor for next page"),
+    limit: int = Query(
+        25,
+        ge=1,
+        le=100,
+        description="Number of items per page (max 100)",
+    ),
+) -> ContentListResponse:
+    """Get all recently read content with cursor-based pagination, sorted by read time."""
+    from app.models.schema import ContentReadStatus
+    from app.services import favorites, read_status, unlikes
+
+    # Decode cursor if provided
+    last_id = None
+    last_read_at = None
+    if cursor:
+        try:
+            cursor_data = PaginationCursor.decode_cursor(cursor)
+            last_id = cursor_data["last_id"]
+            last_read_at = cursor_data.get("last_read_at")
+            if last_read_at:
+                last_read_at = datetime.fromisoformat(last_read_at)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Get read content IDs for status checks
+    read_content_ids = read_status.get_read_content_ids(db)
+
+    # Get favorited content IDs
+    favorite_content_ids = favorites.get_favorite_content_ids(db)
+
+    # Get unliked content IDs
+    unliked_content_ids = unlikes.get_unliked_content_ids(db)
+
+    # Query content joined with read status, ordered by read time
+    query = (
+        db.query(Content, ContentReadStatus.read_at)
+        .join(ContentReadStatus, Content.id == ContentReadStatus.content_id)
+    )
+
+    # Apply same visibility filters as other endpoints
+    summarized_clause = (
+        Content.content_metadata["summary"].is_not(None)
+        & (Content.content_metadata["summary"] != "null")
+    )
+    completed_news_clause = and_(
+        Content.content_type == ContentType.NEWS.value,
+        Content.status == ContentStatus.COMPLETED.value,
+    )
+    query = query.filter(or_(summarized_clause, completed_news_clause))
+
+    # Filter out "skip" classification articles
+    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
+
+    # Apply cursor pagination if provided
+    if last_id and last_read_at:
+        # Use keyset pagination: WHERE (read_at, content_id) < (last_read_at, last_id)
+        query = query.filter(
+            or_(
+                ContentReadStatus.read_at < last_read_at,
+                and_(ContentReadStatus.read_at == last_read_at, Content.id < last_id),
+            )
+        )
+
+    # Order by read_at DESC, id DESC for stable pagination (most recently read first)
+    query = query.order_by(ContentReadStatus.read_at.desc(), Content.id.desc())
+
+    # Fetch limit + 1 to determine if there are more results
+    results = query.limit(limit + 1).all()
+
+    # Check if there are more results
+    has_more = len(results) > limit
+    if has_more:
+        results = results[:limit]  # Trim to requested limit
+
+    # Extract content and read_at from results
+    contents = []
+    for c, read_at in results:
+        contents.append((c, read_at))
+
+    # Convert to response format
+    content_summaries = []
+    for c, _read_at in contents:
+        try:
+            domain_content = content_to_domain(c)
+
+            # Get classification from metadata
+            classification = None
+            if domain_content.structured_summary:
+                classification = domain_content.structured_summary.get("classification")
+
+            news_article_url = None
+            news_discussion_url = None
+            news_key_points = None
+            news_summary_text = domain_content.short_summary
+            item_count = None
+            is_aggregate = domain_content.is_aggregate
+
+            if domain_content.content_type == ContentType.NEWS:
+                article_meta = (domain_content.metadata or {}).get("article", {})
+                aggregator_meta = (domain_content.metadata or {}).get("aggregator", {})
+                summary_meta = (domain_content.metadata or {}).get("summary", {})
+                key_points = summary_meta.get("bullet_points")
+
+                news_article_url = article_meta.get("url")
+                news_discussion_url = aggregator_meta.get("url")
+                if key_points:
+                    news_key_points = [
+                        point["text"] if isinstance(point, dict) else point for point in key_points
+                    ]
+                classification = summary_meta.get("classification") or classification
+                news_summary_text = summary_meta.get("overview") or domain_content.summary
+                is_aggregate = False
+
+            content_summaries.append(
+                ContentSummaryResponse(
+                    id=domain_content.id,
+                    content_type=domain_content.content_type.value,
+                    url=str(domain_content.url),
+                    title=domain_content.display_title,
+                    source=domain_content.source,
+                    platform=domain_content.platform or c.platform,
+                    status=domain_content.status.value,
+                    short_summary=news_summary_text,
+                    created_at=domain_content.created_at.isoformat()
+                    if domain_content.created_at
+                    else "",
+                    processed_at=domain_content.processed_at.isoformat()
+                    if domain_content.processed_at
+                    else None,
+                    classification=classification,
+                    publication_date=domain_content.publication_date.isoformat()
+                    if domain_content.publication_date
+                    else None,
+                    is_read=c.id in read_content_ids,
+                    is_favorited=c.id in favorite_content_ids,
+                    is_unliked=c.id in unliked_content_ids,
+                    is_aggregate=is_aggregate,
+                    item_count=item_count,
+                    news_article_url=news_article_url,
+                    news_discussion_url=news_discussion_url,
+                    news_key_points=news_key_points,
+                    news_summary=news_summary_text,
+                )
+            )
+        except Exception as e:
+            # Skip content with invalid metadata
+            print(f"Skipping content {c.id} due to validation error: {e}")
+            continue
+
+    # Get content types for filter
+    content_types = [ct.value for ct in ContentType]
+
+    # Generate next cursor if there are more results
+    next_cursor = None
+    if has_more and content_summaries:
+        last_item_content, last_item_read_at = contents[-1]
+        next_cursor = PaginationCursor.encode_cursor(
+            last_id=last_item_content.id,
+            last_created_at=last_item_content.created_at,
+            filters={"last_read_at": last_item_read_at.isoformat()},
+        )
+
+    return ContentListResponse(
+        contents=content_summaries,
+        total=len(content_summaries),
+        available_dates=[],  # Not needed for recently read list
+        content_types=content_types,
+        next_cursor=next_cursor,
+        has_more=has_more,
+        page_size=len(content_summaries),
+    )
+
+
+@router.post(
+    "/{content_id}/convert-to-article",
+    summary="Convert news link to article",
+    description=(
+        "Convert a news content item to a full article by extracting the article URL "
+        "from the news metadata and creating a new article content entry. "
+        "If the article already exists, returns the existing article ID."
+    ),
+    responses={
+        200: {"description": "News link converted successfully"},
+        400: {"description": "Content cannot be converted (not news or no article URL)"},
+        404: {"description": "Content not found"},
+    },
+)
+async def convert_news_to_article(
+    content_id: Annotated[int, Path(..., description="News content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> dict:
+    """Convert a news link to a full article content entry.
+
+    Extracts the article URL from the news metadata and creates a new
+    article content entry for processing. If an article with that URL
+    already exists, returns the existing article ID instead of creating
+    a duplicate.
+    """
+    # Check if content exists
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # Verify content is news type
+    if content.content_type != ContentType.NEWS.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Only news content can be converted to articles"
+        )
+
+    # Extract article URL from metadata
+    metadata = content.content_metadata or {}
+    article_meta = metadata.get("article", {})
+    article_url = article_meta.get("url")
+
+    if not article_url:
+        raise HTTPException(
+            status_code=400,
+            detail="No article URL found in news metadata"
+        )
+
+    # Check if article already exists
+    existing_article = (
+        db.query(Content)
+        .filter(Content.url == article_url)
+        .filter(Content.content_type == ContentType.ARTICLE.value)
+        .first()
+    )
+
+    if existing_article:
+        return {
+            "status": "success",
+            "new_content_id": existing_article.id,
+            "original_content_id": content_id,
+            "already_exists": True,
+            "message": "Article already exists in system"
+        }
+
+    # Create new article content entry
+    article_title = article_meta.get("title")
+    source_domain = article_meta.get("source_domain")
+
+    new_article = Content(
+        url=article_url,
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.PENDING.value,
+        title=article_title,
+        source=source_domain,
+        platform=None,  # Will be determined during processing
+        content_metadata={},
+        classification=None,
+    )
+
+    db.add(new_article)
+    db.commit()
+    db.refresh(new_article)
+
+    return {
+        "status": "success",
+        "new_content_id": new_article.id,
+        "original_content_id": content_id,
+        "already_exists": False,
+        "message": "Article created and queued for processing"
+    }
+
