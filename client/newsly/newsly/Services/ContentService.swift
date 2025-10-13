@@ -21,6 +21,22 @@ struct BulkMarkReadResponse: Codable {
     }
 }
 
+struct ConvertNewsResponse: Codable {
+    let status: String
+    let newContentId: Int
+    let originalContentId: Int
+    let alreadyExists: Bool
+    let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case newContentId = "new_content_id"
+        case originalContentId = "original_content_id"
+        case alreadyExists = "already_exists"
+        case message
+    }
+}
+
 class ContentService {
     static let shared = ContentService()
     private let client = APIClient.shared
@@ -145,19 +161,38 @@ class ContentService {
 
         return try await client.request(APIEndpoints.favoritesList, queryItems: queryItems)
     }
-    
+
+    func fetchRecentlyReadList(cursor: String? = nil, limit: Int = 25) async throws -> ContentListResponse {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+
+        return try await client.request(APIEndpoints.recentlyReadList, queryItems: queryItems)
+    }
+
     func getChatGPTUrl(id: Int) async throws -> String {
         struct ChatGPTUrlResponse: Codable {
             let chatUrl: String
             let truncated: Bool
-            
+
             enum CodingKeys: String, CodingKey {
                 case chatUrl = "chat_url"
                 case truncated
             }
         }
-        
+
         let response: ChatGPTUrlResponse = try await client.request(APIEndpoints.chatGPTUrl(id: id))
         return response.chatUrl
+    }
+
+    func convertNewsToArticle(id: Int) async throws -> ConvertNewsResponse {
+        return try await client.request(
+            APIEndpoints.convertNewsToArticle(id: id),
+            method: "POST"
+        )
     }
 }
