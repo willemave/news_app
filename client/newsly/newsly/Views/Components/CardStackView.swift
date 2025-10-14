@@ -43,20 +43,28 @@ struct CardStackView: View {
                 }
 
                 // Top card with full content
-                SwipeableCard(onDismiss: {
-                    handleCardDismissed()
-                }) {
-                    NewsGroupCard(
-                        group: groups[currentIndex],
-                        onConvert: onConvert
-                    )
+                if currentIndex < groups.count {
+                    SwipeableCard(onDismiss: {
+                        handleCardDismissed()
+                    }) {
+                        NewsGroupCard(
+                            group: groups[currentIndex],
+                            onConvert: onConvert
+                        )
+                    }
+                    .id(currentIndex)  // Force view identity change for smooth data updates
+                    .zIndex(100)
                 }
-                .id(currentIndex)  // Force view identity change for smooth data updates
-                .zIndex(100)
             }
         }
         .padding(.horizontal, 16)
         .animation(.easeInOut(duration: 0.2), value: currentIndex)
+        .onChange(of: groups.count) { oldCount, newCount in
+            // Reset index when groups are refreshed or prevent out-of-bounds
+            if newCount > oldCount || currentIndex >= newCount {
+                currentIndex = 0
+            }
+        }
     }
 
     private func handleCardDismissed() {
