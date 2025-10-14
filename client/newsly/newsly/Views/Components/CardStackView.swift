@@ -2,7 +2,7 @@
 //  CardStackView.swift
 //  newsly
 //
-//  Stack of swipeable cards with depth effect
+//  Optimized stack with index-based rendering
 //
 
 import SwiftUI
@@ -12,10 +12,12 @@ struct CardStackView: View {
     let onDismiss: (String) async -> Void
     let onConvert: (Int) async -> Void
 
+    @State private var currentIndex: Int = 0
+
     var body: some View {
-        ZStack {
-            if groups.isEmpty {
-                // Empty state
+        ZStack(alignment: .top) {
+            if currentIndex >= groups.count {
+                // Empty state - all cards swiped away
                 VStack(spacing: 16) {
                     Image(systemName: "newspaper")
                         .font(.largeTitle)
@@ -28,25 +30,44 @@ struct CardStackView: View {
                         .foregroundColor(.secondary)
                 }
             } else {
-                // Show up to 3 cards for depth effect
-                ForEach(Array(groups.prefix(3).enumerated()), id: \.element.id) { index, group in
-                    let isTop = index == 0
-
-                    SwipeableCard(onDismiss: {
-                        await onDismiss(group.id)
-                    }) {
-                        NewsGroupCard(
-                            group: group,
-                            onConvert: onConvert
+                // Background placeholder cards
+                ForEach(0..<min(2, groups.count - currentIndex), id: \.self) { offset in
+                    let cardIndex = currentIndex + offset + 1
+                    if cardIndex < groups.count {
+                        PlaceholderCard(
+                            scale: 1.0 - CGFloat(offset + 1) * 0.05,
+                            yOffset: CGFloat(offset + 1) * 8
                         )
+                        .zIndex(Double(10 - offset))
                     }
-                    .allowsHitTesting(isTop)
-                    .scaleEffect(1.0 - CGFloat(index) * 0.05)
-                    .offset(y: CGFloat(index) * 8)
-                    .zIndex(Double(groups.count - index))
                 }
+
+                // Top card with full content
+                SwipeableCard(onDismiss: {
+                    handleCardDismissed()
+                }) {
+                    NewsGroupCard(
+                        group: groups[currentIndex],
+                        onConvert: onConvert
+                    )
+                }
+                .id(currentIndex)  // Force view identity change for smooth data updates
+                .zIndex(100)
             }
         }
         .padding(.horizontal, 16)
+        .animation(.easeInOut(duration: 0.2), value: currentIndex)
+    }
+
+    private func handleCardDismissed() {
+        let dismissedGroupId = groups[currentIndex].id
+
+        // Update index immediately (synchronous, no view recreation lag)
+        currentIndex += 1
+
+        // Call async operations in background
+        Task {
+            await onDismiss(dismissedGroupId)
+        }
     }
 }
