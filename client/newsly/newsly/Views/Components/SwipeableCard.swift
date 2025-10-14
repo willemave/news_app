@@ -9,12 +9,12 @@ import SwiftUI
 
 struct SwipeableCard<Content: View>: View {
     let content: Content
-    let onDismiss: () async -> Void
+    let onDismiss: () -> Void
 
     @State private var dragOffset: CGSize = .zero
     @State private var isRemoving = false
 
-    init(onDismiss: @escaping () async -> Void, @ViewBuilder content: () -> Content) {
+    init(onDismiss: @escaping () -> Void, @ViewBuilder content: () -> Content) {
         self.content = content()
         self.onDismiss = onDismiss
     }
@@ -76,14 +76,11 @@ struct SwipeableCard<Content: View>: View {
             finalOffset = CGSize(width: direction.width, height: -offScreenDistance)
         }
 
-        withAnimation(.easeOut(duration: 0.6)) {
+        withAnimation(.easeOut(duration: 0.3)) {  // Reduced from 0.6 for snappier feel
             dragOffset = finalOffset
         }
 
-        // Call onDismiss after animation
-        Task {
-            try? await Task.sleep(nanoseconds: 600_000_000) // 0.6 seconds
-            await onDismiss()
-        }
+        // Call onDismiss immediately - no async delay
+        onDismiss()
     }
 }
