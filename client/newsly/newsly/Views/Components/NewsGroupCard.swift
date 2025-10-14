@@ -13,6 +13,32 @@ struct NewsGroupCard: View {
 
     @State private var convertingStates: [Int: Bool] = [:]
 
+    /// Format publication date for compact display
+    private func formatDateShort(_ dateString: String) -> String {
+        let iso8601WithFractional = ISO8601DateFormatter()
+        iso8601WithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        if let date = iso8601WithFractional.date(from: dateString) {
+            let now = Date()
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.day, .hour], from: date, to: now)
+
+            if let days = components.day, days == 0 {
+                if let hours = components.hour {
+                    return "\(hours)h ago"
+                }
+            } else if let days = components.day, days < 7 {
+                return "\(days)d ago"
+            }
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            return formatter.string(from: date)
+        }
+
+        return ""
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Group header with count
@@ -41,25 +67,57 @@ struct NewsGroupCard: View {
             ForEach(group.items) { item in
                 HStack(alignment: .top, spacing: 12) {
                     // Content
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        // Title - full text, no line limit
                         Text(item.displayTitle)
-                            .font(.subheadline)
+                            .font(.body)
+                            .fontWeight(.medium)
                             .foregroundColor(item.isRead ? .secondary : .primary)
-                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                        HStack(spacing: 6) {
-                            PlatformIcon(platform: item.platform)
-                                .opacity(item.platform == nil ? 0 : 1)
-                            if let source = item.source {
-                                Text(source)
-                                    .font(.caption)
+                        // Short summary if available
+                        if let summary = item.shortSummary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
+
+                        // Metadata row
+                        HStack(spacing: 8) {
+                            // Platform icon and source
+                            HStack(spacing: 4) {
+                                PlatformIcon(platform: item.platform)
+                                    .opacity(item.platform == nil ? 0 : 1)
+                                if let source = item.source {
+                                    Text(source)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+
+                            // Classification badge
+                            if let classification = item.classification {
+                                Text(classification)
+                                    .font(.caption2)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue.opacity(0.7))
+                                    .cornerRadius(4)
+                            }
+
+                            Spacer()
+
+                            // Date
+                            if let pubDate = item.publicationDate {
+                                Text(formatDateShort(pubDate))
+                                    .font(.caption2)
                                     .foregroundColor(.secondary)
-                                    .lineLimit(1)
                             }
                         }
                     }
-
-                    Spacer()
 
                     // Convert icon button
                     Button(action: {
@@ -85,7 +143,7 @@ struct NewsGroupCard: View {
                     .disabled(convertingStates[item.id] == true)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
 
                 if item.id != group.items.last?.id {
                     Divider()

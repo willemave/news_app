@@ -177,7 +177,8 @@ async def errors_dashboard(request: Request, hours: int = 24, min_errors: int = 
 
 @router.post("/errors/reset")
 async def reset_error_logs():
-    """Reset all error logs by deleting all log files in the errors directory.
+    """Reset all error logs by deleting all log files in the errors directory
+    and removing failed EventLog entries from the database.
 
     Returns:
         Redirect to errors dashboard
@@ -185,7 +186,8 @@ async def reset_error_logs():
     Raises:
         HTTPException: If there's an error during deletion
     """
-    deleted_count = 0
+    deleted_files_count = 0
+    deleted_db_count = 0
     errors = []
 
     if not ERRORS_DIR.exists():
@@ -196,7 +198,7 @@ async def reset_error_logs():
         for file_path in ERRORS_DIR.glob("*.log"):
             try:
                 file_path.unlink()
-                deleted_count += 1
+                deleted_files_count += 1
             except Exception as e:
                 errors.append(f"Failed to delete {file_path.name}: {str(e)}")
 
@@ -204,9 +206,21 @@ async def reset_error_logs():
         for file_path in ERRORS_DIR.glob("*.jsonl"):
             try:
                 file_path.unlink()
-                deleted_count += 1
+                deleted_files_count += 1
             except Exception as e:
                 errors.append(f"Failed to delete {file_path.name}: {str(e)}")
+
+        # Delete failed EventLog entries from database
+        from app.core.db import get_db
+        from app.models.schema import EventLog
+
+        with get_db() as db:
+            deleted_db_count = db.query(EventLog).filter(EventLog.status == "failed").delete()
+            db.commit()
+
+        logger.info(
+            f"Reset error logs: deleted {deleted_files_count} files and {deleted_db_count} database records"
+        )
 
         # Redirect back to errors page
         return RedirectResponse(url="/admin/errors", status_code=303)

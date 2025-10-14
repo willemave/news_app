@@ -288,16 +288,25 @@ printf -v REMOTE_PLAYWRIGHT_CMD 'set -euo pipefail; if [[ -x %q ]]; then %q inst
 ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "sudo -u %q -H bash -lc %q" "$SERVICE_USER" "$REMOTE_PLAYWRIGHT_CMD")"
 
 if "$RESTART_SUP"; then
-  echo "→ Reloading Supervisor and restarting programs: ${PROGRAMS[*]}"
+  echo "→ Reloading Supervisor configuration"
   printf -v REMOTE_SUP_CMD 'set -euo pipefail; sudo supervisorctl reread && sudo supervisorctl update'
-  for prog in "${PROGRAMS[@]}"; do
-    printf -v REMOTE_SUP_CMD '%s && sudo supervisorctl restart %q' "$REMOTE_SUP_CMD" "$prog"
-  done
-  REMOTE_SUP_CMD+=" && sudo supervisorctl status"
   ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "bash -lc %q" "$REMOTE_SUP_CMD")"
 
-  echo "→ Restarting all supervisor services"
-  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart all"
+  echo "→ Restarting server (news_app_server)"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart news_app_server"
+
+  echo "→ Waiting for server to start (up to 30 seconds)"
+  printf -v WAIT_SERVER_CMD 'for i in {1..30}; do if sudo supervisorctl status news_app_server | grep -q RUNNING; then echo "Server is running"; exit 0; fi; echo "Waiting for server... ($i/30)"; sleep 1; done; echo "Server failed to start" >&2; exit 1'
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "bash -lc %q" "$WAIT_SERVER_CMD")"
+
+  echo "→ Restarting workers (news_app_workers)"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart news_app_workers"
+
+  echo "→ Restarting scrapers (news_app_scrapers)"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart news_app_scrapers"
+
+  echo "→ Final supervisor status:"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl status"
 fi
 
 echo "→ Copying .env.racknerd to .env via sudo cp"

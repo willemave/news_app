@@ -19,6 +19,7 @@ from app.utils.error_logger import create_error_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
+
 class ContentWorker:
     """Unified worker for processing all content types."""
 
@@ -67,11 +68,7 @@ class ContentWorker:
 
         # Merge metadata while omitting empty values.
         content.metadata.update(
-            {
-                key: value
-                for key, value in failure_metadata.items()
-                if value not in (None, "", {})
-            }
+            {key: value for key, value in failure_metadata.items() if value not in (None, "", {})}
         )
 
         content.status = ContentStatus.FAILED
@@ -95,9 +92,7 @@ class ContentWorker:
             metadata = dict(db_content.content_metadata or {})
             metadata.pop("summary", None)
             existing_errors = metadata.get("processing_errors")
-            processing_errors = (
-                existing_errors.copy() if isinstance(existing_errors, list) else []
-            )
+            processing_errors = existing_errors.copy() if isinstance(existing_errors, list) else []
             processing_errors.append(
                 {
                     "stage": "summarization",
@@ -215,9 +210,7 @@ class ContentWorker:
             # Check if this is a delegation case (e.g., from PubMed)
             delegated_url = extracted_data.get("next_url_to_process")
             if delegated_url:
-                logger.info(
-                    "Delegation detected. Processing next URL: %s", delegated_url
-                )
+                logger.info("Delegation detected. Processing next URL: %s", delegated_url)
                 # Update the URL and process recursively
                 content.url = delegated_url
                 return self._process_article(content)
@@ -228,6 +221,22 @@ class ContentWorker:
                 llm_data = asyncio.run(strategy.prepare_for_llm(extracted_data)) or {}
             else:
                 llm_data = strategy.prepare_for_llm(extracted_data) or {}
+
+            # Check if strategy marked this content to be skipped (e.g., images)
+            if extracted_data.get("skip_processing") or llm_data.get("skip_processing"):
+                logger.info(
+                    f"Skipping processing for content {content.id} as marked by strategy "
+                    f"({strategy.__class__.__name__})"
+                )
+                content.status = ContentStatus.SKIPPED
+                content.processed_at = datetime.now(UTC)
+                # Store minimal metadata
+                content.metadata["content_type"] = extracted_data.get("content_type", "unknown")
+                content.metadata["image_url"] = extracted_data.get("image_url")
+                content.metadata["final_url"] = extracted_data.get("final_url_after_redirects")
+                if extracted_data.get("title"):
+                    content.title = extracted_data.get("title")
+                return True
 
             # Update content with extracted data
             content.title = extracted_data.get("title") or content.title
@@ -320,10 +329,7 @@ class ContentWorker:
                     aggregator_context = self._build_news_context(content.metadata)
                     if aggregator_context:
                         llm_payload = (
-                            "Context:\n"
-                            f"{aggregator_context}\n\n"
-                            "Article Content:\n"
-                            f"{llm_payload}"
+                            f"Context:\n{aggregator_context}\n\nArticle Content:\n{llm_payload}"
                         )
                     summary = self.llm_service.summarize_content(
                         content=llm_payload,
@@ -355,9 +361,7 @@ class ContentWorker:
                             article_section["title"] = summary.title
                         content.metadata["article"] = article_section
                         content.title = summary.title
-                        logger.info(
-                            "Generated news digest summary for content %s", content.id
-                        )
+                        logger.info("Generated news digest summary for content %s", content.id)
                     else:
                         content.metadata["summary"] = summary_dict
                         # Classification will be synced to DB column by domain_to_content

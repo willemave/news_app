@@ -58,6 +58,13 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                 # Extract video info
                 info = ydl.extract_info(url, download=False)
 
+                # Defensive check: yt-dlp returns None for unavailable/private/restricted videos
+                if info is None:
+                    raise ValueError(
+                        f"Failed to extract video information from {url}. "
+                        "Video may be unavailable, private, region-restricted, or age-restricted."
+                    )
+
                 # Extract basic metadata
                 video_id = info.get("id")
                 title = info.get("title", "Untitled")
