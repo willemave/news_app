@@ -81,7 +81,8 @@
       "Bash(git pull:*)",
       "Bash(git merge:*)",
       "Bash(git branch:*)",
-      "Read(//Users/willem/.config/superpowers/skills/skills/debugging/systematic-debugging/**)"
+      "Read(//Users/willem/.config/superpowers/skills/skills/debugging/systematic-debugging/**)",
+      "Read(//Users/willem/.config/superpowers/skills/skills/**)"
     ],
     "deny": []
   }
