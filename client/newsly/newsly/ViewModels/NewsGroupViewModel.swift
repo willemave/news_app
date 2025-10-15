@@ -29,17 +29,17 @@ class NewsGroupViewModel: ObservableObject {
         hasMore = false
 
         do {
-            // Load news content (limit 25 to get 5 groups)
+            // Load news content (limit 30 to get 5 groups of 6)
             let response = try await contentService.fetchContentList(
                 contentType: "news",
                 date: nil,
                 readFilter: "unread",
                 cursor: nil,
-                limit: 25
+                limit: 30
             )
 
-            // Group items by 5
-            newsGroups = response.contents.groupedByFive()
+            // Group items by 6
+            newsGroups = response.contents.groupedBySix()
             nextCursor = response.nextCursor
             hasMore = response.hasMore
         } catch {
@@ -62,11 +62,11 @@ class NewsGroupViewModel: ObservableObject {
                 date: nil,
                 readFilter: "unread",
                 cursor: cursor,
-                limit: 25
+                limit: 30
             )
 
             // Append new groups
-            let newGroups = response.contents.groupedByFive()
+            let newGroups = response.contents.groupedBySix()
             newsGroups.append(contentsOf: newGroups)
             nextCursor = response.nextCursor
             hasMore = response.hasMore
@@ -119,7 +119,7 @@ class NewsGroupViewModel: ObservableObject {
         }
 
         let group = newsGroups[groupIndex]
-        guard let item = group.items.first(where: { $0.id == contentId }) else {
+        guard group.items.contains(where: { $0.id == contentId }) else {
             return
         }
 

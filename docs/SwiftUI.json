@@ -1,0 +1,1596 @@
+{
+  "schemaVersion": {
+    "major": 0,
+    "minor": 3,
+    "patch": 0
+  },
+  "variants": [
+    {
+      "traits": [
+        {
+          "interfaceLanguage": "swift"
+        }
+      ],
+      "paths": [
+        "/documentation/swiftui"
+      ]
+    }
+  ],
+  "hierarchy": {
+    "paths": [
+      [
+        "doc://com.apple.documentation/documentation/technologies"
+      ]
+    ]
+  },
+  "topicSections": [
+    {
+      "anchor": "Essentials",
+      "title": "Essentials",
+      "identifiers": [
+        "doc://com.apple.documentation/documentation/TechnologyOverviews/adopting-liquid-glass",
+        "doc://com.apple.documentation/tutorials/swiftui-concepts",
+        "doc://com.apple.documentation/tutorials/Sample-Apps",
+        "doc://com.apple.documentation/documentation/Updates/SwiftUI",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Landmarks-Building-an-app-with-Liquid-Glass"
+      ]
+    },
+    {
+      "anchor": "App-structure",
+      "title": "App structure",
+      "identifiers": [
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/App-organization",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Scenes",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Windows",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Immersive-spaces",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Documents",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Navigation",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Modal-presentations",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Toolbars",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Search",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/App-extensions"
+      ]
+    },
+    {
+      "anchor": "Data-and-storage",
+      "title": "Data and storage",
+      "identifiers": [
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Model-data",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Environment-values",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Preferences",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Persistent-storage"
+      ]
+    },
+    {
+      "anchor": "Views",
+      "title": "Views",
+      "identifiers": [
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/View-fundamentals",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/View-configuration",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/View-styles",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Animations",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Text-input-and-output",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Images",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Controls-and-indicators",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Menus-and-commands",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Shapes",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Drawing-and-graphics"
+      ]
+    },
+    {
+      "anchor": "View-layout",
+      "title": "View layout",
+      "identifiers": [
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Layout-fundamentals",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Layout-adjustments",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Custom-layout",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Lists",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Tables",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/View-groupings",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Scroll-views"
+      ]
+    },
+    {
+      "anchor": "Event-handling",
+      "title": "Event handling",
+      "identifiers": [
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Gestures",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Input-events",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Clipboard",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Drag-and-drop",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Focus",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/System-events"
+      ]
+    },
+    {
+      "anchor": "Accessibility",
+      "title": "Accessibility",
+      "identifiers": [
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessibility-fundamentals",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-appearance",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-controls",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-descriptions",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-navigation"
+      ]
+    },
+    {
+      "anchor": "Framework-integration",
+      "title": "Framework integration",
+      "identifiers": [
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/AppKit-integration",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/UIKit-integration",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/WatchKit-integration",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Technology-specific-views"
+      ]
+    },
+    {
+      "anchor": "Tool-support",
+      "title": "Tool support",
+      "identifiers": [
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Previews-in-Xcode",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Xcode-library-customization",
+        "doc://com.apple.SwiftUI/documentation/SwiftUI/Performance-analysis"
+      ]
+    }
+  ],
+  "metadata": {
+    "roleHeading": "Framework",
+    "platforms": [
+      {
+        "introducedAt": "13.0",
+        "beta": false,
+        "name": "iOS"
+      },
+      {
+        "introducedAt": "13.0",
+        "beta": false,
+        "name": "iPadOS"
+      },
+      {
+        "introducedAt": "13.0",
+        "beta": false,
+        "name": "Mac Catalyst"
+      },
+      {
+        "introducedAt": "10.15",
+        "beta": false,
+        "name": "macOS"
+      },
+      {
+        "introducedAt": "13.0",
+        "beta": false,
+        "name": "tvOS"
+      },
+      {
+        "introducedAt": "1.0",
+        "beta": false,
+        "name": "visionOS"
+      },
+      {
+        "introducedAt": "6.0",
+        "beta": false,
+        "name": "watchOS"
+      }
+    ],
+    "modules": [
+      {
+        "name": "SwiftUI"
+      }
+    ],
+    "images": [
+      {
+        "type": "card",
+        "identifier": "SwiftUI-PageImage-card.png"
+      }
+    ],
+    "symbolKind": "module",
+    "role": "collection",
+    "title": "SwiftUI",
+    "externalID": "SwiftUI"
+  },
+  "primaryContentSections": [
+    {
+      "kind": "content",
+      "content": [
+        {
+          "type": "heading",
+          "anchor": "Overview",
+          "level": 2,
+          "text": "Overview"
+        },
+        {
+          "type": "paragraph",
+          "inlineContent": [
+            {
+              "text": "SwiftUI provides views, controls, and layout structures for declaring your app’s",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "user interface. The framework provides event handlers for delivering taps, gestures,",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "and other types of input to your app, and tools to manage the flow of data from your",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "app’s models down to the views and controls that users see and interact with.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlineContent": [
+            {
+              "text": "Define your app structure using the ",
+              "type": "text"
+            },
+            {
+              "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/App",
+              "isActive": true,
+              "type": "reference"
+            },
+            {
+              "text": " protocol, and populate it",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "with scenes that contain the views that make up your app’s user interface.",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "Create your own custom views that conform to the ",
+              "type": "text"
+            },
+            {
+              "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/View",
+              "isActive": true,
+              "type": "reference"
+            },
+            {
+              "text": " protocol, and compose",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "them with SwiftUI views for displaying text, images, and custom shapes using stacks,",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "lists, and more. Apply powerful modifiers to built-in views and your own views to",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "customize their rendering and interactivity. Share code between apps on multiple",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "type": "text",
+              "text": "platforms with views and controls that adapt to their context and presentation."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlineContent": [
+            {
+              "identifier": "landmarks-app-article-hero",
+              "type": "image"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlineContent": [
+            {
+              "text": "You can integrate SwiftUI views with objects from the",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "type": "reference",
+              "identifier": "doc://com.apple.documentation/documentation/UIKit",
+              "isActive": true
+            },
+            {
+              "text": ",",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "type": "reference",
+              "identifier": "doc://com.apple.documentation/documentation/AppKit",
+              "isActive": true
+            },
+            {
+              "text": ", and",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "type": "reference",
+              "identifier": "doc://com.apple.documentation/documentation/WatchKit",
+              "isActive": true
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "frameworks to take further advantage of platform-specific functionality. You can",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "also customize accessibility support in SwiftUI, and localize your app’s interface",
+              "type": "text"
+            },
+            {
+              "text": " ",
+              "type": "text"
+            },
+            {
+              "text": "for different languages, countries, or cultural regions.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "anchor": "Featured-samples",
+          "level": 3,
+          "text": "Featured samples"
+        },
+        {
+          "type": "links",
+          "items": [
+            "doc://com.apple.SwiftUI/documentation/SwiftUI/Landmarks-Building-an-app-with-Liquid-Glass",
+            "doc://com.apple.documentation/documentation/visionOS/destination-video",
+            "doc://com.apple.documentation/documentation/visionOS/BOT-anist",
+            "doc://com.apple.SwiftUI/documentation/SwiftUI/Building-a-document-based-app-with-SwiftUI"
+          ],
+          "style": "detailedGrid"
+        }
+      ]
+    }
+  ],
+  "abstract": [
+    {
+      "text": "Declare the user interface and behavior for your app on every platform.",
+      "type": "text"
+    }
+  ],
+  "kind": "symbol",
+  "identifier": {
+    "interfaceLanguage": "swift",
+    "url": "doc://com.apple.SwiftUI/documentation/SwiftUI"
+  },
+  "sections": [],
+  "references": {
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/View-groupings": {
+      "type": "topic",
+      "url": "/documentation/swiftui/view-groupings",
+      "title": "View groupings",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/View-groupings",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Present views in different kinds of purpose-driven containers, like forms or"
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "text",
+          "text": "control groups."
+        }
+      ],
+      "kind": "article"
+    },
+    "doc://com.apple.documentation/documentation/technologies": {
+      "role": "overview",
+      "kind": "technologies",
+      "url": "/documentation/technologies",
+      "abstract": [
+        {
+          "text": "",
+          "type": "text"
+        }
+      ],
+      "title": "Technologies",
+      "identifier": "doc://com.apple.documentation/documentation/technologies",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Layout-adjustments": {
+      "type": "topic",
+      "title": "Layout adjustments",
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Layout-adjustments",
+      "url": "/documentation/swiftui/layout-adjustments",
+      "kind": "article",
+      "abstract": [
+        {
+          "text": "Make fine adjustments to alignment, spacing, padding, and other layout parameters.",
+          "type": "text"
+        }
+      ]
+    },
+    "Landmarks-Building-an-app-with-Liquid-Glass-PageImage-card.png": {
+      "type": "image",
+      "variants": [
+        {
+          "traits": [
+            "2x",
+            "light"
+          ],
+          "url": "https://docs-assets.developer.apple.com/published/54d1e5049c272381ddeb6c5d7b04fd25/Landmarks-Building-an-app-with-Liquid-Glass-PageImage-card%402x.png"
+        },
+        {
+          "traits": [
+            "2x",
+            "dark"
+          ],
+          "url": "https://docs-assets.developer.apple.com/published/f9a984f52b05748f911127fc743c7e99/Landmarks-Building-an-app-with-Liquid-Glass-PageImage-card~dark%402x.png"
+        }
+      ],
+      "identifier": "Landmarks-Building-an-app-with-Liquid-Glass-PageImage-card.png",
+      "alt": "An image with a background of Mount Fuji, and in the foreground screenshots of the landmark detail view for Mount Fuji in the Landmarks app, in an iPad and iPhone."
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/App-organization": {
+      "role": "collectionGroup",
+      "title": "App organization",
+      "type": "topic",
+      "abstract": [
+        {
+          "text": "Define the entry point and top-level structure of your app.",
+          "type": "text"
+        }
+      ],
+      "url": "/documentation/swiftui/app-organization",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/App-organization",
+      "kind": "article"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Controls-and-indicators": {
+      "kind": "article",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Controls-and-indicators",
+      "abstract": [
+        {
+          "text": "Display values and get user selections.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "role": "collectionGroup",
+      "title": "Controls and indicators",
+      "url": "/documentation/swiftui/controls-and-indicators"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Search": {
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Enable people to search for text or other content within your app."
+        }
+      ],
+      "role": "collectionGroup",
+      "kind": "article",
+      "type": "topic",
+      "title": "Search",
+      "url": "/documentation/swiftui/search",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Search"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Persistent-storage": {
+      "type": "topic",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Persistent-storage",
+      "role": "collectionGroup",
+      "title": "Persistent storage",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Store data for use across sessions of your app."
+        }
+      ],
+      "url": "/documentation/swiftui/persistent-storage",
+      "kind": "article"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/WatchKit-integration": {
+      "abstract": [
+        {
+          "text": "Add WatchKit views to your SwiftUI app, or use SwiftUI views in your WatchKit app.",
+          "type": "text"
+        }
+      ],
+      "title": "WatchKit integration",
+      "type": "topic",
+      "url": "/documentation/swiftui/watchkit-integration",
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/WatchKit-integration",
+      "kind": "article"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/App": {
+      "type": "topic",
+      "role": "symbol",
+      "kind": "symbol",
+      "fragments": [
+        {
+          "text": "protocol",
+          "kind": "keyword"
+        },
+        {
+          "text": " ",
+          "kind": "text"
+        },
+        {
+          "text": "App",
+          "kind": "identifier"
+        }
+      ],
+      "navigatorTitle": [
+        {
+          "text": "App",
+          "kind": "identifier"
+        }
+      ],
+      "url": "/documentation/swiftui/app",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/App",
+      "title": "App",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "A type that represents the structure and behavior of an app."
+        }
+      ]
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Clipboard": {
+      "abstract": [
+        {
+          "text": "Enable people to move or duplicate items by issuing Copy and Paste commands.",
+          "type": "text"
+        }
+      ],
+      "title": "Clipboard",
+      "type": "topic",
+      "url": "/documentation/swiftui/clipboard",
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Clipboard",
+      "kind": "article"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Layout-fundamentals": {
+      "url": "/documentation/swiftui/layout-fundamentals",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Layout-fundamentals",
+      "kind": "article",
+      "title": "Layout fundamentals",
+      "abstract": [
+        {
+          "text": "Arrange views inside built-in layout containers like stacks and grids.",
+          "type": "text"
+        }
+      ],
+      "role": "collectionGroup",
+      "type": "topic"
+    },
+    "doc://com.apple.documentation/tutorials/Sample-Apps": {
+      "type": "topic",
+      "identifier": "doc://com.apple.documentation/tutorials/Sample-Apps",
+      "role": "overview",
+      "title": "Exploring SwiftUI Sample Apps",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Explore these SwiftUI samples using Swift Playgrounds on iPad or in Xcode to learn about defining user interfaces, responding to user interactions, and managing data flow."
+        }
+      ],
+      "url": "/tutorials/Sample-Apps",
+      "kind": "overview"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Modal-presentations": {
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Modal-presentations",
+      "url": "/documentation/swiftui/modal-presentations",
+      "kind": "article",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Present content in a separate view that offers focused interaction."
+        }
+      ],
+      "type": "topic",
+      "title": "Modal presentations"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Toolbars": {
+      "type": "topic",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Toolbars",
+      "role": "collectionGroup",
+      "title": "Toolbars",
+      "abstract": [
+        {
+          "text": "Provide immediate access to frequently used commands and controls.",
+          "type": "text"
+        }
+      ],
+      "url": "/documentation/swiftui/toolbars",
+      "kind": "article"
+    },
+    "doc://com.apple.documentation/tutorials/swiftui-concepts": {
+      "url": "/tutorials/swiftui-concepts",
+      "role": "overview",
+      "abstract": [
+        {
+          "text": "Discover tips and techniques for building multiplatform apps with this set of conceptual articles and sample code.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.documentation/tutorials/swiftui-concepts",
+      "title": "Learning SwiftUI",
+      "kind": "overview",
+      "type": "topic"
+    },
+    "Building-a-document-based-app-PageImage-card.png": {
+      "alt": "A screenshot displaying the document launch experience on iPad with a robot and plant accessory to the left and right of the title view, respectively.",
+      "identifier": "Building-a-document-based-app-PageImage-card.png",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/e143ff39a1e48efe1ed0000f6e902a5b/Building-a-document-based-app-PageImage-card%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        },
+        {
+          "url": "https://docs-assets.developer.apple.com/published/6d0365b065cbf4963413da8042cfecf9/Building-a-document-based-app-PageImage-card~dark%402x.png",
+          "traits": [
+            "2x",
+            "dark"
+          ]
+        }
+      ],
+      "type": "image"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Tables": {
+      "title": "Tables",
+      "url": "/documentation/swiftui/tables",
+      "role": "collectionGroup",
+      "kind": "article",
+      "type": "topic",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Tables",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Display selectable, sortable data arranged in rows and columns."
+        }
+      ]
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/View-styles": {
+      "kind": "article",
+      "title": "View styles",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/View-styles",
+      "abstract": [
+        {
+          "text": "Apply built-in and custom appearances and behaviors to different types of views.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "role": "collectionGroup",
+      "url": "/documentation/swiftui/view-styles"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/View-configuration": {
+      "role": "collectionGroup",
+      "kind": "article",
+      "title": "View configuration",
+      "url": "/documentation/swiftui/view-configuration",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/View-configuration",
+      "type": "topic",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Adjust the characteristics of views in a hierarchy."
+        }
+      ]
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Performance-analysis": {
+      "url": "/documentation/swiftui/performance-analysis",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Measure and improve your app’s responsiveness.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Performance-analysis",
+      "title": "Performance analysis",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Shapes": {
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Shapes",
+      "type": "topic",
+      "abstract": [
+        {
+          "text": "Trace and fill built-in and custom shapes with a color, gradient, or other pattern.",
+          "type": "text"
+        }
+      ],
+      "kind": "article",
+      "url": "/documentation/swiftui/shapes",
+      "title": "Shapes"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Model-data": {
+      "url": "/documentation/swiftui/model-data",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Manage the data that your app uses to drive its interface.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Model-data",
+      "title": "Model data",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Input-events": {
+      "url": "/documentation/swiftui/input-events",
+      "title": "Input events",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Input-events",
+      "role": "collectionGroup",
+      "type": "topic",
+      "kind": "article",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Respond to input from a hardware device, like a keyboard or a Touch Bar."
+        }
+      ]
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Menus-and-commands": {
+      "title": "Menus and commands",
+      "abstract": [
+        {
+          "text": "Provide space-efficient, context-dependent access to commands and controls.",
+          "type": "text"
+        }
+      ],
+      "url": "/documentation/swiftui/menus-and-commands",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Menus-and-commands",
+      "kind": "article",
+      "role": "collectionGroup",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Focus": {
+      "role": "collectionGroup",
+      "kind": "article",
+      "title": "Focus",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Focus",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Identify and control which visible object responds to user interaction."
+        }
+      ],
+      "type": "topic",
+      "url": "/documentation/swiftui/focus"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Drag-and-drop": {
+      "title": "Drag and drop",
+      "url": "/documentation/swiftui/drag-and-drop",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Drag-and-drop",
+      "kind": "article",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Enable people to move or duplicate items by dragging them from one location to another."
+        }
+      ],
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Gestures": {
+      "title": "Gestures",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Define interactions from taps, clicks, and swipes to fine-grained gestures."
+        }
+      ],
+      "kind": "article",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Gestures",
+      "url": "/documentation/swiftui/gestures",
+      "role": "collectionGroup",
+      "type": "topic"
+    },
+    "doc://com.apple.documentation/documentation/visionOS/BOT-anist": {
+      "images": [
+        {
+          "identifier": "BOT-anist-PageImage-card.png",
+          "type": "card"
+        }
+      ],
+      "url": "/documentation/visionOS/BOT-anist",
+      "role": "sampleCode",
+      "abstract": [
+        {
+          "text": "Build a multiplatform app that uses windows, volumes, and animations to create a robot botanist’s greenhouse.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.documentation/documentation/visionOS/BOT-anist",
+      "title": "BOT-anist",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Documents": {
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Documents",
+      "url": "/documentation/swiftui/documents",
+      "kind": "article",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Enable people to open and manage documents."
+        }
+      ],
+      "type": "topic",
+      "title": "Documents"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-appearance": {
+      "url": "/documentation/swiftui/accessible-appearance",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Enhance the legibility of content in your app’s interface.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-appearance",
+      "title": "Accessible appearance",
+      "kind": "article",
+      "type": "topic"
+    },
+    "Destination-Video-intro.png": {
+      "alt": null,
+      "identifier": "Destination-Video-intro.png",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/648c665254129674ce04bbc64dbeeb2d/Destination-Video-intro%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image"
+    },
+    "landmarks-app-article-hero": {
+      "alt": "An image of the Landmarks sample app on Mac, iPad, and iPhone showing the Mount Fuji landmark.",
+      "identifier": "landmarks-app-article-hero",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/ce193ec494e91d4150c3356442824213/landmarks-app-article-hero%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        },
+        {
+          "url": "https://docs-assets.developer.apple.com/published/f49b6d36f77a89efa6c02f4d798de4e5/landmarks-app-article-hero~dark%402x.png",
+          "traits": [
+            "2x",
+            "dark"
+          ]
+        }
+      ],
+      "type": "image"
+    },
+    "BOT-anist-PageImage-card.png": {
+      "alt": null,
+      "identifier": "BOT-anist-PageImage-card.png",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/d9f7d85cd82f76e6fd53df7302f0424a/BOT-anist-PageImage-card%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Scroll-views": {
+      "url": "/documentation/swiftui/scroll-views",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Scroll-views",
+      "kind": "article",
+      "title": "Scroll views",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Enable people to scroll to content that doesn’t fit in the current display."
+        }
+      ],
+      "role": "collectionGroup",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Landmarks-Building-an-app-with-Liquid-Glass": {
+      "role": "sampleCode",
+      "type": "topic",
+      "title": "Landmarks: Building an app with Liquid Glass",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Enhance your app experience with system-provided and custom Liquid Glass."
+        }
+      ],
+      "images": [
+        {
+          "type": "card",
+          "identifier": "Landmarks-Building-an-app-with-Liquid-Glass-PageImage-card.png"
+        }
+      ],
+      "url": "/documentation/swiftui/landmarks-building-an-app-with-liquid-glass",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Landmarks-Building-an-app-with-Liquid-Glass",
+      "kind": "article"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/UIKit-integration": {
+      "type": "topic",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/UIKit-integration",
+      "url": "/documentation/swiftui/uikit-integration",
+      "title": "UIKit integration",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Add UIKit views to your SwiftUI app, or use SwiftUI views in your UIKit app."
+        }
+      ],
+      "kind": "article",
+      "role": "collectionGroup"
+    },
+    "View-Fundamentals-PageImage-card.png": {
+      "alt": "A conceptual illustration showing views, text, and overlapping elements.",
+      "identifier": "View-Fundamentals-PageImage-card.png",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/29d909351f1c009f459bda11061d6b7a/View-Fundamentals-PageImage-card%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        },
+        {
+          "url": "https://docs-assets.developer.apple.com/published/b79bbe329e2fe68880e450acb1c2a346/View-Fundamentals-PageImage-card~dark%402x.png",
+          "traits": [
+            "2x",
+            "dark"
+          ]
+        }
+      ],
+      "type": "image"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Previews-in-Xcode": {
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Previews-in-Xcode",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Generate dynamic, interactive previews of your custom views."
+        }
+      ],
+      "role": "collectionGroup",
+      "url": "/documentation/swiftui/previews-in-xcode",
+      "title": "Previews in Xcode",
+      "type": "topic",
+      "kind": "article"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-controls": {
+      "url": "/documentation/swiftui/accessible-controls",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Improve access to actions that your app can undertake.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-controls",
+      "title": "Accessible controls",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/AppKit-integration": {
+      "url": "/documentation/swiftui/appkit-integration",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Add AppKit views to your SwiftUI app, or use SwiftUI views in your AppKit app.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/AppKit-integration",
+      "title": "AppKit integration",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Text-input-and-output": {
+      "title": "Text input and output",
+      "abstract": [
+        {
+          "text": "Display formatted text and get text input from the user.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Text-input-and-output",
+      "kind": "article",
+      "url": "/documentation/swiftui/text-input-and-output",
+      "role": "collectionGroup"
+    },
+    "doc://com.apple.documentation/documentation/WatchKit": {
+      "url": "/documentation/WatchKit",
+      "role": "collection",
+      "abstract": [
+        {
+          "text": "Build watchOS apps that use features the app delegate monitors or controls, such as background tasks and extended runtime sessions.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.documentation/documentation/WatchKit",
+      "title": "WatchKit",
+      "kind": "symbol",
+      "type": "topic"
+    },
+    "SwiftUI-PageImage-card.png": {
+      "alt": "A stylized Swift logo using dashes on a white or blue background.",
+      "identifier": "SwiftUI-PageImage-card.png",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/a0ca0e84aabe29cd5bf4d29b4ab5046e/SwiftUI-PageImage-card%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        },
+        {
+          "url": "https://docs-assets.developer.apple.com/published/a6ddc19a84fa8156d8ec8353a9622d0e/SwiftUI-PageImage-card~dark%402x.png",
+          "traits": [
+            "2x",
+            "dark"
+          ]
+        }
+      ],
+      "type": "image"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Navigation": {
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Navigation",
+      "url": "/documentation/swiftui/navigation",
+      "kind": "article",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Enable people to move between different parts of your app’s view hierarchy"
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "text",
+          "text": "within a scene."
+        }
+      ],
+      "type": "topic",
+      "title": "Navigation"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Building-a-document-based-app-with-SwiftUI": {
+      "images": [
+        {
+          "identifier": "Building-a-document-based-app-PageImage-card.png",
+          "type": "card"
+        }
+      ],
+      "url": "/documentation/swiftui/building-a-document-based-app-with-swiftui",
+      "role": "sampleCode",
+      "abstract": [
+        {
+          "text": "Create, save, and open documents in a multiplatform app.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Building-a-document-based-app-with-SwiftUI",
+      "title": "Building a document-based app with SwiftUI",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Scenes": {
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Scenes",
+      "url": "/documentation/swiftui/scenes",
+      "kind": "article",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Declare the user interface groupings that make up the parts of your app."
+        }
+      ],
+      "type": "topic",
+      "title": "Scenes"
+    },
+    "doc://com.apple.documentation/documentation/Updates/SwiftUI": {
+      "url": "/documentation/Updates/SwiftUI",
+      "role": "article",
+      "abstract": [
+        {
+          "text": "Learn about important changes to SwiftUI.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.documentation/documentation/Updates/SwiftUI",
+      "title": "SwiftUI updates",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI": {
+      "role": "collection",
+      "kind": "symbol",
+      "url": "/documentation/swiftui",
+      "images": [
+        {
+          "identifier": "SwiftUI-PageImage-card.png",
+          "type": "card"
+        }
+      ],
+      "abstract": [
+        {
+          "text": "Declare the user interface and behavior for your app on every platform.",
+          "type": "text"
+        }
+      ],
+      "title": "SwiftUI",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Environment-values": {
+      "url": "/documentation/swiftui/environment-values",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Share data throughout a view hierarchy using the environment.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Environment-values",
+      "title": "Environment values",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.documentation/documentation/visionOS/destination-video": {
+      "images": [
+        {
+          "identifier": "Destination-Video-intro.png",
+          "type": "card"
+        }
+      ],
+      "role": "sampleCode",
+      "title": "Destination Video",
+      "identifier": "doc://com.apple.documentation/documentation/visionOS/destination-video",
+      "kind": "article",
+      "url": "/documentation/visionOS/destination-video",
+      "abstract": [
+        {
+          "text": "Leverage SwiftUI to build an immersive media experience in a multiplatform app.",
+          "type": "text"
+        }
+      ],
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-navigation": {
+      "url": "/documentation/swiftui/accessible-navigation",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Enable users to navigate to specific user interface elements using rotors.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-navigation",
+      "title": "Accessible navigation",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Drawing-and-graphics": {
+      "kind": "article",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Drawing-and-graphics",
+      "abstract": [
+        {
+          "text": "Enhance your views with graphical effects and customized drawings.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "role": "collectionGroup",
+      "title": "Drawing and graphics",
+      "url": "/documentation/swiftui/drawing-and-graphics"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Immersive-spaces": {
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Immersive-spaces",
+      "url": "/documentation/swiftui/immersive-spaces",
+      "kind": "article",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Display unbounded content in a person’s surroundings."
+        }
+      ],
+      "type": "topic",
+      "title": "Immersive spaces"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Technology-specific-views": {
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Use SwiftUI views that other Apple frameworks provide."
+        }
+      ],
+      "kind": "article",
+      "type": "topic",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Technology-specific-views",
+      "title": "Technology-specific views",
+      "url": "/documentation/swiftui/technology-specific-views",
+      "role": "collectionGroup"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Images": {
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Images",
+      "title": "Images",
+      "type": "topic",
+      "kind": "article",
+      "url": "/documentation/swiftui/images",
+      "abstract": [
+        {
+          "text": "Add images and symbols to your app’s user interface.",
+          "type": "text"
+        }
+      ],
+      "role": "collectionGroup"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/App-extensions": {
+      "role": "collectionGroup",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/App-extensions",
+      "url": "/documentation/swiftui/app-extensions",
+      "kind": "article",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Extend your app’s basic functionality to other parts of the system, like"
+        },
+        {
+          "text": " ",
+          "type": "text"
+        },
+        {
+          "text": "by adding a Widget.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "title": "App extensions"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/System-events": {
+      "title": "System events",
+      "abstract": [
+        {
+          "text": "React to system events, like opening a URL.",
+          "type": "text"
+        }
+      ],
+      "kind": "article",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/System-events",
+      "role": "collectionGroup",
+      "type": "topic",
+      "url": "/documentation/swiftui/system-events"
+    },
+    "liquid-glass.png": {
+      "alt": "An abstract representation of an interface with a translucent layer that appears above the content layer.",
+      "identifier": "liquid-glass.png",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/9e6f0f4c73f588db44f7b17b1043ac3d/liquid-glass~dark.png",
+          "traits": [
+            "1x",
+            "dark"
+          ]
+        },
+        {
+          "url": "https://docs-assets.developer.apple.com/published/cea5eb617d7e05fb04c260722bfb7242/liquid-glass.png",
+          "traits": [
+            "1x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-descriptions": {
+      "url": "/documentation/swiftui/accessible-descriptions",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Describe interface elements to help people understand what they represent.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessible-descriptions",
+      "title": "Accessible descriptions",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Xcode-library-customization": {
+      "url": "/documentation/swiftui/xcode-library-customization",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "text": "Expose custom views and modifiers in the Xcode library.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Xcode-library-customization",
+      "title": "Xcode library customization",
+      "kind": "article",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/View": {
+      "role": "symbol",
+      "kind": "symbol",
+      "url": "/documentation/swiftui/view",
+      "abstract": [
+        {
+          "text": "A type that represents part of your app’s user interface and provides",
+          "type": "text"
+        },
+        {
+          "text": " ",
+          "type": "text"
+        },
+        {
+          "text": "modifiers that you use to configure views.",
+          "type": "text"
+        }
+      ],
+      "title": "View",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/View",
+      "fragments": [
+        {
+          "kind": "keyword",
+          "text": "protocol"
+        },
+        {
+          "kind": "text",
+          "text": " "
+        },
+        {
+          "text": "View",
+          "kind": "identifier"
+        }
+      ],
+      "type": "topic",
+      "navigatorTitle": [
+        {
+          "text": "View",
+          "kind": "identifier"
+        }
+      ]
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Lists": {
+      "role": "collectionGroup",
+      "kind": "article",
+      "url": "/documentation/swiftui/lists",
+      "abstract": [
+        {
+          "text": "Display a structured, scrollable column of information.",
+          "type": "text"
+        }
+      ],
+      "title": "Lists",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Lists",
+      "type": "topic"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Preferences": {
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Preferences",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Indicate configuration preferences from views to their container views."
+        }
+      ],
+      "url": "/documentation/swiftui/preferences",
+      "kind": "article",
+      "title": "Preferences",
+      "type": "topic",
+      "role": "collectionGroup"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessibility-fundamentals": {
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Accessibility-fundamentals",
+      "kind": "article",
+      "type": "topic",
+      "role": "collectionGroup",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Make your SwiftUI apps accessible to everyone, including people with"
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "type": "text",
+          "text": "disabilities."
+        }
+      ],
+      "title": "Accessibility fundamentals",
+      "url": "/documentation/swiftui/accessibility-fundamentals"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Windows": {
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Windows",
+      "title": "Windows",
+      "role": "collectionGroup",
+      "kind": "article",
+      "url": "/documentation/swiftui/windows",
+      "type": "topic",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Display user interface content in a window or a collection of windows."
+        }
+      ]
+    },
+    "doc://com.apple.documentation/documentation/AppKit": {
+      "identifier": "doc://com.apple.documentation/documentation/AppKit",
+      "kind": "symbol",
+      "type": "topic",
+      "role": "collection",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Construct and manage a graphical, event-driven user interface for your macOS app."
+        }
+      ],
+      "title": "AppKit",
+      "url": "/documentation/AppKit"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/View-fundamentals": {
+      "images": [
+        {
+          "identifier": "View-Fundamentals-PageImage-card.png",
+          "type": "card"
+        }
+      ],
+      "url": "/documentation/swiftui/view-fundamentals",
+      "kind": "article",
+      "abstract": [
+        {
+          "text": "Define the visual elements of your app using a hierarchy of views.",
+          "type": "text"
+        }
+      ],
+      "title": "View fundamentals",
+      "role": "collectionGroup",
+      "type": "topic",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/View-fundamentals"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Custom-layout": {
+      "url": "/documentation/swiftui/custom-layout",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Custom-layout",
+      "kind": "article",
+      "title": "Custom layout",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Place views in custom arrangements and create animated transitions between layout types."
+        }
+      ],
+      "role": "collectionGroup",
+      "type": "topic"
+    },
+    "doc://com.apple.documentation/documentation/TechnologyOverviews/adopting-liquid-glass": {
+      "role": "article",
+      "identifier": "doc://com.apple.documentation/documentation/TechnologyOverviews/adopting-liquid-glass",
+      "kind": "article",
+      "url": "/documentation/TechnologyOverviews/adopting-liquid-glass",
+      "images": [
+        {
+          "type": "card",
+          "identifier": "liquid-glass.png"
+        }
+      ],
+      "type": "topic",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Find out how to bring the new material to your app."
+        }
+      ],
+      "title": "Adopting Liquid Glass"
+    },
+    "doc://com.apple.SwiftUI/documentation/SwiftUI/Animations": {
+      "role": "collectionGroup",
+      "kind": "article",
+      "title": "Animations",
+      "url": "/documentation/swiftui/animations",
+      "identifier": "doc://com.apple.SwiftUI/documentation/SwiftUI/Animations",
+      "type": "topic",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Create smooth visual updates in response to state changes."
+        }
+      ]
+    },
+    "doc://com.apple.documentation/documentation/UIKit": {
+      "type": "topic",
+      "identifier": "doc://com.apple.documentation/documentation/UIKit",
+      "url": "/documentation/UIKit",
+      "title": "UIKit",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Construct and manage a graphical, event-driven user interface for your iOS, iPadOS, or tvOS app."
+        }
+      ],
+      "kind": "symbol",
+      "role": "collection"
+    }
+  },
+  "legalNotices": {
+    "copyright": "Copyright &copy; 2025 Apple Inc. All rights reserved.",
+    "termsOfUse": "https://www.apple.com/legal/internet-services/terms/site.html",
+    "privacyPolicy": "https://www.apple.com/privacy/privacy-policy"
+  }
+}

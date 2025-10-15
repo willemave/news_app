@@ -40,7 +40,7 @@ struct NewsGroupCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             // Group header with count
             HStack {
                 Text("News Digest")
@@ -56,101 +56,93 @@ struct NewsGroupCard: View {
 
                 if group.isRead {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.green)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
 
             // News items
             ForEach(group.items) { item in
-                HStack(alignment: .top, spacing: 12) {
-                    // Content
-                    VStack(alignment: .leading, spacing: 6) {
-                        // Title - full text, no line limit
-                        Text(item.displayTitle)
-                            .font(.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(item.isRead ? .secondary : .primary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        // Short summary if available
-                        if let summary = item.shortSummary, !summary.isEmpty {
-                            Text(summary)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                NavigationLink(destination: ContentDetailView(contentId: item.id, allContentIds: group.items.map { $0.id })) {
+                    HStack(alignment: .top, spacing: 10) {
+                        // Content
+                        VStack(alignment: .leading, spacing: 4) {
+                            // Title - compact display
+                            Text(item.displayTitle)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(item.isRead ? .secondary : .primary)
                                 .lineLimit(2)
-                        }
 
-                        // Metadata row
-                        HStack(spacing: 8) {
-                            // Platform icon and source
-                            HStack(spacing: 4) {
-                                PlatformIcon(platform: item.platform)
-                                    .opacity(item.platform == nil ? 0 : 1)
-                                if let source = item.source {
-                                    Text(source)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-
-                            // Classification badge
-                            if let classification = item.classification {
-                                Text(classification)
-                                    .font(.caption2)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.blue.opacity(0.7))
-                                    .cornerRadius(4)
-                            }
-
-                            Spacer()
-
-                            // Date
-                            if let pubDate = item.publicationDate {
-                                Text(formatDateShort(pubDate))
+                            // Short summary if available
+                            if let summary = item.shortSummary, !summary.isEmpty {
+                                Text(summary)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
+                                    .lineLimit(2)
                             }
-                        }
-                    }
 
-                    // Convert icon button
-                    Button(action: {
-                        Task {
-                            convertingStates[item.id] = true
-                            await onConvert(item.id)
-                            convertingStates[item.id] = false
-                        }
-                    }) {
-                        Group {
-                            if convertingStates[item.id] == true {
-                                ProgressView()
-                                    .scaleEffect(0.7)
-                            } else {
-                                Image(systemName: "arrow.right.circle")
-                                    .font(.title3)
-                                    .foregroundColor(.blue)
+                            // Metadata row
+                            HStack(spacing: 6) {
+                                // Platform icon and source
+                                HStack(spacing: 3) {
+                                    PlatformIcon(platform: item.platform)
+                                        .opacity(item.platform == nil ? 0 : 1)
+                                    if let source = item.source {
+                                        Text(source)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+
+                                Spacer()
+
+                                // Date
+                                if let pubDate = item.publicationDate {
+                                    Text(formatDateShort(pubDate))
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
-                        .frame(width: 28, height: 28)
+
+                        // Convert icon button
+                        Button(action: {
+                            Task {
+                                convertingStates[item.id] = true
+                                await onConvert(item.id)
+                                convertingStates[item.id] = false
+                            }
+                        }) {
+                            Group {
+                                if convertingStates[item.id] == true {
+                                    ProgressView()
+                                        .scaleEffect(0.6)
+                                } else {
+                                    Image(systemName: "arrow.right.circle")
+                                        .font(.body)
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                            .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(convertingStates[item.id] == true)
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(convertingStates[item.id] == true)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .buttonStyle(.plain)
 
                 if item.id != group.items.last?.id {
                     Divider()
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 12)
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
         }
         .background(Color(.systemBackground))
         .cornerRadius(12)

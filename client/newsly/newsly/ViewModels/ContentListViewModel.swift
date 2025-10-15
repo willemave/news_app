@@ -144,7 +144,7 @@ class ContentListViewModel: ObservableObject {
                 }
 
                 if selectedReadFilter == "unread" {
-                    withAnimation(.easeOut(duration: 0.3)) {
+                    _ = withAnimation(.easeOut(duration: 0.3)) {
                         contents.remove(at: index)
                     }
                 }
@@ -220,7 +220,7 @@ class ContentListViewModel: ObservableObject {
 
             if selectedReadFilter == "unread" && isRead {
                 // Remove from list when filtering by unread
-                withAnimation(.easeOut(duration: 0.3)) {
+                _ = withAnimation(.easeOut(duration: 0.3)) {
                     contents.remove(at: index)
                 }
             } else {
@@ -319,7 +319,7 @@ class ContentListViewModel: ObservableObject {
             }
 
             if selectedReadFilter == "unread" {
-                withAnimation(.easeOut(duration: 0.3)) {
+                _ = withAnimation(.easeOut(duration: 0.3)) {
                     contents.removeAll { markedSet.contains($0.id) }
                 }
             }
