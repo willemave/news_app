@@ -179,7 +179,7 @@ class ContentDetailViewModel: ObservableObject {
         // Strategy:
         // 1) Build full markdown and offer it via the share sheet so ChatGPT's share extension can receive the text.
         // 2) As a convenience, also put the text on the clipboard (user can paste if needed in the app).
-        // 3) Try to open the ChatGPT app using universal link (web URL) so that, if supported, it lands in-app.
+        // 3) Use custom item provider to preserve line breaks in Mail by converting to HTML.
 
         guard let content = content else { return }
         let fullText = buildFullMarkdown() ?? content.displayTitle
@@ -187,13 +187,79 @@ class ContentDetailViewModel: ObservableObject {
         // Put on clipboard (helps in case target app reads clipboard or the user wants to paste manually)
         UIPasteboard.general.string = fullText
 
-        // Prepare share sheet with the full markdown text
-        let activityVC = UIActivityViewController(activityItems: [fullText], applicationActivities: nil)
+        // Create custom item provider that converts markdown to HTML for Mail
+        let itemProvider = MarkdownItemProvider(markdown: fullText)
+
+        // Prepare share sheet with custom provider
+        let activityVC = UIActivityViewController(activityItems: [itemProvider], applicationActivities: nil)
         activityVC.excludedActivityTypes = [.assignToContact, .saveToCameraRoll, .addToReadingList, .postToFacebook, .postToTwitter]
 
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let root = windowScene.windows.first?.rootViewController {
             root.present(activityVC, animated: true)
         }
+    }
+}
+
+// MARK: - Custom Item Provider for Markdown Sharing
+class MarkdownItemProvider: NSObject, UIActivityItemSource {
+    private let markdown: String
+
+    init(markdown: String) {
+        self.markdown = markdown
+        super.init()
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        return markdown
+    }
+
+    func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
+        // For Mail, convert markdown to HTML to preserve line breaks
+        if activityType == .mail {
+            return convertMarkdownToHTML(markdown)
+        }
+        // For other activities, return plain markdown text
+        return markdown
+    }
+
+    private func convertMarkdownToHTML(_ markdown: String) -> String {
+        var html = "<html><body style='font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6;'>"
+
+        // Split into paragraphs and convert
+        let paragraphs = markdown.components(separatedBy: "\n\n")
+
+        for paragraph in paragraphs {
+            var processedParagraph = paragraph
+
+            // Convert headers
+            if processedParagraph.hasPrefix("### ") {
+                processedParagraph = "<h3>" + processedParagraph.dropFirst(4) + "</h3>"
+            } else if processedParagraph.hasPrefix("## ") {
+                processedParagraph = "<h2>" + processedParagraph.dropFirst(3) + "</h2>"
+            } else if processedParagraph.hasPrefix("# ") {
+                processedParagraph = "<h1>" + processedParagraph.dropFirst(2) + "</h1>"
+            } else if processedParagraph.hasPrefix("---") {
+                processedParagraph = "<hr/>"
+            } else if processedParagraph.contains("\n- ") || processedParagraph.hasPrefix("- ") {
+                // Convert bullet lists
+                let items = processedParagraph.components(separatedBy: "\n").filter { $0.hasPrefix("- ") }
+                let listItems = items.map { "<li>" + $0.dropFirst(2) + "</li>" }.joined()
+                processedParagraph = "<ul>" + listItems + "</ul>"
+            } else if processedParagraph.contains("\n> ") || processedParagraph.hasPrefix("> ") {
+                // Convert quotes
+                let quotes = processedParagraph.components(separatedBy: "\n").filter { $0.hasPrefix("> ") }
+                let quoteText = quotes.map { String($0.dropFirst(2)) }.joined(separator: "<br/>")
+                processedParagraph = "<blockquote style='border-left: 3px solid #ccc; padding-left: 10px; margin: 10px 0;'>" + quoteText + "</blockquote>"
+            } else if !processedParagraph.isEmpty {
+                // Regular paragraph - convert single newlines to <br/>
+                processedParagraph = "<p>" + processedParagraph.replacingOccurrences(of: "\n", with: "<br/>") + "</p>"
+            }
+
+            html += processedParagraph
+        }
+
+        html += "</body></html>"
+        return html
     }
 }

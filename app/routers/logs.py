@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
+from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.templates import templates
 
@@ -15,6 +16,9 @@ router = APIRouter(prefix="/admin")
 settings = get_settings()
 LOGS_DIR = settings.logs_dir
 ERRORS_DIR = LOGS_DIR / "errors"
+
+# Logger
+logger = get_logger(__name__)
 
 
 @router.get("/logs", response_class=HTMLResponse)

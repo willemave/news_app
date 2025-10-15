@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// Represents a group of 5 news items displayed together
+/// Represents a group of 6 news items displayed together
 struct NewsGroup: Identifiable {
     let id: String
     let items: [ContentSummary]
@@ -37,11 +37,11 @@ struct NewsGroup: Identifiable {
 }
 
 extension Array where Element == ContentSummary {
-    /// Group news items into groups of 5
-    func groupedByFive() -> [NewsGroup] {
+    /// Group news items into groups of 6
+    func groupedBySix() -> [NewsGroup] {
         var groups: [NewsGroup] = []
-        for index in stride(from: 0, to: count, by: 5) {
-            let endIndex = Swift.min(index + 5, count)
+        for index in stride(from: 0, to: count, by: 6) {
+            let endIndex = Swift.min(index + 6, count)
             let groupItems = Array(self[index..<endIndex])
             groups.append(NewsGroup(items: groupItems))
         }

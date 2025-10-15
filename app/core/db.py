@@ -85,14 +85,23 @@ def get_db() -> Generator[Session]:
         db.close()
 
 
-def get_db_session() -> Session:
+def get_db_session() -> Generator[Session, None, None]:
     """
-    Get a database session (for dependency injection).
+    Get a database session for FastAPI dependency injection.
 
-    Note: Caller is responsible for closing the session.
+    Yields:
+        Database session that will be automatically committed and closed.
     """
     SessionLocal = get_session_factory()
-    return SessionLocal()
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def run_migrations():

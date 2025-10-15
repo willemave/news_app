@@ -1,0 +1,564 @@
+{
+  "hierarchy": {
+    "reference": "doc://com.apple.sample-apps/tutorials/Sample-Apps",
+    "paths": []
+  },
+  "variants": [
+    {
+      "paths": [
+        "/tutorials/sample-apps"
+      ],
+      "traits": [
+        {
+          "interfaceLanguage": "swift"
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "content": [
+        {
+          "inlineContent": [
+            {
+              "type": "text",
+              "text": "Explore these SwiftUI samples using Swift Playgrounds on iPad or in Xcode to learn about defining user interfaces, responding to user interactions, and managing data flow."
+            }
+          ],
+          "type": "paragraph"
+        }
+      ],
+      "image": "SampleApps-hero.png",
+      "action": {
+        "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/AboutMe",
+        "isActive": true,
+        "type": "reference",
+        "overridingTitleInlineContent": [
+          {
+            "type": "text",
+            "text": "Get started"
+          }
+        ],
+        "overridingTitle": "Get started"
+      },
+      "backgroundImage": "SampleApps-hero.png",
+      "title": "Exploring SwiftUI Sample Apps",
+      "kind": "hero"
+    },
+    {
+      "chapters": [
+        {
+          "content": [
+            {
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Learn SwiftUI fundamentals, such as navigating between views and providing data to those views."
+                }
+              ],
+              "type": "paragraph"
+            }
+          ],
+          "image": "samples-Grid.png",
+          "tutorials": [
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/AboutMe",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/ChooseYourOwnStory",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/DatePlanner"
+          ],
+          "name": "Navigating Apps"
+        },
+        {
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Organize your visual content in a resizable grid layout, from arranging rectangles to managing a dynamic collection of images from a photo library."
+                }
+              ]
+            }
+          ],
+          "image": "samples-story-telling.png",
+          "tutorials": [
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/OrganizingWithGrids",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/EditingGrids",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/ImageGallery",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/LayingOutViews"
+          ],
+          "name": "Presenting Content"
+        },
+        {
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Keep your app responsive while fetching and displaying data from a server."
+                }
+              ]
+            }
+          ],
+          "image": "samples-server.png",
+          "tutorials": [
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/MemeCreator"
+          ],
+          "name": "Retrieving Content from a Server"
+        },
+        {
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "text": "Tap into device capabilities, such as motion sensors and Multi-Touch gestures, to bring your app to life.",
+                  "type": "text"
+                }
+              ]
+            }
+          ],
+          "image": "samples-user-input.png",
+          "tutorials": [
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/BubbleLevel",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/Seismometer",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/RecognizingGestures",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/AnimatingShapes"
+          ],
+          "name": "Responding to User Input"
+        },
+        {
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Take photos with the camera, add them to your photo library, and display them."
+                }
+              ]
+            }
+          ],
+          "image": "samples-camera-photos.png",
+          "tutorials": [
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-CameraPreview",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-CaptureAndSave",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-BrowsePhotos"
+          ],
+          "name": "Capturing and Displaying Photos"
+        },
+        {
+          "content": [
+            {
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Walk through the fundamentals of machine learning."
+                }
+              ],
+              "type": "paragraph"
+            }
+          ],
+          "image": "samples-machine-learning.png",
+          "tutorials": [
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-RecognizeGestures",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-DebugMLModel",
+            "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-CreateMLDataset"
+          ],
+          "name": "Get Started with Machine Learning"
+        }
+      ],
+      "name": null,
+      "content": [],
+      "image": null,
+      "kind": "volume"
+    }
+  ],
+  "schemaVersion": {
+    "major": 0,
+    "minor": 3,
+    "patch": 0
+  },
+  "kind": "overview",
+  "identifier": {
+    "interfaceLanguage": "swift",
+    "url": "doc://com.apple.sample-apps/tutorials/Sample-Apps"
+  },
+  "metadata": {
+    "category": "Sample Apps",
+    "categoryPathComponent": "Sample-Apps",
+    "role": "overview",
+    "title": "Exploring SwiftUI Sample Apps"
+  },
+  "references": {
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/ChooseYourOwnStory": {
+      "url": "/tutorials/sample-apps/chooseyourownstory",
+      "role": "project",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Provide dynamic navigation between views."
+        }
+      ],
+      "kind": "project",
+      "type": "topic",
+      "title": "Choose Your Own Story",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/ChooseYourOwnStory"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/AboutMe": {
+      "abstract": [
+        {
+          "text": "Display data from a central source in multiple views.",
+          "type": "text"
+        }
+      ],
+      "title": "About Me",
+      "url": "/tutorials/sample-apps/aboutme",
+      "role": "project",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/AboutMe",
+      "kind": "project",
+      "type": "topic"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-DebugMLModel": {
+      "url": "/tutorials/sample-apps/getstartedwithmachinelearning-debugmlmodel",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Learn how to debug your machine learning model and make improvements in its predictions."
+        }
+      ],
+      "kind": "project",
+      "role": "project",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-DebugMLModel",
+      "type": "topic",
+      "title": "Debugging Your Machine Learning Model"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/Seismometer": {
+      "url": "/tutorials/sample-apps/seismometer",
+      "role": "project",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Present dynamic data in custom views."
+        }
+      ],
+      "kind": "project",
+      "type": "topic",
+      "title": "Seismometer",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/Seismometer"
+    },
+    "samples-user-input.png": {
+      "alt": "User Input",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/4cc8f1427266b861342f5743198c10ce/samples-user-input%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image",
+      "identifier": "samples-user-input.png"
+    },
+    "samples-camera-photos.png": {
+      "alt": "Camera and Photos",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/afae1fc4407c272b2ca7a33e688a0335/samples-camera-photos%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image",
+      "identifier": "samples-camera-photos.png"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-CameraPreview": {
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-CameraPreview",
+      "role": "project",
+      "kind": "project",
+      "title": "Previewing the Camera Output",
+      "type": "topic",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Preview the output from the camera."
+        }
+      ],
+      "url": "/tutorials/sample-apps/capturingphotos-camerapreview"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-CreateMLDataset": {
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-CreateMLDataset",
+      "url": "/tutorials/sample-apps/getstartedwithmachinelearning-createmldataset",
+      "kind": "project",
+      "title": "Creating Your Own Machine Learning Dataset",
+      "abstract": [
+        {
+          "text": "Learn how to create a dataset for your own machine learning model.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "role": "project"
+    },
+    "SampleApps-hero.png": {
+      "alt": "Sample Apps",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/1ff0653266bf44b3401ed158b9dab559/SampleApps-hero%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image",
+      "identifier": "SampleApps-hero.png"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/OrganizingWithGrids": {
+      "abstract": [
+        {
+          "text": "Display visual content in an arrangement of rows and columns.",
+          "type": "text"
+        }
+      ],
+      "title": "Organizing with Grids",
+      "url": "/tutorials/sample-apps/organizingwithgrids",
+      "role": "project",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/OrganizingWithGrids",
+      "kind": "project",
+      "type": "topic"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/AnimatingShapes": {
+      "url": "/tutorials/sample-apps/animatingshapes",
+      "role": "project",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Learn how to use shapes and simple animations in SwiftUI."
+        }
+      ],
+      "kind": "project",
+      "type": "topic",
+      "title": "Animating Shapes",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/AnimatingShapes"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-BrowsePhotos": {
+      "abstract": [
+        {
+          "text": "Browse the photos in your photo library.",
+          "type": "text"
+        }
+      ],
+      "title": "Browsing Your Photos",
+      "url": "/tutorials/sample-apps/capturingphotos-browsephotos",
+      "role": "project",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-BrowsePhotos",
+      "kind": "project",
+      "type": "topic"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-CaptureAndSave": {
+      "title": "Capturing and Saving a Photo",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/CapturingPhotos-CaptureAndSave",
+      "kind": "project",
+      "role": "project",
+      "type": "topic",
+      "url": "/tutorials/sample-apps/capturingphotos-captureandsave",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Take photos with the camera, add them to your photo library, and display them in your app."
+        }
+      ]
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps": {
+      "url": "/tutorials/sample-apps",
+      "role": "overview",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Explore these SwiftUI samples using Swift Playgrounds on iPad or in Xcode to learn about defining user interfaces, responding to user interactions, and managing data flow."
+        }
+      ],
+      "kind": "overview",
+      "type": "topic",
+      "title": "Exploring SwiftUI Sample Apps",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/EditingGrids": {
+      "url": "/tutorials/sample-apps/editinggrids",
+      "role": "project",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Let people edit data that your app displays."
+        }
+      ],
+      "kind": "project",
+      "type": "topic",
+      "title": "Editing Grids",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/EditingGrids"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/LayingOutViews": {
+      "abstract": [
+        {
+          "text": "Organize, size and align view layouts.",
+          "type": "text"
+        }
+      ],
+      "title": "Laying Out Views",
+      "url": "/tutorials/sample-apps/layingoutviews",
+      "type": "topic",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/LayingOutViews",
+      "kind": "project",
+      "role": "project"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/BubbleLevel": {
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/BubbleLevel",
+      "url": "/tutorials/sample-apps/bubblelevel",
+      "kind": "project",
+      "title": "Bubble Level",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Access and display device sensor data by subscribing to notifications."
+        }
+      ],
+      "type": "topic",
+      "role": "project"
+    },
+    "samples-server.png": {
+      "alt": "Server Content",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/29715a02fa7912ab2e3bfb768ec3de78/samples-server%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image",
+      "identifier": "samples-server.png"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/RecognizingGestures": {
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/RecognizingGestures",
+      "url": "/tutorials/sample-apps/recognizinggestures",
+      "kind": "project",
+      "title": "Recognizing Gestures",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Update shapes or other content in response to taps, rotations, or other Multi-Touch gestures."
+        }
+      ],
+      "type": "topic",
+      "role": "project"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-RecognizeGestures": {
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/GetStartedwithMachineLearning-RecognizeGestures",
+      "kind": "project",
+      "abstract": [
+        {
+          "text": "Explore how to transform hand pose images from the camera into readable data your machine learning model can use to predict gestures.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "url": "/tutorials/sample-apps/getstartedwithmachinelearning-recognizegestures",
+      "title": "Recognizing Gestures with Machine Learning",
+      "role": "project"
+    },
+    "samples-machine-learning.png": {
+      "alt": "Machine learning",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/e99f1adc63dfc91b991be089b278d780/samples-machine-learning.png",
+          "traits": [
+            "1x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image",
+      "identifier": "samples-machine-learning.png"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/DatePlanner": {
+      "abstract": [
+        {
+          "text": "Present hierarchical information in a list.",
+          "type": "text"
+        }
+      ],
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/DatePlanner",
+      "type": "topic",
+      "role": "project",
+      "title": "Date Planner",
+      "kind": "project",
+      "url": "/tutorials/sample-apps/dateplanner"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/MemeCreator": {
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/MemeCreator",
+      "kind": "project",
+      "abstract": [
+        {
+          "text": "Fetch structured data from a server asynchronously.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "url": "/tutorials/sample-apps/memecreator",
+      "title": "Meme Creator",
+      "role": "project"
+    },
+    "samples-Grid.png": {
+      "alt": "Grid",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/174608409b2004cddbcdef6138596d11/samples-Grid%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image",
+      "identifier": "samples-Grid.png"
+    },
+    "samples-story-telling.png": {
+      "alt": "App Navigation",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/3190e21bbf90a4abd9cd3c2edaad5e37/samples-story-telling%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        }
+      ],
+      "type": "image",
+      "identifier": "samples-story-telling.png"
+    },
+    "doc://com.apple.sample-apps/tutorials/Sample-Apps/ImageGallery": {
+      "url": "/tutorials/sample-apps/imagegallery",
+      "role": "project",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Retrieve and display images from an asset catalog or a photo library."
+        }
+      ],
+      "kind": "project",
+      "type": "topic",
+      "title": "Image Gallery",
+      "identifier": "doc://com.apple.sample-apps/tutorials/Sample-Apps/ImageGallery"
+    }
+  },
+  "legalNotices": {
+    "copyright": "Copyright &copy; 2025 Apple Inc. All rights reserved.",
+    "termsOfUse": "https://www.apple.com/legal/internet-services/terms/site.html",
+    "privacyPolicy": "https://www.apple.com/privacy/privacy-policy"
+  }
+}

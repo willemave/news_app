@@ -1,0 +1,821 @@
+{
+  "sections": [
+    {
+      "image": "@2xswiftui-fundamentals-tutorial-hero.png",
+      "title": "Learning SwiftUI",
+      "backgroundImage": "@2xswiftui-fundamentals-tutorial-hero.png",
+      "action": {
+        "isActive": true,
+        "overridingTitleInlineContent": [
+          {
+            "type": "text",
+            "text": "Get started"
+          }
+        ],
+        "type": "reference",
+        "overridingTitle": "Get started",
+        "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/exploring-the-structure-of-a-swiftui-app"
+      },
+      "kind": "hero",
+      "content": [
+        {
+          "inlineContent": [
+            {
+              "type": "text",
+              "text": "Discover tips and techniques for building multiplatform apps with this set of conceptual articles and sample code."
+            }
+          ],
+          "type": "paragraph"
+        }
+      ]
+    },
+    {
+      "image": null,
+      "name": null,
+      "kind": "volume",
+      "content": [],
+      "chapters": [
+        {
+          "image": "@2xyour-first-app.png",
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Walk through the building blocks of a SwiftUI app."
+                }
+              ]
+            }
+          ],
+          "tutorials": [
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/exploring-the-structure-of-a-swiftui-app",
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/specifying-the-view-hierarchy-of-an-app-using-a-scene"
+          ],
+          "name": "App principles"
+        },
+        {
+          "image": "@2xview-layout.png",
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Display content in views that adapt to their environment."
+                }
+              ]
+            }
+          ],
+          "tutorials": [
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/maintaining-the-adaptable-sizes-of-built-in-views",
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/scaling-views-to-complement-text",
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/layering-content",
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/choosing-the-right-way-to-hide-a-view",
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/organizing-and-aligning-content-with-stacks",
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/adjusting-the-space-between-views"
+          ],
+          "name": "View layout"
+        },
+        {
+          "image": "@2xstate-and-data-flow.png",
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "text": "Delve into the principles of managing app state and data flow.",
+                  "type": "text"
+                }
+              ]
+            }
+          ],
+          "tutorials": [
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/driving-changes-in-your-ui-with-state-and-bindings",
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/creating-a-custom-input-control-that-binds-to-a-value",
+            "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/defining-the-source-of-truth-using-a-custom-binding"
+          ],
+          "name": "State and data flow"
+        }
+      ]
+    },
+    {
+      "tiles": [
+        {
+          "identifier": "documentation",
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "type": "text",
+                  "text": "Browse and search detailed API documentation."
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "inlineContent": [
+                        {
+                          "type": "reference",
+                          "isActive": true,
+                          "identifier": "doc://com.apple.documentation/documentation/SwiftUI/App-organization"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "content": [
+                    {
+                      "inlineContent": [
+                        {
+                          "type": "reference",
+                          "isActive": true,
+                          "identifier": "doc://com.apple.documentation/documentation/SwiftUI/Model-data"
+                        }
+                      ],
+                      "type": "paragraph"
+                    }
+                  ]
+                },
+                {
+                  "content": [
+                    {
+                      "inlineContent": [
+                        {
+                          "isActive": true,
+                          "identifier": "doc://com.apple.documentation/documentation/SwiftUI/View-fundamentals",
+                          "type": "reference"
+                        }
+                      ],
+                      "type": "paragraph"
+                    }
+                  ]
+                },
+                {
+                  "content": [
+                    {
+                      "inlineContent": [
+                        {
+                          "type": "reference",
+                          "identifier": "doc://com.apple.documentation/documentation/SwiftUI/Layout-fundamentals",
+                          "isActive": true
+                        }
+                      ],
+                      "type": "paragraph"
+                    }
+                  ]
+                }
+              ],
+              "type": "unorderedList"
+            }
+          ],
+          "title": "Documentation",
+          "action": {
+            "type": "link",
+            "destination": "https://developer.apple.com/documentation/swiftui",
+            "title": "View more"
+          }
+        },
+        {
+          "identifier": "sampleCode",
+          "content": [
+            {
+              "inlineContent": [
+                {
+                  "text": "More ready-made code samples to build and learn from.",
+                  "type": "text"
+                }
+              ],
+              "type": "paragraph"
+            },
+            {
+              "type": "unorderedList",
+              "items": [
+                {
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "inlineContent": [
+                        {
+                          "identifier": "doc://com.apple.documentation/tutorials/SwiftUI",
+                          "type": "reference",
+                          "isActive": true
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "content": [
+                    {
+                      "inlineContent": [
+                        {
+                          "identifier": "doc://com.apple.documentation/tutorials/Sample-Apps",
+                          "type": "reference",
+                          "isActive": true
+                        }
+                      ],
+                      "type": "paragraph"
+                    }
+                  ]
+                },
+                {
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "inlineContent": [
+                        {
+                          "type": "reference",
+                          "identifier": "doc://com.apple.documentation/documentation/swiftui/food_truck_building_a_swiftui_multiplatform_app",
+                          "isActive": true
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "inlineContent": [
+                        {
+                          "isActive": true,
+                          "type": "reference",
+                          "identifier": "doc://com.apple.documentation/documentation/appclip/fruta_building_a_feature-rich_app_with_swiftui"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "title": "Sample Code"
+        },
+        {
+          "identifier": "downloads",
+          "content": [
+            {
+              "inlineContent": [
+                {
+                  "text": "Download Xcode 14 or later for the latest tools and SDKs.",
+                  "type": "text"
+                }
+              ],
+              "type": "paragraph"
+            }
+          ],
+          "title": "Xcode and SDKs",
+          "action": {
+            "type": "link",
+            "destination": "https://apps.apple.com/us/app/xcode/id497799835?mt=12",
+            "title": "View downloads"
+          }
+        },
+        {
+          "identifier": "videos",
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "text": "Watch presentations about SwiftUI from WWDC and other events.",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "inlineContent": [
+                        {
+                          "isActive": true,
+                          "identifier": "https://developer.apple.com/videos/play/wwdc2021/10022/",
+                          "type": "reference"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "inlineContent": [
+                        {
+                          "type": "reference",
+                          "isActive": true,
+                          "identifier": "https://developer.apple.com/videos/play/wwdc2020/10037/"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "inlineContent": [
+                        {
+                          "type": "reference",
+                          "isActive": true,
+                          "identifier": "https://developer.apple.com/videos/play/wwdc2020/10040/"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "type": "unorderedList"
+            }
+          ],
+          "title": "Videos",
+          "action": {
+            "type": "link",
+            "destination": "https://developer.apple.com/videos/all-videos/?q=swiftUI",
+            "title": "Watch videos"
+          }
+        },
+        {
+          "identifier": "forums",
+          "content": [
+            {
+              "type": "paragraph",
+              "inlineContent": [
+                {
+                  "text": "Discuss SwiftUI with Apple engineers and other developers.",
+                  "type": "text"
+                }
+              ]
+            }
+          ],
+          "title": "Forums",
+          "action": {
+            "type": "link",
+            "destination": "https://developer.apple.com/forums/tags/swiftui/",
+            "title": "View forums"
+          }
+        }
+      ],
+      "kind": "resources",
+      "content": [
+        {
+          "type": "paragraph",
+          "inlineContent": [
+            {
+              "text": "Explore other resources to learn more about creating amazing apps with SwiftUI.",
+              "type": "text"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "identifier": {
+    "interfaceLanguage": "swift",
+    "url": "doc://com.apple.tutorials.swiftui-concepts/tutorials/swiftui-concepts"
+  },
+  "kind": "overview",
+  "hierarchy": {
+    "paths": [],
+    "reference": "doc://com.apple.tutorials.swiftui-concepts/tutorials/swiftui-concepts"
+  },
+  "variants": [
+    {
+      "paths": [
+        "/tutorials/swiftui-concepts"
+      ],
+      "traits": [
+        {
+          "interfaceLanguage": "swift"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "title": "Learning SwiftUI",
+    "categoryPathComponent": "swiftui-concepts",
+    "category": "SwiftUI Concepts",
+    "role": "overview"
+  },
+  "schemaVersion": {
+    "major": 0,
+    "minor": 3,
+    "patch": 0
+  },
+  "references": {
+    "doc://com.apple.documentation/documentation/SwiftUI/Model-data": {
+      "role": "article",
+      "title": "Model data",
+      "kind": "article",
+      "abstract": [
+        {
+          "text": "Manage the data that your app uses to drive its interface.",
+          "type": "text"
+        }
+      ],
+      "type": "topic",
+      "url": "/documentation/SwiftUI/Model-data",
+      "identifier": "doc://com.apple.documentation/documentation/SwiftUI/Model-data"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/scaling-views-to-complement-text": {
+      "abstract": [
+        {
+          "text": "Construct a layout that adapts to font styles, Dynamic Type, and varying string lengths.",
+          "type": "text"
+        }
+      ],
+      "title": "Scaling views to complement text",
+      "url": "/tutorials/swiftui-concepts/scaling-views-to-complement-text",
+      "type": "topic",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/scaling-views-to-complement-text",
+      "kind": "project",
+      "role": "project"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/swiftui-concepts": {
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/swiftui-concepts",
+      "url": "/tutorials/swiftui-concepts",
+      "role": "overview",
+      "type": "topic",
+      "abstract": [
+        {
+          "text": "Discover tips and techniques for building multiplatform apps with this set of conceptual articles and sample code.",
+          "type": "text"
+        }
+      ],
+      "kind": "overview",
+      "title": "Learning SwiftUI"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/adjusting-the-space-between-views": {
+      "abstract": [
+        {
+          "text": "Specify the alignment and spacing of your content.",
+          "type": "text"
+        }
+      ],
+      "title": "Adjusting the space between views",
+      "url": "/tutorials/swiftui-concepts/adjusting-the-space-between-views",
+      "type": "topic",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/adjusting-the-space-between-views",
+      "kind": "project",
+      "role": "project"
+    },
+    "@2xyour-first-app.png": {
+      "alt": "",
+      "identifier": "@2xyour-first-app.png",
+      "type": "image",
+      "variants": [
+        {
+          "traits": [
+            "1x",
+            "light"
+          ],
+          "url": "https://docs-assets.developer.apple.com/published/4e50ade55a91edf5ed171f6689a60f5d/%402xyour-first-app.png"
+        }
+      ]
+    },
+    "https://developer.apple.com/videos/play/wwdc2021/10022/": {
+      "title": "Demystify SwiftUI",
+      "identifier": "https://developer.apple.com/videos/play/wwdc2021/10022/",
+      "titleInlineContent": [
+        {
+          "type": "text",
+          "text": "Demystify SwiftUI"
+        }
+      ],
+      "type": "link",
+      "url": "https://developer.apple.com/videos/play/wwdc2021/10022/"
+    },
+    "doc://com.apple.documentation/tutorials/Sample-Apps": {
+      "abstract": [
+        {
+          "text": "Explore these SwiftUI samples using Swift Playgrounds on iPad or in Xcode to learn about defining user interfaces, responding to user interactions, and managing data flow.",
+          "type": "text"
+        }
+      ],
+      "kind": "overview",
+      "title": "Exploring SwiftUI Sample Apps",
+      "identifier": "doc://com.apple.documentation/tutorials/Sample-Apps",
+      "role": "overview",
+      "type": "topic",
+      "url": "/tutorials/Sample-Apps"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/choosing-the-right-way-to-hide-a-view": {
+      "role": "project",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/choosing-the-right-way-to-hide-a-view",
+      "abstract": [
+        {
+          "text": "Control whether a view exists, and how that affects the overall layout.",
+          "type": "text"
+        }
+      ],
+      "title": "Choosing the right way to hide a view",
+      "url": "/tutorials/swiftui-concepts/choosing-the-right-way-to-hide-a-view",
+      "kind": "project",
+      "type": "topic"
+    },
+    "@2xswiftui-fundamentals-tutorial-hero.png": {
+      "alt": "",
+      "identifier": "@2xswiftui-fundamentals-tutorial-hero.png",
+      "type": "image",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/cf7c5d4737849fe54b29508de7ab2786/%402xswiftui-fundamentals-tutorial-hero.png",
+          "traits": [
+            "1x",
+            "light"
+          ]
+        }
+      ]
+    },
+    "@2xstate-and-data-flow.png": {
+      "alt": "",
+      "identifier": "@2xstate-and-data-flow.png",
+      "type": "image",
+      "variants": [
+        {
+          "traits": [
+            "1x",
+            "light"
+          ],
+          "url": "https://docs-assets.developer.apple.com/published/00c1f04efa96d519ac69f688ca80a157/%402xstate-and-data-flow.png"
+        }
+      ]
+    },
+    "doc://com.apple.documentation/documentation/SwiftUI/Layout-fundamentals": {
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Arrange views inside built-in layout containers like stacks and grids."
+        }
+      ],
+      "kind": "article",
+      "title": "Layout fundamentals",
+      "identifier": "doc://com.apple.documentation/documentation/SwiftUI/Layout-fundamentals",
+      "role": "article",
+      "type": "topic",
+      "url": "/documentation/SwiftUI/Layout-fundamentals"
+    },
+    "@2xview-layout.png": {
+      "alt": "",
+      "identifier": "@2xview-layout.png",
+      "type": "image",
+      "variants": [
+        {
+          "traits": [
+            "1x",
+            "light"
+          ],
+          "url": "https://docs-assets.developer.apple.com/published/254096195e7543f87e37b74db5a0984c/%402xview-layout.png"
+        }
+      ]
+    },
+    "doc://com.apple.documentation/documentation/swiftui/food_truck_building_a_swiftui_multiplatform_app": {
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Create a single codebase and app target for Mac, iPad, and iPhone."
+        }
+      ],
+      "kind": "article",
+      "title": "Food Truck: Building a SwiftUI multiplatform app",
+      "identifier": "doc://com.apple.documentation/documentation/swiftui/food_truck_building_a_swiftui_multiplatform_app",
+      "role": "sampleCode",
+      "type": "topic",
+      "url": "/documentation/swiftui/food_truck_building_a_swiftui_multiplatform_app"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/specifying-the-view-hierarchy-of-an-app-using-a-scene": {
+      "role": "project",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/specifying-the-view-hierarchy-of-an-app-using-a-scene",
+      "title": "Specifying the view hierarchy of an app using a scene",
+      "url": "/tutorials/swiftui-concepts/specifying-the-view-hierarchy-of-an-app-using-a-scene",
+      "type": "topic",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "A scene contains the view hierarchy of your app."
+        }
+      ],
+      "kind": "project"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/defining-the-source-of-truth-using-a-custom-binding": {
+      "role": "project",
+      "abstract": [
+        {
+          "text": "Provide an alternative to a state variable by using a custom binding.",
+          "type": "text"
+        }
+      ],
+      "url": "/tutorials/swiftui-concepts/defining-the-source-of-truth-using-a-custom-binding",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/defining-the-source-of-truth-using-a-custom-binding",
+      "type": "topic",
+      "kind": "project",
+      "title": "Defining the source of truth using a custom binding"
+    },
+    "doc://com.apple.documentation/tutorials/SwiftUI": {
+      "abstract": [
+        {
+          "text": "SwiftUI is a modern way to declare user interfaces for any Apple platform. Create beautiful, dynamic apps faster than ever before.",
+          "type": "text"
+        }
+      ],
+      "kind": "overview",
+      "title": "Introducing SwiftUI",
+      "identifier": "doc://com.apple.documentation/tutorials/SwiftUI",
+      "role": "overview",
+      "type": "topic",
+      "url": "/tutorials/SwiftUI"
+    },
+    "https://developer.apple.com/videos/play/wwdc2020/10037/": {
+      "url": "https://developer.apple.com/videos/play/wwdc2020/10037/",
+      "type": "link",
+      "title": "App Essentials in SwiftUI",
+      "titleInlineContent": [
+        {
+          "text": "App Essentials in SwiftUI",
+          "type": "text"
+        }
+      ],
+      "identifier": "https://developer.apple.com/videos/play/wwdc2020/10037/"
+    },
+    "doc://com.apple.documentation/documentation/appclip/fruta_building_a_feature-rich_app_with_swiftui": {
+      "abstract": [
+        {
+          "text": "Create a shared codebase to build a multiplatform app that offers widgets and an App Clip.",
+          "type": "text"
+        }
+      ],
+      "role": "sampleCode",
+      "url": "/documentation/appclip/fruta_building_a_feature-rich_app_with_swiftui",
+      "type": "topic",
+      "title": "Fruta: Building a Feature-Rich App with SwiftUI",
+      "identifier": "doc://com.apple.documentation/documentation/appclip/fruta_building_a_feature-rich_app_with_swiftui",
+      "kind": "article"
+    },
+    "https://developer.apple.com/videos/play/wwdc2020/10040/": {
+      "url": "https://developer.apple.com/videos/play/wwdc2020/10040/",
+      "type": "link",
+      "title": "Data Essentials in SwiftUI",
+      "titleInlineContent": [
+        {
+          "text": "Data Essentials in SwiftUI",
+          "type": "text"
+        }
+      ],
+      "identifier": "https://developer.apple.com/videos/play/wwdc2020/10040/"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/creating-a-custom-input-control-that-binds-to-a-value": {
+      "role": "project",
+      "type": "topic",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/creating-a-custom-input-control-that-binds-to-a-value",
+      "title": "Creating a custom input control that binds to a value",
+      "kind": "project",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Provide interactions that are unique to your app with custom controls that bind to a value."
+        }
+      ],
+      "url": "/tutorials/swiftui-concepts/creating-a-custom-input-control-that-binds-to-a-value"
+    },
+    "doc://com.apple.documentation/documentation/SwiftUI/View-fundamentals": {
+      "abstract": [
+        {
+          "text": "Define the visual elements of your app using a hierarchy of views.",
+          "type": "text"
+        }
+      ],
+      "role": "article",
+      "url": "/documentation/SwiftUI/View-fundamentals",
+      "type": "topic",
+      "title": "View fundamentals",
+      "identifier": "doc://com.apple.documentation/documentation/SwiftUI/View-fundamentals",
+      "images": [
+        {
+          "identifier": "View-Fundamentals-PageImage-card.png",
+          "type": "card"
+        }
+      ],
+      "kind": "article"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/exploring-the-structure-of-a-swiftui-app": {
+      "kind": "project",
+      "role": "project",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Walk through code that explores the structure of a SwiftUI app."
+        }
+      ],
+      "url": "/tutorials/swiftui-concepts/exploring-the-structure-of-a-swiftui-app",
+      "type": "topic",
+      "title": "Exploring the structure of a SwiftUI app",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/exploring-the-structure-of-a-swiftui-app"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/organizing-and-aligning-content-with-stacks": {
+      "url": "/tutorials/swiftui-concepts/organizing-and-aligning-content-with-stacks",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/organizing-and-aligning-content-with-stacks",
+      "role": "project",
+      "type": "topic",
+      "kind": "project",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Create dynamic alignments that adapt to data and environment changes using stacks."
+        }
+      ],
+      "title": "Organizing and aligning content with stacks"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/layering-content": {
+      "role": "project",
+      "abstract": [
+        {
+          "text": "Define views in an overlay or background to adapt their layout to the primary content.",
+          "type": "text"
+        }
+      ],
+      "url": "/tutorials/swiftui-concepts/layering-content",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/layering-content",
+      "type": "topic",
+      "kind": "project",
+      "title": "Layering content"
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/maintaining-the-adaptable-sizes-of-built-in-views": {
+      "role": "article",
+      "type": "topic",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/maintaining-the-adaptable-sizes-of-built-in-views",
+      "title": "Maintaining the adaptable sizes of built-in views",
+      "kind": "article",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Keep your app’s view layouts fluid on any device for each type of content your app displays."
+        }
+      ],
+      "url": "/tutorials/swiftui-concepts/maintaining-the-adaptable-sizes-of-built-in-views"
+    },
+    "View-Fundamentals-PageImage-card.png": {
+      "alt": null,
+      "identifier": "View-Fundamentals-PageImage-card.png",
+      "type": "image",
+      "variants": [
+        {
+          "url": "https://docs-assets.developer.apple.com/published/29d909351f1c009f459bda11061d6b7a/View-Fundamentals-PageImage-card%402x.png",
+          "traits": [
+            "2x",
+            "light"
+          ]
+        },
+        {
+          "url": "https://docs-assets.developer.apple.com/published/b79bbe329e2fe68880e450acb1c2a346/View-Fundamentals-PageImage-card~dark%402x.png",
+          "traits": [
+            "2x",
+            "dark"
+          ]
+        }
+      ]
+    },
+    "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/driving-changes-in-your-ui-with-state-and-bindings": {
+      "title": "Driving changes in your UI with state and bindings",
+      "url": "/tutorials/swiftui-concepts/driving-changes-in-your-ui-with-state-and-bindings",
+      "role": "project",
+      "identifier": "doc://com.apple.tutorials.swiftui-concepts/tutorials/SwiftUI-Concepts/driving-changes-in-your-ui-with-state-and-bindings",
+      "abstract": [
+        {
+          "type": "text",
+          "text": "Indicate data dependencies in a view using state, and share those dependencies with other views using bindings."
+        }
+      ],
+      "type": "topic",
+      "kind": "project"
+    },
+    "doc://com.apple.documentation/documentation/SwiftUI/App-organization": {
+      "abstract": [
+        {
+          "text": "Define the entry point and top-level structure of your app.",
+          "type": "text"
+        }
+      ],
+      "kind": "article",
+      "title": "App organization",
+      "identifier": "doc://com.apple.documentation/documentation/SwiftUI/App-organization",
+      "role": "article",
+      "type": "topic",
+      "url": "/documentation/SwiftUI/App-organization"
+    }
+  },
+  "legalNotices": {
+    "copyright": "Copyright &copy; 2025 Apple Inc. All rights reserved.",
+    "termsOfUse": "https://www.apple.com/legal/internet-services/terms/site.html",
+    "privacyPolicy": "https://www.apple.com/privacy/privacy-policy"
+  }
+}
