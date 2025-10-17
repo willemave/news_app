@@ -51,10 +51,10 @@ struct StructuredSummaryView: View {
             }
 
             // Questions Section
-            if !summary.questions.isEmpty {
+            if !(summary.questions ?? []).isEmpty {
                 DisclosureGroup(isExpanded: $isQuestionsExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
-                        ForEach(Array(summary.questions.enumerated()), id: \.offset) { index, question in
+                        ForEach(Array((summary.questions ?? []).enumerated()), id: \.offset) { index, question in
                             HStack(alignment: .top, spacing: 12) {
                                 Text("\(index + 1)")
                                     .font(.body)
@@ -78,10 +78,10 @@ struct StructuredSummaryView: View {
             }
 
             // Counter Arguments Section
-            if !summary.counterArguments.isEmpty {
+            if !(summary.counterArguments ?? []).isEmpty {
                 DisclosureGroup(isExpanded: $isCounterArgsExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
-                        ForEach(summary.counterArguments, id: \.self) { argument in
+                        ForEach(summary.counterArguments ?? [], id: \.self) { argument in
                             HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.body)

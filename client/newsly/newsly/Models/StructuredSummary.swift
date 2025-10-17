@@ -13,8 +13,8 @@ struct StructuredSummary: Codable {
     let bulletPoints: [BulletPoint]
     let quotes: [Quote]
     let topics: [String]
-    let questions: [String]
-    let counterArguments: [String]
+    let questions: [String]?
+    let counterArguments: [String]?
     let summarizationDate: String?
     let classification: String?
 

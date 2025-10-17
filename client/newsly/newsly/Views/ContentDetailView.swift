@@ -252,25 +252,26 @@ struct ContentDetailView: View {
         .offset(x: dragAmount)
         .animation(.spring(), value: dragAmount)
         .simultaneousGesture(
-            DragGesture(minimumDistance: 50, coordinateSpace: .global)
+            DragGesture(minimumDistance: 80, coordinateSpace: .global)
                 .onChanged { value in
                     // Only respond to fast, clearly horizontal swipes
                     let horizontalAmount = abs(value.translation.width)
                     let verticalAmount = abs(value.translation.height)
-                    
+
                     // Require the swipe to be significantly more horizontal than vertical
-                    // and have sufficient velocity to distinguish from text selection
-                    if horizontalAmount > verticalAmount * 2 && horizontalAmount > 50 {
+                    // Increased threshold to avoid interfering with text selection
+                    if horizontalAmount > verticalAmount * 3 && horizontalAmount > 80 {
                         dragAmount = value.translation.width * 0.3
                     }
                 }
                 .onEnded { value in
                     let horizontalAmount = abs(value.translation.width)
                     let verticalAmount = abs(value.translation.height)
-                    
+
                     // Only process as navigation if it's a clear horizontal swipe
-                    if horizontalAmount > verticalAmount * 2 && horizontalAmount > 100 {
-                        if value.translation.width > 100 && currentIndex > 0 {
+                    // Increased thresholds to better distinguish from text selection
+                    if horizontalAmount > verticalAmount * 3 && horizontalAmount > 120 {
+                        if value.translation.width > 120 && currentIndex > 0 {
                             // Swipe right - previous article
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 dragAmount = UIScreen.main.bounds.width
@@ -279,7 +280,7 @@ struct ContentDetailView: View {
                                 dragAmount = 0
                                 navigateToPrevious()
                             }
-                        } else if value.translation.width < -100 && currentIndex < allContentIds.count - 1 {
+                        } else if value.translation.width < -120 && currentIndex < allContentIds.count - 1 {
                             // Swipe left - next article
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 dragAmount = -UIScreen.main.bounds.width
@@ -290,7 +291,7 @@ struct ContentDetailView: View {
                             }
                         }
                     }
-                    
+
                     // Always snap back
                     withAnimation(.spring()) {
                         dragAmount = 0
