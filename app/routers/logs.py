@@ -198,7 +198,7 @@ async def reset_error_logs():
         raise HTTPException(status_code=404, detail="Errors directory not found")
 
     try:
-        # Delete all .log files
+        # Delete all .log files from errors directory
         for file_path in ERRORS_DIR.glob("*.log"):
             try:
                 file_path.unlink()
@@ -206,13 +206,22 @@ async def reset_error_logs():
             except Exception as e:
                 errors.append(f"Failed to delete {file_path.name}: {str(e)}")
 
-        # Delete all .jsonl files
+        # Delete all .jsonl files from errors directory
         for file_path in ERRORS_DIR.glob("*.jsonl"):
             try:
                 file_path.unlink()
                 deleted_files_count += 1
             except Exception as e:
                 errors.append(f"Failed to delete {file_path.name}: {str(e)}")
+
+        # Delete all .log files from root logs directory
+        for file_path in LOGS_DIR.glob("*.log"):
+            if file_path.is_file():  # Skip directories
+                try:
+                    file_path.unlink()
+                    deleted_files_count += 1
+                except Exception as e:
+                    errors.append(f"Failed to delete {file_path.name}: {str(e)}")
 
         # Delete failed EventLog entries from database
         from app.core.db import get_db

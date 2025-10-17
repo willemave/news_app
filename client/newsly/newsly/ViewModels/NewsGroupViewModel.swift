@@ -88,17 +88,15 @@ class NewsGroupViewModel: ObservableObject {
         do {
             _ = try await contentService.bulkMarkAsRead(contentIds: itemIds)
 
-            // Update local state
+            // Update local state to mark as read (CardStackView filters these out)
             newsGroups[groupIndex] = group.updatingAllAsRead(true)
 
             // Update unread counts
             unreadCountService.decrementNewsCount(by: itemIds.count)
 
-            // Remove from list immediately (swipe handles animation)
-            // Find the index again after async operation
-            if let currentIndex = newsGroups.firstIndex(where: { $0.id == groupId }) {
-                newsGroups.remove(at: currentIndex)
-            }
+            // NOTE: We no longer remove from array here
+            // CardStackView filters out read groups using dismissed set + isRead flag
+            // This keeps the array stable and prevents index/array desynchronization
         } catch {
             ToastService.shared.showError("Failed to mark as read")
             errorMessage = "Failed to mark group as read: \(error.localizedDescription)"
@@ -106,8 +104,9 @@ class NewsGroupViewModel: ObservableObject {
     }
 
     func preloadNextGroups() async {
-        // Trigger load when down to 2 cards
-        if newsGroups.count <= 2 && !isLoadingMore && hasMore {
+        // Trigger load when down to 2 unread groups
+        let unreadCount = newsGroups.filter { !$0.isRead }.count
+        if unreadCount <= 2 && !isLoadingMore && hasMore {
             await loadMoreGroups()
         }
     }
@@ -165,5 +164,9 @@ class NewsGroupViewModel: ObservableObject {
         nextCursor = nil
         hasMore = false
         await loadNewsGroups()
+
+        // Clean up read groups on refresh to prevent array bloat
+        // Keep the array fresh with only unread items
+        newsGroups = newsGroups.filter { !$0.isRead }
     }
 }
