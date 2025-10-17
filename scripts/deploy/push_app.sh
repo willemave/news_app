@@ -287,6 +287,10 @@ printf -v REMOTE_PLAYWRIGHT_CMD 'set -euo pipefail; if [[ -x %q ]]; then %q inst
   "$PLAYWRIGHT_BIN" "$PLAYWRIGHT_BIN" "$PLAYWRIGHT_BIN"
 ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "sudo -u %q -H bash -lc %q" "$SERVICE_USER" "$REMOTE_PLAYWRIGHT_CMD")"
 
+echo "→ Copying .env.racknerd to .env via sudo cp"
+CP_ENV_CMD=$(printf "bash -lc %q" "cd '$REMOTE_DIR' && if [[ -f .env.racknerd ]]; then sudo cp .env.racknerd .env && sudo chown '$SERVICE_USER:$SERVICE_GROUP' .env && sudo chmod 600 .env; else echo 'Warning: .env.racknerd missing; skipping copy' >&2; fi")
+ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$CP_ENV_CMD"
+
 if "$RESTART_SUP"; then
   echo "→ Reloading Supervisor configuration"
   printf -v REMOTE_SUP_CMD 'set -euo pipefail; sudo supervisorctl reread && sudo supervisorctl update'
@@ -308,9 +312,5 @@ if "$RESTART_SUP"; then
   echo "→ Final supervisor status:"
   ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl status"
 fi
-
-echo "→ Copying .env.racknerd to .env via sudo cp"
-CP_ENV_CMD=$(printf "bash -lc %q" "cd '$REMOTE_DIR' && if [[ -f .env.racknerd ]]; then sudo cp .env.racknerd .env && sudo chown '$SERVICE_USER:$SERVICE_GROUP' .env && sudo chmod 600 .env; else echo 'Warning: .env.racknerd missing; skipping copy' >&2; fi")
-ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$CP_ENV_CMD"
 
 echo "✅ App sync completed to $REMOTE_HOST:$REMOTE_DIR"

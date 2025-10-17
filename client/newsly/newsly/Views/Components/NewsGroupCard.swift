@@ -40,7 +40,7 @@ struct NewsGroupCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             // Group header with count
             HStack {
                 Text("News Digest")
@@ -61,20 +61,20 @@ struct NewsGroupCard: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.top, 10)
+            .padding(.top, 8)
 
             // News items
             ForEach(group.items) { item in
                 NavigationLink(destination: ContentDetailView(contentId: item.id, allContentIds: group.items.map { $0.id })) {
                     HStack(alignment: .top, spacing: 10) {
                         // Content
-                        VStack(alignment: .leading, spacing: 4) {
-                            // Title - compact display
+                        VStack(alignment: .leading, spacing: 2) {
+                            // Title - full display
                             Text(item.displayTitle)
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                                 .foregroundColor(item.isRead ? .secondary : .primary)
-                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
 
                             // Short summary if available
                             if let summary = item.shortSummary, !summary.isEmpty {
@@ -133,7 +133,7 @@ struct NewsGroupCard: View {
                         .disabled(convertingStates[item.id] == true)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
 
@@ -142,7 +142,7 @@ struct NewsGroupCard: View {
                         .padding(.horizontal, 12)
                 }
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, 4)
         }
         .background(Color(.systemBackground))
         .cornerRadius(12)
