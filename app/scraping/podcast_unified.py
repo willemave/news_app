@@ -199,8 +199,24 @@ class PodcastUnifiedScraper(BaseScraper):
             logger.warning(f"No audio enclosure found for: {title}")
             return None
 
-        # If no link but we have audio, create a fallback link using entry ID or audio URL
+        # Determine if link is usable or if we need a fallback
+        # A link is unusable if it's:
+        # 1. Missing/None
+        # 2. Just a base domain without a path (e.g., https://example.com or https://example.com/)
+        needs_fallback = False
         if not link:
+            needs_fallback = True
+        else:
+            # Check if link is just a base domain
+            from urllib.parse import urlparse
+            parsed = urlparse(link)
+            # If path is empty or just "/", it's not a unique episode URL
+            if not parsed.path or parsed.path == "/":
+                needs_fallback = True
+                logger.debug(f"Link is just base domain for '{title}': {link}")
+
+        # If link is unusable, create a fallback using entry ID or audio URL
+        if needs_fallback:
             # Try to use entry ID as fallback, but only if it looks like a URL
             entry_id = entry.get("id")
             entry_guid = entry.get("guid")

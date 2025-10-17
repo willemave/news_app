@@ -22,13 +22,15 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
-            "ignoreerrors": True,
+            "ignoreerrors": False,  # Changed: Let exceptions bubble up for better error info
             "no_check_certificate": True,
             # Subtitle options
             "writesubtitles": True,
             "writeautomaticsub": True,
             "subtitleslangs": ["en"],
             "skip_download": True,  # Don't download video
+            # Add user agent to avoid bot detection
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
@@ -60,10 +62,13 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
 
                 # Defensive check: yt-dlp returns None for unavailable/private/restricted videos
                 if info is None:
-                    raise ValueError(
+                    error_msg = (
                         f"Failed to extract video information from {url}. "
-                        "Video may be unavailable, private, region-restricted, or age-restricted."
+                        "Video may be unavailable, private, region-restricted, or age-restricted. "
+                        f"yt-dlp version: {yt_dlp.version.__version__}"
                     )
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
 
                 # Extract basic metadata
                 video_id = info.get("id")
@@ -107,8 +112,21 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                     },
                 }
 
+            except yt_dlp.utils.DownloadError as e:
+                # YouTube-specific errors (geo-blocking, age-restriction, etc.)
+                error_msg = f"YouTube download error for {url}: {str(e)}"
+                logger.error(error_msg)
+                logger.error(
+                    f"This may indicate: geo-blocking, age-restriction, "
+                    f"rate-limiting, or outdated yt-dlp (current: {yt_dlp.version.__version__})"
+                )
+                raise ValueError(
+                    f"Failed to extract YouTube video: {str(e)}. "
+                    "The video may be geo-blocked, age-restricted, or require authentication."
+                ) from e
             except Exception as e:
-                logger.error(f"Error extracting YouTube data: {e}")
+                logger.error(f"Unexpected error extracting YouTube data from {url}: {e}")
+                logger.error(f"yt-dlp version: {yt_dlp.version.__version__}")
                 raise
 
     async def _extract_transcript(self, video_info: dict[str, Any]) -> str | None:

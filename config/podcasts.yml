@@ -29,6 +29,6 @@ feeds:
   - name: Naval
     url: "https://nav.al/feed"
     limit: 5
-  - name: The Long Now
-    url: "https://longnow.org/podcast.xml"
+  - name: The MAD Podcast
+    url: "https://anchor.fm/s/f2ee4948/podcast/rss"
     limit: 5
