@@ -99,7 +99,7 @@ class SearchViewModel: ObservableObject {
                     source: c.source, platform: c.platform, status: c.status,
                     shortSummary: c.shortSummary, createdAt: c.createdAt, processedAt: c.processedAt,
                     classification: c.classification, publicationDate: c.publicationDate,
-                    isRead: true, isFavorited: c.isFavorited, isUnliked: c.isUnliked,
+                    isRead: true, isFavorited: c.isFavorited,
                     isAggregate: c.isAggregate, itemCount: c.itemCount
                 )
             }
@@ -119,29 +119,6 @@ class SearchViewModel: ObservableObject {
             }
         } catch {
             errorMessage = "Failed to update favorite"
-        }
-    }
-
-    func toggleUnlike(_ id: Int) async {
-        do {
-            let response = try await service.toggleUnlike(id: id)
-            if let i = results.firstIndex(where: { $0.id == id }) {
-                var c = results[i]
-                c.isUnliked = (response["is_unliked"] as? Bool) ?? c.isUnliked
-                if let isRead = response["is_read"] as? Bool, isRead {
-                    c = ContentSummary(
-                        id: c.id, contentType: c.contentType, url: c.url, title: c.title,
-                        source: c.source, platform: c.platform, status: c.status,
-                        shortSummary: c.shortSummary, createdAt: c.createdAt, processedAt: c.processedAt,
-                        classification: c.classification, publicationDate: c.publicationDate,
-                        isRead: true, isFavorited: c.isFavorited, isUnliked: c.isUnliked,
-                        isAggregate: c.isAggregate, itemCount: c.itemCount
-                    )
-                }
-                results[i] = c
-            }
-        } catch {
-            errorMessage = "Failed to update unlike"
         }
     }
 }

@@ -22,7 +22,6 @@ struct ContentSummary: Codable, Identifiable {
     let publicationDate: String?
     let isRead: Bool
     var isFavorited: Bool
-    var isUnliked: Bool
     let isAggregate: Bool
     let itemCount: Int?
     
@@ -41,7 +40,6 @@ struct ContentSummary: Codable, Identifiable {
         case publicationDate = "publication_date"
         case isRead = "is_read"
         case isFavorited = "is_favorited"
-        case isUnliked = "is_unliked"
         case isAggregate = "is_aggregate"
         case itemCount = "item_count"
     }
@@ -61,7 +59,6 @@ struct ContentSummary: Codable, Identifiable {
         publicationDate: String?,
         isRead: Bool,
         isFavorited: Bool,
-        isUnliked: Bool,
         isAggregate: Bool = false,
         itemCount: Int? = nil
     ) {
@@ -79,7 +76,6 @@ struct ContentSummary: Codable, Identifiable {
         self.publicationDate = publicationDate
         self.isRead = isRead
         self.isFavorited = isFavorited
-        self.isUnliked = isUnliked
         self.isAggregate = isAggregate
         self.itemCount = itemCount
     }
@@ -101,7 +97,6 @@ struct ContentSummary: Codable, Identifiable {
             publicationDate: try container.decodeIfPresent(String.self, forKey: .publicationDate),
             isRead: try container.decode(Bool.self, forKey: .isRead),
             isFavorited: try container.decodeIfPresent(Bool.self, forKey: .isFavorited) ?? false,
-            isUnliked: try container.decodeIfPresent(Bool.self, forKey: .isUnliked) ?? false,
             isAggregate: try container.decodeIfPresent(Bool.self, forKey: .isAggregate) ?? false,
             itemCount: try container.decodeIfPresent(Int.self, forKey: .itemCount)
         )
@@ -123,7 +118,6 @@ struct ContentSummary: Codable, Identifiable {
         try container.encodeIfPresent(publicationDate, forKey: .publicationDate)
         try container.encode(isRead, forKey: .isRead)
         try container.encode(isFavorited, forKey: .isFavorited)
-        try container.encode(isUnliked, forKey: .isUnliked)
         try container.encode(isAggregate, forKey: .isAggregate)
         try container.encodeIfPresent(itemCount, forKey: .itemCount)
     }
@@ -195,8 +189,7 @@ struct ContentSummary: Codable, Identifiable {
 
     func updating(
         isRead: Bool? = nil,
-        isFavorited: Bool? = nil,
-        isUnliked: Bool? = nil
+        isFavorited: Bool? = nil
     ) -> ContentSummary {
         ContentSummary(
             id: id,
@@ -213,7 +206,6 @@ struct ContentSummary: Codable, Identifiable {
             publicationDate: publicationDate,
             isRead: isRead ?? self.isRead,
             isFavorited: isFavorited ?? self.isFavorited,
-            isUnliked: isUnliked ?? self.isUnliked,
             isAggregate: isAggregate,
             itemCount: itemCount
         )

@@ -15,7 +15,6 @@ from app.models.schema import (
     Content,
     ContentFavorites,
     ContentReadStatus,
-    ContentUnlikes,
     EventLog,
     ProcessingTask,
 )
@@ -124,7 +123,6 @@ def _seed_content_data(session: Session) -> None:
             ContentReadStatus(session_id="abc", content_id=content_rows[0].id),
             ContentReadStatus(session_id="def", content_id=content_rows[1].id),
             ContentFavorites(session_id="abc", content_id=content_rows[0].id),
-            ContentUnlikes(session_id="def", content_id=content_rows[1].id),
         ]
     )
 
@@ -175,7 +173,6 @@ def test_gather_system_stats_returns_expected_counts(session_factory: sessionmak
 
     assert stats.engagement.total_read_marks == 2
     assert stats.engagement.total_favorites == 1
-    assert stats.engagement.total_unlikes == 1
 
     assert stats.event_logs.total == 2
     assert stats.event_logs.by_type["scraper_run"] == 1

@@ -160,15 +160,7 @@ class ContentService {
     func removeFavorite(id: Int) async throws {
         try await client.requestVoid(APIEndpoints.removeFavorite(id: id), method: "DELETE")
     }
-    
-    func toggleUnlike(id: Int) async throws -> [String: Any] {
-        return try await client.requestRaw(APIEndpoints.toggleUnlike(id: id), method: "POST")
-    }
-    
-    func removeUnlike(id: Int) async throws {
-        try await client.requestVoid(APIEndpoints.removeUnlike(id: id), method: "DELETE")
-    }
-    
+
     func fetchFavoritesList(cursor: String? = nil, limit: Int = 25) async throws -> ContentListResponse {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "limit", value: String(limit))

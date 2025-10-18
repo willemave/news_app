@@ -52,8 +52,7 @@ struct ArticlesView: View {
                                         ContentCard(
                                             content: content,
                                             onMarkAsRead: { await viewModel.markAsRead(content.id) },
-                                            onToggleFavorite: { await viewModel.toggleFavorite(content.id) },
-                                            onToggleUnlike: { await viewModel.toggleUnlike(content.id) }
+                                            onToggleFavorite: { await viewModel.toggleFavorite(content.id) }
                                         )
                                     }
                                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))

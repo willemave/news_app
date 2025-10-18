@@ -178,63 +178,7 @@ class ContentListViewModel: ObservableObject {
             errorMessage = "Failed to update favorite status"
         }
     }
-    
-    func toggleUnlike(_ contentId: Int) async {
-        do {
-            // Find the content
-            guard let index = contents.firstIndex(where: { $0.id == contentId }) else { return }
-            let currentContent = contents[index]
 
-            // Optimistically update the UI
-            var updatedContent = currentContent.updating(isUnliked: !currentContent.isUnliked)
-            if updatedContent.isUnliked {
-                if !updatedContent.isRead {
-                    updatedContent = updatedContent.updating(isRead: true, isUnliked: true)
-
-                    switch updatedContent.contentType {
-                    case "article":
-                        unreadCountService.decrementArticleCount()
-                    case "podcast":
-                        unreadCountService.decrementPodcastCount()
-                    case "news":
-                        unreadCountService.decrementNewsCount()
-                    default:
-                        break
-                    }
-                }
-            }
-
-            contents[index] = updatedContent
-
-            // Make API call
-            let response = try await contentService.toggleUnlike(id: contentId)
-
-            // Update with server response
-            let isUnliked = (response["is_unliked"] as? Bool) ?? updatedContent.isUnliked
-            let isRead = (response["is_read"] as? Bool) ?? updatedContent.isRead
-
-            var finalContent = updatedContent.updating(isUnliked: isUnliked)
-            if isRead {
-                finalContent = finalContent.updating(isRead: true)
-            }
-
-            if selectedReadFilter == "unread" && isRead {
-                // Remove from list when filtering by unread
-                _ = withAnimation(.easeOut(duration: 0.3)) {
-                    contents.remove(at: index)
-                }
-            } else {
-                contents[index] = finalContent
-            }
-        } catch {
-            // Revert on error
-            if let idx = contents.firstIndex(where: { $0.id == contentId }) {
-                contents[idx] = contents[idx].updating(isUnliked: !contents[idx].isUnliked)
-            }
-            errorMessage = "Failed to update unlike status"
-        }
-    }
-    
     func loadFavorites() async {
         isLoading = true
         errorMessage = nil

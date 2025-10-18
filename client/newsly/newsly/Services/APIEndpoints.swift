@@ -28,12 +28,6 @@ enum APIEndpoints {
     }
     static let favoritesList = "/api/content/favorites/list"
     static let recentlyReadList = "/api/content/recently-read/list"
-    static func toggleUnlike(id: Int) -> String {
-        return "/api/content/\(id)/unlike"
-    }
-    static func removeUnlike(id: Int) -> String {
-        return "/api/content/\(id)/remove-unlike"
-    }
     static func chatGPTUrl(id: Int) -> String {
         return "/api/content/\(id)/chat-url"
     }

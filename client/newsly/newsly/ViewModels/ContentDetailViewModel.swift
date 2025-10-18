@@ -77,14 +77,14 @@ class ContentDetailViewModel: ObservableObject {
     
     func toggleFavorite() async {
         guard let currentContent = content else { return }
-        
+
         do {
             // Optimistically update the UI
             content?.isFavorited.toggle()
-            
+
             // Make API call
             let response = try await contentService.toggleFavorite(id: currentContent.id)
-            
+
             // Update with server response
             if let isFavorited = response["is_favorited"] as? Bool {
                 content?.isFavorited = isFavorited
@@ -95,42 +95,7 @@ class ContentDetailViewModel: ObservableObject {
             errorMessage = "Failed to update favorite status"
         }
     }
-    
-    func toggleUnlike() async {
-        guard let currentContent = content else { return }
-        do {
-            // Optimistic UI update
-            content?.isUnliked.toggle()
-            if content?.isUnliked == true {
-                // Mark as read locally
-                if content?.isRead == false {
-                    content?.isRead = true
-                    // Update unread count based on content type
-                    if currentContent.contentType == "article" {
-                        unreadCountService.decrementArticleCount()
-                    } else if currentContent.contentType == "podcast" {
-                        unreadCountService.decrementPodcastCount()
-                    } else if currentContent.contentType == "news" {
-                        unreadCountService.decrementNewsCount()
-                    }
-                }
-            }
 
-            // API call
-            let response = try await contentService.toggleUnlike(id: currentContent.id)
-            if let isUnliked = response["is_unliked"] as? Bool {
-                content?.isUnliked = isUnliked
-            }
-            if let isRead = response["is_read"] as? Bool, isRead {
-                content?.isRead = true
-            }
-        } catch {
-            // Revert on error
-            content?.isUnliked = currentContent.isUnliked
-            errorMessage = "Failed to update unlike status"
-        }
-    }
-    
     private func buildFullMarkdown() -> String? {
         guard let content = content else { return nil }
 
