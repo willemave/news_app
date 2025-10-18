@@ -11,11 +11,9 @@ struct ContentCard: View {
     let content: ContentSummary
     let onMarkAsRead: () async -> Void
     let onToggleFavorite: () async -> Void
-    let onToggleUnlike: () async -> Void
 
     @State private var isMarking = false
     @State private var isTogglingFavorite = false
-    @State private var isTogglingUnlike = false
 
     // Larger touch targets for better ergonomics (slightly narrower)
     private let actionSize: CGFloat = 36
@@ -87,27 +85,6 @@ struct ContentCard: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(content.isFavorited ? "Unfavorite" : "Favorite")
-
-                // Unlike toggle
-                Button(action: {
-                    guard !isTogglingUnlike else { return }
-                    isTogglingUnlike = true
-                    Task {
-                        await onToggleUnlike()
-                        isTogglingUnlike = false
-                    }
-                }) {
-                    Image(systemName: content.isUnliked ? "hand.thumbsdown.fill" : "hand.thumbsdown")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(content.isUnliked ? .red : .secondary)
-                        .frame(width: actionSize, height: actionSize)
-                        .background(
-                            Circle()
-                                .fill(Color.secondary.opacity(0.12))
-                        )
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(content.isUnliked ? "Remove Unlike" : "Unlike")
 
                 // Mark as read
                 Button(action: {

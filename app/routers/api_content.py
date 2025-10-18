@@ -50,7 +50,6 @@ class ContentSummaryResponse(BaseModel):
     )
     is_read: bool = Field(False, description="Whether the content has been marked as read")
     is_favorited: bool = Field(False, description="Whether the content has been favorited")
-    is_unliked: bool = Field(False, description="Whether the content has been unliked")
     is_aggregate: bool = Field(
         False, description="Whether this news item aggregates multiple links"
     )
@@ -160,7 +159,6 @@ class ContentDetailResponse(BaseModel):
     )
     is_read: bool = Field(False, description="Whether the content has been marked as read")
     is_favorited: bool = Field(False, description="Whether the content has been favorited")
-    is_unliked: bool = Field(False, description="Whether the content has been unliked")
     # Additional useful properties from ContentData
     summary: str | None = Field(None, description="Summary text")
     short_summary: str | None = Field(None, description="Short version of summary for list view")
@@ -317,7 +315,7 @@ async def list_contents(
     ),
 ) -> ContentListResponse:
     """List content with optional filters and cursor-based pagination."""
-    from app.services import favorites, read_status, unlikes
+    from app.services import favorites, read_status
 
     # Decode cursor if provided
     last_id = None
@@ -346,9 +344,6 @@ async def list_contents(
 
     # Get favorited content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
-
-    # Get unliked content IDs
-    unliked_content_ids = unlikes.get_unliked_content_ids(db)
 
     # Visibility clause: include summarized content or completed news
     summarized_clause = (
@@ -483,7 +478,6 @@ async def list_contents(
                     else None,
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
-                    is_unliked=c.id in unliked_content_ids,
                     is_aggregate=is_aggregate,
                     item_count=item_count,
                     news_article_url=news_article_url,
@@ -561,7 +555,7 @@ async def search_contents(
     between SQLite and Postgres. As a fallback, the entire JSON is also matched
     as text to catch legacy structures.
     """
-    from app.services import favorites, read_status, unlikes
+    from app.services import favorites, read_status
 
     # Decode cursor if provided (takes precedence over offset)
     last_id = None
@@ -587,7 +581,6 @@ async def search_contents(
     # Preload state flags
     read_content_ids = read_status.get_read_content_ids(db)
     favorite_content_ids = favorites.get_favorite_content_ids(db)
-    unliked_content_ids = unlikes.get_unliked_content_ids(db)
 
     # Base query aligning with list endpoint visibility rules
     query = db.query(Content)
@@ -680,7 +673,6 @@ async def search_contents(
                     else None,
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
-                    is_unliked=c.id in unliked_content_ids,
                     is_aggregate=domain_content.is_aggregate,
                     item_count=len(domain_content.news_items)
                     if domain_content.content_type == ContentType.NEWS
@@ -819,7 +811,7 @@ async def get_content_detail(
     db: Annotated[Session, Depends(get_db_session)],
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
-    from app.services import favorites, read_status, unlikes
+    from app.services import favorites, read_status
 
     content = db.query(Content).filter(Content.id == content_id).first()
 
@@ -828,11 +820,9 @@ async def get_content_detail(
 
     # Check if content is read
     is_read = read_status.is_content_read(db, content_id)
-    
+
     # Check if content is favorited
     is_favorited = favorites.is_content_favorited(db, content_id)
-    # Check if content is unliked
-    is_unliked = unlikes.is_content_unliked(db, content_id)
 
     # Convert to domain object to validate metadata
     try:
@@ -901,7 +891,6 @@ async def get_content_detail(
         else None,
         is_read=is_read,
         is_favorited=is_favorited,
-        is_unliked=is_unliked,
         # Additional properties from ContentData
         summary=news_summary_text,
         short_summary=news_summary_text,
@@ -988,73 +977,6 @@ async def mark_content_unread(
         "status": "success",
         "content_id": content_id,
         "removed_records": result.rowcount,
-    }
-
-
-@router.post(
-    "/{content_id}/unlike",
-    summary="Toggle unlike status",
-    description="Toggle the unlike status of a specific content item. Also marks the item as read when unliked.",
-    responses={
-        200: {"description": "Unlike status toggled successfully"},
-        404: {"description": "Content not found"},
-    },
-)
-async def toggle_unlike(
-    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
-    db: Annotated[Session, Depends(get_db_session)],
-) -> dict:
-    """Toggle unlike status for content and mark as read when unliked."""
-    from app.services import read_status, unlikes
-
-    # Check if content exists
-    content = db.query(Content).filter(Content.id == content_id).first()
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    # Toggle unlike
-    is_unliked, _ = unlikes.toggle_unlike(db, content_id)
-
-    # If now unliked, mark as read
-    is_read = False
-    if is_unliked:
-        is_read = read_status.mark_content_as_read(db, content_id) is not None
-
-    return {
-        "status": "success",
-        "content_id": content_id,
-        "is_unliked": is_unliked,
-        "is_read": is_read,
-    }
-
-
-@router.delete(
-    "/{content_id}/remove-unlike",
-    summary="Remove unlike",
-    description="Remove the unlike status for a specific content item.",
-    responses={
-        200: {"description": "Content removed from unlikes successfully"},
-        404: {"description": "Content not found"},
-    },
-)
-async def remove_unlike_content(
-    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
-    db: Annotated[Session, Depends(get_db_session)],
-) -> dict:
-    """Remove content from unlikes."""
-    from app.services import unlikes
-
-    # Check if content exists
-    content = db.query(Content).filter(Content.id == content_id).first()
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    # Remove from unlikes
-    removed = unlikes.remove_unlike(db, content_id)
-    return {
-        "status": "success" if removed else "not_found",
-        "content_id": content_id,
-        "message": "Removed unlike" if removed else "Content was not unliked",
     }
 
 
@@ -1217,7 +1139,6 @@ async def get_favorites(
                     else None,
                     is_read=c.id in read_content_ids,
                     is_favorited=True,  # All items in this list are favorited
-                    is_unliked=False,
                 )
             )
         except Exception as e:
@@ -1380,7 +1301,7 @@ async def get_recently_read(
 ) -> ContentListResponse:
     """Get all recently read content with cursor-based pagination, sorted by read time."""
     from app.models.schema import ContentReadStatus
-    from app.services import favorites, read_status, unlikes
+    from app.services import favorites, read_status
 
     # Decode cursor if provided
     last_id = None
@@ -1400,9 +1321,6 @@ async def get_recently_read(
 
     # Get favorited content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
-
-    # Get unliked content IDs
-    unliked_content_ids = unlikes.get_unliked_content_ids(db)
 
     # Query content joined with read status, ordered by read time
     query = (
@@ -1506,7 +1424,6 @@ async def get_recently_read(
                     else None,
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
-                    is_unliked=c.id in unliked_content_ids,
                     is_aggregate=is_aggregate,
                     item_count=item_count,
                     news_article_url=news_article_url,

@@ -123,18 +123,6 @@ struct ContentDetailView: View {
                             }
                             .buttonStyle(.bordered)
 
-                            // Unlike button
-                            Button(action: {
-                                Task {
-                                    await viewModel.toggleUnlike()
-                                }
-                            }) {
-                                Image(systemName: content.isUnliked ? "hand.thumbsdown.fill" : "hand.thumbsdown")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(content.isUnliked ? .red : .primary)
-                            }
-                            .buttonStyle(.bordered)
-
                             Spacer()
 
                             // Navigation indicators
