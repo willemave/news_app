@@ -88,9 +88,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         if pubmed_match:
             pmid = pubmed_match.group(1)
             pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/pmid/{pmid}/"
-            logger.debug(
-                "HtmlStrategy: Transforming PubMed URL %s to PMC URL %s", url, pmc_url
-            )
+            logger.debug("HtmlStrategy: Transforming PubMed URL %s to PMC URL %s", url, pmc_url)
             return pmc_url
 
         # Handle ArXiv URLs - transform abstract to PDF
@@ -232,18 +230,12 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 chunk_token_threshold=getattr(
                     self.settings, "crawl4ai_table_chunk_token_threshold", 3000
                 ),
-                min_rows_per_chunk=getattr(
-                    self.settings, "crawl4ai_table_min_rows_per_chunk", 10
-                ),
-                max_parallel_chunks=getattr(
-                    self.settings, "crawl4ai_table_max_parallel_chunks", 5
-                ),
+                min_rows_per_chunk=getattr(self.settings, "crawl4ai_table_min_rows_per_chunk", 10),
+                max_parallel_chunks=getattr(self.settings, "crawl4ai_table_max_parallel_chunks", 5),
                 verbose=getattr(self.settings, "crawl4ai_table_verbose", False),
             )
         except Exception as exc:  # pragma: no cover - defensive logging
-            logger.warning(
-                "Failed to initialize crawl4ai table extraction strategy: %s", exc
-            )
+            logger.warning("Failed to initialize crawl4ai table extraction strategy: %s", exc)
             return None
 
     @staticmethod
@@ -251,11 +243,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         """Return True when the crawl error looks transient and merits a retry."""
 
         message = str(error).lower()
-        if "net::err_timed_out" in message:
-            return True
-        if "timeout" in message:
-            return True
-        return False
+        return "net::err_timed_out" in message or "timeout" in message
 
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
@@ -287,13 +275,9 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             # Get source-specific configuration
             source_config = self._get_source_specific_config(source)
             page_timeout_ms = int(source_config.get("page_timeout_ms", 90_000))
-            wait_for_timeout_ms = int(
-                source_config.get("wait_for_timeout_ms", page_timeout_ms)
-            )
+            wait_for_timeout_ms = int(source_config.get("wait_for_timeout_ms", page_timeout_ms))
             max_crawl_attempts = max(1, int(source_config.get("max_crawl_attempts", 1)))
-            retry_delay_seconds = float(
-                source_config.get("crawl_retry_delay_seconds", 1.5)
-            )
+            retry_delay_seconds = float(source_config.get("crawl_retry_delay_seconds", 1.5))
 
             # Configure crawler run
             run_config = CrawlerRunConfig(
@@ -336,7 +320,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 ),
             )
             logger.debug(
-                "HtmlStrategy: Crawl config prepared (url=%s, word_count_threshold=%s, target_elements=%s)",
+                "HtmlStrategy: Crawl config prepared "
+                "(url=%s, word_count_threshold=%s, target_elements=%s)",
                 url,
                 run_config.word_count_threshold,
                 run_config.target_elements,
@@ -357,7 +342,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                             await crawler.__aenter__()
                             result = await crawler.arun(url=url, config=run_config)
                             logger.debug(
-                                "HtmlStrategy: Crawl finished (url=%s, success=%s, status=%s, redirected=%s)",
+                                "HtmlStrategy: Crawl finished "
+                                "(url=%s, success=%s, status=%s, redirected=%s)",
                                 url,
                                 getattr(result, "success", None),
                                 getattr(result, "status_code", None),
@@ -376,7 +362,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                             if self._is_retryable_crawl_error(exc) and attempt < max_crawl_attempts:
                                 should_retry = True
                                 logger.warning(
-                                    "HtmlStrategy: Retrying crawl for %s after timeout (attempt %s/%s)",
+                                    "HtmlStrategy: Retrying crawl for %s after timeout "
+                                    "(attempt %s/%s)",
                                     url,
                                     attempt + 1,
                                     max_crawl_attempts,
@@ -410,9 +397,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 raise Exception(error_msg)
 
             if not result.success:
-                error_detail = (
-                    getattr(result, "error_message", None)
-                    or getattr(result, "error", None)
+                error_detail = getattr(result, "error_message", None) or getattr(
+                    result, "error", None
                 )
 
                 if not error_detail:
@@ -482,7 +468,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 ]
 
                 # First check cleaned HTML for meta tags
-                cleaned_html = result.cleaned_html if hasattr(result, 'cleaned_html') else ""
+                cleaned_html = result.cleaned_html if hasattr(result, "cleaned_html") else ""
                 if cleaned_html:
                     for pattern in author_patterns[1:]:  # Meta tag patterns
                         match = re.search(pattern, cleaned_html, re.IGNORECASE)
@@ -523,7 +509,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             # Map source to full domain name of final URL
             try:
                 from urllib.parse import urlparse
-                final_url = result.url if hasattr(result, 'url') and result.url else url
+
+                final_url = result.url if hasattr(result, "url") and result.url else url
                 host = urlparse(final_url).netloc or ""
             except Exception:
                 final_url = url
@@ -553,7 +540,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
             error_msg = f"Content extraction failed for {url}: {str(e)}"
             traceback_str = traceback.format_exc()
-            
+
             # Log the error
             self.error_logger.log_processing_error(
                 item_id=url,
@@ -572,7 +559,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 error_msg,
                 traceback_str,
             )
-            
+
             # Check if this is a non-retryable error
             error_str = str(e).lower()
             non_retryable_terms = [
@@ -584,18 +571,22 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 "access denied",
                 "not found",
                 "paywall",
+                "err_http_response_code_failure",
+                "err_http2_protocol_error",
+                "err_ssl_protocol_error",
+                "err_connection_refused",
+                "err_cert_",  # Catches various certificate errors
             ]
             if any(term in error_str for term in non_retryable_terms):
                 # Raise NonRetryableError to prevent infinite retries
-                raise NonRetryableError(
-                    f"Non-retryable error: {error_msg}"
-                ) from e
-            
+                raise NonRetryableError(f"Non-retryable error: {error_msg}") from e
+
             # For other errors, return a minimal response to allow processing to continue
             # with fallback content
             # Failure path: still try to emit domain for source
             try:
                 from urllib.parse import urlparse
+
                 host = urlparse(url).netloc or ""
             except Exception:
                 host = ""
@@ -617,9 +608,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             f"{extracted_data.get('final_url_after_redirects')}"
         )
         text_content = extracted_data.get("text_content", "") or ""
-        logger.debug(
-            "HtmlStrategy: LLM preparation payload length=%s", len(text_content)
-        )
+        logger.debug("HtmlStrategy: LLM preparation payload length=%s", len(text_content))
 
         table_markdown = extracted_data.get("table_markdown")
         if table_markdown:
