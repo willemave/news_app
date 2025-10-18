@@ -177,7 +177,14 @@
 ### Web Interface
 * [`app/main.py`](app/main.py) - FastAPI application entry point with middleware and router setup
 * [`app/routers/content.py`](app/routers/content.py) - Unified content viewing endpoints
-* [`app/routers/api_content.py`](app/routers/api_content.py) - RESTful API endpoints for content (iOS client integration)
+* [`app/routers/api_content.py`](app/routers/api_content.py) - RESTful API endpoints (backward compatibility layer)
+* [`app/routers/api/`](app/routers/api/) - Refactored API router modules (organized by responsibility):
+  - [`models.py`](app/routers/api/models.py) - Pydantic request/response models
+  - [`content_list.py`](app/routers/api/content_list.py) - List, search, unread counts endpoints
+  - [`content_detail.py`](app/routers/api/content_detail.py) - Content detail and ChatGPT URL endpoints
+  - [`read_status.py`](app/routers/api/read_status.py) - Read/unread status management endpoints
+  - [`favorites.py`](app/routers/api/favorites.py) - Favorites management endpoints
+  - [`content_actions.py`](app/routers/api/content_actions.py) - Content transformation endpoints (news to article)
 * [`app/routers/admin.py`](app/routers/admin.py) - Admin dashboard with pipeline controls
 * [`app/routers/logs.py`](app/routers/logs.py) - Log file viewer interface (templates missing)
 
@@ -300,10 +307,10 @@
 * **ChatGPT URL**: `GET /api/content/{id}/chatgpt-url` - Generate ChatGPT chat URL for content
 * **Convert to Article**: `POST /api/content/{id}/convert-to-article` - Convert news item to article for full processing (checks for existing article by URL+type)
 * **Response Models**: Pydantic models with full OpenAPI documentation
-  - [`ContentSummaryResponse`](app/routers/api_content.py:24) - List view summary
-  - [`ContentDetailResponse`](app/routers/api_content.py:96) - Full content details
-  - [`ContentListResponse`](app/routers/api_content.py:64) - List endpoint response
-  - [`ConvertNewsResponse`](app/routers/api_content.py:1547) - News-to-article conversion response
+  - [`ContentSummaryResponse`](app/routers/api/models.py) - List view summary
+  - [`ContentDetailResponse`](app/routers/api/models.py) - Full content details
+  - [`ContentListResponse`](app/routers/api/models.py) - List endpoint response
+  - [`ConvertNewsResponse`](app/routers/api/models.py) - News-to-article conversion response
 
 ## Current Development Status
 
@@ -335,6 +342,7 @@
 * **Implemented**: Full markdown content storage for articles
 * **Implemented**: Twitter scraper using Playwright to intercept GraphQL API calls for list aggregation
 * **Implemented**: Standard logging for favorites/unlikes services using module loggers instead of prefixed print statements
+* **Implemented**: Refactored API content router from monolithic file (1604 lines) into modular structure organized by responsibility (models, content_list, content_detail, read_status, favorites, content_actions) with backward compatibility
 
 ## Container Build & Deployment
 
