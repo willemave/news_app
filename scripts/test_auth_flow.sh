@@ -89,13 +89,13 @@ fi
 python -c "
 import sys
 sys.path.insert(0, '.')
-from app.core.db import engine
-from app.models.schema import Base
+from app.core.db import get_engine, get_session_factory, Base
 from app.models.user import User
-from sqlalchemy.orm import Session
 
+engine = get_engine()
 Base.metadata.create_all(bind=engine)
-session = Session(engine)
+SessionLocal = get_session_factory()
+session = SessionLocal()
 
 # Delete existing test user
 existing = session.query(User).filter_by(email='test@example.com').first()
