@@ -12,6 +12,7 @@ from app.models.metadata import (
     StructuredSummary,
     validate_content_metadata,
 )
+from app.models.user import User  # noqa: F401
 
 logger = get_logger(__name__)
 Base = declarative_base()
