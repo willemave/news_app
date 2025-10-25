@@ -8,7 +8,7 @@
 import Foundation
 
 /// User account model matching backend UserResponse schema
-struct User: Codable, Identifiable {
+struct User: Codable, Identifiable, Equatable {
     let id: Int
     let appleId: String
     let email: String

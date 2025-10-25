@@ -263,7 +263,7 @@ class ContentListViewModel: ObservableObject {
             }
 
             if selectedReadFilter == "unread" {
-                _ = withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(.easeOut(duration: 0.3)) {
                     contents.removeAll { markedSet.contains($0.id) }
                 }
             }

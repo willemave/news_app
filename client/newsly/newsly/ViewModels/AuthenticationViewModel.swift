@@ -32,7 +32,9 @@ final class AuthenticationViewModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.logout()
+            Task { @MainActor in
+                self?.logout()
+            }
         }
     }
 
