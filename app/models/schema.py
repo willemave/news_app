@@ -3,9 +3,9 @@ from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy import JSON, Boolean, Column, DateTime, Index, Integer, String, Text
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import validates
 
+from app.core.db import Base
 from app.core.logging import get_logger
 from app.models.metadata import (
     ContentStatus,
@@ -15,7 +15,6 @@ from app.models.metadata import (
 from app.models.user import User  # noqa: F401
 
 logger = get_logger(__name__)
-Base = declarative_base()
 
 
 class Content(Base):

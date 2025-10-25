@@ -4,6 +4,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import Pool
 
@@ -11,6 +12,9 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 
 logger = get_logger(__name__)
+
+# SQLAlchemy declarative base
+Base = declarative_base()
 
 # Global engine instance
 _engine = None
