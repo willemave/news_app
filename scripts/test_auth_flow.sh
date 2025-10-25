@@ -8,36 +8,53 @@ echo "================================"
 
 BASE_URL="http://localhost:8000"
 
-echo ""
-echo "1️⃣  Testing admin login..."
-ADMIN_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/admin/login" \
-  -H "Content-Type: application/json" \
-  -d '{"password": "'"$ADMIN_PASSWORD"'"}' \
-  -c /tmp/admin_cookies.txt)
+# Check if .env file exists and source it
+if [ -f .env ]; then
+  echo "Loading environment variables from .env..."
+  export $(grep -v '^#' .env | xargs)
+fi
 
-if echo "$ADMIN_RESPONSE" | grep -q "Logged in"; then
-  echo "✅ Admin login successful"
+# Check if admin password is set
+if [ -z "$ADMIN_PASSWORD" ]; then
+  echo "⚠️  ADMIN_PASSWORD not set. Skipping admin login test."
+  echo "    Set ADMIN_PASSWORD in .env file or export it."
+  SKIP_ADMIN_TEST=true
 else
-  echo "❌ Admin login failed: $ADMIN_RESPONSE"
-  exit 1
+  SKIP_ADMIN_TEST=false
+fi
+
+if [ "$SKIP_ADMIN_TEST" = "false" ]; then
+  echo ""
+  echo "1️⃣  Testing admin login..."
+  ADMIN_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/admin/login" \
+    -H "Content-Type: application/json" \
+    -d '{"password": "'"$ADMIN_PASSWORD"'"}' \
+    -c /tmp/admin_cookies.txt)
+
+  if echo "$ADMIN_RESPONSE" | grep -q "Logged in"; then
+    echo "✅ Admin login successful"
+  else
+    echo "❌ Admin login failed: $ADMIN_RESPONSE"
+    exit 1
+  fi
+
+  echo ""
+  echo "2️⃣  Testing admin-protected route..."
+  ADMIN_ROUTE=$(curl -s -X GET "$BASE_URL/" \
+    -b /tmp/admin_cookies.txt \
+    -w "%{http_code}" \
+    -o /dev/null)
+
+  if [ "$ADMIN_ROUTE" = "200" ]; then
+    echo "✅ Admin route accessible with session cookie"
+  else
+    echo "❌ Admin route failed (HTTP $ADMIN_ROUTE)"
+    exit 1
+  fi
 fi
 
 echo ""
-echo "2️⃣  Testing admin-protected route..."
-ADMIN_ROUTE=$(curl -s -X GET "$BASE_URL/" \
-  -b /tmp/admin_cookies.txt \
-  -w "%{http_code}" \
-  -o /dev/null)
-
-if [ "$ADMIN_ROUTE" = "200" ]; then
-  echo "✅ Admin route accessible with session cookie"
-else
-  echo "❌ Admin route failed (HTTP $ADMIN_ROUTE)"
-  exit 1
-fi
-
-echo ""
-echo "3️⃣  Testing API without authentication..."
+echo "3️⃣  Testing API without authentication (iOS focus)..."
 API_NO_AUTH=$(curl -s -X GET "$BASE_URL/api/content/" \
   -w "%{http_code}" \
   -o /dev/null)
@@ -50,9 +67,18 @@ else
 fi
 
 echo ""
-echo "4️⃣  Testing token creation..."
+echo "4️⃣  Creating test user and generating tokens..."
+echo "This is what you need for iOS Simulator testing!"
+echo ""
+
+# Check if backend is running
+if ! curl -s "$BASE_URL/health" > /dev/null 2>&1; then
+  echo "❌ Backend not running at $BASE_URL"
+  echo "   Start it with: cd app && uvicorn main:app --reload"
+  exit 1
+fi
+
 # Create a test user in the database
-echo "Creating test user..."
 python3 -c "
 import sys
 sys.path.insert(0, '.')
