@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.main import app
 from app.models.schema import Base, Content
+from app.models.user import User
 
 
 @pytest.fixture
@@ -58,28 +59,49 @@ def db_session(test_db):
 
 
 @pytest.fixture
-def client(db_session):
-    """Create a test client with database override."""
+def test_user(db_session):
+    """Create a test user for authentication."""
+    user = User(
+        apple_id="test_apple_id_12345",
+        email="test@example.com",
+        full_name="Test User",
+        is_active=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def client(db_session, test_user):
+    """Create a test client with database and auth overrides."""
     from app.core.db import get_db_session
-    
+    from app.core.deps import get_current_user
+
     def override_get_db():
         try:
             yield db_session
         finally:
             pass
-    
+
+    def override_get_current_user():
+        return test_user
+
     app.dependency_overrides[get_db_session] = override_get_db
-    
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
     with TestClient(app) as test_client:
         yield test_client
-    
+
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def async_client(db_session):
-    """Create an async test client with database override."""
+def async_client(db_session, test_user):
+    """Create an async test client with database and auth overrides."""
     from app.core.db import get_db_session
+    from app.core.deps import get_current_user
 
     def override_get_db():
         try:
@@ -87,7 +109,11 @@ def async_client(db_session):
         finally:
             pass
 
+    def override_get_current_user():
+        return test_user
+
     app.dependency_overrides[get_db_session] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
 
     ac = AsyncClient(app=app, base_url="http://test")
     yield ac

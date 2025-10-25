@@ -28,8 +28,28 @@ from app.models.user import (
 
 router = APIRouter()
 
-# Simple in-memory admin sessions (for MVP)
-# Production TODO: Use Redis or database for session storage
+# PRODUCTION WARNING - IN-MEMORY SESSION STORAGE:
+# This in-memory set stores admin session tokens. This has critical limitations:
+#
+# PROBLEMS WITH CURRENT IMPLEMENTATION:
+# 1. Sessions lost on application restart - all admins logged out
+# 2. Does not work with multiple server instances - sessions only valid on one server
+# 3. No session expiry mechanism - sessions live forever until server restart
+# 4. No ability to revoke sessions or view active sessions
+# 5. Memory leak potential if sessions accumulate
+#
+# BEFORE PRODUCTION DEPLOYMENT - MUST FIX:
+# Option 1: Redis (recommended for distributed systems)
+#   - Use Redis with TTL for automatic expiry
+#   - Works across multiple server instances
+#   - Fast session validation
+#
+# Option 2: Database sessions
+#   - Store sessions in database with expiry timestamp
+#   - Works across server instances
+#   - Can track login history and revoke sessions
+#
+# This implementation is suitable ONLY for single-instance development/MVP.
 admin_sessions = set()
 
 

@@ -103,10 +103,18 @@ def verify_apple_token(id_token: str) -> dict[str, Any]:
     Raises:
         JoseError: If token verification fails
 
-    Note:
-        In production, this should fetch Apple's public keys and verify signature.
-        For MVP, we'll do basic decoding without signature verification.
-        TODO: Implement full verification with Apple's public keys
+    SECURITY WARNING - MVP ONLY:
+        This implementation does NOT verify the token signature with Apple's public keys.
+        It only decodes and validates basic claims. This is INSECURE for production use.
+
+        BEFORE PRODUCTION DEPLOYMENT:
+        1. Fetch Apple's public keys from https://appleid.apple.com/auth/keys
+        2. Cache the keys with appropriate TTL
+        3. Verify the token signature using the correct public key (based on 'kid' header)
+        4. Validate all required claims (iss, aud, exp, iat, sub)
+        5. Implement proper error handling for key rotation
+
+        Current implementation is suitable ONLY for development/MVP testing.
     """
     try:
         # For MVP: decode without verification (ONLY for development)
