@@ -76,12 +76,17 @@ echo ""
 # Check if backend is running
 if ! curl -s "$BASE_URL/health" > /dev/null 2>&1; then
   echo "❌ Backend not running at $BASE_URL"
-  echo "   Start it with: cd app && uvicorn main:app --reload"
+  echo "   Start it with: ./scripts/start_server.sh"
   exit 1
 fi
 
+# Activate virtualenv if it exists
+if [ -f .venv/bin/activate ]; then
+  source .venv/bin/activate
+fi
+
 # Create a test user in the database
-python3 -c "
+python -c "
 import sys
 sys.path.insert(0, '.')
 from app.core.db import engine
