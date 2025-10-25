@@ -8,6 +8,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
+from app.core.deps import require_admin
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
@@ -54,6 +55,7 @@ SessionDep = Annotated[str, Depends(get_or_create_session_id)]
 async def list_content(
     request: Request,
     db: Annotated[Session, Depends(get_db_session)],
+    _: None = Depends(require_admin),
     content_type: str | None = None,
     date: str | None = None,
     read_filter: str = "unread",
@@ -158,7 +160,8 @@ async def list_content(
 async def content_detail(
     request: Request,
     content_id: int,
-    db: Annotated[Session, Depends(get_db_session)]
+    db: Annotated[Session, Depends(get_db_session)],
+    _: None = Depends(require_admin),
 ):
     """Get detailed view of a specific content item."""
     content = db.query(Content).filter(Content.id == content_id).first()
@@ -193,6 +196,7 @@ async def content_detail(
 async def favorites_list(
     request: Request,
     db: Annotated[Session, Depends(get_db_session)],
+    _: None = Depends(require_admin),
     read_filter: str = "all",
 ):
     """List favorited content."""
@@ -250,6 +254,7 @@ async def favorites_list(
 async def content_json(
     content_id: int,
     db: Annotated[Session, Depends(get_db_session)],
+    _: None = Depends(require_admin),
 ):
     """Get content item with metadata as JSON."""
     content = db.query(Content).filter(Content.id == content_id).first()

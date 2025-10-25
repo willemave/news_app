@@ -11,6 +11,7 @@ from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
+from app.core.deps import require_admin
 from app.models.schema import Content, EventLog, ProcessingTask
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -21,6 +22,7 @@ templates = Jinja2Templates(directory="templates")
 def admin_dashboard(
     request: Request,
     db: Annotated[Session, Depends(get_db_session)],
+    _: None = Depends(require_admin),
     event_type: str | None = None,
     limit: int = 50,
 ):
