@@ -7,9 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
+from app.core.deps import get_current_user
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
 from app.models.schema import Content
+from app.models.user import User
 from app.routers.api.models import ChatGPTUrlResponse, ContentDetailResponse
 
 router = APIRouter()
@@ -30,6 +32,7 @@ router = APIRouter()
 async def get_content_detail(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
     from app.services import favorites, read_status
@@ -40,10 +43,10 @@ async def get_content_detail(
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Check if content is read
-    is_read = read_status.is_content_read(db, content_id)
+    is_read = read_status.is_content_read(db, content_id, current_user.id)
 
     # Check if content is favorited
-    is_favorited = favorites.is_content_favorited(db, content_id)
+    is_favorited = favorites.is_content_favorited(db, content_id, current_user.id)
 
     # Convert to domain object to validate metadata
     try:

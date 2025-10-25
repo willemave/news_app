@@ -6,7 +6,11 @@ def test_settings_default_directories(monkeypatch, tmp_path):
     """Ensure default directory configuration respects the current working directory."""
 
     monkeypatch.chdir(tmp_path)
-    settings = Settings(database_url="sqlite:///tmp.db")
+    settings = Settings(
+        database_url="sqlite:///tmp.db",
+        JWT_SECRET_KEY="test-secret-key",
+        ADMIN_PASSWORD="test-admin-password"
+    )
 
     assert settings.media_base_dir == tmp_path / "data" / "media"
     assert settings.logs_base_dir == tmp_path / "logs"
@@ -20,6 +24,8 @@ def test_error_logger_respects_configured_logs_dir(monkeypatch, tmp_path):
     log_root = tmp_path / "custom_logs"
     monkeypatch.setenv("DATABASE_URL", "sqlite:///tmp.db")
     monkeypatch.setenv("LOGS_BASE_DIR", str(log_root))
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-secret-key")
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-password")
 
     get_settings.cache_clear()
     try:
