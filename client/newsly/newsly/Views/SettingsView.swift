@@ -16,6 +16,9 @@ struct SettingsView: View {
     @State private var alertMessage = ""
     @State private var showMarkAllDialog = false
     @State private var isProcessingMarkAll = false
+    #if DEBUG
+    @State private var showingDebugMenu = false
+    #endif
     
     var body: some View {
         NavigationView {
@@ -100,6 +103,20 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+
+                #if DEBUG
+                Section(header: Text("🐛 Debug Tools")) {
+                    Button {
+                        showingDebugMenu = true
+                    } label: {
+                        Label("Debug Menu", systemImage: "ladybug")
+                    }
+
+                    Text("Test authentication without Apple Sign In (Simulator only)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                #endif
                 
                 Section {
                     Button(action: saveSettings) {
@@ -136,6 +153,12 @@ struct SettingsView: View {
                 tempHost = settings.serverHost
                 tempPort = settings.serverPort
             }
+            #if DEBUG
+            .sheet(isPresented: $showingDebugMenu) {
+                DebugMenuView()
+                    .environmentObject(authViewModel)
+            }
+            #endif
         }
     }
     
