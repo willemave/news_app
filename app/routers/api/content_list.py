@@ -8,9 +8,11 @@ from sqlalchemy import String, and_, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
+from app.core.deps import get_current_user
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
+from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse, UnreadCountsResponse
 from app.utils.pagination import PaginationCursor
 
@@ -28,6 +30,7 @@ router = APIRouter()
 )
 async def list_contents(
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
     content_type: str | None = Query(
         None, description="Filter by content type (article/podcast/news)"
     ),
@@ -75,10 +78,10 @@ async def list_contents(
             raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Get read content IDs first
-    read_content_ids = read_status.get_read_content_ids(db)
+    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
 
     # Get favorited content IDs
-    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
 
     # Visibility clause: include summarized content or completed news
     summarized_clause = Content.content_metadata["summary"].is_not(None) & (
@@ -266,6 +269,7 @@ async def list_contents(
 )
 async def search_contents(
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
     q: str = Query(
         ..., min_length=2, max_length=200, description="Search query (min 2 characters)"
     ),
@@ -314,8 +318,8 @@ async def search_contents(
             raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Preload state flags
-    read_content_ids = read_status.get_read_content_ids(db)
-    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
+    favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
 
     # Base query aligning with list endpoint visibility rules
     query = db.query(Content)
@@ -450,12 +454,13 @@ async def search_contents(
 )
 async def get_unread_counts(
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> UnreadCountsResponse:
     """Get unread counts for each content type."""
     from app.services import read_status
 
     # Get read content IDs
-    read_content_ids = read_status.get_read_content_ids(db)
+    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
 
     # Visibility clause: include summarized content or completed news
     summarized_clause = Content.content_metadata["summary"].is_not(None) & (

@@ -12,12 +12,6 @@ from app.utils.pagination import PaginationCursor
 
 
 @pytest.fixture
-def client():
-    """Create test client."""
-    return TestClient(app)
-
-
-@pytest.fixture
 def sample_contents(db_session: Session):
     """Create sample content items for pagination testing."""
     contents = []
@@ -263,13 +257,13 @@ class TestSearchEndpointPagination:
 class TestFavoritesEndpointPagination:
     """Test pagination on GET /api/content/favorites/list endpoint."""
 
-    def test_favorites_pagination(self, client, sample_contents, db_session: Session):
+    def test_favorites_pagination(self, client, sample_contents, db_session: Session, test_user):
         """Test favorites list with pagination."""
         from app.services import favorites
 
         # Mark first 30 items as favorites
         for content in sample_contents[:30]:
-            favorites.toggle_favorite(db_session, content.id)
+            favorites.toggle_favorite(db_session, content.id, test_user.id)
 
         # First page
         response1 = client.get("/api/content/favorites/list", params={"limit": 10})
