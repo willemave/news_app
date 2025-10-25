@@ -82,3 +82,15 @@ class AccessTokenResponse(BaseModel):
 
     access_token: str
     token_type: str = "bearer"
+
+
+class AdminLoginRequest(BaseModel):
+    """Request schema for admin login."""
+
+    password: str
+
+
+class AdminLoginResponse(BaseModel):
+    """Response schema for admin login."""
+
+    message: str

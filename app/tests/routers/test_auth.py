@@ -210,3 +210,58 @@ def test_refresh_token_with_access_token(db: Session):
         assert response.status_code == 401
     finally:
         app.dependency_overrides.clear()
+
+
+def test_admin_login_valid(monkeypatch):
+    """Test admin login with correct password."""
+    # Mock verify_admin_password to accept our test password
+    def mock_verify_admin_password(password: str) -> bool:
+        return password == "test_admin_pass"
+
+    monkeypatch.setattr("app.routers.auth.verify_admin_password", mock_verify_admin_password)
+
+    response = client.post(
+        "/auth/admin/login",
+        json={"password": "test_admin_pass"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "Logged in as admin"
+
+    # Check cookie is set
+    assert "admin_session" in response.cookies
+
+
+def test_admin_login_invalid():
+    """Test admin login with wrong password."""
+    response = client.post(
+        "/auth/admin/login",
+        json={"password": "wrong_password"}
+    )
+
+    assert response.status_code == 401
+    assert "admin_session" not in response.cookies
+
+
+def test_admin_logout(monkeypatch):
+    """Test admin logout."""
+    # Mock verify_admin_password to accept our test password
+    def mock_verify_admin_password(password: str) -> bool:
+        return password == "test_admin_pass"
+
+    monkeypatch.setattr("app.routers.auth.verify_admin_password", mock_verify_admin_password)
+
+    # First login
+    response = client.post(
+        "/auth/admin/login",
+        json={"password": "test_admin_pass"}
+    )
+
+    # Then logout
+    cookies = {"admin_session": response.cookies["admin_session"]}
+    response = client.post("/auth/admin/logout", cookies=cookies)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "Logged out"

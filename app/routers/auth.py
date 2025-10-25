@@ -1,19 +1,24 @@
 """Authentication endpoints."""
+import secrets
 from typing import Annotated
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.deps import ADMIN_SESSION_COOKIE
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    verify_admin_password,
     verify_apple_token,
     verify_token,
 )
 from app.models.user import (
     AccessTokenResponse,
+    AdminLoginRequest,
+    AdminLoginResponse,
     AppleSignInRequest,
     RefreshTokenRequest,
     TokenResponse,
@@ -22,6 +27,10 @@ from app.models.user import (
 )
 
 router = APIRouter()
+
+# Simple in-memory admin sessions (for MVP)
+# Production TODO: Use Redis or database for session storage
+admin_sessions = set()
 
 
 @router.post("/apple", response_model=TokenResponse)
@@ -128,3 +137,60 @@ def refresh_token(
     access_token = create_access_token(user.id)
 
     return AccessTokenResponse(access_token=access_token)
+
+
+@router.post("/admin/login", response_model=AdminLoginResponse)
+def admin_login(
+    request: AdminLoginRequest,
+    response: Response
+) -> AdminLoginResponse:
+    """
+    Admin login with password.
+
+    Args:
+        request: Admin login request with password
+        response: FastAPI response to set cookie
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: 401 if password is incorrect
+    """
+    if not verify_admin_password(request.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin password"
+        )
+
+    # Generate session token
+    session_token = secrets.token_urlsafe(32)
+    admin_sessions.add(session_token)
+
+    # Set httpOnly cookie
+    response.set_cookie(
+        key=ADMIN_SESSION_COOKIE,
+        value=session_token,
+        httponly=True,
+        max_age=7 * 24 * 60 * 60,  # 7 days
+        samesite="lax"
+    )
+
+    return AdminLoginResponse(message="Logged in as admin")
+
+
+@router.post("/admin/logout")
+def admin_logout(response: Response) -> dict:
+    """
+    Admin logout.
+
+    Args:
+        response: FastAPI response to delete cookie
+
+    Returns:
+        Success message
+    """
+    # Delete cookie
+    response.delete_cookie(key=ADMIN_SESSION_COOKIE)
+
+    return {"message": "Logged out"}
