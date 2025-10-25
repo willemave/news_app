@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject var authViewModel: AuthenticationViewModel
     @ObservedObject private var settings = AppSettings.shared
     @State private var tempHost: String = ""
     @State private var tempPort: String = ""
@@ -19,6 +20,27 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
+                // User section
+                Section(header: Text("Account")) {
+                    if case .authenticated(let user) = authViewModel.authState {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(user.email)
+                                .font(.headline)
+                            if let fullName = user.fullName {
+                                Text(fullName)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        Button(role: .destructive) {
+                            authViewModel.logout()
+                        } label: {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    }
+                }
+
                 Section(header: Text("Server Configuration")) {
                     HStack {
                         Text("Host")
