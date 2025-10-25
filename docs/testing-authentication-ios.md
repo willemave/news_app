@@ -47,9 +47,9 @@ You can use this token to test the iOS app...
 ### Step 3: Access Debug Menu
 
 1. App will show authentication screen (Apple Sign In won't work in simulator)
-2. Tap the **Settings** tab at the bottom
-3. Scroll to the bottom
-4. Tap **🐛 Debug Menu** button
+2. At the bottom of the login screen, tap **"🐛 Debug Menu"** button
+   - *Note: This button only appears in DEBUG builds*
+3. Alternatively, you can access it from Settings tab after authenticating
 
 ### Step 4: Set Test Token
 

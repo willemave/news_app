@@ -11,6 +11,9 @@ import AuthenticationServices
 /// Login screen with Apple Sign In
 struct AuthenticationView: View {
     @EnvironmentObject var authViewModel: AuthenticationViewModel
+    #if DEBUG
+    @State private var showingDebugMenu = false
+    #endif
 
     var body: some View {
         VStack(spacing: 24) {
@@ -55,8 +58,29 @@ struct AuthenticationView: View {
             }
 
             Spacer()
+
+            #if DEBUG
+            // Debug menu button (only in DEBUG builds)
+            Button {
+                showingDebugMenu = true
+            } label: {
+                HStack {
+                    Image(systemName: "ladybug.fill")
+                    Text("Debug Menu")
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
+            .padding(.bottom, 8)
+            #endif
         }
         .padding()
+        #if DEBUG
+        .sheet(isPresented: $showingDebugMenu) {
+            DebugMenuView()
+                .environmentObject(authViewModel)
+        }
+        #endif
     }
 }
 
