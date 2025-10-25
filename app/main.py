@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.db import init_db
 from app.core.logging import setup_logging
 from app.core.settings import get_settings
-from app.routers import admin, api_content, content, logs
+from app.routers import admin, api_content, auth, content, logs
 
 # Initialize
 settings = get_settings()
@@ -28,6 +28,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include routers
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(content.router)
 app.include_router(admin.router)
 app.include_router(logs.router)
