@@ -1,6 +1,7 @@
 """Authentication endpoints."""
 from typing import Annotated
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -9,8 +10,16 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     verify_apple_token,
+    verify_token,
 )
-from app.models.user import AppleSignInRequest, TokenResponse, User, UserResponse
+from app.models.user import (
+    AccessTokenResponse,
+    AppleSignInRequest,
+    RefreshTokenRequest,
+    TokenResponse,
+    User,
+    UserResponse,
+)
 
 router = APIRouter()
 
@@ -73,3 +82,49 @@ def apple_signin(
         refresh_token=refresh_token,
         user=UserResponse.from_orm(user)
     )
+
+
+@router.post("/refresh", response_model=AccessTokenResponse)
+def refresh_token(
+    request: RefreshTokenRequest,
+    db: Session = Depends(get_db)
+) -> AccessTokenResponse:
+    """
+    Refresh access token using refresh token.
+
+    Args:
+        request: Refresh token request
+        db: Database session
+
+    Returns:
+        New access token
+
+    Raises:
+        HTTPException: 401 if refresh token is invalid
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid refresh token"
+    )
+
+    try:
+        payload = verify_token(request.refresh_token)
+        user_id: str = payload.get("sub")
+        token_type: str = payload.get("type")
+
+        if user_id is None or token_type != "refresh":
+            raise credentials_exception
+
+    except jwt.InvalidTokenError:
+        raise credentials_exception
+
+    # Verify user exists and is active
+    user = db.query(User).filter(User.id == int(user_id)).first()
+
+    if user is None or not user.is_active:
+        raise credentials_exception
+
+    # Generate new access token
+    access_token = create_access_token(user.id)
+
+    return AccessTokenResponse(access_token=access_token)

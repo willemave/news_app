@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.main import app
 from app.models.user import User
+from app.core.security import create_access_token, create_refresh_token
 
 client = TestClient(app)
 
@@ -122,3 +123,90 @@ def test_apple_signin_invalid_token(monkeypatch):
 
     assert response.status_code == 401
     assert "Invalid Apple token" in response.json()["detail"]
+
+
+def test_refresh_token_valid(db: Session):
+    """Test token refresh with valid refresh token."""
+    # Override get_db to use our test db
+    from app.core.db import get_db
+
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        # Create user
+        user = User(
+            apple_id="001234.refresh",
+            email="refresh@icloud.com",
+            is_active=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Create refresh token
+        refresh_token = create_refresh_token(user.id)
+
+        response = client.post(
+            "/auth/refresh",
+            json={"refresh_token": refresh_token}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_refresh_token_invalid():
+    """Test token refresh with invalid token."""
+    response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": "invalid.token"}
+    )
+
+    assert response.status_code == 401
+
+
+def test_refresh_token_with_access_token(db: Session):
+    """Test refresh endpoint rejects access tokens."""
+    # Override get_db to use our test db
+    from app.core.db import get_db
+
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        user = User(
+            apple_id="001234.wrongtype",
+            email="wrongtype@icloud.com",
+            is_active=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Try with access token (should fail)
+        access_token = create_access_token(user.id)
+
+        response = client.post(
+            "/auth/refresh",
+            json={"refresh_token": access_token}
+        )
+
+        assert response.status_code == 401
+    finally:
+        app.dependency_overrides.clear()
