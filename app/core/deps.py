@@ -100,19 +100,13 @@ def require_admin(request: Request) -> None:
 
     Raises:
         HTTPException: 401 if not authenticated as admin
-
-    Note:
-        For MVP, we check for presence of admin_session cookie.
-        Production TODO: Validate session in database or cache
     """
+    from app.routers.auth import admin_sessions
+
     admin_session = request.cookies.get(ADMIN_SESSION_COOKIE)
 
-    if not admin_session:
+    if not admin_session or admin_session not in admin_sessions:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin authentication required",
-            headers={"WWW-Authenticate": "Cookie"},
+            detail="Admin authentication required"
         )
-
-    # MVP: Just check cookie exists
-    # Production TODO: Validate session token, check expiry, etc.
