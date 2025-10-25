@@ -3,9 +3,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
+from app.core.deps import require_admin
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.templates import templates
@@ -22,7 +23,7 @@ logger = get_logger(__name__)
 
 
 @router.get("/logs", response_class=HTMLResponse)
-async def list_logs(request: Request):
+async def list_logs(request: Request, _: None = Depends(require_admin)):
     """List all log files with recent error logs."""
     log_files = []
     recent_errors = []
@@ -82,7 +83,7 @@ async def list_logs(request: Request):
 
 
 @router.get("/logs/{filename:path}", response_class=HTMLResponse)
-async def view_log(request: Request, filename: str):
+async def view_log(request: Request, filename: str, _: None = Depends(require_admin)):
     """View specific log file content."""
     file_path = LOGS_DIR / filename
 
@@ -106,7 +107,7 @@ async def view_log(request: Request, filename: str):
 
 
 @router.get("/logs/{filename:path}/download")
-async def download_log(filename: str):
+async def download_log(filename: str, _: None = Depends(require_admin)):
     """Download a log file."""
     file_path = LOGS_DIR / filename
 
@@ -118,7 +119,7 @@ async def download_log(filename: str):
 
 
 @router.get("/errors", response_class=HTMLResponse)
-async def errors_dashboard(request: Request, hours: int = 24, min_errors: int = 1, component: str | None = None):
+async def errors_dashboard(request: Request, _: None = Depends(require_admin), hours: int = 24, min_errors: int = 1, component: str | None = None):
     """Analyze recent error logs and present an HTML dashboard (no LLM calls)."""
     logs_dir = LOGS_DIR
     errors = _an_get_recent_logs(logs_dir, hours)
@@ -180,7 +181,7 @@ async def errors_dashboard(request: Request, hours: int = 24, min_errors: int = 
 
 
 @router.post("/errors/reset")
-async def reset_error_logs():
+async def reset_error_logs(_: None = Depends(require_admin)):
     """Reset all error logs by deleting all log files in the errors directory
     and removing failed EventLog entries from the database.
 
