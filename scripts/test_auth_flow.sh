@@ -11,7 +11,9 @@ BASE_URL="http://localhost:8000"
 # Check if .env file exists and source it
 if [ -f .env ]; then
   echo "Loading environment variables from .env..."
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  source <(grep -v '^#' .env | grep -v '^$' | sed 's/\r$//')
+  set +a
 fi
 
 # Check if admin password is set
