@@ -137,50 +137,50 @@ class ProcessingTask(Base):
 
 
 class ContentReadStatus(Base):
-    """Track which content has been read by which session."""
-    
+    """Track which content has been read by which user."""
+
     __tablename__ = "content_read_status"
-    
+
     id = Column(Integer, primary_key=True)
-    session_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
     content_id = Column(Integer, nullable=False, index=True)
     read_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    
+
     __table_args__ = (
-        Index("idx_content_read_session_content", "session_id", "content_id", unique=True),
+        Index("idx_content_read_user_content", "user_id", "content_id", unique=True),
     )
 
 
 class ContentFavorites(Base):
-    """Track which content has been favorited by which session."""
-    
+    """Track which content has been favorited by which user."""
+
     __tablename__ = "content_favorites"
-    
+
     id = Column(Integer, primary_key=True)
-    session_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
     content_id = Column(Integer, nullable=False, index=True)
     favorited_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    
+
     __table_args__ = (
-        Index("idx_content_favorites_session_content", "session_id", "content_id", unique=True),
+        Index("idx_content_favorites_user_content", "user_id", "content_id", unique=True),
     )
 
 
 class ContentUnlikes(Base):
-    """Track which content has been unliked by which session."""
-    
+    """Track which content has been unliked by which user."""
+
     __tablename__ = "content_unlikes"
-    
+
     id = Column(Integer, primary_key=True)
-    session_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
     content_id = Column(Integer, nullable=False, index=True)
     unliked_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    
+
     __table_args__ = (
-        Index("idx_content_unlikes_session_content", "session_id", "content_id", unique=True),
+        Index("idx_content_unlikes_user_content", "user_id", "content_id", unique=True),
     )
 
 
