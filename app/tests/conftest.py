@@ -16,6 +16,24 @@ from app.models.schema import Base, Content
 
 
 @pytest.fixture
+def db():
+    """Create test database session (for authentication tests)."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session = TestSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture
 def test_db():
     """Create a test database."""
     engine = create_engine(
