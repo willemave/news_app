@@ -34,6 +34,7 @@ dependencies = [
     "pyjwt[crypto]",
     "passlib[bcrypt]",
     "authlib>=1.6.5",
+    "email-validator>=2.3.0",
 ]
 
 [tool.setuptools.packages.find]
