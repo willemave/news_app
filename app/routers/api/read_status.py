@@ -8,9 +8,11 @@ from sqlalchemy import and_, delete, or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
+from app.core.deps import get_current_user
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentReadStatus
+from app.models.user import User
 from app.routers.api.models import BulkMarkReadRequest, ContentListResponse, ContentSummaryResponse
 from app.utils.pagination import PaginationCursor
 
@@ -24,11 +26,13 @@ router = APIRouter()
     responses={
         200: {"description": "Content marked as read successfully"},
         404: {"description": "Content not found"},
+        401: {"description": "Authentication required"},
     },
 )
 async def mark_content_read(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Mark content as read."""
     from app.services import read_status
@@ -39,7 +43,7 @@ async def mark_content_read(
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Mark as read
-    result = read_status.mark_content_as_read(db, content_id)
+    result = read_status.mark_content_as_read(db, content_id, current_user.id)
     if result:
         return {"status": "success", "content_id": content_id}
     else:
@@ -53,11 +57,13 @@ async def mark_content_read(
     responses={
         200: {"description": "Content marked as unread successfully"},
         404: {"description": "Content not found"},
+        401: {"description": "Authentication required"},
     },
 )
 async def mark_content_unread(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Mark content as unread by removing its read status."""
     # Check if content exists
@@ -66,7 +72,12 @@ async def mark_content_unread(
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Delete read status
-    result = db.execute(delete(ContentReadStatus).where(ContentReadStatus.content_id == content_id))
+    result = db.execute(
+        delete(ContentReadStatus).where(
+            ContentReadStatus.content_id == content_id,
+            ContentReadStatus.user_id == current_user.id
+        )
+    )
     db.commit()
 
     return {
@@ -83,11 +94,13 @@ async def mark_content_unread(
     responses={
         200: {"description": "Content items marked as read successfully"},
         400: {"description": "Invalid content IDs provided"},
+        401: {"description": "Authentication required"},
     },
 )
 async def bulk_mark_read(
     request: BulkMarkReadRequest,
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Mark multiple content items as read."""
     from app.services import read_status
@@ -103,6 +116,7 @@ async def bulk_mark_read(
     success_count, failed_ids = read_status.mark_contents_as_read(
         db,
         request.content_ids,
+        current_user.id,
     )
 
     return {
@@ -121,9 +135,13 @@ async def bulk_mark_read(
         "Retrieve all read content items sorted by read time "
         "(most recent first) with cursor-based pagination."
     ),
+    responses={
+        401: {"description": "Authentication required"},
+    },
 )
 async def get_recently_read(
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
     cursor: str | None = Query(None, description="Pagination cursor for next page"),
     limit: int = Query(
         25,
@@ -149,10 +167,10 @@ async def get_recently_read(
             raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Get read content IDs for status checks
-    read_content_ids = read_status.get_read_content_ids(db)
+    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
 
     # Get favorited content IDs
-    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
 
     # Query content joined with read status, ordered by read time
     query = db.query(Content, ContentReadStatus.read_at).join(

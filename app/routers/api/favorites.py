@@ -7,9 +7,11 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
+from app.core.deps import get_current_user
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
 from app.models.schema import Content
+from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse
 from app.utils.pagination import PaginationCursor
 
@@ -23,11 +25,13 @@ router = APIRouter()
     responses={
         200: {"description": "Favorite status toggled successfully"},
         404: {"description": "Content not found"},
+        401: {"description": "Authentication required"},
     },
 )
 async def toggle_favorite(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Toggle favorite status for content."""
     from app.services import favorites
@@ -38,7 +42,7 @@ async def toggle_favorite(
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Toggle favorite
-    is_favorited, _ = favorites.toggle_favorite(db, content_id)
+    is_favorited, _ = favorites.toggle_favorite(db, content_id, current_user.id)
     return {
         "status": "success",
         "content_id": content_id,
@@ -53,11 +57,13 @@ async def toggle_favorite(
     responses={
         200: {"description": "Content removed from favorites successfully"},
         404: {"description": "Content not found"},
+        401: {"description": "Authentication required"},
     },
 )
 async def unfavorite_content(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Remove content from favorites."""
     from app.services import favorites
@@ -68,7 +74,7 @@ async def unfavorite_content(
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Remove from favorites
-    removed = favorites.remove_favorite(db, content_id)
+    removed = favorites.remove_favorite(db, content_id, current_user.id)
     return {
         "status": "success" if removed else "not_found",
         "content_id": content_id,
@@ -81,9 +87,13 @@ async def unfavorite_content(
     response_model=ContentListResponse,
     summary="Get favorited content",
     description="Retrieve all favorited content items with cursor-based pagination.",
+    responses={
+        401: {"description": "Authentication required"},
+    },
 )
 async def get_favorites(
     db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
     cursor: str | None = Query(None, description="Pagination cursor for next page"),
     limit: int = Query(
         25,
@@ -108,10 +118,10 @@ async def get_favorites(
             raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Get favorited content IDs
-    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
 
     # Get read content IDs
-    read_content_ids = read_status.get_read_content_ids(db)
+    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
 
     # Query favorited content
     if favorite_content_ids:
