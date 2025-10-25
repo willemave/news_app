@@ -42,6 +42,7 @@
 #### 6  Dependencies
 * **Core**: fastapi, pydantic, pydantic-settings, python-multipart
 * **Database**: sqlalchemy>=2.0, alembic
+* **Authentication**: PyJWT, authlib, passlib[bcrypt], email-validator
 * **Testing**: pytest, pytest-cov, httpx, pytest-mock
 * **Utils**: python-dateutil
 * **External**: google-genai (not google-generativeai)
@@ -96,26 +97,33 @@
 **Keep all replies short, technical, and complete.**
 ```
 ---
-#### 11  Latest Project Structure (Sept 2025)
+#### 11  Latest Project Structure (Oct 2025)
 Use this as the authoritative layout (supersedes earlier sketch if different).
 
 - app/
-  - core/            : settings (Pydantic v2), logging, db init
-  - routers/         : `content`, `admin`, `logs`, `api_content` (mounted in `app/main.py`)
-  - services/        : LLM integrations (OpenAI, Google), event logger, HTTP helpers
+  - core/            : settings (Pydantic v2), logging, db init, **security (JWT)**, **deps (auth)**
+  - routers/         : `content`, `admin`, `logs`, `api_content`, **`auth` (new)**
+  - services/        : LLM integrations, event logger, HTTP helpers, **favorites (user-based)**, **read_status (user-based)**
   - pipeline/        : sequential task processor, workers
   - scraping/        : unified scrapers (podcast, substack) + runner
   - processing_strategies/: HTML/HN strategies and parsers
-  - models/          : domain models and structured summary
+  - models/          : domain models, structured summary, **user (auth)**
   - utils/           : `error_logger.py` (JSONL), misc helpers
   - domain/          : domain-specific entities
   - templates/       : module-scoped views (e.g., favorites)
-  - tests/           : unit/integration for routers and pipeline
+  - tests/           : unit/integration for routers, pipeline, **auth**
+- **client/newsly/newsly/** : iOS app (SwiftUI)
+  - **Services/**    : APIClient, **AuthenticationService**, **KeychainManager**
+  - **Models/**      : ContentSummary, **User (auth)**
+  - **ViewModels/**  : ContentListViewModel, **AuthenticationViewModel**
+  - **Views/**       : ArticlesView, **AuthenticationView**, SettingsView (updated)
+  - **newslyApp.swift** : App entry (updated with auth gate)
 - templates/         : primary Jinja templates (admin dashboard, logs, lists)
 - static/            : tailwind sources and compiled CSS
 - scripts/           : start/ops (`start_server.sh`, `start_workers.sh`, `start_scrapers.sh`, `run_*`)
-- alembic/ + alembic.ini : database migrations
+- alembic/ + alembic.ini : database migrations (includes auth migrations)
 - logs/              : JSONL and service logs (host-mounted)
+- **docs/plans/**    : design docs, implementation plans, **auth summary**
 
 ---
 #### 12  Key Tools & Services
@@ -189,3 +197,69 @@ Use this as the authoritative layout (supersedes earlier sketch if different).
 - Containers & Compose
   - `docker-compose.yml` — shared logs mounts for all services
   - `Dockerfile.server`, `Dockerfile.workers`, `Dockerfile.scrapers`
+
+---
+#### 17  Authentication System (Oct 2025)
+**Architecture:** Dual authentication - JWT for iOS, sessions for web admin
+
+**Backend Auth:**
+- **iOS (JWT-based):** Apple Sign In only, 30min access + 7day refresh tokens
+- **Web (session-based):** Admin password from `.env`, httpOnly cookies
+- **User Model:** `users` table (apple_id, email, full_name, is_admin, is_active)
+- **Data Isolation:** Favorites/read-status per user_id (replaced session_id)
+
+**Auth Endpoints:**
+- `POST /auth/apple` — Apple Sign In (iOS users)
+- `POST /auth/refresh` — Refresh access token
+- `POST /auth/admin/login` — Admin login (returns session cookie)
+- `POST /auth/admin/logout` — Admin logout
+
+**Protected Routes:**
+- **API routes** (`/api/content/*`) — Require JWT Bearer token
+- **Web routes** (`/`, `/admin/*`, `/logs/*`) — Require admin session cookie
+
+**Key Files:**
+- `app/core/security.py` — JWT utilities, Apple token validation
+- `app/core/deps.py` — FastAPI auth dependencies (get_current_user, require_admin)
+- `app/models/user.py` — User model + auth schemas
+- `app/routers/auth.py` — Auth endpoints
+- `app/services/favorites.py` — User-based favorites (user_id parameter)
+- `app/services/read_status.py` — User-based read tracking (user_id parameter)
+
+**Environment Variables:**
+```bash
+JWT_SECRET_KEY=<generate with secrets.token_urlsafe(32)>
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+ADMIN_PASSWORD=<your-secure-password>
+```
+
+**iOS App Integration:**
+- `Services/KeychainManager.swift` — Secure token storage
+- `Services/AuthenticationService.swift` — Apple Sign In integration
+- `ViewModels/AuthenticationViewModel.swift` — Auth state management
+- `Views/AuthenticationView.swift` — Login UI
+- `Services/APIClient.swift` — Bearer token + auto-refresh
+
+**Security Warnings (MVP):**
+⚠️ **Apple token verification DISABLED** — Must implement before production (see `app/core/security.py:106`)
+⚠️ **Admin sessions IN-MEMORY** — Must migrate to Redis/DB for production (see `app/routers/auth.py:31`)
+
+**Testing Auth:**
+```bash
+# Backend - Admin login
+curl -X POST http://localhost:8000/auth/admin/login \
+  -H "Content-Type: application/json" \
+  -d '{"password": "admin123"}' -c cookies.txt
+
+# Backend - Test admin route
+curl http://localhost:8000/admin/ -b cookies.txt
+
+# iOS - Run in simulator (uses test Apple ID)
+```
+
+**Documentation:**
+- Design: `docs/plans/2025-10-24-authentication-system-design.md`
+- Implementation Plan: `docs/plans/2025-10-24-authentication-implementation.md`
+- Implementation Summary: `docs/plans/2025-10-24-authentication-implementation-summary.md`
