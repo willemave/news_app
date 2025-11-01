@@ -32,3 +32,6 @@ feeds:
   - name: The MAD Podcast
     url: "https://anchor.fm/s/f2ee4948/podcast/rss"
     limit: 5
+  - name: Founders
+    url: "https://feeds.megaphone.fm/DSLLC6297708582"
+    limit: 5
