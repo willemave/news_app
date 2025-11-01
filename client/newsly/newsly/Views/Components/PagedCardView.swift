@@ -65,22 +65,24 @@ struct PagedCardView: View {
                     Button(action: {
                         handleNextTapped()
                     }) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             if isProcessing {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.9)
                             } else {
                                 Text(visibleGroups.count == 1 ? "Done" : "Next")
-                                    .fontWeight(.semibold)
+                                    .font(.body)
+                                    .fontWeight(.medium)
                                 Image(systemName: "arrow.right.circle.fill")
-                                    .font(.title3)
+                                    .font(.body)
                             }
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, 12)
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: 10)
                                 .fill(Color.accentColor)
                         )
                     }
