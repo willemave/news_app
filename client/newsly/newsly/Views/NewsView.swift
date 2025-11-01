@@ -53,7 +53,6 @@ struct NewsView: View {
                     await viewModel.loadNewsGroups()
                 }
             }
-            .navigationTitle("News")
         }
     }
 }
