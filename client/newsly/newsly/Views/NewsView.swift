@@ -4,6 +4,7 @@
 //
 //  Created by Assistant on 9/20/25.
 //  Updated by Assistant on 10/12/25 for grouped display
+//  Updated by Assistant on 11/01/25 for button navigation
 //
 
 import SwiftUI
@@ -33,7 +34,7 @@ struct NewsView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        CardStackView(
+                        PagedCardView(
                             groups: viewModel.newsGroups,
                             onDismiss: { groupId in
                                 await viewModel.markGroupAsRead(groupId)
