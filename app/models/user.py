@@ -1,8 +1,8 @@
 """User models and schemas for authentication."""
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_serializer
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.sql import func
 
@@ -49,6 +49,29 @@ class UserResponse(UserBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, dt: datetime, _info) -> str:
+        """
+        Serialize datetime to ISO8601 with 'Z' timezone indicator.
+
+        Ensures iOS Swift compatibility - ISO8601DateFormatter requires timezone.
+
+        Args:
+            dt: Datetime to serialize (assumed UTC if naive)
+
+        Returns:
+            ISO8601 string with 'Z' suffix (e.g., '2025-11-01T15:29:31Z')
+        """
+        # Ensure datetime has UTC timezone info
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        else:
+            dt = dt.astimezone(UTC)
+
+        # Format as ISO8601 with 'Z' suffix
+        return dt.isoformat().replace('+00:00', 'Z')
+
 
     class Config:
         from_attributes = True
