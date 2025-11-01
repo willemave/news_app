@@ -40,12 +40,12 @@ struct NewsGroupCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             // Group header with count
             HStack {
                 Text("News Digest")
                     .font(.caption)
-                    .fontWeight(.semibold)
+                    .fontWeight(.medium)
                     .foregroundColor(.secondary)
 
                 Spacer()
@@ -60,8 +60,8 @@ struct NewsGroupCard: View {
                         .foregroundColor(.green)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
 
             // News items
             ForEach(group.items) { item in
@@ -132,21 +132,18 @@ struct NewsGroupCard: View {
                         .buttonStyle(.borderless)
                         .disabled(convertingStates[item.id] == true)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
 
                 if item.id != group.items.last?.id {
                     Divider()
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 4)
                 }
             }
             .padding(.bottom, 4)
         }
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
         .opacity(group.isRead ? 0.7 : 1.0)
     }
 }
