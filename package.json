@@ -3,7 +3,7 @@
     "@tailwindcss/cli": "^4.1.8",
     "tailwindcss": "^4.1.8"
   },
-"scripts": {
+  "scripts": {
     "dev": "npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css --watch"
-}
+  }
 }

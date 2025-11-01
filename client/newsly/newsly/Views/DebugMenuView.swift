@@ -10,6 +10,7 @@ import SwiftUI
 
 #if DEBUG
 struct DebugMenuView: View {
+    @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authViewModel: AuthenticationViewModel
     @State private var showingTokenInput = false
     @State private var accessToken = ""
@@ -49,6 +50,11 @@ struct DebugMenuView: View {
                 }
 
                 Section(header: Text("Test Actions")) {
+                    Button("Sign In with Stored Token") {
+                        signInWithStoredToken()
+                    }
+                    .disabled(KeychainManager.shared.getToken(key: .accessToken) == nil)
+
                     Button("Manually Set Tokens") {
                         showingTokenInput = true
                     }
@@ -74,13 +80,13 @@ struct DebugMenuView: View {
                     Text("""
                     **Testing Without Apple Sign In:**
 
-                    1. Start the backend server
-                    2. Run: ./scripts/test_auth_flow.sh
+                    1. Ensure backend is running (localhost:8000)
+                    2. Generate FRESH token: ./scripts/test_auth_flow.sh
                     3. Copy the access token from output
-                    4. Tap "Manually Set Tokens"
-                    5. Paste the token
+                    4. Tap "Manually Set Tokens" immediately
+                    5. Paste and save (tokens expire in 30 min)
 
-                    **Or:** Use "Use Backend Test Token" to auto-generate tokens (requires backend running).
+                    **Note:** If you get "invalid or expired", generate a new token. The app validates tokens with the backend.
                     """)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -94,6 +100,19 @@ struct DebugMenuView: View {
             }
             .navigationTitle("🐛 Debug Menu")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .onChange(of: authViewModel.authState) { oldValue, newValue in
+            // Auto-dismiss when authentication succeeds
+            if case .authenticated = newValue {
+                dismiss()
+            }
         }
         .sheet(isPresented: $showingTokenInput) {
             TokenInputView(
@@ -122,6 +141,31 @@ struct DebugMenuView: View {
         }
     }
 
+    private func signInWithStoredToken() {
+        guard KeychainManager.shared.getToken(key: .accessToken) != nil else {
+            alertMessage = "No access token found in keychain"
+            showingAlert = true
+            return
+        }
+
+        // Validate token with backend
+        Task {
+            do {
+                authViewModel.authState = .loading
+                let user = try await AuthenticationService.shared.getCurrentUser()
+                await MainActor.run {
+                    authViewModel.authState = .authenticated(user)
+                }
+            } catch {
+                await MainActor.run {
+                    authViewModel.authState = .unauthenticated
+                    alertMessage = "Token is invalid or expired: \(error.localizedDescription)"
+                    showingAlert = true
+                }
+            }
+        }
+    }
+
     private func saveTokensManually() {
         guard !accessToken.isEmpty else {
             alertMessage = "Access token required"
@@ -129,29 +173,33 @@ struct DebugMenuView: View {
             return
         }
 
+        // Save tokens to keychain
         KeychainManager.shared.saveToken(accessToken, key: .accessToken)
 
         if !refreshToken.isEmpty {
             KeychainManager.shared.saveToken(refreshToken, key: .refreshToken)
         }
 
-        // Create a mock user for testing
-        let mockUser = User(
-            id: 1,
-            appleId: "debug.test.001",
-            email: "debug@test.com",
-            fullName: "Debug Test User",
-            isAdmin: false,
-            isActive: true,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-
-        authViewModel.authState = .authenticated(mockUser)
-
-        alertMessage = "Tokens saved! App is now authenticated."
-        showingAlert = true
         showingTokenInput = false
+
+        // Validate token with backend
+        Task {
+            do {
+                authViewModel.authState = .loading
+                let user = try await AuthenticationService.shared.getCurrentUser()
+                await MainActor.run {
+                    authViewModel.authState = .authenticated(user)
+                }
+            } catch {
+                await MainActor.run {
+                    // Clear invalid token
+                    KeychainManager.shared.clearAll()
+                    authViewModel.authState = .unauthenticated
+                    alertMessage = "Token is invalid or expired. Please generate a new one."
+                    showingAlert = true
+                }
+            }
+        }
     }
 
     private func useBackendTestToken() {

@@ -85,9 +85,29 @@ final class AuthenticationService: NSObject {
             throw AuthError.notAuthenticated
         }
 
-        // For now, decode user from token or fetch from backend
-        // This is a simplified version - in production you'd call /auth/me
-        throw AuthError.notImplemented
+        let url = URL(string: "\(AppSettings.shared.baseURL)/auth/me")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.notAuthenticated
+        }
+
+        // If token is invalid/expired, throw auth error
+        guard httpResponse.statusCode == 200 else {
+            // Token is invalid - clear it
+            KeychainManager.shared.clearAll()
+            throw AuthError.notAuthenticated
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let user = try decoder.decode(User.self, from: data)
+        return user
     }
 
     // MARK: - Private Helpers
@@ -141,7 +161,6 @@ enum AuthError: Error, LocalizedError {
     case noRefreshToken
     case refreshFailed
     case appleSignInFailed
-    case notImplemented
 
     var errorDescription: String? {
         switch self {
@@ -153,8 +172,6 @@ enum AuthError: Error, LocalizedError {
             return "Failed to refresh token"
         case .appleSignInFailed:
             return "Apple Sign In failed"
-        case .notImplemented:
-            return "Not implemented"
         }
     }
 }

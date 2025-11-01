@@ -1,4 +1,6 @@
 """Tests for authentication endpoints."""
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -12,16 +14,16 @@ client = TestClient(app)
 
 def test_apple_signin_new_user(db: Session, monkeypatch):
     """Test Apple Sign In creates new user."""
-    # Override get_db to use our test db
-    from app.core.db import get_db
+    # Override get_db_session to use our test db
+    from app.core.db import get_db_session
 
-    def override_get_db():
+    def override_get_db_session():
         try:
             yield db
         finally:
             pass
 
-    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_session] = override_get_db_session
 
     # Mock Apple token verification
     def mock_verify_apple_token(id_token):
@@ -57,16 +59,16 @@ def test_apple_signin_new_user(db: Session, monkeypatch):
 
 def test_apple_signin_existing_user(db: Session, monkeypatch):
     """Test Apple Sign In with existing user."""
-    # Override get_db to use our test db
-    from app.core.db import get_db
+    # Override get_db_session to use our test db
+    from app.core.db import get_db_session
 
-    def override_get_db():
+    def override_get_db_session():
         try:
             yield db
         finally:
             pass
 
-    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_session] = override_get_db_session
 
     # Create existing user
     existing_user = User(
@@ -127,16 +129,16 @@ def test_apple_signin_invalid_token(monkeypatch):
 
 def test_refresh_token_valid(db: Session):
     """Test token refresh with valid refresh token."""
-    # Override get_db to use our test db
-    from app.core.db import get_db
+    # Override get_db_session to use our test db
+    from app.core.db import get_db_session
 
-    def override_get_db():
+    def override_get_db_session():
         try:
             yield db
         finally:
             pass
 
-    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_session] = override_get_db_session
 
     try:
         # Create user
@@ -178,16 +180,16 @@ def test_refresh_token_invalid():
 
 def test_refresh_token_with_access_token(db: Session):
     """Test refresh endpoint rejects access tokens."""
-    # Override get_db to use our test db
-    from app.core.db import get_db
+    # Override get_db_session to use our test db
+    from app.core.db import get_db_session
 
-    def override_get_db():
+    def override_get_db_session():
         try:
             yield db
         finally:
             pass
 
-    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_session] = override_get_db_session
 
     try:
         user = User(
@@ -265,3 +267,126 @@ def test_admin_logout(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["message"] == "Logged out"
+
+
+def test_get_current_user_info(db: Session):
+    """Test /auth/me endpoint."""
+    # Override get_db_session to use our test db
+    from app.core.db import get_db_session
+
+    def override_get_db_session():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+
+    # Create test user
+    test_user = User(
+        apple_id="001234.test.me",
+        email="testme@icloud.com",
+        full_name="Test Me User"
+    )
+    db.add(test_user)
+    db.commit()
+    db.refresh(test_user)
+
+    # Generate token for user
+    from app.core.security import create_access_token
+    access_token = create_access_token(test_user.id)
+
+    try:
+        response = client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == test_user.id
+        assert data["email"] == "testme@icloud.com"
+        assert data["full_name"] == "Test Me User"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_current_user_info_invalid_token():
+    """Test /auth/me with invalid token."""
+    response = client.get(
+        "/auth/me",
+        headers={"Authorization": "Bearer invalid.token.here"}
+    )
+
+    assert response.status_code == 401
+
+
+def test_get_current_user_info_no_token():
+    """Test /auth/me without token."""
+    response = client.get("/auth/me")
+
+    assert response.status_code == 403  # Forbidden when no auth header
+
+
+def test_datetime_serialization_has_timezone(db: Session):
+    """
+    Test that datetime fields in user responses are serialized with timezone indicator.
+
+    This ensures compatibility with iOS Swift's ISO8601DateFormatter which requires
+    datetime strings to have timezone information (e.g., '2025-11-01T15:29:31Z').
+
+    Without the 'Z' suffix, iOS JSON decoding will fail with:
+    "Expected date string to be ISO8601-formatted."
+    """
+    # Override get_db_session to use our test db
+    from app.core.db import get_db_session
+
+    def override_get_db_session():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+
+    # Create test user
+    test_user = User(
+        apple_id="001234.datetime.test",
+        email="datetimetest@icloud.com",
+        full_name="Datetime Test User"
+    )
+    db.add(test_user)
+    db.commit()
+    db.refresh(test_user)
+
+    # Generate token for user
+    access_token = create_access_token(test_user.id)
+
+    try:
+        response = client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify datetime fields exist
+        assert "created_at" in data
+        assert "updated_at" in data
+
+        # ISO8601 with timezone pattern: YYYY-MM-DDTHH:MM:SSZ or YYYY-MM-DDTHH:MM:SS.fffffZ
+        iso8601_tz_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$'
+
+        # Verify created_at has timezone indicator
+        assert re.match(iso8601_tz_pattern, data["created_at"]), \
+            f"created_at '{data['created_at']}' does not match ISO8601 with timezone (must end with 'Z')"
+
+        # Verify updated_at has timezone indicator
+        assert re.match(iso8601_tz_pattern, data["updated_at"]), \
+            f"updated_at '{data['updated_at']}' does not match ISO8601 with timezone (must end with 'Z')"
+
+        print(f"✅ Datetime serialization correct: created_at={data['created_at']}, updated_at={data['updated_at']}")
+
+    finally:
+        app.dependency_overrides.clear()

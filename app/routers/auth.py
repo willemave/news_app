@@ -6,8 +6,8 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db
-from app.core.deps import ADMIN_SESSION_COOKIE
+from app.core.db import get_db_session
+from app.core.deps import ADMIN_SESSION_COOKIE, get_current_user
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -56,7 +56,7 @@ admin_sessions = set()
 @router.post("/apple", response_model=TokenResponse)
 def apple_signin(
     request: AppleSignInRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ) -> TokenResponse:
     """
     Authenticate with Apple Sign In.
@@ -116,7 +116,7 @@ def apple_signin(
 @router.post("/refresh", response_model=AccessTokenResponse)
 def refresh_token(
     request: RefreshTokenRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ) -> AccessTokenResponse:
     """
     Refresh access token using refresh token.
@@ -157,6 +157,25 @@ def refresh_token(
     access_token = create_access_token(user.id)
 
     return AccessTokenResponse(access_token=access_token)
+
+
+@router.get("/me", response_model=UserResponse)
+def get_current_user_info(
+    current_user: User = Depends(get_current_user)
+) -> UserResponse:
+    """
+    Get current authenticated user information.
+
+    Args:
+        current_user: Current authenticated user from JWT token
+
+    Returns:
+        Current user information
+
+    Raises:
+        HTTPException: 401 if token is invalid
+    """
+    return UserResponse.from_orm(current_user)
 
 
 @router.post("/admin/login", response_model=AdminLoginResponse)

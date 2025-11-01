@@ -48,13 +48,16 @@ final class AuthenticationViewModel: ObservableObject {
             return
         }
 
-        // TODO: Validate token with backend or decode locally
-        // For MVP, we'll just check if token exists
-        // In production, call /auth/me to get current user
-
-        // For now, if token exists, consider authenticated
-        // This is temporary - we need to implement proper token validation
-        authState = .unauthenticated
+        // Validate token with backend and get current user
+        Task {
+            do {
+                let user = try await authService.getCurrentUser()
+                authState = .authenticated(user)
+            } catch {
+                // Token is invalid or expired
+                authState = .unauthenticated
+            }
+        }
     }
 
     /// Sign in with Apple
