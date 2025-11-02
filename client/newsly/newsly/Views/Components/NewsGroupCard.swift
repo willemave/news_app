@@ -82,17 +82,17 @@ struct NewsGroupCard: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
                 .buttonStyle(.plain)
 
                 if item.id != group.items.last?.id {
                     Divider()
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, 16)
                 }
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, 8)
         }
         .opacity(group.isRead ? 0.7 : 1.0)
     }
