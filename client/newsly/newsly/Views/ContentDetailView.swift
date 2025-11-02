@@ -11,6 +11,7 @@ import MarkdownUI
 struct ContentDetailView: View {
     let initialContentId: Int
     let allContentIds: [Int]
+    let onConvert: ((Int) async -> Void)?
     @StateObject private var viewModel = ContentDetailViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var dragAmount: CGFloat = 0
@@ -18,10 +19,13 @@ struct ContentDetailView: View {
     // Navigation skipping state
     @State private var didTriggerNavigation: Bool = false
     @State private var navigationDirection: Int = 0 // +1 next, -1 previous
-    
-    init(contentId: Int, allContentIds: [Int] = []) {
+    // Convert button state
+    @State private var isConverting: Bool = false
+
+    init(contentId: Int, allContentIds: [Int] = [], onConvert: ((Int) async -> Void)? = nil) {
         self.initialContentId = contentId
         self.allContentIds = allContentIds.isEmpty ? [contentId] : allContentIds
+        self.onConvert = onConvert
         if let index = allContentIds.firstIndex(of: contentId) {
             self._currentIndex = State(initialValue: index)
         } else {
@@ -101,6 +105,27 @@ struct ContentDetailView: View {
                                     .font(.system(size: 18))
                             }
                             .buttonStyle(.bordered)
+
+                            // Convert to article button for news only
+                            if content.contentTypeEnum == .news, let onConvert = onConvert {
+                                Button(action: {
+                                    Task {
+                                        isConverting = true
+                                        await onConvert(content.id)
+                                        isConverting = false
+                                    }
+                                }) {
+                                    if isConverting {
+                                        ProgressView()
+                                            .scaleEffect(0.7)
+                                    } else {
+                                        Image(systemName: "arrow.right.circle")
+                                            .font(.system(size: 18))
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(isConverting)
+                            }
 
                             // Copy button for podcasts only
                             if content.contentTypeEnum == .podcast {
