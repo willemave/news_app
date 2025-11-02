@@ -41,7 +41,7 @@ struct NewsGroupCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Group header with count
+            // Group header
             HStack {
                 Text("News Digest")
                     .font(.caption)
@@ -49,10 +49,6 @@ struct NewsGroupCard: View {
                     .foregroundColor(.secondary)
 
                 Spacer()
-
-                Text("\(group.items.count) items")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
 
                 if group.isRead {
                     Image(systemName: "checkmark.circle.fill")
