@@ -54,7 +54,6 @@ struct PagedCardView: View {
                                 onConvert: onConvert
                             )
                             .tag(index)
-                            .padding(.horizontal, 8)
                         }
                     }
                     .tabViewStyle(.page)
