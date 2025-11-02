@@ -11,8 +11,6 @@ struct NewsGroupCard: View {
     let group: NewsGroup
     let onConvert: (Int) async -> Void
 
-    @State private var convertingStates: [Int: Bool] = [:]
-
     /// Format publication date for compact display
     private func formatDateShort(_ dateString: String) -> String {
         let iso8601WithFractional = ISO8601DateFormatter()
@@ -43,72 +41,46 @@ struct NewsGroupCard: View {
         VStack(alignment: .leading, spacing: 8) {
             // News items
             ForEach(group.items) { item in
-                NavigationLink(destination: ContentDetailView(contentId: item.id, allContentIds: group.items.map { $0.id })) {
-                    HStack(alignment: .top, spacing: 10) {
-                        // Content
-                        VStack(alignment: .leading, spacing: 2) {
-                            // Title - full display
-                            Text(item.displayTitle)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundColor(item.isRead ? .secondary : .primary)
-                                .fixedSize(horizontal: false, vertical: true)
+                NavigationLink(destination: ContentDetailView(contentId: item.id, allContentIds: group.items.map { $0.id }, onConvert: onConvert)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        // Title - full display
+                        Text(item.displayTitle)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(item.isRead ? .secondary : .primary)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                            // Short summary if available
-                            if let summary = item.shortSummary, !summary.isEmpty {
-                                Text(summary)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(2)
-                            }
+                        // Short summary if available
+                        if let summary = item.shortSummary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
 
-                            // Metadata row
-                            HStack(spacing: 6) {
-                                // Platform icon and source
-                                HStack(spacing: 3) {
-                                    PlatformIcon(platform: item.platform)
-                                        .opacity(item.platform == nil ? 0 : 1)
-                                    if let source = item.source {
-                                        Text(source)
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-
-                                Spacer()
-
-                                // Date
-                                if let pubDate = item.publicationDate {
-                                    Text(formatDateShort(pubDate))
+                        // Metadata row
+                        HStack(spacing: 6) {
+                            // Platform icon and source
+                            HStack(spacing: 3) {
+                                PlatformIcon(platform: item.platform)
+                                    .opacity(item.platform == nil ? 0 : 1)
+                                if let source = item.source {
+                                    Text(source)
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
+                                        .lineLimit(1)
                                 }
                             }
-                        }
 
-                        // Convert icon button
-                        Button(action: {
-                            Task {
-                                convertingStates[item.id] = true
-                                await onConvert(item.id)
-                                convertingStates[item.id] = false
+                            Spacer()
+
+                            // Date
+                            if let pubDate = item.publicationDate {
+                                Text(formatDateShort(pubDate))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
                             }
-                        }) {
-                            Group {
-                                if convertingStates[item.id] == true {
-                                    ProgressView()
-                                        .scaleEffect(0.6)
-                                } else {
-                                    Image(systemName: "arrow.right.circle")
-                                        .font(.body)
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                            .frame(width: 24, height: 24)
                         }
-                        .buttonStyle(.borderless)
-                        .disabled(convertingStates[item.id] == true)
                     }
                     .padding(.horizontal, 4)
                     .padding(.vertical, 6)
