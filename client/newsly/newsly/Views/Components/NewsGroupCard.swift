@@ -41,24 +41,6 @@ struct NewsGroupCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Group header
-            HStack {
-                Text("News Digest")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-
-                Spacer()
-
-                if group.isRead {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption2)
-                        .foregroundColor(.green)
-                }
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, 4)
-
             // News items
             ForEach(group.items) { item in
                 NavigationLink(destination: ContentDetailView(contentId: item.id, allContentIds: group.items.map { $0.id })) {
