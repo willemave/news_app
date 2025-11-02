@@ -58,7 +58,6 @@ struct PagedCardView: View {
                         }
                     }
                     .tabViewStyle(.page)
-                    .indexViewStyle(.page(backgroundDisplayMode: .always))
                     .frame(maxHeight: geometry.size.height - 100)
 
                     // Next/Done button
@@ -71,7 +70,7 @@ struct PagedCardView: View {
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .scaleEffect(0.9)
                             } else {
-                                Text(visibleGroups.count == 1 ? "Done" : "Next")
+                                Text(visibleGroups.count == 1 ? "Done" : "Next \(currentIndex + 1)/\(visibleGroups.count)")
                                     .font(.body)
                                     .fontWeight(.medium)
                                 Image(systemName: "arrow.right.circle.fill")
