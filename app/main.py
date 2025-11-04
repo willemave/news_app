@@ -1,5 +1,9 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.db import init_db
@@ -15,6 +19,56 @@ logger = setup_logging()
 app = FastAPI(
     title=settings.app_name, version="2.0.0", description="Unified News Aggregation System"
 )
+
+
+# Exception handlers
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handle Pydantic validation errors with detailed logging.
+
+    This catches 422 errors before they reach endpoint code.
+    """
+    # Get raw body for logging
+    body = None
+    try:
+        body = await request.body()
+        body_text = body.decode('utf-8')
+    except Exception as e:
+        body_text = f"<unable to read body: {e}>"
+
+    # Log detailed validation error
+    logger.error("=" * 80)
+    logger.error("VALIDATION ERROR - Request failed Pydantic validation")
+    logger.error(f"Path: {request.method} {request.url.path}")
+    logger.error(f"Client: {request.client.host if request.client else 'unknown'}")
+    logger.error(f"Headers: {dict(request.headers)}")
+    logger.error(f"Raw body: {body_text}")
+    logger.error("Validation errors:")
+    for error in exc.errors():
+        logger.error(f"  - Field: {error['loc']}, Error: {error['msg']}, Type: {error['type']}")
+    logger.error("=" * 80)
+
+    # Return standard FastAPI validation error response
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors(), "body": body_text},
+    )
+
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming HTTP requests."""
+    logger.info(f">>> Incoming request: {request.method} {request.url.path}")
+    logger.debug(f"    Headers: {dict(request.headers)}")
+    logger.debug(f"    Client: {request.client.host if request.client else 'unknown'}")
+
+    response = await call_next(request)
+
+    logger.info(f"<<< Response: {request.method} {request.url.path} - Status {response.status_code}")
+    return response
+
 
 # Add middleware
 app.add_middleware(

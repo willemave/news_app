@@ -94,6 +94,54 @@
 4. Use `mypy` for type checking
 5. Make sure to ALWAYS run activate before the command. 
 
+#### Better dev env tools, please use these. 
+
+* Tool: **fd**
+  What: Fast, user-friendly file finder
+  Typical: `fd src`, `fd -e ts foo`
+  Why: Simpler syntax and faster than `find`; ignores `.gitignore` by default.
+
+* Tool: **ripgrep (rg)**
+  What: Code searcher (recursive grep)
+  Typical: `rg "TODO"`, `rg -n --glob '!dist'`
+  Why: Much faster than grep/ack/ag; respects `.gitignore`.
+
+* Tool: **ast-grep (sg)**
+  What: AST-aware code search & refactor
+  Typical: `sg -p 'if ($A) { $B }'`
+  Why: Searches syntax, not text; enables precise, code-wide refactors.
+
+* Tool: **jq**
+  What: JSON processor
+  Typical: `cat resp.json | jq '.items[].id'`
+  Why: Reliable JSON querying and transforms from the shell.
+
+* Tool: **fzf**
+  What: Fuzzy finder (anything → filtered list)
+  Typical: `fzf`, `history | fzf`
+  Why: Interactive selection; composes with any command output.
+
+* Tool: **bat**
+  What: `cat` with wings: syntax, paging, git
+  Typical: `bat file.ts`, `bat -p README.md`
+  Why: Syntax highlighting, line numbers, Git integration.
+
+* Tool: **eza**
+  What: Modern `ls`
+  Typical: `eza -l --git`, `eza -T`
+  Why: Better defaults, trees/icons/git info; more readable.
+
+* Tool: **httpie**
+  What: Human-friendly HTTP client
+  Typical: `http GET api/foo`, `http POST api bar=1`
+  Why: Cleaner than `curl` for JSON; pretty output, headers, colors.
+
+* Tool: **git-delta (delta)**
+  What: Better `git diff`/pager
+  Typical: `git -c core.pager=delta diff`
+  Why: Side-by-side, syntax-colored diffs; easier reviews.
+
+
 **Keep all replies short, technical, and complete.**
 ```
 ---

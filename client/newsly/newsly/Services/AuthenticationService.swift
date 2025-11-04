@@ -232,26 +232,49 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let fullNameString = fullName.flatMap { components in
-            [components.givenName, components.familyName]
-                .compactMap { $0 }
-                .joined(separator: " ")
+        // Extract full name if available
+        let fullNameString: String? = fullName.flatMap { components in
+            let parts = [components.givenName, components.familyName].compactMap { $0 }
+            return parts.isEmpty ? nil : parts.joined(separator: " ")
         }
 
-        let body: [String: Any?] = [
-            "id_token": identityToken,
-            "email": email ?? "",
-            "full_name": fullNameString
-        ]
+        // Build request body - only include non-empty values
+        // Apple only provides email/name on FIRST sign-in, not subsequent sign-ins
+        var body: [String: Any] = ["id_token": identityToken]
 
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body.compactMapValues { $0 })
+        if let email = email, !email.isEmpty {
+            body["email"] = email
+            print("📧 Sending email to backend: \(email)")
+        } else {
+            print("📧 No email from Apple - backend will extract from token")
+        }
+
+        if let fullName = fullNameString, !fullName.isEmpty {
+            body["full_name"] = fullName
+            print("👤 Sending full name to backend: \(fullName)")
+        } else {
+            print("👤 No full name from Apple - backend may extract from token")
+        }
+
+        print("🔐 Sending Apple Sign In request to: \(url)")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ Invalid response from backend")
             throw AuthError.appleSignInFailed
         }
+
+        guard httpResponse.statusCode == 200 else {
+            print("❌ Backend returned status code: \(httpResponse.statusCode)")
+            if let errorBody = String(data: data, encoding: .utf8) {
+                print("❌ Error response: \(errorBody)")
+            }
+            throw AuthError.appleSignInFailed
+        }
+
+        print("✅ Apple Sign In successful - Status \(httpResponse.statusCode)")
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

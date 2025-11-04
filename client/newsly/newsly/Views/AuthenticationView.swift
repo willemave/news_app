@@ -11,9 +11,9 @@ import AuthenticationServices
 /// Login screen with Apple Sign In
 struct AuthenticationView: View {
     @EnvironmentObject var authViewModel: AuthenticationViewModel
-    #if DEBUG
     @State private var showingDebugMenu = false
-    #endif
+    @State private var tapCount = 0
+    @State private var lastTapTime: Date?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -24,8 +24,11 @@ struct AuthenticationView: View {
                 Image(systemName: "newspaper.fill")
                     .font(.system(size: 60))
                     .foregroundColor(.blue)
+                    .onTapGesture {
+                        handleLogoTap()
+                    }
 
-                Text("Newsly")
+                Text("WillemNews")
                     .font(.largeTitle)
                     .fontWeight(.bold)
             }
@@ -58,29 +61,32 @@ struct AuthenticationView: View {
             }
 
             Spacer()
-
-            #if DEBUG
-            // Debug menu button (only in DEBUG builds)
-            Button {
-                showingDebugMenu = true
-            } label: {
-                HStack {
-                    Image(systemName: "ladybug.fill")
-                    Text("Debug Menu")
-                }
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 8)
-            #endif
         }
         .padding()
-        #if DEBUG
         .sheet(isPresented: $showingDebugMenu) {
             DebugMenuView()
                 .environmentObject(authViewModel)
         }
-        #endif
+    }
+
+    /// Handle tap on WillemNews icon - show debug menu after 3 taps within 2 seconds
+    private func handleLogoTap() {
+        let now = Date()
+
+        // Reset tap count if too much time has passed since last tap (2 seconds)
+        if let lastTap = lastTapTime, now.timeIntervalSince(lastTap) > 2.0 {
+            tapCount = 0
+        }
+
+        tapCount += 1
+        lastTapTime = now
+
+        // Show debug menu after 3 taps
+        if tapCount >= 3 {
+            showingDebugMenu = true
+            tapCount = 0
+            lastTapTime = nil
+        }
     }
 }
 

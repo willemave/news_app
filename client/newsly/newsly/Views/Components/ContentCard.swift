@@ -22,7 +22,7 @@ struct ContentCard: View {
         HStack(alignment: .center, spacing: 12) {
             // Main content
             VStack(alignment: .leading, spacing: 6) {
-                // Title (truncate to 2 lines)
+                // Title
                 Text(content.displayTitle)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -30,7 +30,7 @@ struct ContentCard: View {
                     .lineLimit(5)
                     .truncationMode(.tail)
 
-                // Platform • Source (replaces description)
+                // Platform • Source
                 HStack(spacing: 6) {
                     PlatformIcon(platform: content.platform)
                         .opacity(content.platform == nil ? 0 : 1)
@@ -51,14 +51,6 @@ struct ContentCard: View {
                             .foregroundColor(.blue)
                             .clipShape(Capsule())
                     }
-                }
-
-                if let secondary = content.secondaryLine {
-                    Text(secondary)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(3)
-                        .truncationMode(.tail)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

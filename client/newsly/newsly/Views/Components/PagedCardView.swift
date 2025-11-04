@@ -58,7 +58,7 @@ struct PagedCardView: View {
                         }
                     }
                     .tabViewStyle(.page)
-                    .frame(maxHeight: geometry.size.height - 100)
+                    .frame(maxHeight: geometry.size.height - 80)
 
                     // Next/Done button
                     Button(action: {

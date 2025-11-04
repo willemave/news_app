@@ -3,8 +3,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
-from authlib.jose import JsonWebToken
-from authlib.jose.errors import JoseError
 
 from app.core.settings import get_settings
 
@@ -101,7 +99,7 @@ def verify_apple_token(id_token: str) -> dict[str, Any]:
         Decoded token claims
 
     Raises:
-        JoseError: If token verification fails
+        ValueError: If token verification fails
 
     SECURITY WARNING - MVP ONLY:
         This implementation does NOT verify the token signature with Apple's public keys.
@@ -117,16 +115,26 @@ def verify_apple_token(id_token: str) -> dict[str, Any]:
         Current implementation is suitable ONLY for development/MVP testing.
     """
     try:
-        # For MVP: decode without verification (ONLY for development)
+        # For MVP: decode without signature verification (ONLY for development)
         # Production TODO: Verify signature with Apple's public keys
-        jwt_instance = JsonWebToken(['RS256'])
-        claims = jwt_instance.decode(id_token, None, claims_options={
-            "iss": {"essential": True, "value": "https://appleid.apple.com"},
-            "aud": {"essential": True},  # Should match your app's bundle ID
-        })
+        claims = jwt.decode(
+            id_token,
+            options={"verify_signature": False},
+            algorithms=["RS256", "HS256"]  # Accept both for testing
+        )
 
-        return dict(claims)
-    except JoseError as e:
+        # Validate required claims
+        if claims.get("iss") != "https://appleid.apple.com":
+            raise ValueError("Invalid issuer")
+
+        if not claims.get("aud"):
+            raise ValueError("Missing audience claim")
+
+        if not claims.get("sub"):
+            raise ValueError("Missing subject claim")
+
+        return claims
+    except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid Apple token: {str(e)}") from e
 
 

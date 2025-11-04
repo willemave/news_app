@@ -1,4 +1,5 @@
 """Authentication endpoints."""
+import logging
 import secrets
 from typing import Annotated
 
@@ -25,6 +26,8 @@ from app.models.user import (
     User,
     UserResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -73,39 +76,92 @@ def apple_signin(
     Raises:
         HTTPException: 401 if Apple token is invalid
     """
+    logger.info("=== Apple Sign In Request Started ===")
+    logger.info(f"Request data - email: {request.email}, full_name: {request.full_name}")
+    logger.debug(f"ID token (first 20 chars): {request.id_token[:20]}...")
+
     # Verify Apple identity token
     try:
+        logger.info("Verifying Apple ID token...")
         apple_claims = verify_apple_token(request.id_token)
+        logger.info(f"Apple token verified successfully. Claims: {apple_claims}")
+
         apple_id = apple_claims.get("sub")
+        logger.info(f"Extracted Apple ID: {apple_id}")
 
         if not apple_id:
+            logger.error("Apple token missing 'sub' claim")
             raise ValueError("Missing subject in token")
 
     except (ValueError, Exception) as e:
+        logger.error(f"Apple token verification failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid Apple token: {str(e)}"
         )
 
+    # Extract email from token if not provided or empty
+    email = request.email
+    if not email or email.strip() == "":
+        email = apple_claims.get("email")
+        logger.info(f"Email not in request, extracted from token: {email}")
+    else:
+        logger.info(f"Using email from request: {email}")
+
+    if not email:
+        logger.error("No email found in request or Apple token")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is required but not found in request or Apple token"
+        )
+
+    # Extract full_name from token if not provided or empty
+    full_name = request.full_name
+    if not full_name or full_name.strip() == "":
+        # Apple sometimes provides name in the token
+        token_name = apple_claims.get("name")
+        if token_name:
+            # Token name might be a dict like {"firstName": "John", "lastName": "Doe"}
+            if isinstance(token_name, dict):
+                first = token_name.get("firstName", "")
+                last = token_name.get("lastName", "")
+                full_name = f"{first} {last}".strip()
+            else:
+                full_name = token_name
+            logger.info(f"Full name extracted from token: {full_name}")
+        else:
+            full_name = None
+            logger.info("No full name provided in request or token")
+    else:
+        logger.info(f"Using full name from request: {full_name}")
+
     # Check if user already exists
+    logger.info(f"Checking if user exists with apple_id: {apple_id}")
     user = db.query(User).filter(User.apple_id == apple_id).first()
 
     if user is None:
+        logger.info(f"User not found. Creating new user with email: {email}")
         # Create new user
         user = User(
             apple_id=apple_id,
-            email=request.email,
-            full_name=request.full_name,
+            email=email,
+            full_name=full_name if full_name else None,
             is_active=True
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+        logger.info(f"New user created with ID: {user.id}")
+    else:
+        logger.info(f"Existing user found with ID: {user.id}")
 
     # Generate tokens
+    logger.info("Generating access and refresh tokens...")
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
+    logger.info("Tokens generated successfully")
 
+    logger.info(f"=== Apple Sign In Successful for user {user.id} ===")
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,

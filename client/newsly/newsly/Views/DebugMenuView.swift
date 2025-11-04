@@ -3,15 +3,14 @@
 //  newsly
 //
 //  Debug menu for testing authentication without Apple Sign In
-//  Only available in DEBUG builds
 //
 
 import SwiftUI
 
-#if DEBUG
 struct DebugMenuView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authViewModel: AuthenticationViewModel
+    @ObservedObject private var appSettings = AppSettings.shared
     @State private var showingTokenInput = false
     @State private var accessToken = ""
     @State private var refreshToken = ""
@@ -21,6 +20,37 @@ struct DebugMenuView: View {
     var body: some View {
         NavigationView {
             List {
+                Section(header: Text("Server Configuration")) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Current Endpoint")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(appSettings.baseURL)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.blue)
+                            .textSelection(.enabled)
+                    }
+
+                    HStack {
+                        Text("Host")
+                        TextField("localhost", text: $appSettings.serverHost)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(.primary)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+
+                    HStack {
+                        Text("Port")
+                        TextField("8000", text: $appSettings.serverPort)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(.primary)
+                            .keyboardType(.numberPad)
+                    }
+
+                    Toggle("Use HTTPS", isOn: $appSettings.useHTTPS)
+                }
+
                 Section(header: Text("Current Status")) {
                     HStack {
                         Text("Auth State")
@@ -284,4 +314,3 @@ struct TokenInputView: View {
         }
     }
 }
-#endif

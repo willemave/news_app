@@ -81,7 +81,7 @@ class AppleSignInRequest(BaseModel):
     """Request schema for Apple Sign In."""
 
     id_token: str = Field(..., description="Apple identity token")
-    email: EmailStr
+    email: Optional[str] = None  # Optional - will extract from token if not provided
     full_name: Optional[str] = None
 
 
