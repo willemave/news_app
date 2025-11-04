@@ -12,6 +12,8 @@
     <string>6.0</string>
     <key>CFBundleName</key>
     <string>$(PRODUCT_NAME)</string>
+    <key>CFBundleDisplayName</key>
+    <string>WillemNews</string>
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
@@ -72,6 +74,15 @@
                 <true/>
             </dict>
             <key>100.103.186.67</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+            </dict>
+            <key>100.114.51.78</key>
             <dict>
                 <key>NSExceptionAllowsInsecureHTTPLoads</key>
                 <true/>

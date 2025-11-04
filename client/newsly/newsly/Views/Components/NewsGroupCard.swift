@@ -38,11 +38,11 @@ struct NewsGroupCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             // News items
             ForEach(group.items) { item in
                 NavigationLink(destination: ContentDetailView(contentId: item.id, allContentIds: group.items.map { $0.id }, onConvert: onConvert)) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
                         // Title - full display
                         Text(item.displayTitle)
                             .font(.subheadline)
@@ -92,7 +92,6 @@ struct NewsGroupCard: View {
                         .padding(.horizontal, 16)
                 }
             }
-            .padding(.bottom, 8)
         }
         .opacity(group.isRead ? 0.7 : 1.0)
     }
