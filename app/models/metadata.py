@@ -79,11 +79,14 @@ class StructuredSummary(BaseModel):
                 "topics": ["AI", "Technology", "Innovation"],
                 "questions": [
                     "How might these AI advances impact existing NLP applications?",
-                    "What are the potential ethical implications of this technology?"
+                    "What are the potential ethical implications of this technology?",
                 ],
                 "counter_arguments": [
-                    "Critics argue that the claimed improvements may not generalize beyond specific benchmarks",
-                    "Alternative approaches like symbolic AI might offer more explainability"
+                    (
+                        "Critics argue that the claimed improvements may not generalize "
+                        "beyond specific benchmarks"
+                    ),
+                    "Alternative approaches like symbolic AI might offer more explainability",
                 ],
                 "summarization_date": "2025-06-14T10:30:00Z",
                 "full_markdown": (
@@ -106,12 +109,12 @@ class StructuredSummary(BaseModel):
     questions: list[str] = Field(
         default_factory=list,
         max_items=10,
-        description="Thought-provoking questions to help readers think critically about the content"
+        description="Thought-provoking questions to help readers think critically about the content",
     )
     counter_arguments: list[str] = Field(
         default_factory=list,
         max_items=10,
-        description="Counter-arguments or alternative perspectives to the main claims"
+        description="Counter-arguments or alternative perspectives to the main claims",
     )
     summarization_date: datetime = Field(default_factory=datetime.utcnow)
     classification: str = Field(
@@ -123,6 +126,7 @@ class StructuredSummary(BaseModel):
 
 
 # News digest summary used for fast-scanning feeds
+
 
 class NewsSummary(BaseModel):
     """Compact summary payload for quick-glance news content."""
@@ -145,7 +149,7 @@ class NewsSummary(BaseModel):
                 ),
                 "classification": "to_read",
                 "summarization_date": "2025-09-22T10:30:00Z",
-            }
+            },
         },
     )
 
@@ -325,7 +329,7 @@ class PodcastMetadata(BaseContentMetadata):
     transcript: str | None = Field(None, description="Full transcript text")
     duration: int | None = Field(None, ge=0, description="Duration in seconds")
     episode_number: int | None = Field(None, ge=0)
-    
+
     # YouTube-specific fields
     video_url: str | None = Field(None, max_length=2000, description="Original YouTube video URL")
     video_id: str | None = Field(None, max_length=50, description="YouTube video ID")

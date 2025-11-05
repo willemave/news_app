@@ -30,7 +30,10 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
             "subtitleslangs": ["en"],
             "skip_download": True,  # Don't download video
             # Add user agent to avoid bot detection
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "user_agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
         }
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:

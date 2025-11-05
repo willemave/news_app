@@ -58,9 +58,7 @@ class PaginationCursor:
             cursor_data = json.loads(json_str)
 
             # Parse datetime
-            cursor_data["last_created_at"] = datetime.fromisoformat(
-                cursor_data["last_created_at"]
-            )
+            cursor_data["last_created_at"] = datetime.fromisoformat(cursor_data["last_created_at"])
 
             return cursor_data
         except (ValueError, KeyError, json.JSONDecodeError) as e:
@@ -96,6 +94,13 @@ class PaginationCursor:
             SHA256 hash of normalized filter params
         """
         # Normalize filters (remove None values, sort keys)
-        normalized = {k: v for k, v in sorted(filters.items()) if v is not None}
+        normalized = {}
+        for k, v in sorted(filters.items()):
+            if v is not None:
+                # Sort lists to ensure consistent hashing
+                if isinstance(v, list):
+                    normalized[k] = sorted(v)
+                else:
+                    normalized[k] = v
         json_str = json.dumps(normalized, sort_keys=True)
         return hashlib.sha256(json_str.encode()).hexdigest()

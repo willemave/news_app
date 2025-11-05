@@ -230,7 +230,7 @@ class GoogleFlashService:
         self,
         content: str,
         max_bullet_points: int = 6,
-        max_quotes: int = 3,
+        max_quotes: int = 8,
         content_type: str = "article",
     ) -> StructuredSummary | NewsSummary | None:
         """Summarize content using LLM and classify it.
@@ -238,7 +238,7 @@ class GoogleFlashService:
         Args:
             content: The content to summarize
             max_bullet_points: Maximum number of bullet points to generate (default: 6)
-            max_quotes: Maximum number of quotes to extract (default: 3)
+            max_quotes: Maximum number of quotes to extract (default: 8)
             content_type: Type of content - "article" or "podcast" (default: "article")
 
         Returns:

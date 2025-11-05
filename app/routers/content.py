@@ -62,9 +62,8 @@ async def list_content(
 ):
     """List content with optional filters."""
     # Get available dates for the dropdown
-    summarized_clause = (
-        Content.content_metadata["summary"].is_not(None)
-        & (Content.content_metadata["summary"] != "null")
+    summarized_clause = Content.content_metadata["summary"].is_not(None) & (
+        Content.content_metadata["summary"] != "null"
     )
     completed_news_clause = and_(
         Content.content_type == ContentType.NEWS.value,
@@ -110,15 +109,15 @@ async def list_content(
 
     # Order by most recent first
     contents = query.order_by(Content.created_at.desc()).all()
-    
+
     # Get read content IDs
     print("DEBUG: Getting read content")
     read_content_ids = read_status.get_read_content_ids(db)
     print(f"DEBUG: Found {len(read_content_ids)} read items: {read_content_ids}")
-    
+
     # Get favorite content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
-    
+
     # Filter based on read status if needed
     if read_filter == "unread":
         contents = [c for c in contents if c.id not in read_content_ids]
@@ -178,17 +177,17 @@ async def content_detail(
 
     # Convert to domain object
     domain_content = content_to_domain(content)
-    
+
     # Check if content is favorited
     is_favorited = favorites.is_content_favorited(db, content_id)
 
     return templates.TemplateResponse(
-        "content_detail.html", 
+        "content_detail.html",
         {
-            "request": request, 
+            "request": request,
             "content": domain_content,
             "is_favorited": is_favorited,
-        }
+        },
     )
 
 
@@ -202,28 +201,30 @@ async def favorites_list(
     """List favorited content."""
     # Get favorited content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db)
-    
+
     # Query favorited content
     if favorite_content_ids:
         query = db.query(Content).filter(Content.id.in_(favorite_content_ids))
 
         # Filter out "skip" classification articles
-        query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
+        query = query.filter(
+            (Content.classification != "skip") | (Content.classification.is_(None))
+        )
 
         # Order by most recent first
         contents = query.order_by(Content.created_at.desc()).all()
     else:
         contents = []
-    
+
     # Get read content IDs
     read_content_ids = read_status.get_read_content_ids(db)
-    
+
     # Filter based on read status if needed
     if read_filter == "unread":
         contents = [c for c in contents if c.id not in read_content_ids]
     elif read_filter == "read":
         contents = [c for c in contents if c.id in read_content_ids]
-    
+
     # Convert to domain objects
     domain_contents = []
     for c in contents:
@@ -233,10 +234,10 @@ async def favorites_list(
         except Exception as e:
             print(f"Skipping content {c.id} due to validation error: {e}")
             continue
-    
+
     # Get content types for filter
     content_types = [ct.value for ct in ContentType]
-    
+
     return templates.TemplateResponse(
         "favorites.html",
         {

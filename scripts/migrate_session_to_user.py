@@ -18,7 +18,6 @@ Usage:
 
 import argparse
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import inspect, select, text
@@ -26,8 +25,9 @@ from sqlalchemy import inspect, select, text
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import contextlib
+
 from app.core.db import get_db
-from app.models.schema import ContentFavorites, ContentReadStatus, ContentUnlikes
 from app.models.user import User
 
 
@@ -62,20 +62,16 @@ def get_session_data_counts(db) -> dict[str, int]:
         "unlikes": 0,
     }
 
-    try:
+    with contextlib.suppress(Exception):
         counts["favorites"] = db.execute(text("SELECT COUNT(*) FROM content_favorites")).scalar()
-    except Exception:
-        pass
 
-    try:
-        counts["read_status"] = db.execute(text("SELECT COUNT(*) FROM content_read_status")).scalar()
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        counts["read_status"] = db.execute(
+            text("SELECT COUNT(*) FROM content_read_status")
+        ).scalar()
 
-    try:
+    with contextlib.suppress(Exception):
         counts["unlikes"] = db.execute(text("SELECT COUNT(*) FROM content_unlikes")).scalar()
-    except Exception:
-        pass
 
     return counts
 
@@ -106,7 +102,9 @@ def migrate_to_user(db, user_id: int, dry_run: bool = False) -> dict[str, int]:
 
     # Migrate favorites
     print("\n🔍 Loading all favorites from database...")
-    result = db.execute(text("SELECT session_id, content_id, favorited_at, created_at FROM content_favorites"))
+    result = db.execute(
+        text("SELECT session_id, content_id, favorited_at, created_at FROM content_favorites")
+    )
     old_favorites = result.fetchall()
 
     stats["favorites_found"] = len(old_favorites)
@@ -116,16 +114,18 @@ def migrate_to_user(db, user_id: int, dry_run: bool = False) -> dict[str, int]:
         # Get existing user favorites to avoid duplicates
         existing = db.execute(
             text("SELECT content_id FROM content_favorites WHERE user_id = :user_id"),
-            {"user_id": user_id}
+            {"user_id": user_id},
         ).fetchall()
         existing_content_ids = {row[0] for row in existing}
 
         # Clear old session-based data
         print("   Clearing old session-based favorites...")
-        db.execute(text("DELETE FROM content_favorites WHERE session_id IS NOT NULL OR user_id IS NULL"))
+        db.execute(
+            text("DELETE FROM content_favorites WHERE session_id IS NOT NULL OR user_id IS NULL")
+        )
 
         # Insert new user-based records
-        for session_id, content_id, favorited_at, created_at in old_favorites:
+        for _session_id, content_id, favorited_at, created_at in old_favorites:
             if content_id in existing_content_ids:
                 stats["favorites_skipped"] += 1
                 continue
@@ -140,13 +140,15 @@ def migrate_to_user(db, user_id: int, dry_run: bool = False) -> dict[str, int]:
                     "content_id": content_id,
                     "favorited_at": favorited_at,
                     "created_at": created_at,
-                }
+                },
             )
             stats["favorites_migrated"] += 1
 
     # Migrate read status
     print("\n🔍 Loading all read status from database...")
-    result = db.execute(text("SELECT session_id, content_id, read_at, created_at FROM content_read_status"))
+    result = db.execute(
+        text("SELECT session_id, content_id, read_at, created_at FROM content_read_status")
+    )
     old_read_status = result.fetchall()
 
     stats["read_status_found"] = len(old_read_status)
@@ -156,16 +158,18 @@ def migrate_to_user(db, user_id: int, dry_run: bool = False) -> dict[str, int]:
         # Get existing user read status to avoid duplicates
         existing = db.execute(
             text("SELECT content_id FROM content_read_status WHERE user_id = :user_id"),
-            {"user_id": user_id}
+            {"user_id": user_id},
         ).fetchall()
         existing_content_ids = {row[0] for row in existing}
 
         # Clear old session-based data
         print("   Clearing old session-based read status...")
-        db.execute(text("DELETE FROM content_read_status WHERE session_id IS NOT NULL OR user_id IS NULL"))
+        db.execute(
+            text("DELETE FROM content_read_status WHERE session_id IS NOT NULL OR user_id IS NULL")
+        )
 
         # Insert new user-based records
-        for session_id, content_id, read_at, created_at in old_read_status:
+        for _session_id, content_id, read_at, created_at in old_read_status:
             if content_id in existing_content_ids:
                 stats["read_status_skipped"] += 1
                 continue
@@ -180,13 +184,15 @@ def migrate_to_user(db, user_id: int, dry_run: bool = False) -> dict[str, int]:
                     "content_id": content_id,
                     "read_at": read_at,
                     "created_at": created_at,
-                }
+                },
             )
             stats["read_status_migrated"] += 1
 
     # Migrate unlikes
     print("\n🔍 Loading all unlikes from database...")
-    result = db.execute(text("SELECT session_id, content_id, unliked_at, created_at FROM content_unlikes"))
+    result = db.execute(
+        text("SELECT session_id, content_id, unliked_at, created_at FROM content_unlikes")
+    )
     old_unlikes = result.fetchall()
 
     stats["unlikes_found"] = len(old_unlikes)
@@ -196,16 +202,18 @@ def migrate_to_user(db, user_id: int, dry_run: bool = False) -> dict[str, int]:
         # Get existing user unlikes to avoid duplicates
         existing = db.execute(
             text("SELECT content_id FROM content_unlikes WHERE user_id = :user_id"),
-            {"user_id": user_id}
+            {"user_id": user_id},
         ).fetchall()
         existing_content_ids = {row[0] for row in existing}
 
         # Clear old session-based data
         print("   Clearing old session-based unlikes...")
-        db.execute(text("DELETE FROM content_unlikes WHERE session_id IS NOT NULL OR user_id IS NULL"))
+        db.execute(
+            text("DELETE FROM content_unlikes WHERE session_id IS NOT NULL OR user_id IS NULL")
+        )
 
         # Insert new user-based records
-        for session_id, content_id, unliked_at, created_at in old_unlikes:
+        for _session_id, content_id, unliked_at, created_at in old_unlikes:
             if content_id in existing_content_ids:
                 stats["unlikes_skipped"] += 1
                 continue
@@ -220,7 +228,7 @@ def migrate_to_user(db, user_id: int, dry_run: bool = False) -> dict[str, int]:
                     "content_id": content_id,
                     "unliked_at": unliked_at,
                     "created_at": created_at,
-                }
+                },
             )
             stats["unlikes_migrated"] += 1
 
@@ -260,7 +268,9 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
     )
     parser.add_argument("--list-users", action="store_true", help="List all users in database")
     parser.add_argument("--user-id", type=int, help="User ID to migrate all data to")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be migrated without making changes")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be migrated without making changes"
+    )
 
     args = parser.parse_args()
 
@@ -276,7 +286,9 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
             for user in users:
                 admin_badge = "👑 ADMIN" if user.is_admin else ""
                 active_badge = "✅ ACTIVE" if user.is_active else "❌ INACTIVE"
-                print(f"   ID: {user.id:3d} | {user.email:40s} | {user.full_name or '(no name)':30s} | {admin_badge:8s} | {active_badge}")
+                print(
+                    f"   ID: {user.id:3d} | {user.email:40s} | {user.full_name or '(no name)':30s} | {admin_badge:8s} | {active_badge}"
+                )
         return
 
     # Validate migration arguments
@@ -286,9 +298,9 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
         sys.exit(1)
 
     # Check database schema
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("🔍 CHECKING DATABASE SCHEMA")
-    print("="*80)
+    print("=" * 80)
 
     with get_db() as db:
         schema = check_schema(db)
@@ -309,7 +321,7 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
 
         # Get data counts
         counts = get_session_data_counts(db)
-        print(f"\n📊 Current data in database:")
+        print("\n📊 Current data in database:")
         print(f"   Favorites:    {counts['favorites']:6d} records")
         print(f"   Read Status:  {counts['read_status']:6d} records")
         print(f"   Unlikes:      {counts['unlikes']:6d} records")
@@ -322,13 +334,15 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
             return
 
     # Run migration
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("🔄 MIGRATION CONFIGURATION")
-    print("="*80)
+    print("=" * 80)
     print(f"Target user ID:   {args.user_id}")
-    print(f"Mode:             {'DRY RUN (no changes)' if args.dry_run else 'LIVE (will modify database)'}")
-    print(f"Strategy:         Migrate ALL session data to user_id")
-    print("="*80)
+    print(
+        f"Mode:             {'DRY RUN (no changes)' if args.dry_run else 'LIVE (will modify database)'}"
+    )
+    print("Strategy:         Migrate ALL session data to user_id")
+    print("=" * 80)
 
     with get_db() as db:
         # Verify user exists
@@ -348,22 +362,36 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
         )
 
         # Print summary
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("📊 MIGRATION SUMMARY")
-        print("="*80)
-        print(f"Favorites:    {stats['favorites_found']:4d} found | {stats['favorites_migrated']:4d} migrated | {stats['favorites_skipped']:4d} skipped")
-        print(f"Read Status:  {stats['read_status_found']:4d} found | {stats['read_status_migrated']:4d} migrated | {stats['read_status_skipped']:4d} skipped")
-        print(f"Unlikes:      {stats['unlikes_found']:4d} found | {stats['unlikes_migrated']:4d} migrated | {stats['unlikes_skipped']:4d} skipped")
-        print("="*80)
+        print("=" * 80)
+        print(
+            f"Favorites:    {stats['favorites_found']:4d} found | {stats['favorites_migrated']:4d} migrated | {stats['favorites_skipped']:4d} skipped"
+        )
+        print(
+            f"Read Status:  {stats['read_status_found']:4d} found | {stats['read_status_migrated']:4d} migrated | {stats['read_status_skipped']:4d} skipped"
+        )
+        print(
+            f"Unlikes:      {stats['unlikes_found']:4d} found | {stats['unlikes_migrated']:4d} migrated | {stats['unlikes_skipped']:4d} skipped"
+        )
+        print("=" * 80)
 
-        total_migrated = stats['favorites_migrated'] + stats['read_status_migrated'] + stats['unlikes_migrated']
-        total_skipped = stats['favorites_skipped'] + stats['read_status_skipped'] + stats['unlikes_skipped']
+        total_migrated = (
+            stats["favorites_migrated"] + stats["read_status_migrated"] + stats["unlikes_migrated"]
+        )
+        total_skipped = (
+            stats["favorites_skipped"] + stats["read_status_skipped"] + stats["unlikes_skipped"]
+        )
 
         if args.dry_run:
-            print(f"\n💡 DRY RUN: Would migrate {total_migrated} records (skip {total_skipped} duplicates)")
+            print(
+                f"\n💡 DRY RUN: Would migrate {total_migrated} records (skip {total_skipped} duplicates)"
+            )
             print("   Run without --dry-run to apply changes")
         else:
-            print(f"\n✅ COMPLETE: Migrated {total_migrated} records (skipped {total_skipped} duplicates)")
+            print(
+                f"\n✅ COMPLETE: Migrated {total_migrated} records (skipped {total_skipped} duplicates)"
+            )
             print("\n⚠️  NEXT STEP: Run the Alembic migration to update table schema:")
             print("   python -m alembic upgrade head")
 

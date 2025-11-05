@@ -144,12 +144,12 @@ class PodcastDownloadWorker:
     def _is_youtube_url(self, url: str) -> bool:
         """Check if URL is a YouTube URL."""
         youtube_patterns = [
-            r'youtube\.com/watch\?v=',
-            r'youtu\.be/',
-            r'youtube\.com/embed/',
-            r'm\.youtube\.com/watch\?v=',
-            r'youtube\.com/v/',
-            r'youtube\.com/shorts/',
+            r"youtube\.com/watch\?v=",
+            r"youtu\.be/",
+            r"youtube\.com/embed/",
+            r"m\.youtube\.com/watch\?v=",
+            r"youtube\.com/v/",
+            r"youtube\.com/shorts/",
         ]
         return any(re.search(pattern, url) for pattern in youtube_patterns)
 
@@ -185,23 +185,23 @@ class PodcastDownloadWorker:
                     db_content.error_message = "No audio URL found"
                     db.commit()
                     return False
-                
+
                 # Check if this is a YouTube URL
                 if self._is_youtube_url(audio_url):
                     logger.info(f"Detected YouTube URL for content {content_id}, skipping download")
-                    
+
                     # Update metadata to indicate no download needed
                     content.metadata["youtube_video"] = True
                     content.metadata["download_skipped"] = True
                     content.metadata["skip_reason"] = "YouTube videos processed without downloading"
-                    
+
                     # Update database
                     domain_to_content(content, db_content)
                     db.commit()
-                    
+
                     # Queue transcription task directly (transcriber will handle YouTube)
                     self.queue_service.enqueue(TaskType.TRANSCRIBE, content_id=content_id)
-                    
+
                     return True
 
                 # Extract actual audio URL if it's a redirect
@@ -352,14 +352,14 @@ class PodcastTranscribeWorker:
                     return False
 
                 content = content_to_domain(db_content)
-                
+
                 # Check if this is a YouTube video with existing transcript
                 if content.metadata.get("youtube_video") and content.metadata.get("transcript"):
                     logger.info(f"Using existing YouTube transcript for content {content_id}")
-                    
+
                     # YouTube transcript already available from strategy processing
                     transcript_text = content.metadata.get("transcript")
-                    
+
                     # Create directory for YouTube transcripts
                     youtube_dir = self.base_dir / "youtube"
                     youtube_dir.mkdir(parents=True, exist_ok=True)
@@ -378,14 +378,14 @@ class PodcastTranscribeWorker:
                     content.metadata["transcript_path"] = str(text_path)
                     content.metadata["transcription_date"] = datetime.utcnow().isoformat()
                     content.metadata["transcription_service"] = "youtube"
-                    
+
                     # Update database
                     domain_to_content(content, db_content)
                     db.commit()
-                    
+
                     # Queue summarization task
                     self.queue_service.enqueue(TaskType.SUMMARIZE, content_id=content_id)
-                    
+
                     return True
 
                 # Get file path from metadata for regular podcasts
@@ -489,7 +489,7 @@ class PodcastTranscribeWorker:
         """Clean up the transcription service."""
         if self.transcription_service is not None:
             # Clean up local whisper model
-            if hasattr(self.transcription_service, 'cleanup_service'):
+            if hasattr(self.transcription_service, "cleanup_service"):
                 self.transcription_service.cleanup_service()
             self.transcription_service = None
         logger.info("Transcription service cleaned up")

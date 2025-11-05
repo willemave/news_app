@@ -45,7 +45,7 @@ class ScraperRunner:
             try:
                 stats = scraper.run_with_stats()
                 results[scraper.name] = stats
-                
+
                 # Log scraper stats to event log
                 log_event(
                     event_type="scraper_stats",
@@ -54,19 +54,19 @@ class ScraperRunner:
                     saved=stats.saved,
                     duplicates=stats.duplicates,
                     errors=stats.errors,
-                    error_details=stats.error_details
+                    error_details=stats.error_details,
                 )
-                
+
             except Exception as e:
                 logger.error(f"Scraper {scraper.name} failed: {e}")
                 results[scraper.name] = ScraperStats(errors=1, error_details=[str(e)])
-                
+
                 # Log scraper error to event log
                 log_event(
                     event_type="scraper_error",
                     event_name=scraper.name,
                     error=str(e),
-                    error_type=type(e).__name__
+                    error_type=type(e).__name__,
                 )
 
         total_saved = sum(stat.saved for stat in results.values())
@@ -85,7 +85,7 @@ class ScraperRunner:
             if scraper.name.lower() == name.lower():
                 try:
                     stats = scraper.run_with_stats()
-                    
+
                     # Log scraper stats to event log
                     log_event(
                         event_type="scraper_stats",
@@ -94,21 +94,21 @@ class ScraperRunner:
                         saved=stats.saved,
                         duplicates=stats.duplicates,
                         errors=stats.errors,
-                        error_details=stats.error_details
+                        error_details=stats.error_details,
                     )
-                    
+
                     return stats
                 except Exception as e:
                     logger.error(f"Scraper {name} failed: {e}")
-                    
+
                     # Log scraper error to event log
                     log_event(
                         event_type="scraper_error",
                         event_name=name,
                         error=str(e),
-                        error_type=type(e).__name__
+                        error_type=type(e).__name__,
                     )
-                    
+
                     return ScraperStats(errors=1, error_details=[str(e)])
 
         logger.error(f"Scraper not found: {name}")

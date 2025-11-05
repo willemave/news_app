@@ -8,6 +8,7 @@ Usage:
 """
 
 import sys
+
 import yt_dlp
 
 
@@ -65,7 +66,7 @@ def diagnose_youtube_url(url: str) -> None:
                 print(f"  Auto captions: {list(auto_captions.keys())}")
 
         except yt_dlp.utils.DownloadError as e:
-            print(f"\n❌ FAILED: DownloadError")
+            print("\n❌ FAILED: DownloadError")
             print(f"\nError: {e}")
             print("\nPossible reasons:")
             print("  - Video is geo-blocked in your region")

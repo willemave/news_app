@@ -43,6 +43,7 @@ class HackerNewsUnifiedScraper(BaseScraper):
                     # Derive source domain from the linked URL
                     try:
                         from urllib.parse import urlparse
+
                         host = urlparse(story["url"]).netloc or ""
                     except Exception:
                         host = ""

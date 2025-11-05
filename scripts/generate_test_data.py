@@ -38,7 +38,7 @@ from __future__ import annotations
 import os
 import random
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 # Add parent directory so we can import from app
@@ -52,15 +52,12 @@ from app.models.metadata import (
     ContentQuote,
     ContentStatus,
     ContentType,
-    NewsAggregatorMetadata,
-    NewsArticleMetadata,
     NewsSummary,
     PodcastMetadata,
     StructuredSummary,
     SummaryBulletPoint,
 )
 from app.models.schema import Content
-
 
 # Sample data pools
 ARTICLE_SOURCES = [
@@ -123,7 +120,7 @@ NEWS_HEADLINES = [
 def random_datetime(days_back: int = 30) -> datetime:
     """Generate a random datetime within the last N days."""
     delta = timedelta(days=random.randint(0, days_back))
-    return datetime.now(timezone.utc).replace(tzinfo=None) - delta
+    return datetime.now(UTC).replace(tzinfo=None) - delta
 
 
 def generate_bullet_points(count: int = 4) -> list[dict[str, str]]:
@@ -139,8 +136,7 @@ def generate_bullet_points(count: int = 4) -> list[dict[str, str]]:
     ]
 
     return [
-        {"text": random.choice(points), "category": random.choice(categories)}
-        for _ in range(count)
+        {"text": random.choice(points), "category": random.choice(categories)} for _ in range(count)
     ]
 
 
@@ -161,7 +157,10 @@ def generate_quotes(count: int = 2) -> list[dict[str, str]]:
         ),
     ]
 
-    return [{"text": text, "context": ctx} for text, ctx in random.sample(quotes, min(count, len(quotes)))]
+    return [
+        {"text": text, "context": ctx}
+        for text, ctx in random.sample(quotes, min(count, len(quotes)))
+    ]
 
 
 def generate_questions(count: int = 2) -> list[str]:
@@ -205,7 +204,9 @@ class ArticleGenerator:
         summary = StructuredSummary(
             title=title,
             overview=f"This article explores {topics[0].lower()} with a focus on practical applications and future implications. It provides comprehensive analysis backed by research and real-world examples.",
-            bullet_points=[SummaryBulletPoint(**bp) for bp in generate_bullet_points(random.randint(3, 6))],
+            bullet_points=[
+                SummaryBulletPoint(**bp) for bp in generate_bullet_points(random.randint(3, 6))
+            ],
             quotes=[ContentQuote(**q) for q in generate_quotes(random.randint(1, 3))],
             topics=topics,
             questions=generate_questions(random.randint(1, 3)),
@@ -261,7 +262,9 @@ class PodcastGenerator:
         summary = StructuredSummary(
             title=title,
             overview=f"In this episode, the hosts discuss {topics[0].lower()} and share insights from their experiences. The conversation covers key strategies, common pitfalls, and actionable advice for listeners.",
-            bullet_points=[SummaryBulletPoint(**bp) for bp in generate_bullet_points(random.randint(4, 8))],
+            bullet_points=[
+                SummaryBulletPoint(**bp) for bp in generate_bullet_points(random.randint(4, 8))
+            ],
             quotes=[ContentQuote(**q) for q in generate_quotes(random.randint(2, 4))],
             topics=topics,
             questions=generate_questions(random.randint(2, 3)),
@@ -336,7 +339,9 @@ class NewsGenerator:
             },
             "aggregator": {
                 "name": "Hacker News" if platform == "hackernews" else "Techmeme",
-                "url": f"https://news.ycombinator.com/item?id={news_id}" if platform == "hackernews" else f"https://techmeme.com/{news_id}",
+                "url": f"https://news.ycombinator.com/item?id={news_id}"
+                if platform == "hackernews"
+                else f"https://techmeme.com/{news_id}",
                 "external_id": str(news_id),
                 "metadata": {"score": random.randint(50, 500)} if platform == "hackernews" else {},
             },
@@ -446,7 +451,7 @@ def main():
     args = parser.parse_args()
 
     # Generate data
-    print(f"Generating test data:")
+    print("Generating test data:")
     print(f"  - {args.articles} articles")
     print(f"  - {args.podcasts} podcasts")
     print(f"  - {args.news} news items")

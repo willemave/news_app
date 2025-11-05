@@ -12,7 +12,9 @@ from app.models.schema import ContentFavorites
 logger = logging.getLogger(__name__)
 
 
-def toggle_favorite(db: Session, content_id: int, user_id: int) -> tuple[bool, ContentFavorites | None]:
+def toggle_favorite(
+    db: Session, content_id: int, user_id: int
+) -> tuple[bool, ContentFavorites | None]:
     """Toggle favorite status for content.
 
     Args:
@@ -28,14 +30,17 @@ def toggle_favorite(db: Session, content_id: int, user_id: int) -> tuple[bool, C
         # Check if already favorited
         existing = db.execute(
             select(ContentFavorites).where(
-                ContentFavorites.content_id == content_id,
-                ContentFavorites.user_id == user_id
+                ContentFavorites.content_id == content_id, ContentFavorites.user_id == user_id
             )
         ).scalar_one_or_none()
 
         if existing:
             # Remove from favorites
-            logger.debug("Content already favorited; removing content_id=%s for user_id=%s", content_id, user_id)
+            logger.debug(
+                "Content already favorited; removing content_id=%s for user_id=%s",
+                content_id,
+                user_id,
+            )
             db.delete(existing)
             db.commit()
             return (False, None)
@@ -50,14 +55,23 @@ def toggle_favorite(db: Session, content_id: int, user_id: int) -> tuple[bool, C
         db.add(favorite)
         db.commit()
         db.refresh(favorite)
-        logger.debug("Successfully added content_id=%s to favorites with id=%s for user_id=%s", content_id, favorite.id, user_id)
+        logger.debug(
+            "Successfully added content_id=%s to favorites with id=%s for user_id=%s",
+            content_id,
+            favorite.id,
+            user_id,
+        )
         return (True, favorite)
     except IntegrityError:
-        logger.exception("Integrity error toggling favorite for content_id=%s, user_id=%s", content_id, user_id)
+        logger.exception(
+            "Integrity error toggling favorite for content_id=%s, user_id=%s", content_id, user_id
+        )
         db.rollback()
         return (False, None)
     except Exception:
-        logger.exception("Unexpected error toggling favorite for content_id=%s, user_id=%s", content_id, user_id)
+        logger.exception(
+            "Unexpected error toggling favorite for content_id=%s, user_id=%s", content_id, user_id
+        )
         db.rollback()
         return (False, None)
 
@@ -78,13 +92,14 @@ def add_favorite(db: Session, content_id: int, user_id: int) -> ContentFavorites
         # Check if already favorited
         existing = db.execute(
             select(ContentFavorites).where(
-                ContentFavorites.content_id == content_id,
-                ContentFavorites.user_id == user_id
+                ContentFavorites.content_id == content_id, ContentFavorites.user_id == user_id
             )
         ).scalar_one_or_none()
 
         if existing:
-            logger.debug("Content already in favorites; content_id=%s, user_id=%s", content_id, user_id)
+            logger.debug(
+                "Content already in favorites; content_id=%s, user_id=%s", content_id, user_id
+            )
             return existing
 
         # Add to favorites
@@ -96,10 +111,17 @@ def add_favorite(db: Session, content_id: int, user_id: int) -> ContentFavorites
         db.add(favorite)
         db.commit()
         db.refresh(favorite)
-        logger.debug("Successfully added content_id=%s to favorites with id=%s for user_id=%s", content_id, favorite.id, user_id)
+        logger.debug(
+            "Successfully added content_id=%s to favorites with id=%s for user_id=%s",
+            content_id,
+            favorite.id,
+            user_id,
+        )
         return favorite
     except Exception:
-        logger.exception("Error adding content_id=%s to favorites for user_id=%s", content_id, user_id)
+        logger.exception(
+            "Error adding content_id=%s to favorites for user_id=%s", content_id, user_id
+        )
         db.rollback()
         return None
 
@@ -119,16 +141,19 @@ def remove_favorite(db: Session, content_id: int, user_id: int) -> bool:
     try:
         result = db.execute(
             delete(ContentFavorites).where(
-                ContentFavorites.content_id == content_id,
-                ContentFavorites.user_id == user_id
+                ContentFavorites.content_id == content_id, ContentFavorites.user_id == user_id
             )
         )
         db.commit()
         deleted = result.rowcount > 0
-        logger.debug("Removed content_id=%s from favorites for user_id=%s: %s", content_id, user_id, deleted)
+        logger.debug(
+            "Removed content_id=%s from favorites for user_id=%s: %s", content_id, user_id, deleted
+        )
         return deleted
     except Exception:
-        logger.exception("Error removing content_id=%s from favorites for user_id=%s", content_id, user_id)
+        logger.exception(
+            "Error removing content_id=%s from favorites for user_id=%s", content_id, user_id
+        )
         db.rollback()
         return False
 
@@ -144,11 +169,15 @@ def get_favorite_content_ids(db: Session, user_id: int) -> list[int]:
         List of content IDs favorited by user
     """
     logger.debug("Fetching favorited content IDs for user_id=%s", user_id)
-    result = db.execute(
-        select(ContentFavorites.content_id)
-        .where(ContentFavorites.user_id == user_id)
-        .distinct()
-    ).scalars().all()
+    result = (
+        db.execute(
+            select(ContentFavorites.content_id)
+            .where(ContentFavorites.user_id == user_id)
+            .distinct()
+        )
+        .scalars()
+        .all()
+    )
     content_ids = list(result)
     logger.debug("Found %s favorited content IDs for user_id=%s", len(content_ids), user_id)
     return content_ids
@@ -167,8 +196,7 @@ def is_content_favorited(db: Session, content_id: int, user_id: int) -> bool:
     """
     result = db.execute(
         select(ContentFavorites).where(
-            ContentFavorites.content_id == content_id,
-            ContentFavorites.user_id == user_id
+            ContentFavorites.content_id == content_id, ContentFavorites.user_id == user_id
         )
     ).scalar_one_or_none()
     return result is not None

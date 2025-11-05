@@ -25,14 +25,20 @@ router = APIRouter()
     summary="List content items",
     description=(
         "Retrieve a list of content items with optional filtering by content type and date. "
+        "Supports multiple content types via repeated query parameters "
+        "(e.g., ?content_type=article&content_type=podcast). "
         "Supports cursor-based pagination for efficient loading."
     ),
 )
 async def list_contents(
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-    content_type: str | None = Query(
-        None, description="Filter by content type (article/podcast/news)"
+    content_type: list[str] | None = Query(
+        None,
+        description=(
+            "Filter by content type(s). Can be specified multiple times "
+            "for multiple types (article/podcast/news)"
+        ),
     ),
     date: str | None = Query(
         None,
@@ -119,9 +125,12 @@ async def list_contents(
     # Only show content that has summary or is news (match HTML view)
     query = query.filter(or_(summarized_clause, completed_news_clause))
 
-    # Apply content type filter
-    if content_type and content_type != "all":
-        query = query.filter(Content.content_type == content_type)
+    # Apply content type filter - support multiple types
+    if content_type:
+        # Remove "all" from list if present and filter
+        types = [t for t in content_type if t != "all"]
+        if types:
+            query = query.filter(Content.content_type.in_(types))
 
     # Apply date filter
     if date:
@@ -484,9 +493,8 @@ async def get_unread_counts(
     # Count unread items by type
     counts = {"article": 0, "podcast": 0, "news": 0}
     for content_id, content_type in all_content:
-        if content_id not in read_content_ids:
-            if content_type in counts:
-                counts[content_type] += 1
+        if content_id not in read_content_ids and content_type in counts:
+            counts[content_type] += 1
 
     return UnreadCountsResponse(
         article=counts["article"], podcast=counts["podcast"], news=counts["news"]

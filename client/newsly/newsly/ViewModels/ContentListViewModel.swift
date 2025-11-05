@@ -31,6 +31,12 @@ class ContentListViewModel: ObservableObject {
             Task { await loadContent() }
         }
     }
+
+    @Published var selectedContentTypes: [String] = [] {
+        didSet {
+            Task { await loadContent() }
+        }
+    }
     @Published var selectedDate: String = "" {
         didSet {
             Task { await loadContent() }
@@ -56,12 +62,24 @@ class ContentListViewModel: ObservableObject {
         hasMore = false
 
         do {
-            let response = try await contentService.fetchContentList(
-                contentType: selectedContentType,
-                date: selectedDate.isEmpty ? nil : selectedDate,
-                readFilter: selectedReadFilter,
-                cursor: nil  // Always start from beginning
-            )
+            let response: ContentListResponse
+
+            // Use selectedContentTypes if set, otherwise fall back to selectedContentType
+            if !selectedContentTypes.isEmpty {
+                response = try await contentService.fetchContentList(
+                    contentTypes: selectedContentTypes,
+                    date: selectedDate.isEmpty ? nil : selectedDate,
+                    readFilter: selectedReadFilter,
+                    cursor: nil  // Always start from beginning
+                )
+            } else {
+                response = try await contentService.fetchContentList(
+                    contentType: selectedContentType,
+                    date: selectedDate.isEmpty ? nil : selectedDate,
+                    readFilter: selectedReadFilter,
+                    cursor: nil  // Always start from beginning
+                )
+            }
 
             contents = response.contents
             availableDates = response.availableDates
@@ -91,12 +109,22 @@ class ContentListViewModel: ObservableObject {
             } else if isRecentlyReadMode {
                 response = try await contentService.fetchRecentlyReadList(cursor: cursor)
             } else {
-                response = try await contentService.fetchContentList(
-                    contentType: selectedContentType,
-                    date: selectedDate.isEmpty ? nil : selectedDate,
-                    readFilter: selectedReadFilter,
-                    cursor: cursor
-                )
+                // Use selectedContentTypes if set, otherwise fall back to selectedContentType
+                if !selectedContentTypes.isEmpty {
+                    response = try await contentService.fetchContentList(
+                        contentTypes: selectedContentTypes,
+                        date: selectedDate.isEmpty ? nil : selectedDate,
+                        readFilter: selectedReadFilter,
+                        cursor: cursor
+                    )
+                } else {
+                    response = try await contentService.fetchContentList(
+                        contentType: selectedContentType,
+                        date: selectedDate.isEmpty ? nil : selectedDate,
+                        readFilter: selectedReadFilter,
+                        cursor: cursor
+                    )
+                }
             }
 
             // Append new contents to existing list
@@ -246,7 +274,8 @@ class ContentListViewModel: ObservableObject {
     }
 
     func markAllAsRead() async {
-        let unreadIds = contents.filter { !$0.isRead }.map { $0.id }
+        let unreadItems = contents.filter { !$0.isRead }
+        let unreadIds = unreadItems.map { $0.id }
         if unreadIds.isEmpty {
             return
         }
@@ -269,15 +298,35 @@ class ContentListViewModel: ObservableObject {
             }
 
             if response.markedCount > 0 {
-                switch selectedContentType {
-                case "article":
-                    unreadCountService.decrementArticleCount(by: response.markedCount)
-                case "podcast":
-                    unreadCountService.decrementPodcastCount(by: response.markedCount)
-                case "news":
-                    unreadCountService.decrementNewsCount(by: response.markedCount)
-                default:
-                    break
+                // Count how many of each type were marked
+                var articleCount = 0
+                var podcastCount = 0
+                var newsCount = 0
+
+                for item in unreadItems {
+                    if markedSet.contains(item.id) {
+                        switch item.contentType {
+                        case "article":
+                            articleCount += 1
+                        case "podcast":
+                            podcastCount += 1
+                        case "news":
+                            newsCount += 1
+                        default:
+                            break
+                        }
+                    }
+                }
+
+                // Decrement counts for each type
+                if articleCount > 0 {
+                    unreadCountService.decrementArticleCount(by: articleCount)
+                }
+                if podcastCount > 0 {
+                    unreadCountService.decrementPodcastCount(by: podcastCount)
+                }
+                if newsCount > 0 {
+                    unreadCountService.decrementNewsCount(by: newsCount)
                 }
             }
         } catch {

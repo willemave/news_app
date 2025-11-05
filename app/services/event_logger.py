@@ -3,7 +3,7 @@ Simple event logging service for tracking all system events, stats, and errors.
 """
 
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from app.core.db import get_db

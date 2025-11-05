@@ -9,7 +9,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import feedparser
 import httpx
@@ -32,30 +32,22 @@ def normalize_url_for_comparison(url: str) -> str:
     if parsed.query:
         params = parse_qs(parsed.query)
         # Remove known tracking parameters
-        params.pop('rss_browser', None)
+        params.pop("rss_browser", None)
 
         # Rebuild query string
-        if params:
-            query = urlencode(params, doseq=True)
-        else:
-            query = ''
+        query = urlencode(params, doseq=True) if params else ""
 
         # Rebuild URL
-        return urlunparse((
-            parsed.scheme,
-            parsed.netloc,
-            parsed.path,
-            parsed.params,
-            query,
-            parsed.fragment
-        ))
+        return urlunparse(
+            (parsed.scheme, parsed.netloc, parsed.path, parsed.params, query, parsed.fragment)
+        )
 
     return url
 
 
 def load_yaml_config(config_path: Path) -> dict[str, Any]:
     """Load YAML configuration file."""
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f)
 
 
@@ -77,7 +69,9 @@ def get_db_connection(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-def check_url_in_db(conn: sqlite3.Connection, url: str, audio_url: str = None) -> dict[str, Any] | None:
+def check_url_in_db(
+    conn: sqlite3.Connection, url: str, audio_url: str = None
+) -> dict[str, Any] | None:
     """Check if URL exists in database and return its status.
 
     For podcasts, checks both the entry URL and the audio URL in metadata.
@@ -191,9 +185,7 @@ def check_url_in_db(conn: sqlite3.Connection, url: str, audio_url: str = None) -
     return None
 
 
-async def audit_podcasts(
-    config_path: Path, db_conn: sqlite3.Connection
-) -> dict[str, Any]:
+async def audit_podcasts(config_path: Path, db_conn: sqlite3.Connection) -> dict[str, Any]:
     """Audit podcast feeds."""
     config = load_yaml_config(config_path)
     results = {}
@@ -261,9 +253,7 @@ async def audit_podcasts(
     return results
 
 
-async def audit_substacks(
-    config_path: Path, db_conn: sqlite3.Connection
-) -> dict[str, Any]:
+async def audit_substacks(config_path: Path, db_conn: sqlite3.Connection) -> dict[str, Any]:
     """Audit Substack feeds."""
     config = load_yaml_config(config_path)
     results = {}
@@ -310,9 +300,7 @@ async def audit_substacks(
     return results
 
 
-def generate_report(
-    podcast_results: dict[str, Any], substack_results: dict[str, Any]
-) -> str:
+def generate_report(podcast_results: dict[str, Any], substack_results: dict[str, Any]) -> str:
     """Generate a comprehensive audit report."""
     report_lines = []
 
@@ -344,9 +332,7 @@ def generate_report(
 
     report_lines.append("")
     overall_podcast_coverage = (
-        (total_podcast_in_db / total_podcast_episodes * 100)
-        if total_podcast_episodes > 0
-        else 0
+        (total_podcast_in_db / total_podcast_episodes * 100) if total_podcast_episodes > 0 else 0
     )
     report_lines.append(
         f"TOTAL PODCASTS: {total_podcast_in_db}/{total_podcast_episodes} "
@@ -376,9 +362,7 @@ def generate_report(
 
     report_lines.append("")
     overall_substack_coverage = (
-        (total_substack_in_db / total_substack_posts * 100)
-        if total_substack_posts > 0
-        else 0
+        (total_substack_in_db / total_substack_posts * 100) if total_substack_posts > 0 else 0
     )
     report_lines.append(
         f"TOTAL SUBSTACKS: {total_substack_in_db}/{total_substack_posts} "
@@ -453,9 +437,7 @@ def generate_report(
             report_lines.append(f"   Error: {data['error']}")
             continue
 
-        report_lines.append(
-            f"   Coverage: {data['posts_in_db']}/{data['total_posts_checked']}"
-        )
+        report_lines.append(f"   Coverage: {data['posts_in_db']}/{data['total_posts_checked']}")
         report_lines.append("")
 
         for post in data["posts"]:
@@ -521,7 +503,9 @@ async def main():
         report = generate_report(podcast_results, substack_results)
 
         # Save report
-        report_path = base_path / "logs" / f"audit_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        report_path = (
+            base_path / "logs" / f"audit_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        )
         report_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(report_path, "w") as f:

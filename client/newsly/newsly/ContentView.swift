@@ -9,36 +9,34 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var unreadCountService = UnreadCountService.shared
-    
-    private var articleBadge: String? { unreadCountService.articleCount > 0 ? String(unreadCountService.articleCount) : nil }
-    private var podcastBadge: String? { unreadCountService.podcastCount > 0 ? String(unreadCountService.podcastCount) : nil }
-    private var newsBadge: String? { unreadCountService.newsCount > 0 ? String(unreadCountService.newsCount) : nil }
-    
+
+    private var longBadge: String? {
+        let total = unreadCountService.articleCount + unreadCountService.podcastCount
+        return total > 0 ? String(total) : nil
+    }
+    private var shortBadge: String? {
+        unreadCountService.newsCount > 0 ? String(unreadCountService.newsCount) : nil
+    }
+
     var body: some View {
         TabView {
-            ArticlesView()
+            LongFormView()
                 .tabItem {
-                    Label("Articles", systemImage: "doc.text")
+                    Label("Long", systemImage: "doc.richtext")
                 }
-                .badge(articleBadge)
-            
-            PodcastsView()
-                .tabItem {
-                    Label("Podcasts", systemImage: "mic")
-                }
-                .badge(podcastBadge)
+                .badge(longBadge)
 
-            NewsView()
+            ShortFormView()
                 .tabItem {
-                    Label("News", systemImage: "newspaper")
+                    Label("Short", systemImage: "bolt.fill")
                 }
-                .badge(newsBadge)
+                .badge(shortBadge)
 
             SearchView()
                 .tabItem {
                     Label("Search", systemImage: "magnifyingglass")
                 }
-            
+
             FavoritesView()
                 .tabItem {
                     Label("Favorites", systemImage: "star.fill")

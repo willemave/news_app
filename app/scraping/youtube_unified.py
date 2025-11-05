@@ -359,9 +359,7 @@ class YouTubeUnifiedScraper(BaseScraper):
         with yt_dlp.YoutubeDL(self._build_video_opts()) as ydl:
             return ydl.extract_info(video_url, download=False)
 
-    def _passes_filters(
-        self, video_info: dict[str, Any], max_age_days: int | None
-    ) -> bool:
+    def _passes_filters(self, video_info: dict[str, Any], max_age_days: int | None) -> bool:
         if max_age_days in (None, 0):
             return True
 
@@ -396,7 +394,9 @@ class YouTubeUnifiedScraper(BaseScraper):
             "like_count": video_info.get("like_count"),
             "language": channel.language,
             "youtube_video": True,
-            "has_transcript": bool(video_info.get("subtitles") or video_info.get("automatic_captions")),
+            "has_transcript": bool(
+                video_info.get("subtitles") or video_info.get("automatic_captions")
+            ),
             "publication_date": publication_date.isoformat() if publication_date else None,
         }
 
@@ -508,7 +508,9 @@ class YouTubeUnifiedScraper(BaseScraper):
             return stdlib_utc
 
 
-def load_youtube_channels(config_path: str | Path = "config/youtube.yml") -> list[YouTubeChannelConfig]:
+def load_youtube_channels(
+    config_path: str | Path = "config/youtube.yml",
+) -> list[YouTubeChannelConfig]:
     """Public helper to load channel configuration for testing or scripts."""
 
     resolved = YouTubeUnifiedScraper._resolve_config_path(config_path)

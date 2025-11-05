@@ -3,12 +3,13 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from app.models.schema import Base
 from app.core.settings import get_settings
+from app.models.schema import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
 
 # Get DATABASE_URL from settings (which loads from .env file)
 def _resolve_database_url() -> str:
@@ -26,6 +27,7 @@ def _resolve_database_url() -> str:
 
     msg = "DATABASE_URL is required for Alembic migrations."
     raise RuntimeError(msg)
+
 
 # Ensure the resolved URL is set on the Alembic config so both
 # offline and online flows pick it up consistently
@@ -82,9 +84,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

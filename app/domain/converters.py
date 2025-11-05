@@ -78,11 +78,7 @@ def normalize_news_metadata(
         article["source_domain"] = _coerce_str(fallback_source)
 
     # Strip empty values so downstream JSON dumps stay compact.
-    cleaned_article = {
-        key: value
-        for key, value in article.items()
-        if value not in (None, "", {})
-    }
+    cleaned_article = {key: value for key, value in article.items() if value not in (None, "", {})}
 
     raw_metadata["article"] = cleaned_article
     return raw_metadata
@@ -105,7 +101,7 @@ def content_to_domain(db_content: DBContent) -> ContentData:
                 fallback_title=db_content.title,
                 fallback_source=metadata.get("source") or db_content.source,
             )
-        
+
         return ContentData(
             id=db_content.id,
             content_type=ContentType(db_content.content_type),

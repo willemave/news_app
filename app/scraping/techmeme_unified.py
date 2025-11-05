@@ -130,7 +130,9 @@ class TechmemeScraper(BaseScraper):
                         "entry_title": entry.get("title"),
                     },
                 )
-                logger.error("Error processing Techmeme entry %s: %s", entry.get("id"), exc, exc_info=True)
+                logger.error(
+                    "Error processing Techmeme entry %s: %s", entry.get("id"), exc, exc_info=True
+                )
                 continue
 
             if item:
@@ -150,7 +152,9 @@ class TechmemeScraper(BaseScraper):
 
         primary_anchor = self._select_primary_anchor(anchors)
         if not primary_anchor:
-            logger.debug("Skipping Techmeme entry with no primary article link: %s", entry.get("title"))
+            logger.debug(
+                "Skipping Techmeme entry with no primary article link: %s", entry.get("title")
+            )
             return None
 
         primary_url = self._normalize_url(primary_anchor["href"])
@@ -215,7 +219,9 @@ class TechmemeScraper(BaseScraper):
                     "source_name": source_name,
                 },
             },
-            "discovery_time": (publication_date.isoformat() if publication_date else datetime.utcnow().isoformat()),
+            "discovery_time": (
+                publication_date.isoformat() if publication_date else datetime.utcnow().isoformat()
+            ),
         }
 
         return {

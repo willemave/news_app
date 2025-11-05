@@ -1,5 +1,3 @@
-import logging
-
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,7 +31,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     body = None
     try:
         body = await request.body()
-        body_text = body.decode('utf-8')
+        body_text = body.decode("utf-8")
     except Exception as e:
         body_text = f"<unable to read body: {e}>"
 
@@ -66,7 +64,9 @@ async def log_requests(request: Request, call_next):
 
     response = await call_next(request)
 
-    logger.info(f"<<< Response: {request.method} {request.url.path} - Status {response.status_code}")
+    logger.info(
+        f"<<< Response: {request.method} {request.url.path} - Status {response.status_code}"
+    )
     return response
 
 
@@ -112,16 +112,10 @@ if __name__ == "__main__":
     # Check if SSL certificates exist
     cert_file = "certs/cert.pem"
     key_file = "certs/key.pem"
-    
+
     if os.path.exists(cert_file) and os.path.exists(key_file):
         # Run with HTTPS
-        uvicorn.run(
-            app,
-            host="0.0.0.0",
-            port=8000,
-            ssl_certfile=cert_file,
-            ssl_keyfile=key_file
-        )
+        uvicorn.run(app, host="0.0.0.0", port=8000, ssl_certfile=cert_file, ssl_keyfile=key_file)
     else:
         # Run without HTTPS
         uvicorn.run(app, host="0.0.0.0", port=8000)

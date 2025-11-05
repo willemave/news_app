@@ -210,14 +210,10 @@ def collect_content_stats(
         .all()
     )
     status_rows = (
-        session.query(Content.status, func.count(Content.id))
-        .group_by(Content.status)
-        .all()
+        session.query(Content.status, func.count(Content.id)).group_by(Content.status).all()
     )
     type_status_rows = (
-        session.query(
-            Content.content_type, Content.status, func.count(Content.id)
-        )
+        session.query(Content.content_type, Content.status, func.count(Content.id))
         .group_by(Content.content_type, Content.status)
         .all()
     )
@@ -314,9 +310,7 @@ def collect_task_stats(session: Session) -> TaskStats:
         .scalar()
     )
 
-    max_retry = (
-        session.query(func.max(ProcessingTask.retry_count)).scalar()
-    )
+    max_retry = session.query(func.max(ProcessingTask.retry_count)).scalar()
 
     return TaskStats(
         total=total,
@@ -409,10 +403,7 @@ def _format_labeled_counts(items: list[LabeledCount], indent: int = 2) -> list[s
         return [" " * indent + "(none)"]
 
     width = max(len(item.label) for item in items)
-    lines = [
-        " " * indent + f"{item.label.ljust(width)} : {item.count}"
-        for item in items
-    ]
+    lines = [" " * indent + f"{item.label.ljust(width)} : {item.count}" for item in items]
     return lines
 
 
@@ -461,10 +452,7 @@ def format_system_stats(stats: SystemStats, *, output_format: str) -> str:
     lines.extend(_format_dict_lines(stats.tasks.pending_by_type))
     lines.append("Processing by type:")
     lines.extend(_format_dict_lines(stats.tasks.processing_by_type))
-    lines.append(
-        "Recent failures (last hour): "
-        f"{stats.tasks.recent_failures_last_hour}"
-    )
+    lines.append(f"Recent failures (last hour): {stats.tasks.recent_failures_last_hour}")
     oldest_pending = (
         stats.tasks.oldest_pending_created_at.isoformat(timespec="seconds")
         if stats.tasks.oldest_pending_created_at

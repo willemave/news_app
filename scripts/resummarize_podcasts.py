@@ -15,12 +15,12 @@ if venv_path.exists():
     if activate_this.exists():
         exec(open(activate_this).read(), {"__file__": str(activate_this)})
 
-from datetime import datetime
+from datetime import datetime  # noqa: E402
 
-from app.core.db import get_db
-from app.core.logging import get_logger, setup_logging
-from app.models.schema import Content
-from app.services.openai_llm import get_openai_summarization_service
+from app.core.db import get_db  # noqa: E402
+from app.core.logging import get_logger, setup_logging  # noqa: E402
+from app.models.schema import Content  # noqa: E402
+from app.services.openai_llm import get_openai_summarization_service  # noqa: E402
 
 # Set up logging
 setup_logging()

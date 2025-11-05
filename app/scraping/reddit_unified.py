@@ -18,10 +18,7 @@ from app.utils.paths import resolve_config_directory, resolve_config_path
 
 logger = get_logger(__name__)
 settings = get_settings()
-REDDIT_USER_AGENT = (
-    settings.reddit_user_agent
-    or "news_app.scraper/1.0 (by u/anonymous)"
-)
+REDDIT_USER_AGENT = settings.reddit_user_agent or "news_app.scraper/1.0 (by u/anonymous)"
 _MISSING_CONFIG_WARNINGS: set[str] = set()
 
 
@@ -140,16 +137,16 @@ class RedditUnifiedScraper(BaseScraper):
         items = []
 
         try:
-            subreddit = client.subreddit(
-                "popular" if subreddit_name == "front" else subreddit_name
-            )
+            subreddit = client.subreddit("popular" if subreddit_name == "front" else subreddit_name)
 
             for submission in subreddit.new(limit=min(limit, 100)):
                 # Skip self posts and posts without external URLs
                 if submission.is_self and subreddit_name != "front":
                     continue
 
-                if not self._is_external_url(submission.url, allow_reddit_media=subreddit_name == "front"):
+                if not self._is_external_url(
+                    submission.url, allow_reddit_media=subreddit_name == "front"
+                ):
                     continue
 
                 # Skip deleted/removed posts

@@ -16,13 +16,13 @@ if venv_path.exists():
     if activate_this.exists():
         exec(open(activate_this).read(), {"__file__": str(activate_this)})
 
-from sqlalchemy import and_
+from sqlalchemy import and_  # noqa: E402
 
-from app.core.db import get_db
-from app.core.logging import get_logger, setup_logging
-from app.models.metadata import ContentStatus
-from app.models.schema import Content
-from app.services.queue import QueueService, TaskType
+from app.core.db import get_db  # noqa: E402
+from app.core.logging import get_logger, setup_logging  # noqa: E402
+from app.models.metadata import ContentStatus  # noqa: E402
+from app.models.schema import Content  # noqa: E402
+from app.services.queue import QueueService, TaskType  # noqa: E402
 
 # Set up logging
 setup_logging()
@@ -45,7 +45,7 @@ def enqueue_past_day_for_summarization(
         content_types: List of content types to process (default all)
     """
     cutoff_date = datetime.now(UTC) - timedelta(days=days_back)
-    
+
     print("Starting enqueue_past_day_for_summarization")
     print(f"  dry_run={dry_run}")
     print(f"  limit={limit}")
@@ -101,14 +101,14 @@ def enqueue_past_day_for_summarization(
 
                 # Check if content has necessary data for summarization
                 skip_item = False
-                
+
                 if content.content_type == "podcast":
                     # For podcasts, need transcript
                     if not content.content_metadata.get("transcript"):
                         logger.warning(f"No transcript found for podcast {content.id}, skipping")
                         skipped_count += 1
                         skip_item = True
-                        
+
                 elif content.content_type == "article":
                     # For articles, need content
                     if not content.content_metadata.get("content"):
@@ -127,7 +127,7 @@ def enqueue_past_day_for_summarization(
                         "force_resummarize": True,
                         "source": "enqueue_past_day_script",
                         "enqueued_at": datetime.now(UTC).isoformat(),
-                    }
+                    },
                 )
 
                 logger.info(f"Enqueued task {task_id} for content {content.id}")
@@ -135,8 +135,7 @@ def enqueue_past_day_for_summarization(
 
             except Exception as e:
                 logger.error(
-                    f"Error enqueueing {content.content_type} {content.id}: {e}",
-                    exc_info=True
+                    f"Error enqueueing {content.content_type} {content.id}: {e}", exc_info=True
                 )
 
         print("\nSummary:")

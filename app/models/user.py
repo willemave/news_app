@@ -1,6 +1,6 @@
 """User models and schemas for authentication."""
+
 from datetime import UTC, datetime
-from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_serializer
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
@@ -31,7 +31,7 @@ class UserBase(BaseModel):
     """Base user schema."""
 
     email: EmailStr
-    full_name: Optional[str] = None
+    full_name: str | None = None
 
 
 class UserCreate(UserBase):
@@ -50,7 +50,7 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
 
-    @field_serializer('created_at', 'updated_at')
+    @field_serializer("created_at", "updated_at")
     def serialize_datetime(self, dt: datetime, _info) -> str:
         """
         Serialize datetime to ISO8601 with 'Z' timezone indicator.
@@ -64,14 +64,10 @@ class UserResponse(UserBase):
             ISO8601 string with 'Z' suffix (e.g., '2025-11-01T15:29:31Z')
         """
         # Ensure datetime has UTC timezone info
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        else:
-            dt = dt.astimezone(UTC)
+        dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
         # Format as ISO8601 with 'Z' suffix
-        return dt.isoformat().replace('+00:00', 'Z')
-
+        return dt.isoformat().replace("+00:00", "Z")
 
     class Config:
         from_attributes = True
@@ -81,8 +77,8 @@ class AppleSignInRequest(BaseModel):
     """Request schema for Apple Sign In."""
 
     id_token: str = Field(..., description="Apple identity token")
-    email: Optional[str] = None  # Optional - will extract from token if not provided
-    full_name: Optional[str] = None
+    email: str | None = None  # Optional - will extract from token if not provided
+    full_name: str | None = None
 
 
 class TokenResponse(BaseModel):

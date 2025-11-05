@@ -1,9 +1,8 @@
 """FastAPI dependencies for authentication and authorization."""
-from typing import Optional
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session as get_db
@@ -15,8 +14,7 @@ security = HTTPBearer()
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+    credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)
 ) -> User:
     """
     Get current authenticated user from JWT token.
@@ -48,7 +46,7 @@ def get_current_user(
             raise credentials_exception
 
     except jwt.InvalidTokenError:
-        raise credentials_exception
+        raise credentials_exception from None
 
     # Get user from database
     user = db.query(User).filter(User.id == int(user_id)).first()
@@ -57,18 +55,15 @@ def get_current_user(
         raise credentials_exception
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
 
     return user
 
 
 def get_optional_user(
     db: Session = Depends(get_db),
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
-) -> Optional[User]:
+    credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
+) -> User | None:
     """
     Get current user if authenticated, None otherwise.
 
@@ -107,6 +102,5 @@ def require_admin(request: Request) -> None:
 
     if not admin_session or admin_session not in admin_sessions:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin authentication required"
         )

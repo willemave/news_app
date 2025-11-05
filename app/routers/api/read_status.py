@@ -74,8 +74,7 @@ async def mark_content_unread(
     # Delete read status
     result = db.execute(
         delete(ContentReadStatus).where(
-            ContentReadStatus.content_id == content_id,
-            ContentReadStatus.user_id == current_user.id
+            ContentReadStatus.content_id == content_id, ContentReadStatus.user_id == current_user.id
         )
     )
     db.commit()

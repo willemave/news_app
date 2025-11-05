@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 @dataclass
 class ScraperStats:
     """Statistics for a scraper run."""
-    
+
     scraped: int = 0
     saved: int = 0
     duplicates: int = 0

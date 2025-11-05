@@ -89,7 +89,7 @@ def get_db() -> Generator[Session]:
         db.close()
 
 
-def get_db_session() -> Generator[Session, None, None]:
+def get_db_session() -> Generator[Session]:
     """
     Get a database session for FastAPI dependency injection.
 
@@ -116,7 +116,7 @@ def run_migrations():
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         logger.info("Database migrations completed successfully")
         if result.stdout:
