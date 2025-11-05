@@ -43,6 +43,12 @@ final class AuthenticationService: NSObject {
     }
 
     /// Refresh access token using refresh token
+    ///
+    /// Implements refresh token rotation:
+    /// - Sends current refresh token to backend
+    /// - Receives new access token AND new refresh token
+    /// - Saves both tokens (replaces old refresh token)
+    /// - This allows active users to stay logged in indefinitely
     func refreshAccessToken() async throws -> String {
         guard let refreshToken = KeychainManager.shared.getToken(key: .refreshToken) else {
             throw AuthError.noRefreshToken
@@ -68,8 +74,11 @@ final class AuthenticationService: NSObject {
 
         let tokenResponse = try decoder.decode(AccessTokenResponse.self, from: data)
 
-        // Save new access token
+        // Save new access token AND new refresh token (token rotation)
         KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
+        KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
+
+        print("✅ Token refresh successful - both tokens rotated")
 
         return tokenResponse.accessToken
     }
