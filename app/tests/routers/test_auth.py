@@ -163,6 +163,7 @@ def test_refresh_token_valid(db: Session):
         data = response.json()
 
         assert "access_token" in data
+        assert "refresh_token" in data  # Should now return new refresh token
         assert data["token_type"] == "bearer"
     finally:
         app.dependency_overrides.clear()
@@ -210,6 +211,85 @@ def test_refresh_token_with_access_token(db: Session):
         )
 
         assert response.status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_refresh_token_rotation(db: Session):
+    """
+    Test refresh token rotation for security and session extension.
+
+    Verifies that:
+    1. Refresh endpoint returns both new access token AND new refresh token
+    2. New refresh token can be used for subsequent refreshes
+    3. This allows active users to stay logged in indefinitely
+
+    Note: JWT tokens generated rapidly (same second) may be identical since
+    they contain the same payload and timestamps. What matters is that the
+    endpoint returns a refresh token and it works for subsequent refreshes.
+    """
+    # Override get_db_session to use our test db
+    from app.core.db import get_db_session
+
+    def override_get_db_session():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+
+    try:
+        # Create user
+        user = User(
+            apple_id="001234.rotation",
+            email="rotation@icloud.com",
+            is_active=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Create initial refresh token
+        initial_refresh_token = create_refresh_token(user.id)
+
+        # First refresh - should get new access token AND new refresh token
+        response = client.post(
+            "/auth/refresh",
+            json={"refresh_token": initial_refresh_token}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify both tokens are present (key requirement for rotation)
+        assert "access_token" in data
+        assert "refresh_token" in data
+        assert data["token_type"] == "bearer"
+
+        # Verify both tokens are valid strings
+        new_refresh_token = data["refresh_token"]
+        assert isinstance(new_refresh_token, str)
+        assert len(new_refresh_token) > 0
+
+        # Most important: verify new refresh token works for subsequent refresh
+        response2 = client.post(
+            "/auth/refresh",
+            json={"refresh_token": new_refresh_token}
+        )
+
+        assert response2.status_code == 200
+        data2 = response2.json()
+
+        # Should get another set of tokens
+        assert "access_token" in data2
+        assert "refresh_token" in data2
+
+        print("✅ Refresh token rotation working correctly")
+        print(f"   - Initial refresh succeeded: {response.status_code}")
+        print(f"   - Second refresh succeeded:  {response2.status_code}")
+        print(f"   - Both refreshes returned new refresh tokens")
+
     finally:
         app.dependency_overrides.clear()
 

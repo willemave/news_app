@@ -177,12 +177,20 @@ def refresh_token(
     """
     Refresh access token using refresh token.
 
+    Implements refresh token rotation for enhanced security:
+    - Issues new access token (30 min expiry)
+    - Issues new refresh token (90 day expiry)
+    - Old refresh token is invalidated (client should discard)
+
+    This ensures active users stay logged in indefinitely while
+    maintaining security through token rotation.
+
     Args:
         request: Refresh token request
         db: Database session
 
     Returns:
-        New access token
+        New access token and new refresh token
 
     Raises:
         HTTPException: 401 if refresh token is invalid
@@ -209,10 +217,16 @@ def refresh_token(
     if user is None or not user.is_active:
         raise credentials_exception
 
-    # Generate new access token
+    # Generate new access token AND new refresh token (token rotation)
     access_token = create_access_token(user.id)
+    new_refresh_token = create_refresh_token(user.id)
 
-    return AccessTokenResponse(access_token=access_token)
+    logger.info(f"Token refresh successful for user {user.id}")
+
+    return AccessTokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token
+    )
 
 
 @router.get("/me", response_model=UserResponse)

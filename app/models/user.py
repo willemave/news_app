@@ -104,6 +104,7 @@ class AccessTokenResponse(BaseModel):
     """Response schema for token refresh."""
 
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
 
 
