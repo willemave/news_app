@@ -54,10 +54,10 @@ struct PagedCardView: View {
                                 onConvert: onConvert
                             )
                             .tag(index)
-                            .padding(.horizontal, 16)
                         }
                     }
                     .tabViewStyle(.page)
+                    .padding(.horizontal, 16)
                     .frame(maxHeight: geometry.size.height - 80)
 
                     // Next/Done button
@@ -91,6 +91,7 @@ struct PagedCardView: View {
                     .padding(.bottom, 8)
                 }
             }
+            .padding(.top, -8)
         }
         .animation(.easeInOut(duration: 0.2), value: visibleGroups.count)
         .onChange(of: groups.count) { oldCount, newCount in

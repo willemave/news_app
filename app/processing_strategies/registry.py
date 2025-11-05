@@ -37,9 +37,7 @@ class StrategyRegistry:
         self.register(
             PdfProcessorStrategy(self.http_client)
         )  # Specific content type by extension/common URL pattern
-        self.register(
-            ImageProcessorStrategy(self.http_client)
-        )  # Image files
+        self.register(ImageProcessorStrategy(self.http_client))  # Image files
         self.register(HtmlProcessorStrategy(self.http_client))  # HTML content (uses crawl4ai)
 
     def register(self, strategy: UrlProcessorStrategy):

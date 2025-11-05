@@ -29,12 +29,9 @@ DEFAULT_USER_AGENT = (
     "Chrome/122.0.0.0 Safari/537.36"
 )
 
-DEFAULT_GUEST_BEARER = (
-    "Bearer AAAAAAAAAAAAAAAAAAAAAANRILgAAAAA7dbR1mQ4pcFZscR0gLDOk4ew3E"
-)
+DEFAULT_GUEST_BEARER = "Bearer AAAAAAAAAAAAAAAAAAAAAANRILgAAAAA7dbR1mQ4pcFZscR0gLDOk4ew3E"
 GUEST_TOKEN_TTL = timedelta(minutes=20)
 RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
-
 
 
 class TwitterUnifiedScraper(BaseScraper):
@@ -82,7 +79,7 @@ class TwitterUnifiedScraper(BaseScraper):
 
         # Check if we have any configuration
         has_lists = bool(self.config.get("twitter_lists"))
-        
+
         if not has_lists:
             logger.warning("No Twitter lists configured")
             return []
@@ -105,11 +102,15 @@ class TwitterUnifiedScraper(BaseScraper):
         """Check if list was scraped recently."""
         with get_db() as db:
             cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
-            existing = db.query(Content).filter(
-                Content.platform == "twitter",
-                Content.source == f"twitter:{list_name}",
-                Content.created_at > cutoff_time
-            ).first()
+            existing = (
+                db.query(Content)
+                .filter(
+                    Content.platform == "twitter",
+                    Content.source == f"twitter:{list_name}",
+                    Content.created_at > cutoff_time,
+                )
+                .first()
+            )
             return existing is not None
 
     def _scrape_list_playwright(self, list_config: dict[str, Any]) -> list[dict[str, Any]] | None:
@@ -118,7 +119,7 @@ class TwitterUnifiedScraper(BaseScraper):
         list_id = list_config.get("list_id")
         limit = list_config.get("limit", self.settings.get("default_limit", 50))
         hours_back = list_config.get("hours_back", self.settings.get("default_hours_back", 24))
-        
+
         if not list_id:
             logger.error(f"No list_id provided for list: {list_name}")
             return None
@@ -129,10 +130,10 @@ class TwitterUnifiedScraper(BaseScraper):
             return None
 
         logger.info(f"Scraping Twitter list with Playwright: {list_name} ({list_id})")
-        
+
         tweets = []
         cutoff_time = datetime.now(UTC) - timedelta(hours=hours_back)
-        
+
         try:
             with sync_playwright() as pw:
                 browser_args = {"headless": True}
@@ -157,14 +158,22 @@ class TwitterUnifiedScraper(BaseScraper):
                         url = response.url
                         # Look for Twitter API endpoints
                         api_patterns = [
-                            "ListLatestTweets", "TweetResultByRestId", "UserTweets",
-                            "HomeTimeline", "SearchTimeline", "ListTweets",
-                            "graphql", "api/graphql", "i/api/graphql"
+                            "ListLatestTweets",
+                            "TweetResultByRestId",
+                            "UserTweets",
+                            "HomeTimeline",
+                            "SearchTimeline",
+                            "ListTweets",
+                            "graphql",
+                            "api/graphql",
+                            "i/api/graphql",
                         ]
                         if any(pattern in url for pattern in api_patterns):
                             xhr_calls.append(response)
                             logger.info(f"Captured API call: {url[:100]}...")
-                        elif "twitter.com" in url and ("json" in response.headers.get("content-type", "") or "api" in url):
+                        elif "twitter.com" in url and (
+                            "json" in response.headers.get("content-type", "") or "api" in url
+                        ):
                             xhr_calls.append(response)
                             logger.info(f"Captured potential API call: {url[:100]}...")
 
@@ -177,17 +186,25 @@ class TwitterUnifiedScraper(BaseScraper):
                     try:
                         # Try to navigate to the list page
                         response = page.goto(list_url, wait_until="domcontentloaded", timeout=15000)
-                        logger.info(f"Page response status: {response.status if response else 'No response'}")
+                        logger.info(
+                            f"Page response status: {response.status if response else 'No response'}"
+                        )
 
                         # Check if we're redirected to login
                         current_url = page.url
                         if "login" in current_url.lower() or "authenticate" in current_url.lower():
-                            logger.warning(f"Twitter requires login to access this list. Current URL: {current_url}")
-                            raise Exception("Login required - cannot access list without authentication")
+                            logger.warning(
+                                f"Twitter requires login to access this list. Current URL: {current_url}"
+                            )
+                            raise Exception(
+                                "Login required - cannot access list without authentication"
+                            )
 
                         # Wait for content to load (be more lenient with timeout)
                         try:
-                            page.wait_for_selector("[data-testid='tweet'], [data-testid='cellInnerDiv']", timeout=5000)
+                            page.wait_for_selector(
+                                "[data-testid='tweet'], [data-testid='cellInnerDiv']", timeout=5000
+                            )
                             logger.info("Found tweet elements on page")
                         except Exception:
                             logger.warning("Could not find tweet elements, but continuing...")
@@ -200,7 +217,7 @@ class TwitterUnifiedScraper(BaseScraper):
                         for i in range(max_scrolls):
                             page.mouse.wheel(0, 2000)
                             page.wait_for_timeout(1500)
-                            logger.debug(f"Scroll {i+1}/{max_scrolls}")
+                            logger.debug(f"Scroll {i + 1}/{max_scrolls}")
 
                         logger.info(f"Captured {len(xhr_calls)} API responses")
 
@@ -213,7 +230,6 @@ class TwitterUnifiedScraper(BaseScraper):
 
                     # Process captured API responses (before closing browser)
                     auth_required = False
-                    tweets_from_responses = []
                     for call in xhr_calls:
                         try:
                             if call.status != 200:
@@ -247,30 +263,34 @@ class TwitterUnifiedScraper(BaseScraper):
                                 if len(tweets) >= limit:
                                     break
 
-                                tweet_date = self._parse_tweet_date(tweet_data.get("created_at", ""))
+                                tweet_date = self._parse_tweet_date(
+                                    tweet_data.get("created_at", "")
+                                )
                                 if tweet_date and tweet_date < cutoff_time:
                                     continue
 
-                                if (
-                                    not self.settings.get("include_retweets", False)
-                                    and tweet_data.get("is_retweet")
-                                ):
+                                if not self.settings.get(
+                                    "include_retweets", False
+                                ) and tweet_data.get("is_retweet"):
                                     continue
 
-                                if (
-                                    not self.settings.get("include_replies", False)
-                                    and tweet_data.get("in_reply_to_status_id")
-                                ):
+                                if not self.settings.get(
+                                    "include_replies", False
+                                ) and tweet_data.get("in_reply_to_status_id"):
                                     continue
 
                                 min_engagement = self.settings.get("min_engagement", 0)
                                 likes = tweet_data.get("likes", tweet_data.get("favorite_count", 0))
-                                retweets = tweet_data.get("retweets", tweet_data.get("retweet_count", 0))
+                                retweets = tweet_data.get(
+                                    "retweets", tweet_data.get("retweet_count", 0)
+                                )
                                 if (likes + retweets) < min_engagement:
                                     continue
 
                                 tweets.append(tweet_data)
-                                logger.debug("Added tweet from @%s", tweet_data.get("username", "unknown"))
+                                logger.debug(
+                                    "Added tweet from @%s", tweet_data.get("username", "unknown")
+                                )
 
                         except Exception as e:
                             logger.warning(
@@ -286,15 +306,15 @@ class TwitterUnifiedScraper(BaseScraper):
                     context.close()
                     browser.close()
                 logger.info(f"Total tweets collected: {len(tweets)}")
-        
+
         except Exception as e:
             logger.error(f"Playwright scraping failed for list {list_id}: {e}")
             return None
-        
+
         if not tweets:
             logger.info(f"No tweets found for list: {list_name}")
             return None
-        
+
         news_entries: list[dict[str, Any]] = []
         seen_pairs: set[tuple[str, str]] = set()
 
@@ -439,9 +459,7 @@ class TwitterUnifiedScraper(BaseScraper):
                 continue
 
             tweet_id = (
-                legacy_data.get("id_str")
-                or legacy_data.get("id")
-                or normalized.get("rest_id", "")
+                legacy_data.get("id_str") or legacy_data.get("id") or normalized.get("rest_id", "")
             )
             username = user_data.get("screen_name") or user_data.get("username") or "unknown"
 
@@ -526,9 +544,7 @@ class TwitterUnifiedScraper(BaseScraper):
             )
             return
         prepared = self._parse_cookie_file(raw_content)
-        self._has_auth_cookies = any(
-            cookie.get("name") == "auth_token" for cookie in prepared
-        )
+        self._has_auth_cookies = any(cookie.get("name") == "auth_token" for cookie in prepared)
         if not prepared:
             logger.warning(
                 "Twitter cookies file %s did not contain any usable cookies",
@@ -538,9 +554,7 @@ class TwitterUnifiedScraper(BaseScraper):
             return
 
         context.add_cookies(prepared)
-        logger.info(
-            "Loaded %s Twitter cookies from %s", len(prepared), self.cookies_path
-        )
+        logger.info("Loaded %s Twitter cookies from %s", len(prepared), self.cookies_path)
 
     def _parse_cookie_file(self, raw_content: str) -> list[dict[str, Any]]:
         """Parse cookie exports in either JSON or Netscape formats."""
@@ -786,9 +800,7 @@ class TwitterUnifiedScraper(BaseScraper):
             return None
 
         should_attempt = (
-            "json" in content_type
-            or "graphql" in url.lower()
-            or url.lower().endswith(".json")
+            "json" in content_type or "graphql" in url.lower() or url.lower().endswith(".json")
         )
 
         if not should_attempt:
@@ -957,11 +969,7 @@ class TwitterUnifiedScraper(BaseScraper):
                 )
                 continue
 
-            if (
-                status_code in {401, 403}
-                and not self._has_auth_cookies
-                and attempt < max_attempts
-            ):
+            if status_code in {401, 403} and not self._has_auth_cookies and attempt < max_attempts:
                 log_scraper_event(
                     service="Twitter",
                     event="retry_auth_refresh",
@@ -1075,7 +1083,6 @@ class TwitterUnifiedScraper(BaseScraper):
         body_text = body_bytes.decode("utf-8", errors="ignore") if body_bytes else ""
         return status, content_type, body_text
 
-
     def _normalize_tweet_result(self, tweet_result: dict[str, Any]) -> dict[str, Any] | None:
         """Normalize tweet payloads from GraphQL responses into a consistent shape."""
         if not tweet_result or not isinstance(tweet_result, dict):
@@ -1148,7 +1155,9 @@ class TwitterUnifiedScraper(BaseScraper):
         for url_info in urls:
             if not isinstance(url_info, dict):
                 continue
-            expanded = url_info.get("expanded_url") or url_info.get("unwound_url") or url_info.get("url")
+            expanded = (
+                url_info.get("expanded_url") or url_info.get("unwound_url") or url_info.get("url")
+            )
             if not expanded:
                 continue
             normalized = self._normalize_external_url(expanded)
@@ -1193,7 +1202,7 @@ class TwitterUnifiedScraper(BaseScraper):
             return domain
         except Exception:
             return ""
-    
+
     def _parse_tweet_date(self, date_str: str) -> datetime | None:
         """Parse Twitter's date format to datetime."""
         if not date_str:

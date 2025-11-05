@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from app.core.logging import get_logger
 
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -86,7 +86,7 @@ def try_repair_truncated_json(json_str: str) -> str | None:
         return repaired
     except json.JSONDecodeError:
         for index in range(len(json_str) - 1, 0, -1):
-            if json_str[index] in {']', '}'}:
+            if json_str[index] in {"]", "}"}:
                 truncated = json_str[: index + 1]
                 open_braces = truncated.count("{") - truncated.count("}")
                 open_brackets = truncated.count("[") - truncated.count("]")

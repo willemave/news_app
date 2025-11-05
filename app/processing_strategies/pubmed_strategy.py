@@ -37,9 +37,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
         url_lower = url.lower()
         is_pubmed_page = "pubmed.ncbi.nlm.nih.gov" in url_lower
         has_html_extension = url_lower.endswith((".pdf", ".html", ".htm"))
-        matches_pubmed_pattern = bool(
-            re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/\d+/?$", url_lower)
-        )
+        matches_pubmed_pattern = bool(re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/\d+/?$", url_lower))
 
         if is_pubmed_page and not has_html_extension and matches_pubmed_pattern:
             logger.debug("PubMedStrategy can handle PubMed article page: %s", url)
@@ -149,7 +147,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
         'url' here is the final URL of the PubMed page itself.
         """
         logger.info("PubMedStrategy: Extracting full-text link from PubMed page: %s", url)
-        
+
         try:
             # Configure browser for crawl4ai
             browser_config = BrowserConfig(
@@ -162,7 +160,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
                 java_script_enabled=True,
                 extra_args=["--disable-blink-features=AutomationControlled"],
             )
-            
+
             # Configure crawler run
             run_config = CrawlerRunConfig(
                 cache_mode=CacheMode.ENABLED,
@@ -171,22 +169,22 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
                 wait_for="body",
                 delay_before_return_html=1.0,
             )
-            
+
             # Use AsyncWebCrawler with asyncio.run
             async def crawl():
                 async with AsyncWebCrawler(config=browser_config) as crawler:
                     return await crawler.arun(url=url, config=run_config)
-            
+
             result = asyncio.run(crawl())
-            
+
             if not result or not result.success:
                 raise Exception(f"Crawl4ai extraction failed for PubMed page: {url}")
-            
+
             # Get the HTML content
             pubmed_page_html = result.html
 
             full_text_url = self._extract_full_text_link_from_html(pubmed_page_html, url)
-            
+
         except Exception as err:
             logger.error("PubMedStrategy: Error using crawl4ai for %s: %s", url, err)
             # Fall back to returning an error

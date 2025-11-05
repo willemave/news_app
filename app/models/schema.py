@@ -135,7 +135,6 @@ class ProcessingTask(Base):
     __table_args__ = (Index("idx_task_status_created", "status", "created_at"),)
 
 
-
 class ContentReadStatus(Base):
     """Track which content has been read by which user."""
 
@@ -147,9 +146,7 @@ class ContentReadStatus(Base):
     read_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    __table_args__ = (
-        Index("idx_content_read_user_content", "user_id", "content_id", unique=True),
-    )
+    __table_args__ = (Index("idx_content_read_user_content", "user_id", "content_id", unique=True),)
 
 
 class ContentFavorites(Base):
@@ -186,22 +183,22 @@ class ContentUnlikes(Base):
 
 class EventLog(Base):
     """Generic event logging table for all system events, stats, and errors."""
-    
+
     __tablename__ = "event_logs"
-    
+
     id = Column(Integer, primary_key=True)
     # Examples: 'scraper_run', 'processing_batch', 'error', 'cleanup'
     event_type = Column(String(50), nullable=False, index=True)
     # Examples: 'hackernews_scraper', 'pdf_processor'
     event_name = Column(String(100), nullable=True, index=True)
     status = Column(String(20), nullable=True, index=True)  # 'started', 'completed', 'failed'
-    
+
     # All data stored in one JSON field - completely flexible
     data = Column(JSON, nullable=False, default=dict)
-    
+
     # Timestamp
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    
+
     __table_args__ = (
         Index("idx_event_type_created", "event_type", "created_at"),
         Index("idx_event_name_created", "event_name", "created_at"),

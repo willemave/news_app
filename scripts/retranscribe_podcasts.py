@@ -25,50 +25,45 @@ def main():
     engine = create_engine(str(settings.database_url))
     Session = sessionmaker(bind=engine)
     session = Session()
-    
+
     try:
         # Find all podcast content
-        podcasts = session.query(Content).filter(
-            Content.content_type == "podcast"
-        ).all()
-        
+        podcasts = session.query(Content).filter(Content.content_type == "podcast").all()
+
         logger.info(f"Found {len(podcasts)} podcasts to retranscribe")
-        
+
         # Create transcribe tasks for each podcast
         tasks_created = 0
         for podcast in podcasts:
             # Check if audio file exists
             metadata = podcast.content_metadata or {}
             audio_file_path = metadata.get("audio_file_path")
-            
+
             if not audio_file_path:
                 logger.warning(f"Podcast {podcast.id} has no audio file path, skipping")
                 continue
-                
+
             if not Path(audio_file_path).exists():
                 logger.warning(f"Audio file not found for podcast {podcast.id}: {audio_file_path}")
                 continue
-            
+
             # Create transcribe task
             task = ProcessingTask(
                 task_type=TaskType.TRANSCRIBE.value,
                 content_id=podcast.id,
-                payload={
-                    "audio_file_path": audio_file_path,
-                    "force_retranscribe": True
-                },
-                status="pending"
+                payload={"audio_file_path": audio_file_path, "force_retranscribe": True},
+                status="pending",
             )
             session.add(task)
             tasks_created += 1
-            
+
             # Log progress
             logger.info(f"Created transcribe task for podcast {podcast.id}: {podcast.title}")
-        
+
         # Commit all tasks
         session.commit()
         logger.info(f"Successfully created {tasks_created} transcribe tasks")
-        
+
     except Exception as e:
         logger.error(f"Error creating transcribe tasks: {e}")
         session.rollback()

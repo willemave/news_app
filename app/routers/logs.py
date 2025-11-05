@@ -1,5 +1,6 @@
 import json
-from datetime import datetime
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
     """List all log files with recent error logs."""
     log_files = []
     recent_errors = []
-    
+
     # Get all log files from errors directory
     if ERRORS_DIR.exists():
         for file_path in ERRORS_DIR.glob("*.log"):
@@ -40,7 +41,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
                     "modified_timestamp": stat.st_mtime,
                 }
             )
-        
+
         # Get all JSONL error files
         for file_path in ERRORS_DIR.glob("*.jsonl"):
             stat = file_path.stat()
@@ -52,7 +53,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
                     "modified_timestamp": stat.st_mtime,
                 }
             )
-    
+
     # Also check root logs directory for any remaining log files
     if LOGS_DIR.exists():
         for file_path in LOGS_DIR.glob("*.log"):
@@ -62,23 +63,26 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
                     {
                         "filename": file_path.name,
                         "size": f"{stat.st_size / 1024:.1f} KB",
-                        "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                        "modified": datetime.fromtimestamp(stat.st_mtime).strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        ),
                         "modified_timestamp": stat.st_mtime,
                     }
                 )
 
     # Sort by modified time, newest first
     log_files.sort(key=lambda x: x["modified_timestamp"], reverse=True)
-    
+
     # Remove timestamp from final output
     for log in log_files:
         log.pop("modified_timestamp", None)
-    
+
     # Get recent errors from the most recent error files
     recent_errors = _get_recent_errors(limit=10)
 
     return templates.TemplateResponse(
-        "logs_list.html", {"request": request, "log_files": log_files, "recent_errors": recent_errors}
+        "logs_list.html",
+        {"request": request, "log_files": log_files, "recent_errors": recent_errors},
     )
 
 
@@ -99,7 +103,7 @@ async def view_log(request: Request, filename: str, _: None = Depends(require_ad
             with open(file_path, encoding="utf-8") as f:
                 content = f.read()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}") from e
 
     return templates.TemplateResponse(
         "log_detail.html", {"request": request, "filename": filename, "content": content}
@@ -119,7 +123,13 @@ async def download_log(filename: str, _: None = Depends(require_admin)):
 
 
 @router.get("/errors", response_class=HTMLResponse)
-async def errors_dashboard(request: Request, _: None = Depends(require_admin), hours: int = 24, min_errors: int = 1, component: str | None = None):
+async def errors_dashboard(
+    request: Request,
+    _: None = Depends(require_admin),
+    hours: int = 24,
+    min_errors: int = 1,
+    component: str | None = None,
+):
     """Analyze recent error logs and present an HTML dashboard (no LLM calls)."""
     logs_dir = LOGS_DIR
     errors = _an_get_recent_logs(logs_dir, hours)
@@ -144,22 +154,28 @@ async def errors_dashboard(request: Request, _: None = Depends(require_admin), h
     categories: list[dict[str, Any]] = []
     for key, items in grouped.items():
         sample = items[0] if items else {}
-        categories.append({
-            "key": key,
-            "count": len(items),
-            "sample_message": (sample.get("error_message") or sample.get("message") or "")[0:300],
-        })
+        categories.append(
+            {
+                "key": key,
+                "count": len(items),
+                "sample_message": (sample.get("error_message") or sample.get("message") or "")[
+                    0:300
+                ],
+            }
+        )
 
     # Recent sample errors (limit 20)
     recent_samples = []
     for e in flat_errors[:20]:
-        recent_samples.append({
-            "timestamp": e.get("timestamp", "N/A"),
-            "component": e.get("component", "unknown"),
-            "error_type": e.get("error_type", "unknown"),
-            "message": (e.get("error_message") or e.get("message") or "")[0:400],
-            "file_link": f"errors/{e.get('source_file')}" if e.get("source_file") else None,
-        })
+        recent_samples.append(
+            {
+                "timestamp": e.get("timestamp", "N/A"),
+                "component": e.get("component", "unknown"),
+                "error_type": e.get("error_type", "unknown"),
+                "message": (e.get("error_message") or e.get("message") or "")[0:400],
+                "file_link": f"errors/{e.get('source_file')}" if e.get("source_file") else None,
+            }
+        )
 
     return templates.TemplateResponse(
         "admin_errors.html",
@@ -239,11 +255,10 @@ async def reset_error_logs(_: None = Depends(require_admin)):
         # Redirect back to errors page
         return RedirectResponse(url="/admin/errors", status_code=303)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error resetting logs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error resetting logs: {str(e)}") from e
 
 
 # ===== Helpers adapted from scripts/analyze_logs_for_fixes.py (trimmed for server use) =====
-from datetime import UTC, timedelta
 
 
 def _an_parse_jsonl_file(file_path: Path) -> list[dict[str, Any]]:
@@ -265,6 +280,7 @@ def _an_parse_log_file(file_path: Path) -> list[dict[str, Any]]:
     out = []
     try:
         import re
+
         with open(file_path, encoding="utf-8") as f:
             for line in f:
                 if not line.strip():
@@ -274,14 +290,21 @@ def _an_parse_log_file(file_path: Path) -> list[dict[str, Any]]:
                 except json.JSONDecodeError:
                     low = line.lower()
                     # Treat as error only on strong signals, not "Errors: 0"
-                    strong = (" - error - " in low) or (" exception" in low) or ("traceback" in low) or re.search(r"\berror\b", low)
+                    strong = (
+                        (" - error - " in low)
+                        or (" exception" in low)
+                        or ("traceback" in low)
+                        or re.search(r"\berror\b", low)
+                    )
                     plural_noise = re.search(r"\berrors\s*:\s*\d+", low)
                     if strong and not plural_noise:
-                        out.append({
-                            "timestamp": datetime.utcnow().isoformat()+"Z",
-                            "error_message": line.strip(),
-                            "file": str(file_path),
-                        })
+                        out.append(
+                            {
+                                "timestamp": datetime.utcnow().isoformat() + "Z",
+                                "error_message": line.strip(),
+                                "file": str(file_path),
+                            }
+                        )
     except Exception:
         pass
     return out
@@ -360,18 +383,17 @@ def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]
     return all_errors
 
 
-from collections import defaultdict
-
-
 def _an_group_errors(errors: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for e in errors:
         et = (e.get("error_type") or "unknown").lower()
         comp = (e.get("component") or "unknown").lower()
-        msg = (e.get("error_message") or "")
-        op = (e.get("operation") or "")
+        msg = e.get("error_message") or ""
+        op = e.get("operation") or ""
 
-        if "config file not found" in msg.lower() or ("config" in msg.lower() and "not found" in msg.lower()):
+        if "config file not found" in msg.lower() or (
+            "config" in msg.lower() and "not found" in msg.lower()
+        ):
             key = "config_missing_errors"
         elif "BrowserType.launch" in msg or "playwright" in msg.lower():
             key = "playwright_browser_errors"
@@ -428,11 +450,19 @@ def _an_extract_file_references(errors: list[dict[str, Any]]) -> tuple[list[str]
     return [f for f, _ in sorted_files], counts
 
 
-def _an_generate_summary_report(errors: list[dict[str, Any]], grouped: dict[str, list[dict[str, Any]]]) -> str:
+def _an_generate_summary_report(
+    errors: list[dict[str, Any]], grouped: dict[str, list[dict[str, Any]]]
+) -> str:
     total = len(errors)
     types = len(grouped)
     top = list(grouped.items())[:3]
-    lines = ["## Quick Summary", "", f"- **Total Errors**: {total}", f"- **Error Types**: {types}", "- **Top 3 Error Types**:"]
+    lines = [
+        "## Quick Summary",
+        "",
+        f"- **Total Errors**: {total}",
+        f"- **Error Types**: {types}",
+        "- **Top 3 Error Types**:",
+    ]
     for t, lst in top:
         pct = (len(lst) / total * 100) if total else 0.0
         lines.append(f"  - {t.replace('_', ' ').title()}: {len(lst)} ({pct:.1f}%)")
@@ -478,7 +508,7 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
     lines.append("## Detailed Breakdown")
     for cat_idx, (key, errors) in enumerate(grouped.items(), 1):
         lines.append("")
-        lines.append(f"### {cat_idx}. {key.replace('_',' ').title()} ({len(errors)} occurrences)")
+        lines.append(f"### {cat_idx}. {key.replace('_', ' ').title()} ({len(errors)} occurrences)")
 
         # Group by leading message snippet to find patterns
         patterns: dict[str, list[dict[str, Any]]] = _dd(list)
@@ -488,7 +518,9 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
             patterns[snippet].append(e)
 
         # Show top 5 patterns
-        for i, (snippet, plist) in enumerate(list(sorted(patterns.items(), key=lambda kv: len(kv[1]), reverse=True))[:5], 1):
+        for i, (snippet, plist) in enumerate(
+            list(sorted(patterns.items(), key=lambda kv: len(kv[1]), reverse=True))[:5], 1
+        ):
             lines.append(f"- Pattern {i} ({len(plist)}x):")
             lines.append("  ```")
             lines.append(f"  {snippet}")
@@ -497,14 +529,20 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
             # Sample context from the first instance
             sample = plist[0]
             ctx_items: list[str] = []
-            if sample.get("component"): ctx_items.append(f"component: {sample['component']}")
-            if sample.get("operation"): ctx_items.append(f"operation: {sample['operation']}")
-            if sample.get("item_id"): ctx_items.append(f"item_id: {sample['item_id']}")
+            if sample.get("component"):
+                ctx_items.append(f"component: {sample['component']}")
+            if sample.get("operation"):
+                ctx_items.append(f"operation: {sample['operation']}")
+            if sample.get("item_id"):
+                ctx_items.append(f"item_id: {sample['item_id']}")
             http = sample.get("http_details") or {}
             if http:
-                if http.get("status_code"): ctx_items.append(f"http_status: {http['status_code']}")
-                if http.get("method"): ctx_items.append(f"method: {http['method']}")
-                if http.get("url"): ctx_items.append(f"url: {http['url']}")
+                if http.get("status_code"):
+                    ctx_items.append(f"http_status: {http['status_code']}")
+                if http.get("method"):
+                    ctx_items.append(f"method: {http['method']}")
+                if http.get("url"):
+                    ctx_items.append(f"url: {http['url']}")
             if ctx_items:
                 lines.append("  - Context:")
                 for c in ctx_items[:8]:
@@ -532,7 +570,11 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
                 ts = entry.get("timestamp", "N/A")
                 src = entry.get("source_file", "unknown")
                 et = entry.get("error_type", entry.get("type", "unknown"))
-                msg = (entry.get("error_message") or entry.get("message") or "").strip().replace("\n", " ")
+                msg = (
+                    (entry.get("error_message") or entry.get("message") or "")
+                    .strip()
+                    .replace("\n", " ")
+                )
                 if len(msg) > 400:
                     msg = msg[:400] + "..."
                 lines.append(f"    {j}. [{ts}] ({src}) {et}: {msg}")
@@ -549,7 +591,9 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
                             break
                     if tb_lines:
                         tail = tb_lines[-1]
-                    lines.append("    " + ("      ↳ " + head if head else "      ↳ traceback present"))
+                    lines.append(
+                        "    " + ("      ↳ " + head if head else "      ↳ traceback present")
+                    )
                     if tail and tail != head:
                         lines.append(f"        {tail}")
 
@@ -569,13 +613,20 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
     lines.append("## Error Patterns Detected")
     detected: list[str] = []
     keys = set(grouped.keys())
-    if any("json" in k for k in keys): detected.append("- JSON parsing failures — add schema validation and fallbacks.")
-    if any("timeout" in k for k in keys): detected.append("- Timeouts — increase timeouts, retries, or circuit breakers.")
-    if any("database" in k or "sqlalchemy" in k for k in keys): detected.append("- Database errors — connection pool sizing, query fixes.")
-    if any("http" in k for k in keys): detected.append("- HTTP errors — handle 4xx/5xx with backoff and clearer messages.")
-    if any("llm" in k for k in keys): detected.append("- LLM service errors — handle rate limits, retries, and fallbacks.")
+    if any("json" in k for k in keys):
+        detected.append("- JSON parsing failures — add schema validation and fallbacks.")
+    if any("timeout" in k for k in keys):
+        detected.append("- Timeouts — increase timeouts, retries, or circuit breakers.")
+    if any("database" in k or "sqlalchemy" in k for k in keys):
+        detected.append("- Database errors — connection pool sizing, query fixes.")
+    if any("http" in k for k in keys):
+        detected.append("- HTTP errors — handle 4xx/5xx with backoff and clearer messages.")
+    if any("llm" in k for k in keys):
+        detected.append("- LLM service errors — handle rate limits, retries, and fallbacks.")
     if not detected:
-        detected.append("- General logging issues — many entries lack structured fields (component, error_type). Consider improving logging schema.")
+        detected.append(
+            "- General logging issues — many entries lack structured fields (component, error_type). Consider improving logging schema."
+        )
     lines.extend(detected)
     lines.append("")
 
@@ -594,21 +645,21 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
 def _get_recent_errors(limit: int = 10) -> list[dict[str, Any]]:
     """Get the most recent errors from error log files."""
     errors = []
-    
+
     if not ERRORS_DIR.exists():
         return errors
-    
+
     # Get all JSONL error files
     error_files = list(ERRORS_DIR.glob("*.jsonl"))
-    
+
     # Sort by modification time, newest first
     error_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-    
+
     # Read errors from files until we have enough
     for file_path in error_files:
         if len(errors) >= limit:
             break
-            
+
         try:
             with open(file_path, encoding="utf-8") as f:
                 for line in f:
@@ -617,26 +668,28 @@ def _get_recent_errors(limit: int = 10) -> list[dict[str, Any]]:
                     try:
                         error_data = json.loads(line.strip())
                         # Format the error for display
-                        errors.append({
-                            "timestamp": error_data.get("timestamp", "Unknown"),
-                            "level": error_data.get("level", "ERROR"),
-                            "source": error_data.get("source", file_path.stem),
-                            "message": error_data.get("message", "No message"),
-                            "file": file_path.name,
-                        })
+                        errors.append(
+                            {
+                                "timestamp": error_data.get("timestamp", "Unknown"),
+                                "level": error_data.get("level", "ERROR"),
+                                "source": error_data.get("source", file_path.stem),
+                                "message": error_data.get("message", "No message"),
+                                "file": file_path.name,
+                            }
+                        )
                     except json.JSONDecodeError:
                         continue
         except Exception:
             continue
-    
+
     # Also check for regular .log files
     log_files = list(ERRORS_DIR.glob("*.log"))
     log_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-    
+
     for file_path in log_files:
         if len(errors) >= limit:
             break
-            
+
         try:
             with open(file_path, encoding="utf-8") as f:
                 lines = f.readlines()
@@ -645,23 +698,26 @@ def _get_recent_errors(limit: int = 10) -> list[dict[str, Any]]:
                     if len(errors) >= limit:
                         break
                     if line.strip():
-                        errors.append({
-                            "timestamp": "See file",
-                            "level": "ERROR",
-                            "source": file_path.stem,
-                            "message": line.strip()[:200] + ("..." if len(line.strip()) > 200 else ""),
-                            "file": file_path.name,
-                        })
+                        errors.append(
+                            {
+                                "timestamp": "See file",
+                                "level": "ERROR",
+                                "source": file_path.stem,
+                                "message": line.strip()[:200]
+                                + ("..." if len(line.strip()) > 200 else ""),
+                                "file": file_path.name,
+                            }
+                        )
         except Exception:
             continue
-    
+
     return errors
 
 
 def _format_jsonl_content(file_path: Path) -> str:
     """Format JSONL file content for display."""
     formatted_lines = []
-    
+
     try:
         with open(file_path, encoding="utf-8") as f:
             for i, line in enumerate(f, 1):
@@ -678,5 +734,5 @@ def _format_jsonl_content(file_path: Path) -> str:
                     formatted_lines.append("")
     except Exception as e:
         return f"Error reading JSONL file: {str(e)}"
-    
+
     return "\n".join(formatted_lines)

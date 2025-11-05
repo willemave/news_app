@@ -3,10 +3,9 @@
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import ValidationError
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
@@ -55,7 +54,8 @@ def admin_dashboard(
     recent_tasks = (
         db.query(func.count(ProcessingTask.id))
         .filter(ProcessingTask.created_at >= recent_cutoff)
-        .scalar() or 0
+        .scalar()
+        or 0
     )
 
     # Get event logs with optional filtering
@@ -74,8 +74,8 @@ def admin_dashboard(
     content_without_summary = (
         db.query(Content)
         .filter(
-            (Content.content_metadata["summary"].is_(None)) | 
-            (Content.content_metadata["summary"] == "null")
+            (Content.content_metadata["summary"].is_(None))
+            | (Content.content_metadata["summary"] == "null")
         )
         .filter(Content.error_message.is_not(None))
         .order_by(desc(Content.created_at))

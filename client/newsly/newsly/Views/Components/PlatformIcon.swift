@@ -16,9 +16,9 @@ struct PlatformIcon: View {
                 switch platform.lowercased() {
                 case "hackernews":
                     Text("Y")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.orange)
-                        .frame(width: 14, height: 14)
+                        .frame(width: 18, height: 18)
                         .background(Color.orange.opacity(0.2))
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                 case "reddit":
@@ -39,7 +39,7 @@ struct PlatformIcon: View {
                 }
             }
         }
-        .font(.caption2)
+        .font(.callout)
     }
 }
 

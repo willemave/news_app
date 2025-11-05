@@ -164,7 +164,9 @@ def perform_reset(options: ResetOptions) -> ResetResult:
             reset_count = content_update_query.update(reset_payload, synchronize_session=False)
 
             if not content_rows:
-                content_rows = list(session.query(Content).filter(Content.id.in_(content_ids or [])).all())
+                content_rows = list(
+                    session.query(Content).filter(Content.id.in_(content_ids or [])).all()
+                )
 
             tasks_to_create = [
                 ProcessingTask(
@@ -244,7 +246,9 @@ def main(argv: list[str] | None = None) -> None:
     if options.cancel_tasks_only:
         print("\nCancellation complete. No new tasks were enqueued.")
     else:
-        print("\nReset complete! You can now run 'python run_workers.py' to re-process targeted content.")
+        print(
+            "\nReset complete! You can now run 'python run_workers.py' to re-process targeted content."
+        )
 
 
 if __name__ == "__main__":

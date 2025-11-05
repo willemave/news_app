@@ -10,9 +10,7 @@ class PaginationCursorData(BaseModel):
 
     last_id: int = Field(..., description="ID of last item in current page")
     last_created_at: datetime = Field(..., description="Created timestamp of last item")
-    filters_hash: str | None = Field(
-        None, description="Hash of filter parameters for validation"
-    )
+    filters_hash: str | None = Field(None, description="Hash of filter parameters for validation")
 
 
 class PaginationMetadata(BaseModel):

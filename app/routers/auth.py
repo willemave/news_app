@@ -1,7 +1,7 @@
 """Authentication endpoints."""
+
 import logging
 import secrets
-from typing import Annotated
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -58,8 +58,7 @@ admin_sessions = set()
 
 @router.post("/apple", response_model=TokenResponse)
 def apple_signin(
-    request: AppleSignInRequest,
-    db: Session = Depends(get_db_session)
+    request: AppleSignInRequest, db: Session = Depends(get_db_session)
 ) -> TokenResponse:
     """
     Authenticate with Apple Sign In.
@@ -96,9 +95,8 @@ def apple_signin(
     except (ValueError, Exception) as e:
         logger.error(f"Apple token verification failed: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid Apple token: {str(e)}"
-        )
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid Apple token: {str(e)}"
+        ) from e
 
     # Extract email from token if not provided or empty
     email = request.email
@@ -112,7 +110,7 @@ def apple_signin(
         logger.error("No email found in request or Apple token")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email is required but not found in request or Apple token"
+            detail="Email is required but not found in request or Apple token",
         )
 
     # Extract full_name from token if not provided or empty
@@ -146,7 +144,7 @@ def apple_signin(
             apple_id=apple_id,
             email=email,
             full_name=full_name if full_name else None,
-            is_active=True
+            is_active=True,
         )
         db.add(user)
         db.commit()
@@ -163,16 +161,13 @@ def apple_signin(
 
     logger.info(f"=== Apple Sign In Successful for user {user.id} ===")
     return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user=UserResponse.from_orm(user)
+        access_token=access_token, refresh_token=refresh_token, user=UserResponse.from_orm(user)
     )
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)
 def refresh_token(
-    request: RefreshTokenRequest,
-    db: Session = Depends(get_db_session)
+    request: RefreshTokenRequest, db: Session = Depends(get_db_session)
 ) -> AccessTokenResponse:
     """
     Refresh access token using refresh token.
@@ -196,8 +191,7 @@ def refresh_token(
         HTTPException: 401 if refresh token is invalid
     """
     credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid refresh token"
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
     )
 
     try:
@@ -209,7 +203,7 @@ def refresh_token(
             raise credentials_exception
 
     except jwt.InvalidTokenError:
-        raise credentials_exception
+        raise credentials_exception from None
 
     # Verify user exists and is active
     user = db.query(User).filter(User.id == int(user_id)).first()
@@ -223,16 +217,11 @@ def refresh_token(
 
     logger.info(f"Token refresh successful for user {user.id}")
 
-    return AccessTokenResponse(
-        access_token=access_token,
-        refresh_token=new_refresh_token
-    )
+    return AccessTokenResponse(access_token=access_token, refresh_token=new_refresh_token)
 
 
 @router.get("/me", response_model=UserResponse)
-def get_current_user_info(
-    current_user: User = Depends(get_current_user)
-) -> UserResponse:
+def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
     """
     Get current authenticated user information.
 
@@ -249,10 +238,7 @@ def get_current_user_info(
 
 
 @router.post("/admin/login", response_model=AdminLoginResponse)
-def admin_login(
-    request: AdminLoginRequest,
-    response: Response
-) -> AdminLoginResponse:
+def admin_login(request: AdminLoginRequest, response: Response) -> AdminLoginResponse:
     """
     Admin login with password.
 
@@ -268,8 +254,7 @@ def admin_login(
     """
     if not verify_admin_password(request.password):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid admin password"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin password"
         )
 
     # Generate session token
@@ -282,7 +267,7 @@ def admin_login(
         value=session_token,
         httponly=True,
         max_age=7 * 24 * 60 * 60,  # 7 days
-        samesite="lax"
+        samesite="lax",
     )
 
     return AdminLoginResponse(message="Logged in as admin")

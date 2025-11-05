@@ -17,9 +17,7 @@ Usage:
 """
 
 import argparse
-import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import Column, DateTime, Integer, String, create_engine, select, text
@@ -129,7 +127,7 @@ def migrate_data(
 
     with Session(backup_engine) as backup_db:
         # Migrate ALL favorites (regardless of session_id)
-        print(f"\n🔍 Loading all favorites from backup...")
+        print("\n🔍 Loading all favorites from backup...")
         old_favorites = backup_db.execute(select(OldContentFavorites)).scalars().all()
 
         stats["favorites_found"] = len(old_favorites)
@@ -160,7 +158,7 @@ def migrate_data(
                 stats["favorites_migrated"] += 1
 
         # Migrate ALL read status (regardless of session_id)
-        print(f"\n🔍 Loading all read status from backup...")
+        print("\n🔍 Loading all read status from backup...")
         old_read_status = backup_db.execute(select(OldContentReadStatus)).scalars().all()
 
         stats["read_status_found"] = len(old_read_status)
@@ -191,7 +189,7 @@ def migrate_data(
                 stats["read_status_migrated"] += 1
 
         # Migrate ALL unlikes (regardless of session_id)
-        print(f"\n🔍 Loading all unlikes from backup...")
+        print("\n🔍 Loading all unlikes from backup...")
         old_unlikes = backup_db.execute(select(OldContentUnlikes)).scalars().all()
 
         stats["unlikes_found"] = len(old_unlikes)
@@ -249,11 +247,17 @@ Examples:
   python scripts/migrate_session_data.py --backup-db backup.db --user-id 1
         """,
     )
-    parser.add_argument("--list-users", action="store_true", help="List all users in current database")
-    parser.add_argument("--show-stats", action="store_true", help="Show record counts in backup database")
+    parser.add_argument(
+        "--list-users", action="store_true", help="List all users in current database"
+    )
+    parser.add_argument(
+        "--show-stats", action="store_true", help="Show record counts in backup database"
+    )
     parser.add_argument("--backup-db", help="Path to backup database file (SQLite)")
     parser.add_argument("--user-id", type=int, help="User ID to migrate to")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be migrated without making changes")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be migrated without making changes"
+    )
 
     args = parser.parse_args()
 
@@ -269,7 +273,9 @@ Examples:
             for user in users:
                 admin_badge = "👑 ADMIN" if user.is_admin else ""
                 active_badge = "✅ ACTIVE" if user.is_active else "❌ INACTIVE"
-                print(f"   ID: {user.id:3d} | {user.email:40s} | {user.full_name or '(no name)':30s} | {admin_badge:8s} | {active_badge}")
+                print(
+                    f"   ID: {user.id:3d} | {user.email:40s} | {user.full_name or '(no name)':30s} | {admin_badge:8s} | {active_badge}"
+                )
         return
 
     # Show stats from backup
@@ -307,14 +313,16 @@ Examples:
         sys.exit(1)
 
     # Run migration
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("🔄 MIGRATION CONFIGURATION")
-    print("="*80)
+    print("=" * 80)
     print(f"Backup database:  {args.backup_db}")
     print(f"Target user ID:   {args.user_id}")
-    print(f"Mode:             {'DRY RUN (no changes)' if args.dry_run else 'LIVE (will modify database)'}")
-    print(f"Strategy:         Migrate ALL data from backup (all sessions)")
-    print("="*80)
+    print(
+        f"Mode:             {'DRY RUN (no changes)' if args.dry_run else 'LIVE (will modify database)'}"
+    )
+    print("Strategy:         Migrate ALL data from backup (all sessions)")
+    print("=" * 80)
 
     with get_db() as db:
         # Verify user exists
@@ -335,22 +343,36 @@ Examples:
         )
 
         # Print summary
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("📊 MIGRATION SUMMARY")
-        print("="*80)
-        print(f"Favorites:    {stats['favorites_found']:4d} found | {stats['favorites_migrated']:4d} migrated | {stats['favorites_skipped']:4d} skipped")
-        print(f"Read Status:  {stats['read_status_found']:4d} found | {stats['read_status_migrated']:4d} migrated | {stats['read_status_skipped']:4d} skipped")
-        print(f"Unlikes:      {stats['unlikes_found']:4d} found | {stats['unlikes_migrated']:4d} migrated | {stats['unlikes_skipped']:4d} skipped")
-        print("="*80)
+        print("=" * 80)
+        print(
+            f"Favorites:    {stats['favorites_found']:4d} found | {stats['favorites_migrated']:4d} migrated | {stats['favorites_skipped']:4d} skipped"
+        )
+        print(
+            f"Read Status:  {stats['read_status_found']:4d} found | {stats['read_status_migrated']:4d} migrated | {stats['read_status_skipped']:4d} skipped"
+        )
+        print(
+            f"Unlikes:      {stats['unlikes_found']:4d} found | {stats['unlikes_migrated']:4d} migrated | {stats['unlikes_skipped']:4d} skipped"
+        )
+        print("=" * 80)
 
-        total_migrated = stats['favorites_migrated'] + stats['read_status_migrated'] + stats['unlikes_migrated']
-        total_skipped = stats['favorites_skipped'] + stats['read_status_skipped'] + stats['unlikes_skipped']
+        total_migrated = (
+            stats["favorites_migrated"] + stats["read_status_migrated"] + stats["unlikes_migrated"]
+        )
+        total_skipped = (
+            stats["favorites_skipped"] + stats["read_status_skipped"] + stats["unlikes_skipped"]
+        )
 
         if args.dry_run:
-            print(f"\n💡 DRY RUN: Would migrate {total_migrated} records (skip {total_skipped} duplicates)")
+            print(
+                f"\n💡 DRY RUN: Would migrate {total_migrated} records (skip {total_skipped} duplicates)"
+            )
             print("   Run without --dry-run to apply changes")
         else:
-            print(f"\n✅ COMPLETE: Migrated {total_migrated} records (skipped {total_skipped} duplicates)")
+            print(
+                f"\n✅ COMPLETE: Migrated {total_migrated} records (skipped {total_skipped} duplicates)"
+            )
 
 
 if __name__ == "__main__":

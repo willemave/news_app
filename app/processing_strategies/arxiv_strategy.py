@@ -105,9 +105,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         Prepares PDF data for LLM processing.
         No local text extraction - the LLM will handle everything from the PDF bytes.
         """
-        logger.info(
-            "ArxivStrategy: Preparing PDF data for LLM processing for URL: %s", url
-        )
+        logger.info("ArxivStrategy: Preparing PDF data for LLM processing for URL: %s", url)
 
         if not content:
             logger.warning(f"ArxivStrategy: No PDF content provided for {url}")
@@ -150,9 +148,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         pdf_bytes = extracted_data.get("pdf_bytes")
 
         if pdf_bytes is None:
-            logger.error(
-                "ArxivStrategy: PDF bytes not found in extracted_data for %s", final_url
-            )
+            logger.error("ArxivStrategy: PDF bytes not found in extracted_data for %s", final_url)
             return {
                 "content_to_filter": None,  # PDFs skip text-based filtering
                 "content_to_summarize": b"",  # Empty bytes as fallback

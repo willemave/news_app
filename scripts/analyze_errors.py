@@ -131,14 +131,24 @@ def generate_debug_prompt(
 
         # Context data if available
         if "context_data" in sample and sample["context_data"]:
-            prompt_parts.append(f"**Context:**\n```json\n{json.dumps(sample['context_data'], indent=2)}\n```\n")
+            prompt_parts.append(
+                f"**Context:**\n```json\n{json.dumps(sample['context_data'], indent=2)}\n```\n"
+            )
 
         # Show unique URLs affected
         urls = set()
         for err in cat_errors:
-            if "item_id" in err and isinstance(err["item_id"], str) and err["item_id"].startswith("http"):
+            if (
+                "item_id" in err
+                and isinstance(err["item_id"], str)
+                and err["item_id"].startswith("http")
+            ):
                 urls.add(err["item_id"])
-            if "context_data" in err and isinstance(err["context_data"], dict) and "url" in err["context_data"]:
+            if (
+                "context_data" in err
+                and isinstance(err["context_data"], dict)
+                and "url" in err["context_data"]
+            ):
                 urls.add(err["context_data"]["url"])
 
         if urls:
@@ -162,7 +172,9 @@ def generate_debug_prompt(
             prompt_parts.append(f"- **Retry Count:** {content.retry_count}\n")
 
             if content.error_message:
-                prompt_parts.append(f"- **Error Message:**\n```\n{content.error_message[:500]}\n```\n")
+                prompt_parts.append(
+                    f"- **Error Message:**\n```\n{content.error_message[:500]}\n```\n"
+                )
 
             if content.content_metadata:
                 # Show relevant metadata fields
@@ -170,10 +182,14 @@ def generate_debug_prompt(
                 relevant_fields = ["summary", "author", "publish_date", "extraction_method"]
                 filtered_meta = {k: v for k, v in metadata.items() if k in relevant_fields}
                 if filtered_meta:
-                    prompt_parts.append(f"- **Metadata:**\n```json\n{json.dumps(filtered_meta, indent=2)}\n```\n")
+                    prompt_parts.append(
+                        f"- **Metadata:**\n```json\n{json.dumps(filtered_meta, indent=2)}\n```\n"
+                    )
 
         if len(errored_content) > 10:
-            prompt_parts.append(f"\n... and {len(errored_content) - 10} more errored content items\n")
+            prompt_parts.append(
+                f"\n... and {len(errored_content) - 10} more errored content items\n"
+            )
 
     # Fix Request
     prompt_parts.append("\n## Fix Request\n")
@@ -181,7 +197,9 @@ def generate_debug_prompt(
     prompt_parts.append("1. Identify the root cause(s) of each error category\n")
     prompt_parts.append("2. Suggest code fixes with specific file paths and line numbers\n")
     prompt_parts.append("3. Recommend error handling improvements\n")
-    prompt_parts.append("4. Identify any pattern in failing URLs/content that might need special handling\n")
+    prompt_parts.append(
+        "4. Identify any pattern in failing URLs/content that might need special handling\n"
+    )
     prompt_parts.append("5. Suggest retry strategies or fallback mechanisms where appropriate\n\n")
 
     prompt_parts.append("**Key Questions to Answer:**\n")
@@ -236,7 +254,9 @@ def main():
     prompt = generate_debug_prompt(errors, categorized, errored_content)
 
     # Save to file
-    output_file = project_root / "logs" / f"error_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    output_file = (
+        project_root / "logs" / f"error_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    )
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_file, "w") as f:

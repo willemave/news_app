@@ -158,9 +158,7 @@ class SubstackScraper(BaseScraper):
                             feed_name=parsed_feed.feed.get("title", "Unknown Feed"),
                             operation="feed_parsing",
                         )
-                        logger.warning(
-                            "Feed %s may be ill-formed: %s", feed_url, bozo_exc
-                        )
+                        logger.warning("Feed %s may be ill-formed: %s", feed_url, bozo_exc)
 
                 # Extract feed name and description from the RSS feed
                 feed_name = parsed_feed.feed.get("title", "Unknown Feed")
@@ -257,6 +255,7 @@ class SubstackScraper(BaseScraper):
         # Determine domain for metadata
         try:
             from urllib.parse import urlparse
+
             host = urlparse(link).netloc or ""
         except Exception:
             host = ""

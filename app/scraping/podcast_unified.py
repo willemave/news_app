@@ -106,10 +106,9 @@ class PodcastUnifiedScraper(BaseScraper):
                 # Check for parsing issues
                 if parsed_feed.bozo:
                     exception_str = str(parsed_feed.bozo_exception).lower()
-                    
+
                     # Check for critical errors that should skip processing
-                    is_critical_error = False
-                    
+
                     # Check if it's HTML instead of XML
                     if "is not an xml media type" in exception_str:
                         logger.error(f"Feed {feed_url} returned HTML instead of XML. Skipping.")
@@ -120,7 +119,7 @@ class PodcastUnifiedScraper(BaseScraper):
                             operation="feed_parsing",
                         )
                         continue
-                    
+
                     # Check for malformed XML
                     if "not well-formed" in exception_str or "saxparseexception" in exception_str:
                         logger.error(f"Feed {feed_url} contains malformed XML. Skipping.")
@@ -131,7 +130,7 @@ class PodcastUnifiedScraper(BaseScraper):
                             operation="feed_parsing",
                         )
                         continue
-                    
+
                     # Check if it's just an encoding mismatch (not critical)
                     is_encoding_issue = False
                     if "encoding" in exception_str or "declared as" in exception_str:
@@ -157,7 +156,7 @@ class PodcastUnifiedScraper(BaseScraper):
                 feed_info = getattr(parsed_feed, "feed", {})
                 logger.debug(f"Feed title: {feed_info.get('title', 'N/A')}")
                 logger.debug(f"Total entries: {len(parsed_feed.entries)}")
-                
+
                 # Check if feed has entries
                 if not parsed_feed.entries:
                     logger.warning(f"Feed {feed_url} has no entries. Skipping.")
@@ -209,6 +208,7 @@ class PodcastUnifiedScraper(BaseScraper):
         else:
             # Check if link is just a base domain
             from urllib.parse import urlparse
+
             parsed = urlparse(link)
             # If path is empty or just "/", it's not a unique episode URL
             if not parsed.path or parsed.path == "/":
@@ -256,6 +256,7 @@ class PodcastUnifiedScraper(BaseScraper):
         # Determine domain for metadata
         try:
             from urllib.parse import urlparse
+
             host = urlparse(link).netloc or ""
         except Exception:
             host = ""

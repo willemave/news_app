@@ -30,17 +30,11 @@ def main():
     parser.add_argument(
         "--scrapers",
         nargs="*",
-        help="Specific scrapers to run (e.g., hackernews reddit). If not specified, runs all."
+        help="Specific scrapers to run (e.g., hackernews reddit). If not specified, runs all.",
     )
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging"
-    )
-    parser.add_argument(
-        "--show-stats",
-        action="store_true",
-        help="Show detailed statistics after scraping"
+        "--show-stats", action="store_true", help="Show detailed statistics after scraping"
     )
     args = parser.parse_args()
 
@@ -59,37 +53,35 @@ def main():
     try:
         # Create scraper runner
         scraper_runner = ScraperRunner()
-        
+
         # Show initial statistics
         if args.show_stats:
             with get_db() as db:
                 total_content = db.query(Content).count()
-                new_content = db.query(Content).filter(Content.status == ContentStatus.NEW.value).count()
+                new_content = (
+                    db.query(Content).filter(Content.status == ContentStatus.NEW.value).count()
+                )
                 logger.info("Initial database stats:")
                 logger.info(f"  Total content: {total_content}")
                 logger.info(f"  New content: {new_content}")
-        
+
         # Determine run type
         if args.scrapers:
             # If specific scrapers are provided, use the first one as run type
             # or 'custom' if multiple
-            run_type = args.scrapers[0] if len(args.scrapers) == 1 else 'custom'
+            run_type = args.scrapers[0] if len(args.scrapers) == 1 else "custom"
         else:
-            run_type = 'all'
-        
+            run_type = "all"
+
         # Create run configuration
-        run_config = {
-            "debug": args.debug,
-            "specific_scrapers": args.scrapers
-        }
-        
+        run_config = {"debug": args.debug, "specific_scrapers": args.scrapers}
+
         # Start tracking the scraper run
         with track_event("scraper_run", run_type, config=run_config) as event_id:
-            
             # Show available scrapers
             available_scrapers = scraper_runner.list_scrapers()
             logger.info(f"Available scrapers: {', '.join(available_scrapers)}")
-            
+
             # Run scrapers
             if args.scrapers:
                 scraper_results = {}
@@ -108,9 +100,11 @@ def main():
                             scraped=stats.scraped,
                             saved=stats.saved,
                             duplicates=stats.duplicates,
-                            errors=stats.errors
+                            errors=stats.errors,
                         )
-                        logger.info(f"  Scraped: {stats.scraped}, Saved: {stats.saved}, Duplicates: {stats.duplicates}, Errors: {stats.errors}")
+                        logger.info(
+                            f"  Scraped: {stats.scraped}, Saved: {stats.saved}, Duplicates: {stats.duplicates}, Errors: {stats.errors}"
+                        )
                     else:
                         scraper_results[scraper_name] = 0
                         logger.warning(f"  No stats returned for {scraper_name}")
@@ -118,13 +112,13 @@ def main():
                 logger.info("\nRunning all scrapers...")
                 scraper_stats = scraper_runner.run_all_with_stats()
                 scraper_results = {name: stats.saved for name, stats in scraper_stats.items()}
-                
+
                 # Log summary for all scrapers
                 total_scraped = sum(s.scraped for s in scraper_stats.values())
                 total_saved = sum(s.saved for s in scraper_stats.values())
                 total_duplicates = sum(s.duplicates for s in scraper_stats.values())
                 total_errors = sum(s.errors for s in scraper_stats.values())
-                
+
                 log_event(
                     event_type="scraper_run_summary",
                     event_name="all",
@@ -133,14 +127,24 @@ def main():
                     total_saved=total_saved,
                     total_duplicates=total_duplicates,
                     total_errors=total_errors,
-                    scraper_stats={name: {"scraped": s.scraped, "saved": s.saved, "duplicates": s.duplicates, "errors": s.errors} for name, s in scraper_stats.items()}
+                    scraper_stats={
+                        name: {
+                            "scraped": s.scraped,
+                            "saved": s.saved,
+                            "duplicates": s.duplicates,
+                            "errors": s.errors,
+                        }
+                        for name, s in scraper_stats.items()
+                    },
                 )
-                
+
                 # Show individual scraper results
                 for scraper_name, stats in scraper_stats.items():
                     logger.info(f"\n{scraper_name}:")
-                    logger.info(f"  Scraped: {stats.scraped}, Saved: {stats.saved}, Duplicates: {stats.duplicates}, Errors: {stats.errors}")
-            
+                    logger.info(
+                        f"  Scraped: {stats.scraped}, Saved: {stats.saved}, Duplicates: {stats.duplicates}, Errors: {stats.errors}"
+                    )
+
             # Summary
             total_scraped = sum(scraper_results.values())
             logger.info("\n" + "=" * 60)
@@ -148,43 +152,51 @@ def main():
             for scraper, count in scraper_results.items():
                 logger.info(f"  {scraper}: {count} new items")
             logger.info(f"  Total: {total_scraped} new items")
-            
+
             # Show final statistics
             if args.show_stats:
                 with get_db() as db:
                     logger.info("\n" + "=" * 60)
                     logger.info("FINAL STATISTICS")
                     logger.info("=" * 60)
-                    
+
                     # Content stats
                     logger.info("Content Statistics:")
                     # Count by status
                     for status in ContentStatus:
                         count = db.query(Content).filter(Content.status == status.value).count()
                         logger.info(f"  {status.value}: {count}")
-                    
+
                     # Count by type
                     logger.info("\nContent by type:")
                     for content_type in ContentType:
-                        count = db.query(Content).filter(Content.content_type == content_type.value).count()
+                        count = (
+                            db.query(Content)
+                            .filter(Content.content_type == content_type.value)
+                            .count()
+                        )
                         logger.info(f"  {content_type.value}s: {count}")
-                    
+
                     # Recent activity
                     today = datetime.utcnow().date()
-                    scraped_today = db.query(Content).filter(
-                        func.date(Content.created_at) >= today
-                    ).count()
+                    scraped_today = (
+                        db.query(Content).filter(func.date(Content.created_at) >= today).count()
+                    )
                     logger.info(f"\nScraped today: {scraped_today}")
-                    
+
                     # NEW content ready for processing
-                    new_content = db.query(Content).filter(Content.status == ContentStatus.NEW.value).count()
+                    new_content = (
+                        db.query(Content).filter(Content.status == ContentStatus.NEW.value).count()
+                    )
                     logger.info(f"\nContent ready for processing: {new_content}")
                     if new_content > 0:
-                        logger.info("Run 'python scripts/run_workers.py' to process the scraped content")
-        
+                        logger.info(
+                            "Run 'python scripts/run_workers.py' to process the scraped content"
+                        )
+
         logger.info("\nScraping completed successfully!")
         return 0
-        
+
     except KeyboardInterrupt:
         logger.warning("\nProcess interrupted by user")
         return 1

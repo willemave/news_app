@@ -33,8 +33,7 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
     try:
         existing = db.execute(
             select(ContentReadStatus).where(
-                ContentReadStatus.content_id == content_id,
-                ContentReadStatus.user_id == user_id
+                ContentReadStatus.content_id == content_id, ContentReadStatus.user_id == user_id
             )
         ).scalar_one_or_none()
 
@@ -107,12 +106,16 @@ def mark_contents_as_read(
 
     timestamp = datetime.utcnow()
     try:
-        existing_records = db.execute(
-            select(ContentReadStatus).where(
-                ContentReadStatus.content_id.in_(unique_ids),
-                ContentReadStatus.user_id == user_id
+        existing_records = (
+            db.execute(
+                select(ContentReadStatus).where(
+                    ContentReadStatus.content_id.in_(unique_ids),
+                    ContentReadStatus.user_id == user_id,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         existing_ids = {record.content_id for record in existing_records}
         for record in existing_records:
@@ -172,11 +175,15 @@ def get_read_content_ids(db: Session, user_id: int) -> list[int]:
         List of content IDs read by user
     """
     logger.debug("[READ_STATUS] Fetching read content IDs for user_id=%s", user_id)
-    result = db.execute(
-        select(ContentReadStatus.content_id)
-        .where(ContentReadStatus.user_id == user_id)
-        .distinct()
-    ).scalars().all()
+    result = (
+        db.execute(
+            select(ContentReadStatus.content_id)
+            .where(ContentReadStatus.user_id == user_id)
+            .distinct()
+        )
+        .scalars()
+        .all()
+    )
     content_ids = list(result)
     logger.info(
         "[READ_STATUS] Found %s read content IDs for user_id=%s",
@@ -200,8 +207,7 @@ def is_content_read(db: Session, content_id: int, user_id: int) -> bool:
     """
     result = db.execute(
         select(ContentReadStatus).where(
-            ContentReadStatus.content_id == content_id,
-            ContentReadStatus.user_id == user_id
+            ContentReadStatus.content_id == content_id, ContentReadStatus.user_id == user_id
         )
     ).scalar_one_or_none()
     return result is not None

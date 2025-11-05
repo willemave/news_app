@@ -60,15 +60,23 @@ class ContentService {
         return try await client.request(APIEndpoints.searchContent, queryItems: queryItems)
     }
 
-    func fetchContentList(contentType: String? = nil,
+    func fetchContentList(contentTypes: [String]? = nil,
                          date: String? = nil,
                          readFilter: String = "all",
                          cursor: String? = nil,
                          limit: Int = 25) async throws -> ContentListResponse {
         var queryItems: [URLQueryItem] = []
 
-        if let contentType = contentType, contentType != "all" {
-            queryItems.append(URLQueryItem(name: "content_type", value: contentType))
+        // Support multiple content_type parameters
+        if let contentTypes = contentTypes, !contentTypes.isEmpty {
+            // Don't filter if contains "all"
+            let types = contentTypes.filter { $0 != "all" }
+            if !types.isEmpty {
+                // Add multiple content_type query parameters
+                for type in types {
+                    queryItems.append(URLQueryItem(name: "content_type", value: type))
+                }
+            }
         }
 
         if let date = date, !date.isEmpty {
@@ -83,6 +91,16 @@ class ContentService {
         }
 
         return try await client.request(APIEndpoints.contentList, queryItems: queryItems)
+    }
+
+    // Backward compatibility: single content type
+    func fetchContentList(contentType: String? = nil,
+                         date: String? = nil,
+                         readFilter: String = "all",
+                         cursor: String? = nil,
+                         limit: Int = 25) async throws -> ContentListResponse {
+        let types = contentType.map { [$0] }
+        return try await fetchContentList(contentTypes: types, date: date, readFilter: readFilter, cursor: cursor, limit: limit)
     }
     
     func fetchContentDetail(id: Int) async throws -> ContentDetail {

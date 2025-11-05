@@ -26,7 +26,7 @@ error_logger = GenericErrorLogger("openai_llm")
 MAX_FILE_SIZE_MB = 25
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 CHUNK_DURATION_SECONDS = 10 * 60  # 10 minutes in seconds
-MAX_CONTENT_LENGTH = 200000  # Maximum characters to prevent token limit errors
+MAX_CONTENT_LENGTH = 1500000  # Maximum characters (~300K tokens, leaves room for prompt + output)
 
 
 class StructuredSummaryRetryableError(Exception):
@@ -482,196 +482,196 @@ _This story was originally published in May 2023 and is updated regularly with n
 
 
 def generate_summary_prompt(
-    content_type: str, max_bullet_points: int, max_quotes: int, content: str
-) -> str:
-    """Generate prompt based on content type"""
+    content_type: str, max_bullet_points: int, max_quotes: int
+) -> tuple[str, str]:
+    """
+    Generate optimized prompts for caching.
+
+    Returns:
+        Tuple of (system_message, user_message_template)
+        System message contains static instructions (cached).
+        User message template is for variable content (not cached).
+    """
     if content_type == "hackernews":
-        return f"""
-        You are an expert content analyst. Analyze the following HackerNews discussion, which
-        includes the linked article content (if any) and community comments. Provide a structured
-        summary that captures both the main content and key insights from the discussion.
+        system_message = f"""You are an expert content analyst. Analyze HackerNews discussions, which
+include linked article content (if any) and community comments. Provide a structured
+summary that captures both the main content and key insights from the discussion.
 
-        Important:
-        - Generate a descriptive title that describes the article in detail.
-        - There may be technical terms in the content, please don't make any spelling errors.
-        - Use the <title_examples> to see how to format the title.
-        - Extract actual quotes from both the article and notable comments
-        - Make bullet points capture insights from BOTH content and discussion
-        - Include {max_bullet_points} bullet points that blend article + comment insights
-        - Include up to {max_quotes} notable quotes (can be from article or comments)
-        - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
-        - For quotes from comments, use format "HN user [username]" as context
-        - Include 3-8 relevant topic tags
-        - Generate 3-5 thought-provoking questions that help readers think critically about the content
-        - Identify 2-4 counter-arguments or alternative perspectives mentioned in comments or implied by the content
-        - Add a "classification" field with either "to_read" or "skip"
-        - Add a special section in the overview about the HN community response
-        - Set "full_markdown" to include the article content AND the comments
+Important:
+- Generate a descriptive title that describes the article in detail.
+- There may be technical terms in the content, please don't make any spelling errors.
+- Use the <title_examples> to see how to format the title.
+- Extract actual quotes from both the article and notable comments
+- Make bullet points capture insights from BOTH content and discussion
+- Include {max_bullet_points} bullet points that blend article + comment insights
+- Include up to {max_quotes} notable quotes (can be from article or comments)
+- IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
+- For quotes from comments, use format "HN user [username]" as context
+- Include 3-8 relevant topic tags
+- Generate 3-5 thought-provoking questions that help readers think critically about the content
+- Identify 2-4 counter-arguments or alternative perspectives mentioned in comments or implied by the content
+- Add a "classification" field with either "to_read" or "skip"
+- Add a special section in the overview about the HN community response
+- Set "full_markdown" to include the article content AND the comments
 
-        {TITLE_EXAMPLES}
+{TITLE_EXAMPLES}
 
-        Questions Guidelines:
-        - Questions should prompt critical thinking about implications, limitations, or applications
-        - Draw from both the article content and HN discussion
-        - Focus on "what if", "how might", "what are the implications" style questions
+Questions Guidelines:
+- Questions should prompt critical thinking about implications, limitations, or applications
+- Draw from both the article content and HN discussion
+- Focus on "what if", "how might", "what are the implications" style questions
 
-        Counter Arguments Guidelines:
-        - Look for dissenting opinions or skeptical viewpoints in HN comments
-        - Identify assumptions that could be challenged
-        - Include technical critiques or alternative approaches mentioned
-        - If no strong counter-arguments exist, you may leave this list empty
+Counter Arguments Guidelines:
+- Look for dissenting opinions or skeptical viewpoints in HN comments
+- Identify assumptions that could be challenged
+- Include technical critiques or alternative approaches mentioned
+- If no strong counter-arguments exist, you may leave this list empty
 
-        Classification Guidelines:
-        - Consider both article quality AND discussion quality
-        - High-quality technical discussions should be "to_read" even if article is average
-        - Set to "skip" if both article and comments lack substance
+Classification Guidelines:
+- Consider both article quality AND discussion quality
+- High-quality technical discussions should be "to_read" even if article is average
+- Set to "skip" if both article and comments lack substance"""
 
-        Content and Discussion:
-        {content}
-        """
+        user_message = "Analyze this content and discussion:\n\n{content}"
+
     elif content_type == "news_digest":
-        return f"""
-        You are an expert news editor. Read the provided article content and any additional
-        aggregator context, then produce a concise JSON object with the following fields:
+        system_message = f"""You are an expert news editor. Read provided article content and any additional
+aggregator context, then produce a concise JSON object with the following fields:
 
-        {{
-          "title": "Descriptive headline (max 110 characters) highlighting the core takeaway",
-          "article_url": "Canonical article URL",
-          "key_points": [
-            "Bullet #1 in 160 characters or less",
-            "Bullet #2",
-            "Bullet #3"  // include up to {max_bullet_points} total, prioritising impact
-          ],
-          "summary": "Optional 2-sentence overview (≤ 280 characters). Use null if redundant.",
-          "classification": "to_read" | "skip"
-        }}
+{{
+  "title": "Descriptive headline (max 110 characters) highlighting the core takeaway",
+  "article_url": "Canonical article URL",
+  "key_points": [
+    "Bullet #1 in 160 characters or less",
+    "Bullet #2",
+    "Bullet #3"  // include up to {max_bullet_points} total, prioritising impact
+  ],
+  "summary": "Optional 2-sentence overview (≤ 280 characters). Use null if redundant.",
+  "classification": "to_read" | "skip"
+}}
 
-        Guidelines:
-        - Focus on why the story matters, not just what happened.
-        - There may be technical terms in the content, please don't make any spelling errors.
-        - Keep each key point self-contained, concrete, and free of markdown or numbering.
-        - Prefer action verbs, quantitative figures, and clear implications.
-        - If the content is low-value or promotional, set classification to "skip" but still
-          surface truthful key points.
-        - Never include markdown, topics, quotes, or any extra fields.
+Guidelines:
+- Focus on why the story matters, not just what happened.
+- There may be technical terms in the content, please don't make any spelling errors.
+- Keep each key point self-contained, concrete, and free of markdown or numbering.
+- Prefer action verbs, quantitative figures, and clear implications.
+- If the content is low-value or promotional, set classification to "skip" but still
+  surface truthful key points.
+- Never include markdown, topics, quotes, or any extra fields.
 
-        {TITLE_EXAMPLES}
+{TITLE_EXAMPLES}"""
 
-        Article & Aggregator Context:
-        {content}
-        """
+        user_message = "Article & Aggregator Context:\n\n{content}"
+
     elif content_type == "podcast":
-        return f"""
-        You are an expert content analyst. Analyze the following podcast transcript and provide a
-        structured summary with classification.
+        system_message = f"""You are an expert content analyst. Analyze podcast transcripts and provide
+structured summaries with classification.
 
-        Important:
-        - Generate a descriptive title that describes the article in detail.
-        - There may be technical terms in the content, please don't make any spelling errors.
-        - Use the <title_examples> to see how to format the title.
-        - Focus on the "why it matters" aspect rather than just restating the topic
-        - Extract actual quotes.
-        - Make bullet points specific and information dense
-        - For the overview field: Write out as many paragraphs as needed to capture the conversations
-          and provide a comprehensive overview of the entire podcast conversation.
-          This should allow someone to read it and understand the full context.
-        - Include up to {max_quotes} notable quotes - each quote should be
-          at least 2-3 sentences long to provide meaningful context and insight
-        - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
-        - Include 3-8 relevant topic tags
-        - Generate 3-5 thought-provoking questions that would help listeners reflect on the discussion
-        - Identify 2-4 counter-arguments or alternative perspectives to the main ideas discussed
-        - Add a "classification" field with either "to_read" or "skip"
-        - Set "full_markdown" to an empty string "" (do not include the full transcript)
+Important:
+- Generate a descriptive title that describes the article in detail.
+- There may be technical terms in the content, please don't make any spelling errors.
+- Use the <title_examples> to see how to format the title.
+- Focus on the "why it matters" aspect rather than just restating the topic
+- Extract actual quotes.
+- Make bullet points specific and information dense
+- For the overview field: Write out as many paragraphs as needed to capture the conversations
+  and provide a comprehensive overview of the entire podcast conversation.
+  This should allow someone to read it and understand the full context.
+- Include up to {max_quotes} notable quotes - each quote should be
+  at least 2-3 sentences long to provide meaningful context and insight
+- IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
+- Include 3-8 relevant topic tags
+- Generate 3-5 thought-provoking questions that would help listeners reflect on the discussion
+- Identify 2-4 counter-arguments or alternative perspectives to the main ideas discussed
+- Add a "classification" field with either "to_read" or "skip"
+- Set "full_markdown" to an empty string "" (do not include the full transcript)
 
-        {TITLE_EXAMPLES}
+{TITLE_EXAMPLES}
 
-        Questions Guidelines:
-        - Questions should encourage deeper thinking about the topics discussed
-        - Consider implications for the listener's work, industry, or life
-        - Focus on "how could you apply", "what challenges might arise", "what would happen if" style questions
+Questions Guidelines:
+- Questions should encourage deeper thinking about the topics discussed
+- Consider implications for the listener's work, industry, or life
+- Focus on "how could you apply", "what challenges might arise", "what would happen if" style questions
 
-        Counter Arguments Guidelines:
-        - Identify perspectives or viewpoints that weren't fully explored in the podcast
-        - Consider what skeptics or critics might say about the main claims
-        - Think about limitations or edge cases not addressed
-        - If the podcast is one-sided, what would the other side argue?
-        - If no strong counter-arguments exist, you may leave this list empty
+Counter Arguments Guidelines:
+- Identify perspectives or viewpoints that weren't fully explored in the podcast
+- Consider what skeptics or critics might say about the main claims
+- Think about limitations or edge cases not addressed
+- If the podcast is one-sided, what would the other side argue?
+- If no strong counter-arguments exist, you may leave this list empty
 
-        Classification Guidelines:
-        - Set classification to "skip" if the content:
-          * Is light on content or seems like marketing/promotional material
-          * Is general mainstream news without depth or unique insights
-          * Lacks substantive information or analysis
-          * Appears to be clickbait or sensationalized
-        - Set classification to "to_read" if the content:
-          * Contains in-depth analysis or unique insights
-          * Provides technical or specialized knowledge
-          * Offers original research or investigation
-          * Has educational or informative value
+Classification Guidelines:
+- Set classification to "skip" if the content:
+  * Is light on content or seems like marketing/promotional material
+  * Is general mainstream news without depth or unique insights
+  * Lacks substantive information or analysis
+  * Appears to be clickbait or sensationalized
+- Set classification to "to_read" if the content:
+  * Contains in-depth analysis or unique insights
+  * Provides technical or specialized knowledge
+  * Offers original research or investigation
+  * Has educational or informative value"""
 
-        Podcast Transcript:
-        {content}
-        """
+        user_message = "Podcast Transcript:\n\n{content}"
+
     else:
         # For articles and other content types, include full markdown
-        return f"""
-        You are an expert content analyst. Analyze the following content and provide a
-        structured summary with classification AND format the full text as clean markdown.
+        system_message = f"""You are an expert content analyst. Analyze content and provide
+structured summaries with classification AND format the full text as clean markdown.
 
-        Important:
-        - Generate a descriptive title that describes the article in detail.
-        - There may be technical terms in the content, please don't make any spelling errors.
-        - Use the <title_examples> to see how to format the title.
-        - Extract actual quotes.
-        - Make bullet points specific and information dense.
-        - Overview should be 50-100 words, short and punchy
-        - Include {max_bullet_points} bullet points.
-        - Include up to {max_quotes} notable quotes.
-        - IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
-        - Include 3-8 relevant topic tags
-        - Generate 3-5 thought-provoking questions that help readers think critically about the content
-        - Identify 2-4 counter-arguments or alternative perspectives to the main claims
-        - Add a "classification" field with either "to_read" or "skip"
-        - Add a "full_markdown" field with the entire content formatted as clean, readable markdown
+Important:
+- Generate a descriptive title that describes the article in detail.
+- There may be technical terms in the content, please don't make any spelling errors.
+- Use the <title_examples> to see how to format the title.
+- Extract actual quotes.
+- Make bullet points specific and information dense.
+- Overview should be 50-100 words, short and punchy
+- Include {max_bullet_points} bullet points.
+- Include up to {max_quotes} notable quotes.
+- IMPORTANT: Each quote must be at least 10 characters long - do not include short snippets
+- Include 3-8 relevant topic tags
+- Generate 3-5 thought-provoking questions that help readers think critically about the content
+- Identify 2-4 counter-arguments or alternative perspectives to the main claims
+- Add a "classification" field with either "to_read" or "skip"
+- Add a "full_markdown" field with the entire content formatted as clean, readable markdown
 
-        {TITLE_EXAMPLES}
+{TITLE_EXAMPLES}
 
-        Questions Guidelines:
-        - Questions should prompt critical thinking about implications, assumptions, or applications
-        - Consider "what if" scenarios, potential consequences, or unexplored angles
-        - Focus on helping readers engage more deeply with the material
+Questions Guidelines:
+- Questions should prompt critical thinking about implications, assumptions, or applications
+- Consider "what if" scenarios, potential consequences, or unexplored angles
+- Focus on helping readers engage more deeply with the material
 
-        Counter Arguments Guidelines:
-        - Look for assumptions that could be challenged
-        - Consider alternative interpretations of the evidence
-        - Think about what critics or skeptics might say
-        - Identify limitations or weaknesses in the argument
-        - If the content is balanced or no strong counter-arguments exist, you may leave this list empty
+Counter Arguments Guidelines:
+- Look for assumptions that could be challenged
+- Consider alternative interpretations of the evidence
+- Think about what critics or skeptics might say
+- Identify limitations or weaknesses in the argument
+- If the content is balanced or no strong counter-arguments exist, you may leave this list empty
 
-        Classification Guidelines:
-        - Set classification to "skip" if the content:
-          * Is light on content or seems like marketing/promotional material
-          * Is general mainstream news without depth or unique insights
-          * Lacks substantive information or analysis
-          * Appears to be clickbait or sensationalized
-        - Set classification to "to_read" if the content:
-          * Contains in-depth analysis or unique insights
-          * Provides technical or specialized knowledge
-          * Offers original research or investigation
-          * Has educational or informative value
+Classification Guidelines:
+- Set classification to "skip" if the content:
+  * Is light on content or seems like marketing/promotional material
+  * Is general mainstream news without depth or unique insights
+  * Lacks substantive information or analysis
+  * Appears to be clickbait or sensationalized
+- Set classification to "to_read" if the content:
+  * Contains in-depth analysis or unique insights
+  * Provides technical or specialized knowledge
+  * Offers original research or investigation
+  * Has educational or informative value
 
-        Markdown Formatting Guidelines:
-        - Format the full content as clean, readable markdown
-        - Use proper heading hierarchy (# for main title, ## for sections, ### for subsections)
-        - Preserve paragraphs with proper spacing
-        - Format lists, quotes, and code blocks appropriately
-        - Remove any unnecessary HTML artifacts or formatting issues
-        - Make the content easy to read in markdown format
+Markdown Formatting Guidelines:
+- Format the full content as clean, readable markdown
+- Use proper heading hierarchy (# for main title, ## for sections, ### for subsections)
+- Preserve paragraphs with proper spacing
+- Format lists, quotes, and code blocks appropriately
+- Remove any unnecessary HTML artifacts or formatting issues
+- Make the content easy to read in markdown format"""
 
-        Content:
-        {content}
-        """
+        user_message = "Content:\n\n{content}"
+
+    return system_message, user_message
 
 
 class OpenAISummarizationService:
@@ -922,7 +922,7 @@ class OpenAISummarizationService:
         self,
         content: str,
         max_bullet_points: int = 6,
-        max_quotes: int = 3,
+        max_quotes: int = 8,
         content_type: str = "article",
     ) -> StructuredSummary | NewsSummary | None:
         """Summarize content using LLM and classify it.
@@ -930,7 +930,7 @@ class OpenAISummarizationService:
         Args:
             content: The content to summarize
             max_bullet_points: Maximum number of bullet points to generate (default: 6)
-            max_quotes: Maximum number of quotes to extract (default: 3)
+            max_quotes: Maximum number of quotes to extract (default: 8)
             content_type: Type of content - "article" or "podcast" (default: "article")
 
         Returns:
@@ -950,7 +950,12 @@ class OpenAISummarizationService:
                 )
                 content = content[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated due to length]"
 
-            prompt = generate_summary_prompt(content_type, max_bullet_points, max_quotes, content)
+            # Generate cache-optimized prompts (system instructions + user content)
+            system_message, user_template = generate_summary_prompt(
+                content_type, max_bullet_points, max_quotes
+            )
+            user_message = user_template.format(content=content)
+
             schema: type[StructuredSummary] | type[NewsSummary]
             schema = NewsSummary if content_type == "news_digest" else StructuredSummary
 
@@ -966,11 +971,12 @@ class OpenAISummarizationService:
                 response = self.client.responses.parse(
                     model=self.model_name,
                     input=[
-                        {"role": "system", "content": "You are an expert content analyst."},
-                        {"role": "user", "content": prompt},
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_message},
                     ],
                     max_output_tokens=max_output_tokens,
                     text_format=schema,
+                    prompt_cache_key=f"summary_{content_type}",  # Group by content type for caching
                 )
             except ValidationError as validation_error:
                 logger.warning("OpenAI structured output validation failed: %s", validation_error)
@@ -1021,6 +1027,27 @@ class OpenAISummarizationService:
                     context={"output_text": output_text},
                 )
                 return None
+
+            # Log cache metrics for monitoring
+            usage = response.usage
+            if usage:
+                # OpenAI uses input_tokens for prompt tokens
+                input_tokens = getattr(usage, "input_tokens", 0)
+
+                # Access cached tokens from input_tokens_details if available
+                cached_tokens = 0
+                if hasattr(usage, "input_tokens_details") and usage.input_tokens_details:
+                    cached_tokens = getattr(usage.input_tokens_details, "cached_tokens", 0)
+
+                cache_hit_rate = (cached_tokens / input_tokens * 100) if input_tokens > 0 else 0
+
+                logger.info(
+                    "OpenAI cache metrics - content_type: %s, input_tokens: %d, cached_tokens: %d, cache_hit_rate: %.1f%%",
+                    content_type,
+                    input_tokens,
+                    cached_tokens,
+                    cache_hit_rate,
+                )
 
             return self._finalize_summary(parsed_message, content_type)
 

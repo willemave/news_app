@@ -21,6 +21,15 @@ class UnreadCountService: ObservableObject {
     @Published var podcastCount: Int = 0
     @Published var newsCount: Int = 0
 
+    // Computed properties for convenience
+    var longFormCount: Int {
+        articleCount + podcastCount
+    }
+
+    var shortFormCount: Int {
+        newsCount
+    }
+
     private let client = APIClient.shared
     private var refreshTimer: Timer?
 

@@ -1,4 +1,5 @@
 """Security utilities for authentication."""
+
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -79,11 +80,7 @@ def verify_token(token: str) -> dict[str, Any]:
     """
     settings = get_settings()
 
-    payload = jwt.decode(
-        token,
-        settings.JWT_SECRET_KEY,
-        algorithms=[settings.JWT_ALGORITHM]
-    )
+    payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
 
     return payload
 
@@ -120,7 +117,7 @@ def verify_apple_token(id_token: str) -> dict[str, Any]:
         claims = jwt.decode(
             id_token,
             options={"verify_signature": False},
-            algorithms=["RS256", "HS256"]  # Accept both for testing
+            algorithms=["RS256", "HS256"],  # Accept both for testing
         )
 
         # Validate required claims
