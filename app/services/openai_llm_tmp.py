@@ -34,6 +34,7 @@ class StructuredSummaryRetryableError(Exception):
     """Retryable summarization failure used to trigger Tenacity retries."""
 
 
+
 class OpenAISummarizationService:
     """OpenAI service for content summarization using GPT-5-mini."""
 
