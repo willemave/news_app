@@ -11,6 +11,7 @@ from app.models.schema import Content
 from app.pipeline.checkout import get_checkout_manager
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.processing_strategies.registry import get_strategy_registry
+from app.services.anthropic_llm import get_anthropic_summarization_service
 from app.services.http import NonRetryableError, get_http_service
 from app.services.openai_llm import get_openai_summarization_service
 from app.services.queue import TaskType, get_queue_service
@@ -26,8 +27,8 @@ class ContentWorker:
     def __init__(self):
         self.checkout_manager = get_checkout_manager()
         self.http_service = get_http_service()
-        self.llm_service = get_openai_summarization_service()
-        self.llm_provider = "openai"
+        self.anthropic_service = get_anthropic_summarization_service()
+        self.openai_service = get_openai_summarization_service()
         self.queue_service = get_queue_service()
         self.strategy_registry = get_strategy_registry()
         self.podcast_download_worker = PodcastDownloadWorker()
@@ -316,29 +317,38 @@ class ContentWorker:
                 summarization_content_type = llm_data.get("content_type") or "article"
                 llm_payload = llm_data["content_to_summarize"]
 
-                logger.debug(
-                    "Summarizing content %s using %s (payload_length=%s, type=%s)",
-                    content.id,
-                    getattr(self, "llm_provider", "unknown"),
-                    len(llm_payload) if isinstance(llm_payload, str) else "binary",
-                    summarization_content_type,
-                )
-
+                # Route to appropriate LLM service based on content type
                 if content.content_type == ContentType.NEWS:
+                    llm_service = self.openai_service
+                    llm_provider = "openai"
                     summarization_content_type = "news_digest"
                     aggregator_context = self._build_news_context(content.metadata)
                     if aggregator_context:
                         llm_payload = (
                             f"Context:\n{aggregator_context}\n\nArticle Content:\n{llm_payload}"
                         )
-                    summary = self.llm_service.summarize_content(
+                else:
+                    # Articles and Podcasts use Anthropic
+                    llm_service = self.anthropic_service
+                    llm_provider = "anthropic"
+
+                logger.debug(
+                    "Summarizing content %s using %s (payload_length=%s, type=%s)",
+                    content.id,
+                    llm_provider,
+                    len(llm_payload) if isinstance(llm_payload, str) else "binary",
+                    summarization_content_type,
+                )
+
+                if content.content_type == ContentType.NEWS:
+                    summary = llm_service.summarize_content(
                         content=llm_payload,
                         max_bullet_points=4,
                         max_quotes=0,
                         content_type=summarization_content_type,
                     )
                 else:
-                    summary = self.llm_service.summarize_content(
+                    summary = llm_service.summarize_content(
                         content=llm_payload,
                         content_type=summarization_content_type,
                     )

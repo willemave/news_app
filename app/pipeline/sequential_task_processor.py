@@ -13,6 +13,7 @@ from app.models.schema import Content
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker
 from app.scraping.runner import ScraperRunner
+from app.services.anthropic_llm import get_anthropic_summarization_service
 from app.services.openai_llm import get_openai_summarization_service
 from app.services.queue import QueueService, TaskType
 
@@ -26,7 +27,9 @@ class SequentialTaskProcessor:
         logger.debug("Initializing SequentialTaskProcessor...")
         self.queue_service = QueueService()
         logger.debug("QueueService initialized")
-        self.llm_service = get_openai_summarization_service()
+        self.anthropic_service = get_anthropic_summarization_service()
+        logger.debug("Anthropic summarization service initialized")
+        self.openai_service = get_openai_summarization_service()
         logger.debug("OpenAI summarization service initialized")
         self.settings = get_settings()
         logger.debug("Settings loaded")
@@ -192,8 +195,22 @@ class SequentialTaskProcessor:
                     logger.error(f"No text to summarize for content {content_id}")
                     return False
 
+                # Route to appropriate LLM service based on content type
+                if content.content_type == "news":
+                    llm_service = self.openai_service
+                    llm_provider = "openai"
+                else:
+                    # Articles and Podcasts use Anthropic
+                    llm_service = self.anthropic_service
+                    llm_provider = "anthropic"
+
+                logger.debug(
+                    f"Summarizing content {content_id} using {llm_provider} "
+                    f"(type: {content.content_type})"
+                )
+
                 # Use LLM to generate summary synchronously
-                summary = self.llm_service.summarize_content(
+                summary = llm_service.summarize_content(
                     text_to_summarize, content_type=content.content_type
                 )
 
