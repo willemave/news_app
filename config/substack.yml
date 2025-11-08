@@ -48,3 +48,6 @@ feeds:
   - url: "https://shishir.substack.com/feed"
     name: "Shishir"
     limit: 5
+  - url: "https://henrikzeberg.substack.com/feed"
+    name: "Henrik Zeberg"
+    limit: 5

@@ -54,8 +54,30 @@ final class AuthenticationViewModel: ObservableObject {
                 let user = try await authService.getCurrentUser()
                 authState = .authenticated(user)
             } catch {
-                // Token is invalid or expired
-                authState = .unauthenticated
+                // Token validation failed - try to refresh before logging out
+                print("⚠️ Access token validation failed, attempting refresh...")
+
+                // Check if we have a refresh token
+                guard KeychainManager.shared.getToken(key: .refreshToken) != nil else {
+                    print("❌ No refresh token available - logging out")
+                    authState = .unauthenticated
+                    return
+                }
+
+                do {
+                    // Try to refresh the access token
+                    _ = try await authService.refreshAccessToken()
+                    print("✅ Token refresh successful, fetching user info...")
+
+                    // Try to get user again with new token
+                    let user = try await authService.getCurrentUser()
+                    authState = .authenticated(user)
+                    print("✅ User authenticated successfully after refresh")
+                } catch {
+                    // Refresh also failed - user needs to sign in again
+                    print("❌ Token refresh failed: \(error.localizedDescription)")
+                    authState = .unauthenticated
+                }
             }
         }
     }

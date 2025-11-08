@@ -39,17 +39,82 @@
 * **Test data**: Use factories or fixtures, never production data.
 
 ---
-#### 6  Dependencies
-* **Core**: fastapi, pydantic, pydantic-settings, python-multipart
-* **Database**: sqlalchemy>=2.0, alembic
-* **Authentication**: PyJWT, authlib, passlib[bcrypt], email-validator
-* **Testing**: pytest, pytest-cov, httpx, pytest-mock
-* **Utils**: python-dateutil
-* **External**: google-genai (not google-generativeai)
-* Package with **uv**:
-  uv add <pkg>
-  uv add --dev pytest httpx pytest-mock pytest-cov
-  source .venv/bin/activate
+#### 6  Dependencies (Complete)
+
+**Requires Python ≥3.13**. All dependencies managed via `uv` (defined in `pyproject.toml`).
+
+**Core Web Framework:**
+- `fastapi>=0.115.12` - Web framework
+- `uvicorn>=0.34.2` - ASGI server
+- `pydantic>=2.11.5` - Data validation
+- `pydantic-settings>=2.9.1` - Configuration management
+- `python-multipart` - Form data handling
+- `jinja2>=3.1.6` - HTML templates
+- `markupsafe>=3.0.2` - HTML escaping
+
+**Database:**
+- `sqlalchemy>=2.0.41` - ORM
+- `alembic>=1.16.1` - Database migrations
+
+**Authentication:**
+- `pyjwt[crypto]` - JWT token generation/validation
+- `passlib[bcrypt]` - Password hashing
+- `authlib>=1.6.5` - OAuth/Apple Sign In
+- `email-validator>=2.3.0` - Email validation
+
+**LLM Services:**
+- `openai>=1.75.0` - OpenAI GPT
+- `anthropic>=0.72.0` - Anthropic Claude
+- `google-genai>=1.18.0` - Google Gemini (**NOT** google-generativeai)
+- `tenacity>=9.1.2` - Retry logic with exponential backoff
+
+**Content Processing:**
+- `crawl4ai>=0.7.4,<0.8` - HTML/web content extraction
+- `playwright>=1.53.0` - Browser automation
+- `feedparser>=6.0.11` - RSS/Atom feed parsing
+- `yt-dlp @ git+https://github.com/yt-dlp/yt-dlp.git` - YouTube downloader
+- `bgutil-ytdlp-pot-provider>=1.2.2` - yt-dlp provider plugin
+- `openai-whisper>=20250625` - Audio transcription (local)
+- `ffmpeg-python>=0.2.0` - Audio processing
+- `torch>=2.8.0` - ML backend for Whisper
+- `markdown>=3.8` - Markdown processing
+
+**Reddit Integration:**
+- `praw>=7.7.1` - Reddit API client (Python Reddit API Wrapper)
+
+**HTTP & Utilities:**
+- `requests>=2.32.3` - HTTP client
+- `python-dateutil>=2.9.0.post0` - Date/time parsing
+- `pyyaml>=6.0.2` - YAML configuration
+- `jmespath>=1.0.1` - JSON querying
+- `nest-asyncio>=1.6.0` - Nested event loop support
+- `rich>=14.2.0` - Terminal formatting/logging
+
+**Development & Testing:**
+- `pytest>=8.3.5` - Testing framework
+- `pytest-asyncio>=1.0.0` - Async test support
+- `pytest-cov>=6.1.1` - Coverage reporting
+- `pytest-mock>=3.14.1` - Mocking utilities
+- `ruff>=0.11.12` - Fast Python linter/formatter
+
+**Package Management:**
+```bash
+# Install all dependencies
+uv sync
+
+# Add new dependency
+uv add <package-name>
+
+# Add dev dependency
+uv add --dev <package-name>
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Examples
+uv add requests
+uv add --dev pytest-benchmark
+```
 
 ---
 #### 7  Development Workflow
@@ -145,47 +210,556 @@
 **Keep all replies short, technical, and complete.**
 ```
 ---
-#### 11  Latest Project Structure (Oct 2025)
-Use this as the authoritative layout (supersedes earlier sketch if different).
+#### 11  Complete Project Structure (Nov 2025)
+Use this as the authoritative layout.
 
-- app/
-  - core/            : settings (Pydantic v2), logging, db init, **security (JWT)**, **deps (auth)**
-  - routers/         : `content`, `admin`, `logs`, `api_content`, **`auth` (new)**
-  - services/        : LLM integrations, event logger, HTTP helpers, **favorites (user-based)**, **read_status (user-based)**
-  - pipeline/        : sequential task processor, workers
-  - scraping/        : unified scrapers (podcast, substack) + runner
-  - processing_strategies/: HTML/HN strategies and parsers
-  - models/          : domain models, structured summary, **user (auth)**
-  - utils/           : `error_logger.py` (JSONL), misc helpers
-  - domain/          : domain-specific entities
-  - templates/       : module-scoped views (e.g., favorites)
-  - tests/           : unit/integration for routers, pipeline, **auth**
-- **client/newsly/newsly/** : iOS app (SwiftUI)
-  - **Services/**    : APIClient, **AuthenticationService**, **KeychainManager**
-  - **Models/**      : ContentSummary, **User (auth)**
-  - **ViewModels/**  : ContentListViewModel, **AuthenticationViewModel**
-  - **Views/**       : ArticlesView, **AuthenticationView**, SettingsView (updated)
-  - **newslyApp.swift** : App entry (updated with auth gate)
-- templates/         : primary Jinja templates (admin dashboard, logs, lists)
-- static/            : tailwind sources and compiled CSS
-- scripts/           : start/ops (`start_server.sh`, `start_workers.sh`, `start_scrapers.sh`, `run_*`)
-- alembic/ + alembic.ini : database migrations (includes auth migrations)
-- logs/              : JSONL and service logs (host-mounted)
-- **docs/plans/**    : design docs, implementation plans, **auth summary**
+**Python Backend (`app/`):**
+```
+app/
+├── core/                          # Core infrastructure
+│   ├── db.py                     # SQLAlchemy engine, sessions, init_db()
+│   ├── settings.py               # Pydantic v2 settings from .env
+│   ├── logging.py                # Root logger setup
+│   ├── security.py               # JWT utils, Apple token validation
+│   └── deps.py                   # FastAPI auth dependencies
+│
+├── models/                        # Database & domain models
+│   ├── schema.py                 # SQLAlchemy models (Content, ProcessingTask, etc.)
+│   ├── user.py                   # User model + auth Pydantic schemas
+│   ├── metadata.py               # Unified Pydantic metadata models
+│   ├── pagination.py             # Pagination models
+│   └── scraper_runs.py           # ScraperStats dataclass
+│
+├── routers/                       # FastAPI endpoints
+│   ├── auth.py                   # Apple Sign In, refresh, admin login/logout
+│   ├── content.py                # Web UI routes (/, /content/{id}, /favorites)
+│   ├── admin.py                  # Admin dashboard (/admin/)
+│   ├── logs.py                   # Log viewing & error analysis
+│   ├── api_content.py            # API backward compatibility layer
+│   └── api/                      # Refactored API routes
+│       ├── __init__.py           # Combined router
+│       ├── models.py             # API Pydantic schemas
+│       ├── content_list.py       # GET /, /search, /unread-counts
+│       ├── content_detail.py     # GET /{id}, /chatgpt-url
+│       ├── read_status.py        # POST /mark-read, /bulk-mark-read
+│       ├── favorites.py          # POST /favorites/toggle, GET /favorites
+│       └── content_actions.py    # POST /convert (news→article)
+│
+├── services/                      # Business logic
+│   ├── anthropic_llm.py          # Anthropic Claude integration
+│   ├── openai_llm.py             # OpenAI GPT integration (summarization)
+│   ├── google_flash.py           # Google Gemini Flash integration
+│   ├── llm_prompts.py            # LLM prompt templates
+│   ├── event_logger.py           # EventLog service
+│   ├── favorites.py              # User favorites operations
+│   ├── read_status.py            # User read status tracking
+│   ├── queue.py                  # Queue service & stats
+│   ├── http.py                   # HTTP client helpers
+│   └── whisper_local.py          # Local Whisper transcription
+│
+├── pipeline/                      # Task processing
+│   ├── sequential_task_processor.py  # Main orchestrator
+│   ├── worker.py                 # ContentWorker (articles/news)
+│   ├── podcast_workers.py        # PodcastDownloadWorker, TranscribeWorker
+│   └── checkout.py               # Content checkout mechanism
+│
+├── scraping/                      # Content scrapers
+│   ├── runner.py                 # Scraper orchestrator
+│   ├── base.py                   # Base scraper class
+│   ├── substack_unified.py       # Substack scraper
+│   ├── podcast_unified.py        # Podcast RSS/download
+│   ├── hackernews_unified.py     # Hacker News
+│   ├── reddit_unified.py         # Reddit (via PRAW)
+│   ├── twitter_unified.py        # Twitter/X
+│   ├── techmeme_unified.py       # Techmeme aggregator
+│   ├── youtube_unified.py        # YouTube videos
+│   └── atom_unified.py           # Generic Atom/RSS feeds
+│
+├── processing_strategies/         # Content-type processors
+│   ├── base_strategy.py          # Base strategy interface
+│   ├── registry.py               # Strategy registry
+│   ├── html_strategy.py          # HTML extraction (crawl4ai)
+│   ├── pdf_strategy.py           # PDF extraction
+│   ├── arxiv_strategy.py         # arXiv papers
+│   ├── pubmed_strategy.py        # PubMed articles
+│   ├── hackernews_strategy.py    # HN comment extraction
+│   ├── youtube_strategy.py       # YouTube transcript/metadata
+│   └── image_strategy.py         # Image content
+│
+├── http_client/
+│   └── robust_http_client.py     # Resilient HTTP with retries
+│
+├── utils/
+│   ├── error_logger.py           # JSONL error logging
+│   ├── pagination.py             # Cursor pagination utils
+│   ├── paths.py                  # Path utilities
+│   └── json_repair.py            # JSON repair utilities
+│
+├── domain/
+│   └── converters.py             # ORM→Pydantic converters
+│
+├── templates.py                   # Jinja2 template config
+├── constants.py                   # App-wide constants
+└── main.py                        # FastAPI app entry point
+```
+
+**iOS Client (`client/newsly/newsly/`):**
+```
+client/newsly/newsly/
+├── newslyApp.swift               # App entry, auth gate
+├── ContentView.swift             # Main app container
+├── Info.plist                    # App capabilities
+├── newsly.entitlements           # Sign in with Apple
+│
+├── Models/
+│   ├── User.swift                # User model
+│   ├── ContentSummary.swift      # List view model
+│   ├── ContentDetail.swift       # Detail view model
+│   ├── ContentListResponse.swift # API response wrapper
+│   ├── ContentType.swift         # article/podcast/news enum
+│   ├── ContentStatus.swift       # processing status enum
+│   ├── StructuredSummary.swift   # Structured summary model
+│   ├── ArticleMetadata.swift     # Article-specific metadata
+│   ├── PodcastMetadata.swift     # Podcast-specific metadata
+│   ├── NewsMetadata.swift        # News-specific metadata
+│   ├── NewsGroup.swift           # Grouped news model
+│   └── AnyCodable.swift          # JSON flexibility helper
+│
+├── ViewModels/
+│   ├── AuthenticationViewModel.swift     # Apple Sign In state
+│   ├── ContentListViewModel.swift        # Main feed logic
+│   ├── ContentDetailViewModel.swift      # Detail view logic
+│   ├── ArticleDetailViewModel.swift      # Article-specific
+│   ├── PodcastDetailViewModel.swift      # Podcast-specific
+│   ├── NewsGroupViewModel.swift          # News grouping
+│   └── SearchViewModel.swift             # Search functionality
+│
+├── Views/
+│   ├── AuthenticationView.swift          # Login screen
+│   ├── ContentListView.swift             # Main feed (deprecated)
+│   ├── ContentDetailView.swift           # Detail screen
+│   ├── ShortFormView.swift               # News feed (swipeable cards)
+│   ├── LongFormView.swift                # Articles/podcasts (paged)
+│   ├── FavoritesView.swift               # Favorites screen
+│   ├── RecentlyReadView.swift            # Read history
+│   ├── SearchView.swift                  # Search interface
+│   ├── SettingsView.swift                # Settings & logout
+│   ├── DebugMenuView.swift               # Debug tools
+│   └── Components/
+│       ├── SwipeableCard.swift           # Swipeable news card
+│       ├── PagedCardView.swift           # Pageable article card
+│       ├── CardStackView.swift           # Card stack container
+│       ├── ContentCard.swift             # Generic content card
+│       ├── NewsGroupCard.swift           # Grouped news display
+│       ├── NewsDigestDetailView.swift    # News detail modal
+│       ├── StructuredSummaryView.swift   # Summary display
+│       ├── FilterBar.swift               # Filter controls
+│       ├── FilterSheet.swift             # Filter modal
+│       ├── ContentTypeBadge.swift        # Type indicator
+│       ├── PlatformIcon.swift            # Source icon
+│       ├── PlaceholderCard.swift         # Loading state
+│       ├── LoadingView.swift             # Loading spinner
+│       ├── ErrorView.swift               # Error display
+│       └── ToastView.swift               # Toast notifications
+│
+└── Services/
+    ├── APIClient.swift               # HTTP client, JWT auto-refresh
+    ├── APIEndpoints.swift            # Endpoint definitions
+    ├── AuthenticationService.swift   # Apple Sign In integration
+    ├── KeychainManager.swift         # Secure token storage
+    ├── ContentService.swift          # Content API calls
+    ├── AppSettings.swift             # User preferences
+    ├── ChatGPTDeepLinkService.swift  # ChatGPT integration
+    ├── ToastService.swift            # Toast management
+    └── UnreadCountService.swift      # Badge counts
+```
+
+**Project Root:**
+```
+├── templates/         # Primary Jinja templates (admin dashboard, logs, lists)
+├── static/            # Tailwind sources and compiled CSS
+│   └── css/
+│       ├── styles.css  # Source Tailwind CSS
+│       └── app.css     # Compiled output
+├── scripts/           # Operational scripts (see section 18)
+├── alembic/           # Database migrations
+├── logs/              # JSONL and service logs (host-mounted)
+├── docs/plans/        # Design docs, implementation plans
+├── pyproject.toml     # Python dependencies (uv)
+├── uv.lock            # Lock file
+├── alembic.ini        # Alembic configuration
+└── docker-compose.yml # Container orchestration
+```
 
 ---
-#### 12  Key Tools & Services
-- Package/venv: `uv` (uses `pyproject.toml` + `uv.lock`).
-- Web: FastAPI, CORS, mounted static and templated views.
-- Data: SQLAlchemy 2.x, Alembic migrations.
-- Settings: `app/core/settings.py` (Pydantic v2, `.env`), required `DATABASE_URL`.
-- Workers: `scripts/run_workers.py` via SequentialTaskProcessor.
-- Scrapers: `scripts/run_scrapers.py` (cron in Docker uses supercronic).
-- LLM: OpenAI client, Tenacity for retries; Google Flash service wrapper.
-- Logging: `app/utils/error_logger.GenericErrorLogger` writes JSONL to `logs/errors/*.jsonl` and creates directories automatically.
+#### 12  Database Schema (Complete)
+
+All tables defined in `app/models/schema.py` using SQLAlchemy 2.x ORM.
+
+**`contents`** - Main content storage
+- `id` INTEGER PRIMARY KEY
+- `content_type` VARCHAR(20) INDEXED - "article", "podcast", "news"
+- `url` VARCHAR(2048) - Content source URL
+- `title` VARCHAR(500) NULLABLE - Content title
+- `source` VARCHAR(100) NULLABLE INDEXED - e.g., "Import AI", "Lenny's Podcast"
+- `platform` VARCHAR(50) NULLABLE INDEXED - e.g., "substack", "youtube", "twitter"
+- `is_aggregate` BOOLEAN DEFAULT FALSE INDEXED - True for news digests
+- `status` VARCHAR(20) DEFAULT "new" INDEXED - "new", "pending", "processing", "completed", "failed", "skipped"
+- `error_message` TEXT NULLABLE - Processing error details
+- `retry_count` INTEGER DEFAULT 0 - Retry attempts
+- `classification` VARCHAR(20) NULLABLE INDEXED - "to_read", "skip"
+- `checked_out_by` VARCHAR(100) NULLABLE INDEXED - Worker checkout lock
+- `checked_out_at` DATETIME NULLABLE - Checkout timestamp
+- `content_metadata` JSON DEFAULT {} - Type-specific structured data
+- `created_at` DATETIME DEFAULT utcnow - Record creation
+- `updated_at` DATETIME DEFAULT utcnow ONUPDATE utcnow - Last modification
+- `processed_at` DATETIME NULLABLE - Processing completion time
+- `publication_date` DATETIME NULLABLE INDEXED - Content publish date
+- **Unique Constraint:** (`url`, `content_type`)
+- **Indexes:**
+  - `idx_content_type_status` (content_type, status)
+  - `idx_checkout` (checked_out_by, checked_out_at)
+  - `idx_created_at` (created_at)
+  - `idx_content_aggregate` (content_type, is_aggregate)
+  - `idx_url_content_type` (url, content_type) UNIQUE
+
+**`processing_tasks`** - Task queue for async processing
+- `id` INTEGER PRIMARY KEY
+- `task_type` VARCHAR(50) INDEXED - "summarize", "transcribe", "download_audio"
+- `content_id` INTEGER NULLABLE INDEXED - Reference to contents.id
+- `payload` JSON DEFAULT {} - Task-specific parameters
+- `status` VARCHAR(20) DEFAULT "pending" INDEXED - "pending", "processing", "completed", "failed"
+- `created_at` DATETIME DEFAULT utcnow - Task creation
+- `started_at` DATETIME NULLABLE - Processing start
+- `completed_at` DATETIME NULLABLE - Processing completion
+- `error_message` TEXT NULLABLE - Error details
+- `retry_count` INTEGER DEFAULT 0 - Retry attempts
+- **Index:** `idx_task_status_created` (status, created_at)
+
+**`users`** - User accounts (authentication)
+- `id` INTEGER PRIMARY KEY INDEXED
+- `apple_id` VARCHAR(255) UNIQUE INDEXED - Apple Sign In identifier
+- `email` VARCHAR(255) UNIQUE INDEXED - User email
+- `full_name` VARCHAR(255) NULLABLE - Full name from Apple
+- `is_admin` BOOLEAN DEFAULT FALSE - Admin privileges
+- `is_active` BOOLEAN DEFAULT TRUE - Account status
+- `created_at` DATETIME TIMEZONE-AWARE DEFAULT now() - Account creation
+- `updated_at` DATETIME TIMEZONE-AWARE DEFAULT now() ONUPDATE now() - Last update
+
+**`content_read_status`** - User read tracking
+- `id` INTEGER PRIMARY KEY
+- `user_id` INTEGER INDEXED - Reference to users.id
+- `content_id` INTEGER INDEXED - Reference to contents.id
+- `read_at` DATETIME DEFAULT utcnow - Mark read timestamp
+- `created_at` DATETIME DEFAULT utcnow - Record creation
+- **Unique Constraint:** (`user_id`, `content_id`)
+- **Index:** `idx_content_read_user_content` (user_id, content_id) UNIQUE
+
+**`content_favorites`** - User favorites
+- `id` INTEGER PRIMARY KEY
+- `user_id` INTEGER INDEXED - Reference to users.id
+- `content_id` INTEGER INDEXED - Reference to contents.id
+- `favorited_at` DATETIME DEFAULT utcnow - Favorite timestamp
+- `created_at` DATETIME DEFAULT utcnow - Record creation
+- **Unique Constraint:** (`user_id`, `content_id`)
+- **Index:** `idx_content_favorites_user_content` (user_id, content_id) UNIQUE
+
+**`content_unlikes`** - User dislikes
+- `id` INTEGER PRIMARY KEY
+- `user_id` INTEGER INDEXED - Reference to users.id
+- `content_id` INTEGER INDEXED - Reference to contents.id
+- `unliked_at` DATETIME DEFAULT utcnow - Unlike timestamp
+- `created_at` DATETIME DEFAULT utcnow - Record creation
+- **Unique Constraint:** (`user_id`, `content_id`)
+- **Index:** `idx_content_unlikes_user_content` (user_id, content_id) UNIQUE
+
+**`event_logs`** - Generic event logging
+- `id` INTEGER PRIMARY KEY
+- `event_type` VARCHAR(50) INDEXED - "scraper_run", "processing_batch", "error", "cleanup"
+- `event_name` VARCHAR(100) NULLABLE INDEXED - e.g., "hackernews_scraper", "pdf_processor"
+- `status` VARCHAR(20) NULLABLE INDEXED - "started", "completed", "failed"
+- `data` JSON DEFAULT {} - Event-specific data
+- `created_at` DATETIME DEFAULT utcnow INDEXED - Event timestamp
+- **Indexes:**
+  - `idx_event_type_created` (event_type, created_at)
+  - `idx_event_name_created` (event_name, created_at)
+  - `idx_event_status_created` (event_type, status, created_at)
+
+**Relationships:**
+- No explicit foreign keys between user tables and content tables (soft references)
+- `processing_tasks.content_id` → `contents.id` (soft reference, nullable)
+
+**Migrations:**
+- Managed via Alembic (`alembic/versions/`)
+- Run: `alembic upgrade head`
+- Create: `alembic revision -m "description"`
 
 ---
-#### 13  Running & Ops
+#### 13  API Endpoints (Complete)
+
+**Authentication (`/auth`):**
+- `POST /auth/apple` - Apple Sign In (body: {id_token, email?, full_name?}) → {access_token, refresh_token, user}
+- `POST /auth/refresh` - Refresh access token (body: {refresh_token}) → {access_token, refresh_token}
+- `GET /auth/me` - Get current user info (requires JWT) → {id, apple_id, email, full_name, is_admin}
+- `POST /auth/admin/login` - Admin password login (body: {password}) → sets httpOnly cookie
+- `POST /auth/admin/logout` - Admin logout → clears cookie
+
+**Public Content API (`/api/content`) - Requires JWT Bearer Token:**
+
+*List & Search:*
+- `GET /api/content/` - List content
+  - Query params: `content_type[]`, `date`, `read_filter` (all/unread/read), `cursor`, `limit`
+  - Returns: `{contents[], total, available_dates[], content_types[], next_cursor?, has_more, page_size}`
+- `GET /api/content/search` - Search content
+  - Query params: `q` (query), `type` (filter), `limit`, `cursor`
+  - Returns: Same as list endpoint
+- `GET /api/content/unread-counts` - Get unread counts by type
+  - Returns: `{article: int, podcast: int, news: int}`
+
+*Detail & Actions:*
+- `GET /api/content/{id}` - Get content detail → Full ContentDetailResponse
+- `GET /api/content/{id}/chatgpt-url` - Generate ChatGPT deep link → `{chat_url, truncated}`
+- `POST /api/content/{id}/mark-read` - Mark content as read → `{success: bool}`
+- `POST /api/content/bulk-mark-read` - Mark multiple as read (body: {content_ids: [int]}) → `{marked: int}`
+- `POST /api/content/{id}/favorites/toggle` - Toggle favorite → `{is_favorited: bool}`
+- `GET /api/content/favorites` - List favorites (query: `read_filter`) → Same as list endpoint
+- `POST /api/content/{id}/convert` - Convert news item to article → `{status, new_content_id?, message}`
+
+**Web UI Routes (Requires Admin Session Cookie):**
+- `GET /` - Content list page (query: `content_type`, `date`, `read_filter`)
+- `GET /content/{id}` - Content detail page (HTML)
+- `GET /favorites` - Favorites page (query: `read_filter`)
+- `GET /content/{id}/json` - Content as JSON (debugging)
+
+**Admin Routes (Requires Admin Session):**
+- `GET /admin/` - Admin dashboard (stats, recent events, errors)
+- `GET /admin/logs` - List all log files
+- `GET /admin/logs/{filename:path}` - View log file content
+- `GET /admin/logs/{filename:path}/download` - Download log file
+- `GET /admin/errors` - Error analysis dashboard (query: `hours`, `min_errors`, `component`)
+- `POST /admin/errors/reset` - Delete all error logs & failed EventLog entries
+
+**Health Check:**
+- `GET /health` - Service health → `{status: "healthy"}`
+
+**Static Files:**
+- `/static/*` - CSS, JS, images (mounted from `./static/`)
+
+---
+#### 14  Pydantic Schemas (Request/Response Models)
+
+**Authentication (`app/models/user.py`):**
+- `AppleSignInRequest` - {id_token: str, email?: str, full_name?: str}
+- `TokenResponse` - {access_token, refresh_token, token_type, user: UserResponse}
+- `RefreshTokenRequest` - {refresh_token: str}
+- `AccessTokenResponse` - {access_token, refresh_token, token_type}
+- `AdminLoginRequest` - {password: str}
+- `AdminLoginResponse` - {message: str}
+- `UserResponse` - {id, apple_id, email, full_name?, is_admin, is_active, created_at, updated_at}
+
+**API Content Models (`app/routers/api/models.py`):**
+- `ContentSummaryResponse` - List view model (29 fields):
+  - Basic: id, content_type, url, title, source, platform, is_aggregate
+  - Dates: created_at, updated_at, processed_at, publication_date
+  - Status: status, classification
+  - User state: is_read, is_favorited
+  - News fields: news_title, news_summary, news_key_points[], news_classification, news_article_url
+  - Metadata: Embedded metadata objects (article/podcast/news)
+
+- `ContentListResponse` - {contents: ContentSummaryResponse[], total, available_dates[], content_types[], next_cursor?, has_more, page_size}
+
+- `ContentDetailResponse` - Full content model (33 fields):
+  - All ContentSummaryResponse fields plus:
+  - Structured summary: bullet_points[], quotes[], topics[], questions[], counter_arguments[], overview, full_markdown
+  - Metadata: Complete type-specific metadata
+
+- `BulkMarkReadRequest` - {content_ids: int[]}
+- `ChatGPTUrlResponse` - {chat_url: str, truncated: bool}
+- `UnreadCountsResponse` - {article: int, podcast: int, news: int}
+- `ConvertNewsResponse` - {status: str, new_content_id?: int, original_content_id: int, already_exists: bool, message: str}
+
+**Content Metadata (`app/models/metadata.py`):**
+- `ContentType` - Enum("article", "podcast", "news")
+- `ContentStatus` - Enum("new", "pending", "processing", "completed", "failed", "skipped")
+- `ContentClassification` - Enum("to_read", "skip")
+- `SummaryBulletPoint` - {text: str, category?: str}
+- `ContentQuote` - {text: str, context?: str}
+- `StructuredSummary` - {title, overview, bullet_points[], quotes[], topics[], questions[], counter_arguments[], summarization_date, classification, full_markdown?}
+- `NewsSummary` - {title?, article_url?, key_points[], summary?, classification, summarization_date}
+- `NewsArticleMetadata` - {url, title?, source_domain?}
+- `NewsAggregatorMetadata` - {name?, title?, url?, external_id?, author?, metadata}
+- `ArticleMetadata` - {source?, content?, author?, publication_date?, content_type, final_url_after_redirects?, word_count?, summary?}
+- `PodcastMetadata` - {source?, audio_url?, transcript?, duration?, episode_number?, video_url?, video_id?, channel_name?, thumbnail_url?, view_count?, like_count?, has_transcript?, word_count?, summary?}
+- `NewsMetadata` - {source?, platform?, article: NewsArticleMetadata, aggregator?: NewsAggregatorMetadata, discovery_time?, summary?: NewsSummary}
+- `ContentData` - Unified wrapper with metadata validation
+- `ProcessingResult` - {success, content_type, title?, metadata, error_message?, internal_links[]}
+- `ProcessingError` - {error, error_type, timestamp}
+
+**Pagination (`app/models/pagination.py`):**
+- `PaginationCursorData` - {last_id, last_created_at, filters_hash?}
+- `PaginationMetadata` - {next_cursor?, has_more, page_size, total?}
+
+---
+#### 15  Environment Variables (Complete)
+
+All variables loaded via `app/core/settings.py` (Pydantic v2 BaseSettings).
+
+**Required:**
+```bash
+# Database
+DATABASE_URL="sqlite:///./news_app.db"  # or postgresql://user:pass@host/db
+
+# Authentication (REQUIRED)
+JWT_SECRET_KEY=<generate with: python -c "import secrets; print(secrets.token_urlsafe(32))">
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=90
+ADMIN_PASSWORD=<your-secure-admin-password>
+```
+
+**Optional (with defaults):**
+```bash
+# Application
+APP_NAME="News Aggregator"
+DEBUG=false
+LOG_LEVEL=INFO
+
+# Database Pool (PostgreSQL only)
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=40
+
+# Workers
+MAX_WORKERS=5
+WORKER_TIMEOUT_SECONDS=300
+CHECKOUT_TIMEOUT_MINUTES=30
+MAX_RETRY_ATTEMPTS=3
+MAX_CONTENT_LENGTH=100000
+
+# LLM Services (at least one recommended)
+OPENAI_API_KEY=<optional>
+ANTHROPIC_API_KEY=<optional>
+GOOGLE_API_KEY=<optional>
+
+# Whisper Transcription
+WHISPER_MODEL_SIZE=base  # tiny, base, small, medium, large
+WHISPER_DEVICE=auto      # auto, cpu, cuda, mps
+
+# HTTP Client
+HTTP_TIMEOUT_SECONDS=30
+HTTP_MAX_RETRIES=3
+
+# Reddit (PRAW)
+REDDIT_CLIENT_ID=<optional>
+REDDIT_CLIENT_SECRET=<optional>
+REDDIT_USERNAME=<optional>
+REDDIT_PASSWORD=<optional>
+REDDIT_READ_ONLY=true
+REDDIT_USER_AGENT=news-app/1.0
+
+# Storage Paths
+MEDIA_BASE_DIR=./data/media
+LOGS_BASE_DIR=./logs
+
+# Crawl4AI Table Extraction
+CRAWL4AI_ENABLE_TABLE_EXTRACTION=false
+CRAWL4AI_TABLE_PROVIDER=<optional>
+CRAWL4AI_TABLE_CSS_SELECTOR=<optional>
+CRAWL4AI_TABLE_ENABLE_CHUNKING=true
+CRAWL4AI_TABLE_CHUNK_TOKEN_THRESHOLD=3000
+```
+
+**Settings Access:**
+```python
+from app.core.settings import get_settings
+settings = get_settings()
+print(settings.DATABASE_URL)
+print(settings.podcast_media_dir)  # Computed property
+```
+
+---
+#### 16  Operational Scripts (Complete)
+
+**Start Scripts:**
+- `scripts/start_server.sh` - Run migrations + uvicorn (port 8000, --reload in dev)
+- `scripts/start_workers.sh` - Run migrations + install Playwright + start workers
+  - Args: `--debug`, `--max-tasks N`, `--stats-interval N`, `--no-stats`
+- `scripts/start_scrapers.sh` - Run scrapers with stats
+
+**Worker Entry Points:**
+- `scripts/run_workers.py` - Sequential task processor (import from `app.pipeline.sequential_task_processor`)
+- `scripts/run_scrapers.py` - Scraper runner (import from `app.scraping.runner`)
+
+**Database Management:**
+- `scripts/init_database.py` - Initialize database schema
+- `scripts/dump_database.py` - Export database contents to JSON
+- `scripts/dump_system_stats.py` - Generate system statistics report
+- `scripts/backup_database.sh` - Backup SQLite database file
+- `scripts/sync_db_from_remote.sh` - Sync database from remote server
+- `scripts/migrate_session_to_user.py` - Migrate session-based data to user-based
+- `scripts/migrate_session_data.py` - Legacy session data migration
+
+**Content Management:**
+- `scripts/reset_content_processing.py` - Reset content processing status
+- `scripts/reset_errored_content.py` - Reset failed content for retry
+- `scripts/enqueue_past_day_summarization.py` - Re-queue recent content for processing
+- `scripts/resummarize_podcasts.py` - Re-summarize podcast episodes
+- `scripts/retranscribe_podcasts.py` - Re-transcribe podcast audio
+- `scripts/generate_test_data.py` - Create test content for development
+
+**Diagnostics:**
+- `scripts/analyze_errors.py` - Analyze error logs and generate reports
+- `scripts/audit_feeds.py` - Audit feed configurations
+- `scripts/diagnose_youtube.py` - Debug YouTube scraper/processor
+- `scripts/compare_llm_summarization.py` - Compare LLM outputs
+- `scripts/test_auth_flow.sh` - Test authentication flow end-to-end
+
+**Environment:**
+- `scripts/setup_uv_env.sh` - Setup uv environment from scratch
+- `scripts/install_uv_env.sh` - Install dependencies via uv
+- `scripts/clean_env.sh` - Clean virtual environment
+
+**Deployment:**
+- `scripts/deploy/push_app.sh` - Deploy application to remote server
+- `scripts/deploy/push_envs.sh` - Deploy environment variables to remote
+
+**Usage Examples:**
+```bash
+# Development
+./scripts/start_server.sh
+./scripts/start_workers.sh --debug --max-tasks 10
+./scripts/start_scrapers.sh --show-stats
+
+# Database
+python scripts/init_database.py
+python scripts/dump_database.py > backup.json
+./scripts/backup_database.sh
+
+# Content Management
+python scripts/reset_errored_content.py
+python scripts/enqueue_past_day_summarization.py
+
+# Diagnostics
+python scripts/analyze_errors.py --hours 24
+python scripts/audit_feeds.py
+```
+
+---
+#### 17  Key Tools & Services
+- **Package/venv:** `uv` (uses `pyproject.toml` + `uv.lock`)
+- **Web framework:** FastAPI with CORS, mounted static files, and Jinja2 templates
+- **Database:** SQLAlchemy 2.x ORM with Alembic migrations
+- **Settings:** `app/core/settings.py` (Pydantic v2 BaseSettings from `.env`)
+- **Workers:** `scripts/run_workers.py` via `SequentialTaskProcessor`
+- **Scrapers:** `scripts/run_scrapers.py` (scheduled via cron/supercronic in Docker)
+- **LLM integration:** OpenAI, Anthropic, Google clients with Tenacity retry logic
+- **Audio transcription:** Local Whisper via `app/services/whisper_local.py`
+- **Content extraction:** Crawl4AI for HTML, Playwright for browser automation
+- **Error logging:** `app/utils/error_logger.GenericErrorLogger` writes JSONL to `logs/errors/`
+- **Event logging:** `app/services/event_logger.py` writes to `event_logs` table
+- **HTTP client:** `app/http_client/robust_http_client.py` with retries and circuit breaker
+
+---
+#### 18  Running & Ops
 - Dev (local):
   - `uv sync` then `. .venv/bin/activate`
   - Apply DB upgrades: `python -m alembic upgrade head`
@@ -199,62 +773,128 @@ Use this as the authoritative layout (supersedes earlier sketch if different).
 - Supervisor (bare metal): point to `scripts/start_server.sh` and `scripts/start_workers.sh` (see deployment snippet in convo), write logs to `/var/log/newsly/` and symlink `/opt/newsly/logs -> /var/log/newsly` if desired.
 
 ---
-#### 14  UI & Assets
-- Jinja templates under `/templates` with Tailwind CSS.
-- Build CSS: `npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css`.
+#### 19  UI & Assets
+- **Templates:** Jinja2 templates in `/templates` directory
+- **Styling:** Tailwind CSS (source: `./static/css/styles.css`, compiled: `./static/css/app.css`)
+- **Build CSS:** `npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css`
+- **Static files:** Mounted at `/static` (served from `./static/` directory)
+- **Admin dashboard:** `/admin/` - Stats, logs, error analysis
+- **Web UI:** Server-rendered HTML (no JavaScript framework), progressive enhancement
 
 ---
-#### 15  Observability & Logs
+#### 20  Observability & Logs
 - JSONL error logs: `logs/errors/<component>_YYYYmmdd_HHMMSS.jsonl`.
 - LLM parse issues: `logs/errors/llm_json_errors.log`.
 - Admin views: `/admin/logs` includes JSON and JSONL formatting helpers.
 - When running in Docker or Supervisor, ensure `logs/` is writable and shared as above.
 
 ---
-#### 16  Quick Links (Fast Onboarding)
-- Entry
-  - `app/main.py` — FastAPI app wiring (routers, CORS, static, health)
-- Routers
-  - `app/routers/content.py` — public content endpoints
-  - `app/routers/admin.py` — admin dashboard and tooling
-  - `app/routers/logs.py` — logs list/detail, JSONL formatting, analytics
-  - `app/routers/api_content.py` — JSON API under `/api/content`
-- Core
-  - `app/core/settings.py` — Pydantic v2 settings, `.env`
-  - `app/core/logging.py` — root logger/formatter setup
-  - `app/core/db.py` — SQLAlchemy engine/session, `init_db()`, migrations helper
-- Pipeline & Workers
-  - `app/pipeline/sequential_task_processor.py` — main run loop and orchestration
-  - `app/pipeline/worker.py` — `ContentWorker`
-  - `app/pipeline/podcast_workers.py` — download/transcribe workers
-  - `app/services/queue.py` — queue service, `get_queue_stats()`
-- Scrapers
-  - `app/scraping/runner.py` — orchestrates scrapers
-  - `app/scraping/substack_unified.py` — Substack scraping
-  - `app/scraping/podcast_unified.py` — Podcast feed/download handling
-- HTTP & LLM
-  - `app/http_client/robust_http_client.py` — resilient HTTP client with retries
-  - `app/services/openai_llm.py` — OpenAI integration, JSON error logging
-  - `app/services/google_flash.py` — Google model wrapper, JSON error logging
-- Logging Utility
-  - `app/utils/error_logger.py` — JSONL error logger (auto-creates `logs/errors`)
-- Start/Ops Scripts
-  - `scripts/start_server.sh` — migrations + uvicorn
-  - `scripts/start_workers.sh` — sequential task processor
-  - `scripts/start_scrapers.sh` — scrapers with preflight checks
-- Containers & Compose
-  - `docker-compose.yml` — shared logs mounts for all services
-  - `Dockerfile.server`, `Dockerfile.workers`, `Dockerfile.scrapers`
+#### 21  Quick Links (Fast Onboarding)
+
+**Application Entry:**
+- `app/main.py` — FastAPI app entry, router mounting, CORS, static files, health endpoint
+
+**Core Infrastructure:**
+- `app/core/settings.py` — Pydantic v2 settings from `.env`
+- `app/core/logging.py` — Root logger/formatter configuration
+- `app/core/db.py` — SQLAlchemy engine, session factory, `init_db()`, migrations helper
+- `app/core/security.py` — JWT utilities, Apple token validation (⚠️ verification disabled)
+- `app/core/deps.py` — FastAPI auth dependencies (`get_current_user`, `require_admin`)
+
+**Database Models:**
+- `app/models/schema.py` — SQLAlchemy ORM models (Content, ProcessingTask, User, etc.)
+- `app/models/user.py` — User model + auth Pydantic schemas
+- `app/models/metadata.py` — Unified Pydantic metadata models for content types
+
+**API Routers:**
+- `app/routers/auth.py` — Apple Sign In, refresh tokens, admin login/logout
+- `app/routers/content.py` — Web UI routes (content list, detail, favorites)
+- `app/routers/admin.py` — Admin dashboard, system stats
+- `app/routers/logs.py` — Log viewing, error analysis, JSONL formatting
+- `app/routers/api/` — Refactored JSON API
+  - `content_list.py` — List, search, unread counts
+  - `content_detail.py` — Detail view, ChatGPT URL
+  - `read_status.py` — Mark read, bulk operations
+  - `favorites.py` — Toggle favorites, list favorites
+  - `content_actions.py` — Convert news→article
+
+**Services Layer:**
+- `app/services/openai_llm.py` — OpenAI GPT integration with JSON repair
+- `app/services/anthropic_llm.py` — Anthropic Claude integration
+- `app/services/google_flash.py` — Google Gemini Flash with JSON repair
+- `app/services/llm_prompts.py` — Centralized prompt templates
+- `app/services/favorites.py` — User favorites operations
+- `app/services/read_status.py` — User read status tracking
+- `app/services/queue.py` — Task queue operations, stats
+- `app/services/event_logger.py` — Structured event logging
+- `app/services/whisper_local.py` — Local Whisper transcription
+
+**Pipeline & Workers:**
+- `app/pipeline/sequential_task_processor.py` — Main task orchestrator
+- `app/pipeline/worker.py` — ContentWorker (articles, news)
+- `app/pipeline/podcast_workers.py` — PodcastDownloadWorker, TranscribeWorker
+- `app/pipeline/checkout.py` — Content checkout/locking mechanism
+
+**Scrapers:**
+- `app/scraping/runner.py` — Scraper orchestrator
+- `app/scraping/base.py` — Base scraper class
+- `app/scraping/substack_unified.py` — Substack newsletters
+- `app/scraping/podcast_unified.py` — Podcast RSS feeds
+- `app/scraping/hackernews_unified.py` — Hacker News
+- `app/scraping/reddit_unified.py` — Reddit via PRAW
+- `app/scraping/twitter_unified.py` — Twitter/X
+- `app/scraping/techmeme_unified.py` — Techmeme aggregator
+- `app/scraping/youtube_unified.py` — YouTube videos
+- `app/scraping/atom_unified.py` — Generic Atom/RSS feeds
+
+**Processing Strategies:**
+- `app/processing_strategies/registry.py` — Strategy registry
+- `app/processing_strategies/html_strategy.py` — HTML extraction (Crawl4AI)
+- `app/processing_strategies/pdf_strategy.py` — PDF extraction
+- `app/processing_strategies/arxiv_strategy.py` — arXiv papers
+- `app/processing_strategies/pubmed_strategy.py` — PubMed articles
+- `app/processing_strategies/hackernews_strategy.py` — HN comment extraction
+- `app/processing_strategies/youtube_strategy.py` — YouTube transcripts
+- `app/processing_strategies/image_strategy.py` — Image content
+
+**Utilities:**
+- `app/http_client/robust_http_client.py` — Resilient HTTP client with retries
+- `app/utils/error_logger.py` — JSONL error logger (auto-creates `logs/errors/`)
+- `app/utils/pagination.py` — Cursor pagination utilities
+- `app/utils/json_repair.py` — JSON repair for malformed LLM output
+
+**Operational Scripts:**
+- `scripts/start_server.sh` — Migrations + uvicorn server
+- `scripts/start_workers.sh` — Migrations + Playwright install + workers
+- `scripts/start_scrapers.sh` — Scrapers with stats
+- `scripts/run_workers.py` — Worker entry point
+- `scripts/run_scrapers.py` — Scraper entry point
+
+**Containers:**
+- `docker-compose.yml` — Container orchestration (server, workers, scrapers)
+- `Dockerfile.server` — Server container
+- `Dockerfile.workers` — Workers container
+- `Dockerfile.scrapers` — Scrapers container
+
+**iOS App (SwiftUI):**
+- `client/newsly/newsly/newslyApp.swift` — App entry with auth gate
+- `client/newsly/newsly/Services/APIClient.swift` — HTTP client with JWT auto-refresh
+- `client/newsly/newsly/Services/AuthenticationService.swift` — Apple Sign In
+- `client/newsly/newsly/Services/KeychainManager.swift` — Secure token storage
+- `client/newsly/newsly/ViewModels/ContentListViewModel.swift` — Main feed logic
+- `client/newsly/newsly/Views/ShortFormView.swift` — News feed (swipeable cards)
+- `client/newsly/newsly/Views/LongFormView.swift` — Articles/podcasts (paged)
 
 ---
-#### 17  Authentication System (Oct 2025)
+#### 22  Authentication System (Nov 2025)
 **Architecture:** Dual authentication - JWT for iOS, sessions for web admin
 
 **Backend Auth:**
-- **iOS (JWT-based):** Apple Sign In only, 30min access + 7day refresh tokens
+- **iOS (JWT-based):** Apple Sign In only, 30min access + 90day refresh tokens
 - **Web (session-based):** Admin password from `.env`, httpOnly cookies
-- **User Model:** `users` table (apple_id, email, full_name, is_admin, is_active)
+- **User Model:** `users` table (apple_id, email, full_name, is_admin, is_active, created_at, updated_at)
 - **Data Isolation:** Favorites/read-status per user_id (replaced session_id)
+- **Token Rotation:** Refresh endpoint returns new access + refresh tokens
 
 **Auth Endpoints:**
 - `POST /auth/apple` — Apple Sign In (iOS users)
@@ -311,3 +951,149 @@ curl http://localhost:8000/admin/ -b cookies.txt
 - Design: `docs/plans/2025-10-24-authentication-system-design.md`
 - Implementation Plan: `docs/plans/2025-10-24-authentication-implementation.md`
 - Implementation Summary: `docs/plans/2025-10-24-authentication-implementation-summary.md`
+
+---
+#### 23  Testing Structure (Complete)
+
+**Test Organization:** Tests mirror app structure with both `app/tests/` and `tests/` directories.
+
+**Primary Test Directory (`app/tests/`):**
+```
+app/tests/
+├── conftest.py                          # Pytest fixtures, test DB setup
+├── fixtures/                            # Test data fixtures
+│
+├── core/
+│   ├── test_admin_password.py          # Admin authentication
+│   ├── test_deps_admin.py              # Admin dependency injection
+│   ├── test_deps.py                    # JWT dependency injection
+│   ├── test_security.py                # Token generation/validation
+│   └── test_storage_paths.py           # Path utilities
+│
+├── domain/
+│   └── test_converters.py              # ORM→Pydantic conversion
+│
+├── integration/
+│   ├── test_auth_protected_endpoints.py  # API auth integration
+│   ├── test_user_data_isolation.py       # User data separation
+│   └── test_convert_workflow.py          # News→article conversion
+│
+├── routers/
+│   ├── test_auth.py                    # Auth endpoints (Apple Sign In, refresh, admin)
+│   ├── test_admin.py                   # Admin dashboard routes
+│   ├── test_content.py                 # Web UI content routes
+│   ├── test_api_content_pagination.py  # Cursor pagination
+│   ├── test_api_content_visibility.py  # Content filtering
+│   ├── test_api_content_convert.py     # News conversion
+│   └── test_api_bulk_mark_read.py      # Bulk read operations
+│
+├── services/
+│   ├── test_favorites.py               # Favorites service
+│   └── test_read_status.py             # Read status service
+│
+├── scraping/
+│   ├── test_config_loaders.py          # Config loading
+│   ├── test_paths_config.py            # Path configuration
+│   ├── test_reddit_unified.py          # Reddit scraper
+│   ├── test_twitter_unified.py         # Twitter scraper
+│   └── test_youtube_unified.py         # YouTube scraper
+│
+└── scripts/
+    ├── test_deploy_and_workers.py      # Deployment script validation
+    ├── test_dump_system_stats.py       # Stats script
+    └── test_reset_content_processing.py # Reset script
+```
+
+**Root Tests Directory (`tests/`):**
+```
+tests/
+├── conftest.py                          # Shared fixtures
+├── domain/
+│   └── test_converters.py              # Domain converters
+├── http_client/
+│   └── test_robust_http_client.py      # HTTP client with retries
+├── integration/
+│   ├── test_pipeline_integration.py    # End-to-end pipeline
+│   ├── test_pipeline_with_fixtures.py  # Pipeline with test data
+│   └── test_search_api.py              # Search functionality
+├── models/
+│   └── test_content.py                 # Content model validation
+├── pipeline/
+│   ├── test_content_worker.py          # ContentWorker unit tests
+│   ├── test_podcast_transcribe_worker.py # Transcription worker
+│   ├── test_sequential_task_processor.py # Main orchestrator
+│   ├── test_summarization_metadata_update.py # Metadata updates
+│   └── test_worker_with_fixtures.py    # Worker with fixtures
+├── processing_strategies/
+│   ├── test_arxiv_strategy.py          # arXiv paper processing
+│   ├── test_hackernews_strategy.py     # HN comment extraction
+│   ├── test_html_strategy.py           # HTML extraction
+│   ├── test_image_strategy.py          # Image processing
+│   ├── test_pdf_strategy.py            # PDF extraction
+│   └── test_pubmed_strategy.py         # PubMed processing
+├── scraping/
+│   ├── test_hackernews_unified.py      # HN scraper
+│   ├── test_podcast_audio_extraction.py # Audio extraction
+│   ├── test_podcast_rss_scraper.py     # RSS parsing
+│   ├── test_substack_scraper.py        # Substack scraper
+│   └── test_techmeme_scraper.py        # Techmeme scraper
+├── services/
+│   ├── test_google_flash_json_fix.py   # Google JSON repair
+│   ├── test_llm_structured_summary.py  # Structured summary generation
+│   ├── test_openai_llm_json_fix.py     # OpenAI JSON repair
+│   ├── test_openai_llm_structured_summary.py # OpenAI summaries
+│   ├── test_openai_transcription.py    # OpenAI Whisper API
+│   └── test_queue.py                   # Queue service
+└── schemas/
+    └── test_metadata.py                # Metadata schema validation
+```
+
+**Test Categories:**
+1. **Unit Tests** - Isolated function/class testing (most files)
+2. **Integration Tests** - API endpoints with test database (`integration/`)
+3. **Contract Tests** - External service interactions (LLM, scrapers, APIs)
+
+**Running Tests:**
+```bash
+# All tests (both directories)
+pytest app/tests/ tests/ -v
+
+# Specific directory
+pytest app/tests/routers/ -v
+pytest tests/pipeline/ -v
+
+# Specific test file
+pytest app/tests/routers/test_auth.py -v
+
+# With coverage report
+pytest app/tests/ tests/ --cov=app --cov-report=html --cov-report=term
+
+# Run only integration tests
+pytest app/tests/integration/ tests/integration/ -v
+
+# Run with markers (if defined)
+pytest -m "not slow" -v
+
+# Parallel execution (if pytest-xdist installed)
+pytest -n auto app/tests/ tests/
+```
+
+**Key Testing Patterns:**
+- **Fixtures:** Defined in `conftest.py` files (test DB, authenticated clients, sample data)
+- **Test DB:** In-memory SQLite created per test session
+- **Mocking:** Use `pytest-mock` for external services (LLM APIs, HTTP requests)
+- **Factory Pattern:** Test data factories in `app/tests/fixtures/`
+- **TestClient:** FastAPI's `TestClient` for endpoint testing
+- **Async Support:** `pytest-asyncio` for async function testing
+
+**Coverage Goals:**
+- Core business logic: >80%
+- API endpoints: >90%
+- Critical paths (auth, payments): 100%
+- External integrations: Mock-based tests
+
+**Test Data:**
+- Never use production data
+- Use fixtures for consistent test data
+- Factories for generating varied test cases
+- In-memory DB reset between test runs
