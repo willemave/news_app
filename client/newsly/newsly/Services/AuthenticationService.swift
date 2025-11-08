@@ -50,10 +50,14 @@ final class AuthenticationService: NSObject {
     /// - Saves both tokens (replaces old refresh token)
     /// - This allows active users to stay logged in indefinitely
     func refreshAccessToken() async throws -> String {
+        print("🔄 Starting token refresh...")
+
         guard let refreshToken = KeychainManager.shared.getToken(key: .refreshToken) else {
+            print("❌ No refresh token found in keychain")
             throw AuthError.noRefreshToken
         }
 
+        print("📤 Sending refresh request to backend...")
         let url = URL(string: "\(AppSettings.shared.baseURL)/auth/refresh")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -62,25 +66,39 @@ final class AuthenticationService: NSObject {
         let body = RefreshTokenRequest(refreshToken: refreshToken)
         request.httpBody = try? JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw AuthError.refreshFailed
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("❌ Invalid response from server")
+                throw AuthError.refreshFailed
+            }
+
+            print("📥 Refresh response status: \(httpResponse.statusCode)")
+
+            guard httpResponse.statusCode == 200 else {
+                if let errorBody = String(data: data, encoding: .utf8) {
+                    print("❌ Refresh failed with status \(httpResponse.statusCode): \(errorBody)")
+                }
+                throw AuthError.refreshFailed
+            }
+
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+
+            let tokenResponse = try decoder.decode(AccessTokenResponse.self, from: data)
+
+            // Save new access token AND new refresh token (token rotation)
+            KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
+            KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
+
+            print("✅ Token refresh successful - both tokens rotated")
+
+            return tokenResponse.accessToken
+        } catch {
+            print("❌ Token refresh error: \(error)")
+            throw error
         }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        let tokenResponse = try decoder.decode(AccessTokenResponse.self, from: data)
-
-        // Save new access token AND new refresh token (token rotation)
-        KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
-        KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
-
-        print("✅ Token refresh successful - both tokens rotated")
-
-        return tokenResponse.accessToken
     }
 
     /// Logout user (clear all tokens)
