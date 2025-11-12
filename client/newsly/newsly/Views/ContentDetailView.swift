@@ -95,13 +95,11 @@ struct ContentDetailView: View {
                             }
                             .buttonStyle(.bordered)
 
-                            // Chat with AI button
+                            // Share summary button (everything except transcript)
                             Button(action: {
-                                Task {
-                                    await viewModel.openInChatGPT()
-                                }
+                                viewModel.shareSummaryContent()
                             }) {
-                                Image(systemName: "brain")
+                                Image(systemName: "doc.text")
                                     .font(.system(size: 18))
                             }
                             .buttonStyle(.bordered)
@@ -127,14 +125,12 @@ struct ContentDetailView: View {
                                 .disabled(isConverting)
                             }
 
-                            // Copy button for podcasts only
-                            if content.contentTypeEnum == .podcast {
-                                Button(action: { viewModel.copyPodcastContent() }) {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 18))
-                                }
-                                .buttonStyle(.bordered)
+                            // Share raw button (everything including transcript/full content)
+                            Button(action: { viewModel.shareRawContent() }) {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 18))
                             }
+                            .buttonStyle(.bordered)
 
                             // Favorite button
                             Button(action: {

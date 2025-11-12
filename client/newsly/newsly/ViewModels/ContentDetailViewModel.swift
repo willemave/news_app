@@ -63,15 +63,53 @@ class ContentDetailViewModel: ObservableObject {
     
     func shareContent() {
         guard let content = content, let url = URL(string: content.url) else { return }
-        
+
         let activityVC = UIActivityViewController(
             activityItems: [url, content.displayTitle],
             applicationActivities: nil
         )
-        
+
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let rootViewController = windowScene.windows.first?.rootViewController {
             rootViewController.present(activityVC, animated: true)
+        }
+    }
+
+    func shareSummaryContent() {
+        guard let fullText = buildSummaryMarkdown() else { return }
+
+        // Put on clipboard (helps in case target app reads clipboard or the user wants to paste manually)
+        UIPasteboard.general.string = fullText
+
+        // Create custom item provider that converts markdown to HTML for Mail
+        let itemProvider = MarkdownItemProvider(markdown: fullText)
+
+        // Prepare share sheet with custom provider
+        let activityVC = UIActivityViewController(activityItems: [itemProvider], applicationActivities: nil)
+        activityVC.excludedActivityTypes = [.assignToContact, .saveToCameraRoll, .addToReadingList, .postToFacebook, .postToTwitter]
+
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = windowScene.windows.first?.rootViewController {
+            root.present(activityVC, animated: true)
+        }
+    }
+
+    func shareRawContent() {
+        guard let fullText = buildFullMarkdown() else { return }
+
+        // Put on clipboard (helps in case target app reads clipboard or the user wants to paste manually)
+        UIPasteboard.general.string = fullText
+
+        // Create custom item provider that converts markdown to HTML for Mail
+        let itemProvider = MarkdownItemProvider(markdown: fullText)
+
+        // Prepare share sheet with custom provider
+        let activityVC = UIActivityViewController(activityItems: [itemProvider], applicationActivities: nil)
+        activityVC.excludedActivityTypes = [.assignToContact, .saveToCameraRoll, .addToReadingList, .postToFacebook, .postToTwitter]
+
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = windowScene.windows.first?.rootViewController {
+            root.present(activityVC, animated: true)
         }
     }
     
@@ -94,6 +132,37 @@ class ContentDetailViewModel: ObservableObject {
             content?.isFavorited = currentContent.isFavorited
             errorMessage = "Failed to update favorite status"
         }
+    }
+
+    private func buildSummaryMarkdown() -> String? {
+        guard let content = content else { return nil }
+
+        var fullText = "# \(content.displayTitle)\n\n"
+
+        // Add metadata
+        if let source = content.source { fullText += "Source: \(source)\n" }
+        if let pubDate = content.publicationDate { fullText += "Published: \(pubDate)\n" }
+        if !content.url.isEmpty { fullText += "URL: \(content.url)\n" }
+        fullText += "\n---\n\n"
+
+        // Structured summary (without transcript/full content)
+        if let structuredSummary = content.structuredSummary {
+            fullText += "## Summary\n\n"
+            if !structuredSummary.topics.isEmpty {
+                fullText += "### Key Topics\n" + structuredSummary.topics.map { "- \($0)" }.joined(separator: "\n") + "\n\n"
+            }
+            if !structuredSummary.bulletPoints.isEmpty {
+                fullText += "### Main Points\n" + structuredSummary.bulletPoints.map { "- \($0.text)" }.joined(separator: "\n") + "\n\n"
+            }
+            if !structuredSummary.quotes.isEmpty {
+                fullText += "### Notable Quotes\n" + structuredSummary.quotes.map { "> \($0.text)\n" }.joined() + "\n"
+            }
+            if let overview = structuredSummary.overview {
+                fullText += "### Overview\n\(overview)\n\n"
+            }
+        }
+
+        return fullText
     }
 
     private func buildFullMarkdown() -> String? {
@@ -135,10 +204,6 @@ class ContentDetailViewModel: ObservableObject {
         return fullText
     }
 
-    func copyPodcastContent() {
-        guard let fullText = buildFullMarkdown() else { return }
-        UIPasteboard.general.string = fullText
-    }
     
     func openInChatGPT() async {
         // Strategy:
