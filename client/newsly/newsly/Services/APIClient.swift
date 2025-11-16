@@ -66,8 +66,8 @@ class APIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Add Bearer token if available
-        if let accessToken = KeychainManager.shared.getToken(key: .accessToken) {
+        // Ensure we send a token or attempt refresh before issuing the request
+        if let accessToken = try await fetchAccessTokenOrRefresh() {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
 
@@ -82,8 +82,8 @@ class APIClient {
                 throw APIError.unknown
             }
 
-            // Handle 401 - token expired, try refresh
-            if httpResponse.statusCode == 401 {
+            // Handle 401/403 (missing or expired token) - try refresh once
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                 do {
                     _ = try await AuthenticationService.shared.refreshAccessToken()
                     // Retry request with new token
@@ -122,8 +122,8 @@ class APIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Add Bearer token if available
-        if let accessToken = KeychainManager.shared.getToken(key: .accessToken) {
+        // Ensure we send a token or attempt refresh before issuing the request
+        if let accessToken = try await fetchAccessTokenOrRefresh() {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
 
@@ -138,8 +138,8 @@ class APIClient {
                 throw APIError.unknown
             }
 
-            // Handle 401 - token expired, try refresh
-            if httpResponse.statusCode == 401 {
+            // Handle 401/403 (missing or expired token) - try refresh once
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                 do {
                     _ = try await AuthenticationService.shared.refreshAccessToken()
                     // Retry request with new token
@@ -181,8 +181,8 @@ class APIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Add Bearer token if available
-        if let accessToken = KeychainManager.shared.getToken(key: .accessToken) {
+        // Ensure we send a token or attempt refresh before issuing the request
+        if let accessToken = try await fetchAccessTokenOrRefresh() {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
 
@@ -197,8 +197,8 @@ class APIClient {
                 throw APIError.unknown
             }
 
-            // Handle 401 - token expired, try refresh
-            if httpResponse.statusCode == 401 {
+            // Handle 401/403 (missing or expired token) - try refresh once
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                 do {
                     _ = try await AuthenticationService.shared.refreshAccessToken()
                     // Retry request with new token
@@ -223,6 +223,24 @@ class APIClient {
             throw error
         } catch {
             throw APIError.networkError(error)
+        }
+    }
+
+    /// Get an access token if present; otherwise attempt a refresh.
+    /// Returns nil for truly unauthenticated flows (e.g., public endpoints).
+    private func fetchAccessTokenOrRefresh() async throws -> String? {
+        if let token = KeychainManager.shared.getToken(key: .accessToken) {
+            return token
+        }
+
+        // If we have a refresh token, attempt to refresh and return the new access token.
+        do {
+            let refreshed = try await AuthenticationService.shared.refreshAccessToken()
+            return refreshed
+        } catch {
+            // Bubble up as unauthorized so callers can logout when needed.
+            NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+            throw APIError.unauthorized
         }
     }
 }

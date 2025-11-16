@@ -50,6 +50,10 @@ class ContentListViewModel: ObservableObject {
 
     private let contentService = ContentService.shared
     private let unreadCountService = UnreadCountService.shared
+
+    init(defaultReadFilter: String = "unread") {
+        _selectedReadFilter = Published(initialValue: defaultReadFilter)
+    }
     
     func loadContent() async {
         isLoading = true

@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct FavoritesView: View {
-    @StateObject private var viewModel = ContentListViewModel()
+    @StateObject private var viewModel = ContentListViewModel(defaultReadFilter: "all")
     @ObservedObject private var settings = AppSettings.shared
     @State private var showingFilters = false
     
@@ -55,6 +55,7 @@ struct FavoritesView: View {
 
                                         ContentCard(
                                             content: content,
+                                            dimReadState: false,
                                             onMarkAsRead: { await viewModel.markAsRead(content.id) },
                                             onToggleFavorite: { await viewModel.toggleFavorite(content.id) }
                                         )
