@@ -8,6 +8,9 @@ node_modules/
 .env
 .code/
 client/newsly/newsly.xcodeproj/project.xcworkspace/xcuserdata/willem.xcuserdatad/*.xcuserstate
+news_app.db
+logs/
+logs_from_server/
 
 
 data/*

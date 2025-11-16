@@ -11,6 +11,7 @@ struct ContentCard: View {
     let content: ContentSummary
     let onMarkAsRead: () async -> Void
     let onToggleFavorite: () async -> Void
+    let dimReadState: Bool = true
 
     @State private var isMarking = false
     @State private var isTogglingFavorite = false
@@ -26,7 +27,7 @@ struct ContentCard: View {
                 Text(content.displayTitle)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(content.isRead ? .secondary : .primary)
+                    .foregroundColor(dimReadState && content.isRead ? .secondary : .primary)
                     .lineLimit(5)
                     .truncationMode(.tail)
 
@@ -106,6 +107,6 @@ struct ContentCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(minHeight: 84, alignment: .center)
-        .opacity(content.isRead ? 0.85 : 1.0)
+        .opacity(dimReadState && content.isRead ? 0.85 : 1.0)
     }
 }
