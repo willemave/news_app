@@ -13,6 +13,9 @@ DEFAULT_CHECKOUT_TIMEOUT_MINUTES = 30
 # Pipeline polling interval in seconds
 DEFAULT_POLLING_INTERVAL_SECONDS = 10
 
+# Source label applied to user-submitted items
+SELF_SUBMISSION_SOURCE = "self submission"
+
 # Worker concurrency limits
 DEFAULT_DOWNLOADER_CONCURRENCY = 5
 DEFAULT_TRANSCRIBER_CONCURRENCY = 2

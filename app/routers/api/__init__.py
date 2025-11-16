@@ -18,6 +18,7 @@ from app.routers.api import (
     content_list,
     favorites,
     read_status,
+    submission,
 )
 
 # Create the main API router
@@ -41,5 +42,8 @@ router.include_router(favorites.router)
 
 # Content transformations and actions
 router.include_router(content_actions.router)
+
+# User submissions
+router.include_router(submission.router)
 
 __all__ = ["router"]

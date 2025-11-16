@@ -11,7 +11,7 @@ from app.core.db import get_db_session
 from app.core.deps import get_current_user
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content
+from app.models.schema import Content, ContentStatusEntry
 from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse, UnreadCountsResponse
 from app.utils.pagination import PaginationCursor
@@ -89,6 +89,16 @@ async def list_contents(
     # Get favorited content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
 
+    inbox_exists = (
+        db.query(ContentStatusEntry.id)
+        .filter(
+            ContentStatusEntry.content_id == Content.id,
+            ContentStatusEntry.user_id == current_user.id,
+            ContentStatusEntry.status == "inbox",
+        )
+        .exists()
+    )
+
     # Visibility clause: include summarized content or completed news
     summarized_clause = Content.content_metadata["summary"].is_not(None) & (
         Content.content_metadata["summary"] != "null"
@@ -105,6 +115,7 @@ async def list_contents(
             db.query(func.date(Content.created_at).label("date"))
             .filter(or_(summarized_clause, completed_news_clause))
             .filter((Content.classification != "skip") | (Content.classification.is_(None)))
+            .filter(or_(Content.content_type == ContentType.NEWS.value, inbox_exists))
             .distinct()
             .order_by(func.date(Content.created_at).desc())
         )
@@ -118,6 +129,7 @@ async def list_contents(
 
     # Query content
     query = db.query(Content)
+    query = query.filter(or_(Content.content_type == ContentType.NEWS.value, inbox_exists))
 
     # Filter out "skip" classification articles
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
@@ -230,6 +242,9 @@ async def list_contents(
                     news_discussion_url=news_discussion_url,
                     news_key_points=news_key_points,
                     news_summary=news_summary_text,
+                    user_status="inbox"
+                    if domain_content.content_type in (ContentType.ARTICLE, ContentType.PODCAST)
+                    else None,
                 )
             )
         except Exception as e:
@@ -330,8 +345,19 @@ async def search_contents(
     read_content_ids = read_status.get_read_content_ids(db, current_user.id)
     favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
 
+    inbox_exists = (
+        db.query(ContentStatusEntry.id)
+        .filter(
+            ContentStatusEntry.content_id == Content.id,
+            ContentStatusEntry.user_id == current_user.id,
+            ContentStatusEntry.status == "inbox",
+        )
+        .exists()
+    )
+
     # Base query aligning with list endpoint visibility rules
     query = db.query(Content)
+    query = query.filter(or_(Content.content_type == ContentType.NEWS.value, inbox_exists))
 
     # Filter out "skip" classification articles
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
@@ -424,6 +450,9 @@ async def search_contents(
                     item_count=len(domain_content.news_items)
                     if domain_content.content_type == ContentType.NEWS
                     else None,
+                    user_status="inbox"
+                    if domain_content.content_type in (ContentType.ARTICLE, ContentType.PODCAST)
+                    else None,
                 )
             )
         except Exception as e:
@@ -471,6 +500,16 @@ async def get_unread_counts(
     # Get read content IDs
     read_content_ids = read_status.get_read_content_ids(db, current_user.id)
 
+    inbox_exists = (
+        db.query(ContentStatusEntry.id)
+        .filter(
+            ContentStatusEntry.content_id == Content.id,
+            ContentStatusEntry.user_id == current_user.id,
+            ContentStatusEntry.status == "inbox",
+        )
+        .exists()
+    )
+
     # Visibility clause: include summarized content or completed news
     summarized_clause = Content.content_metadata["summary"].is_not(None) & (
         Content.content_metadata["summary"] != "null"
@@ -484,6 +523,7 @@ async def get_unread_counts(
     base_query = (
         db.query(Content.id, Content.content_type)
         .filter(or_(summarized_clause, completed_news_clause))
+        .filter(or_(Content.content_type == ContentType.NEWS.value, inbox_exists))
         .filter((Content.classification != "skip") | (Content.classification.is_(None)))
     )
 

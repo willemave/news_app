@@ -1,0 +1,232 @@
+"""Service helpers for per-user scraper configurations."""
+
+from __future__ import annotations
+
+from typing import Any, Iterable
+
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import and_
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.logging import get_logger
+from app.models.schema import ContentStatusEntry, UserScraperConfig
+
+logger = get_logger(__name__)
+
+ALLOWED_SCRAPER_TYPES = {"substack", "atom", "podcast_rss", "youtube"}
+
+
+class CreateUserScraperConfig(BaseModel):
+    """Payload for creating a scraper config."""
+
+    scraper_type: str = Field(..., pattern="^(substack|atom|podcast_rss|youtube)$")
+    display_name: str | None = Field(None, max_length=255)
+    config: dict[str, Any] = Field(default_factory=dict)
+    is_active: bool = True
+
+    @field_validator("config")
+    @staticmethod
+    def validate_feed_url(config: dict[str, Any]) -> dict[str, Any]:
+        feed_url = config.get("feed_url")
+        if not isinstance(feed_url, str) or not feed_url.strip():
+            raise ValueError("config.feed_url is required")
+        return config
+
+
+class UpdateUserScraperConfig(BaseModel):
+    """Payload for updating a scraper config."""
+
+    display_name: str | None = Field(None, max_length=255)
+    config: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+    @field_validator("config")
+    @staticmethod
+    def validate_feed_url(config: dict[str, Any] | None) -> dict[str, Any] | None:
+        if config is None:
+            return config
+        feed_url = config.get("feed_url")
+        if not isinstance(feed_url, str) or not feed_url.strip():
+            raise ValueError("config.feed_url is required")
+        return config
+
+
+def _normalize_feed_url(config: dict[str, Any]) -> str:
+    feed_url = (config.get("feed_url") or "").strip()
+    return feed_url
+
+
+def list_user_scraper_configs(db: Session, user_id: int) -> list[UserScraperConfig]:
+    """Return scraper configs for a user."""
+    return (
+        db.query(UserScraperConfig)
+        .filter(UserScraperConfig.user_id == user_id)
+        .order_by(UserScraperConfig.created_at.desc())
+        .all()
+    )
+
+
+def list_active_configs_by_type(db: Session, scraper_type: str) -> list[UserScraperConfig]:
+    """Return active scraper configs for a given type."""
+    if scraper_type not in ALLOWED_SCRAPER_TYPES:
+        return []
+    return (
+        db.query(UserScraperConfig)
+        .filter(
+            and_(
+                UserScraperConfig.is_active.is_(True),
+                UserScraperConfig.scraper_type == scraper_type,
+            )
+        )
+        .all()
+    )
+
+
+def create_user_scraper_config(
+    db: Session, user_id: int, data: CreateUserScraperConfig
+) -> UserScraperConfig:
+    """Create a new scraper config for a user."""
+    feed_url = _normalize_feed_url(data.config)
+    if data.scraper_type not in ALLOWED_SCRAPER_TYPES:
+        raise ValueError("Unsupported scraper_type")
+
+    existing = (
+        db.query(UserScraperConfig)
+        .filter(
+            and_(
+                UserScraperConfig.user_id == user_id,
+                UserScraperConfig.scraper_type == data.scraper_type,
+                UserScraperConfig.feed_url == feed_url,
+            )
+        )
+        .first()
+    )
+    if existing:
+        raise ValueError("Scraper config already exists for this feed")
+
+    record = UserScraperConfig(
+        user_id=user_id,
+        scraper_type=data.scraper_type,
+        display_name=data.display_name,
+        config=data.config,
+        feed_url=feed_url,
+        is_active=data.is_active,
+    )
+    db.add(record)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError("Scraper config already exists for this feed") from exc
+
+    db.refresh(record)
+    return record
+
+
+def update_user_scraper_config(
+    db: Session, user_id: int, config_id: int, data: UpdateUserScraperConfig
+) -> UserScraperConfig:
+    """Update an existing scraper config for a user."""
+    record = (
+        db.query(UserScraperConfig)
+        .filter(
+            and_(
+                UserScraperConfig.id == config_id,
+                UserScraperConfig.user_id == user_id,
+            )
+        )
+        .first()
+    )
+    if not record:
+        raise ValueError("Scraper config not found")
+
+    if data.display_name is not None:
+        record.display_name = data.display_name
+    if data.config is not None:
+        record.config = data.config
+        record.feed_url = _normalize_feed_url(data.config)
+    if data.is_active is not None:
+        record.is_active = data.is_active
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError("Scraper config already exists for this feed") from exc
+
+    db.refresh(record)
+    return record
+
+
+def delete_user_scraper_config(db: Session, user_id: int, config_id: int) -> None:
+    """Delete a scraper config for a user."""
+    record = (
+        db.query(UserScraperConfig)
+        .filter(
+            and_(
+                UserScraperConfig.id == config_id,
+                UserScraperConfig.user_id == user_id,
+            )
+        )
+        .first()
+    )
+    if not record:
+        raise ValueError("Scraper config not found")
+
+    db.delete(record)
+    db.commit()
+
+
+def build_feed_payloads(
+    configs: Iterable[UserScraperConfig], default_limit: int = 10
+) -> list[dict[str, Any]]:
+    """Convert UserScraperConfig rows into scraper feed payloads."""
+    feeds: list[dict[str, Any]] = []
+    for config in configs:
+        feed_url = _normalize_feed_url(config.config)
+        if not feed_url:
+            logger.warning("Skipping config without feed_url. id=%s", config.id)
+            continue
+        feeds.append(
+            {
+                "url": feed_url,
+                "name": config.display_name or config.config.get("name") or "Custom feed",
+                "limit": config.config.get("limit", default_limit),
+                "user_id": config.user_id,
+                "config_id": config.id,
+            }
+        )
+    return feeds
+
+
+def ensure_inbox_status(
+    db: Session, user_id: int | None, content_id: int, content_type: str | None = None
+) -> bool:
+    """Ensure a content_status row exists for this user/content."""
+    if user_id is None:
+        return False
+    if content_type and content_type not in ("article", "podcast"):
+        return False
+
+    existing = (
+        db.query(ContentStatusEntry)
+        .filter(
+            and_(
+                ContentStatusEntry.user_id == user_id,
+                ContentStatusEntry.content_id == content_id,
+            )
+        )
+        .first()
+    )
+    if existing:
+        return False
+
+    db.add(
+        ContentStatusEntry(
+            user_id=user_id,
+            content_id=content_id,
+            status="inbox",
+        )
+    )
+    return True

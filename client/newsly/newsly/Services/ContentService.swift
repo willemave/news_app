@@ -37,11 +37,68 @@ struct ConvertNewsResponse: Codable {
     }
 }
 
+struct SubmitContentResponse: Codable {
+    let contentId: Int
+    let contentType: String
+    let status: String
+    let platform: String?
+    let alreadyExists: Bool
+    let message: String
+    let taskId: Int?
+    let source: String?
+
+    enum CodingKeys: String, CodingKey {
+        case contentId = "content_id"
+        case contentType = "content_type"
+        case status
+        case platform
+        case alreadyExists = "already_exists"
+        case message
+        case taskId = "task_id"
+        case source
+    }
+}
+
 class ContentService {
     static let shared = ContentService()
     private let client = APIClient.shared
     
     private init() {}
+    
+    func submitContent(url: URL,
+                       contentType: String? = nil,
+                       title: String? = nil,
+                       platform: String? = nil) async throws -> SubmitContentResponse {
+        struct SubmitPayload: Codable {
+            let url: String
+            let contentType: String?
+            let title: String?
+            let platform: String?
+
+            enum CodingKeys: String, CodingKey {
+                case url
+                case contentType = "content_type"
+                case title
+                case platform
+            }
+        }
+
+        let payload = SubmitPayload(
+            url: url.absoluteString,
+            contentType: contentType,
+            title: title,
+            platform: platform
+        )
+
+        let encoder = JSONEncoder()
+        let body = try encoder.encode(payload)
+
+        return try await client.request(
+            APIEndpoints.submitContent,
+            method: "POST",
+            body: body
+        )
+    }
     
     func searchContent(query: String,
                        contentType: String = "all",

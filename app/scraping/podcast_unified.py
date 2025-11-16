@@ -8,11 +8,13 @@ from typing import Any
 import feedparser
 import yaml
 
+from app.core.db import get_db
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 from app.utils.error_logger import create_error_logger, log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
+from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
 
 logger = get_logger(__name__)
 _MISSING_CONFIG_WARNINGS: set[str] = set()
@@ -49,42 +51,24 @@ class PodcastUnifiedScraper(BaseScraper):
 
     def __init__(self, config_path: str | Path | None = None):
         super().__init__("Podcast")
-        self.config_path = _resolve_podcast_config_path(config_path)
-        self.feeds = self._load_podcast_feeds()
         self.error_logger = create_error_logger("podcast_scraper", "logs/errors")
 
-    def _load_podcast_feeds(self) -> list[dict]:
-        """Load podcast feed URLs from YAML config."""
-        if not self.config_path.exists():
-            _emit_missing_config_warning(self.config_path)
-            return []
-
-        try:
-            with open(self.config_path, encoding="utf-8") as f:
-                config = yaml.safe_load(f) or {}
-        except Exception as exc:
-            log_scraper_event(
-                service="Podcast",
-                event="config_load_failed",
-                level=logging.ERROR,
-                path=str(self.config_path),
-                error=str(exc),
-            )
-            return []
-
-        feeds = config.get("feeds", [])
-        logger.info(f"Loaded {len(feeds)} podcast feeds from config")
-        return feeds
+    def _load_podcast_feeds(self) -> list[dict[str, Any]]:
+        """Load podcast feed URLs from user configs."""
+        with get_db() as db:
+            configs = list_active_configs_by_type(db, "podcast_rss")
+            return build_feed_payloads(configs)
 
     def scrape(self) -> list[dict[str, Any]]:
         """Scrape all configured podcast feeds with comprehensive error logging."""
-        if not self.feeds:
+        feeds = self._load_podcast_feeds()
+        if not feeds:
             logger.warning("No podcast feeds configured")
             return []
 
         items = []
 
-        for feed_config in self.feeds:
+        for feed_config in feeds:
             if not isinstance(feed_config, dict):
                 logger.warning("Invalid feed configuration, skipping")
                 continue
@@ -92,6 +76,7 @@ class PodcastUnifiedScraper(BaseScraper):
             feed_name = feed_config.get("name", "Unknown Feed")
             feed_url = feed_config.get("url")
             limit = feed_config.get("limit", 10)
+            user_id = feed_config.get("user_id")
 
             if not feed_url:
                 logger.warning(f"No URL found for feed: {feed_name}")
@@ -168,7 +153,7 @@ class PodcastUnifiedScraper(BaseScraper):
 
                 processed_entries = 0
                 for entry in entries_to_process:
-                    item = self._process_entry(entry, feed_name, feed_info, feed_url)
+                    item = self._process_entry(entry, feed_name, feed_info, feed_url, user_id)
                     if item:
                         items.append(item)
                         processed_entries += 1
@@ -186,7 +171,7 @@ class PodcastUnifiedScraper(BaseScraper):
         return items
 
     def _process_entry(
-        self, entry, feed_name: str, feed_info: dict, feed_url: str
+        self, entry, feed_name: str, feed_info: dict, feed_url: str, user_id: int | None
     ) -> dict[str, Any]:
         """Process a single podcast entry."""
         title = entry.get("title", "No Title")
@@ -279,6 +264,7 @@ class PodcastUnifiedScraper(BaseScraper):
             "url": self._normalize_url(link),
             "title": title,
             "content_type": ContentType.PODCAST,
+            "user_id": user_id,
             "metadata": metadata,
         }
 

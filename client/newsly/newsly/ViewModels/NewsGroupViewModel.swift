@@ -22,11 +22,19 @@ class NewsGroupViewModel: ObservableObject {
     private let contentService = ContentService.shared
     private let unreadCountService = UnreadCountService.shared
 
-    func loadNewsGroups() async {
+    private var sessionReadGroupIds: Set<String> = []
+
+    func loadNewsGroups(preserveReadGroups: Bool = false) async {
         isLoading = true
         errorMessage = nil
         nextCursor = nil
         hasMore = false
+
+        if !preserveReadGroups {
+            sessionReadGroupIds.removeAll()
+        }
+
+        let preservedReads = preserveReadGroups ? newsGroups.filter { $0.isRead } : []
 
         do {
             // Load news content (limit 30 to get 5 groups of 6)
@@ -39,7 +47,16 @@ class NewsGroupViewModel: ObservableObject {
             )
 
             // Group items by 6
-            newsGroups = response.contents.groupedBySix()
+            var fetchedGroups = response.contents.groupedBySix()
+
+            if preserveReadGroups, !preservedReads.isEmpty {
+                // Keep current-session reads visible while fetching new data
+                for group in preservedReads where !fetchedGroups.contains(where: { $0.id == group.id }) {
+                    fetchedGroups.append(group)
+                }
+            }
+
+            newsGroups = fetchedGroups
             nextCursor = response.nextCursor
             hasMore = response.hasMore
         } catch {
@@ -88,15 +105,15 @@ class NewsGroupViewModel: ObservableObject {
         do {
             _ = try await contentService.bulkMarkAsRead(contentIds: itemIds)
 
-            // Update local state to mark as read (CardStackView filters these out)
+            // Update local state to mark as read while keeping it visible this session
             newsGroups[groupIndex] = group.updatingAllAsRead(true)
+
+            sessionReadGroupIds.insert(groupId)
 
             // Update unread counts
             unreadCountService.decrementNewsCount(by: itemIds.count)
 
-            // NOTE: We no longer remove from array here
-            // CardStackView filters out read groups using dismissed set + isRead flag
-            // This keeps the array stable and prevents index/array desynchronization
+            // Items stay in memory during a session; ShortFormView clears them on tab exit
         } catch {
             ToastService.shared.showError("Failed to mark as read")
             errorMessage = "Failed to mark group as read: \(error.localizedDescription)"
@@ -163,10 +180,17 @@ class NewsGroupViewModel: ObservableObject {
     func refresh() async {
         nextCursor = nil
         hasMore = false
-        await loadNewsGroups()
+        await loadNewsGroups(preserveReadGroups: true)
+    }
 
-        // Clean up read groups on refresh to prevent array bloat
-        // Keep the array fresh with only unread items
-        newsGroups = newsGroups.filter { !$0.isRead }
+    func clearSessionReads() {
+        guard !newsGroups.isEmpty else {
+            sessionReadGroupIds.removeAll()
+            return
+        }
+
+        let idsToRemove = sessionReadGroupIds
+        newsGroups.removeAll { idsToRemove.contains($0.id) || $0.isRead }
+        sessionReadGroupIds.removeAll()
     }
 }

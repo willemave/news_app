@@ -9,11 +9,13 @@ from typing import Any
 import feedparser
 import yaml
 
+from app.core.db import get_db
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 from app.utils.error_logger import create_error_logger, log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
+from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
 
 ENCODING_OVERRIDE_EXCEPTIONS = tuple(
     exc
@@ -104,21 +106,28 @@ class AtomScraper(BaseScraper):
 
     def __init__(self, config_path: str | Path | None = None):
         super().__init__("Atom")
-        self.feeds = load_atom_feeds(config_path)
         self.error_logger = create_error_logger("atom_scraper", "logs/errors")
+
+    def _load_feeds(self) -> list[dict[str, Any]]:
+        """Load active Atom feeds for all users."""
+        with get_db() as db:
+            configs = list_active_configs_by_type(db, "atom")
+            return build_feed_payloads(configs)
 
     def scrape(self) -> list[dict[str, Any]]:
         """Scrape all configured Atom feeds with comprehensive error logging."""
         items = []
 
-        if not self.feeds:
+        feeds = self._load_feeds()
+        if not feeds:
             logger.warning("No Atom feeds configured. Skipping scrape.")
             return items
 
-        for feed_info in self.feeds:
+        for feed_info in feeds:
             feed_url = feed_info.get("url")
             source_name = feed_info.get("name", "Unknown Atom")
             limit = feed_info.get("limit", 10)
+            user_id = feed_info.get("user_id")
 
             if not feed_url:
                 logger.warning("Skipping empty feed URL.")
@@ -175,7 +184,7 @@ class AtomScraper(BaseScraper):
                 processed_entries = 0
                 for entry in entries_to_process:
                     item = self._process_entry(
-                        entry, feed_name, feed_description, feed_url, source_name
+                        entry, feed_name, feed_description, feed_url, source_name, user_id
                     )
                     if item:
                         items.append(item)
@@ -203,6 +212,7 @@ class AtomScraper(BaseScraper):
         feed_description: str = "",
         feed_url: str = "",
         source_name: str = "",
+        user_id: int | None = None,
     ) -> dict[str, Any] | None:
         """Process a single entry from an Atom feed."""
         title = entry.get("title", "No Title")
@@ -262,6 +272,7 @@ class AtomScraper(BaseScraper):
             "url": self._normalize_url(link),
             "title": title,
             "content_type": ContentType.ARTICLE,
+            "user_id": user_id,
             "metadata": {
                 "platform": "atom",  # Scraper identifier
                 "source": source_name,  # Configured name from YAML

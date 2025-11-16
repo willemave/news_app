@@ -10,12 +10,17 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var authViewModel: AuthenticationViewModel
     @ObservedObject private var settings = AppSettings.shared
+    @StateObject private var scraperViewModel = ScraperSettingsViewModel()
     @State private var tempHost: String = ""
     @State private var tempPort: String = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var showMarkAllDialog = false
     @State private var isProcessingMarkAll = false
+    @State private var showAddFeedSheet = false
+    @State private var newFeedURL: String = ""
+    @State private var newFeedName: String = ""
+    @State private var newFeedType: String = "substack"
     #if DEBUG
     @State private var showingDebugMenu = false
     #endif
@@ -81,6 +86,57 @@ struct SettingsView: View {
                     Text("When enabled, both read and unread articles will be displayed")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                }
+
+                Section(header: Text("Sources")) {
+                    if scraperViewModel.isLoading {
+                        ProgressView()
+                    }
+
+                    ForEach(scraperViewModel.configs) { config in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(config.displayName ?? (config.feedURL ?? "Feed"))
+                                Text(config.scraperType.capitalized)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                if let feedURL = config.feedURL {
+                                    Text(feedURL)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Toggle(isOn: Binding(
+                                get: { config.isActive },
+                                set: { isOn in
+                                    Task { await scraperViewModel.updateConfig(config, isActive: isOn) }
+                                })
+                            ) {
+                                Text("Active")
+                            }
+                            .labelsHidden()
+                        }
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                Task { await scraperViewModel.deleteConfig(config) }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+
+                    Button {
+                        showAddFeedSheet = true
+                    } label: {
+                        Label("Add Feed", systemImage: "plus")
+                    }
+
+                    if let error = scraperViewModel.errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
 
                 Section(header: Text("Read Status")) {
@@ -152,6 +208,49 @@ struct SettingsView: View {
             .onAppear {
                 tempHost = settings.serverHost
                 tempPort = settings.serverPort
+                Task { await scraperViewModel.loadConfigs() }
+            }
+            .sheet(isPresented: $showAddFeedSheet) {
+                NavigationView {
+                    Form {
+                        Section(header: Text("Feed")) {
+                            TextField("Feed URL", text: $newFeedURL)
+                                .keyboardType(.URL)
+                                .textInputAutocapitalization(.never)
+                                .disableAutocorrection(true)
+                            TextField("Display Name", text: $newFeedName)
+                        }
+                        Section(header: Text("Type")) {
+                            Picker("Type", selection: $newFeedType) {
+                                Text("Substack").tag("substack")
+                                Text("Atom/RSS").tag("atom")
+                                Text("Podcast").tag("podcast_rss")
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                    }
+                    .navigationTitle("Add Feed")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { showAddFeedSheet = false }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Save") {
+                                Task {
+                                    await scraperViewModel.addConfig(
+                                        scraperType: newFeedType,
+                                        displayName: newFeedName.isEmpty ? nil : newFeedName,
+                                        feedURL: newFeedURL
+                                    )
+                                    newFeedURL = ""
+                                    newFeedName = ""
+                                    showAddFeedSheet = false
+                                }
+                            }
+                            .disabled(newFeedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                }
             }
             #if DEBUG
             .sheet(isPresented: $showingDebugMenu) {

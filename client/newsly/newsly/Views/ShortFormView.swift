@@ -34,12 +34,14 @@ struct ShortFormView: View {
                     } else {
                         PagedCardView(
                             groups: viewModel.newsGroups,
-                            onDismiss: { groupId in
+                            onMarkRead: { groupId in
                                 await viewModel.markGroupAsRead(groupId)
-                                await viewModel.preloadNextGroups()
                             },
                             onConvert: { itemId in
                                 await viewModel.convertToArticle(itemId)
+                            },
+                            onNearEnd: {
+                                await viewModel.preloadNextGroups()
                             }
                         )
                         .refreshable {
@@ -49,6 +51,9 @@ struct ShortFormView: View {
                 }
                 .task {
                     await viewModel.loadNewsGroups()
+                }
+                .onDisappear {
+                    viewModel.clearSessionReads()
                 }
             }
         }
