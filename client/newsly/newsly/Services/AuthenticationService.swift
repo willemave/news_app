@@ -20,6 +20,7 @@ final class AuthenticationService: NSObject {
     private var currentNonce: String?
 
     /// Sign in with Apple
+    @MainActor
     func signInWithApple() async throws -> User {
         let nonce = randomNonceString()
         currentNonce = nonce
@@ -35,10 +36,11 @@ final class AuthenticationService: NSObject {
             let delegate = AppleSignInDelegate(continuation: continuation, nonce: nonce)
             authController.delegate = delegate
             authController.presentationContextProvider = delegate
-            authController.performRequests()
 
             // Keep delegate alive
             objc_setAssociatedObject(authController, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+
+            authController.performRequests()
         }
     }
 
@@ -205,6 +207,7 @@ enum AuthError: Error, LocalizedError {
 
 // MARK: - Apple Sign In Delegate
 
+@MainActor
 private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     let continuation: CheckedContinuation<User, Error>
     let nonce: String

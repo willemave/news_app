@@ -15,6 +15,7 @@ final class KeychainManager {
     private init() {}
 
     private let serviceName = "com.newsly.app"
+    private var accessGroup: String?
 
     enum KeychainKey: String {
         case accessToken = "accessToken"
@@ -22,17 +23,26 @@ final class KeychainManager {
         case userId = "userId"
     }
 
+    /// Optional configuration for shared keychain access (e.g., extensions).
+    func configure(accessGroup: String?) {
+        self.accessGroup = accessGroup
+    }
+
     /// Save a token to the keychain
     func saveToken(_ token: String, key: KeychainKey) {
         guard let data = token.data(using: .utf8) else { return }
 
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key.rawValue,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
         ]
+
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
 
         // Delete existing item if any
         SecItemDelete(query as CFDictionary)
@@ -47,13 +57,17 @@ final class KeychainManager {
 
     /// Retrieve a token from the keychain
     func getToken(key: KeychainKey) -> String? {
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key.rawValue,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -69,11 +83,15 @@ final class KeychainManager {
 
     /// Delete a specific token from the keychain
     func deleteToken(key: KeychainKey) {
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key.rawValue
         ]
+
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
 
         SecItemDelete(query as CFDictionary)
     }

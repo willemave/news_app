@@ -4,10 +4,11 @@ from typing import Any
 
 from app.core.db import get_db
 from app.core.logging import get_logger
-from app.models.metadata import ContentStatus
+from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.models.scraper_runs import ScraperStats
 from app.services.queue import TaskType, get_queue_service
+from app.services.scraper_configs import ensure_inbox_status
 
 logger = get_logger(__name__)
 
@@ -105,10 +106,27 @@ class BaseScraper(ABC):
         with get_db() as db:
             for item in items:
                 try:
+                    user_id = item.get("user_id")
+                    content_type_value = item["content_type"].value
                     # Check if already exists
-                    existing = db.query(Content).filter(Content.url == item["url"]).first()
+                    existing = (
+                        db.query(Content)
+                        .filter(
+                            Content.url == item["url"],
+                            Content.content_type == content_type_value,
+                        )
+                        .first()
+                    )
 
                     if existing:
+                        status_created = ensure_inbox_status(
+                            db,
+                            user_id=user_id,
+                            content_id=existing.id,
+                            content_type=content_type_value,
+                        )
+                        if status_created:
+                            db.commit()
                         logger.debug(f"URL already exists: {item['url']}")
                         duplicate_count += 1
                         continue
@@ -116,7 +134,7 @@ class BaseScraper(ABC):
                     # Create new content
                     metadata = item.get("metadata", {})
                     content = Content(
-                        content_type=item["content_type"].value,
+                        content_type=content_type_value,
                         url=item["url"],
                         title=item.get("title"),
                         source=metadata.get("source"),  # Extract source from metadata
@@ -128,6 +146,15 @@ class BaseScraper(ABC):
                     )
 
                     db.add(content)
+                    db.flush()
+
+                    ensure_inbox_status(
+                        db,
+                        user_id=user_id if content_type_value in {ContentType.ARTICLE.value, ContentType.PODCAST.value} else None,
+                        content_id=content.id,
+                        content_type=content_type_value,
+                    )
+
                     db.commit()
                     db.refresh(content)
 

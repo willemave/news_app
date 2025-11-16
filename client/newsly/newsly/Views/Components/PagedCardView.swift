@@ -2,37 +2,31 @@
 //  PagedCardView.swift
 //  newsly
 //
-//  Button-based navigation using TabView paging (replaces swipe gestures)
+//  Vertical, page-based navigation with swipe gestures
 //
 
 import SwiftUI
+import UIKit
 
 struct PagedCardView: View {
     let groups: [NewsGroup]
-    let onDismiss: (String) async -> Void
+    let onMarkRead: (String) async -> Void
     let onConvert: (Int) async -> Void
+    let onNearEnd: () async -> Void
 
-    // Track dismissed group IDs for immediate visual feedback
-    @State private var dismissedGroupIds: Set<String> = []
-
-    // Current page index (always reset to 0 when visibleGroups changes)
     @State private var currentIndex: Int = 0
+    @State private var dragOffset: CGFloat = 0
+    @State private var inFlightReads: Set<String> = []
 
-    // Button state during async operations
-    @State private var isProcessing: Bool = false
-
-    // Visible groups = not read AND not dismissed
-    private var visibleGroups: [NewsGroup] {
-        groups.filter { group in
-            !group.isRead && !dismissedGroupIds.contains(group.id)
-        }
-    }
+    private let swipeDistanceThreshold: CGFloat = 120
+    private let swipeVelocityThreshold: CGFloat = 900
 
     var body: some View {
         GeometryReader { geometry in
+            let cardHeight = max(geometry.size.height - 80, 320)
+
             VStack(spacing: 0) {
-                if visibleGroups.isEmpty {
-                    // Empty state - all cards dismissed
+                if groups.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "newspaper")
                             .font(.largeTitle)
@@ -46,100 +40,100 @@ struct PagedCardView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    // Paged card view
-                    TabView(selection: $currentIndex) {
-                        ForEach(Array(visibleGroups.enumerated()), id: \.element.id) { index, group in
+                    ZStack(alignment: .top) {
+                        ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                             NewsGroupCard(
                                 group: group,
                                 onConvert: onConvert
                             )
-                            .tag(index)
+                            .frame(maxWidth: .infinity, minHeight: cardHeight, maxHeight: cardHeight)
+                            .padding(.horizontal, 16)
+                            .offset(y: offsetForCard(at: index, height: cardHeight))
+                            .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.85), value: currentIndex)
+                            .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.85), value: dragOffset)
                         }
                     }
-                    .tabViewStyle(.page)
-                    .padding(.horizontal, 16)
-                    .frame(maxHeight: geometry.size.height - 80)
-
-                    // Next/Done button
-                    Button(action: {
-                        handleNextTapped()
-                    }) {
-                        HStack(spacing: 6) {
-                            if isProcessing {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(0.9)
-                            } else {
-                                Text(visibleGroups.count == 1 ? "Done" : "Next")
-                                    .font(.body)
-                                    .fontWeight(.medium)
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(.body)
-                            }
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.accentColor)
-                        )
-                    }
-                    .disabled(isProcessing || visibleGroups.isEmpty)
-                    .opacity(isProcessing ? 0.6 : 1.0)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .frame(maxHeight: cardHeight)
+                    .clipped()
+                    .contentShape(Rectangle())
+                    // MinimumDistance keeps taps on links higher priority than swipes
+                    .simultaneousGesture(dragGesture(cardHeight: cardHeight), including: .subviews)
                 }
             }
             .padding(.top, -8)
         }
-        .animation(.easeInOut(duration: 0.2), value: visibleGroups.count)
-        .onChange(of: groups.count) { oldCount, newCount in
-            // Clean up dismissed IDs that are no longer in the groups array
-            if newCount < oldCount {
-                let currentGroupIds = Set(groups.map { $0.id })
-                dismissedGroupIds = dismissedGroupIds.intersection(currentGroupIds)
-            }
-
-            // On refresh (count goes to 0 or significantly changes), clear dismissed set
-            if newCount == 0 || abs(newCount - oldCount) > 10 {
-                dismissedGroupIds.removeAll()
-                currentIndex = 0
-            }
-        }
-        .onChange(of: visibleGroups.count) { _, _ in
-            // Reset to first page when visible groups change
-            if !visibleGroups.isEmpty && currentIndex >= visibleGroups.count {
-                currentIndex = 0
+        .onChange(of: groups.count) { _, newCount in
+            let clampedIndex = min(currentIndex, max(newCount - 1, 0))
+            if clampedIndex != currentIndex {
+                currentIndex = clampedIndex
             }
         }
     }
 
-    private func handleNextTapped() {
-        // Guard: ensure we have visible groups
-        guard !visibleGroups.isEmpty, currentIndex < visibleGroups.count else {
-            return
+    private func offsetForCard(at index: Int, height: CGFloat) -> CGFloat {
+        CGFloat(index - currentIndex) * height + dragOffset
+    }
+
+    private func dragGesture(cardHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 28)
+            .onChanged { value in
+                dragOffset = value.translation.height
+            }
+            .onEnded { value in
+                handleDragEnd(
+                    translation: value.translation.height,
+                    predictedEnd: value.predictedEndTranslation.height
+                )
+            }
+    }
+
+    private func handleDragEnd(translation: CGFloat, predictedEnd: CGFloat) {
+        let oldIndex = currentIndex
+        let velocity = predictedEnd - translation
+        var targetIndex = currentIndex
+
+        if translation < -swipeDistanceThreshold || velocity < -swipeVelocityThreshold {
+            targetIndex = min(currentIndex + 1, groups.count - 1)
+        } else if translation > swipeDistanceThreshold || velocity > swipeVelocityThreshold {
+            targetIndex = max(currentIndex - 1, 0)
         }
 
-        // Prevent rapid taps
-        guard !isProcessing else { return }
+        withAnimation(.interactiveSpring(response: 0.32, dampingFraction: 0.85)) {
+            currentIndex = targetIndex
+            dragOffset = 0
+        }
 
-        let dismissedGroup = visibleGroups[currentIndex]
+        if targetIndex != oldIndex {
+            handlePageChange(from: oldIndex, to: targetIndex)
+        }
+    }
 
-        // Mark as processing
-        isProcessing = true
+    private func handlePageChange(from oldIndex: Int, to newIndex: Int) {
+        triggerHaptic()
 
-        // Mark as dismissed immediately (synchronous - instant visual feedback)
-        dismissedGroupIds.insert(dismissedGroup.id)
+        if newIndex > oldIndex {
+            markGroupAsReadIfNeeded(oldIndex)
+        }
 
-        // Reset to first page (will show next card since current is now filtered out)
-        currentIndex = 0
+        if newIndex >= groups.count - 2 {
+            Task { await onNearEnd() }
+        }
+    }
 
-        // Call async operations in background (backend update)
+    private func markGroupAsReadIfNeeded(_ index: Int) {
+        guard groups.indices.contains(index) else { return }
+        let group = groups[index]
+        guard !group.isRead, !inFlightReads.contains(group.id) else { return }
+
+        inFlightReads.insert(group.id)
         Task {
-            await onDismiss(dismissedGroup.id)
-            // Reset processing state
-            isProcessing = false
+            await onMarkRead(group.id)
+            inFlightReads.remove(group.id)
         }
+    }
+
+    private func triggerHaptic() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
     }
 }

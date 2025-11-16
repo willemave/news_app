@@ -11,11 +11,17 @@ import SwiftUI
 struct newslyApp: App {
     @StateObject private var authViewModel = AuthenticationViewModel()
 
+    init() {
+        if let accessGroup = SharedContainer.keychainAccessGroup {
+            KeychainManager.shared.configure(accessGroup: accessGroup)
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
                 switch authViewModel.authState {
-                case .authenticated(let user):
+                case .authenticated:
                     ContentView()
                         .environmentObject(authViewModel)
                         .withToast()

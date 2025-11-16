@@ -9,6 +9,7 @@ import Foundation
 
 enum APIEndpoints {
     static let contentList = "/api/content/"
+    static let submitContent = "/api/content/submit"
     static let searchContent = "/api/content/search"
     static func contentDetail(id: Int) -> String {
         return "/api/content/\(id)"
@@ -34,5 +35,9 @@ enum APIEndpoints {
     static let unreadCounts = "/api/content/unread-counts"
     static func convertNewsToArticle(id: Int) -> String {
         return "/api/content/\(id)/convert-to-article"
+    }
+    static let scraperConfigs = "/api/scrapers"
+    static func scraperConfig(id: Int) -> String {
+        return "/api/scrapers/\(id)"
     }
 }

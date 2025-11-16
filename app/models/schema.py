@@ -2,7 +2,17 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import JSON, Boolean, Column, DateTime, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import validates
 
 from app.core.db import Base
@@ -203,4 +213,42 @@ class EventLog(Base):
         Index("idx_event_type_created", "event_type", "created_at"),
         Index("idx_event_name_created", "event_name", "created_at"),
         Index("idx_event_status_created", "event_type", "status", "created_at"),
+    )
+
+
+class ContentStatusEntry(Base):
+    """Per-user status for content feed membership."""
+
+    __tablename__ = "content_status"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    content_id = Column(Integer, nullable=False, index=True)
+    status = Column(String(20), nullable=False, index=True, default="inbox")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "content_id", name="idx_content_status_user_content"),
+    )
+
+
+class UserScraperConfig(Base):
+    """Per-user scraper configuration for dynamic sources."""
+
+    __tablename__ = "user_scraper_configs"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    scraper_type = Column(String(50), nullable=False, index=True)
+    display_name = Column(String(255), nullable=True)
+    feed_url = Column(String(2048), nullable=True)
+    config = Column(JSON, default=dict, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "scraper_type", "feed_url", name="uq_user_scraper_feed"),
+        Index("idx_user_scraper_user_type", "user_id", "scraper_type"),
     )
