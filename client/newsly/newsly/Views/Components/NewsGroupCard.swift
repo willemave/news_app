@@ -10,6 +10,7 @@ import SwiftUI
 struct NewsGroupCard: View {
     let group: NewsGroup
     let onConvert: (Int) async -> Void
+    var isCurrent: Bool = false
 
     /// Format publication date for compact display
     private func formatDateShort(_ dateString: String) -> String {
@@ -38,7 +39,7 @@ struct NewsGroupCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let content = VStack(alignment: .leading, spacing: 0) {
             // News items
             ForEach(group.items) { item in
                 NavigationLink(destination: ContentDetailView(contentId: item.id, allContentIds: group.items.map { $0.id }, onConvert: onConvert)) {
@@ -48,14 +49,18 @@ struct NewsGroupCard: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(item.isRead ? .secondary : .primary)
+                            .lineLimit(nil)
                             .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
 
                         // Short summary if available
                         if let summary = item.shortSummary, !summary.isEmpty {
                             Text(summary)
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
-                                .lineLimit(2)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
 
                         // Metadata row
@@ -82,17 +87,29 @@ struct NewsGroupCard: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 8)
                 }
                 .buttonStyle(.plain)
 
                 if item.id != group.items.last?.id {
                     Divider()
-                        .padding(.horizontal, 16)
                 }
             }
         }
-        .opacity(group.isRead ? 0.7 : 1.0)
+        // Measure intrinsic content height BEFORE parent applies frame constraints
+        .background(
+            Group {
+                if isCurrent {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .preference(key: GroupHeightPreferenceKey.self,
+                                        value: proxy.size.height)
+                    }
+                }
+            }
+        )
+
+        content
+            .opacity(group.isRead ? 0.7 : 1.0)
     }
 }

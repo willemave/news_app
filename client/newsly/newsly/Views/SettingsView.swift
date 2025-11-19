@@ -21,6 +21,8 @@ struct SettingsView: View {
     @State private var newFeedURL: String = ""
     @State private var newFeedName: String = ""
     @State private var newFeedType: String = "substack"
+    @State private var selectedFeed: ScraperConfig?
+    @State private var showFeedDetail = false
     #if DEBUG
     @State private var showingDebugMenu = false
     #endif
@@ -94,28 +96,40 @@ struct SettingsView: View {
                     }
 
                     ForEach(scraperViewModel.configs) { config in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(config.displayName ?? (config.feedURL ?? "Feed"))
-                                Text(config.scraperType.capitalized)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                if let feedURL = config.feedURL {
-                                    Text(feedURL)
-                                        .font(.caption2)
+                        Button {
+                            selectedFeed = config
+                            showFeedDetail = true
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(config.displayName ?? (config.feedURL ?? "Feed"))
+                                        .foregroundColor(.primary)
+                                    Text(config.scraperType.capitalized)
+                                        .font(.caption)
                                         .foregroundColor(.secondary)
+                                    if let feedURL = config.feedURL {
+                                        Text(feedURL)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    if config.isActive {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                            .font(.caption)
+                                    } else {
+                                        Image(systemName: "circle")
+                                            .foregroundColor(.secondary)
+                                            .font(.caption)
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.secondary)
+                                        .font(.caption)
                                 }
                             }
-                            Spacer()
-                            Toggle(isOn: Binding(
-                                get: { config.isActive },
-                                set: { isOn in
-                                    Task { await scraperViewModel.updateConfig(config, isActive: isOn) }
-                                })
-                            ) {
-                                Text("Active")
-                            }
-                            .labelsHidden()
                         }
                         .swipeActions {
                             Button(role: .destructive) {
@@ -258,6 +272,11 @@ struct SettingsView: View {
                     .environmentObject(authViewModel)
             }
             #endif
+            .sheet(isPresented: $showFeedDetail) {
+                if let feed = selectedFeed {
+                    FeedDetailView(viewModel: scraperViewModel, config: feed)
+                }
+            }
         }
     }
     

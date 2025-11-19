@@ -36,7 +36,7 @@ enum APIEndpoints {
     static func convertNewsToArticle(id: Int) -> String {
         return "/api/content/\(id)/convert-to-article"
     }
-    static let scraperConfigs = "/api/scrapers"
+    static let scraperConfigs = "/api/scrapers/"
     static func scraperConfig(id: Int) -> String {
         return "/api/scrapers/\(id)"
     }

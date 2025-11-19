@@ -39,23 +39,31 @@ struct LongFormView: View {
                         } else {
                             List {
                                 ForEach(viewModel.contents) { content in
-                                    ZStack {
-                                        NavigationLink(destination: ContentDetailView(
-                                            contentId: content.id,
-                                            allContentIds: viewModel.contents.map { $0.id }
-                                        )) {
-                                            EmptyView()
-                                        }
-                                        .opacity(0)
-                                        .buttonStyle(PlainButtonStyle())
+                                    VStack(spacing: 0) {
+                                        ZStack {
+                                            NavigationLink(destination: ContentDetailView(
+                                                contentId: content.id,
+                                                allContentIds: viewModel.contents.map { $0.id }
+                                            )) {
+                                                EmptyView()
+                                            }
+                                            .opacity(0)
+                                            .buttonStyle(PlainButtonStyle())
 
-                                        ContentCard(
-                                            content: content,
-                                            onMarkAsRead: { await viewModel.markAsRead(content.id) },
-                                            onToggleFavorite: { await viewModel.toggleFavorite(content.id) }
-                                        )
+                                            ContentCard(
+                                                content: content,
+                                                onMarkAsRead: { await viewModel.markAsRead(content.id) },
+                                                onToggleFavorite: { await viewModel.toggleFavorite(content.id) }
+                                            )
+                                        }
+
+                                        // Add divider between items (not after the last one)
+                                        if content.id != viewModel.contents.last?.id {
+                                            Divider()
+                                                .padding(.horizontal, 16)
+                                        }
                                     }
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                                     .listRowSeparator(.hidden)
                                     .listRowBackground(Color.clear)
                                     .swipeActions(edge: .leading, allowsFullSwipe: true) {

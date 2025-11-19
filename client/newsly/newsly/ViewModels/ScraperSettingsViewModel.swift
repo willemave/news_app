@@ -14,11 +14,17 @@ class ScraperSettingsViewModel: ObservableObject {
     private let service = ScraperConfigService.shared
 
     func loadConfigs() async {
+        print("DEBUG: ScraperSettingsViewModel.loadConfigs() called")
         isLoading = true
         errorMessage = nil
         do {
             configs = try await service.listConfigs()
+            print("DEBUG: Successfully loaded \(configs.count) scraper configs")
+            for config in configs {
+                print("DEBUG: Config: \(config.displayName ?? "N/A") (\(config.scraperType))")
+            }
         } catch {
+            print("DEBUG: Error loading scraper configs: \(error)")
             errorMessage = error.localizedDescription
         }
         isLoading = false
@@ -39,13 +45,13 @@ class ScraperSettingsViewModel: ObservableObject {
         }
     }
 
-    func updateConfig(_ config: ScraperConfig, isActive: Bool? = nil, displayName: String? = nil) async {
+    func updateConfig(_ config: ScraperConfig, isActive: Bool? = nil, displayName: String? = nil, feedURL: String? = nil) async {
         errorMessage = nil
         do {
             let updated = try await service.updateConfig(
                 configId: config.id,
                 displayName: displayName,
-                feedURL: nil,
+                feedURL: feedURL,
                 isActive: isActive
             )
             if let index = configs.firstIndex(where: { $0.id == updated.id }) {
