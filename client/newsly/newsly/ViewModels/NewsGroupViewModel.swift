@@ -24,6 +24,18 @@ class NewsGroupViewModel: ObservableObject {
 
     private var sessionReadGroupIds: Set<String> = []
 
+    // Dynamic group size based on screen height
+    var groupSize: Int = 7  // Default, will be updated by view
+
+    // Metrics from the view to enable height-aware grouping
+    var groupingAvailableHeight: CGFloat?
+    var groupingTextWidth: CGFloat?
+
+    func setGroupingMetrics(contentWidth: CGFloat, availableHeight: CGFloat) {
+        groupingTextWidth = contentWidth
+        groupingAvailableHeight = availableHeight
+    }
+
     func loadNewsGroups(preserveReadGroups: Bool = false) async {
         isLoading = true
         errorMessage = nil
@@ -37,17 +49,26 @@ class NewsGroupViewModel: ObservableObject {
         let preservedReads = preserveReadGroups ? newsGroups.filter { $0.isRead } : []
 
         do {
-            // Load news content (limit 30 to get 5 groups of 6)
+            // Load news content (limit = groupSize * 5 groups)
+            let limit = groupSize * 5
+            print("🧮 Fetch news groups — size: \(groupSize), limit: \(limit), preserve reads: \(preserveReadGroups)")
             let response = try await contentService.fetchContentList(
                 contentType: "news",
                 date: nil,
                 readFilter: "unread",
                 cursor: nil,
-                limit: 30
+                limit: limit
             )
 
-            // Group items by 6
-            var fetchedGroups = response.contents.groupedBySix()
+            // Group items to fit the actual card height when metrics are available
+            var fetchedGroups: [NewsGroup]
+            if let h = groupingAvailableHeight, let w = groupingTextWidth, h > 0, w > 0 {
+                fetchedGroups = response.contents.groupedToFit(availableHeight: h, textWidth: w)
+            } else {
+                fetchedGroups = response.contents.grouped(by: groupSize)
+            }
+            let groupSizes = fetchedGroups.map { $0.items.count }
+            print("🧮 Fetch returned \(response.contents.count) items → \(fetchedGroups.count) groups with sizes \(groupSizes)")
 
             if preserveReadGroups, !preservedReads.isEmpty {
                 // Keep current-session reads visible while fetching new data
@@ -74,16 +95,23 @@ class NewsGroupViewModel: ObservableObject {
         isLoadingMore = true
 
         do {
+            // Load more with same dynamic limit
+            let limit = groupSize * 5
             let response = try await contentService.fetchContentList(
                 contentType: "news",
                 date: nil,
                 readFilter: "unread",
                 cursor: cursor,
-                limit: 30
+                limit: limit
             )
 
-            // Append new groups
-            let newGroups = response.contents.groupedBySix()
+            // Append new groups using the same height-aware packing
+            let newGroups: [NewsGroup]
+            if let h = groupingAvailableHeight, let w = groupingTextWidth, h > 0, w > 0 {
+                newGroups = response.contents.groupedToFit(availableHeight: h, textWidth: w)
+            } else {
+                newGroups = response.contents.grouped(by: groupSize)
+            }
             newsGroups.append(contentsOf: newGroups)
             nextCursor = response.nextCursor
             hasMore = response.hasMore

@@ -20,9 +20,9 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = Field(..., description="Secret key for JWT token signing")
     JWT_ALGORITHM: str = Field(default="HS256", description="JWT signing algorithm")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
-        default=30, description="Access token expiry in minutes"
+        default=43200, description="Access token expiry in minutes (30 days)"
     )
-    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, description="Refresh token expiry in days")
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=90, description="Refresh token expiry in days")
     ADMIN_PASSWORD: str = Field(..., description="Admin password for web access")
 
     # Worker configuration

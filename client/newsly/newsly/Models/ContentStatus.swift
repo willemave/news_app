@@ -13,7 +13,7 @@ enum ContentStatus: String, Codable {
     case completed = "completed"
     case failed = "failed"
     case skipped = "skipped"
-    
+
     var displayName: String {
         return self.rawValue.capitalized
     }

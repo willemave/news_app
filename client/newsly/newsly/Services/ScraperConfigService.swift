@@ -38,7 +38,10 @@ class ScraperConfigService {
     private init() {}
 
     func listConfigs() async throws -> [ScraperConfig] {
-        try await client.request(APIEndpoints.scraperConfigs)
+        print("DEBUG: ScraperConfigService.listConfigs() - calling \(APIEndpoints.scraperConfigs)")
+        let configs: [ScraperConfig] = try await client.request(APIEndpoints.scraperConfigs)
+        print("DEBUG: ScraperConfigService.listConfigs() - received \(configs.count) configs")
+        return configs
     }
 
     func createConfig(scraperType: String, displayName: String?, feedURL: String, isActive: Bool) async throws -> ScraperConfig {

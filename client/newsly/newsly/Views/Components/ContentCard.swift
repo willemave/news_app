@@ -11,7 +11,19 @@ struct ContentCard: View {
     let content: ContentSummary
     let onMarkAsRead: () async -> Void
     let onToggleFavorite: () async -> Void
-    let dimReadState: Bool = true
+    let dimReadState: Bool
+
+    init(
+        content: ContentSummary,
+        onMarkAsRead: @escaping () async -> Void,
+        onToggleFavorite: @escaping () async -> Void,
+        dimReadState: Bool = true
+    ) {
+        self.content = content
+        self.onMarkAsRead = onMarkAsRead
+        self.onToggleFavorite = onToggleFavorite
+        self.dimReadState = dimReadState
+    }
 
     @State private var isMarking = false
     @State private var isTogglingFavorite = false

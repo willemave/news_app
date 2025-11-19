@@ -13,17 +13,23 @@ struct PagedCardView: View {
     let onMarkRead: (String) async -> Void
     let onConvert: (Int) async -> Void
     let onNearEnd: () async -> Void
+    let onCardHeightMeasured: (CGFloat, CGFloat) -> Void  // (cardHeight, textWidth)
 
     @State private var currentIndex: Int = 0
     @State private var dragOffset: CGFloat = 0
     @State private var inFlightReads: Set<String> = []
+    @State private var lastMeasuredHeight: CGFloat?
+    @State private var lastReportedCardHeight: CGFloat?
 
     private let swipeDistanceThreshold: CGFloat = 120
     private let swipeVelocityThreshold: CGFloat = 900
 
     var body: some View {
         GeometryReader { geometry in
-            let cardHeight = max(geometry.size.height - 80, 320)
+            // Single source of truth: compute cardHeight once from actual geometry
+            // NavigationStack/TabView already respect safe area, so geometry.size.height is already inside safe area
+            let cardHeight = geometry.size.height
+            let textWidth = max(geometry.size.width - 64, 0)  // minus outer (16*2) and row (16*2) padding
 
             VStack(spacing: 0) {
                 if groups.isEmpty {
@@ -44,23 +50,44 @@ struct PagedCardView: View {
                         ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                             NewsGroupCard(
                                 group: group,
-                                onConvert: onConvert
+                                onConvert: onConvert,
+                                isCurrent: index == currentIndex
                             )
-                            .frame(maxWidth: .infinity, minHeight: cardHeight, maxHeight: cardHeight)
+                            .frame(height: cardHeight)
+                            .frame(maxWidth: .infinity)
                             .padding(.horizontal, 16)
                             .offset(y: offsetForCard(at: index, height: cardHeight))
                             .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.85), value: currentIndex)
                             .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.85), value: dragOffset)
                         }
                     }
-                    .frame(maxHeight: cardHeight)
+                    .frame(height: cardHeight, alignment: .top)
+                    .frame(maxWidth: .infinity)
                     .clipped()
                     .contentShape(Rectangle())
-                    // MinimumDistance keeps taps on links higher priority than swipes
-                    .simultaneousGesture(dragGesture(cardHeight: cardHeight), including: .subviews)
+                    // highPriorityGesture allows swipes to work while minimumDistance preserves taps
+                    .highPriorityGesture(dragGesture(cardHeight: cardHeight))
+                    .onPreferenceChange(GroupHeightPreferenceKey.self) { height in
+                        guard height > 0 else { return }
+                        if let lastHeight = lastMeasuredHeight, abs(lastHeight - height) < 2 {
+                            return
+                        }
+                        lastMeasuredHeight = height
+                        print("📏 Intrinsic content height: \(height) vs cardHeight: \(cardHeight) (slack: \(cardHeight - height))")
+                    }
                 }
             }
-            .padding(.top, -8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .task(id: cardHeight) {
+                // Report cardHeight and textWidth to parent for grouping logic
+                // Only report when value changes meaningfully
+                if let last = lastReportedCardHeight, abs(last - cardHeight) < 2 {
+                    return
+                }
+                lastReportedCardHeight = cardHeight
+                print("🃏 Reporting cardHeight: \(cardHeight), textWidth: \(textWidth)")
+                onCardHeightMeasured(cardHeight, textWidth)
+            }
         }
         .onChange(of: groups.count) { _, newCount in
             let clampedIndex = min(currentIndex, max(newCount - 1, 0))
@@ -137,3 +164,13 @@ struct PagedCardView: View {
         generator.impactOccurred()
     }
 }
+
+struct GroupHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+// Note: height emission now originates inside NewsGroupCard so we measure intrinsic content size,
+// not the framed page height.

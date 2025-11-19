@@ -96,7 +96,6 @@ struct FavoritesView: View {
 
                     ContentCard(
                         content: content,
-                        dimReadState: false,
                         onMarkAsRead: { await viewModel.markAsRead(content.id) },
                         onToggleFavorite: { await viewModel.toggleFavorite(content.id) }
                     )
