@@ -13,6 +13,7 @@ struct ContentDetailView: View {
     let allContentIds: [Int]
     let onConvert: ((Int) async -> Void)?
     @StateObject private var viewModel = ContentDetailViewModel()
+    @EnvironmentObject var readingStateStore: ReadingStateStore
     @Environment(\.dismiss) private var dismiss
     @State private var dragAmount: CGFloat = 0
     @State private var currentIndex: Int
@@ -60,21 +61,29 @@ struct ContentDetailView: View {
 
                             if let source = content.source {
                                 Text(source)
-                                    .font(.subheadline)
+                                    .font(.callout)
                                     .foregroundColor(.secondary)
                             }
 
                             if content.source != nil && content.publicationDate != nil {
                                 Text("•")
-                                    .font(.subheadline)
+                                    .font(.callout)
                                     .foregroundColor(.secondary)
                             }
 
                             if let pubDate = content.publicationDate {
                                 Text(formatDate(pubDate))
-                                    .font(.subheadline)
+                                    .font(.callout)
                                     .foregroundColor(.secondary)
                             }
+
+                            // Show created_at
+                            Text("•")
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                            Text(formatDateSimple(content.createdAt))
+                                .font(.callout)
+                                .foregroundColor(.secondary)
 
                             Spacer()
                         }
@@ -204,7 +213,7 @@ struct ContentDetailView: View {
 
                                                 if let summary = item.summary, !summary.isEmpty {
                                                     Text(summary)
-                                                        .font(.body)
+                                                        .font(.callout)
                                                         .foregroundColor(.secondary)
                                                 }
                                             }
@@ -323,6 +332,10 @@ struct ContentDetailView: View {
             viewModel.updateContentId(idToLoad)
             await viewModel.loadContent()
         }
+        .onChange(of: viewModel.content?.id) { _, newValue in
+            guard let id = newValue, let type = viewModel.content?.contentTypeEnum else { return }
+            readingStateStore.setCurrent(contentId: id, type: type)
+        }
         // If user is navigating (chevrons or swipe), skip items that were already read
         .onChange(of: viewModel.wasAlreadyReadWhenLoaded) { _, wasRead in
             guard didTriggerNavigation, viewModel.content?.contentTypeEnum == .podcast else { return }
@@ -348,6 +361,9 @@ struct ContentDetailView: View {
                 viewModel.updateContentId(newContentId)
                 await viewModel.loadContent()
             }
+        }
+        .onDisappear {
+            readingStateStore.clear()
         }
     }
 
@@ -433,6 +449,41 @@ struct ContentDetailView: View {
         }
     }
     
+    private func formatDateSimple(_ dateString: String) -> String {
+        let inputFormatter = DateFormatter()
+        inputFormatter.locale = Locale(identifier: "en_US_POSIX")
+        inputFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+
+        // Try with microseconds first
+        inputFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+        var date = inputFormatter.date(from: dateString)
+
+        // Try with milliseconds
+        if date == nil {
+            inputFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
+            date = inputFormatter.date(from: dateString)
+        }
+
+        // Try without fractional seconds
+        if date == nil {
+            inputFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            date = inputFormatter.date(from: dateString)
+        }
+
+        // Try ISO8601 with Z
+        if date == nil {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withInternetDateTime]
+            date = isoFormatter.date(from: dateString)
+        }
+
+        guard let validDate = date else { return dateString }
+
+        let displayFormatter = DateFormatter()
+        displayFormatter.dateFormat = "MM-dd-yyyy"
+        return displayFormatter.string(from: validDate)
+    }
+
     private func formatDate(_ dateString: String) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

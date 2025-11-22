@@ -8,7 +8,7 @@ Use run_workers.py to process the scraped content.
 import argparse
 import os
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -178,7 +178,7 @@ def main():
                         logger.info(f"  {content_type.value}s: {count}")
 
                     # Recent activity
-                    today = datetime.utcnow().date()
+                    today = datetime.now(UTC).date()
                     scraped_today = (
                         db.query(Content).filter(func.date(Content.created_at) >= today).count()
                     )

@@ -85,7 +85,7 @@ if [ -f .venv/bin/activate ]; then
   source .venv/bin/activate
 fi
 
-# Create a test user in the database
+# Use user_id=1 (production user) for testing with copied production database
 python -c "
 import sys
 sys.path.insert(0, '.')
@@ -97,22 +97,22 @@ Base.metadata.create_all(bind=engine)
 SessionLocal = get_session_factory()
 session = SessionLocal()
 
-# Delete existing test user
-existing = session.query(User).filter_by(email='test@example.com').first()
-if existing:
-    session.delete(existing)
+# Use user_id=1 for testing (matches production data like favorites, read status)
+user = session.query(User).filter_by(id=1).first()
+if not user:
+    # Fallback: create a test user if no user exists
+    user = User(
+        apple_id='test.simulator.001',
+        email='test@example.com',
+        full_name='Test User',
+        is_active=True
+    )
+    session.add(user)
     session.commit()
+    print(f'Created new test user with ID: {user.id}')
+else:
+    print(f'Using existing user: {user.email} (ID: {user.id})')
 
-# Create new test user
-user = User(
-    apple_id='test.simulator.001',
-    email='test@example.com',
-    full_name='Test User',
-    is_active=True
-)
-session.add(user)
-session.commit()
-print(f'Created user with ID: {user.id}')
 user_id = user.id
 session.close()
 

@@ -15,6 +15,7 @@ from app.services.anthropic_llm import get_anthropic_summarization_service
 from app.services.http import NonRetryableError, get_http_service
 from app.services.openai_llm import get_openai_summarization_service
 from app.services.queue import TaskType, get_queue_service
+from app.utils.dates import parse_date_with_tz
 from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
@@ -401,17 +402,11 @@ class ContentWorker:
             # Update publication_date from metadata
             pub_date = extracted_data.get("publication_date")
             if pub_date:
-                if isinstance(pub_date, str):
-                    try:
-                        from dateutil import parser
-
-                        content.publication_date = parser.parse(pub_date)
-                    except Exception:
-                        logger.warning(f"Could not parse publication date: {pub_date}")
-                        content.publication_date = content.created_at
-                elif isinstance(pub_date, datetime):
-                    content.publication_date = pub_date
+                parsed_pub_date = parse_date_with_tz(pub_date)
+                if parsed_pub_date:
+                    content.publication_date = parsed_pub_date
                 else:
+                    logger.warning("Could not parse publication date: %s", pub_date)
                     content.publication_date = content.created_at
             else:
                 # Fallback to created_at if no publication date

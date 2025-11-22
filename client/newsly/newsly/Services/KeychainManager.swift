@@ -37,7 +37,8 @@ final class KeychainManager {
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key.rawValue,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+            // Allow background refreshes after first unlock so timers/URLSession tasks can read tokens
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
 
         if let accessGroup {

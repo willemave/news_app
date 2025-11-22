@@ -5,97 +5,175 @@
 //  Created by Assistant on 11/4/25.
 //
 
+import os.log
 import SwiftUI
 
+private let logger = Logger(subsystem: "com.newsly", category: "ShortFormView")
+
+/// Preference key to collect items that have scrolled past the top
+private struct ScrolledPastTopPreferenceKey: PreferenceKey {
+    static var defaultValue: [Int] = []
+    static func reduce(value: inout [Int], nextValue: () -> [Int]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
 struct ShortFormView: View {
-    @StateObject private var viewModel = NewsGroupViewModel()
-    @State private var lastMetrics: (h: CGFloat, w: CGFloat)?
+    @ObservedObject var viewModel: ShortNewsListViewModel
+    let onSelect: (ContentDetailRoute) -> Void
+
+    /// Track which items have already been marked as read to avoid duplicates
+    @State private var markedAsReadIds: Set<Int> = []
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if viewModel.isLoading && viewModel.newsGroups.isEmpty {
-                    LoadingView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = viewModel.errorMessage, viewModel.newsGroups.isEmpty {
-                    ErrorView(message: error) {
-                        Task { await viewModel.loadNewsGroups() }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewModel.newsGroups.isEmpty {
-                    VStack(spacing: 16) {
-                        Spacer()
-                        Image(systemName: "bolt.fill")
-                            .font(.largeTitle)
-                            .foregroundColor(.secondary)
-                        Text("No short-form content found.")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    PagedCardView(
-                        groups: viewModel.newsGroups,
-                        onMarkRead: { groupId in
-                            await viewModel.markGroupAsRead(groupId)
-                        },
-                        onConvert: { itemId in
-                            await viewModel.convertToArticle(itemId)
-                        },
-                        onNearEnd: {
-                            await viewModel.preloadNextGroups()
-                        },
-                        onCardHeightMeasured: { cardHeight, textWidth in
-                            handleCardHeightMeasured(cardHeight: cardHeight, textWidth: textWidth)
+        ScrollViewReader { _ in
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    if case .error(let error) = viewModel.state, viewModel.currentItems().isEmpty {
+                        ErrorView(message: error.localizedDescription) {
+                            viewModel.refreshTrigger.send(())
                         }
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .refreshable {
-                        await viewModel.refresh()
+                        .padding(.top, 48)
+                    } else if viewModel.state == .initialLoading, viewModel.currentItems().isEmpty {
+                        ProgressView("Loading")
+                            .padding(.top, 48)
+                    } else if viewModel.currentItems().isEmpty {
+                        VStack(spacing: 16) {
+                            Spacer()
+                            Image(systemName: "bolt.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(.secondary)
+                            Text("No short-form content found.")
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        ForEach(viewModel.currentItems(), id: \.id) { item in
+                            ShortNewsRow(item: item)
+                                .background(
+                                    ScrollPositionDetector(
+                                        itemId: item.id,
+                                        isAlreadyMarked: markedAsReadIds.contains(item.id) || item.isRead
+                                    )
+                                )
+                                .onTapGesture {
+                                    let ids = viewModel.currentItems().map(\.id)
+                                    let route = ContentDetailRoute(
+                                        contentId: item.id,
+                                        contentType: item.contentTypeEnum ?? .news,
+                                        allContentIds: ids
+                                    )
+                                    onSelect(route)
+                                }
+                                .onAppear {
+                                    if item.id == viewModel.currentItems().last?.id {
+                                        viewModel.loadMoreTrigger.send(())
+                                    }
+                                }
+                        }
+
+                        if viewModel.state == .loadingMore {
+                            ProgressView()
+                                .padding(.vertical, 16)
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
             }
-            .task {
-                // Initial load - metrics will be set by PagedCardView callback
-                await viewModel.loadNewsGroups(preserveReadGroups: false)
+            .coordinateSpace(name: "scrollView")
+            .onPreferenceChange(ScrolledPastTopPreferenceKey.self) { ids in
+                // Filter out items we've already processed
+                let newIds = ids.filter { !markedAsReadIds.contains($0) }
+                guard !newIds.isEmpty else { return }
+
+                logger.info("[ShortFormView] Items scrolled past top | ids=\(newIds, privacy: .public)")
+
+                // Add to our tracking set
+                for id in newIds {
+                    markedAsReadIds.insert(id)
+                }
+
+                // Notify view model
+                viewModel.itemsScrolledPastTop(ids: newIds)
             }
-            .onDisappear {
-                viewModel.clearSessionReads()
+            .refreshable {
+                viewModel.refreshTrigger.send(())
             }
-        }
-    }
-
-    /// Handle cardHeight measurement from PagedCardView
-    /// This provides the single source of truth for grouping logic
-    private func handleCardHeightMeasured(cardHeight: CGFloat, textWidth: CGFloat) {
-        guard cardHeight > 200 else { return }
-
-        // Set grouping metrics using the exact cardHeight that PagedCardView will use
-        viewModel.setGroupingMetrics(contentWidth: textWidth, availableHeight: cardHeight)
-
-        // Calculate optimal group size based on cardHeight (kept for paging limits and prefetch sizing)
-        let newGroupSize = [ContentSummary].calculateOptimalGroupSize(availableHeight: cardHeight)
-        if newGroupSize != viewModel.groupSize {
-            viewModel.groupSize = newGroupSize
-        }
-
-        // Reload when metrics changed (first time or by > 1 pt)
-        let metricsChanged =
-            lastMetrics == nil
-            || abs(lastMetrics!.h - cardHeight) > 1
-            || abs(lastMetrics!.w - textWidth) > 1
-
-        if metricsChanged {
-            print("✅ CardHeight measured: \(cardHeight), textWidth: \(textWidth)")
-            print("✅ Group size: \(viewModel.groupSize), reloading with height-aware packer")
-            Task {
-                await viewModel.loadNewsGroups(preserveReadGroups: true)
+            .onAppear {
+                if viewModel.currentItems().isEmpty {
+                    viewModel.refreshTrigger.send(())
+                }
             }
-            lastMetrics = (cardHeight, textWidth)
         }
     }
 }
 
-#Preview {
-    ShortFormView()
+/// Detects when an item's bottom edge scrolls past the top of the screen
+private struct ScrollPositionDetector: View {
+    let itemId: Int
+    let isAlreadyMarked: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let frame = geo.frame(in: .named("scrollView"))
+            // Item has scrolled past top when its bottom edge is above the top of the scroll view
+            // We use a small threshold (50pt) to ensure the item has clearly scrolled off
+            let hasScrolledPastTop = frame.maxY < 50
+
+            Color.clear
+                .preference(
+                    key: ScrolledPastTopPreferenceKey.self,
+                    value: (hasScrolledPastTop && !isAlreadyMarked) ? [itemId] : []
+                )
+        }
+    }
+}
+
+private struct ShortNewsRow: View {
+    let item: ContentSummary
+
+    private var textOpacity: Double {
+        item.isRead ? 0.5 : 1.0
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.displayTitle)
+                    .font(.headline)
+                    .foregroundColor(.primary.opacity(textOpacity))
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+
+                if let summary = item.shortSummary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary.opacity(textOpacity))
+                        .lineLimit(3)
+                }
+
+                HStack(spacing: 6) {
+                    if let source = item.source {
+                        Text(source)
+                            .font(.caption)
+                            .foregroundColor(.secondary.opacity(textOpacity))
+                    }
+                    if let platform = item.platform {
+                        Text(platform)
+                            .font(.caption2)
+                            .foregroundColor(.secondary.opacity(textOpacity))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.gray.opacity(item.isRead ? 0.05 : 0.1))
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+
+            Divider()
+        }
+        .padding(.vertical, 8)
+    }
 }

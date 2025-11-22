@@ -8,6 +8,22 @@
 import Foundation
 import UIKit
 
+enum NewsRowTypography {
+    static let title: UIFont = {
+        let base = UIFont.preferredFont(forTextStyle: .body)
+        return UIFont.systemFont(ofSize: base.pointSize, weight: .medium)
+    }()
+    static let summary: UIFont = UIFont.preferredFont(forTextStyle: .footnote)
+    static let metadata: UIFont = UIFont.preferredFont(forTextStyle: .caption1)
+}
+
+enum NewsRowLayout {
+    static let horizontalPadding: CGFloat = 24     // Card padding applied in PagedCardView
+    static let verticalPadding: CGFloat = 16       // .padding(.vertical, 8)
+    static let interStackSpacing: CGFloat = 8      // Two 4pt gaps inside the VStack
+    static var dividerHeight: CGFloat { 1 / UIScreen.main.scale }
+}
+
 /// Represents a dynamically-sized group of news items displayed together
 struct NewsGroup: Identifiable {
     let id: String
@@ -55,45 +71,52 @@ extension Array where Element == ContentSummary {
     }
 
     /// Estimated per-row height using the same layout as NewsGroupCard.
-    /// Title is fully expanded; summary and metadata are single-line each.
-    static func estimatedRowHeight(averageTitleLines: CGFloat = 1.8) -> CGFloat {
-        let titleLineHeight = UIFont.preferredFont(forTextStyle: .subheadline).lineHeight
-        let captionLineHeight = UIFont.preferredFont(forTextStyle: .caption2).lineHeight
+    /// Title is fully expanded; summary is assumed multi-line (up to two) with metadata on one line.
+    static func estimatedRowHeight(averageTitleLines: CGFloat = 2.0,
+                                   averageSummaryLines: CGFloat = 1.6) -> CGFloat {
+        let titleBlock = NewsRowTypography.title.lineHeight * averageTitleLines
+        let summaryBlock = NewsRowTypography.summary.lineHeight * averageSummaryLines
+        let metaBlock = NewsRowTypography.metadata.lineHeight
 
-        // NewsGroupCard spacings: 4 between title→summary and 4 between summary→meta.
-        let verticalSpacing: CGFloat = 8
-        let verticalPaddingPerItem: CGFloat = 16   // .padding(.vertical, 8)
-        let dividerHeight: CGFloat = 1             // matches Divider()
-        let baselineFudge: CGFloat = 2             // rounding/baseline
-
-        let titleBlock = titleLineHeight * averageTitleLines
-        let summaryBlock = captionLineHeight       // clamped to 1 line
-        let metaBlock = captionLineHeight          // single line
+        let baselineFudge: CGFloat = 2  // Protect against rounding drift on dynamic type sizes
         let row = titleBlock + summaryBlock + metaBlock
-                  + verticalSpacing + verticalPaddingPerItem + dividerHeight + baselineFudge
+                  + NewsRowLayout.interStackSpacing + NewsRowLayout.verticalPadding
+                  + NewsRowLayout.dividerHeight + baselineFudge
         return ceil(row)
     }
 
     /// Estimate the exact row height for a specific item at a given text width.
     /// Uses NSString bounding rect so wrapped titles are measured precisely.
     static func estimateRowHeight(for item: ContentSummary, textWidth: CGFloat) -> CGFloat {
-        let titleFont = UIFont.preferredFont(forTextStyle: .subheadline)
-        let captionLine = ceil(UIFont.preferredFont(forTextStyle: .caption2).lineHeight)
-        let verticalPadding: CGFloat = 16     // .padding(.vertical, 8)
-        let verticalSpacing: CGFloat = 4      // inner VStack spacing
+        let titleFont = NewsRowTypography.title
+        let summaryFont = NewsRowTypography.summary
+        let metadataFont = NewsRowTypography.metadata
 
-        let title = item.displayTitle as NSString
-        let bounds = title.boundingRect(
+        let titleBounds = (item.displayTitle as NSString).boundingRect(
             with: CGSize(width: Swift.max(textWidth, 0), height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: titleFont],
             context: nil
         )
-        let titleHeight = ceil(bounds.height)
-        let summaryHeight = (item.shortSummary?.isEmpty ?? true) ? 0 : captionLine
-        let metaHeight = captionLine
+        let titleHeight = ceil(titleBounds.height)
 
-        return titleHeight + summaryHeight + metaHeight + verticalSpacing + verticalPadding
+        var summaryHeight: CGFloat = 0
+        if let summary = item.shortSummary, !summary.isEmpty {
+            let summaryBounds = (summary as NSString).boundingRect(
+                with: CGSize(width: Swift.max(textWidth, 0), height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: summaryFont],
+                context: nil
+            )
+            let maxSummaryHeight = ceil(summaryFont.lineHeight * 2)
+            summaryHeight = Swift.min(ceil(summaryBounds.height), maxSummaryHeight)
+        }
+
+        let metaHeight = ceil(metadataFont.lineHeight)
+        let stackSpacing: CGFloat = summaryHeight > 0 ? NewsRowLayout.interStackSpacing : 4
+
+        return titleHeight + summaryHeight + metaHeight
+            + stackSpacing + NewsRowLayout.verticalPadding
     }
 
     /// Pack items into groups that fit within a fixed card height using measured row heights.
@@ -107,7 +130,7 @@ extension Array where Element == ContentSummary {
         }
 
         // Use pixel-perfect divider height matching SwiftUI's Divider (1 physical pixel)
-        let dividerHeight: CGFloat = 1 / UIScreen.main.scale
+        let dividerHeight = NewsRowLayout.dividerHeight
         // Small safety margin to avoid underfill from rounding errors
         let budget = Swift.max(availableHeight - 4, 0)
         var result: [NewsGroup] = []
@@ -138,12 +161,16 @@ extension Array where Element == ContentSummary {
     /// Calculate optimal group size for a given available height.
     /// Uses calibrated per-row estimate and an exact fit that includes N−1 dividers.
     static func calculateOptimalGroupSize(availableHeight: CGFloat,
-                                          averageTitleLines: CGFloat = 1.8) -> Int {
+                                          averageTitleLines: CGFloat = 2.0,
+                                          averageSummaryLines: CGFloat = 1.6) -> Int {
         let minimumGroupSize = 5
         let maximumGroupSize = 12
 
-        let rowH = estimatedRowHeight(averageTitleLines: averageTitleLines)
-        let dividerH: CGFloat = 1
+        let rowH = estimatedRowHeight(
+            averageTitleLines: averageTitleLines,
+            averageSummaryLines: averageSummaryLines
+        )
+        let dividerH = NewsRowLayout.dividerHeight
         let usableHeight = Swift.max(availableHeight, 0)
 
         // First guess with a "row + divider" share to reduce bias.
@@ -162,10 +189,11 @@ extension Array where Element == ContentSummary {
         print("📐 Group Size Calculation")
         print("  - Available height: \(availableHeight)")
         print("  - Usable height: \(usableHeight)")
-        let tLH = UIFont.preferredFont(forTextStyle: .subheadline).lineHeight
-        let cLH = UIFont.preferredFont(forTextStyle: .caption2).lineHeight
-        print("  - Typography (title/caption): \(tLH)/\(cLH)")
-        print("  - Avg title lines: \(averageTitleLines)")
+        let tLH = NewsRowTypography.title.lineHeight
+        let sLH = NewsRowTypography.summary.lineHeight
+        let mLH = NewsRowTypography.metadata.lineHeight
+        print("  - Typography (title/summary/meta): \(tLH)/\(sLH)/\(mLH)")
+        print("  - Avg lines (title/summary): \(averageTitleLines)/\(averageSummaryLines)")
         print("  - Estimated row height: \(rowH)")
         print("  - Selected count: \(clamped)")
         print("  - Projected height @count: \(projected(clamped))")

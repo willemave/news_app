@@ -28,10 +28,13 @@ struct PagedCardView: View {
         GeometryReader { geometry in
             // Single source of truth: compute cardHeight once from actual geometry
             // NavigationStack/TabView already respect safe area, so geometry.size.height is already inside safe area
-            let cardHeight = geometry.size.height
-            let textWidth = max(geometry.size.width - 64, 0)  // minus outer (16*2) and row (16*2) padding
+            let cardHeight = geometry.size.height - 16  // Account for top padding
+            let textWidth = max(geometry.size.width - (NewsRowLayout.horizontalPadding * 2), 0)
 
             VStack(spacing: 0) {
+                Spacer()
+                    .frame(height: 16)
+
                 if groups.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "newspaper")
@@ -55,7 +58,7 @@ struct PagedCardView: View {
                             )
                             .frame(height: cardHeight)
                             .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, NewsRowLayout.horizontalPadding)
                             .offset(y: offsetForCard(at: index, height: cardHeight))
                             .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.85), value: currentIndex)
                             .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.85), value: dragOffset)

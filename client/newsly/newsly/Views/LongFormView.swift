@@ -8,166 +8,155 @@
 import SwiftUI
 
 struct LongFormView: View {
-    @StateObject private var viewModel = ContentListViewModel()
+    @ObservedObject var viewModel: LongContentListViewModel
+    let onSelect: (ContentDetailRoute) -> Void
+
     @ObservedObject private var settings = AppSettings.shared
     @State private var showMarkAllConfirmation = false
     @State private var isProcessingBulk = false
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                VStack(spacing: 0) {
-                    if viewModel.isLoading && viewModel.contents.isEmpty {
-                        LoadingView()
-                    } else if let error = viewModel.errorMessage, viewModel.contents.isEmpty {
-                        ErrorView(message: error) {
-                            Task { await viewModel.loadContent() }
+        ZStack {
+            VStack(spacing: 0) {
+                if viewModel.state == .initialLoading && viewModel.currentItems().isEmpty {
+                    LoadingView()
+                } else if case .error(let error) = viewModel.state, viewModel.currentItems().isEmpty {
+                    ErrorView(message: error.localizedDescription) {
+                        viewModel.refreshTrigger.send(())
+                    }
+                } else {
+                    if viewModel.currentItems().isEmpty {
+                        VStack(spacing: 16) {
+                            Spacer()
+                            Image(systemName: "doc.richtext")
+                                .font(.largeTitle)
+                                .foregroundColor(.secondary)
+                            Text("No long-form content found.")
+                                .foregroundColor(.secondary)
+                            Spacer()
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        // Content List
-                        if viewModel.contents.isEmpty {
-                            VStack(spacing: 16) {
-                                Spacer()
-                                Image(systemName: "doc.richtext")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.secondary)
-                                Text("No long-form content found.")
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else {
-                            List {
-                                ForEach(viewModel.contents) { content in
-                                    VStack(spacing: 0) {
-                                        ZStack {
-                                            NavigationLink(destination: ContentDetailView(
-                                                contentId: content.id,
-                                                allContentIds: viewModel.contents.map { $0.id }
-                                            )) {
-                                                EmptyView()
-                                            }
-                                            .opacity(0)
-                                            .buttonStyle(PlainButtonStyle())
-
-                                            ContentCard(
-                                                content: content,
-                                                onMarkAsRead: { await viewModel.markAsRead(content.id) },
-                                                onToggleFavorite: { await viewModel.toggleFavorite(content.id) }
-                                            )
-                                        }
-
-                                        // Add divider between items (not after the last one)
-                                        if content.id != viewModel.contents.last?.id {
-                                            Divider()
-                                                .padding(.horizontal, 16)
-                                        }
-                                    }
-                                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                        if !content.isRead {
-                                            Button {
-                                                Task {
-                                                    await viewModel.markAsRead(content.id)
-                                                }
-                                            } label: {
-                                                Label("Mark as Read", systemImage: "checkmark.circle.fill")
-                                            }
-                                            .tint(.green)
-                                        }
-                                    }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button {
-                                            Task {
+                        List {
+                            ForEach(viewModel.currentItems(), id: \.id) { content in
+                                VStack(spacing: 0) {
+                                    NavigationLink(
+                                        value: ContentDetailRoute(
+                                            summary: content,
+                                            allContentIds: viewModel.currentItems().map(\.id)
+                                        )
+                                    ) {
+                                        ContentCard(
+                                            content: content,
+                                            onMarkAsRead: {
+                                                viewModel.markAsRead(content.id)
+                                            },
+                                            onToggleFavorite: {
                                                 await viewModel.toggleFavorite(content.id)
                                             }
-                                        } label: {
-                                            Label(content.isFavorited ? "Unfavorite" : "Favorite",
-                                                  systemImage: content.isFavorited ? "star.slash.fill" : "star.fill")
-                                        }
-                                        .tint(content.isFavorited ? .gray : .yellow)
+                                        )
                                     }
-                                    .onAppear {
-                                        // Load more content when reaching near the end
-                                        if content.id == viewModel.contents.last?.id {
-                                            Task {
-                                                await viewModel.loadMoreContent()
-                                            }
-                                        }
-                                    }
-                                }
 
-                                // Loading indicator at bottom
-                                if viewModel.isLoadingMore {
-                                    HStack {
-                                        Spacer()
-                                        ProgressView()
-                                            .padding()
-                                        Spacer()
-                                    }
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                                }
-                            }
-                            .listStyle(.plain)
-                            .navigationBarHidden(true)
-                            .refreshable {
-                                await viewModel.refresh()
-                            }
-                            .simultaneousGesture(
-                                LongPressGesture(minimumDuration: 0.8).onEnded { _ in
-                                    if viewModel.contents.contains(where: { !$0.isRead }) {
-                                        showMarkAllConfirmation = true
+                                    if content.id != viewModel.currentItems().last?.id {
+                                        Divider()
+                                            .padding(.horizontal, 24)
                                     }
                                 }
-                            )
-                            .confirmationDialog(
-                                "Mark all long-form content as read?",
-                                isPresented: $showMarkAllConfirmation
-                            ) {
-                                Button("Mark All as Read", role: .destructive) {
-                                    showMarkAllConfirmation = false
-                                    Task {
-                                        isProcessingBulk = true
-                                        defer { isProcessingBulk = false }
-                                        await viewModel.markAllAsRead()
+                                .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    if !content.isRead {
+                                        Button {
+                                            viewModel.markAsRead(content.id)
+                                        } label: {
+                                            Label("Mark as Read", systemImage: "checkmark.circle.fill")
+                                        }
+                                        .tint(.green)
                                     }
                                 }
-                                Button("Cancel", role: .cancel) {
-                                    showMarkAllConfirmation = false
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button {
+                                        Task {
+                                            await viewModel.toggleFavorite(content.id)
+                                        }
+                                    } label: {
+                                        Label(
+                                            content.isFavorited ? "Unfavorite" : "Favorite",
+                                            systemImage: content.isFavorited ? "star.slash.fill" : "star.fill"
+                                        )
+                                    }
+                                    .tint(content.isFavorited ? .gray : .yellow)
                                 }
-                            } message: {
-                                Text("Long press to quickly mark every unread item in the current list as read.")
+                                .onAppear {
+                                    if content.id == viewModel.currentItems().last?.id {
+                                        viewModel.loadMoreTrigger.send(())
+                                    }
+                                }
                             }
+
+                            if viewModel.state == .loadingMore {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                        .padding()
+                                    Spacer()
+                                }
+                                .listRowInsets(EdgeInsets())
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                            }
+                        }
+                        .listStyle(.plain)
+                        .padding(.top, 8)
+                        .navigationBarHidden(true)
+                        .refreshable {
+                            viewModel.refreshTrigger.send(())
+                        }
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.8).onEnded { _ in
+                                if viewModel.currentItems().contains(where: { !$0.isRead }) {
+                                    showMarkAllConfirmation = true
+                                }
+                            }
+                        )
+                        .confirmationDialog(
+                            "Mark all long-form content as read?",
+                            isPresented: $showMarkAllConfirmation
+                        ) {
+                            Button("Mark All as Read", role: .destructive) {
+                                showMarkAllConfirmation = false
+                                isProcessingBulk = true
+                                Task {
+                                    defer { isProcessingBulk = false }
+                                    await viewModel.markAllVisibleAsRead()
+                                }
+                            }
+                            Button("Cancel", role: .cancel) {
+                                showMarkAllConfirmation = false
+                            }
+                        } message: {
+                            Text("Long press to quickly mark every unread item in the current list as read.")
                         }
                     }
                 }
-                .task {
-                    // Fetch both articles and podcasts
-                    viewModel.selectedContentTypes = ["article", "podcast"]
-                    viewModel.selectedReadFilter = settings.showReadContent ? "all" : "unread"
-                    await viewModel.loadContent()
-                }
-                .onChange(of: settings.showReadContent) { _, showRead in
-                    viewModel.selectedReadFilter = showRead ? "all" : "unread"
-                }
+            }
+            .onAppear {
+                viewModel.setReadFilter(settings.showReadContent ? .all : .unread)
+                viewModel.refreshTrigger.send(())
+            }
+            .onChange(of: settings.showReadContent) { _, showRead in
+                viewModel.setReadFilter(showRead ? .all : .unread)
+            }
 
-                if isProcessingBulk {
-                    Color.black.opacity(0.15)
-                        .ignoresSafeArea()
-                    ProgressView("Marking content")
-                        .padding(16)
-                        .background(Color(.systemBackground))
-                        .cornerRadius(12)
-                }
+            if isProcessingBulk {
+                Color.black.opacity(0.15)
+                    .ignoresSafeArea()
+                ProgressView("Marking content")
+                    .padding(16)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
             }
         }
     }
-}
-
-#Preview {
-    LongFormView()
 }

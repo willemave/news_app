@@ -7,6 +7,9 @@
 
 import Foundation
 import SwiftUI
+import os.log
+
+private let logger = Logger(subsystem: "com.newsly", category: "ContentDetail")
 
 @MainActor
 class ContentDetailViewModel: ObservableObject {
@@ -31,34 +34,55 @@ class ContentDetailViewModel: ObservableObject {
     }
     
     func loadContent() async {
+        logger.info("[ContentDetail] loadContent started | contentId=\(self.contentId)")
         isLoading = true
         errorMessage = nil
-        
+
         do {
+            logger.debug("[ContentDetail] Fetching content detail | contentId=\(self.contentId)")
             let fetched = try await contentService.fetchContentDetail(id: contentId)
             content = fetched
-            
+            logger.info("[ContentDetail] Content fetched | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public) isRead=\(fetched.isRead) title=\(fetched.displayTitle, privacy: .public)")
+
             // Capture read state as returned by the server BEFORE any auto-marking
             wasAlreadyReadWhenLoaded = fetched.isRead
-            
+            logger.debug("[ContentDetail] wasAlreadyReadWhenLoaded=\(fetched.isRead) | contentId=\(self.contentId)")
+
             // Auto-mark as read if not already read
             if !fetched.isRead {
+                logger.info("[ContentDetail] Content not read, marking as read | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public)")
                 try await contentService.markContentAsRead(id: contentId)
-                
+                logger.info("[ContentDetail] Successfully marked as read | contentId=\(self.contentId)")
+
+                // Post notification so list views can update their local state
+                logger.debug("[ContentDetail] Posting contentMarkedAsRead notification | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public)")
+                NotificationCenter.default.post(
+                    name: .contentMarkedAsRead,
+                    object: nil,
+                    userInfo: ["contentId": contentId, "contentType": fetched.contentType]
+                )
+
                 // Update unread count based on content type
                 if fetched.contentType == "article" {
+                    logger.debug("[ContentDetail] Decrementing article count | contentId=\(self.contentId)")
                     unreadCountService.decrementArticleCount()
                 } else if fetched.contentType == "podcast" {
+                    logger.debug("[ContentDetail] Decrementing podcast count | contentId=\(self.contentId)")
                     unreadCountService.decrementPodcastCount()
                 } else if fetched.contentType == "news" {
+                    logger.debug("[ContentDetail] Decrementing news count | contentId=\(self.contentId)")
                     unreadCountService.decrementNewsCount()
                 }
+            } else {
+                logger.info("[ContentDetail] Content already read, skipping mark-as-read | contentId=\(self.contentId)")
             }
         } catch {
+            logger.error("[ContentDetail] Error loading content | contentId=\(self.contentId) error=\(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
-        
+
         isLoading = false
+        logger.debug("[ContentDetail] loadContent completed | contentId=\(self.contentId)")
     }
     
     func shareContent() {

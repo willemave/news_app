@@ -6,9 +6,10 @@ import asyncio
 import contextlib
 import logging
 import re
+from html import unescape
 from typing import Any
 
-import httpx  # For type hinting httpx.Headers
+import httpx
 from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
@@ -18,12 +19,12 @@ from crawl4ai import (
     LLMTableExtraction,
 )
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-from dateutil import parser as date_parser  # For parsing dates from metadata
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
+from app.utils.dates import parse_date_with_tz
 from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
@@ -243,7 +244,86 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         """Return True when the crawl error looks transient and merits a retry."""
 
         message = str(error).lower()
-        return "net::err_timed_out" in message or "timeout" in message
+        transient_tokens = [
+            "net::err_timed_out",
+            "timeout",
+            "wait condition failed",
+            "selector 'body'",
+            "net::err_connection_refused",
+            "net::err_http2_protocol_error",
+            "net::err_cert_verifier_changed",
+            "net::err_connection_reset",
+            "net::err_failed",
+        ]
+        return any(token in message for token in transient_tokens)
+
+    @staticmethod
+    def _should_use_httpx_fallback(error: Exception) -> bool:
+        """Return True when a lightweight fetch/parse fallback is worth trying."""
+
+        message = str(error).lower()
+        fallback_tokens = [
+            "net::err_connection_refused",
+            "net::err_http2_protocol_error",
+            "net::err_cert_verifier_changed",
+            "wait condition failed",
+            "timeout after",
+        ]
+        return any(token in message for token in fallback_tokens)
+
+    @staticmethod
+    def _extract_title_from_html(html_content: str) -> str | None:
+        """Extract a page title from raw HTML."""
+
+        match = re.search(r"<title[^>]*>(.*?)</title>", html_content, re.IGNORECASE | re.DOTALL)
+        if not match:
+            return None
+        title = unescape(match.group(1)).strip()
+        return re.sub(r"\s+", " ", title) if title else None
+
+    @staticmethod
+    def _extract_text_from_html(html_content: str) -> str:
+        """Lightweight HTML to text extraction for fallback."""
+
+        without_scripts = re.sub(r"(?is)<(script|style).*?>.*?</\\1>", " ", html_content)
+        without_tags = re.sub(r"(?is)<[^>]+>", " ", without_scripts)
+        text = unescape(without_tags)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
+        """Use httpx + lightweight parsing when Playwright navigation fails."""
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+        try:
+            response = httpx.get(url, headers=headers, timeout=20.0, follow_redirects=True)
+            response.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("HtmlStrategy fallback fetch failed for %s: %s", url, exc)
+            return None
+
+        html_content = response.text
+        title = self._extract_title_from_html(html_content) or "Untitled"
+        text_content = self._extract_text_from_html(html_content)
+        logger.info(
+            "HtmlStrategy: Fallback extraction succeeded for %s (text_length=%s)",
+            response.url,
+            len(text_content),
+        )
+        return {
+            "title": title,
+            "author": None,
+            "publication_date": None,
+            "text_content": text_content,
+            "content_type": "html",
+            "source": source,
+            "final_url_after_redirects": str(response.url),
+            "table_markdown": None,
+        }
 
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
@@ -276,7 +356,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             source_config = self._get_source_specific_config(source)
             page_timeout_ms = int(source_config.get("page_timeout_ms", 90_000))
             wait_for_timeout_ms = int(source_config.get("wait_for_timeout_ms", page_timeout_ms))
-            max_crawl_attempts = max(1, int(source_config.get("max_crawl_attempts", 1)))
+            max_crawl_attempts = max(1, int(source_config.get("max_crawl_attempts", 3)))
             retry_delay_seconds = float(source_config.get("crawl_retry_delay_seconds", 1.5))
 
             # Configure crawler run
@@ -388,7 +468,14 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 finally:
                     crawl4ai_logger.setLevel(original_level)
 
-            result = asyncio.run(run_crawl_with_retries())
+            try:
+                result = asyncio.run(run_crawl_with_retries())
+            except Exception as crawl_exc:  # noqa: BLE001
+                if self._should_use_httpx_fallback(crawl_exc):
+                    fallback_data = self._fallback_fetch(url, source)
+                    if fallback_data:
+                        return fallback_data
+                raise
 
             # Check if result is None
             if result is None:
@@ -420,6 +507,12 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
                 error_msg = f"Crawl4ai extraction failed: {error_detail}"
                 logger.warning(f"{error_msg} for URL: {url}")
+
+                if self._should_use_httpx_fallback(RuntimeError(error_detail)):
+                    fallback_data = self._fallback_fetch(url, source)
+                    if fallback_data:
+                        return fallback_data
+
                 raise Exception(error_msg)
 
             # Extract metadata from content if not provided
@@ -497,8 +590,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                     match = re.search(pattern, extracted_text, re.IGNORECASE)
                     if match:
                         date_str = match.group(1).strip()
-                        with contextlib.suppress(date_parser.ParserError, ValueError):
-                            publication_date = date_parser.parse(date_str)
+                        publication_date = parse_date_with_tz(date_str)
                         if publication_date:
                             break
 
@@ -537,6 +629,14 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             import traceback
 
             from app.services.http import NonRetryableError
+
+            if self._should_use_httpx_fallback(e):
+                fallback_data = self._fallback_fetch(url, source)
+                if fallback_data:
+                    logger.warning(
+                        "HtmlStrategy: Using fallback extraction for %s after error: %s", url, e
+                    )
+                    return fallback_data
 
             error_msg = f"Content extraction failed for {url}: {str(e)}"
             traceback_str = traceback.format_exc()
