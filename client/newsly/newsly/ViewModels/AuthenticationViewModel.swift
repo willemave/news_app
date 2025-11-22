@@ -22,6 +22,7 @@ final class AuthenticationViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let authService = AuthenticationService.shared
+    private var lastKnownUser: User?
 
     init() {
         checkAuthStatus()
@@ -42,42 +43,24 @@ final class AuthenticationViewModel: ObservableObject {
     func checkAuthStatus() {
         authState = .loading
 
-        // Check if we have a stored access token
-        guard KeychainManager.shared.getToken(key: .accessToken) != nil else {
+        let hasRefreshToken = KeychainManager.shared.getToken(key: .refreshToken) != nil
+        let hasAccessToken = KeychainManager.shared.getToken(key: .accessToken) != nil
+
+        // No tokens at all -> user must sign in
+        guard hasRefreshToken || hasAccessToken else {
             authState = .unauthenticated
             return
         }
 
-        // Validate token with backend and get current user
         Task {
             do {
                 let user = try await authService.getCurrentUser()
+                lastKnownUser = user
                 authState = .authenticated(user)
+            } catch let authError as AuthError {
+                await handleAuthFailure(authError, hasRefreshToken: hasRefreshToken)
             } catch {
-                // Token validation failed - try to refresh before logging out
-                print("⚠️ Access token validation failed, attempting refresh...")
-
-                // Check if we have a refresh token
-                guard KeychainManager.shared.getToken(key: .refreshToken) != nil else {
-                    print("❌ No refresh token available - logging out")
-                    authState = .unauthenticated
-                    return
-                }
-
-                do {
-                    // Try to refresh the access token
-                    _ = try await authService.refreshAccessToken()
-                    print("✅ Token refresh successful, fetching user info...")
-
-                    // Try to get user again with new token
-                    let user = try await authService.getCurrentUser()
-                    authState = .authenticated(user)
-                    print("✅ User authenticated successfully after refresh")
-                } catch {
-                    // Refresh also failed - user needs to sign in again
-                    print("❌ Token refresh failed: \(error.localizedDescription)")
-                    authState = .unauthenticated
-                }
+                authState = .unauthenticated
             }
         }
     }
@@ -90,6 +73,7 @@ final class AuthenticationViewModel: ObservableObject {
         Task {
             do {
                 let user = try await authService.signInWithApple()
+                lastKnownUser = user
                 authState = .authenticated(user)
             } catch {
                 errorMessage = error.localizedDescription
@@ -101,6 +85,78 @@ final class AuthenticationViewModel: ObservableObject {
     /// Logout current user
     func logout() {
         authService.logout()
+        lastKnownUser = nil
         authState = .unauthenticated
+    }
+
+    // MARK: - Private
+
+    private func handleAuthFailure(_ error: AuthError, hasRefreshToken: Bool) async {
+        switch error {
+        case .notAuthenticated:
+            guard hasRefreshToken else {
+                authService.logout()
+                authState = .unauthenticated
+                return
+            }
+            await refreshAndLoadUser()
+        case .refreshTokenExpired, .noRefreshToken:
+            authService.logout()
+            authState = .unauthenticated
+        case .networkError(let underlying):
+            errorMessage = underlying.localizedDescription
+            // Keep tokens; allow retry without forcing logout
+            if let user = lastKnownUser {
+                authState = .authenticated(user)
+            } else {
+                authState = .loading
+            }
+        case .serverError(_, let message):
+            errorMessage = message
+            if let user = lastKnownUser {
+                authState = .authenticated(user)
+            } else {
+                authState = .loading
+            }
+        default:
+            authService.logout()
+            authState = .unauthenticated
+        }
+    }
+
+    private func refreshAndLoadUser() async {
+        do {
+            _ = try await authService.refreshAccessToken()
+            let user = try await authService.getCurrentUser()
+            lastKnownUser = user
+            authState = .authenticated(user)
+            print("✅ User authenticated successfully after refresh")
+        } catch let authError as AuthError {
+            switch authError {
+            case .refreshTokenExpired, .noRefreshToken:
+                authService.logout()
+                authState = .unauthenticated
+            case .networkError(let underlying):
+                errorMessage = underlying.localizedDescription
+                if let user = lastKnownUser {
+                    authState = .authenticated(user)
+                } else {
+                    authState = .loading
+                }
+            case .serverError(_, let message):
+                errorMessage = message
+                if let user = lastKnownUser {
+                    authState = .authenticated(user)
+                } else {
+                    authState = .loading
+                }
+            default:
+                authService.logout()
+                authState = .unauthenticated
+            }
+        } catch {
+            authService.logout()
+            authState = .unauthenticated
+        }
     }
 }

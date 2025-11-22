@@ -1,5 +1,6 @@
 """Read status management endpoints."""
 
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -15,6 +16,8 @@ from app.models.schema import Content, ContentReadStatus
 from app.models.user import User
 from app.routers.api.models import BulkMarkReadRequest, ContentListResponse, ContentSummaryResponse
 from app.utils.pagination import PaginationCursor
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -37,16 +40,38 @@ async def mark_content_read(
     """Mark content as read."""
     from app.services import read_status
 
+    logger.info(
+        "[API] POST /{content_id}/mark-read called | user_id=%s content_id=%s",
+        current_user.id,
+        content_id,
+    )
+
     # Check if content exists
     content = db.query(Content).filter(Content.id == content_id).first()
     if not content:
+        logger.warning(
+            "[API] mark-read failed: content not found | user_id=%s content_id=%s",
+            current_user.id,
+            content_id,
+        )
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Mark as read
     result = read_status.mark_content_as_read(db, content_id, current_user.id)
     if result:
+        logger.info(
+            "[API] mark-read success | user_id=%s content_id=%s content_type=%s",
+            current_user.id,
+            content_id,
+            content.content_type,
+        )
         return {"status": "success", "content_id": content_id}
     else:
+        logger.error(
+            "[API] mark-read failed: service returned None | user_id=%s content_id=%s",
+            current_user.id,
+            content_id,
+        )
         return {"status": "error", "message": "Failed to mark as read"}
 
 
@@ -66,9 +91,20 @@ async def mark_content_unread(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Mark content as unread by removing its read status."""
+    logger.info(
+        "[API] DELETE /{content_id}/mark-unread called | user_id=%s content_id=%s",
+        current_user.id,
+        content_id,
+    )
+
     # Check if content exists
     content = db.query(Content).filter(Content.id == content_id).first()
     if not content:
+        logger.warning(
+            "[API] mark-unread failed: content not found | user_id=%s content_id=%s",
+            current_user.id,
+            content_id,
+        )
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Delete read status
@@ -78,6 +114,13 @@ async def mark_content_unread(
         )
     )
     db.commit()
+
+    logger.info(
+        "[API] mark-unread success | user_id=%s content_id=%s removed_records=%s",
+        current_user.id,
+        content_id,
+        result.rowcount,
+    )
 
     return {
         "status": "success",
@@ -104,18 +147,38 @@ async def bulk_mark_read(
     """Mark multiple content items as read."""
     from app.services import read_status
 
+    logger.info(
+        "[API] POST /bulk-mark-read called | user_id=%s content_ids=%s count=%s",
+        current_user.id,
+        request.content_ids,
+        len(request.content_ids),
+    )
+
     # Validate that all content IDs exist
     existing_ids = db.query(Content.id).filter(Content.id.in_(request.content_ids)).all()
     existing_ids = {row[0] for row in existing_ids}
 
     invalid_ids = set(request.content_ids) - existing_ids
     if invalid_ids:
+        logger.warning(
+            "[API] bulk-mark-read failed: invalid IDs | user_id=%s invalid_ids=%s",
+            current_user.id,
+            sorted(invalid_ids),
+        )
         raise HTTPException(status_code=400, detail=f"Invalid content IDs: {sorted(invalid_ids)}")
 
     success_count, failed_ids = read_status.mark_contents_as_read(
         db,
         request.content_ids,
         current_user.id,
+    )
+
+    logger.info(
+        "[API] bulk-mark-read complete | user_id=%s marked=%s failed=%s total=%s",
+        current_user.id,
+        success_count,
+        len(failed_ids),
+        len(request.content_ids),
     )
 
     return {
@@ -152,6 +215,13 @@ async def get_recently_read(
     """Get all recently read content with cursor-based pagination, sorted by read time."""
     from app.services import favorites, read_status
 
+    logger.info(
+        "[API] GET /recently-read/list called | user_id=%s cursor=%s limit=%s",
+        current_user.id,
+        cursor[:20] + "..." if cursor else None,
+        limit,
+    )
+
     # Decode cursor if provided
     last_id = None
     last_read_at = None
@@ -162,7 +232,17 @@ async def get_recently_read(
             last_read_at = cursor_data.get("last_read_at")
             if last_read_at:
                 last_read_at = datetime.fromisoformat(last_read_at)
+            logger.debug(
+                "[API] recently-read cursor decoded | last_id=%s last_read_at=%s",
+                last_id,
+                last_read_at,
+            )
         except ValueError as e:
+            logger.warning(
+                "[API] recently-read invalid cursor | user_id=%s error=%s",
+                current_user.id,
+                str(e),
+            )
             raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Get read content IDs for status checks
@@ -296,6 +376,13 @@ async def get_recently_read(
             last_created_at=last_item_content.created_at,
             filters={"last_read_at": last_item_read_at.isoformat()},
         )
+
+    logger.info(
+        "[API] GET /recently-read/list complete | user_id=%s returned=%s has_more=%s",
+        current_user.id,
+        len(content_summaries),
+        has_more,
+    )
 
     return ContentListResponse(
         contents=content_summaries,

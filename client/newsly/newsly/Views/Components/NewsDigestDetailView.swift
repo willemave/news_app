@@ -52,7 +52,7 @@ struct NewsDigestDetailView: View {
 
             if let overview = summary.summary, !overview.isEmpty {
                 Text(overview)
-                    .font(.body)
+                    .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -70,7 +70,7 @@ struct NewsDigestDetailView: View {
                                     .padding(.top, 7)
 
                                 Text(point)
-                                    .font(.body)
+                                    .font(.callout)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             .accessibilityElement(children: .combine)
@@ -114,9 +114,9 @@ struct NewsDigestDetailView: View {
                 Link(destination: url) {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.right.square")
-                            .font(.body)
+                            .font(.callout)
                         Text(title)
-                            .font(.body)
+                            .font(.callout)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -125,9 +125,9 @@ struct NewsDigestDetailView: View {
                 Link(destination: url) {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.right.square")
-                            .font(.body)
+                            .font(.callout)
                         Text(urlString)
-                            .font(.body)
+                            .font(.callout)
                             .lineLimit(2)
                     }
                 }
@@ -158,13 +158,13 @@ struct NewsDigestDetailView: View {
 
             if let title = aggregator.title {
                 Text(title)
-                    .font(.body)
+                    .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if let summaryText = aggregator.summaryText {
                 Text(summaryText)
-                    .font(.body)
+                    .font(.callout)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -234,21 +234,21 @@ struct NewsDigestDetailView: View {
                                 Link(destination: url) {
                                     HStack(spacing: 8) {
                                         Image(systemName: "arrow.up.right.square")
-                                            .font(.body)
+                                            .font(.callout)
                                         Text(item.title ?? item.url)
-                                            .font(.body)
+                                            .font(.callout)
                                             .fontWeight(.medium)
                                     }
                                 }
                             } else {
                                 Text(item.title ?? item.url)
-                                    .font(.body)
+                                    .font(.callout)
                                     .fontWeight(.medium)
                             }
 
                             if let summary = item.summary, !summary.isEmpty {
                                 Text(summary)
-                                    .font(.body)
+                                    .font(.callout)
                                     .foregroundColor(.secondary)
                             }
                         }

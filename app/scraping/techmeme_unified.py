@@ -225,7 +225,7 @@ class TechmemeScraper(BaseScraper):
         }
 
         return {
-            "url": normalized_permalink,
+            "url": primary_url,  # Use original article URL (consistent with Twitter/HN scrapers)
             "title": entry.get("title") or primary_item["title"],
             "content_type": ContentType.NEWS,
             "is_aggregate": False,

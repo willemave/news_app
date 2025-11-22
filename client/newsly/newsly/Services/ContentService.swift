@@ -6,6 +6,9 @@
 //
 
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "com.newsly", category: "ContentService")
 
 struct BulkMarkReadResponse: Codable {
     let status: String
@@ -165,7 +168,14 @@ class ContentService {
     }
     
     func markContentAsRead(id: Int) async throws {
-        try await client.requestVoid(APIEndpoints.markContentRead(id: id), method: "POST")
+        logger.info("[ContentService] markContentAsRead called | id=\(id)")
+        do {
+            try await client.requestVoid(APIEndpoints.markContentRead(id: id), method: "POST")
+            logger.info("[ContentService] markContentAsRead success | id=\(id)")
+        } catch {
+            logger.error("[ContentService] markContentAsRead failed | id=\(id) error=\(error.localizedDescription)")
+            throw error
+        }
     }
     
     func markContentAsUnread(id: Int) async throws {
@@ -173,23 +183,32 @@ class ContentService {
     }
     
     func bulkMarkAsRead(contentIds: [Int]) async throws -> BulkMarkReadResponse {
+        logger.info("[ContentService] bulkMarkAsRead called | ids=\(contentIds, privacy: .public) count=\(contentIds.count)")
+
         struct BulkMarkReadRequest: Codable {
             let contentIds: [Int]
-            
+
             enum CodingKeys: String, CodingKey {
                 case contentIds = "content_ids"
             }
         }
-        
+
         let request = BulkMarkReadRequest(contentIds: contentIds)
         let encoder = JSONEncoder()
         let body = try encoder.encode(request)
-        
-        return try await client.request(
-            APIEndpoints.bulkMarkRead,
-            method: "POST",
-            body: body
-        )
+
+        do {
+            let response: BulkMarkReadResponse = try await client.request(
+                APIEndpoints.bulkMarkRead,
+                method: "POST",
+                body: body
+            )
+            logger.info("[ContentService] bulkMarkAsRead success | markedCount=\(response.markedCount) failedIds=\(response.failedIds, privacy: .public)")
+            return response
+        } catch {
+            logger.error("[ContentService] bulkMarkAsRead failed | ids=\(contentIds, privacy: .public) error=\(error.localizedDescription)")
+            throw error
+        }
     }
 
     func markAllAsRead(contentType: String) async throws -> BulkMarkReadResponse? {

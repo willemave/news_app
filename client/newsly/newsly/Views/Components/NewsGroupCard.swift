@@ -46,7 +46,7 @@ struct NewsGroupCard: View {
                     VStack(alignment: .leading, spacing: 4) {
                         // Title - full display
                         Text(item.displayTitle)
-                            .font(.subheadline)
+                            .font(.body)
                             .fontWeight(.medium)
                             .foregroundColor(item.isRead ? .secondary : .primary)
                             .lineLimit(nil)
@@ -57,9 +57,9 @@ struct NewsGroupCard: View {
                         // Short summary if available
                         if let summary = item.shortSummary, !summary.isEmpty {
                             Text(summary)
-                                .font(.caption2)
+                                .font(.footnote)
                                 .foregroundColor(.secondary)
-                                .lineLimit(1)
+                                .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
 
@@ -71,7 +71,7 @@ struct NewsGroupCard: View {
                                     .opacity(item.platform == nil ? 0 : 1)
                                 if let source = item.source {
                                     Text(source)
-                                        .font(.caption2)
+                                        .font(.caption)
                                         .foregroundColor(.secondary)
                                         .lineLimit(1)
                                 }
@@ -82,7 +82,7 @@ struct NewsGroupCard: View {
                             // Date
                             if let pubDate = item.publicationDate {
                                 Text(formatDateShort(pubDate))
-                                    .font(.caption2)
+                                    .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                         }

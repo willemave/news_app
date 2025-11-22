@@ -37,7 +37,7 @@ struct ContentCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 // Title
                 Text(content.displayTitle)
-                    .font(.subheadline)
+                    .font(.body)
                     .fontWeight(.semibold)
                     .foregroundColor(dimReadState && content.isRead ? .secondary : .primary)
                     .lineLimit(5)
@@ -49,7 +49,7 @@ struct ContentCard: View {
                         .opacity(content.platform == nil ? 0 : 1)
                     if let source = content.source {
                         Text(source)
-                            .font(.caption)
+                            .font(.footnote)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -116,8 +116,8 @@ struct ContentCard: View {
             }
             .frame(width: actionSize)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
         .frame(minHeight: 84, alignment: .center)
         .opacity(dimReadState && content.isRead ? 0.85 : 1.0)
     }

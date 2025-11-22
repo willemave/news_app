@@ -73,33 +73,49 @@ final class AuthenticationService: NSObject {
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("❌ Invalid response from server")
-                throw AuthError.refreshFailed
+                throw AuthError.serverError(statusCode: -1, message: "Invalid HTTP response")
             }
 
             print("📥 Refresh response status: \(httpResponse.statusCode)")
 
-            guard httpResponse.statusCode == 200 else {
+            switch httpResponse.statusCode {
+            case 200:
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+
+                let tokenResponse = try decoder.decode(AccessTokenResponse.self, from: data)
+
+                // Save new access token AND new refresh token (token rotation)
+                KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
+                KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
+
+                print("✅ Token refresh successful - both tokens rotated")
+
+                return tokenResponse.accessToken
+
+            case 401, 403:
+                // Refresh token is no longer valid; clear stored tokens so we do not loop
+                KeychainManager.shared.deleteToken(key: .accessToken)
+                KeychainManager.shared.deleteToken(key: .refreshToken)
+
                 if let errorBody = String(data: data, encoding: .utf8) {
-                    print("❌ Refresh failed with status \(httpResponse.statusCode): \(errorBody)")
+                    print("❌ Refresh token expired/invalid: \(errorBody)")
                 }
-                throw AuthError.refreshFailed
+                throw AuthError.refreshTokenExpired
+
+            default:
+                let errorBody = String(data: data, encoding: .utf8)
+                print("❌ Refresh failed with status \(httpResponse.statusCode): \(errorBody ?? "<no body>")")
+                throw AuthError.serverError(statusCode: httpResponse.statusCode, message: errorBody)
             }
-
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-
-            let tokenResponse = try decoder.decode(AccessTokenResponse.self, from: data)
-
-            // Save new access token AND new refresh token (token rotation)
-            KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
-            KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
-
-            print("✅ Token refresh successful - both tokens rotated")
-
-            return tokenResponse.accessToken
+        } catch let urlError as URLError {
+            print("❌ Token refresh network error: \(urlError)")
+            throw AuthError.networkError(urlError)
+        } catch let authError as AuthError {
+            throw authError
         } catch {
             print("❌ Token refresh error: \(error)")
-            throw error
+            throw AuthError.refreshFailed
         }
     }
 
@@ -119,24 +135,31 @@ final class AuthenticationService: NSObject {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw AuthError.notAuthenticated
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AuthError.serverError(statusCode: -1, message: "Invalid HTTP response")
+            }
+
+            switch httpResponse.statusCode {
+            case 200:
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+
+                let user = try decoder.decode(User.self, from: data)
+                return user
+            case 401, 403:
+                // Access token expired/invalid; clear it but keep refresh token for rotation
+                KeychainManager.shared.deleteToken(key: .accessToken)
+                throw AuthError.notAuthenticated
+            default:
+                let body = String(data: data, encoding: .utf8)
+                throw AuthError.serverError(statusCode: httpResponse.statusCode, message: body)
+            }
+        } catch let urlError as URLError {
+            throw AuthError.networkError(urlError)
         }
-
-        // If token is invalid/expired, throw auth error
-        guard httpResponse.statusCode == 200 else {
-            // Token is invalid - clear it
-            KeychainManager.shared.clearAll()
-            throw AuthError.notAuthenticated
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        let user = try decoder.decode(User.self, from: data)
-        return user
     }
 
     // MARK: - Private Helpers
@@ -188,7 +211,10 @@ final class AuthenticationService: NSObject {
 enum AuthError: Error, LocalizedError {
     case notAuthenticated
     case noRefreshToken
+    case refreshTokenExpired
     case refreshFailed
+    case serverError(statusCode: Int, message: String?)
+    case networkError(Error)
     case appleSignInFailed
 
     var errorDescription: String? {
@@ -197,8 +223,14 @@ enum AuthError: Error, LocalizedError {
             return "Not authenticated"
         case .noRefreshToken:
             return "No refresh token available"
+        case .refreshTokenExpired:
+            return "Refresh token expired"
         case .refreshFailed:
             return "Failed to refresh token"
+        case .serverError(let statusCode, let message):
+            return "Server error \(statusCode): \(message ?? "Unknown")"
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
         case .appleSignInFailed:
             return "Apple Sign In failed"
         }

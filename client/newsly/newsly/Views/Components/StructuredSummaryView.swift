@@ -28,12 +28,12 @@ struct StructuredSummaryView: View {
 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(point.text)
-                                        .font(.body)
+                                        .font(.callout)
                                         .fixedSize(horizontal: false, vertical: true)
 
                                     if let category = point.category {
                                         Text(category.replacingOccurrences(of: "_", with: " ").capitalized)
-                                            .font(.caption)
+                                            .font(.footnote)
                                             .foregroundColor(categoryColor(for: category))
                                             .fontWeight(.medium)
                                     }
@@ -57,13 +57,13 @@ struct StructuredSummaryView: View {
                         ForEach(Array((summary.questions ?? []).enumerated()), id: \.offset) { index, question in
                             HStack(alignment: .top, spacing: 12) {
                                 Text("\(index + 1)")
-                                    .font(.body)
+                                    .font(.callout)
                                     .fontWeight(.semibold)
                                     .foregroundColor(.accentColor)
                                     .frame(width: 24, alignment: .trailing)
 
                                 Text(question)
-                                    .font(.body)
+                                    .font(.callout)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -84,12 +84,12 @@ struct StructuredSummaryView: View {
                         ForEach(summary.counterArguments ?? [], id: \.self) { argument in
                             HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.body)
+                                    .font(.callout)
                                     .foregroundColor(.orange)
                                     .frame(width: 20)
 
                                 Text(argument)
-                                    .font(.body)
+                                    .font(.callout)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -113,14 +113,14 @@ struct StructuredSummaryView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .top, spacing: 0) {
                                 Text(quote.text)
-                                    .font(.body)
+                                    .font(.callout)
                                     .italic()
                                     .fixedSize(horizontal: false, vertical: true)
                             }
 
                             if let context = quote.context {
                                 Text("— \(context)")
-                                    .font(.callout)
+                                    .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -144,7 +144,7 @@ struct StructuredSummaryView: View {
                     FlowLayout(spacing: 8) {
                         ForEach(summary.topics, id: \.self) { topic in
                             Text(topic)
-                                .font(.subheadline)
+                                .font(.callout)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
                                 .background(Color.accentColor.opacity(0.15))
