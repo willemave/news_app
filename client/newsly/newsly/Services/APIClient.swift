@@ -267,6 +267,69 @@ class APIClient {
         }
     }
 
+    /// Stream NDJSON responses line by line
+    func streamNDJSON<T: Decodable>(
+        _ endpoint: String,
+        method: String = "POST",
+        body: Data? = nil
+    ) -> AsyncThrowingStream<T, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard let url = URL(string: AppSettings.shared.baseURL + endpoint) else {
+                        continuation.finish(throwing: APIError.invalidURL)
+                        return
+                    }
+
+                    var request = URLRequest(url: url)
+                    request.httpMethod = method
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
+
+                    if let accessToken = try await fetchAccessTokenOrRefresh() {
+                        request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                    }
+
+                    if let body = body {
+                        request.httpBody = body
+                    }
+
+                    let (bytes, response) = try await session.bytes(for: request)
+
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: APIError.unknown)
+                        return
+                    }
+
+                    guard (200...299).contains(httpResponse.statusCode) else {
+                        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                            continuation.finish(throwing: APIError.unauthorized)
+                        } else {
+                            continuation.finish(throwing: APIError.httpError(statusCode: httpResponse.statusCode))
+                        }
+                        return
+                    }
+
+                    for try await line in bytes.lines {
+                        guard !line.isEmpty else { continue }
+                        guard let lineData = line.data(using: .utf8) else { continue }
+
+                        do {
+                            let decoded = try self.decoder.decode(T.self, from: lineData)
+                            continuation.yield(decoded)
+                        } catch {
+                            logger.warning("Failed to decode NDJSON line: \(error.localizedDescription)")
+                        }
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     /// Get an access token if present; otherwise attempt a refresh.
     /// Returns nil for truly unauthenticated flows (e.g., public endpoints).
     private func fetchAccessTokenOrRefresh() async throws -> String? {

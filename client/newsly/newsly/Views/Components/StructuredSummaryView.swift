@@ -9,9 +9,15 @@ import SwiftUI
 
 struct StructuredSummaryView: View {
     let summary: StructuredSummary
+    var contentId: Int?
+    var onTopicDeepDive: ((String) -> Void)?
+
     @State private var isKeyPointsExpanded = true
     @State private var isQuestionsExpanded = false
     @State private var isCounterArgsExpanded = false
+    @State private var showTopicSheet = false
+    @State private var selectedTopic: String?
+    @State private var topicSession: ChatSessionSummary?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -150,9 +156,42 @@ struct StructuredSummaryView: View {
                                 .background(Color.accentColor.opacity(0.15))
                                 .foregroundColor(.accentColor)
                                 .clipShape(Capsule())
+                                .contextMenu {
+                                    if contentId != nil {
+                                        Button {
+                                            selectedTopic = topic
+                                            startTopicChat(topic: topic)
+                                        } label: {
+                                            Label("Deep Dive: \(topic)", systemImage: "brain.head.profile")
+                                        }
+                                    }
+                                }
                         }
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $showTopicSheet) {
+            if let session = topicSession {
+                NavigationStack {
+                    ChatSessionView(session: session)
+                }
+            }
+        }
+    }
+
+    private func startTopicChat(topic: String) {
+        guard let contentId = contentId else { return }
+        Task {
+            do {
+                let session = try await ChatService.shared.startTopicChat(
+                    contentId: contentId,
+                    topic: topic
+                )
+                topicSession = session
+                showTopicSheet = true
+            } catch {
+                print("Failed to start topic chat: \(error)")
             }
         }
     }

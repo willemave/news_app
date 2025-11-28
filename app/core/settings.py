@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
+    exa_api_key: str | None = None
 
     # Whisper transcription settings
     whisper_model_size: str = "base"  # tiny, base, small, medium, large
