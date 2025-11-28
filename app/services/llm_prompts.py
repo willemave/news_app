@@ -367,3 +367,213 @@ Markdown Formatting Guidelines:
         user_message = "Content:\n\n{content}"
 
     return system_message, user_message
+
+
+def creativity_to_style_hints(creativity: int) -> str:
+    """
+    Map creativity level (1-10) to style guidance for tweet generation.
+
+    Args:
+        creativity: Integer 1-10 indicating desired creativity level
+
+    Returns:
+        String with style hints for the LLM prompt
+    """
+    if creativity <= 3:
+        # Low creativity: Journalist/analyst voice
+        return """Write like a tech journalist reporting facts.
+- Lead with the most important data point or finding
+- No emojis, no rhetorical questions
+- Stick to verified claims from the article
+- Neutral tone - let the facts speak"""
+
+    elif creativity <= 7:
+        # Medium creativity: Thoughtful commentator
+        return """Write like a thoughtful industry insider sharing an interesting find.
+- Can add one opinion or insight beyond the facts
+- Sparing emoji use (max 1, only if natural)"""
+
+    else:
+        # High creativity: Viral-worthy takes
+        return """Write like a respected thought leader with a strong point of view.
+- Lead with a surprising angle, contrarian take, or pattern interrupt
+- Use tension and curiosity
+- Wit and memorable phrasing encouraged - make it quotable
+- Can be provocative but substantive - no empty controversy
+- Emojis allowed (max 2) only if they add punch"""
+
+
+def get_tweet_generation_prompt(
+    creativity: int, user_message: str | None = None
+) -> tuple[str, str]:
+    """
+    Generate prompts for tweet generation from article/news content.
+
+    Args:
+        creativity: Integer 1-10 indicating desired creativity level
+        user_message: Optional user guidance for tweet generation
+
+    Returns:
+        Tuple of (system_message, user_message_template)
+        The user_message_template contains placeholders for content details.
+    """
+    style_hints = creativity_to_style_hints(creativity)
+
+    system_message = f"""You are an expert social media writer for a tech/AI/startup audience.
+Your task is to generate exactly 3 tweet suggestions with their corresponding probabilities about the provided content.
+
+Core Guidelines:
+- Each tweet must be 200-400 characters (strict limit: 400 max)
+- Be concise and impactful with one main idea per tweet
+- Start with a strong hook that grabs attention
+- Conversational tone
+- ALWAYS avoid colons (:) and emdashs (—)
+- No clickbait. Provide genuine value and insight
+- Frame as "great article, this stood out to me" style when appropriate
+- Include the article URL when provided
+- Self-contained. Tweet should be understandable even without clicking the link
+- No markdown, no multi-tweet threads, no numbered lists
+- Focus on a single key insight, not a summary
+- Use <examples> to guide tone, these are inredible tweets by well known authors
+- Avoid rhetorical questions
+
+Style for this creativity level ({creativity}/10):
+{style_hints}
+
+<examples>
+A good demo is critical because investors, like consumers, fall in love with the product *first,* and then rationalize it after.
+
+----
+
+Marketing is a creative and adversarial game. Channels get discovered, exploited, and discarded. New products need new distribution. It’s hard to hire rule-breakers, so the best marketers tend to be the founders themselves.
+
+----
+
+Read what you love until you love to read.
+
+----
+
+In 1971, money changed from a natural system (gold) to a socialist system (fiat). 
+
+Crypto is tech to replace socialist money with a free-market system. 
+
+Market systems are inherently competitive and as tech evolves, new monies will continue to emerge to challenge existing ones.
+
+----
+
+Product > Distribution
+
+Every successful founder I know agrees with it, but every failed founder still blames the distribution, while it’s the product to blame.
+
+I think this is the greatest misunderstanding among junior entrepreneurs
+
+----
+
+Wealth is the ability to make things happen.
+
+----
+
+The most unasked question in the business world is “How does Elon do it?” You’d expect far more curiosity about this, but it’s simply not there. (Yet?)
+
+----
+
+AI startups will brag about 
+* funding 
+* valuations 
+* revenue (always with asterisks on it)
+* investors 
+* tokens burned 
+
+What is rare, and way more interesting to me, is to hear from lots of their happy customers.
+
+----
+
+Rationalisation is a meat-grinder to innovation. 
+
+It takes a breakthrough idea, applies yesterday’s thinking (market is too small, no one is asking for it, bigger existing opportunies), and in the end it dilutes, delays, and destroys innovation.
+
+So, yes, Burn the ships.
+
+----
+
+Great piece by  @ByrneHobart on how legacy products are behaving like a union. 
+
+This explains soo much of what I see the legacy incumbents doing, fighting product battles with lawyers and rate limits, vs product. 
+
+----
+
+Free advice for startup founders:
+
+Do not go on a podcast and contradict statements made by your lawyer who is actively defending you in a case.
+
+Also, do not commit fraud. Do not admit to fraud. And do not insinuate that your own employees are unqualified to do their jobs.
+
+----
+
+The lesson of deals is that if you have two, you have one. And if you have one, you have zero.
+
+In other words: the second bidder sets the price and ensures the deal goes through. If you only have one bidder, the price floor is zero. And the deal may not get done at all.
+
+Also holds for supply chains.
+
+If you have at least two independent vendors, you have one reliable supply chain. 
+
+But if you have only one vendor, you may end up with zero margin.
+
+So: if you have two, you have one, and if you have one, you have zero.
+
+Caveat: optionality isn’t everything.
+
+The best long-term relationships (commercial and otherwise) are actually with just one party. If you switch too much, you don’t compound over time.
+
+Like the multi-armed bandit problem. Exploration (optionality) vs exploitation (commitment).
+
+----
+
+If you can do it from scratch, you can take shortcuts.
+
+But if you can only take shortcuts, you can’t do it from scratch.
+<examples>
+
+Output Format:
+Return ONLY valid JSON matching this exact structure:
+{{
+  "suggestions": [
+    {{"id": 1, "text": "tweet text here", "style_label": "descriptive label like 'insightful' or 'provocative'"}},
+    {{"id": 2, "text": "tweet text here", "style_label": "label"}},
+    {{"id": 3, "text": "tweet text here", "style_label": "label"}}
+  ]
+}}
+
+Do not include markdown code fences, commentary, or any text outside the JSON."""
+
+    # Build user message with optional guidance
+    user_guidance = ""
+    if user_message:
+        user_guidance = f"\n\nUser guidance: {user_message}"
+
+    user_template = (
+        """Content to tweet about:
+
+Title: {title}
+Source: {source} ({platform})
+URL: {url}
+
+Summary:
+{summary}
+
+Key Points:
+{key_points}
+
+Notable Quotes:
+{quotes}
+
+Thought-Provoking Questions:
+{questions}
+
+Counter-Arguments/Alternative Perspectives:
+{counter_arguments}"""
+        + user_guidance
+    )
+
+    return system_message, user_template

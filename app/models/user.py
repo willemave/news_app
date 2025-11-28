@@ -88,6 +88,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user: UserResponse
+    openai_api_key: str | None = None
 
 
 class RefreshTokenRequest(BaseModel):
@@ -102,6 +103,7 @@ class AccessTokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    openai_api_key: str | None = None
 
 
 class AdminLoginRequest(BaseModel):

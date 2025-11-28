@@ -12,6 +12,7 @@ from app.core.deps import require_admin
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
+from app.models.user import User
 from app.services import favorites, read_status
 from app.templates import templates
 
@@ -55,7 +56,7 @@ SessionDep = Annotated[str, Depends(get_or_create_session_id)]
 async def list_content(
     request: Request,
     db: Annotated[Session, Depends(get_db_session)],
-    _: None = Depends(require_admin),
+    admin_user: Annotated[User, Depends(require_admin)],
     content_type: str | None = None,
     date: str | None = None,
     read_filter: str = "unread",
@@ -112,11 +113,11 @@ async def list_content(
 
     # Get read content IDs
     print("DEBUG: Getting read content")
-    read_content_ids = read_status.get_read_content_ids(db)
+    read_content_ids = read_status.get_read_content_ids(db, admin_user.id)
     print(f"DEBUG: Found {len(read_content_ids)} read items: {read_content_ids}")
 
     # Get favorite content IDs
-    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    favorite_content_ids = favorites.get_favorite_content_ids(db, admin_user.id)
 
     # Filter based on read status if needed
     if read_filter == "unread":
@@ -160,7 +161,7 @@ async def content_detail(
     request: Request,
     content_id: int,
     db: Annotated[Session, Depends(get_db_session)],
-    _: None = Depends(require_admin),
+    admin_user: Annotated[User, Depends(require_admin)],
 ):
     """Get detailed view of a specific content item."""
     content = db.query(Content).filter(Content.id == content_id).first()
@@ -168,9 +169,9 @@ async def content_detail(
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    # Mark content as read (no session needed)
+    # Mark content as read
     print(f"DEBUG: Marking content {content_id} as read")
-    result = read_status.mark_content_as_read(db, content_id)
+    result = read_status.mark_content_as_read(db, content_id, admin_user.id)
     print(f"DEBUG: Mark as read result: {result}")
     if result:
         print(f"DEBUG: Successfully marked content {content_id} as read at {result.read_at}")
@@ -179,7 +180,7 @@ async def content_detail(
     domain_content = content_to_domain(content)
 
     # Check if content is favorited
-    is_favorited = favorites.is_content_favorited(db, content_id)
+    is_favorited = favorites.is_content_favorited(db, content_id, admin_user.id)
 
     return templates.TemplateResponse(
         "content_detail.html",
@@ -195,12 +196,12 @@ async def content_detail(
 async def favorites_list(
     request: Request,
     db: Annotated[Session, Depends(get_db_session)],
-    _: None = Depends(require_admin),
+    admin_user: Annotated[User, Depends(require_admin)],
     read_filter: str = "all",
 ):
     """List favorited content."""
     # Get favorited content IDs
-    favorite_content_ids = favorites.get_favorite_content_ids(db)
+    favorite_content_ids = favorites.get_favorite_content_ids(db, admin_user.id)
 
     # Query favorited content
     if favorite_content_ids:
@@ -217,7 +218,7 @@ async def favorites_list(
         contents = []
 
     # Get read content IDs
-    read_content_ids = read_status.get_read_content_ids(db)
+    read_content_ids = read_status.get_read_content_ids(db, admin_user.id)
 
     # Filter based on read status if needed
     if read_filter == "unread":
@@ -255,7 +256,7 @@ async def favorites_list(
 async def content_json(
     content_id: int,
     db: Annotated[Session, Depends(get_db_session)],
-    _: None = Depends(require_admin),
+    admin_user: Annotated[User, Depends(require_admin)],  # noqa: ARG001
 ):
     """Get content item with metadata as JSON."""
     content = db.query(Content).filter(Content.id == content_id).first()

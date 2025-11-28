@@ -1,5 +1,7 @@
 """FastAPI dependencies for authentication and authorization."""
 
+from urllib.parse import quote
+
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -84,23 +86,62 @@ def get_optional_user(
 
 
 ADMIN_SESSION_COOKIE = "admin_session"
+ADMIN_EMAIL = "admin@system.local"
 
 
-def require_admin(request: Request) -> None:
+class AdminAuthRequired(Exception):
+    """Exception raised when admin authentication is required."""
+
+    def __init__(self, redirect_url: str):
+        self.redirect_url = redirect_url
+
+
+def get_or_create_admin_user(db: Session) -> User:
+    """
+    Get or create the system admin user for web UI operations.
+
+    Args:
+        db: Database session
+
+    Returns:
+        Admin user instance
+    """
+    admin = db.query(User).filter(User.email == ADMIN_EMAIL).first()
+    if admin is None:
+        admin = User(
+            apple_id="system-admin",
+            email=ADMIN_EMAIL,
+            full_name="System Admin",
+            is_admin=True,
+            is_active=True,
+        )
+        db.add(admin)
+        db.commit()
+        db.refresh(admin)
+    return admin
+
+
+def require_admin(request: Request, db: Session = Depends(get_db)) -> User:
     """
     Require admin authentication via session cookie.
 
     Args:
         request: FastAPI request object
+        db: Database session
+
+    Returns:
+        Admin user instance
 
     Raises:
-        HTTPException: 401 if not authenticated as admin
+        AdminAuthRequired: If not authenticated, redirects to login page
     """
     from app.routers.auth import admin_sessions
 
     admin_session = request.cookies.get(ADMIN_SESSION_COOKIE)
 
     if not admin_session or admin_session not in admin_sessions:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin authentication required"
-        )
+        # Build redirect URL with next parameter
+        next_url = quote(str(request.url.path), safe="")
+        raise AdminAuthRequired(redirect_url=f"/auth/admin/login?next={next_url}")
+
+    return get_or_create_admin_user(db)

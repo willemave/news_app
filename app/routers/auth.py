@@ -4,7 +4,9 @@ import logging
 import secrets
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -16,6 +18,7 @@ from app.core.security import (
     verify_apple_token,
     verify_token,
 )
+from app.core.settings import get_settings
 from app.models.user import (
     AccessTokenResponse,
     AdminLoginRequest,
@@ -28,8 +31,10 @@ from app.models.user import (
 )
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = APIRouter()
+templates = Jinja2Templates(directory="templates")
 
 # PRODUCTION WARNING - IN-MEMORY SESSION STORAGE:
 # This in-memory set stores admin session tokens. This has critical limitations:
@@ -161,7 +166,10 @@ def apple_signin(
 
     logger.info(f"=== Apple Sign In Successful for user {user.id} ===")
     return TokenResponse(
-        access_token=access_token, refresh_token=refresh_token, user=UserResponse.from_orm(user)
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.from_orm(user),
+        openai_api_key=settings.openai_api_key,
     )
 
 
@@ -217,7 +225,11 @@ def refresh_token(
 
     logger.info(f"Token refresh successful for user {user.id}")
 
-    return AccessTokenResponse(access_token=access_token, refresh_token=new_refresh_token)
+    return AccessTokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token,
+        openai_api_key=settings.openai_api_key,
+    )
 
 
 @router.get("/me", response_model=UserResponse)
@@ -235,6 +247,20 @@ def get_current_user_info(current_user: User = Depends(get_current_user)) -> Use
         HTTPException: 401 if token is invalid
     """
     return UserResponse.from_orm(current_user)
+
+
+@router.get("/admin/login", response_class=HTMLResponse)
+def admin_login_page(request: Request) -> HTMLResponse:
+    """
+    Render admin login page.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        HTML login page
+    """
+    return templates.TemplateResponse("admin_login.html", {"request": request})
 
 
 @router.post("/admin/login", response_model=AdminLoginResponse)
