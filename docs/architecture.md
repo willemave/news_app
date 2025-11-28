@@ -2750,3 +2750,394 @@ def resolve_model(
 ---
 
 *Generated from codebase analysis, November 2025*
+
+---
+
+## Appendix A: Complete Project Structure
+
+### Python Backend (`app/`)
+```
+app/
+├── core/                          # Core infrastructure
+│   ├── db.py                     # SQLAlchemy engine, sessions, init_db()
+│   ├── settings.py               # Pydantic v2 settings from .env
+│   ├── logging.py                # Root logger setup
+│   ├── security.py               # JWT utils, Apple token validation
+│   └── deps.py                   # FastAPI auth dependencies
+│
+├── models/                        # Database & domain models
+│   ├── schema.py                 # SQLAlchemy models (Content, ProcessingTask, etc.)
+│   ├── user.py                   # User model + auth Pydantic schemas
+│   ├── metadata.py               # Unified Pydantic metadata models
+│   ├── pagination.py             # Pagination models
+│   └── scraper_runs.py           # ScraperStats dataclass
+│
+├── routers/                       # FastAPI endpoints
+│   ├── auth.py                   # Apple Sign In, refresh, admin login/logout
+│   ├── content.py                # Web UI routes (/, /content/{id}, /favorites)
+│   ├── admin.py                  # Admin dashboard (/admin/)
+│   ├── logs.py                   # Log viewing & error analysis
+│   ├── api_content.py            # API backward compatibility layer
+│   └── api/                      # Refactored API routes
+│       ├── __init__.py           # Combined router
+│       ├── models.py             # API Pydantic schemas
+│       ├── content_list.py       # GET /, /search, /unread-counts
+│       ├── content_detail.py     # GET /{id}, /chatgpt-url
+│       ├── read_status.py        # POST /mark-read, /bulk-mark-read
+│       ├── favorites.py          # POST /favorites/toggle, GET /favorites
+│       ├── content_actions.py    # POST /convert (news→article)
+│       └── chat.py               # Deep dive chat sessions & messages
+│
+├── services/                      # Business logic
+│   ├── anthropic_llm.py          # Anthropic Claude integration
+│   ├── openai_llm.py             # OpenAI GPT integration (summarization)
+│   ├── google_flash.py           # Google Gemini Flash integration
+│   ├── llm_prompts.py            # LLM prompt templates
+│   ├── event_logger.py           # EventLog service
+│   ├── favorites.py              # User favorites operations
+│   ├── read_status.py            # User read status tracking
+│   ├── queue.py                  # Queue service & stats
+│   ├── http.py                   # HTTP client helpers
+│   ├── whisper_local.py          # Local Whisper transcription
+│   ├── exa_client.py             # Exa web search integration
+│   ├── chat_agent.py             # pydantic-ai Agent for Deep Dive Chat
+│   └── tweet_suggestions.py      # Tweet generation from content
+│
+├── pipeline/                      # Task processing
+│   ├── sequential_task_processor.py  # Main orchestrator
+│   ├── worker.py                 # ContentWorker (articles/news)
+│   ├── podcast_workers.py        # PodcastDownloadWorker, TranscribeWorker
+│   └── checkout.py               # Content checkout mechanism
+│
+├── scraping/                      # Content scrapers
+│   ├── runner.py                 # Scraper orchestrator
+│   ├── base.py                   # Base scraper class
+│   ├── substack_unified.py       # Substack scraper
+│   ├── podcast_unified.py        # Podcast RSS/download
+│   ├── hackernews_unified.py     # Hacker News
+│   ├── reddit_unified.py         # Reddit (via PRAW)
+│   ├── twitter_unified.py        # Twitter/X
+│   ├── techmeme_unified.py       # Techmeme aggregator
+│   ├── youtube_unified.py        # YouTube videos
+│   └── atom_unified.py           # Generic Atom/RSS feeds
+│
+├── processing_strategies/         # Content-type processors
+│   ├── base_strategy.py          # Base strategy interface
+│   ├── registry.py               # Strategy registry
+│   ├── html_strategy.py          # HTML extraction (crawl4ai)
+│   ├── pdf_strategy.py           # PDF extraction
+│   ├── arxiv_strategy.py         # arXiv papers
+│   ├── pubmed_strategy.py        # PubMed articles
+│   ├── hackernews_strategy.py    # HN comment extraction
+│   ├── youtube_strategy.py       # YouTube transcript/metadata
+│   └── image_strategy.py         # Image content
+│
+├── http_client/
+│   └── robust_http_client.py     # Resilient HTTP with retries
+│
+├── utils/
+│   ├── error_logger.py           # JSONL error logging
+│   ├── pagination.py             # Cursor pagination utils
+│   ├── paths.py                  # Path utilities
+│   └── json_repair.py            # JSON repair utilities
+│
+├── domain/
+│   └── converters.py             # ORM→Pydantic converters
+│
+├── templates.py                   # Jinja2 template config
+├── constants.py                   # App-wide constants
+└── main.py                        # FastAPI app entry point
+```
+
+### iOS Client (`client/newsly/newsly/`)
+```
+client/newsly/newsly/
+├── newslyApp.swift               # App entry, auth gate
+├── ContentView.swift             # Main app container
+├── Info.plist                    # App capabilities
+├── newsly.entitlements           # Sign in with Apple
+│
+├── Models/
+│   ├── User.swift                # User model
+│   ├── ContentSummary.swift      # List view model
+│   ├── ContentDetail.swift       # Detail view model
+│   ├── ContentListResponse.swift # API response wrapper
+│   ├── ContentType.swift         # article/podcast/news enum
+│   ├── ContentStatus.swift       # processing status enum
+│   ├── StructuredSummary.swift   # Structured summary model
+│   ├── ArticleMetadata.swift     # Article-specific metadata
+│   ├── PodcastMetadata.swift     # Podcast-specific metadata
+│   ├── NewsMetadata.swift        # News-specific metadata
+│   ├── NewsGroup.swift           # Grouped news model
+│   ├── AnyCodable.swift          # JSON flexibility helper
+│   ├── ChatSessionSummary.swift  # Chat session list model
+│   ├── ChatMessage.swift         # Individual chat message
+│   ├── ChatSessionDetail.swift   # Chat session with messages
+│   └── ChatModelProvider.swift   # LLM provider enum
+│
+├── ViewModels/
+│   ├── AuthenticationViewModel.swift     # Apple Sign In state
+│   ├── ContentListViewModel.swift        # Main feed logic
+│   ├── ContentDetailViewModel.swift      # Detail view logic
+│   ├── ArticleDetailViewModel.swift      # Article-specific
+│   ├── PodcastDetailViewModel.swift      # Podcast-specific
+│   ├── NewsGroupViewModel.swift          # News grouping
+│   ├── SearchViewModel.swift             # Search functionality
+│   ├── ChatSessionsViewModel.swift       # Chat sessions list
+│   └── ChatSessionViewModel.swift        # Individual chat session
+│
+├── Views/
+│   ├── AuthenticationView.swift          # Login screen
+│   ├── ContentListView.swift             # Main feed (deprecated)
+│   ├── ContentDetailView.swift           # Detail screen
+│   ├── ShortFormView.swift               # News feed (swipeable cards)
+│   ├── LongFormView.swift                # Articles/podcasts (paged)
+│   ├── FavoritesView.swift               # Favorites screen
+│   ├── RecentlyReadView.swift            # Read history
+│   ├── SearchView.swift                  # Search interface
+│   ├── SettingsView.swift                # Settings & logout
+│   ├── DebugMenuView.swift               # Debug tools
+│   ├── ChatSessionsView.swift            # Chat sessions list (Chats tab)
+│   ├── ChatSessionView.swift             # Individual chat conversation
+│   └── Components/
+│       ├── SwipeableCard.swift           # Swipeable news card
+│       ├── PagedCardView.swift           # Pageable article card
+│       ├── CardStackView.swift           # Card stack container
+│       ├── ContentCard.swift             # Generic content card
+│       ├── NewsGroupCard.swift           # Grouped news display
+│       ├── NewsDigestDetailView.swift    # News detail modal
+│       ├── StructuredSummaryView.swift   # Summary display
+│       ├── FilterBar.swift               # Filter controls
+│       ├── FilterSheet.swift             # Filter modal
+│       ├── ContentTypeBadge.swift        # Type indicator
+│       ├── PlatformIcon.swift            # Source icon
+│       ├── PlaceholderCard.swift         # Loading state
+│       ├── LoadingView.swift             # Loading spinner
+│       ├── ErrorView.swift               # Error display
+│       └── ToastView.swift               # Toast notifications
+│
+└── Services/
+    ├── APIClient.swift               # HTTP client, JWT auto-refresh
+    ├── APIEndpoints.swift            # Endpoint definitions
+    ├── AuthenticationService.swift   # Apple Sign In integration
+    ├── KeychainManager.swift         # Secure token storage
+    ├── ContentService.swift          # Content API calls
+    ├── AppSettings.swift             # User preferences
+    ├── ChatGPTDeepLinkService.swift  # ChatGPT integration
+    ├── ToastService.swift            # Toast management
+    ├── UnreadCountService.swift      # Badge counts
+    ├── ChatService.swift             # Deep Dive Chat API client
+    ├── TwitterShareService.swift     # Twitter share deep links
+    └── VoiceDictationService.swift   # Voice input for tweets
+```
+
+### Project Root
+```
+├── templates/         # Primary Jinja templates (admin dashboard, logs, lists)
+├── static/            # Tailwind sources and compiled CSS
+│   └── css/
+│       ├── styles.css  # Source Tailwind CSS
+│       └── app.css     # Compiled output
+├── scripts/           # Operational scripts
+├── alembic/           # Database migrations
+├── logs/              # JSONL and service logs (host-mounted)
+├── docs/              # Documentation
+├── pyproject.toml     # Python dependencies (uv)
+├── uv.lock            # Lock file
+├── alembic.ini        # Alembic configuration
+└── docker-compose.yml # Container orchestration
+```
+
+---
+
+## Appendix B: Environment Variables
+
+All variables loaded via `app/core/settings.py` (Pydantic v2 BaseSettings).
+
+### Required
+```bash
+# Database
+DATABASE_URL="sqlite:///./news_app.db"  # or postgresql://user:pass@host/db
+
+# Authentication
+JWT_SECRET_KEY=<generate: python -c "import secrets; print(secrets.token_urlsafe(32))">
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=90
+ADMIN_PASSWORD=<your-secure-admin-password>
+```
+
+### Optional - LLM Services
+```bash
+ANTHROPIC_API_KEY=<anthropic-api-key>
+OPENAI_API_KEY=<openai-api-key>
+GOOGLE_API_KEY=<google-api-key>
+EXA_API_KEY=<exa-api-key>  # For Deep Dive Chat web search
+```
+
+### Optional - Processing
+```bash
+WHISPER_MODEL_SIZE=base    # tiny, base, small, medium, large
+WHISPER_DEVICE=auto        # cpu, cuda, mps, auto
+MAX_CONTENT_LENGTH=100000
+```
+
+### Optional - Reddit
+```bash
+REDDIT_CLIENT_ID=<reddit-client-id>
+REDDIT_CLIENT_SECRET=<reddit-client-secret>
+REDDIT_USER_AGENT="newsly/1.0"
+```
+
+---
+
+## Appendix C: Operational Scripts
+
+### Start Scripts
+| Script | Description |
+|--------|-------------|
+| `scripts/start_server.sh` | Run migrations + uvicorn (port 8000) |
+| `scripts/start_workers.sh` | Run migrations + Playwright + workers |
+| `scripts/start_scrapers.sh` | Run scrapers with stats |
+
+### Worker Entry Points
+| Script | Description |
+|--------|-------------|
+| `scripts/run_workers.py` | Sequential task processor |
+| `scripts/run_scrapers.py` | Scraper runner |
+
+### Database Management
+| Script | Description |
+|--------|-------------|
+| `scripts/init_database.py` | Initialize database schema |
+| `scripts/dump_database.py` | Export database to JSON |
+| `scripts/dump_system_stats.py` | System statistics report |
+| `scripts/backup_database.sh` | Backup SQLite database |
+| `scripts/sync_db_from_remote.sh` | Sync database from remote |
+
+### Content Management
+| Script | Description |
+|--------|-------------|
+| `scripts/reset_content_processing.py` | Reset content processing status |
+| `scripts/reset_errored_content.py` | Reset failed content for retry |
+| `scripts/enqueue_past_day_summarization.py` | Re-queue recent content |
+| `scripts/resummarize_podcasts.py` | Re-summarize podcasts |
+| `scripts/retranscribe_podcasts.py` | Re-transcribe podcast audio |
+| `scripts/generate_test_data.py` | Create test content |
+
+### Diagnostics
+| Script | Description |
+|--------|-------------|
+| `scripts/analyze_errors.py` | Analyze error logs |
+| `scripts/audit_feeds.py` | Audit feed configurations |
+| `scripts/diagnose_youtube.py` | Debug YouTube scraper |
+| `scripts/compare_llm_summarization.py` | Compare LLM outputs |
+| `scripts/test_auth_flow.sh` | Test authentication flow |
+
+### Environment
+| Script | Description |
+|--------|-------------|
+| `scripts/setup_uv_env.sh` | Setup uv environment |
+| `scripts/install_uv_env.sh` | Install dependencies via uv |
+| `scripts/clean_env.sh` | Clean virtual environment |
+
+### Deployment
+| Script | Description |
+|--------|-------------|
+| `scripts/deploy/push_app.sh` | Deploy to remote server |
+| `scripts/deploy/push_envs.sh` | Deploy environment variables |
+
+---
+
+## Appendix D: Quick Links (Fast Onboarding)
+
+### Application Entry
+- `app/main.py` — FastAPI app entry, router mounting, CORS, static files
+
+### Core Infrastructure
+- `app/core/settings.py` — Pydantic v2 settings from `.env`
+- `app/core/logging.py` — Root logger configuration
+- `app/core/db.py` — SQLAlchemy engine, session factory
+- `app/core/security.py` — JWT utilities, Apple token validation
+- `app/core/deps.py` — FastAPI auth dependencies
+
+### Database Models
+- `app/models/schema.py` — SQLAlchemy ORM models
+- `app/models/user.py` — User model + auth schemas
+- `app/models/metadata.py` — Content metadata models
+
+### API Routers
+- `app/routers/auth.py` — Apple Sign In, refresh tokens
+- `app/routers/content.py` — Web UI routes
+- `app/routers/admin.py` — Admin dashboard
+- `app/routers/api/` — REST API endpoints
+
+### Services Layer
+- `app/services/openai_llm.py` — OpenAI integration
+- `app/services/anthropic_llm.py` — Anthropic integration
+- `app/services/google_flash.py` — Google Gemini integration
+- `app/services/chat_agent.py` — pydantic-ai Deep Dive Chat
+
+### Pipeline & Workers
+- `app/pipeline/sequential_task_processor.py` — Main orchestrator
+- `app/pipeline/worker.py` — Content processor
+- `app/pipeline/podcast_workers.py` — Audio processing
+
+### Scrapers
+- `app/scraping/runner.py` — Scraper orchestrator
+- `app/scraping/*_unified.py` — Per-source scrapers
+
+### Processing Strategies
+- `app/processing_strategies/registry.py` — Strategy registry
+- `app/processing_strategies/*_strategy.py` — Content extractors
+
+### iOS App
+- `client/newsly/newsly/newslyApp.swift` — App entry
+- `client/newsly/newsly/Services/APIClient.swift` — HTTP client
+- `client/newsly/newsly/Services/AuthenticationService.swift` — Apple Sign In
+
+---
+
+## Appendix E: Dependencies
+
+**Requires Python ≥3.13**. All dependencies managed via `uv` (defined in `pyproject.toml`).
+
+### Core Web Framework
+- `fastapi>=0.115.12` - Web framework
+- `uvicorn>=0.34.2` - ASGI server
+- `pydantic>=2.11.5` - Data validation
+- `pydantic-settings>=2.9.1` - Configuration management
+- `jinja2>=3.1.6` - HTML templates
+
+### Database
+- `sqlalchemy>=2.0.41` - ORM
+- `alembic>=1.16.1` - Database migrations
+
+### Authentication
+- `pyjwt[crypto]` - JWT tokens
+- `passlib[bcrypt]` - Password hashing
+- `authlib>=1.6.5` - OAuth/Apple Sign In
+
+### LLM Services
+- `openai>=1.75.0` - OpenAI GPT
+- `anthropic>=0.72.0` - Anthropic Claude
+- `google-genai>=1.18.0` - Google Gemini
+- `pydantic-ai>=0.1.0` - Agent framework
+- `exa-py>=1.0.0` - Exa web search
+- `tenacity>=9.1.2` - Retry logic
+
+### Content Processing
+- `crawl4ai>=0.7.4,<0.8` - HTML extraction
+- `playwright>=1.53.0` - Browser automation
+- `feedparser>=6.0.11` - RSS/Atom parsing
+- `yt-dlp` - YouTube downloader
+- `openai-whisper>=20250625` - Audio transcription
+
+### Development & Testing
+- `pytest>=8.3.5` - Testing framework
+- `pytest-asyncio>=1.0.0` - Async test support
+- `ruff>=0.11.12` - Linter/formatter
+
+---
+
+*Updated November 2025*
