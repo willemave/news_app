@@ -25,7 +25,12 @@ final class TwitterShareService {
     /// Share a tweet to Twitter/X.
     /// Tries native app first, falls back to Safari.
     func share(tweet: String, completion: ((Bool) -> Void)? = nil) {
-        guard let encodedTweet = tweet.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+        // Use a restricted character set that encodes &, =, +, #, and other query-special chars.
+        // .urlQueryAllowed keeps these unencoded, which breaks URLs when tweet text contains them.
+        var allowedCharacters = CharacterSet.alphanumerics
+        allowedCharacters.insert(charactersIn: "-._~")
+
+        guard let encodedTweet = tweet.addingPercentEncoding(withAllowedCharacters: allowedCharacters) else {
             completion?(false)
             return
         }
