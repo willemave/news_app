@@ -91,7 +91,9 @@
       "Bash(ssh willem@192.3.250.10 \"echo ''EXA_API_KEY=702041b1-8594-4ac6-be82-3312769eef5a'' >> /opt/newsly/.env\")",
       "Bash(git push)",
       "Bash(git stash:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(.venv/bin/ruff check app/services/chat_agent.py)",
+      "Bash(.venv/bin/ruff format app/services/chat_agent.py)"
     ],
     "deny": []
   },
