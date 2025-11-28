@@ -91,7 +91,16 @@ final class AuthenticationService: NSObject {
 
                 // Update OpenAI API key if provided
                 if let openaiApiKey = tokenResponse.openaiApiKey {
+                    print("🔑 [Refresh] OpenAI API key received from server (length: \(openaiApiKey.count))")
                     KeychainManager.shared.saveToken(openaiApiKey, key: .openaiApiKey)
+                    // Verify the save
+                    if let verified = KeychainManager.shared.getToken(key: .openaiApiKey) {
+                        print("🔑 [Refresh] OpenAI API key verified in keychain (length: \(verified.count))")
+                    } else {
+                        print("❌ [Refresh] OpenAI API key FAILED to save to keychain!")
+                    }
+                } else {
+                    print("⚠️ [Refresh] No OpenAI API key in token response")
                 }
 
                 print("✅ Token refresh successful - both tokens rotated")
@@ -355,8 +364,16 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
 
         // Save OpenAI API key if provided
         if let openaiApiKey = tokenResponse.openaiApiKey {
+            print("🔑 [Auth] OpenAI API key received from server (length: \(openaiApiKey.count))")
             KeychainManager.shared.saveToken(openaiApiKey, key: .openaiApiKey)
-            print("🔑 OpenAI API key saved to keychain")
+            // Verify the save
+            if let verified = KeychainManager.shared.getToken(key: .openaiApiKey) {
+                print("🔑 [Auth] OpenAI API key verified in keychain (length: \(verified.count))")
+            } else {
+                print("❌ [Auth] OpenAI API key FAILED to save to keychain!")
+            }
+        } else {
+            print("⚠️ [Auth] No OpenAI API key in token response from server")
         }
 
         return tokenResponse.user
