@@ -118,6 +118,17 @@ class ChatService {
         return lastMessage
     }
 
+    /// Get initial follow-up question suggestions for an article-based session
+    func getInitialSuggestions(
+        sessionId: Int
+    ) -> AsyncThrowingStream<ChatMessage, Error> {
+        return client.streamNDJSON(
+            APIEndpoints.chatInitialSuggestions(sessionId: sessionId),
+            method: "POST",
+            body: nil
+        )
+    }
+
     // MARK: - Convenience Methods
 
     /// Start a deep dive chat for an article

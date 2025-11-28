@@ -52,4 +52,7 @@ enum APIEndpoints {
     static func chatMessages(sessionId: Int) -> String {
         return "/api/content/chat/sessions/\(sessionId)/messages"
     }
+    static func chatInitialSuggestions(sessionId: Int) -> String {
+        return "/api/content/chat/sessions/\(sessionId)/initial-suggestions"
+    }
 }

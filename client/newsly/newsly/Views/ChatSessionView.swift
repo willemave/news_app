@@ -167,7 +167,7 @@ struct MessageBubble: View {
             }
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
-                Text(message.content)
+                messageContent
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(message.isUser ? Color.blue : Color(.systemGray5))
@@ -184,6 +184,21 @@ struct MessageBubble: View {
 
             if !message.isUser {
                 Spacer(minLength: 60)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var messageContent: some View {
+        if message.isUser {
+            // User messages: plain text (no markdown needed)
+            Text(message.content)
+        } else {
+            // Assistant messages: render with markdown
+            if let attributedString = try? AttributedString(markdown: message.content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                Text(attributedString)
+            } else {
+                Text(message.content)
             }
         }
     }
