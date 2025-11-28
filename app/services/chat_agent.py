@@ -28,8 +28,8 @@ class ChatModelProvider(str, Enum):
 # Default model specifications per provider
 PROVIDER_DEFAULTS: dict[ChatModelProvider, str] = {
     ChatModelProvider.OPENAI: "openai:gpt-5.1",
-    ChatModelProvider.ANTHROPIC: "anthropic:claude-3-5-sonnet-latest",
-    ChatModelProvider.GOOGLE: "google-gla:gemini-2.5-flash",
+    ChatModelProvider.ANTHROPIC: "claude-sonnet-4-5-20250929",
+    ChatModelProvider.GOOGLE: "google-gla:gemini-3-pro-preview",
 }
 
 DEFAULT_MODEL = "openai:gpt-5.1"

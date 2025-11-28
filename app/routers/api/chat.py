@@ -319,8 +319,12 @@ async def send_message(
     if session.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
+    # Get existing message count to ensure unique IDs
+    existing_messages = _extract_messages_for_display(db, session_id)
+    base_msg_id = len(existing_messages)
+
     async def generate():
-        msg_id = 0
+        msg_id = base_msg_id
 
         # First, yield the user message
         msg_id += 1
@@ -419,8 +423,12 @@ async def get_initial_suggestions(
             detail="Initial suggestions only available for article-based sessions",
         )
 
+    # Get existing message count to ensure unique IDs
+    existing_messages = _extract_messages_for_display(db, session_id)
+    base_msg_id = len(existing_messages)
+
     async def generate():
-        msg_id = 1
+        msg_id = base_msg_id + 1
         accumulated_text = ""
         timestamp = datetime.utcnow()
 
