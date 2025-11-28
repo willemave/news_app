@@ -75,6 +75,12 @@ struct ContentView: View {
                 .badge(shortBadge)
                 .tag(RootTab.shortNews)
 
+                ChatSessionsView()
+                    .tabItem {
+                        Label("Chats", systemImage: "brain.head.profile")
+                    }
+                    .tag(RootTab.chats)
+
                 RecentlyReadView()
                     .tabItem {
                         Label("Recently Read", systemImage: "clock.fill")

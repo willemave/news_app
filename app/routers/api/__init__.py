@@ -10,11 +10,13 @@ organized into logical sub-routers:
 - content_actions: Content transformations (e.g., convert news to article)
 - scraper_configs: User scraper configuration management
 - submission: User content submissions
+- chat: Deep-dive chat sessions with articles
 """
 
 from fastapi import APIRouter
 
 from app.routers.api import (
+    chat,
     content_actions,
     content_detail,
     content_list,
@@ -51,5 +53,8 @@ router.include_router(scraper_configs.router)
 
 # User submissions
 router.include_router(submission.router)
+
+# Chat sessions
+router.include_router(chat.router)
 
 __all__ = ["router"]

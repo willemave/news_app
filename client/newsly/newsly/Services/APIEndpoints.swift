@@ -43,4 +43,13 @@ enum APIEndpoints {
     static func tweetSuggestions(id: Int) -> String {
         return "/api/content/\(id)/tweet-suggestions"
     }
+
+    // MARK: - Chat Endpoints
+    static let chatSessions = "/api/content/chat/sessions"
+    static func chatSession(id: Int) -> String {
+        return "/api/content/chat/sessions/\(id)"
+    }
+    static func chatMessages(sessionId: Int) -> String {
+        return "/api/content/chat/sessions/\(sessionId)/messages"
+    }
 }

@@ -252,3 +252,40 @@ class UserScraperConfig(Base):
         UniqueConstraint("user_id", "scraper_type", "feed_url", name="uq_user_scraper_feed"),
         Index("idx_user_scraper_user_type", "user_id", "scraper_type"),
     )
+
+
+class ChatSession(Base):
+    """Chat session for deep-dive conversations with articles/news."""
+
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    content_id = Column(Integer, nullable=True, index=True)  # soft ref to contents.id
+    title = Column(String(500), nullable=True)
+    session_type = Column(String(50), nullable=True)  # article_brain, topic, ad_hoc
+    topic = Column(String(500), nullable=True)
+    llm_model = Column(String(100), nullable=False, default="openai:gpt-5.1")
+    llm_provider = Column(String(50), nullable=False, default="openai")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_message_at = Column(DateTime, nullable=True, index=True)
+    is_archived = Column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        Index("idx_chat_sessions_user_time", "user_id", "last_message_at"),
+        Index("idx_chat_sessions_content", "user_id", "content_id"),
+    )
+
+
+class ChatMessage(Base):
+    """Chat message history stored as pydantic-ai ModelMessage JSON."""
+
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(Integer, nullable=False, index=True)  # soft ref to chat_sessions.id
+    message_list = Column(Text, nullable=False)  # JSON from ModelMessagesTypeAdapter
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (Index("idx_chat_messages_session_created", "session_id", "created_at"),)

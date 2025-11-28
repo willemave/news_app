@@ -1,10 +1,186 @@
 """Pydantic models for API endpoints."""
 
+from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.models.metadata import ContentStatus, ContentType
+
+# ============================================================================
+# Chat Models
+# ============================================================================
+
+
+class ChatModelProvider(str, Enum):
+    """Supported LLM providers for chat."""
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GOOGLE = "google"
+
+
+class ChatMessageRole(str, Enum):
+    """Role of a chat message."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    TOOL = "tool"
+
+
+class ChatSessionSummaryResponse(BaseModel):
+    """Summary of a chat session for list view."""
+
+    id: int = Field(..., description="Unique session identifier")
+    content_id: int | None = Field(None, description="Associated content ID if any")
+    title: str | None = Field(None, description="Session title")
+    session_type: str | None = Field(
+        None, description="Session type (article_brain, topic, ad_hoc)"
+    )
+    topic: str | None = Field(None, description="Topic if session was started from a topic")
+    llm_provider: str = Field(..., description="LLM provider (openai, anthropic, google)")
+    llm_model: str = Field(..., description="Full model specification (e.g., openai:gpt-5.1)")
+    created_at: datetime = Field(..., description="Session creation timestamp")
+    updated_at: datetime | None = Field(None, description="Last update timestamp")
+    last_message_at: datetime | None = Field(None, description="Timestamp of last message")
+    article_title: str | None = Field(None, description="Title of associated article if any")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": 1,
+                "content_id": 123,
+                "title": "Understanding AI Agents",
+                "session_type": "article_brain",
+                "topic": None,
+                "llm_provider": "openai",
+                "llm_model": "openai:gpt-5.1",
+                "created_at": "2025-11-28T10:00:00Z",
+                "updated_at": "2025-11-28T10:30:00Z",
+                "last_message_at": "2025-11-28T10:30:00Z",
+                "article_title": "How AI Agents Work",
+            }
+        }
+
+
+class ChatMessageResponse(BaseModel):
+    """A single chat message for display."""
+
+    id: int = Field(..., description="Message ID")
+    role: ChatMessageRole = Field(..., description="Message role (user/assistant/system/tool)")
+    timestamp: datetime = Field(..., description="Message timestamp")
+    content: str = Field(..., description="Message content")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": 1,
+                "role": "user",
+                "timestamp": "2025-11-28T10:00:00Z",
+                "content": "What are the key takeaways from this article?",
+            }
+        }
+
+
+class ChatSessionDetailResponse(BaseModel):
+    """Detailed chat session with messages."""
+
+    session: ChatSessionSummaryResponse = Field(..., description="Session summary")
+    messages: list[ChatMessageResponse] = Field(..., description="Chat messages in order")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session": {
+                    "id": 1,
+                    "content_id": 123,
+                    "title": "Understanding AI Agents",
+                    "session_type": "article_brain",
+                    "llm_provider": "openai",
+                    "llm_model": "openai:gpt-5.1",
+                    "created_at": "2025-11-28T10:00:00Z",
+                    "updated_at": "2025-11-28T10:30:00Z",
+                    "last_message_at": "2025-11-28T10:30:00Z",
+                    "article_title": "How AI Agents Work",
+                },
+                "messages": [
+                    {
+                        "id": 1,
+                        "role": "user",
+                        "timestamp": "2025-11-28T10:00:00Z",
+                        "content": "What are the key takeaways?",
+                    },
+                    {
+                        "id": 2,
+                        "role": "assistant",
+                        "timestamp": "2025-11-28T10:00:05Z",
+                        "content": "The key takeaways from this article are...",
+                    },
+                ],
+            }
+        }
+
+
+class CreateChatSessionRequest(BaseModel):
+    """Request to create a new chat session."""
+
+    content_id: int | None = Field(None, description="Content ID to chat about")
+    topic: str | None = Field(None, max_length=500, description="Specific topic to discuss")
+    llm_provider: ChatModelProvider | None = Field(
+        None, description="LLM provider (defaults to openai)"
+    )
+    llm_model_hint: str | None = Field(
+        None, max_length=100, description="Optional specific model to use"
+    )
+    initial_message: str | None = Field(
+        None, max_length=2000, description="Optional initial user message"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "content_id": 123,
+                "topic": None,
+                "llm_provider": "openai",
+                "llm_model_hint": None,
+                "initial_message": "What are the key insights from this article?",
+            }
+        }
+
+
+class CreateChatSessionResponse(BaseModel):
+    """Response after creating a chat session."""
+
+    session: ChatSessionSummaryResponse = Field(..., description="Created session")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session": {
+                    "id": 1,
+                    "content_id": 123,
+                    "title": "How AI Agents Work",
+                    "session_type": "article_brain",
+                    "llm_provider": "openai",
+                    "llm_model": "openai:gpt-5.1",
+                    "created_at": "2025-11-28T10:00:00Z",
+                    "updated_at": None,
+                    "last_message_at": None,
+                    "article_title": "How AI Agents Work",
+                }
+            }
+        }
+
+
+class SendChatMessageRequest(BaseModel):
+    """Request to send a message in a chat session."""
+
+    message: str = Field(..., min_length=1, max_length=10000, description="Message to send")
+
+    class Config:
+        json_schema_extra = {"example": {"message": "Can you explain that in more detail?"}}
 
 
 class ContentSummaryResponse(BaseModel):
@@ -113,7 +289,7 @@ class ContentListResponse(BaseModel):
                 "total": 1,
                 "available_dates": ["2025-06-19", "2025-06-18"],
                 "content_types": ["article", "podcast", "news"],
-                "next_cursor": "eyJsYXN0X2lkIjoxMjMsImxhc3RfY3JlYXRlZF9hdCI6IjIwMjUtMDYtMTlUMTA6MzA6MDAifQ==",
+                "next_cursor": "eyJsYXN0X2lkIjoxMjN9",
                 "has_more": True,
                 "page_size": 25,
             }

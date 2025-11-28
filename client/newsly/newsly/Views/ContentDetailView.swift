@@ -24,6 +24,9 @@ struct ContentDetailView: View {
     @State private var isConverting: Bool = false
     // Tweet suggestions sheet state
     @State private var showTweetSheet: Bool = false
+    // Deep dive chat sheet state
+    @State private var showDeepDiveSheet: Bool = false
+    @State private var deepDiveSession: ChatSessionSummary?
 
     init(contentId: Int, allContentIds: [Int] = [], onConvert: ((Int) async -> Void)? = nil) {
         self.initialContentId = contentId
@@ -106,13 +109,24 @@ struct ContentDetailView: View {
                             }
                             .buttonStyle(.bordered)
 
-                            // Chat with AI button
+                            // Chat with AI button (ChatGPT)
                             Button(action: {
                                 Task {
                                     await viewModel.openInChatGPT()
                                 }
                             }) {
                                 Image(systemName: "brain")
+                                    .font(.system(size: 18))
+                            }
+                            .buttonStyle(.bordered)
+
+                            // Deep Dive chat button
+                            Button(action: {
+                                Task {
+                                    await startDeepDive(contentId: content.id)
+                                }
+                            }) {
+                                Image(systemName: "brain.head.profile")
                                     .font(.system(size: 18))
                             }
                             .buttonStyle(.bordered)
@@ -188,7 +202,7 @@ struct ContentDetailView: View {
 
                     // Structured Summary Section
                     if let structuredSummary = content.structuredSummary {
-                        StructuredSummaryView(summary: structuredSummary)
+                        StructuredSummaryView(summary: structuredSummary, contentId: content.id)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 12)
                     }
@@ -382,6 +396,25 @@ struct ContentDetailView: View {
             if let content = viewModel.content {
                 TweetSuggestionsSheet(contentId: content.id)
             }
+        }
+        .sheet(isPresented: $showDeepDiveSheet) {
+            if let session = deepDiveSession {
+                NavigationStack {
+                    ChatSessionView(session: session)
+                }
+            }
+        }
+    }
+
+    // MARK: - Deep Dive Helper
+    private func startDeepDive(contentId: Int) async {
+        do {
+            let session = try await ChatService.shared.startArticleChat(contentId: contentId)
+            deepDiveSession = session
+            showDeepDiveSheet = true
+        } catch {
+            // Could show an error toast here
+            print("Failed to start deep dive: \(error)")
         }
     }
 
