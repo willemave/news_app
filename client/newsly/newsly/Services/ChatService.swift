@@ -84,11 +84,13 @@ class ChatService {
         sessionId: Int,
         message: String
     ) -> AsyncThrowingStream<ChatMessage, Error> {
+        logger.info("[ChatService] sendMessage started | sessionId=\(sessionId) messageLen=\(message.count)")
         let request = SendChatMessageRequest(message: message)
 
         do {
             let encoder = JSONEncoder()
             let body = try encoder.encode(request)
+            logger.debug("[ChatService] sendMessage request encoded | sessionId=\(sessionId)")
 
             return client.streamNDJSON(
                 APIEndpoints.chatMessages(sessionId: sessionId),
@@ -96,6 +98,7 @@ class ChatService {
                 body: body
             )
         } catch {
+            logger.error("[ChatService] sendMessage encode error | sessionId=\(sessionId) error=\(error.localizedDescription)")
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: error)
             }
@@ -107,14 +110,19 @@ class ChatService {
         sessionId: Int,
         message: String
     ) async throws -> ChatMessage? {
+        logger.info("[ChatService] sendMessageSync started | sessionId=\(sessionId)")
         var lastMessage: ChatMessage?
+        var messageCount = 0
 
         for try await msg in sendMessage(sessionId: sessionId, message: message) {
+            messageCount += 1
             if msg.role == .assistant {
                 lastMessage = msg
+                logger.debug("[ChatService] sendMessageSync assistant msg #\(messageCount) | contentLen=\(msg.content.count)")
             }
         }
 
+        logger.info("[ChatService] sendMessageSync completed | sessionId=\(sessionId) totalMessages=\(messageCount)")
         return lastMessage
     }
 
@@ -122,6 +130,7 @@ class ChatService {
     func getInitialSuggestions(
         sessionId: Int
     ) -> AsyncThrowingStream<ChatMessage, Error> {
+        logger.info("[ChatService] getInitialSuggestions started | sessionId=\(sessionId)")
         return client.streamNDJSON(
             APIEndpoints.chatInitialSuggestions(sessionId: sessionId),
             method: "POST",

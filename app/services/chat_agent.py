@@ -161,15 +161,35 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
         Returns:
             List of search results with title, URL, and snippet.
         """
+        session_id = ctx.deps.session.id
+        logger.info(
+            f"[Tool:exa_web_search] Called | session_id={session_id} "
+            f"query='{query[:100]}' num_results={num_results}"
+        )
+
         # Check if Exa is available
         if get_exa_client() is None:
+            logger.warning(f"[Tool:exa_web_search] Exa unavailable | sid={session_id}")
             return []
 
         # Clamp num_results
         num_results = max(1, min(10, num_results))
 
         # Execute search
-        results = exa_search(query, num_results=num_results)
+        try:
+            results = exa_search(query, num_results=num_results)
+            logger.info(
+                f"[Tool:exa_web_search] Success | session_id={session_id} "
+                f"results_count={len(results)}"
+            )
+            for i, r in enumerate(results):
+                logger.debug(
+                    f"[Tool:exa_web_search] Result {i + 1} | "
+                    f"title='{r.title[:50] if r.title else 'N/A'}' url={r.url}"
+                )
+        except Exception as e:
+            logger.error(f"[Tool:exa_web_search] Error | session_id={session_id} error={e}")
+            return []
 
         return [
             ExaSearchResultModel(
@@ -310,13 +330,21 @@ async def run_chat_stream(
     Note:
         This function updates session.last_message_at and persists new messages.
     """
+    logger.info(
+        f"[Stream] run_chat_stream started | session_id={session.id} "
+        f"model={session.llm_model} prompt_len={len(user_prompt)}"
+    )
+
     # Load associated content if any
     content: Content | None = None
     if session.content_id:
         content = db.query(Content).filter(Content.id == session.content_id).first()
+        logger.debug(f"[Stream] Content loaded | sid={session.id} cid={session.content_id}")
 
     # Build article context
     article_context = build_article_context(content) if content else None
+    if article_context:
+        logger.debug(f"[Stream] Context built | sid={session.id} len={len(article_context)}")
 
     # Build dependencies
     deps = ChatDeps(
@@ -327,13 +355,16 @@ async def run_chat_stream(
 
     # Load message history
     history = load_message_history(db, session.id)
+    logger.info(f"[Stream] Loaded history | session_id={session.id} history_count={len(history)}")
 
     # Get agent for this session's model
     agent = get_chat_agent(session.llm_model)
 
     # Run with streaming
     collected_text = ""
+    chunk_count = 0
     try:
+        logger.info(f"[Stream] Starting agent stream | session_id={session.id}")
         async with agent.run_stream(
             user_prompt,
             deps=deps,
@@ -344,17 +375,30 @@ async def run_chat_stream(
                 # Yield only the new part
                 new_text = text[len(collected_text) :]
                 if new_text:
+                    chunk_count += 1
                     yield new_text
                     collected_text = text
+                    if chunk_count % 50 == 0:  # Log progress every 50 chunks
+                        logger.debug(
+                            f"[Stream] Progress | session_id={session.id} "
+                            f"chunks={chunk_count} total_len={len(collected_text)}"
+                        )
+
+        logger.info(
+            f"[Stream] Stream completed | session_id={session.id} "
+            f"total_chunks={chunk_count} final_len={len(collected_text)}"
+        )
 
         # After completion, save new messages
         new_messages = result.new_messages()
         save_messages(db, session.id, new_messages)
+        logger.debug(f"[Stream] Saved | sid={session.id} msgs={len(new_messages)}")
 
         # Update session timestamps
         session.last_message_at = datetime.utcnow()
         session.updated_at = datetime.utcnow()
         db.commit()
+        logger.info(f"[Stream] Session updated | session_id={session.id}")
 
     except Exception as e:
         logger.error(f"Chat stream error for session {session.id}: {e}")
@@ -452,16 +496,29 @@ async def generate_initial_suggestions(
     Yields:
         Partial text chunks as they're generated.
     """
+    logger.info(
+        f"[InitialSuggestions] Started | session_id={session.id} "
+        f"content_id={session.content_id} model={session.llm_model}"
+    )
+
     if not session.content_id:
+        logger.warning(f"[InitialSuggestions] No content_id | session_id={session.id}")
         return
 
     # Load associated content
     content: Content | None = db.query(Content).filter(Content.id == session.content_id).first()
     if not content:
+        logger.warning(f"[InitialSuggestions] Content not found | sid={session.id}")
         return
+
+    title_preview = content.title[:50] if content.title else "N/A"
+    logger.debug(f"[InitialSuggestions] Content loaded | sid={session.id} title='{title_preview}'")
 
     # Build article context
     article_context = build_article_context(content)
+    if article_context:
+        ctx_len = len(article_context)
+        logger.debug(f"[InitialSuggestions] Context built | sid={session.id} len={ctx_len}")
 
     # Build dependencies
     deps = ChatDeps(
@@ -475,7 +532,9 @@ async def generate_initial_suggestions(
 
     # Run with streaming - use the initial questions prompt
     collected_text = ""
+    chunk_count = 0
     try:
+        logger.info(f"[InitialSuggestions] Starting agent stream | session_id={session.id}")
         async with agent.run_stream(
             INITIAL_QUESTIONS_PROMPT,
             deps=deps,
@@ -485,19 +544,32 @@ async def generate_initial_suggestions(
             async for text in result.stream_text(debounce_by=0.01):
                 new_text = text[len(collected_text) :]
                 if new_text:
+                    chunk_count += 1
                     yield new_text
                     collected_text = text
+                    if chunk_count % 50 == 0:
+                        logger.debug(
+                            f"[InitialSuggestions] Progress | session_id={session.id} "
+                            f"chunks={chunk_count} total_len={len(collected_text)}"
+                        )
+
+        logger.info(
+            f"[InitialSuggestions] Stream completed | session_id={session.id} "
+            f"total_chunks={chunk_count} final_len={len(collected_text)}"
+        )
 
         # After completion, save new messages
         new_messages = result.new_messages()
         save_messages(db, session.id, new_messages)
+        logger.debug(f"[InitialSuggestions] Saved | sid={session.id} msgs={len(new_messages)}")
 
         # Update session timestamps
         session.last_message_at = datetime.utcnow()
         session.updated_at = datetime.utcnow()
         db.commit()
+        logger.info(f"[InitialSuggestions] Completed | session_id={session.id}")
 
     except Exception as e:
-        logger.error(f"Initial suggestions error for session {session.id}: {e}")
+        logger.error(f"[InitialSuggestions] Error | session_id={session.id} error={e}")
         db.rollback()
         raise
