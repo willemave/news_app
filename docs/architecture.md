@@ -24,6 +24,7 @@
 11. [Architectural Patterns](#11-architectural-patterns)
 12. [Data Flow Diagrams](#12-data-flow-diagrams)
 13. [Security Architecture](#13-security-architecture)
+14. [Deep Dive Chat System](#14-deep-dive-chat-system)
 
 ---
 
@@ -2501,6 +2502,249 @@ ContentData (Unified Wrapper)
 ├── content_type: ContentType
 ├── status: ContentStatus
 └── metadata: ArticleMetadata | PodcastMetadata | NewsMetadata
+```
+
+---
+
+---
+
+## 14. Deep Dive Chat System
+
+### 14.1 Overview
+
+The Deep Dive Chat feature enables conversational AI interactions with article content using pydantic-ai agents. Users can:
+- Start article-focused chats from content detail view
+- Start topic-focused chats from summary topics
+- Create ad-hoc chats without article context
+- Use Exa web search for additional context
+
+### 14.2 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          DEEP DIVE CHAT SYSTEM                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────────┐   │
+│  │   iOS App    │────│  Chat API    │────│    pydantic-ai Agent        │   │
+│  │   (SwiftUI)  │    │  (FastAPI)   │    │  (chat_agent.py)            │   │
+│  └──────────────┘    └──────────────┘    └──────────────────────────────┘   │
+│         │                   │                          │                     │
+│         │            ┌──────┴──────┐          ┌───────┴───────┐             │
+│         │            │             │          │               │             │
+│    ┌────┴────┐  ┌────┴────┐  ┌─────┴─────┐   │    ┌─────────┴─────────┐   │
+│    │ Chats   │  │ Chat    │  │ Chat      │   │    │   Exa Web Search  │   │
+│    │ Tab     │  │ Sessions│  │ Messages  │   │    │   (Tool)          │   │
+│    └─────────┘  └─────────┘  └───────────┘   │    └───────────────────┘   │
+│                                               │                             │
+│                                   ┌───────────┴───────────┐                │
+│                                   │                       │                │
+│                             ┌─────┴─────┐          ┌──────┴──────┐        │
+│                             │  OpenAI   │          │  Anthropic  │        │
+│                             │  gpt-5.1  │          │  Claude     │        │
+│                             └───────────┘          └─────────────┘        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 14.3 Database Schema
+
+```python
+class ChatSession(Base):
+    """Deep Dive Chat session."""
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    content_id: Mapped[int | None] = mapped_column(index=True)  # Article reference
+    title: Mapped[str | None] = mapped_column(String(500))
+    session_type: Mapped[str | None] = mapped_column(String(50))  # article_brain, topic, ad_hoc
+    topic: Mapped[str | None] = mapped_column(String(500))
+    llm_model: Mapped[str] = mapped_column(String(100), default="openai:gpt-5.1")
+    llm_provider: Mapped[str] = mapped_column(String(50), default="openai")
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime | None]
+    last_message_at: Mapped[datetime | None]
+    is_archived: Mapped[bool] = mapped_column(default=False)
+
+class ChatMessage(Base):
+    """Message history using pydantic-ai format."""
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(index=True)
+    message_list: Mapped[str]  # JSON from ModelMessagesTypeAdapter
+    created_at: Mapped[datetime]
+```
+
+### 14.4 Chat Agent (`app/services/chat_agent.py`)
+
+```python
+from pydantic_ai import Agent
+from pydantic_ai.messages import ModelMessagesTypeAdapter
+
+@dataclass
+class ChatDeps:
+    """Dependencies injected into chat agent."""
+    db: Session
+    content_id: int | None
+    article_context: str | None
+
+def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
+    """Get or create a chat agent for the given model spec."""
+    agent = Agent(
+        model_spec,  # e.g., "openai:gpt-5.1"
+        deps_type=ChatDeps,
+        output_type=str,
+        system_prompt="You are a deep-dive assistant...",
+    )
+
+    @agent.system_prompt
+    async def add_article_context(ctx: RunContext[ChatDeps]) -> str:
+        """Inject article context into system prompt."""
+        if ctx.deps.article_context:
+            return f"Article Context:\n{ctx.deps.article_context}"
+        return ""
+
+    @agent.tool
+    async def exa_web_search(
+        ctx: RunContext[ChatDeps],
+        query: str,
+        num_results: int = 5,
+    ) -> list[ExaSearchResultModel]:
+        """Search the web using Exa for additional context."""
+        results = exa_search(query, num_results)
+        return [ExaSearchResultModel(...) for r in results]
+
+    return agent
+
+async def run_chat_stream(
+    db: Session,
+    session: ChatSession,
+    user_prompt: str,
+) -> AsyncIterator[str]:
+    """Run a chat turn with streaming output."""
+    # Load message history
+    history = load_message_history(db, session.id)
+
+    # Build context
+    deps = ChatDeps(
+        db=db,
+        content_id=session.content_id,
+        article_context=build_article_context(db, session.content_id),
+    )
+
+    # Get agent
+    agent = get_chat_agent(session.llm_model)
+
+    # Stream response
+    async with agent.run_stream(user_prompt, message_history=history, deps=deps) as result:
+        async for chunk in result.stream_text():
+            yield chunk
+
+    # Persist messages
+    save_message_history(db, session.id, result.all_messages())
+
+    # Update session
+    session.last_message_at = datetime.utcnow()
+    db.commit()
+```
+
+### 14.5 API Endpoints (`app/routers/api/chat.py`)
+
+```python
+router = APIRouter(prefix="/chat", tags=["chat"])
+
+@router.get("/sessions", response_model=list[ChatSessionSummaryResponse])
+async def list_sessions(
+    db: Session,
+    current_user: User,
+    content_id: int | None = None,
+    limit: int = 50,
+) -> list[ChatSessionSummaryResponse]:
+    """List chat sessions for current user."""
+
+@router.post("/sessions", response_model=CreateChatSessionResponse)
+async def create_session(
+    request: CreateChatSessionRequest,
+    db: Session,
+    current_user: User,
+) -> CreateChatSessionResponse:
+    """Create a new chat session."""
+
+@router.get("/sessions/{session_id}", response_model=ChatSessionDetailResponse)
+async def get_session(
+    session_id: int,
+    db: Session,
+    current_user: User,
+) -> ChatSessionDetailResponse:
+    """Get session details with message history."""
+
+@router.post("/sessions/{session_id}/messages")
+async def send_message(
+    session_id: int,
+    request: SendChatMessageRequest,
+    db: Session,
+    current_user: User,
+) -> StreamingResponse:
+    """Send message and stream response as NDJSON."""
+    async def generate():
+        # Yield user message
+        yield json.dumps(user_msg.model_dump(mode="json")) + "\n"
+
+        # Stream assistant response
+        async for chunk in run_chat_stream(db, session, request.message):
+            accumulated_text += chunk
+            yield json.dumps(partial_msg.model_dump(mode="json")) + "\n"
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
+```
+
+### 14.6 iOS Client
+
+**Models:**
+- `ChatSessionSummary` - Session list item
+- `ChatMessage` - Individual message
+- `ChatSessionDetail` - Session with messages
+- `ChatModelProvider` - LLM provider enum
+
+**Services:**
+- `ChatService` - API client with NDJSON streaming via `APIClient.streamNDJSON()`
+
+**ViewModels:**
+- `ChatSessionsViewModel` - Session list management
+- `ChatSessionViewModel` - Chat conversation with streaming
+
+**Views:**
+- `ChatSessionsView` - Chats tab (3rd position)
+- `ChatSessionView` - Chat UI with message bubbles
+
+**Entry Points:**
+- Brain button in `ContentDetailView` - Start article chat
+- Topic long-press in `StructuredSummaryView` - Start topic chat
+- Plus button in `ChatSessionsView` - Start ad-hoc chat
+
+### 14.7 Model Resolution
+
+```python
+DEFAULT_MODELS = {
+    "openai": "openai:gpt-5.1",
+    "anthropic": "anthropic:claude-3-5-sonnet-latest",
+    "google": "google-gla:gemini-2.5-flash",
+}
+
+def resolve_model(
+    provider: str | None = None,
+    model_hint: str | None = None,
+) -> tuple[str, str]:
+    """Resolve provider and model hint to pydantic-ai model string.
+
+    Returns: (provider_name, full_model_spec)
+    """
+    provider = provider or "openai"
+    if model_hint:
+        return provider, f"{provider}:{model_hint}"
+    return provider, DEFAULT_MODELS.get(provider, DEFAULT_MODELS["openai"])
 ```
 
 ---
