@@ -275,8 +275,12 @@ class APIClient {
     ) -> AsyncThrowingStream<T, Error> {
         AsyncThrowingStream { continuation in
             Task {
+                let streamId = UUID().uuidString.prefix(8)
+                logger.info("[Stream:\(streamId)] Starting NDJSON stream | endpoint=\(endpoint, privacy: .public)")
+
                 do {
                     guard let url = URL(string: AppSettings.shared.baseURL + endpoint) else {
+                        logger.error("[Stream:\(streamId)] Invalid URL | endpoint=\(endpoint, privacy: .public)")
                         continuation.finish(throwing: APIError.invalidURL)
                         return
                     }
@@ -288,42 +292,77 @@ class APIClient {
 
                     if let accessToken = try await fetchAccessTokenOrRefresh() {
                         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                        logger.debug("[Stream:\(streamId)] Auth token added")
+                    } else {
+                        logger.warning("[Stream:\(streamId)] No auth token available")
                     }
 
                     if let body = body {
                         request.httpBody = body
+                        logger.debug("[Stream:\(streamId)] Request body size=\(body.count) bytes")
                     }
 
+                    logger.info("[Stream:\(streamId)] Initiating bytes stream request...")
                     let (bytes, response) = try await session.bytes(for: request)
+                    logger.info("[Stream:\(streamId)] Bytes stream established")
 
                     guard let httpResponse = response as? HTTPURLResponse else {
+                        logger.error("[Stream:\(streamId)] Unknown response type")
                         continuation.finish(throwing: APIError.unknown)
                         return
                     }
 
+                    logger.info("[Stream:\(streamId)] HTTP status=\(httpResponse.statusCode)")
+
                     guard (200...299).contains(httpResponse.statusCode) else {
                         if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                            logger.error("[Stream:\(streamId)] Unauthorized")
                             continuation.finish(throwing: APIError.unauthorized)
                         } else {
+                            logger.error("[Stream:\(streamId)] HTTP error status=\(httpResponse.statusCode)")
                             continuation.finish(throwing: APIError.httpError(statusCode: httpResponse.statusCode))
                         }
                         return
                     }
 
+                    var lineCount = 0
+                    var totalBytes = 0
+                    logger.info("[Stream:\(streamId)] Starting to read lines...")
+
                     for try await line in bytes.lines {
-                        guard !line.isEmpty else { continue }
-                        guard let lineData = line.data(using: .utf8) else { continue }
+                        guard !line.isEmpty else {
+                            logger.debug("[Stream:\(streamId)] Skipping empty line")
+                            continue
+                        }
+
+                        lineCount += 1
+                        totalBytes += line.utf8.count
+                        logger.debug("[Stream:\(streamId)] Line #\(lineCount) received, size=\(line.utf8.count) bytes")
+
+                        guard let lineData = line.data(using: .utf8) else {
+                            logger.warning("[Stream:\(streamId)] Failed to convert line #\(lineCount) to data")
+                            continue
+                        }
 
                         do {
                             let decoded = try self.decoder.decode(T.self, from: lineData)
                             continuation.yield(decoded)
+                            logger.debug("[Stream:\(streamId)] Line #\(lineCount) decoded and yielded")
                         } catch {
-                            logger.warning("Failed to decode NDJSON line: \(error.localizedDescription)")
+                            logger.warning("[Stream:\(streamId)] Decode error line #\(lineCount): \(error.localizedDescription, privacy: .public)")
+                            // Log the problematic line content for debugging
+                            let preview = String(line.prefix(200))
+                            logger.debug("[Stream:\(streamId)] Line content preview: \(preview, privacy: .public)")
                         }
                     }
 
+                    logger.info("[Stream:\(streamId)] Stream completed | lines=\(lineCount) totalBytes=\(totalBytes)")
+                    continuation.finish()
+                } catch is CancellationError {
+                    logger.info("[Stream:\(streamId)] Stream cancelled")
                     continuation.finish()
                 } catch {
+                    logger.error("[Stream:\(streamId)] Stream error: \(error.localizedDescription, privacy: .public)")
                     continuation.finish(throwing: error)
                 }
             }
