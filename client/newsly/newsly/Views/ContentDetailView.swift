@@ -109,17 +109,6 @@ struct ContentDetailView: View {
                             }
                             .buttonStyle(.bordered)
 
-                            // Chat with AI button (ChatGPT)
-                            Button(action: {
-                                Task {
-                                    await viewModel.openInChatGPT()
-                                }
-                            }) {
-                                Image(systemName: "brain")
-                                    .font(.system(size: 18))
-                            }
-                            .buttonStyle(.bordered)
-
                             // Deep Dive chat button
                             Button(action: {
                                 Task {
