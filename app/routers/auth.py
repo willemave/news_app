@@ -165,6 +165,15 @@ def apple_signin(
     logger.info("Tokens generated successfully")
 
     logger.info(f"=== Apple Sign In Successful for user {user.id} ===")
+
+    # Log OpenAI key status for debugging voice dictation
+    if settings.openai_api_key:
+        logger.info(
+            f"🔑 [Auth] Sending OpenAI API key to client (length: {len(settings.openai_api_key)})"
+        )
+    else:
+        logger.warning("⚠️ [Auth] No OpenAI API key configured - voice dictation unavailable")
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -224,6 +233,13 @@ def refresh_token(
     new_refresh_token = create_refresh_token(user.id)
 
     logger.info(f"Token refresh successful for user {user.id}")
+
+    # Log OpenAI key status for debugging voice dictation
+    if settings.openai_api_key:
+        key_len = len(settings.openai_api_key)
+        logger.info(f"🔑 [Refresh] Sending OpenAI API key to client (length: {key_len})")
+    else:
+        logger.warning("⚠️ [Refresh] No OpenAI API key - voice dictation unavailable")
 
     return AccessTokenResponse(
         access_token=access_token,

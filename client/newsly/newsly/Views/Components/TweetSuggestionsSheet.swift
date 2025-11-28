@@ -91,7 +91,7 @@ struct TweetSuggestionsSheet: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                if viewModel.isVoiceDictationAvailable {
+                if viewModel.voiceDictationAvailable {
                     voiceButton
                 }
             }
