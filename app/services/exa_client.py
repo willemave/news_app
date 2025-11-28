@@ -65,20 +65,17 @@ def exa_search(
 
     try:
         logger.info(f"Exa search: {query[:100]}...")
-        response = client.search_and_contents(
+        response = client.search(
             query,
             num_results=num_results,
-            text={"max_characters": max_characters},
-            highlights=True,
+            contents={"text": {"maxCharacters": max_characters}},
         )
 
         results: list[ExaSearchResult] = []
         for result in response.results:
-            # Prefer highlights over full text for snippet
+            # Extract text snippet
             snippet = None
-            if hasattr(result, "highlights") and result.highlights:
-                snippet = " ... ".join(result.highlights[:3])
-            elif hasattr(result, "text") and result.text:
+            if hasattr(result, "text") and result.text:
                 snippet = result.text[:500]
 
             results.append(
