@@ -8,7 +8,14 @@
 import Foundation
 
 /// Summary of a chat session for list view
-struct ChatSessionSummary: Codable, Identifiable {
+struct ChatSessionSummary: Codable, Identifiable, Hashable {
+    static func == (lhs: ChatSessionSummary, rhs: ChatSessionSummary) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
     let id: Int
     let contentId: Int?
     let title: String?

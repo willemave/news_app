@@ -10,6 +10,8 @@ import SwiftUI
 struct ChatSessionView: View {
     @StateObject private var viewModel: ChatSessionViewModel
     @FocusState private var isInputFocused: Bool
+    @State private var showingModelPicker = false
+    @State private var navigateToNewSession: ChatSessionSummary?
 
     init(session: ChatSessionSummary) {
         _viewModel = StateObject(wrappedValue: ChatSessionViewModel(session: session))
@@ -35,15 +37,69 @@ struct ChatSessionView: View {
         .toolbar {
             if let session = viewModel.session {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Text(session.providerDisplayName)
+                    Menu {
+                        Section {
+                            Text("Current: \(session.providerDisplayName)")
+                                .font(.caption)
+                        }
+                        Section("Switch Model") {
+                            ForEach(ChatModelProvider.allCases, id: \.self) { provider in
+                                Button {
+                                    Task {
+                                        await switchToProvider(provider)
+                                    }
+                                } label: {
+                                    Label(provider.displayName, systemImage: provider.iconName)
+                                }
+                                .disabled(provider.rawValue == session.llmProvider)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(session.providerDisplayName)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                        }
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.secondary.opacity(0.1))
                         .cornerRadius(6)
+                    }
                 }
             }
+        }
+        .navigationDestination(item: $navigateToNewSession) { session in
+            ChatSessionView(session: session)
+        }
+    }
+
+    /// Switch to a different provider by creating a new session
+    private func switchToProvider(_ provider: ChatModelProvider) async {
+        guard let currentSession = viewModel.session else { return }
+
+        // If this session has a content_id, create a new article chat with different provider
+        // Otherwise create an ad-hoc chat
+        do {
+            let chatService = ChatService.shared
+            let newSession: ChatSessionSummary
+
+            if let contentId = currentSession.contentId {
+                newSession = try await chatService.createSession(
+                    contentId: contentId,
+                    topic: currentSession.topic,
+                    provider: provider
+                )
+            } else {
+                newSession = try await chatService.createSession(
+                    provider: provider
+                )
+            }
+
+            navigateToNewSession = newSession
+        } catch {
+            viewModel.errorMessage = "Failed to switch model: \(error.localizedDescription)"
         }
     }
 
