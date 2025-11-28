@@ -120,12 +120,12 @@ struct ContentDetailView: View {
                             }
                             .buttonStyle(.bordered)
 
-                            // Tweet button for articles and news
+                            // Share button for articles and news
                             if content.contentTypeEnum == .article || content.contentTypeEnum == .news {
                                 Button(action: {
                                     showTweetSheet = true
                                 }) {
-                                    Label("Tweet", systemImage: "text.bubble")
+                                    Image(systemName: "text.bubble")
                                         .font(.system(size: 14))
                                 }
                                 .buttonStyle(.bordered)
