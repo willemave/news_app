@@ -99,16 +99,27 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     if model_spec in _agents:
         return _agents[model_spec]
 
+    system_prompt_text = (
+        "You are a deep-dive assistant helping users explore articles, news, and topics. "
+        "Be concise but thorough. Help users understand, critique, and apply what they read."
+        "\n\n"
+        "**IMPORTANT - Use Web Search Proactively:**\n"
+        "- Use the exa_web_search tool to research topics, verify claims, and find context\n"
+        "- Search for background info, author credentials, developments, or counterarguments\n"
+        "- Don't hesitate to search multiple times if exploring different angles\n"
+        "- Synthesize search results naturally into your responses"
+        "\n\n"
+        "**Response Format:**\n"
+        "- Use markdown formatting: **bold** for emphasis, bullet points for lists\n"
+        "- Cite sources with titles or URLs when referencing external information\n"
+        "- Keep responses focused and scannable"
+    )
+
     agent: Agent[ChatDeps, str] = Agent(
         model_spec,
         deps_type=ChatDeps,
         output_type=str,
-        system_prompt=(
-            "You are a deep-dive assistant helping users explore articles, news, and topics. "
-            "Be concise but thorough. Help users understand, critique, and apply what they read. "
-            "When citing sources, mention the article title or URL naturally in your response. "
-            "If you need more info from the web, use the exa_search tool to find relevant context."
-        ),
+        system_prompt=system_prompt_text,
     )
 
     @agent.system_prompt
@@ -408,5 +419,85 @@ async def run_chat_sync(
 
     except Exception as e:
         logger.error(f"Chat error for session {session.id}: {e}")
+        db.rollback()
+        raise
+
+
+# Prompt for generating initial follow-up question suggestions
+INITIAL_QUESTIONS_PROMPT = """Based on this article, suggest 3-5 thought-provoking follow-up \
+questions the reader might want to explore.
+
+Format your response as a brief welcome message followed by the questions. Use markdown:
+- Start with a short sentence like "Here are some directions we could explore:"
+- List each question as a bullet point
+- Questions should be specific to the article content, not generic
+- Mix different types: clarifying, implications, counterarguments, practical applications
+
+Keep it concise - this is meant to spark conversation, not overwhelm."""
+
+
+async def generate_initial_suggestions(
+    db: Session,
+    session: ChatSession,
+) -> AsyncIterator[str]:
+    """Generate initial follow-up question suggestions for an article-based session.
+
+    This is called when a new session is created with a content_id to provide
+    immediate value and guide the user on what they can explore.
+
+    Args:
+        db: Database session.
+        session: Chat session record (must have content_id).
+
+    Yields:
+        Partial text chunks as they're generated.
+    """
+    if not session.content_id:
+        return
+
+    # Load associated content
+    content: Content | None = db.query(Content).filter(Content.id == session.content_id).first()
+    if not content:
+        return
+
+    # Build article context
+    article_context = build_article_context(content)
+
+    # Build dependencies
+    deps = ChatDeps(
+        session=session,
+        content=content,
+        article_context=article_context,
+    )
+
+    # Get agent for this session's model
+    agent = get_chat_agent(session.llm_model)
+
+    # Run with streaming - use the initial questions prompt
+    collected_text = ""
+    try:
+        async with agent.run_stream(
+            INITIAL_QUESTIONS_PROMPT,
+            deps=deps,
+            message_history=[],  # Empty history for initial message
+        ) as result:
+            # Stream text chunks
+            async for text in result.stream_text(debounce_by=0.01):
+                new_text = text[len(collected_text) :]
+                if new_text:
+                    yield new_text
+                    collected_text = text
+
+        # After completion, save new messages
+        new_messages = result.new_messages()
+        save_messages(db, session.id, new_messages)
+
+        # Update session timestamps
+        session.last_message_at = datetime.utcnow()
+        session.updated_at = datetime.utcnow()
+        db.commit()
+
+    except Exception as e:
+        logger.error(f"Initial suggestions error for session {session.id}: {e}")
         db.rollback()
         raise

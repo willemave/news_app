@@ -45,12 +45,47 @@ class ChatSessionViewModel: ObservableObject {
             let detail = try await chatService.getSession(id: sessionId)
             session = detail.session
             messages = detail.messages
+
+            // If this is an article-based session with no messages, load initial suggestions
+            if detail.session.contentId != nil && detail.messages.isEmpty {
+                await loadInitialSuggestions()
+            }
         } catch {
             errorMessage = error.localizedDescription
             logger.error("Failed to load session \(self.sessionId): \(error.localizedDescription)")
         }
 
         isLoading = false
+    }
+
+    /// Load initial follow-up question suggestions for article-based sessions
+    private func loadInitialSuggestions() async {
+        isSending = true
+
+        streamTask = Task {
+            do {
+                for try await message in chatService.getInitialSuggestions(sessionId: sessionId) {
+                    if Task.isCancelled { break }
+
+                    if message.role == .assistant {
+                        streamingMessage = message
+                    }
+                }
+
+                // When stream completes, move streaming message to history
+                if let final = streamingMessage {
+                    messages.append(final)
+                    streamingMessage = nil
+                }
+            } catch {
+                if !Task.isCancelled {
+                    // Don't show error for initial suggestions - just log it
+                    logger.error("Failed to load initial suggestions: \(error.localizedDescription)")
+                }
+            }
+
+            isSending = false
+        }
     }
 
     func sendMessage() async {

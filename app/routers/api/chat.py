@@ -23,6 +23,7 @@ from app.routers.api.models import (
     SendChatMessageRequest,
 )
 from app.services.chat_agent import (
+    generate_initial_suggestions,
     resolve_model,
     run_chat_stream,
 )
@@ -363,6 +364,93 @@ async def send_message(
     log_event(
         event_type="chat",
         event_name="message_sent",
+        status="started",
+        user_id=current_user.id,
+        session_id=session_id,
+        model=session.llm_model,
+    )
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/x-ndjson",
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/initial-suggestions",
+    summary="Get initial suggestions (streaming)",
+    description=(
+        "Generate initial follow-up question suggestions for an article-based session. "
+        "Returns newline-delimited JSON (NDJSON) with ChatMessageResponse objects. "
+        "Only works for sessions with a content_id (article-based sessions)."
+    ),
+    responses={
+        200: {
+            "description": "Streaming response with NDJSON",
+            "content": {"application/x-ndjson": {}},
+        },
+        404: {"description": "Session not found"},
+        403: {"description": "Not authorized"},
+        400: {"description": "Session has no associated content"},
+    },
+)
+async def get_initial_suggestions(
+    session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    """Get initial follow-up question suggestions for an article-based session.
+
+    This endpoint generates AI-powered suggestions for topics the user might
+    want to explore based on the article content. Should be called once after
+    creating a new article-based session.
+    """
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this session")
+
+    if not session.content_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Initial suggestions only available for article-based sessions",
+        )
+
+    async def generate():
+        msg_id = 1
+        accumulated_text = ""
+        timestamp = datetime.utcnow()
+
+        try:
+            async for chunk in generate_initial_suggestions(db, session):
+                accumulated_text += chunk
+                # Yield partial response
+                partial_msg = ChatMessageResponse(
+                    id=msg_id,
+                    role=ChatMessageRole.ASSISTANT,
+                    timestamp=timestamp,
+                    content=accumulated_text,
+                )
+                yield json.dumps(partial_msg.model_dump(mode="json")) + "\n"
+
+        except Exception as e:
+            logger.error(f"Initial suggestions stream error: {e}")
+            # Yield error as final message
+            error_msg = ChatMessageResponse(
+                id=msg_id,
+                role=ChatMessageRole.ASSISTANT,
+                timestamp=datetime.utcnow(),
+                content=f"Error generating suggestions: {str(e)}",
+            )
+            yield json.dumps(error_msg.model_dump(mode="json")) + "\n"
+
+    # Log event
+    log_event(
+        event_type="chat",
+        event_name="initial_suggestions",
         status="started",
         user_id=current_user.id,
         session_id=session_id,
