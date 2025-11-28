@@ -8,9 +8,15 @@ from enum import Enum
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
+from pydantic_ai.models import Model
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.providers.anthropic import AnthropicProvider
+from pydantic_ai.providers.google import GoogleProvider
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.core.settings import get_settings
 from app.models.schema import ChatMessage, ChatSession, Content
 from app.services.exa_client import exa_search, get_exa_client
 
@@ -87,6 +93,42 @@ class ExaSearchResultModel(BaseModel):
 _agents: dict[str, Agent[ChatDeps, str]] = {}
 
 
+def _build_model(model_spec: str) -> str | Model:
+    """Build a model instance with explicit API keys from settings.
+
+    Args:
+        model_spec: Full pydantic-ai model specification (e.g., "google-gla:gemini-2.0-flash").
+
+    Returns:
+        Either the original model_spec string (for models that auto-detect keys)
+        or a configured Model instance with explicit API key.
+    """
+    settings = get_settings()
+
+    # Handle Google models - they need explicit API key from settings
+    if model_spec.startswith("google-gla:"):
+        model_name = model_spec.split(":", 1)[1]
+        if not settings.google_api_key:
+            raise ValueError(
+                "GOOGLE_API_KEY not configured in settings. "
+                "Set it in .env or environment variables."
+            )
+        return GoogleModel(model_name, provider=GoogleProvider(api_key=settings.google_api_key))
+
+    # Handle Anthropic models (claude-* format)
+    if model_spec.startswith("claude-"):
+        if not settings.anthropic_api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY not configured in settings. "
+                "Set it in .env or environment variables."
+            )
+        provider = AnthropicProvider(api_key=settings.anthropic_api_key)
+        return AnthropicModel(model_spec, provider=provider)
+
+    # Other providers (OpenAI) auto-detect from env vars
+    return model_spec
+
+
 def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     """Get or create a chat agent for the given model spec.
 
@@ -115,8 +157,11 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
         "- Keep responses focused and scannable"
     )
 
+    # Build model with explicit API key if needed
+    model = _build_model(model_spec)
+
     agent: Agent[ChatDeps, str] = Agent(
-        model_spec,
+        model,
         deps_type=ChatDeps,
         output_type=str,
         system_prompt=system_prompt_text,
