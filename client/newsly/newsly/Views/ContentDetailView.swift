@@ -125,8 +125,8 @@ struct ContentDetailView: View {
                                 Button(action: {
                                     showTweetSheet = true
                                 }) {
-                                    Image(systemName: "bubble.left.and.text.bubble.right")
-                                        .font(.system(size: 18))
+                                    Label("Tweet", systemImage: "text.bubble")
+                                        .font(.system(size: 14))
                                 }
                                 .buttonStyle(.bordered)
                             }
