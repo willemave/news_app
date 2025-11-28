@@ -300,4 +300,20 @@ class ContentService {
             method: "POST"
         )
     }
+
+    func generateTweetSuggestions(
+        id: Int,
+        message: String? = nil,
+        creativity: Int = 5
+    ) async throws -> TweetSuggestionsResponse {
+        let request = TweetSuggestionsRequest(message: message, creativity: creativity)
+        let encoder = JSONEncoder()
+        let body = try encoder.encode(request)
+
+        return try await client.request(
+            APIEndpoints.tweetSuggestions(id: id),
+            method: "POST",
+            body: body
+        )
+    }
 }

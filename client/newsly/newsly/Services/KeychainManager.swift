@@ -21,6 +21,7 @@ final class KeychainManager {
         case accessToken = "accessToken"
         case refreshToken = "refreshToken"
         case userId = "userId"
+        case openaiApiKey = "openaiApiKey"
     }
 
     /// Optional configuration for shared keychain access (e.g., extensions).
@@ -102,5 +103,6 @@ final class KeychainManager {
         deleteToken(key: .accessToken)
         deleteToken(key: .refreshToken)
         deleteToken(key: .userId)
+        deleteToken(key: .openaiApiKey)
     }
 }

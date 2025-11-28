@@ -83,8 +83,35 @@
       "Bash(git branch:*)",
       "Read(//Users/willem/.config/superpowers/skills/skills/debugging/systematic-debugging/**)",
       "Read(//Users/willem/.config/superpowers/skills/skills/**)",
-      "Bash(fd:*)"
+      "Bash(fd:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(/Users/willem/Development/news_app/client/newsly/sync-secrets.sh)",
+      "Bash(git -C /Users/willem/Development/news_app config:*)"
     ],
     "deny": []
+  },
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bd prime"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bd prime"
+          }
+        ]
+      }
+    ]
   }
 }

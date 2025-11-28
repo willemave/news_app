@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.db import init_db
+from app.core.deps import AdminAuthRequired
 from app.core.logging import setup_logging
 from app.core.settings import get_settings
 from app.routers import admin, api_content, auth, content, logs
@@ -53,6 +54,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": exc.errors(), "body": body_text},
     )
+
+
+@app.exception_handler(AdminAuthRequired)
+async def admin_auth_redirect_handler(_request: Request, exc: AdminAuthRequired):
+    """Redirect to admin login page when admin authentication is required."""
+    return RedirectResponse(url=exc.redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 # Request logging middleware

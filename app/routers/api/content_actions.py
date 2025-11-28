@@ -6,9 +6,19 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
+from app.core.deps import get_current_user
+from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
-from app.routers.api.models import ConvertNewsResponse
+from app.models.user import User
+from app.routers.api.models import (
+    ConvertNewsResponse,
+    TweetSuggestion,
+    TweetSuggestionsRequest,
+    TweetSuggestionsResponse,
+)
+from app.services.event_logger import log_event
+from app.services.tweet_suggestions import generate_tweet_suggestions
 
 router = APIRouter()
 
@@ -126,4 +136,110 @@ async def convert_news_to_article(
         original_content_id=content_id,
         already_exists=False,
         message="Article created and queued for processing",
+    )
+
+
+@router.post(
+    "/{content_id}/tweet-suggestions",
+    response_model=TweetSuggestionsResponse,
+    summary="Generate tweet suggestions for content",
+    description=(
+        "Generate 3 tweet suggestions for a content item using Claude. "
+        "Supports article and news content types. Requires JWT authentication."
+    ),
+    responses={
+        200: {"description": "Tweet suggestions generated successfully"},
+        400: {"description": "Content not ready or unsupported type"},
+        404: {"description": "Content not found"},
+        502: {"description": "LLM generation failed"},
+    },
+)
+async def get_tweet_suggestions(
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    request: TweetSuggestionsRequest,
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> TweetSuggestionsResponse:
+    """Generate tweet suggestions for content.
+
+    Calls Claude to generate 3 tweet suggestions based on the content's
+    title, summary, and key points. Supports article and news content types.
+
+    Args:
+        content_id: ID of the content to generate tweets for
+        request: Request body with optional message and creativity level
+        db: Database session
+        current_user: Authenticated user
+
+    Returns:
+        TweetSuggestionsResponse with 3 tweet suggestions
+    """
+    # Load content
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    # Validate content status
+    if content.status != ContentStatus.COMPLETED.value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Content not ready for tweets (status: {content.status})",
+        )
+
+    # Validate content type
+    if content.content_type not in (ContentType.ARTICLE.value, ContentType.NEWS.value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tweet generation not supported for content type: {content.content_type}",
+        )
+
+    # Convert to domain model
+    content_data = content_to_domain(content)
+
+    # Generate tweet suggestions
+    result = generate_tweet_suggestions(
+        content=content_data,
+        message=request.message,
+        creativity=request.creativity,
+    )
+
+    if result is None:
+        # Log the failure
+        log_event(
+            event_type="tweet_suggestions",
+            event_name="generation_failed",
+            status="failed",
+            content_id=content_id,
+            user_id=current_user.id,
+            creativity=request.creativity,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Tweet generation failed. Please try again.",
+        )
+
+    # Log success
+    log_event(
+        event_type="tweet_suggestions",
+        event_name="generation_success",
+        status="completed",
+        content_id=content_id,
+        user_id=current_user.id,
+        creativity=request.creativity,
+        model=result.model,
+    )
+
+    # Convert result to response
+    return TweetSuggestionsResponse(
+        content_id=result.content_id,
+        creativity=result.creativity,
+        model=result.model,
+        suggestions=[
+            TweetSuggestion(
+                id=s.id,
+                text=s.text,
+                style_label=s.style_label,
+            )
+            for s in result.suggestions
+        ],
     )

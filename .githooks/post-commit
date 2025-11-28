@@ -1,0 +1,82 @@
+#!/bin/bash
+# Post-commit hook that uses Claude CLI to automatically update documentation
+# based on the changes in the commit.
+
+# Prevent infinite loops - skip if this is an auto-doc commit
+COMMIT_MSG=$(git log -1 --pretty=%B)
+if [[ "$COMMIT_MSG" == *"[auto-docs]"* ]]; then
+    exit 0
+fi
+
+# Check if claude CLI is available
+if ! command -v claude &> /dev/null; then
+    echo "⚠️  Claude CLI not found, skipping doc update"
+    exit 0
+fi
+
+# Get the diff of the last commit (excluding docs themselves to avoid noise)
+DIFF=$(git diff-tree -p HEAD -- . ':!CLAUDE.md' ':!docs/architecture.md' ':!*.lock' ':!*.css' 2>/dev/null || true)
+
+# Get list of changed files
+CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null || true)
+
+# Skip if no meaningful changes or diff is empty
+if [ -z "$DIFF" ] || [ -z "$CHANGED_FILES" ]; then
+    exit 0
+fi
+
+# Only proceed if Python or Swift files changed
+if ! echo "$CHANGED_FILES" | grep -qE '\.(py|swift)$'; then
+    exit 0
+fi
+
+# Limit diff size to avoid token limits (roughly 50KB)
+DIFF_SIZE=${#DIFF}
+if [ "$DIFF_SIZE" -gt 50000 ]; then
+    DIFF="${DIFF:0:50000}
+
+... [diff truncated due to size] ..."
+fi
+
+echo "📝 Analyzing commit for documentation updates..."
+
+# Build the prompt
+read -r -d '' PROMPT << PROMPT_END || true
+Based on this recent commit, update CLAUDE.md and/or docs/architecture.md if needed.
+
+RULES:
+1. Only update for SIGNIFICANT changes (new modules, endpoints, tables, dependencies, architecture)
+2. DO NOT update for: bug fixes, refactoring, style changes, test additions
+3. If no updates needed, say "No documentation updates needed" and stop
+4. Keep updates minimal and focused - only add/modify what's necessary
+5. Match the existing documentation style
+
+COMMIT MESSAGE:
+$COMMIT_MSG
+
+CHANGED FILES:
+$CHANGED_FILES
+
+DIFF:
+$DIFF
+PROMPT_END
+
+# Run Claude to analyze and apply updates
+# Using --yes to auto-approve tool use, --no-input for non-interactive, haiku for speed/cost
+RESULT=$(echo "$PROMPT" | claude --model claude-haiku-4-5-20251001 --yes --no-input 2>&1) || true
+
+# Check if any docs were modified
+DOCS_CHANGED=$(git status --porcelain CLAUDE.md docs/architecture.md 2>/dev/null | grep -c "^ M\|^M\|^??" || echo "0")
+
+if [ "$DOCS_CHANGED" -gt 0 ]; then
+    echo "📄 Documentation updated, committing changes..."
+    git add CLAUDE.md docs/architecture.md 2>/dev/null || true
+    git commit -m "[auto-docs] Update documentation based on recent changes
+
+Updates reflect changes from: $(git log -1 --pretty=%s HEAD~1 2>/dev/null || echo 'recent commit')
+
+🤖 Generated with Claude Code" --no-verify 2>/dev/null || true
+    echo "✅ Documentation committed"
+else
+    echo "✅ No documentation updates needed"
+fi

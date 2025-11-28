@@ -22,6 +22,8 @@ struct ContentDetailView: View {
     @State private var navigationDirection: Int = 0 // +1 next, -1 previous
     // Convert button state
     @State private var isConverting: Bool = false
+    // Tweet suggestions sheet state
+    @State private var showTweetSheet: Bool = false
 
     init(contentId: Int, allContentIds: [Int] = [], onConvert: ((Int) async -> Void)? = nil) {
         self.initialContentId = contentId
@@ -114,6 +116,17 @@ struct ContentDetailView: View {
                                     .font(.system(size: 18))
                             }
                             .buttonStyle(.bordered)
+
+                            // Tweet button for articles and news
+                            if content.contentTypeEnum == .article || content.contentTypeEnum == .news {
+                                Button(action: {
+                                    showTweetSheet = true
+                                }) {
+                                    Image(systemName: "bubble.left.and.text.bubble.right")
+                                        .font(.system(size: 18))
+                                }
+                                .buttonStyle(.bordered)
+                            }
 
                             // Convert to article button for news only
                             if content.contentTypeEnum == .news, let onConvert = onConvert {
@@ -364,6 +377,11 @@ struct ContentDetailView: View {
         }
         .onDisappear {
             readingStateStore.clear()
+        }
+        .sheet(isPresented: $showTweetSheet) {
+            if let content = viewModel.content {
+                TweetSuggestionsSheet(contentId: content.id)
+            }
         }
     }
 

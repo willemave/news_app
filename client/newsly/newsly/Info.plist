@@ -93,12 +93,20 @@
             </dict>
         </dict>
     </dict>
-    <!-- Allow canOpenURL for ChatGPT schemes so deep links can be detected -->
+    <!-- Allow canOpenURL for ChatGPT and Twitter schemes so deep links can be detected -->
     <key>LSApplicationQueriesSchemes</key>
     <array>
         <string>chatgpt</string>
         <string>openai</string>
         <string>com.openai.chat</string>
+        <string>twitter</string>
+        <string>x</string>
     </array>
+    <!-- API Keys injected from build settings -->
+    <key>OPENAI_API_KEY</key>
+    <string>$(OPENAI_API_KEY)</string>
+    <!-- Microphone access for voice dictation -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Newsly uses the microphone to transcribe your voice for tweet customization.</string>
 </dict>
 </plist>

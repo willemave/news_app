@@ -36,12 +36,14 @@ struct TokenResponse: Codable {
     let refreshToken: String
     let tokenType: String
     let user: User
+    let openaiApiKey: String?
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case refreshToken = "refresh_token"
         case tokenType = "token_type"
         case user
+        case openaiApiKey = "openai_api_key"
     }
 }
 
@@ -59,10 +61,12 @@ struct AccessTokenResponse: Codable {
     let accessToken: String
     let refreshToken: String
     let tokenType: String
+    let openaiApiKey: String?
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case refreshToken = "refresh_token"
         case tokenType = "token_type"
+        case openaiApiKey = "openai_api_key"
     }
 }

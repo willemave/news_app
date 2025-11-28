@@ -89,6 +89,11 @@ final class AuthenticationService: NSObject {
                 KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
                 KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
 
+                // Update OpenAI API key if provided
+                if let openaiApiKey = tokenResponse.openaiApiKey {
+                    KeychainManager.shared.saveToken(openaiApiKey, key: .openaiApiKey)
+                }
+
                 print("✅ Token refresh successful - both tokens rotated")
 
                 return tokenResponse.accessToken
@@ -347,6 +352,12 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
         KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
         KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
         KeychainManager.shared.saveToken(String(tokenResponse.user.id), key: .userId)
+
+        // Save OpenAI API key if provided
+        if let openaiApiKey = tokenResponse.openaiApiKey {
+            KeychainManager.shared.saveToken(openaiApiKey, key: .openaiApiKey)
+            print("🔑 OpenAI API key saved to keychain")
+        }
 
         return tokenResponse.user
     }
