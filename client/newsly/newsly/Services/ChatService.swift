@@ -134,7 +134,7 @@ class ChatService {
     /// Start a deep dive chat for an article
     func startArticleChat(
         contentId: Int,
-        provider: ChatModelProvider = .openai
+        provider: ChatModelProvider = .google
     ) async throws -> ChatSessionSummary {
         // Check for existing session
         if let existing = try await getSessionForContent(contentId: contentId) {
@@ -152,7 +152,7 @@ class ChatService {
     func startTopicChat(
         contentId: Int,
         topic: String,
-        provider: ChatModelProvider = .openai
+        provider: ChatModelProvider = .google
     ) async throws -> ChatSessionSummary {
         return try await createSession(
             contentId: contentId,
@@ -164,7 +164,7 @@ class ChatService {
     /// Start an ad-hoc chat without article context
     func startAdHocChat(
         initialMessage: String? = nil,
-        provider: ChatModelProvider = .openai
+        provider: ChatModelProvider = .google
     ) async throws -> ChatSessionSummary {
         return try await createSession(
             provider: provider,
