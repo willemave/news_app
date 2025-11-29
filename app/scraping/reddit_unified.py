@@ -78,6 +78,9 @@ class RedditUnifiedScraper(BaseScraper):
                 if isinstance(sub, dict) and "name" in sub and "limit" in sub:
                     name = sub["name"]
                     limit = sub["limit"]
+                    if str(name).lower() == "front":
+                        logger.info("Skipping 'front' subreddit; front page scraping disabled")
+                        continue
                     if isinstance(limit, int) and limit > 0:
                         subreddits[name] = limit
                     else:

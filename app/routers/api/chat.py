@@ -1,9 +1,9 @@
 """Chat session endpoints for deep-dive conversations."""
 
+import asyncio
 import json
 from datetime import datetime
 from typing import Annotated
-import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
@@ -24,9 +24,11 @@ from app.routers.api.models import (
     SendChatMessageRequest,
 )
 from app.services.chat_agent import (
+    ChatModelProvider,
     generate_initial_suggestions,
     resolve_model,
     run_chat_stream,
+    run_chat_sync,
 )
 from app.services.event_logger import log_event
 
@@ -326,6 +328,8 @@ async def send_message(
 
     async def generate():
         msg_id = base_msg_id
+        chunk_count = 0
+        logger.info(f"[StreamGen] Starting | session_id={session_id} base_msg_id={base_msg_id}")
 
         # First, yield the user message
         msg_id += 1
@@ -335,7 +339,9 @@ async def send_message(
             timestamp=datetime.utcnow(),
             content=request.message,
         )
-        yield json.dumps(user_msg.model_dump(mode="json")) + "\n"
+        user_json = json.dumps(user_msg.model_dump(mode="json")) + "\n"
+        logger.info(f"[StreamGen] Yielding user msg | session_id={session_id} len={len(user_json)}")
+        yield user_json
 
         # Then stream the assistant response
         msg_id += 1
@@ -343,25 +349,51 @@ async def send_message(
         timestamp = datetime.utcnow()
 
         try:
-            async for chunk in run_chat_stream(db, session, request.message):
-                accumulated_text += chunk
-                # Yield partial response
-                partial_msg = ChatMessageResponse(
+            # Google provider has issues with streaming + tools, use sync instead
+            is_google = session.llm_provider == ChatModelProvider.GOOGLE.value
+            if is_google:
+                logger.info(f"[StreamGen] Using sync for Google | session_id={session_id}")
+                accumulated_text = await run_chat_sync(db, session, request.message)
+                chunk_count = 1
+                # Yield complete response
+                final_msg = ChatMessageResponse(
                     id=msg_id,
                     role=ChatMessageRole.ASSISTANT,
                     timestamp=timestamp,
                     content=accumulated_text,
                 )
-                yield json.dumps(partial_msg.model_dump(mode="json")) + "\n"
+                yield json.dumps(final_msg.model_dump(mode="json")) + "\n"
+            else:
+                async for chunk in run_chat_stream(db, session, request.message):
+                    accumulated_text += chunk
+                    chunk_count += 1
+                    # Yield partial response
+                    partial_msg = ChatMessageResponse(
+                        id=msg_id,
+                        role=ChatMessageRole.ASSISTANT,
+                        timestamp=timestamp,
+                        content=accumulated_text,
+                    )
+                    yield json.dumps(partial_msg.model_dump(mode="json")) + "\n"
+                    if chunk_count % 20 == 0:
+                        logger.debug(
+                            f"[StreamGen] Progress | session_id={session_id} "
+                            f"chunks={chunk_count} total_len={len(accumulated_text)}"
+                        )
+
+            logger.info(
+                f"[StreamGen] Completed | session_id={session_id} "
+                f"total_chunks={chunk_count} final_len={len(accumulated_text)}"
+            )
 
         except asyncio.CancelledError:
             logger.warning(
-                f"[Stream] Client cancelled | session_id={session_id} "
-                f"accumulated_len={len(accumulated_text)}"
+                f"[StreamGen] Client cancelled | session_id={session_id} "
+                f"accumulated_len={len(accumulated_text)} chunks={chunk_count}"
             )
             raise
         except Exception as e:
-            logger.error(f"Chat stream error: {e}")
+            logger.error(f"[StreamGen] Error | session_id={session_id} error={e}")
             # Yield error as final message
             error_msg = ChatMessageResponse(
                 id=msg_id,
@@ -384,6 +416,10 @@ async def send_message(
     return StreamingResponse(
         generate(),
         media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
     )
 
 
@@ -475,4 +511,8 @@ async def get_initial_suggestions(
     return StreamingResponse(
         generate(),
         media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
     )

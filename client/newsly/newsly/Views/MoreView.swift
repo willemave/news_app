@@ -16,9 +16,9 @@ struct MoreView: View {
                 }
 
                 NavigationLink {
-                    FavoritesView()
+                    RecentlyReadView()
                 } label: {
-                    Label("Favorites", systemImage: "star.fill")
+                    Label("Recently Read", systemImage: "clock.fill")
                 }
 
                 NavigationLink {

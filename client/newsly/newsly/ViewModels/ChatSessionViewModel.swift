@@ -108,12 +108,17 @@ class ChatSessionViewModel: ObservableObject {
         streamTask?.cancel()
 
         streamTask = Task {
+            var receivedCount = 0
+            logger.info("[ViewModel] sendMessage stream started | sessionId=\(self.sessionId)")
+
             do {
                 for try await message in chatService.sendMessage(
                     sessionId: sessionId,
                     message: resolvedText
                 ) {
                     if Task.isCancelled { break }
+                    receivedCount += 1
+                    logger.debug("[ViewModel] Received message | count=\(receivedCount) role=\(message.role.rawValue) contentLen=\(message.content.count)")
 
                     if message.role == .user {
                         messages.append(message)
@@ -122,10 +127,17 @@ class ChatSessionViewModel: ObservableObject {
                     }
                 }
 
+                logger.info("[ViewModel] sendMessage stream ended | sessionId=\(self.sessionId) receivedCount=\(receivedCount)")
+
                 // When stream completes, move streaming message to history
                 if let final = streamingMessage {
                     messages.append(final)
                     streamingMessage = nil
+                }
+
+                // Check if we received no messages (potential streaming issue)
+                if receivedCount == 0 {
+                    logger.warning("[ViewModel] Stream completed with 0 messages - possible streaming issue")
                 }
             } catch {
                 if !Task.isCancelled {
@@ -220,15 +232,19 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
         isRecording = false
         isTranscribing = true
+        logger.info("[ViewModel] Stopping voice recording")
 
         do {
             let transcription = try await dictationService.stopRecordingAndTranscribe()
+            logger.info("[ViewModel] Transcription complete | length=\(transcription.count)")
             isTranscribing = false
 
             // Set input text and auto-send
             inputText = transcription
+            logger.info("[ViewModel] Calling sendMessage with transcription")
             await sendMessage()
         } catch {
+            logger.error("[ViewModel] Voice transcription error: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             isTranscribing = false
         }

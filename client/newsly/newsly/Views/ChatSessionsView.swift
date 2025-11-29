@@ -203,7 +203,30 @@ struct NewChatSheet: View {
             .disabled(isCreating)
             .overlay {
                 if isCreating {
-                    ProgressView()
+                    ZStack {
+                        Color.black.opacity(0.3)
+                            .ignoresSafeArea()
+
+                        VStack(spacing: 16) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.blue.opacity(0.15))
+                                    .frame(width: 70, height: 70)
+
+                                Image(systemName: "brain.head.profile")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.blue)
+                                    .symbolEffect(.pulse, options: .repeating)
+                            }
+
+                            Text("Starting chat...")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                        }
+                        .padding(32)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(16)
+                    }
                 }
             }
         }

@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
-from app.services.tweet_suggestions import TweetSuggestionData, TweetSuggestionsResult
+from app.services.tweet_suggestions import (
+    TWEET_MODEL,
+    TweetSuggestionData,
+    TweetSuggestionsResult,
+)
 
 
 def test_tweet_suggestions_success(client: TestClient, db_session: Session) -> None:
@@ -40,7 +44,7 @@ def test_tweet_suggestions_success(client: TestClient, db_session: Session) -> N
     mock_result = TweetSuggestionsResult(
         content_id=article.id,
         creativity=5,
-        model="claude-opus-4-5-20251101",
+        model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="Tweet 1", style_label="insightful"),
             TweetSuggestionData(id=2, text="Tweet 2", style_label="provocative"),
@@ -61,7 +65,7 @@ def test_tweet_suggestions_success(client: TestClient, db_session: Session) -> N
     data = response.json()
     assert data["content_id"] == article.id
     assert data["creativity"] == 5
-    assert data["model"] == "claude-opus-4-5-20251101"
+    assert data["model"] == TWEET_MODEL
     assert len(data["suggestions"]) == 3
     assert data["suggestions"][0]["text"] == "Tweet 1"
     assert data["suggestions"][0]["style_label"] == "insightful"
@@ -89,7 +93,7 @@ def test_tweet_suggestions_with_message(client: TestClient, db_session: Session)
     mock_result = TweetSuggestionsResult(
         content_id=article.id,
         creativity=7,
-        model="claude-opus-4-5-20251101",
+        model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="Startup focused tweet", style_label="a"),
             TweetSuggestionData(id=2, text="Another startup tweet", style_label="b"),
@@ -174,7 +178,7 @@ def test_tweet_suggestions_unsupported_content_type(
     )
 
     assert response.status_code == 400
-    assert "not supported" in response.json()["detail"].lower()
+    assert "articles and news" in response.json()["detail"].lower()
 
 
 def test_tweet_suggestions_creativity_out_of_range(
@@ -269,7 +273,7 @@ def test_tweet_suggestions_news_content(
     mock_result = TweetSuggestionsResult(
         content_id=news.id,
         creativity=5,
-        model="claude-opus-4-5-20251101",
+        model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="News tweet 1", style_label="a"),
             TweetSuggestionData(id=2, text="News tweet 2", style_label="b"),
@@ -315,7 +319,7 @@ def test_tweet_suggestions_default_creativity(
     mock_result = TweetSuggestionsResult(
         content_id=article.id,
         creativity=5,  # Default
-        model="claude-opus-4-5-20251101",
+        model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="Tweet 1", style_label="a"),
             TweetSuggestionData(id=2, text="Tweet 2", style_label="b"),

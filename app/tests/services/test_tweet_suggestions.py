@@ -9,10 +9,13 @@ from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.services.llm_prompts import creativity_to_style_hints, get_tweet_generation_prompt
 from app.services.tweet_suggestions import (
     TWEET_MODEL,
+    TweetSuggestionLLM,
+    TweetSuggestionsPayload,
     _extract_content_context,
     _parse_suggestions_response,
     _validate_and_truncate_tweets,
     creativity_to_temperature,
+    settings,
 )
 
 
@@ -370,32 +373,22 @@ class TestTweetValidation:
 class TestTweetSuggestionService:
     """Integration tests for the TweetSuggestionService."""
 
-    @patch("app.services.tweet_suggestions.Anthropic")
-    def test_generate_suggestions_success(self, mock_anthropic_class) -> None:
+    @patch("app.services.tweet_suggestions.Agent.run_sync")
+    def test_generate_suggestions_success(self, mock_run_sync) -> None:
         """Successfully generate tweet suggestions."""
         from app.services.tweet_suggestions import TweetSuggestionService
 
-        # Mock the Anthropic client
-        mock_client = MagicMock()
-        mock_anthropic_class.return_value = mock_client
-
-        # Mock response
-        mock_response = MagicMock()
-        mock_response.content = [
-            MagicMock(
-                text=json.dumps(
-                    {
-                        "suggestions": [
-                            {"id": 1, "text": "Great article!", "style_label": "a"},
-                            {"id": 2, "text": "Must read this", "style_label": "b"},
-                            {"id": 3, "text": "Interesting take", "style_label": "c"},
-                        ]
-                    }
-                )
-            )
-        ]
-        mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
-        mock_client.messages.create.return_value = mock_response
+        mock_payload = TweetSuggestionsPayload(
+            suggestions=[
+                TweetSuggestionLLM(id=1, text="Great article!", style_label="a"),
+                TweetSuggestionLLM(id=2, text="Must read this", style_label="b"),
+                TweetSuggestionLLM(id=3, text="Interesting take", style_label="c"),
+            ]
+        )
+        mock_result = MagicMock()
+        mock_result.output = mock_payload
+        mock_result.usage.return_value = MagicMock(input_tokens=100, output_tokens=50)
+        mock_run_sync.return_value = mock_result
 
         # Use MagicMock for content to avoid strict Pydantic validation
         content = MagicMock()
@@ -416,9 +409,13 @@ class TestTweetSuggestionService:
             },
         }
 
-        # Generate suggestions
+        original_key = settings.google_api_key
+        settings.google_api_key = "test-key"
         service = TweetSuggestionService()
-        result = service.generate_suggestions(content, creativity=5)
+        try:
+            result = service.generate_suggestions(content, creativity=5)
+        finally:
+            settings.google_api_key = original_key
 
         assert result is not None
         assert result.content_id == 1
@@ -427,12 +424,14 @@ class TestTweetSuggestionService:
         assert len(result.suggestions) == 3
         assert result.suggestions[0].text == "Great article!"
 
-    @patch("app.services.tweet_suggestions.Anthropic")
-    def test_generate_suggestions_unsupported_type(self, mock_anthropic_class) -> None:
+    @patch("app.services.tweet_suggestions.Agent.run_sync")
+    def test_generate_suggestions_unsupported_type(self, mock_run_sync) -> None:
         """Return None for unsupported content types."""
         from app.services.tweet_suggestions import TweetSuggestionService
 
-        mock_anthropic_class.return_value = MagicMock()
+        original_key = settings.google_api_key
+        settings.google_api_key = "test-key"
+        mock_run_sync.return_value = MagicMock()
 
         content = ContentData(
             id=1,
@@ -444,6 +443,9 @@ class TestTweetSuggestionService:
         )
 
         service = TweetSuggestionService()
-        result = service.generate_suggestions(content, creativity=5)
+        try:
+            result = service.generate_suggestions(content, creativity=5)
+        finally:
+            settings.google_api_key = original_key
 
         assert result is None

@@ -277,15 +277,20 @@ class APIClient {
                         request.httpBody = body
                     }
 
+                    logger.info("[Stream] Starting request | endpoint=\(endpoint, privacy: .public)")
                     let (bytes, response) = try await session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
+                        logger.error("[Stream] No HTTP response")
                         continuation.finish(throwing: APIError.unknown)
                         return
                     }
 
+                    logger.info("[Stream] Got response | status=\(httpResponse.statusCode) headers=\(httpResponse.allHeaderFields.count)")
+
                     guard (200...299).contains(httpResponse.statusCode) else {
                         if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                            logger.error("[Stream] Auth error | status=\(httpResponse.statusCode)")
                             continuation.finish(throwing: APIError.unauthorized)
                         } else {
                             logger.error("[Stream] HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)")
@@ -294,19 +299,29 @@ class APIClient {
                         return
                     }
 
+                    logger.info("[Stream] Starting to read lines")
+                    var lineCount = 0
                     for try await line in bytes.lines {
+                        lineCount += 1
+                        logger.debug("[Stream] Got line \(lineCount) | length=\(line.count)")
                         guard !line.isEmpty else { continue }
 
-                        guard let lineData = line.data(using: .utf8) else { continue }
+                        guard let lineData = line.data(using: .utf8) else {
+                            logger.error("[Stream] Failed to convert line to data: \(line, privacy: .public)")
+                            continue
+                        }
 
                         do {
                             let decoded = try self.decoder.decode(T.self, from: lineData)
                             continuation.yield(decoded)
                         } catch {
-                            logger.debug("[Stream] Decode error: \(error.localizedDescription, privacy: .public)")
+                            // Log the actual line content to diagnose decode issues
+                            logger.error("[Stream] Decode error: \(error.localizedDescription, privacy: .public)")
+                            logger.error("[Stream] Failed line content: \(line.prefix(500), privacy: .public)")
                         }
                     }
 
+                    logger.info("[Stream] Finished reading | total lines=\(lineCount)")
                     continuation.finish()
                 } catch is CancellationError {
                     continuation.finish()

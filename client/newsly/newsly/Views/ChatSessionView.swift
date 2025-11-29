@@ -276,8 +276,9 @@ struct ChatSessionView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     if viewModel.isLoading {
-                        ProgressView()
-                            .padding()
+                        ChatLoadingView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
                     } else if let error = viewModel.errorMessage, viewModel.messages.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle")
@@ -294,12 +295,17 @@ struct ChatSessionView: View {
                         .padding()
                     } else if viewModel.allMessages.isEmpty {
                         VStack(spacing: 16) {
-                            Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.system(size: 48))
-                                .foregroundColor(.secondary.opacity(0.5))
-                            Text("Start the conversation")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
+                            if viewModel.isSending {
+                                // Loading initial suggestions
+                                InitialSuggestionsLoadingView()
+                            } else {
+                                Image(systemName: "bubble.left.and.bubble.right")
+                                    .font(.system(size: 48))
+                                    .foregroundColor(.secondary.opacity(0.5))
+                                Text("Start the conversation")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                            }
                             if let topic = viewModel.session?.topic {
                                 Text("Topic: \(topic)")
                                     .font(.subheadline)
@@ -537,6 +543,62 @@ struct MessageBubble: View {
         mutableAttr.addAttribute(.font, value: textFont, range: NSRange(location: 0, length: mutableAttr.length))
         return mutableAttr
     }
+}
+
+// MARK: - Initial Suggestions Loading View
+
+struct InitialSuggestionsLoadingView: View {
+    @State private var dotOffset: CGFloat = 0
+    @State private var pulseScale: CGFloat = 1.0
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Animated typing indicator style
+            ZStack {
+                // Background circle with pulse
+                Circle()
+                    .fill(Color.blue.opacity(0.08))
+                    .frame(width: 80, height: 80)
+                    .scaleEffect(pulseScale)
+
+                // Three bouncing dots
+                HStack(spacing: 6) {
+                    ForEach(0..<3) { index in
+                        Circle()
+                            .fill(Color.blue.opacity(0.7))
+                            .frame(width: 10, height: 10)
+                            .offset(y: dotOffset)
+                            .animation(
+                                .easeInOut(duration: 0.4)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(index) * 0.12),
+                                value: dotOffset
+                            )
+                    }
+                }
+            }
+            .onAppear {
+                dotOffset = -6
+                withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                    pulseScale = 1.15
+                }
+            }
+
+            VStack(spacing: 6) {
+                Text("Preparing suggestions")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+
+                Text("Analyzing the article for you")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+}
+
+#Preview("Loading State") {
+    InitialSuggestionsLoadingView()
 }
 
 #Preview {

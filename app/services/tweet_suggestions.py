@@ -1,5 +1,5 @@
 """
-Tweet suggestions service using Anthropic Claude.
+Tweet suggestions service using Gemini via pydantic-ai.
 Generates tweet suggestions for content items.
 """
 
@@ -7,9 +7,14 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from anthropic import Anthropic, AnthropicError
-from tenacity import retry, stop_after_attempt, wait_exponential
+from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic_ai import Agent, ModelRetry
+from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.providers.google import GoogleProvider
+from pydantic_ai.settings import ModelSettings
+from tenacity import RetryCallState, retry, stop_after_attempt, wait_exponential
 
+from app.constants import TWEET_SUGGESTION_MODEL
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
@@ -22,7 +27,31 @@ settings = get_settings()
 error_logger = GenericErrorLogger("tweet_suggestions")
 
 # Model for tweet generation
-TWEET_MODEL = "claude-opus-4-5-20251101"
+TWEET_MODEL = TWEET_SUGGESTION_MODEL
+SUPPORTED_CONTENT_TYPES = {ContentType.ARTICLE, ContentType.NEWS}
+
+
+class TweetSuggestionLLM(BaseModel):
+    """Structured tweet suggestion returned by the LLM."""
+
+    id: int = Field(..., ge=1, le=3)
+    text: str = Field(..., min_length=1)
+    style_label: str | None = Field(default=None)
+
+
+class TweetSuggestionsPayload(BaseModel):
+    """Structured payload returned by the LLM."""
+
+    suggestions: list[TweetSuggestionLLM] = Field(
+        ..., min_length=3, max_length=3, description="Exactly three tweet suggestions"
+    )
+
+    @model_validator(mode="after")
+    def ensure_three_suggestions(self) -> "TweetSuggestionsPayload":
+        """Ensure exactly three suggestions are returned."""
+        if len(self.suggestions) != 3:
+            raise ValueError(f"Expected 3 suggestions, got {len(self.suggestions)}")
+        return self
 
 
 @dataclass
@@ -259,22 +288,63 @@ def _validate_and_truncate_tweets(
     return result
 
 
+def _log_generation_failure(retry_state: RetryCallState) -> None:
+    """Log final generation failure after all retries."""
+    content = retry_state.args[1] if len(retry_state.args) > 1 else None
+    content_id = getattr(content, "id", "unknown")
+    creativity = None
+    if retry_state.kwargs:
+        creativity = retry_state.kwargs.get("creativity")
+    elif len(retry_state.args) > 3:
+        creativity = retry_state.args[3]
+
+    error = retry_state.outcome.exception() if retry_state.outcome else None
+    logger.error(
+        "Tweet generation failed after %d attempts | content_id=%s error=%s",
+        retry_state.attempt_number,
+        content_id,
+        error,
+    )
+    if error:
+        error_logger.log_processing_error(
+            item_id=str(content_id),
+            error=error,
+            operation="tweet_generation_failure",
+            context={"creativity": creativity},
+        )
+    return None
+
+
 class TweetSuggestionService:
-    """Service for generating tweet suggestions using Claude."""
+    """Service for generating tweet suggestions using Gemini."""
 
     def __init__(self):
-        anthropic_api_key = getattr(settings, "anthropic_api_key", None)
-        if not anthropic_api_key:
-            raise ValueError("Anthropic API key is required for tweet suggestions")
+        google_api_key = getattr(settings, "google_api_key", None)
+        if not google_api_key:
+            raise ValueError("Google API key is required for tweet suggestions")
 
-        self.client = Anthropic(api_key=anthropic_api_key, timeout=60.0)
+        model_name = self._strip_provider_prefix(TWEET_MODEL)
+        self.model = GoogleModel(model_name, provider=GoogleProvider(api_key=google_api_key))
         self.model_name = TWEET_MODEL
         logger.info("Initialized TweetSuggestionService with model %s", self.model_name)
+
+    @staticmethod
+    def _strip_provider_prefix(model_spec: str) -> str:
+        """Strip provider prefix (e.g., google-gla:) from a model spec."""
+        return model_spec.split(":", 1)[1] if ":" in model_spec else model_spec
+
+    def _build_agent(self, system_prompt: str) -> Agent[None, TweetSuggestionsPayload]:
+        """Create a configured pydantic-ai agent for tweet suggestions."""
+        return Agent(
+            model=self.model,
+            output_type=TweetSuggestionsPayload,
+            system_prompt=system_prompt,
+        )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
-        retry_error_callback=lambda retry_state: None,
+        retry_error_callback=_log_generation_failure,
     )
     def generate_suggestions(
         self,
@@ -291,9 +361,16 @@ class TweetSuggestionService:
             creativity: Creativity level 1-10
 
         Returns:
-            TweetSuggestionsResult with 3 suggestions, or None on failure
+            TweetSuggestionsResult with 3 suggestions, or None on failure.
+            Only article and news content types are supported.
         """
         content_id = content.id or 0
+
+        if content.content_type not in SUPPORTED_CONTENT_TYPES:
+            logger.warning(
+                "Tweet suggestions unsupported for content type %s", content.content_type
+            )
+            return None
 
         try:
             # Extract context from content
@@ -311,52 +388,35 @@ class TweetSuggestionService:
             # Calculate temperature from creativity
             temperature = creativity_to_temperature(creativity)
 
-            # Call Claude
-            response = self.client.messages.create(
-                model=self.model_name,
-                max_tokens=2000,
-                temperature=temperature,
-                system=system_message,
-                messages=[{"role": "user", "content": user_message}],
+            # Run Gemini via pydantic-ai
+            agent = self._build_agent(system_message)
+            run_result = agent.run_sync(
+                user_message,
+                model_settings=ModelSettings(
+                    max_tokens=2000,
+                    temperature=temperature,
+                ),
             )
 
-            # Extract response text
-            response_text = ""
-            if response.content:
-                for block in response.content:
-                    if hasattr(block, "text"):
-                        response_text += block.text
-
-            if not response_text:
-                logger.error("Claude returned no content for tweet suggestions")
-                error_logger.log_processing_error(
-                    item_id=str(content_id),
-                    error=ValueError("No content returned"),
-                    operation="tweet_no_output",
-                    context={"creativity": creativity},
-                )
-                return None
-
-            # Parse response
-            suggestions_data = _parse_suggestions_response(response_text)
-            if suggestions_data is None:
-                return None
+            payload = run_result.output
 
             # Validate and truncate
-            suggestions = _validate_and_truncate_tweets(suggestions_data)
+            suggestions = _validate_and_truncate_tweets(
+                [suggestion.model_dump() for suggestion in payload.suggestions]
+            )
             if len(suggestions) != 3:
-                logger.error("Expected 3 suggestions after validation, got %d", len(suggestions))
-                return None
+                raise ValueError(f"Expected 3 suggestions after validation, got {len(suggestions)}")
 
             # Log usage metrics
-            if response.usage:
+            usage = run_result.usage()
+            if usage:
                 logger.info(
                     "Tweet generation - content_id: %d, creativity: %d, "
                     "input_tokens: %d, output_tokens: %d",
                     content_id,
                     creativity,
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
+                    usage.input_tokens,
+                    usage.output_tokens,
                 )
 
             return TweetSuggestionsResult(
@@ -366,24 +426,20 @@ class TweetSuggestionService:
                 suggestions=suggestions,
             )
 
-        except AnthropicError as e:
-            logger.error("Anthropic API error generating tweets: %s", e)
-            error_logger.log_processing_error(
-                item_id=str(content_id),
-                error=e,
-                operation="tweet_api_error",
-                context={"creativity": creativity},
+        except (ModelRetry, ValidationError, ValueError) as e:
+            logger.warning(
+                "Gemini validation error generating tweets | content_id=%s error=%s",
+                content_id,
+                e,
             )
-            return None
+            raise
         except Exception as e:
-            logger.error("Unexpected error generating tweets: %s", e)
-            error_logger.log_processing_error(
-                item_id=str(content_id),
-                error=e,
-                operation="tweet_unexpected_error",
-                context={"creativity": creativity},
+            logger.error(
+                "Unexpected error generating tweets with Gemini | content_id=%s error=%s",
+                content_id,
+                e,
             )
-            return None
+            raise
 
 
 # Module-level service instance (lazy initialization)
