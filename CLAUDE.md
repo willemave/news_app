@@ -67,7 +67,7 @@
 
 ## 6. Beads Workflow (Issue Tracking)
 
-Track all work using beads (`.beads/` directory). **Do not use TodoWrite tool or markdown TODOs.**
+Track work using beads (`.beads/` directory). TodoWrite tool is fine for in-session task tracking.
 
 ### LLM Task Planning Workflow
 1. **Start session**: Run `bd ready` to see available work
