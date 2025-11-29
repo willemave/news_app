@@ -65,7 +65,58 @@
 
 ---
 
-## 6. Tools & Commands
+## 6. Beads Workflow (Issue Tracking)
+
+Track all work using beads (`.beads/` directory). **Do not use TodoWrite tool or markdown TODOs.**
+
+### LLM Task Planning Workflow
+1. **Start session**: Run `bd ready` to see available work
+2. **Plan complex tasks**: Use `bd create` to break work into issues with dependencies
+3. **Claim work**: `bd update <id> --status=in_progress` before starting
+4. **Complete work**: `bd close <id>` immediately when done
+5. **Iterate**: Check `bd ready` for next available task
+
+### Essential Commands
+```bash
+bd ready                              # Show issues ready to work (no blockers)
+bd list --status=open                 # All open issues
+bd list --status=in_progress          # Active work
+bd show <id>                          # Detailed issue view
+bd create --title="..." --type=task   # New issue (task|bug|feature)
+bd update <id> --status=in_progress   # Claim work
+bd close <id>                         # Mark complete
+bd sync                               # Sync with git remote
+```
+
+### Dependencies (for multi-step plans)
+```bash
+bd dep <from> <to>                    # Add blocker (from blocks to)
+bd blocked                            # Show blocked issues
+```
+
+Example: Create dependent tasks for a feature:
+```bash
+bd create --title="Design API schema" --type=task        # → beads-001
+bd create --title="Implement endpoints" --type=task      # → beads-002
+bd create --title="Write tests" --type=task              # → beads-003
+bd dep beads-001 beads-002            # Schema blocks implementation
+bd dep beads-002 beads-003            # Implementation blocks tests
+```
+
+### Session Close Protocol
+Before completing work, **always run**:
+```bash
+git status                            # Check changes
+git add <files>                       # Stage code
+bd sync                               # Commit beads
+git commit -m "..."                   # Commit code
+bd sync                               # Sync any new beads
+git push                              # Push to remote
+```
+
+---
+
+## 7. Package & Dev Tools
 
 ### Package Management (uv)
 ```bash
@@ -104,7 +155,7 @@ docker compose up -d --build         # Rebuild and start
 
 ---
 
-## 7. Preferred Dev Tools
+## 8. Preferred Dev Tools
 
 | Tool | Purpose | Example |
 |------|---------|---------|
@@ -120,7 +171,7 @@ docker compose up -d --build         # Rebuild and start
 
 ---
 
-## 8. Quick Reference
+## 9. Quick Reference
 
 ### Key Entry Points
 | File | Purpose |
@@ -155,7 +206,7 @@ new → pending → processing → completed
 
 ---
 
-## 9. Security Warnings (MVP)
+## 10. Security Warnings (MVP)
 
 - **Apple token verification DISABLED** — Must implement before production (see `app/core/security.py:106`)
 - **Admin sessions IN-MEMORY** — Must migrate to Redis/DB for production (see `app/routers/auth.py:31`)
