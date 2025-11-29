@@ -326,7 +326,7 @@ class TestTweetValidation:
     """Tests for tweet validation and truncation."""
 
     def test_validate_normal_tweets(self) -> None:
-        """Tweets under 280 chars pass through unchanged."""
+        """Tweets under 400 chars pass through unchanged."""
         suggestions = [
             {"id": 1, "text": "Short tweet", "style_label": "a"},
             {"id": 2, "text": "Another tweet", "style_label": "b"},
@@ -339,8 +339,8 @@ class TestTweetValidation:
         assert result[0].text == "Short tweet"
 
     def test_truncate_long_tweet(self) -> None:
-        """Tweets over 280 chars are truncated with ellipsis."""
-        long_text = "A" * 300  # Over 280 chars
+        """Tweets over 400 chars are truncated with ellipsis."""
+        long_text = "A" * 450  # Over 400 chars
         suggestions = [
             {"id": 1, "text": long_text, "style_label": "a"},
             {"id": 2, "text": "Normal tweet", "style_label": "b"},
@@ -349,7 +349,7 @@ class TestTweetValidation:
 
         result = _validate_and_truncate_tweets(suggestions)
 
-        assert len(result[0].text) == 280
+        assert len(result[0].text) == 400
         assert result[0].text.endswith("...")
 
     def test_preserve_style_labels(self) -> None:

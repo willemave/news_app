@@ -230,7 +230,7 @@ def _validate_and_truncate_tweets(
     suggestions: list[dict[str, Any]],
 ) -> list[TweetSuggestionData]:
     """
-    Validate suggestions and truncate if over 280 chars.
+    Validate suggestions and truncate if over 400 chars.
 
     Args:
         suggestions: List of suggestion dicts from LLM
@@ -243,10 +243,10 @@ def _validate_and_truncate_tweets(
         text = suggestion.get("text", "")
         style_label = suggestion.get("style_label")
 
-        # Truncate if too long
-        if len(text) > 280:
-            logger.warning("Tweet %d exceeds 280 chars (%d), truncating", i, len(text))
-            text = text[:277] + "..."
+        # Truncate if too long (400 char limit for longer-form tweets)
+        if len(text) > 400:
+            logger.warning("Tweet %d exceeds 400 chars (%d), truncating", i, len(text))
+            text = text[:397] + "..."
 
         result.append(
             TweetSuggestionData(
