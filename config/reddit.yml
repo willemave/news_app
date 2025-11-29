@@ -2,10 +2,6 @@
 # Format: list of subreddits with name and post limit
 
 subreddits:
-  # Reddit front page
-  - name: "front"
-    limit: 0
-  
   # AI and Machine Learning
   - name: "MachineLearning"
     limit: 20

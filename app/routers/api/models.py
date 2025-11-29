@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl
 
+from app.constants import TWEET_SUGGESTION_MODEL
 from app.models.metadata import ContentStatus, ContentType
 
 # ============================================================================
@@ -587,7 +588,7 @@ class TweetSuggestionsResponse(BaseModel):
     content_id: int = Field(..., description="ID of the content these tweets are about")
     creativity: int = Field(..., description="Creativity level used for generation")
     model: str = Field(
-        default="claude-opus-4-5-20251101",
+        default=TWEET_SUGGESTION_MODEL,
         description="LLM model used for generation",
     )
     suggestions: list[TweetSuggestion] = Field(
@@ -602,7 +603,7 @@ class TweetSuggestionsResponse(BaseModel):
             "example": {
                 "content_id": 123,
                 "creativity": 7,
-                "model": "claude-opus-4-5-20251101",
+                "model": TWEET_SUGGESTION_MODEL,
                 "suggestions": [
                     {
                         "id": 1,

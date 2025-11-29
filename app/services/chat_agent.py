@@ -1,16 +1,16 @@
 """Chat agent service using pydantic-ai for deep-dive conversations."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-import asyncio
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.google import GoogleProvider
@@ -46,9 +46,11 @@ PROVIDER_DEFAULTS: dict[str, str] = {
     ChatModelProvider.GOOGLE.value: "google-gla:gemini-3-pro-preview",
 }
 
-DEFAULT_PROVIDER = ChatModelProvider.OPENAI.value
+DEFAULT_PROVIDER = ChatModelProvider.GOOGLE.value
 DEFAULT_MODEL = PROVIDER_DEFAULTS[DEFAULT_PROVIDER]
-PREFIX_TO_PROVIDER: dict[str, str] = {prefix: provider for provider, prefix in PROVIDER_PREFIXES.items()}
+PREFIX_TO_PROVIDER: dict[str, str] = {
+    prefix: provider for provider, prefix in PROVIDER_PREFIXES.items()
+}
 
 
 def resolve_model(
@@ -64,6 +66,7 @@ def resolve_model(
     Returns:
         Tuple of (canonical_provider_name, full_model_spec).
     """
+
     def _normalize_provider_name(provider_value: ChatModelProvider | str | None) -> str:
         """Convert provider input (enum/str) to canonical provider name."""
         if provider_value is None:
@@ -108,15 +111,17 @@ class ChatDeps:
 _agents: dict[str, Agent[ChatDeps, str]] = {}
 
 
-def _build_model(model_spec: str) -> str | Model:
+def _build_model(model_spec: str) -> tuple[str | Model, GoogleModelSettings | None]:
     """Build a model instance with explicit API keys from settings.
 
     Args:
         model_spec: Full pydantic-ai model specification (e.g., "google-gla:gemini-2.0-flash").
 
     Returns:
-        Either the original model_spec string (for models that auto-detect keys)
-        or a configured Model instance with explicit API key.
+        Tuple of (model, model_settings) where model is either the original model_spec string
+        (for models that auto-detect keys) or a configured Model instance with explicit API key.
+        model_settings is GoogleModelSettings for Google models (to hide thinking traces),
+        None otherwise.
     """
     settings = get_settings()
 
@@ -133,7 +138,10 @@ def _build_model(model_spec: str) -> str | Model:
                 "GOOGLE_API_KEY not configured in settings. "
                 "Set it in .env or environment variables."
             )
-        return GoogleModel(model_name, provider=GoogleProvider(api_key=settings.google_api_key))
+        model = GoogleModel(model_name, provider=GoogleProvider(api_key=settings.google_api_key))
+        # Hide reasoning/thinking traces from output
+        model_settings = GoogleModelSettings(google_thinking_config={"include_thoughts": False})
+        return model, model_settings
 
     # Handle Anthropic models (prefixed or claude-* format)
     if provider_prefix == "anthropic" or model_spec.startswith("claude-"):
@@ -144,7 +152,7 @@ def _build_model(model_spec: str) -> str | Model:
             )
         provider = AnthropicProvider(api_key=settings.anthropic_api_key)
         model_to_use = model_name if provider_prefix == "anthropic" else model_spec
-        return AnthropicModel(model_to_use, provider=provider)
+        return AnthropicModel(model_to_use, provider=provider), None
 
     # Handle OpenAI models (openai:* format)
     if provider_prefix == "openai" or model_spec.startswith("openai:"):
@@ -154,10 +162,12 @@ def _build_model(model_spec: str) -> str | Model:
                 "OPENAI_API_KEY not configured in settings. "
                 "Set it in .env or environment variables."
             )
-        return OpenAIModel(model_name, provider=OpenAIProvider(api_key=settings.openai_api_key))
+        return OpenAIModel(
+            model_name, provider=OpenAIProvider(api_key=settings.openai_api_key)
+        ), None
 
     # Fallback - return model_spec string for other providers
-    return model_spec
+    return model_spec, None
 
 
 def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
@@ -194,13 +204,14 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     )
 
     # Build model with explicit API key if needed
-    model = _build_model(model_spec)
+    model, model_settings = _build_model(model_spec)
 
     agent: Agent[ChatDeps, str] = Agent(
         model,
         deps_type=ChatDeps,
         output_type=str,
         system_prompt=system_prompt_text,
+        model_settings=model_settings,
     )
 
     @agent.system_prompt

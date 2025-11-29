@@ -144,8 +144,8 @@ async def convert_news_to_article(
     response_model=TweetSuggestionsResponse,
     summary="Generate tweet suggestions for content",
     description=(
-        "Generate 3 tweet suggestions for a content item using Claude. "
-        "Supports all content types. Requires JWT authentication."
+        "Generate 3 tweet suggestions for a content item using Gemini. "
+        "Supports articles and news content types. Requires JWT authentication."
     ),
     responses={
         200: {"description": "Tweet suggestions generated successfully"},
@@ -162,8 +162,8 @@ async def get_tweet_suggestions(
 ) -> TweetSuggestionsResponse:
     """Generate tweet suggestions for content.
 
-    Calls Claude to generate 3 tweet suggestions based on the content's
-    title, summary, and key points. Supports all content types.
+    Calls Gemini to generate 3 tweet suggestions based on the content's
+    title, summary, and key points. Supports article and news content.
 
     Args:
         content_id: ID of the content to generate tweets for
@@ -186,6 +186,11 @@ async def get_tweet_suggestions(
             detail=f"Content not ready for tweets (status: {content.status})",
         )
 
+    if content.content_type not in {ContentType.ARTICLE.value, ContentType.NEWS.value}:
+        raise HTTPException(
+            status_code=400,
+            detail="Tweet suggestions supported only for articles and news content types.",
+        )
 
     # Convert to domain model
     content_data = content_to_domain(content)

@@ -11,7 +11,7 @@ enum RootTab: Hashable {
     case longContent
     case shortNews
     case chats
-    case recentlyRead
+    case favorites
     case more
 }
 
@@ -45,7 +45,7 @@ final class TabCoordinatorViewModel: ObservableObject {
         case .longContent:
             longContentVM.clearReadTrigger.send(())
             longContentVM.startInitialLoad()
-        case .chats, .recentlyRead, .more:
+        case .chats, .favorites, .more:
             break
         }
 
@@ -67,7 +67,7 @@ final class TabCoordinatorViewModel: ObservableObject {
             if longContentVM.currentItems().isEmpty {
                 longContentVM.refreshTrigger.send(())
             }
-        case .chats, .recentlyRead, .more:
+        case .chats, .favorites, .more:
             break
         }
     }

@@ -81,11 +81,11 @@ struct ContentView: View {
                     }
                     .tag(RootTab.chats)
 
-                RecentlyReadView()
+                FavoritesView()
                     .tabItem {
-                        Label("Recently Read", systemImage: "clock.fill")
+                        Label("Favorites", systemImage: "star.fill")
                     }
-                    .tag(RootTab.recentlyRead)
+                    .tag(RootTab.favorites)
 
                 MoreView()
                     .tabItem {

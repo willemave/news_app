@@ -27,6 +27,7 @@ struct ContentDetailView: View {
     // Deep dive chat sheet state
     @State private var showDeepDiveSheet: Bool = false
     @State private var deepDiveSession: ChatSessionSummary?
+    @State private var isStartingDeepDive: Bool = false
 
     init(contentId: Int, allContentIds: [Int] = [], onConvert: ((Int) async -> Void)? = nil) {
         self.initialContentId = contentId
@@ -115,10 +116,17 @@ struct ContentDetailView: View {
                                     await startDeepDive(contentId: content.id)
                                 }
                             }) {
-                                Image(systemName: "brain.head.profile")
-                                    .font(.system(size: 18))
+                                if isStartingDeepDive {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle())
+                                        .frame(width: 18, height: 18)
+                                } else {
+                                    Image(systemName: "brain.head.profile")
+                                        .font(.system(size: 18))
+                                }
                             }
                             .buttonStyle(.bordered)
+                            .disabled(isStartingDeepDive)
 
                             // Tweet button
                             Button(action: {
@@ -395,6 +403,9 @@ struct ContentDetailView: View {
 
     // MARK: - Deep Dive Helper
     private func startDeepDive(contentId: Int) async {
+        isStartingDeepDive = true
+        defer { isStartingDeepDive = false }
+
         do {
             let session = try await ChatService.shared.startArticleChat(contentId: contentId)
             deepDiveSession = session
