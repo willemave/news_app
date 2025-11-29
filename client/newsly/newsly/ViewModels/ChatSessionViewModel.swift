@@ -23,7 +23,13 @@ class ChatSessionViewModel: ObservableObject {
     // Streaming state
     @Published var streamingMessage: ChatMessage?
 
+    // Voice dictation state
+    @Published var isRecording = false
+    @Published var isTranscribing = false
+    @Published private(set) var voiceDictationAvailable = false
+
     private let chatService = ChatService.shared
+    private let dictationService = VoiceDictationService.shared
     private var streamTask: Task<Void, Never>?
 
     let sessionId: Int
@@ -183,5 +189,94 @@ class ChatSessionViewModel: ObservableObject {
             return messages + [streaming]
         }
         return messages
+    }
+
+    // MARK: - Voice Dictation
+
+    /// Check voice dictation availability and attempt token refresh if key is missing.
+    func checkAndRefreshVoiceDictation() async {
+        // First check - maybe key is already available
+        if isVoiceDictationAvailable {
+            voiceDictationAvailable = true
+            return
+        }
+
+        // Key is missing - try a token refresh to get it from the server
+        logger.info("🎤 OpenAI key missing, attempting token refresh...")
+
+        do {
+            _ = try await AuthenticationService.shared.refreshAccessToken()
+            // Check again after refresh
+            voiceDictationAvailable = isVoiceDictationAvailable
+            if voiceDictationAvailable {
+                logger.info("🎤 Token refresh provided OpenAI key - voice dictation now available!")
+            } else {
+                logger.warning("🎤 Token refresh completed but OpenAI key still not available")
+            }
+        } catch {
+            logger.warning("🎤 Token refresh failed: \(error.localizedDescription)")
+            voiceDictationAvailable = false
+        }
+    }
+
+    /// Start voice recording for chat message.
+    func startVoiceRecording() async {
+        do {
+            try await dictationService.startRecording()
+            isRecording = true
+        } catch {
+            logger.error("Failed to start recording: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Stop recording, transcribe, and auto-send message.
+    func stopVoiceRecording() async {
+        guard isRecording else { return }
+
+        isRecording = false
+        isTranscribing = true
+
+        do {
+            let transcription = try await dictationService.stopRecordingAndTranscribe()
+            isTranscribing = false
+
+            // Set input text and auto-send
+            inputText = transcription
+            await sendMessage()
+        } catch {
+            logger.error("Failed to transcribe: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+            isTranscribing = false
+        }
+    }
+
+    /// Cancel voice recording.
+    func cancelVoiceRecording() {
+        dictationService.cancelRecording()
+        isRecording = false
+    }
+
+    /// Check if voice dictation is available.
+    private var isVoiceDictationAvailable: Bool {
+        // Check Keychain (received from server during auth)
+        if let key = KeychainManager.shared.getToken(key: .openaiApiKey),
+           !key.isEmpty {
+            return true
+        }
+
+        // Check Info.plist (fallback for development)
+        if let key = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
+           !key.isEmpty, !key.hasPrefix("$(") {
+            return true
+        }
+
+        // Check environment variable (fallback for development)
+        if let key = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
+           !key.isEmpty {
+            return true
+        }
+
+        return false
     }
 }

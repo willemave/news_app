@@ -6,6 +6,63 @@
 //
 
 import SwiftUI
+import UIKit
+
+// MARK: - Selectable Text (UITextView wrapper)
+
+struct SelectableText: UIViewRepresentable {
+    let text: String
+    let textColor: UIColor
+    let font: UIFont
+
+    init(_ text: String, textColor: UIColor = .label, font: UIFont = .preferredFont(forTextStyle: .callout)) {
+        self.text = text
+        self.textColor = textColor
+        self.font = font
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isScrollEnabled = false
+        textView.backgroundColor = .clear
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        uiView.text = text
+        uiView.textColor = textColor
+        uiView.font = font
+    }
+}
+
+struct SelectableAttributedText: UIViewRepresentable {
+    let attributedText: NSAttributedString
+    let textColor: UIColor
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isScrollEnabled = false
+        textView.backgroundColor = .clear
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        // Apply the attributed string with color override
+        let mutableAttr = NSMutableAttributedString(attributedString: attributedText)
+        mutableAttr.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: mutableAttr.length))
+        uiView.attributedText = mutableAttr
+    }
+}
 
 struct ChatSessionView: View {
     @StateObject private var viewModel: ChatSessionViewModel
@@ -33,6 +90,7 @@ struct ChatSessionView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadSession()
+            await viewModel.checkAndRefreshVoiceDictation()
         }
         .toolbar {
             if let session = viewModel.session {
@@ -166,34 +224,66 @@ struct ChatSessionView: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            TextField("Message", text: $viewModel.inputText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(Color(.systemGray6))
-                .cornerRadius(20)
-                .focused($isInputFocused)
-
-            Button {
-                Task { await viewModel.sendMessage() }
-            } label: {
-                Group {
-                    if viewModel.isSending {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    } else {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 16, weight: .semibold))
-                    }
+        VStack(spacing: 8) {
+            // Transcribing status
+            if viewModel.isTranscribing {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Transcribing...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                .frame(width: 36, height: 36)
-                .background(sendButtonDisabled ? Color.gray : Color.blue)
-                .foregroundColor(.white)
-                .clipShape(Circle())
             }
-            .disabled(sendButtonDisabled)
+
+            HStack(alignment: .bottom, spacing: 12) {
+                TextField("Message", text: $viewModel.inputText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...5)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(20)
+                    .focused($isInputFocused)
+
+                // Microphone button
+                if viewModel.voiceDictationAvailable {
+                    Button {
+                        Task {
+                            if viewModel.isRecording {
+                                await viewModel.stopVoiceRecording()
+                            } else {
+                                await viewModel.startVoiceRecording()
+                            }
+                        }
+                    } label: {
+                        Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(viewModel.isRecording ? .red : .blue)
+                            .symbolEffect(.pulse, isActive: viewModel.isRecording)
+                    }
+                    .disabled(viewModel.isTranscribing || viewModel.isSending)
+                }
+
+                Button {
+                    Task { await viewModel.sendMessage() }
+                } label: {
+                    Group {
+                        if viewModel.isSending {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 16, weight: .semibold))
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .background(sendButtonDisabled ? Color.gray : Color.blue)
+                    .foregroundColor(.white)
+                    .clipShape(Circle())
+                }
+                .disabled(sendButtonDisabled)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -207,7 +297,10 @@ struct ChatSessionView: View {
     }
 
     private var sendButtonDisabled: Bool {
-        viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSending
+        viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        viewModel.isSending ||
+        viewModel.isRecording ||
+        viewModel.isTranscribing
     }
 }
 
@@ -224,11 +317,9 @@ struct MessageBubble: View {
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
                 messageContent
-                    .font(.callout)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(message.isUser ? Color.blue : Color(.systemGray5))
-                    .foregroundColor(message.isUser ? .white : .primary)
                     .cornerRadius(18)
 
                 if !message.formattedTime.isEmpty {
@@ -245,19 +336,39 @@ struct MessageBubble: View {
         }
     }
 
+    private var textColor: UIColor {
+        message.isUser ? .white : .label
+    }
+
+    private var textFont: UIFont {
+        .preferredFont(forTextStyle: .callout)
+    }
+
     @ViewBuilder
     private var messageContent: some View {
         if message.isUser {
             // User messages: plain text (no markdown needed)
-            Text(message.content)
+            SelectableText(message.content, textColor: textColor, font: textFont)
         } else {
             // Assistant messages: render with markdown
-            if let attributedString = try? AttributedString(markdown: message.content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                Text(attributedString)
+            if let attributedString = formattedMarkdown {
+                SelectableAttributedText(attributedText: attributedString, textColor: textColor)
             } else {
-                Text(message.content)
+                SelectableText(message.content, textColor: textColor, font: textFont)
             }
         }
+    }
+
+    private var formattedMarkdown: NSAttributedString? {
+        guard let attributedString = try? NSAttributedString(
+            markdown: message.content,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) else {
+            return nil
+        }
+        let mutableAttr = NSMutableAttributedString(attributedString: attributedString)
+        mutableAttr.addAttribute(.font, value: textFont, range: NSRange(location: 0, length: mutableAttr.length))
+        return mutableAttr
     }
 }
 
