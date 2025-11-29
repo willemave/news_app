@@ -160,6 +160,15 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         return "this topic"
     }
 
+    /// Dig deeper into highlighted text by automatically sending a follow-up query.
+    func digDeeper(into selectedText: String) async {
+        let trimmed = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let prompt = "Dig deeper into this: \"\(trimmed)\""
+        await sendMessage(text: prompt)
+    }
+
     func cancelStreaming() {
         streamTask?.cancel()
         streamTask = nil
