@@ -10,7 +10,7 @@ import SwiftUI
 struct ChatSessionsView: View {
     @StateObject private var viewModel = ChatSessionsViewModel()
     @State private var showingNewChat = false
-    @State private var selectedProvider: ChatModelProvider = .openai
+    @State private var selectedProvider: ChatModelProvider = .google
 
     var body: some View {
         NavigationStack {
