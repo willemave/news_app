@@ -224,6 +224,7 @@ struct MessageBubble: View {
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
                 messageContent
+                    .font(.callout)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(message.isUser ? Color.blue : Color(.systemGray5))
