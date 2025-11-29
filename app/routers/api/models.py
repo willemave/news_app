@@ -8,18 +8,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 from app.constants import TWEET_SUGGESTION_MODEL
 from app.models.metadata import ContentStatus, ContentType
-
-# ============================================================================
-# Chat Models
-# ============================================================================
-
-
-class ChatModelProvider(str, Enum):
-    """Supported LLM providers for chat."""
-
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    GOOGLE = "google"
+from app.services.llm_models import LLMProvider as ChatModelProvider
 
 
 class ChatMessageRole(str, Enum):

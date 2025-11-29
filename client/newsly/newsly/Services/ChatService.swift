@@ -78,54 +78,38 @@ class ChatService {
 
     // MARK: - Messaging
 
-    /// Send a message and stream the response
+    /// Send a message and receive the assistant response (non-streaming)
     func sendMessage(
         sessionId: Int,
         message: String
-    ) -> AsyncThrowingStream<ChatMessage, Error> {
+    ) async throws -> ChatMessage {
         let request = SendChatMessageRequest(message: message)
+        let encoder = JSONEncoder()
+        let body = try encoder.encode(request)
 
-        do {
-            let encoder = JSONEncoder()
-            let body = try encoder.encode(request)
+        let response: SendChatMessageResponse = try await client.request(
+            APIEndpoints.chatMessages(sessionId: sessionId),
+            method: "POST",
+            body: body
+        )
 
-            return client.streamNDJSON(
-                APIEndpoints.chatMessages(sessionId: sessionId),
-                method: "POST",
-                body: body
-            )
-        } catch {
-            logger.error("[ChatService] sendMessage encode error | error=\(error.localizedDescription)")
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: error)
-            }
-        }
+        return response.assistantMessage
     }
 
-    /// Send a message and wait for the complete response
-    func sendMessageSync(
-        sessionId: Int,
-        message: String
-    ) async throws -> ChatMessage? {
-        var lastMessage: ChatMessage?
-
-        for try await msg in sendMessage(sessionId: sessionId, message: message) {
-            if msg.role == .assistant {
-                lastMessage = msg
-            }
-        }
-
-        return lastMessage
-    }
-
-    /// Get initial follow-up question suggestions for an article-based session
+    /// Get initial follow-up question suggestions for an article-based session (non-streaming)
     func getInitialSuggestions(
         sessionId: Int
-    ) -> AsyncThrowingStream<ChatMessage, Error> {
-        return client.streamNDJSON(
+    ) async throws -> ChatMessage {
+        let response: InitialSuggestionsResponse = try await client.request(
             APIEndpoints.chatInitialSuggestions(sessionId: sessionId),
-            method: "POST",
-            body: nil
+            method: "POST"
+        )
+
+        return ChatMessage(
+            id: response.id,
+            role: response.role,
+            timestamp: response.timestamp,
+            content: response.content
         )
     }
 

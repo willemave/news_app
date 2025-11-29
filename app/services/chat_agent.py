@@ -1,103 +1,24 @@
 """Chat agent service using pydantic-ai for deep-dive conversations."""
 
-import asyncio
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from time import perf_counter
 
+from fastapi.concurrency import run_in_threadpool
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
-from pydantic_ai.models import Model
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
-from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.anthropic import AnthropicProvider
-from pydantic_ai.providers.google import GoogleProvider
-from pydantic_ai.providers.openai import OpenAIProvider
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.core.settings import get_settings
 from app.models.schema import ChatMessage, ChatSession, Content
 from app.services.exa_client import exa_search, get_exa_client
+from app.services.llm_models import (  # noqa: F401 (re-export for API schemas)
+    LLMProvider as ChatModelProvider,
+    build_pydantic_model,
+    resolve_model,
+)
 
 logger = get_logger(__name__)
-
-
-class ChatModelProvider(str, Enum):
-    """Supported LLM providers for chat."""
-
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    GOOGLE = "google"
-
-
-# Provider prefixes and default model specifications (keyed by canonical provider name)
-PROVIDER_PREFIXES: dict[str, str] = {
-    ChatModelProvider.OPENAI.value: "openai",
-    ChatModelProvider.ANTHROPIC.value: "anthropic",
-    ChatModelProvider.GOOGLE.value: "google-gla",
-}
-
-PROVIDER_DEFAULTS: dict[str, str] = {
-    ChatModelProvider.OPENAI.value: "openai:gpt-5.1",
-    ChatModelProvider.ANTHROPIC.value: "anthropic:claude-sonnet-4-5-20250929",
-    ChatModelProvider.GOOGLE.value: "google-gla:gemini-3-pro-preview",
-}
-
-DEFAULT_PROVIDER = ChatModelProvider.GOOGLE.value
-DEFAULT_MODEL = PROVIDER_DEFAULTS[DEFAULT_PROVIDER]
-PREFIX_TO_PROVIDER: dict[str, str] = {
-    prefix: provider for provider, prefix in PROVIDER_PREFIXES.items()
-}
-
-
-def resolve_model(
-    provider: ChatModelProvider | str | None,
-    model_hint: str | None,
-) -> tuple[str, str]:
-    """Resolve provider and model hint to a pydantic-ai model string.
-
-    Args:
-        provider: LLM provider enum/string or None for default.
-        model_hint: Optional specific model name or full spec.
-
-    Returns:
-        Tuple of (canonical_provider_name, full_model_spec).
-    """
-
-    def _normalize_provider_name(provider_value: ChatModelProvider | str | None) -> str:
-        """Convert provider input (enum/str) to canonical provider name."""
-        if provider_value is None:
-            return DEFAULT_PROVIDER
-
-        raw = provider_value.value if isinstance(provider_value, Enum) else str(provider_value)
-        return PREFIX_TO_PROVIDER.get(raw, raw)
-
-    # Normalize provider to canonical string (openai/anthropic/google)
-    provider_name = _normalize_provider_name(provider)
-
-    # If model_hint looks like a full spec (contains colon), use it directly
-    if model_hint and ":" in model_hint:
-        provider_prefix = model_hint.split(":", 1)[0]
-        hinted_provider = PREFIX_TO_PROVIDER.get(provider_prefix, provider_prefix)
-        canonical_provider = (
-            hinted_provider if hinted_provider in PROVIDER_DEFAULTS else provider_name
-        )
-        return canonical_provider, model_hint
-
-    # Use provider default or global default
-    model_prefix = PROVIDER_PREFIXES.get(provider_name, provider_name)
-
-    if model_hint:
-        # Combine provider prefix with model hint
-        return provider_name, f"{model_prefix}:{model_hint}"
-
-    # Use provider's default model
-    return provider_name, PROVIDER_DEFAULTS.get(provider_name, DEFAULT_MODEL)
-
-
 @dataclass
 class ChatDeps:
     """Dependencies passed to the chat agent."""
@@ -109,65 +30,6 @@ class ChatDeps:
 
 # Agent cache - one per model spec
 _agents: dict[str, Agent[ChatDeps, str]] = {}
-
-
-def _build_model(model_spec: str) -> tuple[str | Model, GoogleModelSettings | None]:
-    """Build a model instance with explicit API keys from settings.
-
-    Args:
-        model_spec: Full pydantic-ai model specification (e.g., "google-gla:gemini-2.0-flash").
-
-    Returns:
-        Tuple of (model, model_settings) where model is either the original model_spec string
-        (for models that auto-detect keys) or a configured Model instance with explicit API key.
-        model_settings is GoogleModelSettings for Google models (to hide thinking traces),
-        None otherwise.
-    """
-    settings = get_settings()
-
-    provider_prefix = None
-    model_name = model_spec
-    if ":" in model_spec:
-        provider_prefix, model_name = model_spec.split(":", 1)
-
-    # Handle Google models - they need explicit API key from settings
-    if provider_prefix in {"google-gla", "google"} or model_spec.startswith("google-gla:"):
-        model_name = model_name if provider_prefix else model_spec.split(":", 1)[1]
-        if not settings.google_api_key:
-            raise ValueError(
-                "GOOGLE_API_KEY not configured in settings. "
-                "Set it in .env or environment variables."
-            )
-        model = GoogleModel(model_name, provider=GoogleProvider(api_key=settings.google_api_key))
-        # Hide reasoning/thinking traces from output
-        model_settings = GoogleModelSettings(google_thinking_config={"include_thoughts": False})
-        return model, model_settings
-
-    # Handle Anthropic models (prefixed or claude-* format)
-    if provider_prefix == "anthropic" or model_spec.startswith("claude-"):
-        if not settings.anthropic_api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY not configured in settings. "
-                "Set it in .env or environment variables."
-            )
-        provider = AnthropicProvider(api_key=settings.anthropic_api_key)
-        model_to_use = model_name if provider_prefix == "anthropic" else model_spec
-        return AnthropicModel(model_to_use, provider=provider), None
-
-    # Handle OpenAI models (openai:* format)
-    if provider_prefix == "openai" or model_spec.startswith("openai:"):
-        model_name = model_name if provider_prefix else model_spec.split(":", 1)[1]
-        if not settings.openai_api_key:
-            raise ValueError(
-                "OPENAI_API_KEY not configured in settings. "
-                "Set it in .env or environment variables."
-            )
-        return OpenAIModel(
-            model_name, provider=OpenAIProvider(api_key=settings.openai_api_key)
-        ), None
-
-    # Fallback - return model_spec string for other providers
-    return model_spec, None
 
 
 def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
@@ -204,7 +66,7 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     )
 
     # Build model with explicit API key if needed
-    model, model_settings = _build_model(model_spec)
+    model, model_settings = build_pydantic_model(model_spec)
 
     agent: Agent[ChatDeps, str] = Agent(
         model,
@@ -215,7 +77,7 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     )
 
     @agent.system_prompt
-    async def add_article_context(ctx: RunContext[ChatDeps]) -> str:
+    def add_article_context(ctx: RunContext[ChatDeps]) -> str:
         """Add article context to the system prompt."""
         parts = []
 
@@ -235,7 +97,7 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
         return ""
 
     @agent.tool
-    async def exa_web_search(
+    def exa_web_search(
         ctx: RunContext[ChatDeps],
         query: str,
         num_results: int = 8,
@@ -280,6 +142,7 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
         num_results = max(1, min(10, num_results))
 
         # Execute search with enhanced options
+        tool_start = perf_counter()
         try:
             results = exa_search(
                 query,
@@ -301,6 +164,11 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
 
         if not results:
             return "No relevant results found. Please answer based on your knowledge."
+
+        duration_ms = (perf_counter() - tool_start) * 1000
+        logger.info(
+            f"[Tool:exa_web_search] Completed | session_id={session_id} duration_ms={duration_ms:.1f} results={len(results)}"
+        )
 
         # Format results as structured text for the LLM to synthesize
         output_parts = [
@@ -435,285 +303,190 @@ def save_messages(
         raise
 
 
-async def run_chat_stream(
+@dataclass
+class ChatRunResult:
+    """Result of a chat turn."""
+
+    output_text: str
+    new_messages: list[ModelMessage]
+    all_messages: list[ModelMessage]
+    tool_calls: list[object]
+
+
+def _build_chat_deps(db: Session, session: ChatSession) -> ChatDeps:
+    """Construct chat dependencies (content + context) for a session."""
+    content: Content | None = None
+    article_context: str | None = None
+
+    if session.content_id:
+        content = db.query(Content).filter(Content.id == session.content_id).first()
+        article_context = build_article_context(content) if content else None
+
+    return ChatDeps(session=session, content=content, article_context=article_context)
+
+
+def _run_agent_sync(
+    model_spec: str,
+    user_prompt: str,
+    deps: ChatDeps,
+    history: list[ModelMessage],
+):
+    """Run the chat agent synchronously in a worker thread."""
+    agent = get_chat_agent(model_spec)
+    return agent.run_sync(user_prompt, deps=deps, message_history=history)
+
+
+async def run_chat_turn(
     db: Session,
     session: ChatSession,
     user_prompt: str,
-) -> AsyncIterator[str]:
-    """Run a chat turn with streaming output.
-
-    Args:
-        db: Database session.
-        session: Chat session record.
-        user_prompt: User's message.
-
-    Yields:
-        Partial text chunks as they're generated.
-
-    Note:
-        This function updates session.last_message_at and persists new messages.
-    """
-    # Log user prompt at INFO with safe truncation to avoid needing DEBUG
+) -> ChatRunResult:
+    """Run a chat turn synchronously and persist messages."""
     trimmed_prompt = user_prompt.replace("\n", " ")[:500]
     if len(user_prompt) > 500:
         trimmed_prompt = f"{trimmed_prompt}... [truncated]"
+    total_start = perf_counter()
     logger.info(
-        f"[Stream] run_chat_stream started | session_id={session.id} "
-        f"model={session.llm_model} prompt_len={len(user_prompt)} "
-        f"user_prompt='{trimmed_prompt}'"
+        "[ChatTurn] started | session_id=%s model=%s prompt_len=%s prompt='%s'",
+        session.id,
+        session.llm_model,
+        len(user_prompt),
+        trimmed_prompt,
     )
 
-    # Load associated content if any
-    content: Content | None = None
-    if session.content_id:
-        content = db.query(Content).filter(Content.id == session.content_id).first()
-        logger.debug(f"[Stream] Content loaded | sid={session.id} cid={session.content_id}")
+    deps_start = perf_counter()
+    deps = _build_chat_deps(db, session)
+    deps_ms = (perf_counter() - deps_start) * 1000
 
-    # Build article context
-    article_context = build_article_context(content) if content else None
-    if article_context:
-        logger.debug(f"[Stream] Context built | sid={session.id} len={len(article_context)}")
-
-    # Build dependencies
-    deps = ChatDeps(
-        session=session,
-        content=content,
-        article_context=article_context,
-    )
-
-    # Load message history
+    history_start = perf_counter()
     history = load_message_history(db, session.id)
-    logger.info(f"[Stream] Loaded history | session_id={session.id} history_count={len(history)}")
+    history_ms = (perf_counter() - history_start) * 1000
 
-    # Get agent for this session's model
-    agent = get_chat_agent(session.llm_model)
-
-    # Run with streaming
-    collected_text = ""
-    chunk_count = 0
     try:
-        logger.info(f"[Stream] Starting agent stream | session_id={session.id}")
-        async with agent.run_stream(
-            user_prompt,
-            deps=deps,
-            message_history=history,
-        ) as result:
-            # Stream text chunks
-            async for text in result.stream_text(debounce_by=0.01):
-                # Yield only the new part
-                new_text = text[len(collected_text) :]
-                if new_text:
-                    chunk_count += 1
-                    yield new_text
-                    collected_text = text
-                    if chunk_count % 50 == 0:  # Log progress every 50 chunks
-                        logger.debug(
-                            f"[Stream] Progress | session_id={session.id} "
-                            f"chunks={chunk_count} total_len={len(collected_text)}"
-                        )
+        agent_start = perf_counter()
+        result = await run_in_threadpool(
+            _run_agent_sync, session.llm_model, user_prompt, deps, history
+        )
+        agent_ms = (perf_counter() - agent_start) * 1000
+        new_messages = result.new_messages()
+        save_start = perf_counter()
+        save_messages(db, session.id, new_messages)
+        save_ms = (perf_counter() - save_start) * 1000
 
+        session.last_message_at = datetime.utcnow()
+        session.updated_at = datetime.utcnow()
+        db.commit()
+
+        total_ms = (perf_counter() - total_start) * 1000
+        tool_calls = getattr(result, "tool_calls", []) or []
+        tool_names = [
+            getattr(tc, "name", None)
+            or getattr(tc, "function_name", None)
+            or getattr(tc, "tool_name", None)
+            for tc in tool_calls
+        ]
         logger.info(
-            f"[Stream] Stream completed | session_id={session.id} "
-            f"total_chunks={chunk_count} final_len={len(collected_text)}"
+            "[ChatTurn] completed | session_id=%s model=%s total_ms=%.1f deps_ms=%.1f history_ms=%.1f agent_ms=%.1f save_ms=%.1f tool_calls=%s",
+            session.id,
+            session.llm_model,
+            total_ms,
+            deps_ms,
+            history_ms,
+            agent_ms,
+            save_ms,
+            tool_names,
         )
 
-        # After completion, save new messages
-        new_messages = result.new_messages()
-        save_messages(db, session.id, new_messages)
-        logger.debug(f"[Stream] Saved | sid={session.id} msgs={len(new_messages)}")
-
-        # Update session timestamps
-        session.last_message_at = datetime.utcnow()
-        session.updated_at = datetime.utcnow()
-        db.commit()
-        logger.info(f"[Stream] Session updated | session_id={session.id}")
-
-    except asyncio.CancelledError:
-        logger.warning(
-            f"[Stream] Cancelled | session_id={session.id} "
-            f"collected_len={len(collected_text)} chunks={chunk_count}"
+        return ChatRunResult(
+            output_text=result.output,
+            new_messages=new_messages,
+            all_messages=result.all_messages,
+            tool_calls=getattr(result, "tool_calls", []),
         )
-        db.rollback()
-        raise
-    except Exception as e:
-        logger.error(f"Chat stream error for session {session.id}: {e}")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Chat error for session %s: %s", session.id, exc)
         db.rollback()
         raise
 
 
-async def run_chat_sync(
-    db: Session,
-    session: ChatSession,
-    user_prompt: str,
-) -> str:
-    """Run a chat turn synchronously (non-streaming).
+INITIAL_QUESTIONS_PROMPT = """
+You are starting a new conversation about the article described in your context.
 
-    Args:
-        db: Database session.
-        session: Chat session record.
-        user_prompt: User's message.
+Write a short welcome message (1-2 sentences) that:
+- Briefly states what kinds of help you can provide (explaining, critiquing, brainstorming, applying ideas).
+- Sounds friendly and concise.
 
-    Returns:
-        Complete assistant response.
-    """
-    trimmed_prompt = user_prompt.replace("\n", " ")[:500]
-    if len(user_prompt) > 500:
-        trimmed_prompt = f"{trimmed_prompt}... [truncated]"
-    logger.info(
-        f"[Sync] run_chat_sync started | session_id={session.id} "
-        f"model={session.llm_model} prompt_len={len(user_prompt)} "
-        f"user_prompt='{trimmed_prompt}'"
-    )
+After the welcome, propose 2-4 concrete directions the user could take next:
+- Use bullet points.
+- Mix question types: clarification, implications, counterpoints, practical applications.
+- Make them specific to this article, not generic.
 
-    # Load associated content if any
-    content: Content | None = None
-    if session.content_id:
-        content = db.query(Content).filter(Content.id == session.content_id).first()
-
-    # Build article context
-    article_context = build_article_context(content) if content else None
-
-    # Build dependencies
-    deps = ChatDeps(
-        session=session,
-        content=content,
-        article_context=article_context,
-    )
-
-    # Load message history
-    history = load_message_history(db, session.id)
-
-    # Get agent for this session's model
-    agent = get_chat_agent(session.llm_model)
-
-    # Run synchronously
-    try:
-        result = await agent.run(
-            user_prompt,
-            deps=deps,
-            message_history=history,
-        )
-
-        # Save new messages
-        new_messages = result.new_messages()
-        save_messages(db, session.id, new_messages)
-
-        # Update session timestamps
-        session.last_message_at = datetime.utcnow()
-        session.updated_at = datetime.utcnow()
-        db.commit()
-
-        return result.output
-
-    except Exception as e:
-        logger.error(f"Chat error for session {session.id}: {e}")
-        db.rollback()
-        raise
-
-
-# Prompt for generating initial follow-up question suggestions
-INITIAL_QUESTIONS_PROMPT = """Based on this article, suggest 3-5 thought-provoking follow-up \
-questions the reader might want to explore.
-
-Format your response as a brief welcome message followed by the questions. Use markdown:
-- Start with a short sentence like "Here are some directions we could explore:"
-- List each question as a bullet point
-- Questions should be specific to the article content, not generic
-- Mix different types: clarifying, implications, counterarguments, practical applications
-
-Keep it concise - this is meant to spark conversation, not overwhelm."""
+Do not mention tools, system prompts, or implementation details. Just write what the user sees.
+""".strip()
 
 
 async def generate_initial_suggestions(
     db: Session,
     session: ChatSession,
-) -> AsyncIterator[str]:
-    """Generate initial follow-up question suggestions for an article-based session.
-
-    This is called when a new session is created with a content_id to provide
-    immediate value and guide the user on what they can explore.
-
-    Args:
-        db: Database session.
-        session: Chat session record (must have content_id).
-
-    Yields:
-        Partial text chunks as they're generated.
-    """
+) -> ChatRunResult | None:
+    """Generate the initial assistant message for article-based sessions."""
+    total_start = perf_counter()
     logger.info(
-        f"[InitialSuggestions] Started | session_id={session.id} "
-        f"content_id={session.content_id} model={session.llm_model}"
+        "[InitialSuggestions] started | session_id=%s content_id=%s model=%s",
+        session.id,
+        session.content_id,
+        session.llm_model,
     )
 
     if not session.content_id:
-        logger.warning(f"[InitialSuggestions] No content_id | session_id={session.id}")
-        return
+        logger.warning("[InitialSuggestions] No content_id | session_id=%s", session.id)
+        return None
 
-    # Load associated content
-    content: Content | None = db.query(Content).filter(Content.id == session.content_id).first()
-    if not content:
-        logger.warning(f"[InitialSuggestions] Content not found | sid={session.id}")
-        return
+    deps = _build_chat_deps(db, session)
 
-    title_preview = content.title[:50] if content.title else "N/A"
-    logger.debug(f"[InitialSuggestions] Content loaded | sid={session.id} title='{title_preview}'")
-
-    # Build article context
-    article_context = build_article_context(content)
-    if article_context:
-        ctx_len = len(article_context)
-        logger.debug(f"[InitialSuggestions] Context built | sid={session.id} len={ctx_len}")
-
-    # Build dependencies
-    deps = ChatDeps(
-        session=session,
-        content=content,
-        article_context=article_context,
-    )
-
-    # Get agent for this session's model
-    agent = get_chat_agent(session.llm_model)
-
-    # Run with streaming - use the initial questions prompt
-    collected_text = ""
-    chunk_count = 0
     try:
-        logger.info(f"[InitialSuggestions] Starting agent stream | session_id={session.id}")
-        async with agent.run_stream(
+        agent_start = perf_counter()
+        result = await run_in_threadpool(
+            _run_agent_sync,
+            session.llm_model,
             INITIAL_QUESTIONS_PROMPT,
-            deps=deps,
-            message_history=[],  # Empty history for initial message
-        ) as result:
-            # Stream text chunks
-            async for text in result.stream_text(debounce_by=0.01):
-                new_text = text[len(collected_text) :]
-                if new_text:
-                    chunk_count += 1
-                    yield new_text
-                    collected_text = text
-                    if chunk_count % 50 == 0:
-                        logger.debug(
-                            f"[InitialSuggestions] Progress | session_id={session.id} "
-                            f"chunks={chunk_count} total_len={len(collected_text)}"
-                        )
-
-        logger.info(
-            f"[InitialSuggestions] Stream completed | session_id={session.id} "
-            f"total_chunks={chunk_count} final_len={len(collected_text)}"
+            deps,
+            [],
         )
-
-        # After completion, save new messages
+        agent_ms = (perf_counter() - agent_start) * 1000
         new_messages = result.new_messages()
+        save_start = perf_counter()
         save_messages(db, session.id, new_messages)
-        logger.debug(f"[InitialSuggestions] Saved | sid={session.id} msgs={len(new_messages)}")
+        save_ms = (perf_counter() - save_start) * 1000
 
-        # Update session timestamps
         session.last_message_at = datetime.utcnow()
         session.updated_at = datetime.utcnow()
         db.commit()
-        logger.info(f"[InitialSuggestions] Completed | session_id={session.id}")
 
-    except Exception as e:
-        logger.error(f"[InitialSuggestions] Error | session_id={session.id} error={e}")
+        total_ms = (perf_counter() - total_start) * 1000
+        tool_calls = getattr(result, "tool_calls", []) or []
+        tool_names = [
+            getattr(tc, "name", None)
+            or getattr(tc, "function_name", None)
+            or getattr(tc, "tool_name", None)
+            for tc in tool_calls
+        ]
+        logger.info(
+            "[InitialSuggestions] completed | session_id=%s total_ms=%.1f agent_ms=%.1f save_ms=%.1f tool_calls=%s",
+            session.id,
+            total_ms,
+            agent_ms,
+            save_ms,
+            tool_names,
+        )
+
+        return ChatRunResult(
+            output_text=result.output,
+            new_messages=new_messages,
+            all_messages=result.all_messages,
+            tool_calls=getattr(result, "tool_calls", []),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[InitialSuggestions] Error | session_id=%s error=%s", session.id, exc)
         db.rollback()
         raise
