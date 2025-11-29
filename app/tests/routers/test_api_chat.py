@@ -259,8 +259,8 @@ def test_different_llm_providers(
     """Test creating sessions with different LLM providers."""
     providers = [
         ("openai", "openai:gpt-5.1"),
-        ("anthropic", "anthropic:claude-3-5-sonnet-latest"),
-        ("google", "google-gla:gemini-2.5-flash"),
+        ("anthropic", "anthropic:claude-sonnet-4-5-20250929"),
+        ("google", "google-gla:gemini-3-pro-preview"),
     ]
 
     for provider, expected_model in providers:

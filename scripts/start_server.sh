@@ -2,6 +2,17 @@
 # Startup script that runs Alembic migrations before starting the FastAPI server.
 # This ensures the database schema is up-to-date on every deployment.
 
+# Parse arguments
+DEBUG_MODE=false
+for arg in "$@"; do
+    case $arg in
+        --debug)
+            DEBUG_MODE=true
+            shift
+            ;;
+    esac
+done
+
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
@@ -9,6 +20,12 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 # Change to project root
 cd "$PROJECT_ROOT"
 echo "Working directory: $(pwd)"
+
+# Set debug log level if requested
+if [ "$DEBUG_MODE" = true ]; then
+    export LOG_LEVEL=DEBUG
+    echo "🐛 Debug mode enabled (LOG_LEVEL=DEBUG)"
+fi
 
 # Check if .env file exists
 if [ ! -f ".env" ]; then
@@ -103,6 +120,11 @@ SERVER_ARGS=(python -m uvicorn app.main:app --host 0.0.0.0 --port 8000)
 if [ "${ENVIRONMENT:-development}" = "development" ]; then
     SERVER_ARGS+=(--reload)
     echo "Running in development mode with auto-reload enabled"
+fi
+
+# Add debug logging to uvicorn if debug mode
+if [ "$DEBUG_MODE" = true ]; then
+    SERVER_ARGS+=(--log-level debug)
 fi
 
 # Replace shell with uvicorn so Supervisor can manage the process tree directly

@@ -4,8 +4,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+import asyncio
 
-from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from pydantic_ai.models import Model
@@ -33,45 +33,66 @@ class ChatModelProvider(str, Enum):
     GOOGLE = "google"
 
 
-# Default model specifications per provider
-PROVIDER_DEFAULTS: dict[ChatModelProvider, str] = {
-    ChatModelProvider.OPENAI: "openai:gpt-5.1",
-    ChatModelProvider.ANTHROPIC: "claude-sonnet-4-5-20250929",
-    ChatModelProvider.GOOGLE: "google-gla:gemini-3-pro-preview",
+# Provider prefixes and default model specifications (keyed by canonical provider name)
+PROVIDER_PREFIXES: dict[str, str] = {
+    ChatModelProvider.OPENAI.value: "openai",
+    ChatModelProvider.ANTHROPIC.value: "anthropic",
+    ChatModelProvider.GOOGLE.value: "google-gla",
 }
 
-DEFAULT_MODEL = "openai:gpt-5.1"
+PROVIDER_DEFAULTS: dict[str, str] = {
+    ChatModelProvider.OPENAI.value: "openai:gpt-5.1",
+    ChatModelProvider.ANTHROPIC.value: "anthropic:claude-sonnet-4-5-20250929",
+    ChatModelProvider.GOOGLE.value: "google-gla:gemini-3-pro-preview",
+}
+
+DEFAULT_PROVIDER = ChatModelProvider.OPENAI.value
+DEFAULT_MODEL = PROVIDER_DEFAULTS[DEFAULT_PROVIDER]
+PREFIX_TO_PROVIDER: dict[str, str] = {prefix: provider for provider, prefix in PROVIDER_PREFIXES.items()}
 
 
 def resolve_model(
-    provider: ChatModelProvider | None,
+    provider: ChatModelProvider | str | None,
     model_hint: str | None,
 ) -> tuple[str, str]:
     """Resolve provider and model hint to a pydantic-ai model string.
 
     Args:
-        provider: LLM provider enum or None for default.
+        provider: LLM provider enum/string or None for default.
         model_hint: Optional specific model name or full spec.
 
     Returns:
-        Tuple of (provider_name, full_model_spec).
+        Tuple of (canonical_provider_name, full_model_spec).
     """
+    def _normalize_provider_name(provider_value: ChatModelProvider | str | None) -> str:
+        """Convert provider input (enum/str) to canonical provider name."""
+        if provider_value is None:
+            return DEFAULT_PROVIDER
+
+        raw = provider_value.value if isinstance(provider_value, Enum) else str(provider_value)
+        return PREFIX_TO_PROVIDER.get(raw, raw)
+
+    # Normalize provider to canonical string (openai/anthropic/google)
+    provider_name = _normalize_provider_name(provider)
+
     # If model_hint looks like a full spec (contains colon), use it directly
     if model_hint and ":" in model_hint:
-        # Extract provider from the spec
-        provider_name = model_hint.split(":")[0]
-        return provider_name, model_hint
+        provider_prefix = model_hint.split(":", 1)[0]
+        hinted_provider = PREFIX_TO_PROVIDER.get(provider_prefix, provider_prefix)
+        canonical_provider = (
+            hinted_provider if hinted_provider in PROVIDER_DEFAULTS else provider_name
+        )
+        return canonical_provider, model_hint
 
     # Use provider default or global default
-    if provider is None:
-        provider = ChatModelProvider.OPENAI
+    model_prefix = PROVIDER_PREFIXES.get(provider_name, provider_name)
 
     if model_hint:
-        # Combine provider with model hint
-        return provider.value, f"{provider.value}:{model_hint}"
-    else:
-        # Use provider's default model
-        return provider.value, PROVIDER_DEFAULTS.get(provider, DEFAULT_MODEL)
+        # Combine provider prefix with model hint
+        return provider_name, f"{model_prefix}:{model_hint}"
+
+    # Use provider's default model
+    return provider_name, PROVIDER_DEFAULTS.get(provider_name, DEFAULT_MODEL)
 
 
 @dataclass
@@ -81,14 +102,6 @@ class ChatDeps:
     session: ChatSession
     content: Content | None
     article_context: str | None  # Pre-built context string from article
-
-
-class ExaSearchResultModel(BaseModel):
-    """Exa search result for agent tool return."""
-
-    title: str
-    url: str
-    snippet: str | None = None
 
 
 # Agent cache - one per model spec
@@ -107,9 +120,14 @@ def _build_model(model_spec: str) -> str | Model:
     """
     settings = get_settings()
 
+    provider_prefix = None
+    model_name = model_spec
+    if ":" in model_spec:
+        provider_prefix, model_name = model_spec.split(":", 1)
+
     # Handle Google models - they need explicit API key from settings
-    if model_spec.startswith("google-gla:"):
-        model_name = model_spec.split(":", 1)[1]
+    if provider_prefix in {"google-gla", "google"} or model_spec.startswith("google-gla:"):
+        model_name = model_name if provider_prefix else model_spec.split(":", 1)[1]
         if not settings.google_api_key:
             raise ValueError(
                 "GOOGLE_API_KEY not configured in settings. "
@@ -117,19 +135,20 @@ def _build_model(model_spec: str) -> str | Model:
             )
         return GoogleModel(model_name, provider=GoogleProvider(api_key=settings.google_api_key))
 
-    # Handle Anthropic models (claude-* format)
-    if model_spec.startswith("claude-"):
+    # Handle Anthropic models (prefixed or claude-* format)
+    if provider_prefix == "anthropic" or model_spec.startswith("claude-"):
         if not settings.anthropic_api_key:
             raise ValueError(
                 "ANTHROPIC_API_KEY not configured in settings. "
                 "Set it in .env or environment variables."
             )
         provider = AnthropicProvider(api_key=settings.anthropic_api_key)
-        return AnthropicModel(model_spec, provider=provider)
+        model_to_use = model_name if provider_prefix == "anthropic" else model_spec
+        return AnthropicModel(model_to_use, provider=provider)
 
     # Handle OpenAI models (openai:* format)
-    if model_spec.startswith("openai:"):
-        model_name = model_spec.split(":", 1)[1]
+    if provider_prefix == "openai" or model_spec.startswith("openai:"):
+        model_name = model_name if provider_prefix else model_spec.split(":", 1)[1]
         if not settings.openai_api_key:
             raise ValueError(
                 "OPENAI_API_KEY not configured in settings. "
@@ -157,15 +176,20 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
         "You are a deep-dive assistant helping users explore articles, news, and topics. "
         "Be concise but thorough. Help users understand, critique, and apply what they read."
         "\n\n"
-        "**IMPORTANT - Use Web Search Proactively:**\n"
-        "- Use the exa_web_search tool to research topics, verify claims, and find context\n"
-        "- Search for background info, author credentials, developments, or counterarguments\n"
-        "- Don't hesitate to search multiple times if exploring different angles\n"
-        "- Synthesize search results naturally into your responses"
+        "**CRITICAL - How to Use Web Search:**\n"
+        "- Use exa_web_search to research topics, verify claims, and find context\n"
+        "- AFTER searching, you MUST synthesize the results into your response:\n"
+        "  1. Summarize key findings from the search results\n"
+        "  2. Quote or paraphrase specific insights from the sources\n"
+        "  3. Include clickable markdown links: [Source Title](url)\n"
+        "  4. Compare/contrast what different sources say\n"
+        "- If search returns relevant content, NEVER give a generic response - use the content!\n"
+        "- Search multiple times if exploring different angles"
         "\n\n"
         "**Response Format:**\n"
-        "- Use markdown formatting: **bold** for emphasis, bullet points for lists\n"
-        "- Cite sources with titles or URLs when referencing external information\n"
+        "- Use markdown: **bold** for emphasis, bullet points for lists\n"
+        "- Always cite sources with markdown links when referencing search results\n"
+        "- Structure responses: brief intro → key findings → sources section\n"
         "- Keep responses focused and scannable"
     )
 
@@ -203,38 +227,54 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     async def exa_web_search(
         ctx: RunContext[ChatDeps],
         query: str,
-        num_results: int = 5,
-    ) -> list[ExaSearchResultModel]:
-        """Search the web using Exa for additional context.
+        num_results: int = 8,
+        category: str | None = None,
+    ) -> str:
+        """Search the web using Exa for additional context and research.
 
-        Use this tool when you need more information beyond what's in the article,
-        or when the user asks about related topics, recent developments, or wants
-        to verify claims.
+        Use this tool proactively when you need more information beyond what's
+        in the article, or when the user asks about related topics, recent
+        developments, or wants to verify claims.
 
         Args:
-            query: Search query string describing what you're looking for.
-            num_results: Number of results to return (1-10).
+            query: Natural language search query. Be specific and descriptive.
+                   Good: "MIT study AI productivity enterprise workers 2024"
+                   Bad: "AI productivity"
+            num_results: Number of results to return (1-10). Default 8.
+            category: Optional filter to focus results. Options:
+                      - "news" - Recent news articles
+                      - "research paper" - Academic papers
+                      - "company" - Company websites and info
+                      - "pdf" - PDF documents
+                      - "github" - GitHub repos and docs
+                      - None - All content types (default)
 
         Returns:
-            List of search results with title, URL, and snippet.
+            Formatted search results with content to synthesize into your response.
+            You MUST use this content - summarize findings, quote key insights,
+            and include source links in your response.
         """
         session_id = ctx.deps.session.id
         logger.info(
             f"[Tool:exa_web_search] Called | session_id={session_id} "
-            f"query='{query[:100]}' num_results={num_results}"
+            f"query='{query[:100]}' num_results={num_results} category={category}"
         )
 
         # Check if Exa is available
         if get_exa_client() is None:
             logger.warning(f"[Tool:exa_web_search] Exa unavailable | sid={session_id}")
-            return []
+            return "Web search unavailable. Please answer based on your knowledge."
 
         # Clamp num_results
         num_results = max(1, min(10, num_results))
 
-        # Execute search
+        # Execute search with enhanced options
         try:
-            results = exa_search(query, num_results=num_results)
+            results = exa_search(
+                query,
+                num_results=num_results,
+                category=category,
+            )
             logger.info(
                 f"[Tool:exa_web_search] Success | session_id={session_id} "
                 f"results_count={len(results)}"
@@ -246,16 +286,31 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
                 )
         except Exception as e:
             logger.error(f"[Tool:exa_web_search] Error | session_id={session_id} error={e}")
-            return []
+            return "Search failed. Please answer based on your knowledge."
 
-        return [
-            ExaSearchResultModel(
-                title=r.title,
-                url=r.url,
-                snippet=r.snippet,
-            )
-            for r in results
+        if not results:
+            return "No relevant results found. Please answer based on your knowledge."
+
+        # Format results as structured text for the LLM to synthesize
+        output_parts = [
+            f"Found {len(results)} relevant sources. "
+            "Synthesize these into your response with citations:\n"
         ]
+
+        for i, r in enumerate(results, 1):
+            output_parts.append(f"\n---\n**Source {i}: [{r.title}]({r.url})**\n")
+            if r.snippet:
+                # Truncate very long snippets
+                snippet = r.snippet[:1500] if len(r.snippet) > 1500 else r.snippet
+                output_parts.append(f"{snippet}\n")
+
+        output_parts.append(
+            "\n---\n"
+            "INSTRUCTION: Use the above sources to provide a comprehensive response. "
+            "Include specific facts, quotes, and [linked citations](url) from the sources."
+        )
+
+        return "".join(output_parts)
 
     _agents[model_spec] = agent
     logger.info(f"Created chat agent for model: {model_spec}")
@@ -387,9 +442,14 @@ async def run_chat_stream(
     Note:
         This function updates session.last_message_at and persists new messages.
     """
+    # Log user prompt at INFO with safe truncation to avoid needing DEBUG
+    trimmed_prompt = user_prompt.replace("\n", " ")[:500]
+    if len(user_prompt) > 500:
+        trimmed_prompt = f"{trimmed_prompt}... [truncated]"
     logger.info(
         f"[Stream] run_chat_stream started | session_id={session.id} "
-        f"model={session.llm_model} prompt_len={len(user_prompt)}"
+        f"model={session.llm_model} prompt_len={len(user_prompt)} "
+        f"user_prompt='{trimmed_prompt}'"
     )
 
     # Load associated content if any
@@ -457,6 +517,13 @@ async def run_chat_stream(
         db.commit()
         logger.info(f"[Stream] Session updated | session_id={session.id}")
 
+    except asyncio.CancelledError:
+        logger.warning(
+            f"[Stream] Cancelled | session_id={session.id} "
+            f"collected_len={len(collected_text)} chunks={chunk_count}"
+        )
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(f"Chat stream error for session {session.id}: {e}")
         db.rollback()
@@ -478,6 +545,15 @@ async def run_chat_sync(
     Returns:
         Complete assistant response.
     """
+    trimmed_prompt = user_prompt.replace("\n", " ")[:500]
+    if len(user_prompt) > 500:
+        trimmed_prompt = f"{trimmed_prompt}... [truncated]"
+    logger.info(
+        f"[Sync] run_chat_sync started | session_id={session.id} "
+        f"model={session.llm_model} prompt_len={len(user_prompt)} "
+        f"user_prompt='{trimmed_prompt}'"
+    )
+
     # Load associated content if any
     content: Content | None = None
     if session.content_id:
