@@ -3,6 +3,7 @@
 import json
 from datetime import datetime
 from typing import Annotated
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
@@ -353,6 +354,12 @@ async def send_message(
                 )
                 yield json.dumps(partial_msg.model_dump(mode="json")) + "\n"
 
+        except asyncio.CancelledError:
+            logger.warning(
+                f"[Stream] Client cancelled | session_id={session_id} "
+                f"accumulated_len={len(accumulated_text)}"
+            )
+            raise
         except Exception as e:
             logger.error(f"Chat stream error: {e}")
             # Yield error as final message

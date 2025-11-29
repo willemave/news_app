@@ -14,11 +14,21 @@ struct SelectableText: UIViewRepresentable {
     let text: String
     let textColor: UIColor
     let font: UIFont
+    let maxWidth: CGFloat
+    @Binding var calculatedHeight: CGFloat
 
-    init(_ text: String, textColor: UIColor = .label, font: UIFont = .preferredFont(forTextStyle: .callout)) {
+    init(
+        _ text: String,
+        textColor: UIColor = .label,
+        font: UIFont = .preferredFont(forTextStyle: .callout),
+        maxWidth: CGFloat = UIScreen.main.bounds.width,
+        calculatedHeight: Binding<CGFloat> = .constant(.zero)
+    ) {
         self.text = text
         self.textColor = textColor
         self.font = font
+        self.maxWidth = maxWidth
+        self._calculatedHeight = calculatedHeight
     }
 
     func makeUIView(context: Context) -> UITextView {
@@ -30,6 +40,7 @@ struct SelectableText: UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.dataDetectorTypes = [.link]
         return textView
     }
 
@@ -37,12 +48,31 @@ struct SelectableText: UIViewRepresentable {
         uiView.text = text
         uiView.textColor = textColor
         uiView.font = font
+        let fittingSize = uiView.sizeThatFits(CGSize(width: maxWidth, height: .greatestFiniteMagnitude))
+        uiView.frame.size = fittingSize
+        DispatchQueue.main.async {
+            calculatedHeight = fittingSize.height
+        }
     }
 }
 
 struct SelectableAttributedText: UIViewRepresentable {
     let attributedText: NSAttributedString
     let textColor: UIColor
+    let maxWidth: CGFloat
+    @Binding var calculatedHeight: CGFloat
+
+    init(
+        attributedText: NSAttributedString,
+        textColor: UIColor,
+        maxWidth: CGFloat = UIScreen.main.bounds.width,
+        calculatedHeight: Binding<CGFloat> = .constant(.zero)
+    ) {
+        self.attributedText = attributedText
+        self.textColor = textColor
+        self.maxWidth = maxWidth
+        self._calculatedHeight = calculatedHeight
+    }
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
@@ -53,6 +83,7 @@ struct SelectableAttributedText: UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.dataDetectorTypes = [.link]
         return textView
     }
 
@@ -61,6 +92,11 @@ struct SelectableAttributedText: UIViewRepresentable {
         let mutableAttr = NSMutableAttributedString(attributedString: attributedText)
         mutableAttr.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: mutableAttr.length))
         uiView.attributedText = mutableAttr
+        let fittingSize = uiView.sizeThatFits(CGSize(width: maxWidth, height: .greatestFiniteMagnitude))
+        uiView.frame.size = fittingSize
+        DispatchQueue.main.async {
+            calculatedHeight = fittingSize.height
+        }
     }
 }
 
@@ -213,6 +249,7 @@ struct ChatSessionView: View {
                 }
                 .padding()
             }
+            .textSelection(.enabled)
             .onChange(of: viewModel.allMessages.count) { _, _ in
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo("bottom", anchor: .bottom)
@@ -245,6 +282,23 @@ struct ChatSessionView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(20)
                     .focused($isInputFocused)
+
+                Menu {
+                    Button {
+                        Task { await viewModel.sendCounterArgumentsPrompt() }
+                    } label: {
+                        Label("Find counterbalancing arguments online", systemImage: "globe")
+                    }
+                } label: {
+                    Image(systemName: "magnifyingglass.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.blue)
+                        .frame(width: 32, height: 32)
+                        .background(Color(.systemGray6))
+                        .clipShape(Circle())
+                }
+                .disabled(viewModel.isSending || viewModel.isRecording || viewModel.isTranscribing)
+                .accessibilityLabel("Chat actions")
 
                 // Microphone button
                 if viewModel.voiceDictationAvailable {
@@ -308,6 +362,7 @@ struct ChatSessionView: View {
 
 struct MessageBubble: View {
     let message: ChatMessage
+    @State private var calculatedHeight: CGFloat = .zero
 
     var body: some View {
         HStack {
@@ -317,6 +372,7 @@ struct MessageBubble: View {
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
                 messageContent
+                    .frame(height: max(calculatedHeight, 0))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(message.isUser ? Color.blue : Color(.systemGray5))
@@ -344,18 +400,52 @@ struct MessageBubble: View {
         .preferredFont(forTextStyle: .callout)
     }
 
-    @ViewBuilder
     private var messageContent: some View {
-        if message.isUser {
-            // User messages: plain text (no markdown needed)
-            SelectableText(message.content, textColor: textColor, font: textFont)
-        } else {
-            // Assistant messages: render with markdown
-            if let attributedString = formattedMarkdown {
-                SelectableAttributedText(attributedText: attributedString, textColor: textColor)
-            } else {
-                SelectableText(message.content, textColor: textColor, font: textFont)
+        GeometryReader { geo in
+            let width = geo.size.width
+            ZStack(alignment: message.isUser ? .trailing : .leading) {
+                sizingText
+                selectableView(maxWidth: width)
             }
+        }
+        .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+    }
+
+    @ViewBuilder
+    private var sizingText: some View {
+        // Invisible Text used only for SwiftUI layout to compute height/width
+        let displayText: String = {
+            if let attr = formattedMarkdown {
+                return attr.string
+            }
+            return message.content
+        }()
+
+        Text(displayText)
+            .font(.callout)
+            .foregroundColor(.clear)
+            .padding(.vertical, 2)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func selectableView(maxWidth: CGFloat) -> some View {
+        if let attr = formattedMarkdown {
+            SelectableAttributedText(
+                attributedText: attr,
+                textColor: textColor,
+                maxWidth: maxWidth,
+                calculatedHeight: $calculatedHeight
+            )
+        } else {
+            SelectableText(
+                message.content,
+                textColor: textColor,
+                font: textFont,
+                maxWidth: maxWidth,
+                calculatedHeight: $calculatedHeight
+            )
         }
     }
 

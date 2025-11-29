@@ -124,10 +124,7 @@ class APIClient {
     func requestVoid(_ endpoint: String,
                      method: String = "POST",
                      body: Data? = nil) async throws {
-        logger.info("[APIClient] requestVoid started | method=\(method, privacy: .public) endpoint=\(endpoint, privacy: .public)")
-
         guard let url = URL(string: AppSettings.shared.baseURL + endpoint) else {
-            logger.error("[APIClient] requestVoid invalid URL | endpoint=\(endpoint, privacy: .public)")
             throw APIError.invalidURL
         }
 
@@ -138,9 +135,6 @@ class APIClient {
         // Ensure we send a token or attempt refresh before issuing the request
         if let accessToken = try await fetchAccessTokenOrRefresh() {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-            logger.debug("[APIClient] requestVoid added auth token | endpoint=\(endpoint, privacy: .public)")
-        } else {
-            logger.warning("[APIClient] requestVoid no auth token | endpoint=\(endpoint, privacy: .public)")
         }
 
         if let body = body {
@@ -148,50 +142,38 @@ class APIClient {
         }
 
         do {
-            logger.debug("[APIClient] requestVoid sending request | url=\(url.absoluteString, privacy: .public)")
             let (_, response) = try await session.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                logger.error("[APIClient] requestVoid unknown response type | endpoint=\(endpoint, privacy: .public)")
                 throw APIError.unknown
             }
 
-            logger.info("[APIClient] requestVoid response | endpoint=\(endpoint, privacy: .public) statusCode=\(httpResponse.statusCode)")
-
             // Handle 401/403 (missing or expired token) - try refresh once
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                logger.warning("[APIClient] requestVoid unauthorized, attempting refresh | endpoint=\(endpoint, privacy: .public)")
                 do {
                     _ = try await AuthenticationService.shared.refreshAccessToken()
-                    // Retry request with new token
-                    logger.info("[APIClient] requestVoid retrying after token refresh | endpoint=\(endpoint, privacy: .public)")
                     return try await self.requestVoid(endpoint, method: method, body: body)
                 } catch let authError as AuthError {
                     switch authError {
                     case .refreshTokenExpired, .noRefreshToken:
-                        logger.error("[APIClient] requestVoid refresh failed - auth required | endpoint=\(endpoint, privacy: .public)")
                         NotificationCenter.default.post(name: .authenticationRequired, object: nil)
                         throw APIError.unauthorized
                     default:
-                        logger.error("[APIClient] requestVoid refresh failed | endpoint=\(endpoint, privacy: .public) error=\(authError.localizedDescription)")
                         throw APIError.networkError(authError)
                     }
                 } catch {
-                    logger.error("[APIClient] requestVoid refresh error | endpoint=\(endpoint, privacy: .public) error=\(error.localizedDescription)")
                     throw APIError.networkError(error)
                 }
             }
 
             guard (200...299).contains(httpResponse.statusCode) else {
-                logger.error("[APIClient] requestVoid HTTP error | endpoint=\(endpoint, privacy: .public) statusCode=\(httpResponse.statusCode)")
+                logger.error("[APIClient] HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)")
                 throw APIError.httpError(statusCode: httpResponse.statusCode)
             }
-
-            logger.info("[APIClient] requestVoid success | endpoint=\(endpoint, privacy: .public)")
         } catch let error as APIError {
             throw error
         } catch {
-            logger.error("[APIClient] requestVoid network error | endpoint=\(endpoint, privacy: .public) error=\(error.localizedDescription)")
+            logger.error("[APIClient] Network error | endpoint=\(endpoint, privacy: .public) error=\(error.localizedDescription)")
             throw APIError.networkError(error)
         }
     }
@@ -275,12 +257,9 @@ class APIClient {
     ) -> AsyncThrowingStream<T, Error> {
         AsyncThrowingStream { continuation in
             Task {
-                let streamId = UUID().uuidString.prefix(8)
-                logger.info("[Stream:\(streamId)] Starting NDJSON stream | endpoint=\(endpoint, privacy: .public)")
-
                 do {
                     guard let url = URL(string: AppSettings.shared.baseURL + endpoint) else {
-                        logger.error("[Stream:\(streamId)] Invalid URL | endpoint=\(endpoint, privacy: .public)")
+                        logger.error("[Stream] Invalid URL | endpoint=\(endpoint, privacy: .public)")
                         continuation.finish(throwing: APIError.invalidURL)
                         return
                     }
@@ -292,77 +271,47 @@ class APIClient {
 
                     if let accessToken = try await fetchAccessTokenOrRefresh() {
                         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-                        logger.debug("[Stream:\(streamId)] Auth token added")
-                    } else {
-                        logger.warning("[Stream:\(streamId)] No auth token available")
                     }
 
                     if let body = body {
                         request.httpBody = body
-                        logger.debug("[Stream:\(streamId)] Request body size=\(body.count) bytes")
                     }
 
-                    logger.info("[Stream:\(streamId)] Initiating bytes stream request...")
                     let (bytes, response) = try await session.bytes(for: request)
-                    logger.info("[Stream:\(streamId)] Bytes stream established")
 
                     guard let httpResponse = response as? HTTPURLResponse else {
-                        logger.error("[Stream:\(streamId)] Unknown response type")
                         continuation.finish(throwing: APIError.unknown)
                         return
                     }
 
-                    logger.info("[Stream:\(streamId)] HTTP status=\(httpResponse.statusCode)")
-
                     guard (200...299).contains(httpResponse.statusCode) else {
                         if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                            logger.error("[Stream:\(streamId)] Unauthorized")
                             continuation.finish(throwing: APIError.unauthorized)
                         } else {
-                            logger.error("[Stream:\(streamId)] HTTP error status=\(httpResponse.statusCode)")
+                            logger.error("[Stream] HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)")
                             continuation.finish(throwing: APIError.httpError(statusCode: httpResponse.statusCode))
                         }
                         return
                     }
 
-                    var lineCount = 0
-                    var totalBytes = 0
-                    logger.info("[Stream:\(streamId)] Starting to read lines...")
-
                     for try await line in bytes.lines {
-                        guard !line.isEmpty else {
-                            logger.debug("[Stream:\(streamId)] Skipping empty line")
-                            continue
-                        }
+                        guard !line.isEmpty else { continue }
 
-                        lineCount += 1
-                        totalBytes += line.utf8.count
-                        logger.debug("[Stream:\(streamId)] Line #\(lineCount) received, size=\(line.utf8.count) bytes")
-
-                        guard let lineData = line.data(using: .utf8) else {
-                            logger.warning("[Stream:\(streamId)] Failed to convert line #\(lineCount) to data")
-                            continue
-                        }
+                        guard let lineData = line.data(using: .utf8) else { continue }
 
                         do {
                             let decoded = try self.decoder.decode(T.self, from: lineData)
                             continuation.yield(decoded)
-                            logger.debug("[Stream:\(streamId)] Line #\(lineCount) decoded and yielded")
                         } catch {
-                            logger.warning("[Stream:\(streamId)] Decode error line #\(lineCount): \(error.localizedDescription, privacy: .public)")
-                            // Log the problematic line content for debugging
-                            let preview = String(line.prefix(200))
-                            logger.debug("[Stream:\(streamId)] Line content preview: \(preview, privacy: .public)")
+                            logger.debug("[Stream] Decode error: \(error.localizedDescription, privacy: .public)")
                         }
                     }
 
-                    logger.info("[Stream:\(streamId)] Stream completed | lines=\(lineCount) totalBytes=\(totalBytes)")
                     continuation.finish()
                 } catch is CancellationError {
-                    logger.info("[Stream:\(streamId)] Stream cancelled")
                     continuation.finish()
                 } catch {
-                    logger.error("[Stream:\(streamId)] Stream error: \(error.localizedDescription, privacy: .public)")
+                    logger.error("[Stream] Error | endpoint=\(endpoint, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                     continuation.finish(throwing: error)
                 }
             }

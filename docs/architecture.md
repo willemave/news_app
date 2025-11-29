@@ -2729,8 +2729,8 @@ async def send_message(
 ```python
 DEFAULT_MODELS = {
     "openai": "openai:gpt-5.1",
-    "anthropic": "anthropic:claude-3-5-sonnet-latest",
-    "google": "google-gla:gemini-2.5-flash",
+    "anthropic": "anthropic:claude-sonnet-4-5-20250929",
+    "google": "google-gla:gemini-3-pro-preview",
 }
 
 def resolve_model(

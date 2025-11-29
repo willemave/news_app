@@ -44,7 +44,7 @@ class ChatSessionViewModel: ObservableObject {
     }
 
     func loadSession() async {
-        logger.info("[ViewModel] loadSession started | sessionId=\(self.sessionId)")
+        logger.debug("[ViewModel] loadSession | sessionId=\(self.sessionId)")
         isLoading = true
         errorMessage = nil
 
@@ -52,131 +52,115 @@ class ChatSessionViewModel: ObservableObject {
             let detail = try await chatService.getSession(id: sessionId)
             session = detail.session
             messages = detail.messages
-            logger.info("[ViewModel] loadSession loaded | sessionId=\(self.sessionId) messageCount=\(detail.messages.count) hasContentId=\(detail.session.contentId != nil)")
 
             // If this is an article-based session with no messages, load initial suggestions
             if detail.session.contentId != nil && detail.messages.isEmpty {
-                logger.info("[ViewModel] loadSession triggering initial suggestions | sessionId=\(self.sessionId)")
                 await loadInitialSuggestions()
             }
         } catch {
             errorMessage = error.localizedDescription
-            logger.error("[ViewModel] loadSession failed | sessionId=\(self.sessionId) error=\(error.localizedDescription)")
+            logger.error("[ViewModel] loadSession failed | error=\(error.localizedDescription)")
         }
 
         isLoading = false
-        logger.info("[ViewModel] loadSession completed | sessionId=\(self.sessionId)")
     }
 
     /// Load initial follow-up question suggestions for article-based sessions
     private func loadInitialSuggestions() async {
-        logger.info("[ViewModel] loadInitialSuggestions started | sessionId=\(self.sessionId)")
         isSending = true
 
         streamTask = Task {
-            var chunkCount = 0
             do {
-                logger.info("[ViewModel] loadInitialSuggestions starting stream iteration | sessionId=\(self.sessionId)")
                 for try await message in chatService.getInitialSuggestions(sessionId: sessionId) {
-                    if Task.isCancelled {
-                        logger.info("[ViewModel] loadInitialSuggestions cancelled | sessionId=\(self.sessionId) chunks=\(chunkCount)")
-                        break
-                    }
+                    if Task.isCancelled { break }
 
-                    chunkCount += 1
                     if message.role == .assistant {
                         streamingMessage = message
-                        logger.debug("[ViewModel] loadInitialSuggestions chunk #\(chunkCount) | sessionId=\(self.sessionId) contentLen=\(message.content.count)")
                     }
                 }
-
-                logger.info("[ViewModel] loadInitialSuggestions stream ended | sessionId=\(self.sessionId) totalChunks=\(chunkCount)")
 
                 // When stream completes, move streaming message to history
                 if let final = streamingMessage {
                     messages.append(final)
                     streamingMessage = nil
-                    logger.info("[ViewModel] loadInitialSuggestions finalized | sessionId=\(self.sessionId) finalContentLen=\(final.content.count)")
-                } else {
-                    logger.warning("[ViewModel] loadInitialSuggestions no final message | sessionId=\(self.sessionId)")
                 }
             } catch {
                 if !Task.isCancelled {
-                    logger.error("[ViewModel] loadInitialSuggestions error | sessionId=\(self.sessionId) error=\(error.localizedDescription)")
+                    logger.error("[ViewModel] loadInitialSuggestions error | error=\(error.localizedDescription)")
                 }
             }
 
             isSending = false
-            logger.info("[ViewModel] loadInitialSuggestions completed | sessionId=\(self.sessionId)")
         }
     }
 
-    func sendMessage() async {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSending else {
-            logger.debug("[ViewModel] sendMessage skipped | sessionId=\(self.sessionId) isEmpty=\(text.isEmpty) isSending=\(self.isSending)")
-            return
-        }
+    func sendMessage(text overrideText: String? = nil) async {
+        let resolvedText = (overrideText ?? inputText).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !resolvedText.isEmpty, !isSending else { return }
 
-        logger.info("[ViewModel] sendMessage started | sessionId=\(self.sessionId) textLen=\(text.count)")
-        inputText = ""
+        if overrideText == nil {
+            inputText = ""
+        }
         isSending = true
         errorMessage = nil
 
         // Cancel any existing stream
-        if streamTask != nil {
-            logger.info("[ViewModel] sendMessage cancelling existing stream | sessionId=\(self.sessionId)")
-            streamTask?.cancel()
-        }
+        streamTask?.cancel()
 
         streamTask = Task {
-            var chunkCount = 0
-            var userMessageReceived = false
             do {
-                logger.info("[ViewModel] sendMessage starting stream iteration | sessionId=\(self.sessionId)")
-                for try await message in chatService.sendMessage(sessionId: sessionId, message: text) {
-                    if Task.isCancelled {
-                        logger.info("[ViewModel] sendMessage cancelled | sessionId=\(self.sessionId) chunks=\(chunkCount)")
-                        break
-                    }
+                for try await message in chatService.sendMessage(
+                    sessionId: sessionId,
+                    message: resolvedText
+                ) {
+                    if Task.isCancelled { break }
 
-                    chunkCount += 1
                     if message.role == .user {
-                        // Add user message to history
                         messages.append(message)
-                        userMessageReceived = true
-                        logger.debug("[ViewModel] sendMessage user msg received | sessionId=\(self.sessionId)")
                     } else if message.role == .assistant {
-                        // Update streaming message (each chunk replaces the previous)
                         streamingMessage = message
-                        logger.debug("[ViewModel] sendMessage assistant chunk #\(chunkCount) | sessionId=\(self.sessionId) contentLen=\(message.content.count)")
                     }
                 }
-
-                logger.info("[ViewModel] sendMessage stream ended | sessionId=\(self.sessionId) totalChunks=\(chunkCount) userMsgReceived=\(userMessageReceived)")
 
                 // When stream completes, move streaming message to history
                 if let final = streamingMessage {
                     messages.append(final)
                     streamingMessage = nil
-                    logger.info("[ViewModel] sendMessage finalized | sessionId=\(self.sessionId) finalContentLen=\(final.content.count)")
-                } else {
-                    logger.warning("[ViewModel] sendMessage no final assistant message | sessionId=\(self.sessionId)")
                 }
             } catch {
                 if !Task.isCancelled {
                     errorMessage = error.localizedDescription
-                    logger.error("[ViewModel] sendMessage error | sessionId=\(self.sessionId) error=\(error.localizedDescription)")
+                    logger.error("[ViewModel] sendMessage error | error=\(error.localizedDescription)")
                 }
             }
 
             isSending = false
-            logger.info("[ViewModel] sendMessage completed | sessionId=\(self.sessionId) totalMessages=\(self.messages.count)")
         }
     }
 
+    /// Request counterbalancing arguments via web search.
+    func sendCounterArgumentsPrompt() async {
+        let subject = counterArgumentSubject()
+        let prompt = """
+Find counterbalancing arguments online for \(subject). Use the exa_web_search tool to gather opposing viewpoints, cite sources with markdown links, and compare perspectives to the current article/topic.
+"""
+        await sendMessage(text: prompt)
+    }
+
+    private func counterArgumentSubject() -> String {
+        if let topic = session?.topic, !topic.isEmpty {
+            return "\"\(topic)\""
+        }
+        if let articleTitle = session?.articleTitle, !articleTitle.isEmpty {
+            return "the article \"\(articleTitle)\""
+        }
+        if let title = session?.title, !title.isEmpty {
+            return "\"\(title)\""
+        }
+        return "this topic"
+    }
+
     func cancelStreaming() {
-        logger.info("[ViewModel] cancelStreaming | sessionId=\(self.sessionId)")
         streamTask?.cancel()
         streamTask = nil
         streamingMessage = nil
@@ -202,19 +186,11 @@ class ChatSessionViewModel: ObservableObject {
         }
 
         // Key is missing - try a token refresh to get it from the server
-        logger.info("🎤 OpenAI key missing, attempting token refresh...")
-
         do {
             _ = try await AuthenticationService.shared.refreshAccessToken()
-            // Check again after refresh
             voiceDictationAvailable = isVoiceDictationAvailable
-            if voiceDictationAvailable {
-                logger.info("🎤 Token refresh provided OpenAI key - voice dictation now available!")
-            } else {
-                logger.warning("🎤 Token refresh completed but OpenAI key still not available")
-            }
         } catch {
-            logger.warning("🎤 Token refresh failed: \(error.localizedDescription)")
+            logger.debug("Token refresh for voice dictation failed: \(error.localizedDescription)")
             voiceDictationAvailable = false
         }
     }
@@ -225,7 +201,6 @@ class ChatSessionViewModel: ObservableObject {
             try await dictationService.startRecording()
             isRecording = true
         } catch {
-            logger.error("Failed to start recording: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
     }
@@ -245,7 +220,6 @@ class ChatSessionViewModel: ObservableObject {
             inputText = transcription
             await sendMessage()
         } catch {
-            logger.error("Failed to transcribe: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             isTranscribing = false
         }
