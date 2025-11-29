@@ -11,8 +11,10 @@ from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.google import GoogleProvider
+from pydantic_ai.providers.openai import OpenAIProvider
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
@@ -125,7 +127,17 @@ def _build_model(model_spec: str) -> str | Model:
         provider = AnthropicProvider(api_key=settings.anthropic_api_key)
         return AnthropicModel(model_spec, provider=provider)
 
-    # Other providers (OpenAI) auto-detect from env vars
+    # Handle OpenAI models (openai:* format)
+    if model_spec.startswith("openai:"):
+        model_name = model_spec.split(":", 1)[1]
+        if not settings.openai_api_key:
+            raise ValueError(
+                "OPENAI_API_KEY not configured in settings. "
+                "Set it in .env or environment variables."
+            )
+        return OpenAIModel(model_name, provider=OpenAIProvider(api_key=settings.openai_api_key))
+
+    # Fallback - return model_spec string for other providers
     return model_spec
 
 
