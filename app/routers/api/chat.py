@@ -1,12 +1,9 @@
 """Chat session endpoints for deep-dive conversations."""
 
-import asyncio
-import json
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -14,22 +11,16 @@ from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.models.schema import ChatMessage, ChatSession, Content
 from app.models.user import User
-from app.routers.api.models import (
-    ChatMessageResponse,
+from app.routers.api.chat_models import (
+    ChatMessageDto,
     ChatMessageRole,
-    ChatSessionDetailResponse,
-    ChatSessionSummaryResponse,
-    CreateChatSessionRequest,
+    ChatSessionDetailDto,
+    ChatSessionSummaryDto,
     CreateChatSessionResponse,
-    SendChatMessageRequest,
+    SendMessageResponse,
 )
-from app.services.chat_agent import (
-    ChatModelProvider,
-    generate_initial_suggestions,
-    resolve_model,
-    run_chat_stream,
-    run_chat_sync,
-)
+from app.routers.api.models import CreateChatSessionRequest, SendChatMessageRequest
+from app.services.chat_agent import generate_initial_suggestions, resolve_model, run_chat_turn
 from app.services.event_logger import log_event
 
 logger = get_logger(__name__)
@@ -40,9 +31,9 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 def _session_to_summary(
     session: ChatSession,
     article_title: str | None = None,
-) -> ChatSessionSummaryResponse:
+) -> ChatSessionSummaryDto:
     """Convert database ChatSession to API response."""
-    return ChatSessionSummaryResponse(
+    return ChatSessionSummaryDto(
         id=session.id,
         content_id=session.content_id,
         title=session.title,
@@ -54,13 +45,14 @@ def _session_to_summary(
         updated_at=session.updated_at,
         last_message_at=session.last_message_at,
         article_title=article_title,
+        is_archived=session.is_archived,
     )
 
 
 def _extract_messages_for_display(
     db: Session,
     session_id: int,
-) -> list[ChatMessageResponse]:
+) -> list[ChatMessageDto]:
     """Load messages from DB and convert to display format.
 
     Extracts user and assistant text messages from the ModelMessage format
@@ -72,7 +64,7 @@ def _extract_messages_for_display(
         ModelResponse,
     )
 
-    messages: list[ChatMessageResponse] = []
+    messages: list[ChatMessageDto] = []
     msg_counter = 0
 
     # Query chat_messages ordered by created_at
@@ -96,8 +88,9 @@ def _extract_messages_for_display(
                             # UserPromptPart or similar
                             msg_counter += 1
                             messages.append(
-                                ChatMessageResponse(
+                                ChatMessageDto(
                                     id=msg_counter,
+                                    session_id=session_id,
                                     role=ChatMessageRole.USER,
                                     timestamp=db_msg.created_at,
                                     content=part.content,
@@ -110,8 +103,9 @@ def _extract_messages_for_display(
                             # TextPart
                             msg_counter += 1
                             messages.append(
-                                ChatMessageResponse(
+                                ChatMessageDto(
                                     id=msg_counter,
+                                    session_id=session_id,
                                     role=ChatMessageRole.ASSISTANT,
                                     timestamp=db_msg.created_at,
                                     content=part.content,
@@ -126,7 +120,7 @@ def _extract_messages_for_display(
 
 @router.get(
     "/sessions",
-    response_model=list[ChatSessionSummaryResponse],
+    response_model=list[ChatSessionSummaryDto],
     summary="List chat sessions",
     description="List all chat sessions for the current user, ordered by most recent activity.",
 )
@@ -135,7 +129,7 @@ async def list_sessions(
     current_user: Annotated[User, Depends(get_current_user)],
     content_id: Annotated[int | None, Query(description="Filter by content ID")] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Maximum sessions to return")] = 50,
-) -> list[ChatSessionSummaryResponse]:
+) -> list[ChatSessionSummaryDto]:
     """List chat sessions for the current user.
 
     Returns sessions ordered by last_message_at (most recent first),
@@ -252,7 +246,7 @@ async def create_session(
 
 @router.get(
     "/sessions/{session_id}",
-    response_model=ChatSessionDetailResponse,
+    response_model=ChatSessionDetailDto,
     summary="Get chat session details",
     description="Get a chat session with its message history.",
 )
@@ -260,7 +254,7 @@ async def get_session(
     session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> ChatSessionDetailResponse:
+) -> ChatSessionDetailDto:
     """Get chat session details with message history."""
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
@@ -280,40 +274,23 @@ async def get_session(
     # Load messages
     messages = _extract_messages_for_display(db, session_id)
 
-    return ChatSessionDetailResponse(
-        session=_session_to_summary(session, article_title),
-        messages=messages,
-    )
+    session_summary = _session_to_summary(session, article_title)
+    return ChatSessionDetailDto(session=session_summary, messages=messages)
 
 
 @router.post(
     "/sessions/{session_id}/messages",
-    summary="Send message (streaming)",
-    description=(
-        "Send a message in a chat session and receive streaming response. "
-        "Returns newline-delimited JSON (NDJSON) with ChatMessageResponse objects."
-    ),
-    responses={
-        200: {
-            "description": "Streaming response with NDJSON",
-            "content": {"application/x-ndjson": {}},
-        },
-        404: {"description": "Session not found"},
-        403: {"description": "Not authorized"},
-    },
+    response_model=SendMessageResponse,
+    summary="Send message",
+    description="Send a message in a chat session and receive the assistant reply.",
 )
 async def send_message(
     session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
     request: SendChatMessageRequest,
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> StreamingResponse:
-    """Send a message and stream the response.
-
-    Returns newline-delimited JSON (NDJSON) where each line is a
-    ChatMessageResponse object. The first message is the user's input,
-    followed by streaming assistant response chunks.
-    """
+) -> SendMessageResponse:
+    """Send a message and return the assistant response."""
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
     if not session:
@@ -322,88 +299,6 @@ async def send_message(
     if session.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
-    # Get existing message count to ensure unique IDs
-    existing_messages = _extract_messages_for_display(db, session_id)
-    base_msg_id = len(existing_messages)
-
-    async def generate():
-        msg_id = base_msg_id
-        chunk_count = 0
-        logger.info(f"[StreamGen] Starting | session_id={session_id} base_msg_id={base_msg_id}")
-
-        # First, yield the user message
-        msg_id += 1
-        user_msg = ChatMessageResponse(
-            id=msg_id,
-            role=ChatMessageRole.USER,
-            timestamp=datetime.utcnow(),
-            content=request.message,
-        )
-        user_json = json.dumps(user_msg.model_dump(mode="json")) + "\n"
-        logger.info(f"[StreamGen] Yielding user msg | session_id={session_id} len={len(user_json)}")
-        yield user_json
-
-        # Then stream the assistant response
-        msg_id += 1
-        accumulated_text = ""
-        timestamp = datetime.utcnow()
-
-        try:
-            # Google provider has issues with streaming + tools, use sync instead
-            is_google = session.llm_provider == ChatModelProvider.GOOGLE.value
-            if is_google:
-                logger.info(f"[StreamGen] Using sync for Google | session_id={session_id}")
-                accumulated_text = await run_chat_sync(db, session, request.message)
-                chunk_count = 1
-                # Yield complete response
-                final_msg = ChatMessageResponse(
-                    id=msg_id,
-                    role=ChatMessageRole.ASSISTANT,
-                    timestamp=timestamp,
-                    content=accumulated_text,
-                )
-                yield json.dumps(final_msg.model_dump(mode="json")) + "\n"
-            else:
-                async for chunk in run_chat_stream(db, session, request.message):
-                    accumulated_text += chunk
-                    chunk_count += 1
-                    # Yield partial response
-                    partial_msg = ChatMessageResponse(
-                        id=msg_id,
-                        role=ChatMessageRole.ASSISTANT,
-                        timestamp=timestamp,
-                        content=accumulated_text,
-                    )
-                    yield json.dumps(partial_msg.model_dump(mode="json")) + "\n"
-                    if chunk_count % 20 == 0:
-                        logger.debug(
-                            f"[StreamGen] Progress | session_id={session_id} "
-                            f"chunks={chunk_count} total_len={len(accumulated_text)}"
-                        )
-
-            logger.info(
-                f"[StreamGen] Completed | session_id={session_id} "
-                f"total_chunks={chunk_count} final_len={len(accumulated_text)}"
-            )
-
-        except asyncio.CancelledError:
-            logger.warning(
-                f"[StreamGen] Client cancelled | session_id={session_id} "
-                f"accumulated_len={len(accumulated_text)} chunks={chunk_count}"
-            )
-            raise
-        except Exception as e:
-            logger.error(f"[StreamGen] Error | session_id={session_id} error={e}")
-            # Yield error as final message
-            error_msg = ChatMessageResponse(
-                id=msg_id,
-                role=ChatMessageRole.ASSISTANT,
-                timestamp=datetime.utcnow(),
-                content=f"Error: {str(e)}",
-            )
-            yield json.dumps(error_msg.model_dump(mode="json")) + "\n"
-
-    # Log event
     log_event(
         event_type="chat",
         event_name="message_sent",
@@ -413,45 +308,43 @@ async def send_message(
         model=session.llm_model,
     )
 
-    return StreamingResponse(
-        generate(),
-        media_type="application/x-ndjson",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-        },
+    result = await run_chat_turn(db, session, request.message)
+    messages = _extract_messages_for_display(db, session_id)
+    assistant_message = next(
+        (msg for msg in reversed(messages) if msg.role == ChatMessageRole.ASSISTANT),
+        None,
     )
+
+    if assistant_message is None:
+        raise HTTPException(status_code=500, detail="Assistant response missing")
+
+    log_event(
+        event_type="chat",
+        event_name="message_sent",
+        status="completed",
+        user_id=current_user.id,
+        session_id=session_id,
+        model=session.llm_model,
+    )
+
+    return SendMessageResponse(session_id=session.id, assistant_message=assistant_message)
 
 
 @router.post(
     "/sessions/{session_id}/initial-suggestions",
-    summary="Get initial suggestions (streaming)",
+    response_model=ChatMessageDto,
+    summary="Get initial suggestions",
     description=(
         "Generate initial follow-up question suggestions for an article-based session. "
-        "Returns newline-delimited JSON (NDJSON) with ChatMessageResponse objects. "
         "Only works for sessions with a content_id (article-based sessions)."
     ),
-    responses={
-        200: {
-            "description": "Streaming response with NDJSON",
-            "content": {"application/x-ndjson": {}},
-        },
-        404: {"description": "Session not found"},
-        403: {"description": "Not authorized"},
-        400: {"description": "Session has no associated content"},
-    },
 )
 async def get_initial_suggestions(
     session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> StreamingResponse:
-    """Get initial follow-up question suggestions for an article-based session.
-
-    This endpoint generates AI-powered suggestions for topics the user might
-    want to explore based on the article content. Should be called once after
-    creating a new article-based session.
-    """
+) -> ChatMessageDto:
+    """Get initial follow-up question suggestions for an article-based session."""
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
     if not session:
@@ -466,39 +359,6 @@ async def get_initial_suggestions(
             detail="Initial suggestions only available for article-based sessions",
         )
 
-    # Get existing message count to ensure unique IDs
-    existing_messages = _extract_messages_for_display(db, session_id)
-    base_msg_id = len(existing_messages)
-
-    async def generate():
-        msg_id = base_msg_id + 1
-        accumulated_text = ""
-        timestamp = datetime.utcnow()
-
-        try:
-            async for chunk in generate_initial_suggestions(db, session):
-                accumulated_text += chunk
-                # Yield partial response
-                partial_msg = ChatMessageResponse(
-                    id=msg_id,
-                    role=ChatMessageRole.ASSISTANT,
-                    timestamp=timestamp,
-                    content=accumulated_text,
-                )
-                yield json.dumps(partial_msg.model_dump(mode="json")) + "\n"
-
-        except Exception as e:
-            logger.error(f"Initial suggestions stream error: {e}")
-            # Yield error as final message
-            error_msg = ChatMessageResponse(
-                id=msg_id,
-                role=ChatMessageRole.ASSISTANT,
-                timestamp=datetime.utcnow(),
-                content=f"Error generating suggestions: {str(e)}",
-            )
-            yield json.dumps(error_msg.model_dump(mode="json")) + "\n"
-
-    # Log event
     log_event(
         event_type="chat",
         event_name="initial_suggestions",
@@ -508,11 +368,25 @@ async def get_initial_suggestions(
         model=session.llm_model,
     )
 
-    return StreamingResponse(
-        generate(),
-        media_type="application/x-ndjson",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-        },
+    result = await generate_initial_suggestions(db, session)
+    if result is None:
+        raise HTTPException(status_code=500, detail="Unable to generate suggestions")
+
+    messages = _extract_messages_for_display(db, session_id)
+    assistant_message = next(
+        (msg for msg in reversed(messages) if msg.role == ChatMessageRole.ASSISTANT),
+        None,
     )
+    if assistant_message is None:
+        raise HTTPException(status_code=500, detail="Assistant response missing")
+
+    log_event(
+        event_type="chat",
+        event_name="initial_suggestions",
+        status="completed",
+        user_id=current_user.id,
+        session_id=session_id,
+        model=session.llm_model,
+    )
+
+    return assistant_message

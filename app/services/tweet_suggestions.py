@@ -9,8 +9,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from pydantic_ai import Agent, ModelRetry
-from pydantic_ai.models.google import GoogleModel
-from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.settings import ModelSettings
 from tenacity import RetryCallState, retry, stop_after_attempt, wait_exponential
 
@@ -19,6 +17,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
 from app.services.llm_prompts import get_tweet_generation_prompt
+from app.services.llm_agents import get_basic_agent
 from app.utils.error_logger import GenericErrorLogger
 from app.utils.json_repair import try_repair_truncated_json
 
@@ -323,20 +322,13 @@ class TweetSuggestionService:
         if not google_api_key:
             raise ValueError("Google API key is required for tweet suggestions")
 
-        model_name = self._strip_provider_prefix(TWEET_MODEL)
-        self.model = GoogleModel(model_name, provider=GoogleProvider(api_key=google_api_key))
         self.model_name = TWEET_MODEL
         logger.info("Initialized TweetSuggestionService with model %s", self.model_name)
 
-    @staticmethod
-    def _strip_provider_prefix(model_spec: str) -> str:
-        """Strip provider prefix (e.g., google-gla:) from a model spec."""
-        return model_spec.split(":", 1)[1] if ":" in model_spec else model_spec
-
     def _build_agent(self, system_prompt: str) -> Agent[None, TweetSuggestionsPayload]:
         """Create a configured pydantic-ai agent for tweet suggestions."""
-        return Agent(
-            model=self.model,
+        return get_basic_agent(
+            model_spec=self.model_name,
             output_type=TweetSuggestionsPayload,
             system_prompt=system_prompt,
         )

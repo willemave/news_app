@@ -320,6 +320,13 @@ struct ChatSessionView: View {
                             }
                             .id(message.id)
                         }
+
+                        if viewModel.isSending {
+                            ThinkingBubbleView(
+                                elapsedSeconds: viewModel.thinkingElapsedSeconds
+                            )
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
                     }
 
                     // Anchor for scrolling
@@ -542,6 +549,57 @@ struct MessageBubble: View {
         let mutableAttr = NSMutableAttributedString(attributedString: attributedString)
         mutableAttr.addAttribute(.font, value: textFont, range: NSRange(location: 0, length: mutableAttr.length))
         return mutableAttr
+    }
+}
+
+// MARK: - Thinking Indicator
+
+struct ThinkingBubbleView: View {
+    let elapsedSeconds: Int
+    @State private var isAnimating = false
+
+    private var formattedDuration: String {
+        String(format: "%02d:%02d", elapsedSeconds / 60, elapsedSeconds % 60)
+    }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    ForEach(0..<3) { index in
+                        Circle()
+                            .fill(Color.blue.opacity(0.75 - Double(index) * 0.12))
+                            .frame(width: 10, height: 10)
+                            .offset(y: isAnimating ? -4 : 4)
+                            .animation(
+                                .easeInOut(duration: 0.45)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(index) * 0.12),
+                                value: isAnimating
+                            )
+                    }
+
+                    Text("Thinking...")
+                        .font(.callout)
+                        .foregroundColor(.primary)
+                        .opacity(0.85)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color(.systemGray5))
+                .cornerRadius(18)
+
+                Label(formattedDuration, systemImage: "timer")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 4)
+            }
+
+            Spacer(minLength: 60)
+        }
+        .onAppear {
+            isAnimating = true
+        }
     }
 }
 

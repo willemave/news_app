@@ -19,9 +19,7 @@ class ChatSessionViewModel: ObservableObject {
     @Published var isSending = false
     @Published var errorMessage: String?
     @Published var inputText: String = ""
-
-    // Streaming state
-    @Published var streamingMessage: ChatMessage?
+    @Published var thinkingElapsedSeconds = 0
 
     // Voice dictation state
     @Published var isRecording = false
@@ -30,8 +28,7 @@ class ChatSessionViewModel: ObservableObject {
 
     private let chatService = ChatService.shared
     private let dictationService = VoiceDictationService.shared
-    private var streamTask: Task<Void, Never>?
-
+    private var thinkingTimer: Timer?
     let sessionId: Int
 
     init(sessionId: Int) {
@@ -43,6 +40,10 @@ class ChatSessionViewModel: ObservableObject {
         self.session = session
     }
 
+    deinit {
+        thinkingTimer?.invalidate()
+    }
+
     func loadSession() async {
         logger.debug("[ViewModel] loadSession | sessionId=\(self.sessionId)")
         isLoading = true
@@ -51,7 +52,7 @@ class ChatSessionViewModel: ObservableObject {
         do {
             let detail = try await chatService.getSession(id: sessionId)
             session = detail.session
-            messages = detail.messages
+            messages = detail.messages.filter { !$0.content.isEmpty }
 
             // If this is an article-based session with no messages, load initial suggestions
             if detail.session.contentId != nil && detail.messages.isEmpty {
@@ -68,29 +69,19 @@ class ChatSessionViewModel: ObservableObject {
     /// Load initial follow-up question suggestions for article-based sessions
     private func loadInitialSuggestions() async {
         isSending = true
+        startThinkingTimer()
 
-        streamTask = Task {
-            do {
-                for try await message in chatService.getInitialSuggestions(sessionId: sessionId) {
-                    if Task.isCancelled { break }
-
-                    if message.role == .assistant {
-                        streamingMessage = message
-                    }
-                }
-
-                // When stream completes, move streaming message to history
-                if let final = streamingMessage {
-                    messages.append(final)
-                    streamingMessage = nil
-                }
-            } catch {
-                if !Task.isCancelled {
-                    logger.error("[ViewModel] loadInitialSuggestions error | error=\(error.localizedDescription)")
-                }
+        Task {
+            defer {
+                isSending = false
+                stopThinkingTimer()
             }
-
-            isSending = false
+            do {
+                let assistant = try await chatService.getInitialSuggestions(sessionId: sessionId)
+                messages.append(assistant)
+            } catch {
+                logger.error("[ViewModel] loadInitialSuggestions error | error=\(error.localizedDescription)")
+            }
         }
     }
 
@@ -103,47 +94,31 @@ class ChatSessionViewModel: ObservableObject {
         }
         isSending = true
         errorMessage = nil
+        startThinkingTimer()
 
-        // Cancel any existing stream
-        streamTask?.cancel()
-
-        streamTask = Task {
-            var receivedCount = 0
-            logger.info("[ViewModel] sendMessage stream started | sessionId=\(self.sessionId)")
+        Task {
+            defer {
+                isSending = false
+                stopThinkingTimer()
+            }
+            logger.info("[ViewModel] sendMessage started | sessionId=\(self.sessionId)")
+            let userMessage = ChatMessage(
+                id: (messages.last?.id ?? 0) + 1,
+                role: .user,
+                timestamp: ISO8601DateFormatter().string(from: Date()),
+                content: resolvedText
+            )
+            messages.append(userMessage)
 
             do {
-                for try await message in chatService.sendMessage(
+                let assistant = try await chatService.sendMessage(
                     sessionId: sessionId,
                     message: resolvedText
-                ) {
-                    if Task.isCancelled { break }
-                    receivedCount += 1
-                    logger.debug("[ViewModel] Received message | count=\(receivedCount) role=\(message.role.rawValue) contentLen=\(message.content.count)")
-
-                    if message.role == .user {
-                        messages.append(message)
-                    } else if message.role == .assistant {
-                        streamingMessage = message
-                    }
-                }
-
-                logger.info("[ViewModel] sendMessage stream ended | sessionId=\(self.sessionId) receivedCount=\(receivedCount)")
-
-                // When stream completes, move streaming message to history
-                if let final = streamingMessage {
-                    messages.append(final)
-                    streamingMessage = nil
-                }
-
-                // Check if we received no messages (potential streaming issue)
-                if receivedCount == 0 {
-                    logger.warning("[ViewModel] Stream completed with 0 messages - possible streaming issue")
-                }
+                )
+                messages.append(assistant)
             } catch {
-                if !Task.isCancelled {
-                    errorMessage = error.localizedDescription
-                    logger.error("[ViewModel] sendMessage error | error=\(error.localizedDescription)")
-                }
+                errorMessage = error.localizedDescription
+                logger.error("[ViewModel] sendMessage error | error=\(error.localizedDescription)")
             }
 
             isSending = false
@@ -182,18 +157,38 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     }
 
     func cancelStreaming() {
-        streamTask?.cancel()
-        streamTask = nil
-        streamingMessage = nil
         isSending = false
+        stopThinkingTimer()
     }
 
     /// All messages including any streaming message
     var allMessages: [ChatMessage] {
-        if let streaming = streamingMessage {
-            return messages + [streaming]
-        }
         return messages
+    }
+
+    // MARK: - Thinking Indicator
+
+    private func startThinkingTimer() {
+        thinkingTimer?.invalidate()
+        thinkingElapsedSeconds = 0
+
+        let timer = Timer(
+            timeInterval: 1.0,
+            repeats: true
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.thinkingElapsedSeconds += 1
+            }
+        }
+        thinkingTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopThinkingTimer() {
+        thinkingTimer?.invalidate()
+        thinkingTimer = nil
+        thinkingElapsedSeconds = 0
     }
 
     // MARK: - Voice Dictation
