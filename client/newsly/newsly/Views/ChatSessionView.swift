@@ -16,23 +16,30 @@ struct SelectableText: UIViewRepresentable {
     let font: UIFont
     let maxWidth: CGFloat
     @Binding var calculatedHeight: CGFloat
+    var onDigDeeper: ((String) -> Void)?
 
     init(
         _ text: String,
         textColor: UIColor = .label,
         font: UIFont = .preferredFont(forTextStyle: .callout),
         maxWidth: CGFloat = UIScreen.main.bounds.width,
-        calculatedHeight: Binding<CGFloat> = .constant(.zero)
+        calculatedHeight: Binding<CGFloat> = .constant(.zero),
+        onDigDeeper: ((String) -> Void)? = nil
     ) {
         self.text = text
         self.textColor = textColor
         self.font = font
         self.maxWidth = maxWidth
         self._calculatedHeight = calculatedHeight
+        self.onDigDeeper = onDigDeeper
     }
 
-    func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDigDeeper: onDigDeeper)
+    }
+
+    func makeUIView(context: Context) -> DigDeeperTextView {
+        let textView = DigDeeperTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.isScrollEnabled = false
@@ -41,18 +48,66 @@ struct SelectableText: UIViewRepresentable {
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         textView.dataDetectorTypes = [.link]
+        textView.onDigDeeper = context.coordinator.onDigDeeper
         return textView
     }
 
-    func updateUIView(_ uiView: UITextView, context: Context) {
+    func updateUIView(_ uiView: DigDeeperTextView, context: Context) {
         uiView.text = text
         uiView.textColor = textColor
         uiView.font = font
+        uiView.onDigDeeper = context.coordinator.onDigDeeper
         let fittingSize = uiView.sizeThatFits(CGSize(width: maxWidth, height: .greatestFiniteMagnitude))
         uiView.frame.size = fittingSize
         DispatchQueue.main.async {
             calculatedHeight = fittingSize.height
         }
+    }
+
+    class Coordinator {
+        var onDigDeeper: ((String) -> Void)?
+
+        init(onDigDeeper: ((String) -> Void)?) {
+            self.onDigDeeper = onDigDeeper
+        }
+    }
+}
+
+/// Custom UITextView that adds "Dig Deeper" to the edit menu
+class DigDeeperTextView: UITextView {
+    var onDigDeeper: ((String) -> Void)?
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(digDeeperAction(_:)) {
+            return selectedRange.length > 0
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    override func buildMenu(with builder: any UIMenuBuilder) {
+        super.buildMenu(with: builder)
+
+        let digDeeperAction = UIAction(
+            title: "Dig Deeper",
+            image: UIImage(systemName: "magnifyingglass")
+        ) { [weak self] _ in
+            self?.performDigDeeper()
+        }
+
+        let menu = UIMenu(title: "", options: .displayInline, children: [digDeeperAction])
+        builder.insertChild(menu, atStartOfMenu: .standardEdit)
+    }
+
+    @objc func digDeeperAction(_ sender: Any?) {
+        performDigDeeper()
+    }
+
+    private func performDigDeeper() {
+        guard let selectedTextRange = selectedTextRange,
+              let selectedText = text(in: selectedTextRange),
+              !selectedText.isEmpty else { return }
+
+        onDigDeeper?(selectedText)
     }
 }
 
@@ -61,21 +116,28 @@ struct SelectableAttributedText: UIViewRepresentable {
     let textColor: UIColor
     let maxWidth: CGFloat
     @Binding var calculatedHeight: CGFloat
+    var onDigDeeper: ((String) -> Void)?
 
     init(
         attributedText: NSAttributedString,
         textColor: UIColor,
         maxWidth: CGFloat = UIScreen.main.bounds.width,
-        calculatedHeight: Binding<CGFloat> = .constant(.zero)
+        calculatedHeight: Binding<CGFloat> = .constant(.zero),
+        onDigDeeper: ((String) -> Void)? = nil
     ) {
         self.attributedText = attributedText
         self.textColor = textColor
         self.maxWidth = maxWidth
         self._calculatedHeight = calculatedHeight
+        self.onDigDeeper = onDigDeeper
     }
 
-    func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDigDeeper: onDigDeeper)
+    }
+
+    func makeUIView(context: Context) -> DigDeeperTextView {
+        let textView = DigDeeperTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.isScrollEnabled = false
@@ -84,18 +146,28 @@ struct SelectableAttributedText: UIViewRepresentable {
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         textView.dataDetectorTypes = [.link]
+        textView.onDigDeeper = context.coordinator.onDigDeeper
         return textView
     }
 
-    func updateUIView(_ uiView: UITextView, context: Context) {
+    func updateUIView(_ uiView: DigDeeperTextView, context: Context) {
         // Apply the attributed string with color override
         let mutableAttr = NSMutableAttributedString(attributedString: attributedText)
         mutableAttr.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: mutableAttr.length))
         uiView.attributedText = mutableAttr
+        uiView.onDigDeeper = context.coordinator.onDigDeeper
         let fittingSize = uiView.sizeThatFits(CGSize(width: maxWidth, height: .greatestFiniteMagnitude))
         uiView.frame.size = fittingSize
         DispatchQueue.main.async {
             calculatedHeight = fittingSize.height
+        }
+    }
+
+    class Coordinator {
+        var onDigDeeper: ((String) -> Void)?
+
+        init(onDigDeeper: ((String) -> Void)?) {
+            self.onDigDeeper = onDigDeeper
         }
     }
 }
@@ -237,8 +309,10 @@ struct ChatSessionView: View {
                         .padding(.top, 60)
                     } else {
                         ForEach(viewModel.allMessages) { message in
-                            MessageBubble(message: message)
-                                .id(message.id)
+                            MessageBubble(message: message) { selectedText in
+                                Task { await viewModel.digDeeper(into: selectedText) }
+                            }
+                            .id(message.id)
                         }
                     }
 
@@ -362,6 +436,7 @@ struct ChatSessionView: View {
 
 struct MessageBubble: View {
     let message: ChatMessage
+    var onDigDeeper: ((String) -> Void)?
     @State private var calculatedHeight: CGFloat = .zero
 
     var body: some View {
@@ -436,7 +511,8 @@ struct MessageBubble: View {
                 attributedText: attr,
                 textColor: textColor,
                 maxWidth: maxWidth,
-                calculatedHeight: $calculatedHeight
+                calculatedHeight: $calculatedHeight,
+                onDigDeeper: onDigDeeper
             )
         } else {
             SelectableText(
@@ -444,7 +520,8 @@ struct MessageBubble: View {
                 textColor: textColor,
                 font: textFont,
                 maxWidth: maxWidth,
-                calculatedHeight: $calculatedHeight
+                calculatedHeight: $calculatedHeight,
+                onDigDeeper: onDigDeeper
             )
         }
     }
