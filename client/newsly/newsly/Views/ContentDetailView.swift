@@ -120,16 +120,14 @@ struct ContentDetailView: View {
                             }
                             .buttonStyle(.bordered)
 
-                            // Share button for articles and news
-                            if content.contentTypeEnum == .article || content.contentTypeEnum == .news {
-                                Button(action: {
-                                    showTweetSheet = true
-                                }) {
-                                    Image(systemName: "text.bubble")
-                                        .font(.system(size: 14))
-                                }
-                                .buttonStyle(.bordered)
+                            // Tweet button
+                            Button(action: {
+                                showTweetSheet = true
+                            }) {
+                                Image(systemName: "text.bubble")
+                                    .font(.system(size: 18))
                             }
+                            .buttonStyle(.bordered)
 
                             // Convert to article button for news only
                             if content.contentTypeEnum == .news, let onConvert = onConvert {

@@ -93,7 +93,11 @@
       "Bash(git stash:*)",
       "Bash(pip show:*)",
       "Bash(.venv/bin/ruff check app/services/chat_agent.py)",
-      "Bash(.venv/bin/ruff format app/services/chat_agent.py)"
+      "Bash(.venv/bin/ruff format app/services/chat_agent.py)",
+      "Bash(bd create:*)",
+      "Bash(bd update:*)",
+      "Bash(bd close:*)",
+      "Bash(bd sync:*)"
     ],
     "deny": []
   },

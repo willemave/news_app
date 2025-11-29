@@ -296,11 +296,6 @@ class TweetSuggestionService:
         content_id = content.id or 0
 
         try:
-            # Validate supported content types
-            if content.content_type not in (ContentType.ARTICLE, ContentType.NEWS):
-                logger.warning("Unsupported content type for tweets: %s", content.content_type)
-                return None
-
             # Extract context from content
             context = _extract_content_context(content)
 
