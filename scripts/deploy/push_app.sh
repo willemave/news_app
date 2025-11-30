@@ -296,18 +296,12 @@ if "$RESTART_SUP"; then
   printf -v REMOTE_SUP_CMD 'set -euo pipefail; sudo supervisorctl reread && sudo supervisorctl update'
   ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "bash -lc %q" "$REMOTE_SUP_CMD")"
 
-  echo "→ Restarting server (news_app_server)"
-  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart news_app_server"
+  echo "→ Restarting all supervisor programs"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart all"
 
   echo "→ Waiting for server to start (up to 30 seconds)"
   printf -v WAIT_SERVER_CMD 'for i in {1..30}; do if sudo supervisorctl status news_app_server | grep -q RUNNING; then echo "Server is running"; exit 0; fi; echo "Waiting for server... ($i/30)"; sleep 1; done; echo "Server failed to start" >&2; exit 1'
   ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "bash -lc %q" "$WAIT_SERVER_CMD")"
-
-  echo "→ Restarting workers (news_app_workers)"
-  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart news_app_workers"
-
-  echo "→ Restarting scrapers (news_app_scrapers)"
-  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart news_app_scrapers"
 
   echo "→ Final supervisor status:"
   ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl status"

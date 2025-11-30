@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Tuple
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentQuote, ContentType, NewsSummary, StructuredSummary
 from app.services.llm_agents import get_summarization_agent
+from app.services.llm_models import resolve_model
 from app.services.llm_prompts import generate_summary_prompt
 from app.utils.error_logger import GenericErrorLogger
 
@@ -41,6 +42,107 @@ def _finalize_summary(
         summary.quotes = filtered
 
     return summary
+
+
+def _normalize_content_type(content_type: str | ContentType) -> str:
+    return content_type.value if isinstance(content_type, ContentType) else str(content_type)
+
+
+DEFAULT_SUMMARIZATION_MODELS: Dict[str, str] = {
+    "news": "openai:gpt-5-mini",
+    "news_digest": "openai:gpt-5-mini",
+    "article": "anthropic:claude-haiku-4-5-20251001",
+    "podcast": "anthropic:claude-haiku-4-5-20251001",
+}
+
+FALLBACK_SUMMARIZATION_MODEL = "google-gla:gemini-2.5-flash-lite-preview-06-17"
+
+
+def _model_hint_from_spec(model_spec: str) -> Tuple[str, str]:
+    if ":" in model_spec:
+        provider_prefix, hint = model_spec.split(":", 1)
+        return provider_prefix, hint
+    return "", model_spec
+
+
+@dataclass
+class ContentSummarizer:
+    """Shared summarizer that routes to the right model based on content type."""
+
+    default_models: Dict[str, str] = field(default_factory=lambda: DEFAULT_SUMMARIZATION_MODELS)
+    provider_hint: str | None = None
+    model_hint: str | None = None
+    _model_resolver: Callable[[str | None, str | None], Tuple[str, str]] = resolve_model
+
+    def summarize(
+        self,
+        content: str,
+        content_type: str | ContentType,
+        *,
+        title: str | None = None,
+        max_bullet_points: int = 6,
+        max_quotes: int = 8,
+        content_id: str | int | None = None,
+        provider_override: str | None = None,
+        model_hint: str | None = None,
+    ) -> StructuredSummary | NewsSummary | None:
+        """Summarize arbitrary content with sensible defaults per content type."""
+        normalized_type = _normalize_content_type(content_type)
+        default_model_spec = self.default_models.get(
+            normalized_type, self.default_models.get("article", FALLBACK_SUMMARIZATION_MODEL)
+        )
+        default_provider_hint, default_model_hint = _model_hint_from_spec(default_model_spec)
+
+        provider_to_use = provider_override or self.provider_hint or default_provider_hint
+        model_hint_to_use = model_hint or self.model_hint or default_model_hint
+
+        _, model_spec = self._model_resolver(provider_to_use, model_hint_to_use)
+
+        request = SummarizationRequest(
+            content=content,
+            content_type=normalized_type,
+            model_spec=model_spec,
+            title=title,
+            max_bullet_points=max_bullet_points,
+            max_quotes=max_quotes,
+            content_id=content_id,
+        )
+        return summarize_content(request)
+
+    def summarize_content(
+        self,
+        content: str,
+        max_bullet_points: int = 6,
+        max_quotes: int = 8,
+        content_type: str | ContentType = "article",
+        *,
+        title: str | None = None,
+        content_id: str | int | None = None,
+        provider_override: str | None = None,
+        model_hint: str | None = None,
+    ) -> StructuredSummary | NewsSummary | None:
+        """Compatibility wrapper mirroring legacy service API."""
+        return self.summarize(
+            content=content,
+            content_type=content_type,
+            title=title,
+            max_bullet_points=max_bullet_points,
+            max_quotes=max_quotes,
+            content_id=content_id,
+            provider_override=provider_override,
+            model_hint=model_hint,
+        )
+
+
+_content_summarizer: ContentSummarizer | None = None
+
+
+def get_content_summarizer() -> ContentSummarizer:
+    """Return a shared ContentSummarizer instance."""
+    global _content_summarizer
+    if _content_summarizer is None:
+        _content_summarizer = ContentSummarizer()
+    return _content_summarizer
 
 
 def summarize_content(request: SummarizationRequest) -> StructuredSummary | NewsSummary | None:

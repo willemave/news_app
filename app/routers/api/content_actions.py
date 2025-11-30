@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -195,8 +196,9 @@ async def get_tweet_suggestions(
     # Convert to domain model
     content_data = content_to_domain(content)
 
-    # Generate tweet suggestions
-    result = generate_tweet_suggestions(
+    # Generate tweet suggestions off the event loop to avoid asyncio loop conflicts
+    result = await run_in_threadpool(
+        generate_tweet_suggestions,
         content=content_data,
         message=request.message,
         creativity=request.creativity,

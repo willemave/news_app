@@ -25,7 +25,7 @@ def mock_dependencies():
     with (
         patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
         patch("app.pipeline.worker.get_http_service") as mock_http,
-        patch("app.pipeline.worker.get_openai_summarization_service") as mock_llm,
+        patch("app.pipeline.worker.get_llm_service") as mock_llm,
         patch("app.pipeline.worker.get_queue_service") as mock_queue,
         patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
         patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
@@ -152,7 +152,7 @@ class TestContentWorker:
         mock_strategy.download_content.assert_called_once_with("https://example.com/article")
         mock_strategy.extract_data.assert_called_once()
         worker.llm_service.summarize_content.assert_called_once_with(
-            content="This is test content.", content_type="article"
+            content="This is test content.", content_type="article", content_id=123
         )
         mock_db.commit.assert_called()
         expected_summary = structured_summary.model_dump(mode="json", by_alias=True)

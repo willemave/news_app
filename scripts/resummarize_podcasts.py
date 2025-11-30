@@ -20,7 +20,7 @@ from datetime import datetime  # noqa: E402
 from app.core.db import get_db  # noqa: E402
 from app.core.logging import get_logger, setup_logging  # noqa: E402
 from app.models.schema import Content  # noqa: E402
-from app.services.openai_llm import get_openai_summarization_service  # noqa: E402
+from app.services.llm_summarization import get_content_summarizer  # noqa: E402
 
 # Set up logging
 setup_logging()
@@ -38,8 +38,8 @@ def resummarize_podcasts(dry_run: bool = False, limit: int | None = None):
     print(f"Starting resummarize_podcasts with dry_run={dry_run}, limit={limit}")
 
     try:
-        llm_service = get_openai_summarization_service()
-        print("OpenAI summarization service initialized")
+        llm_service = get_content_summarizer()
+        print("Summarization service initialized")
     except Exception as e:
         print(f"Failed to initialize OpenAI summarization service: {e}")
         return
@@ -89,7 +89,7 @@ def resummarize_podcasts(dry_run: bool = False, limit: int | None = None):
 
                 # Generate new summary
                 logger.info(f"Generating summary for podcast {podcast.id}")
-                summary = llm_service.summarize_content(transcript)
+                summary = llm_service.summarize_content(transcript, content_type="podcast")
 
                 if summary:
                     # Update content with new summary

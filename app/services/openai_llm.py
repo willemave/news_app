@@ -14,8 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.models.metadata import NewsSummary, StructuredSummary
-from app.services.llm_summarization import SummarizationRequest, summarize_content
+from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -29,31 +28,14 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 CHUNK_DURATION_SECONDS = 10 * 60  # 10 minutes in seconds
 
 
-class OpenAISummarizationService:
-    """OpenAI summarization wrapper using pydantic-ai."""
+class OpenAISummarizationService(ContentSummarizer):
+    """OpenAI summarization wrapper using the shared ContentSummarizer."""
 
     def __init__(self) -> None:
         if not getattr(settings, "openai_api_key", None):
             raise ValueError("OpenAI API key is required for LLM service")
-        self.model_spec = SUMMARY_MODEL_SPEC
+        super().__init__(provider_hint="openai", model_hint=SUMMARY_MODEL_SPEC)
         logger.info("Initialized OpenAI summarization service (pydantic-ai)")
-
-    def summarize_content(
-        self,
-        content: str,
-        max_bullet_points: int = 6,
-        max_quotes: int = 8,
-        content_type: str = "article",
-    ) -> StructuredSummary | NewsSummary | None:
-        """Summarize text content."""
-        request = SummarizationRequest(
-            content=content,
-            content_type=content_type,
-            model_spec=self.model_spec,
-            max_bullet_points=max_bullet_points,
-            max_quotes=max_quotes,
-        )
-        return summarize_content(request)
 
 
 class OpenAITranscriptionService:
@@ -329,4 +311,5 @@ def get_openai_summarization_service() -> OpenAISummarizationService:
     global _openai_summarization_service
     if _openai_summarization_service is None:
         _openai_summarization_service = OpenAISummarizationService()
+        _openai_summarization_service.default_models = get_content_summarizer().default_models
     return _openai_summarization_service
