@@ -11,6 +11,7 @@ jobs:
     name: Push app to bare metal
     runs-on: ubuntu-latest
     concurrency: news-app-bare-metal-deploy
+    environment: production
     env:
       DEPLOY_REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR }}
       DEPLOY_OWNER_GROUP: ${{ vars.DEPLOY_OWNER_GROUP }}
@@ -20,10 +21,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup uv
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ vars.DEPLOY_PYTHON_VERSION || '3.13' }}
+
+      - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
-          python-version: ${{ vars.DEPLOY_PYTHON_VERSION != '' && vars.DEPLOY_PYTHON_VERSION || '3.13' }}
+          enable-cache: true
 
       - name: Build production virtualenv (uv sync)
         run: uv sync --frozen --python "${DEPLOY_PYTHON_VERSION:-3.13}"
