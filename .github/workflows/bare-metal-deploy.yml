@@ -1,0 +1,102 @@
+name: Bare Metal Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Push app to bare metal
+    runs-on: ubuntu-latest
+    concurrency: news-app-bare-metal-deploy
+    env:
+      DEPLOY_REMOTE_DIR: ${{ vars.DEPLOY_REMOTE_DIR }}
+      DEPLOY_OWNER_GROUP: ${{ vars.DEPLOY_OWNER_GROUP }}
+      DEPLOY_PROGRAMS: ${{ vars.DEPLOY_PROGRAMS }}
+      DEPLOY_PYTHON_VERSION: ${{ vars.DEPLOY_PYTHON_VERSION }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: ${{ vars.DEPLOY_PYTHON_VERSION != '' && vars.DEPLOY_PYTHON_VERSION || '3.13' }}
+
+      - name: Build production virtualenv (uv sync)
+        run: uv sync --frozen --python "${DEPLOY_PYTHON_VERSION:-3.13}"
+
+      - name: Start ssh-agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Trust remote host key
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DEPLOY_SSH_HOST:-}" ]]; then
+            echo "DEPLOY_SSH_HOST secret is not set" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$DEPLOY_SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Rsync build to server and restart services
+        env:
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DEPLOY_SSH_USER:-}" || -z "${DEPLOY_SSH_HOST:-}" ]]; then
+            echo "DEPLOY_SSH_USER and DEPLOY_SSH_HOST secrets are required" >&2
+            exit 1
+          fi
+
+          REMOTE="${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}"
+          REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/news_app}"
+          OWNER_GROUP="${DEPLOY_OWNER_GROUP:-newsapp:newsapp}"
+          PROGRAMS="${DEPLOY_PROGRAMS:-news_app_server news_app_workers news_app_scrapers}"
+
+          echo "→ Ensuring remote path and ownership"
+          ssh "$REMOTE" "sudo mkdir -p '$REMOTE_DIR' && sudo chown '$OWNER_GROUP' '$REMOTE_DIR' && sudo chmod 755 '$REMOTE_DIR'"
+
+          echo "→ Syncing repo (including .venv) to $REMOTE:$REMOTE_DIR"
+          EXCLUDES=(
+            ".git/"
+            ".github/"
+            "ai-memory/"
+            "archive/"
+            "client/"
+            "data/"
+            "env/"
+            "logs/"
+            "node_modules/"
+            "__pycache__/"
+            ".ruff_cache/"
+            ".pytest_cache/"
+            ".benchmarks/"
+            "*.pyc"
+            "*.pyo"
+            "*.db"
+            "*.sqlite"
+            ".DS_Store"
+            ".env"
+          )
+
+          RSYNC_ARGS=(-az --delete --rsync-path="sudo rsync" --info=progress2 --chown="$OWNER_GROUP")
+          for ex in "${EXCLUDES[@]}"; do
+            RSYNC_ARGS+=(--exclude "$ex")
+          done
+
+          rsync "${RSYNC_ARGS[@]}" ./ "$REMOTE:$REMOTE_DIR/"
+
+          echo "→ Refreshing env file if present"
+          ssh "$REMOTE" "cd '$REMOTE_DIR' && if [[ -f .env.racknerd ]]; then sudo cp .env.racknerd .env && sudo chown '$OWNER_GROUP' .env && sudo chmod 600 .env; else echo 'Warning: .env.racknerd missing; skipping copy' >&2; fi"
+
+          echo "→ Restarting supervisor programs: $PROGRAMS"
+          ssh "$REMOTE" "sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl restart $PROGRAMS && sudo supervisorctl status"
