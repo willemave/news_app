@@ -106,6 +106,7 @@ bd dep beads-002 beads-003            # Implementation blocks tests
 ### Session Close Protocol
 Before completing work, **always run**:
 ```bash
+ruff check . && ruff format .         # Lint and format Python changes
 git status                            # Check changes
 git add <files>                       # Stage code
 bd sync                               # Commit beads

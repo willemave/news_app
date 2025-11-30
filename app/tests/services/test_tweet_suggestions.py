@@ -425,21 +425,37 @@ class TestTweetSuggestionService:
         assert result.suggestions[0].text == "Great article!"
 
     @patch("app.services.tweet_suggestions.Agent.run_sync")
-    def test_generate_suggestions_unsupported_type(self, mock_run_sync) -> None:
-        """Return None for unsupported content types."""
+    def test_generate_suggestions_podcast_supported(self, mock_run_sync) -> None:
+        """Podcasts are supported for tweet suggestions."""
         from app.services.tweet_suggestions import TweetSuggestionService
 
         original_key = settings.google_api_key
         settings.google_api_key = "test-key"
-        mock_run_sync.return_value = MagicMock()
+        mock_payload = TweetSuggestionsPayload(
+            suggestions=[
+                TweetSuggestionLLM(id=1, text="Podcast insight 1", style_label="a"),
+                TweetSuggestionLLM(id=2, text="Podcast insight 2", style_label="b"),
+                TweetSuggestionLLM(id=3, text="Podcast insight 3", style_label="c"),
+            ]
+        )
+        mock_result = MagicMock()
+        mock_result.output = mock_payload
+        mock_result.usage.return_value = None
+        mock_run_sync.return_value = mock_result
 
         content = ContentData(
             id=1,
-            content_type=ContentType.PODCAST,  # Not supported
+            content_type=ContentType.PODCAST,
             url="https://example.com/podcast",
             title="Test Podcast",
             status=ContentStatus.COMPLETED,
-            metadata={},
+            metadata={
+                "summary": {
+                    "title": "Podcast Episode",
+                    "overview": "Overview of the podcast.",
+                    "bullet_points": [{"text": "Key takeaway"}],
+                }
+            },
         )
 
         service = TweetSuggestionService()
@@ -448,4 +464,5 @@ class TestTweetSuggestionService:
         finally:
             settings.google_api_key = original_key
 
-        assert result is None
+        assert result is not None
+        assert len(result.suggestions) == 3

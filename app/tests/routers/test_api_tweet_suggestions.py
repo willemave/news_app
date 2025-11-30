@@ -158,27 +158,50 @@ def test_tweet_suggestions_content_not_completed(
     assert "not ready" in response.json()["detail"].lower()
 
 
-def test_tweet_suggestions_unsupported_content_type(
+def test_tweet_suggestions_podcast_supported(
     client: TestClient, db_session: Session
 ) -> None:
-    """Test 400 for unsupported content types (podcast)."""
+    """Podcasts are now supported for tweet generation."""
     podcast = Content(
         url="https://example.com/podcast",
-        content_type=ContentType.PODCAST.value,  # Not supported
+        content_type=ContentType.PODCAST.value,
         status=ContentStatus.COMPLETED.value,
         title="Test Podcast",
+        content_metadata={
+            "summary": {
+                "title": "Podcast Episode",
+                "overview": "Summary of the podcast episode.",
+                "bullet_points": [],
+            }
+        },
     )
     db_session.add(podcast)
     db_session.commit()
     db_session.refresh(podcast)
 
-    response = client.post(
-        f"/api/content/{podcast.id}/tweet-suggestions",
-        json={"creativity": 5},
+    mock_result = TweetSuggestionsResult(
+        content_id=podcast.id,
+        creativity=5,
+        model=TWEET_MODEL,
+        suggestions=[
+            TweetSuggestionData(id=1, text="Podcast tweet 1", style_label="a"),
+            TweetSuggestionData(id=2, text="Podcast tweet 2", style_label="b"),
+            TweetSuggestionData(id=3, text="Podcast tweet 3", style_label="c"),
+        ],
     )
 
-    assert response.status_code == 400
-    assert "articles and news" in response.json()["detail"].lower()
+    with patch(
+        "app.routers.api.content_actions.generate_tweet_suggestions",
+        return_value=mock_result,
+    ):
+        response = client.post(
+            f"/api/content/{podcast.id}/tweet-suggestions",
+            json={"creativity": 5},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["content_id"] == podcast.id
 
 
 def test_tweet_suggestions_creativity_out_of_range(

@@ -27,7 +27,8 @@ error_logger = GenericErrorLogger("tweet_suggestions")
 
 # Model for tweet generation
 TWEET_MODEL = TWEET_SUGGESTION_MODEL
-SUPPORTED_CONTENT_TYPES = {ContentType.ARTICLE, ContentType.NEWS}
+# Allow tweet suggestions for every content type (article, news, podcast, etc.).
+SUPPORTED_CONTENT_TYPES = set(ContentType)
 
 
 class TweetSuggestionLLM(BaseModel):
@@ -348,21 +349,14 @@ class TweetSuggestionService:
         Generate tweet suggestions for content.
 
         Args:
-            content: The ContentData to generate tweets for
-            message: Optional user guidance/tweak message
-            creativity: Creativity level 1-10
+            content: The ContentData to generate tweets for.
+            message: Optional user guidance/tweak message.
+            creativity: Creativity level 1-10.
 
         Returns:
             TweetSuggestionsResult with 3 suggestions, or None on failure.
-            Only article and news content types are supported.
         """
         content_id = content.id or 0
-
-        if content.content_type not in SUPPORTED_CONTENT_TYPES:
-            logger.warning(
-                "Tweet suggestions unsupported for content type %s", content.content_type
-            )
-            return None
 
         try:
             # Extract context from content
@@ -381,7 +375,7 @@ class TweetSuggestionService:
             temperature = creativity_to_temperature(creativity)
 
             # Run Gemini via pydantic-ai
-            agent = self._build_agent(system_message)
+            agent = self._build_agent(system_prompt=system_message)
             run_result = agent.run_sync(
                 user_message,
                 model_settings=ModelSettings(

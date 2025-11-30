@@ -27,7 +27,8 @@ struct ContentDetailView: View {
     // Deep dive chat sheet state
     @State private var showDeepDiveSheet: Bool = false
     @State private var deepDiveSession: ChatSessionSummary?
-    @State private var isStartingDeepDive: Bool = false
+    // Share sheet options
+    @State private var showShareOptions: Bool = false
 
     init(contentId: Int, allContentIds: [Int] = [], onConvert: ((Int) async -> Void)? = nil) {
         self.initialContentId = contentId
@@ -104,7 +105,7 @@ struct ContentDetailView: View {
                                 .buttonStyle(.borderedProminent)
                             }
 
-                            Button(action: { viewModel.shareContent() }) {
+                            Button(action: { showShareOptions = true }) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 18))
                             }
@@ -116,17 +117,10 @@ struct ContentDetailView: View {
                                     await startDeepDive(contentId: content.id)
                                 }
                             }) {
-                                if isStartingDeepDive {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle())
-                                        .frame(width: 18, height: 18)
-                                } else {
-                                    Image(systemName: "brain.head.profile")
-                                        .font(.system(size: 18))
-                                }
+                                Image(systemName: "brain.head.profile")
+                                    .font(.system(size: 18))
                             }
                             .buttonStyle(.bordered)
-                            .disabled(isStartingDeepDive)
 
                             // Tweet button
                             Button(action: {
@@ -156,15 +150,6 @@ struct ContentDetailView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 .disabled(isConverting)
-                            }
-
-                            // Copy button for podcasts only
-                            if content.contentTypeEnum == .podcast {
-                                Button(action: { viewModel.copyPodcastContent() }) {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 18))
-                                }
-                                .buttonStyle(.bordered)
                             }
 
                             // Favorite button
@@ -243,9 +228,10 @@ struct ContentDetailView: View {
                                             if item.id != items.last?.id {
                                                 Divider()
                                                     .padding(.vertical, 4)
-                                            }
-                                        }
-                                    }
+        }
+    }
+
+}
                                 } else {
                                     Text("No news metadata available.")
                                         .font(.body)
@@ -387,6 +373,18 @@ struct ContentDetailView: View {
         .onDisappear {
             readingStateStore.clear()
         }
+        .confirmationDialog("Share article", isPresented: $showShareOptions, titleVisibility: .visible) {
+            Button("Light · Title + link") {
+                viewModel.shareContent(option: .light)
+            }
+            Button("Medium · Key points, quotes, link") {
+                viewModel.shareContent(option: .medium)
+            }
+            Button("Full · Article + transcript") {
+                viewModel.shareContent(option: .full)
+            }
+            Button("Cancel", role: .cancel) { }
+        }
         .sheet(isPresented: $showTweetSheet) {
             if let content = viewModel.content {
                 TweetSuggestionsSheet(contentId: content.id)
@@ -403,9 +401,6 @@ struct ContentDetailView: View {
 
     // MARK: - Deep Dive Helper
     private func startDeepDive(contentId: Int) async {
-        isStartingDeepDive = true
-        defer { isStartingDeepDive = false }
-
         do {
             let session = try await ChatService.shared.startArticleChat(contentId: contentId)
             deepDiveSession = session
