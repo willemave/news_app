@@ -11,6 +11,12 @@ import os.log
 
 private let logger = Logger(subsystem: "com.newsly", category: "ContentDetail")
 
+enum ShareContentOption {
+    case light
+    case medium
+    case full
+}
+
 @MainActor
 class ContentDetailViewModel: ObservableObject {
     @Published var content: ContentDetail?
@@ -85,14 +91,12 @@ class ContentDetailViewModel: ObservableObject {
         logger.debug("[ContentDetail] loadContent completed | contentId=\(self.contentId)")
     }
     
-    func shareContent() {
-        guard let content = content, let url = URL(string: content.url) else { return }
-        
-        let activityVC = UIActivityViewController(
-            activityItems: [url, content.displayTitle],
-            applicationActivities: nil
-        )
-        
+    func shareContent(option: ShareContentOption) {
+        let items = buildShareItems(option: option)
+        guard !items.isEmpty else { return }
+
+        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let rootViewController = windowScene.windows.first?.rootViewController {
             rootViewController.present(activityVC, animated: true)
@@ -159,11 +163,58 @@ class ContentDetailViewModel: ObservableObject {
         return fullText
     }
 
-    func copyPodcastContent() {
-        guard let fullText = buildFullMarkdown() else { return }
-        UIPasteboard.general.string = fullText
+    private func buildMediumMarkdown() -> String? {
+        guard let content = content else { return nil }
+
+        var sections: [String] = []
+        sections.append("# \(content.displayTitle)")
+
+        var keyPoints = content.structuredSummary?.bulletPoints ?? content.bulletPoints
+        if keyPoints.isEmpty, let summary = content.summary, !summary.isEmpty {
+            keyPoints = [BulletPoint(text: summary, category: nil)]
+        } else if keyPoints.isEmpty, let shortSummary = content.shortSummary, !shortSummary.isEmpty {
+            keyPoints = [BulletPoint(text: shortSummary, category: nil)]
+        }
+
+        if !keyPoints.isEmpty {
+            let bullets = keyPoints.map { "- \($0.text)" }.joined(separator: "\n")
+            sections.append("## Key Points\n\(bullets)")
+        }
+
+        let quotes = content.structuredSummary?.quotes ?? content.quotes
+        if !quotes.isEmpty {
+            let quoteText = quotes.map { "> \($0.text)" }.joined(separator: "\n")
+            sections.append("## Quotes\n\(quoteText)")
+        }
+
+        if !content.url.isEmpty {
+            sections.append("Link: \(content.url)")
+        }
+
+        guard sections.count > 1 else { return nil }
+        return sections.joined(separator: "\n\n")
     }
-    
+
+    private func buildShareItems(option: ShareContentOption) -> [Any] {
+        guard let content = content else { return [] }
+
+        switch option {
+        case .light:
+            guard let url = URL(string: content.url) else { return [] }
+            return [content.displayTitle, url]
+        case .medium:
+            if let mediumText = buildMediumMarkdown() {
+                return [MarkdownItemProvider(markdown: mediumText)]
+            }
+            return buildShareItems(option: .light)
+        case .full:
+            if let fullText = buildFullMarkdown() {
+                return [MarkdownItemProvider(markdown: fullText)]
+            }
+            return buildShareItems(option: .medium)
+        }
+    }
+
     func openInChatGPT() async {
         // Strategy:
         // 1) Build full markdown and offer it via the share sheet so ChatGPT's share extension can receive the text.

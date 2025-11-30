@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
+from app.domain.converters import content_to_domain
 from app.models.schema import ChatMessage, ChatSession, Content
 from app.models.user import User
 from app.routers.api.chat_models import (
@@ -47,6 +48,19 @@ def _session_to_summary(
         article_title=article_title,
         is_archived=session.is_archived,
     )
+
+
+def _resolve_article_title(content: Content) -> str | None:
+    """Resolve a chat-friendly title from content, falling back to display_title."""
+    if content.title:
+        return content.title
+
+    try:
+        domain_content = content_to_domain(content)
+        return domain_content.display_title
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning("Failed to resolve display title for content %s: %s", content.id, exc)
+        return None
 
 
 def _extract_messages_for_display(
@@ -160,7 +174,7 @@ async def list_sessions(
         if session.content_id:
             content = db.query(Content).filter(Content.id == session.content_id).first()
             if content:
-                article_title = content.title
+                article_title = _resolve_article_title(content)
 
         result.append(_session_to_summary(session, article_title))
 
@@ -200,7 +214,7 @@ async def create_session(
         content = db.query(Content).filter(Content.id == request.content_id).first()
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
-        article_title = content.title
+        article_title = _resolve_article_title(content)
 
     # Build session title
     if request.topic and article_title:
