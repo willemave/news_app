@@ -69,3 +69,48 @@ def test_summarize_news_uses_news_summary(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert isinstance(result, NewsSummary)
     assert result.title == "News Title"
+
+
+def test_content_summarizer_resolves_default_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[tuple[str | None, str | None]] = []
+
+    def fake_resolve(provider: str | None, hint: str | None) -> tuple[str, str]:
+        captured.append((provider, hint))
+        return provider or "openai", f"{provider}:{hint}"
+
+    def fake_summarize(request: llm_summarization.SummarizationRequest):
+        return request.model_spec
+
+    monkeypatch.setattr(llm_summarization, "summarize_content", fake_summarize)
+
+    summarizer = llm_summarization.ContentSummarizer(_model_resolver=fake_resolve)
+
+    model_used = summarizer.summarize("body", content_type=ContentType.NEWS)
+
+    assert model_used == "openai:gpt-5-mini"
+    assert captured == [("openai", "gpt-5-mini")]
+
+
+def test_content_summarizer_respects_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[tuple[str | None, str | None]] = []
+
+    def fake_resolve(provider: str | None, hint: str | None) -> tuple[str, str]:
+        captured.append((provider, hint))
+        return provider or "anthropic", f"{provider}:{hint}"
+
+    def fake_summarize(request: llm_summarization.SummarizationRequest):
+        return request.model_spec
+
+    monkeypatch.setattr(llm_summarization, "summarize_content", fake_summarize)
+
+    summarizer = llm_summarization.ContentSummarizer(_model_resolver=fake_resolve)
+
+    model_used = summarizer.summarize(
+        "body",
+        content_type=ContentType.ARTICLE,
+        provider_override="google",
+        model_hint="gemini-1.5",
+    )
+
+    assert model_used == "google:gemini-1.5"
+    assert captured == [("google", "gemini-1.5")]

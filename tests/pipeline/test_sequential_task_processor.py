@@ -11,7 +11,10 @@ from app.services.queue import TaskType
 @pytest.fixture
 def processor():
     """Create a processor instance for testing."""
-    with patch("app.pipeline.sequential_task_processor.QueueService"):
+    with (
+        patch("app.pipeline.sequential_task_processor.QueueService"),
+        patch("app.pipeline.sequential_task_processor.get_llm_service"),
+    ):
         processor = SequentialTaskProcessor()
         processor.queue_service = Mock()
         processor.llm_service = Mock()
@@ -167,7 +170,9 @@ class TestSequentialTaskProcessor:
 
             assert result is True
             processor.llm_service.summarize_content.assert_called_once_with(
-                "This is test content for summarization."
+                "This is test content for summarization.",
+                content_type="article",
+                content_id=123,
             )
             assert mock_content.status == "completed"
             assert mock_content.metadata["summary"] == {"summary": "Test summary"}

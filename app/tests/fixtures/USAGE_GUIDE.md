@@ -95,7 +95,7 @@ def test_process_unprocessed_article(sample_unprocessed_article, db_session):
 
     # Process it (with mocked LLM)
     worker = ContentWorker()
-    with patch("app.pipeline.worker.get_openai_summarization_service") as mock_llm:
+    with patch("app.pipeline.worker.get_llm_service") as mock_llm:
         mock_llm.return_value.summarize_content.return_value = mock_summary
         result = worker.process_content(content.id, "test-worker")
 
@@ -157,7 +157,7 @@ def test_full_pipeline_with_fixtures(
     # Mock external services
     with (
         patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
-        patch("app.pipeline.worker.get_openai_summarization_service") as mock_llm,
+        patch("app.pipeline.worker.get_llm_service") as mock_llm,
     ):
         # Setup mocks to use fixture content
         mock_strategy = Mock()

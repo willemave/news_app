@@ -3,13 +3,11 @@
 Inventory of every LLM entrypoint and the intended pydantic-ai replacement. Model specs stay unchanged (e.g., `claude-*`, `gpt-*`, `gemini-*`).
 
 ## Summarization services
-- `app/services/openai_llm.py` → replace `OpenAISummarizationService.summarize_content` with pydantic-ai agent built via `llm_agents.get_summarization_agent`. Remove direct `openai` client usage.
-- `app/services/anthropic_llm.py` → same rewrite; drop direct `anthropic` client.
-- `app/services/google_flash.py` → same rewrite; drop direct `google.genai` client.
-- `app/services/openai_llm_tmp.py` → mark legacy/remove or delegate to the shared pydantic-ai summarization helper.
+- `app/services/llm_summarization.py` → shared `ContentSummarizer` now handles routing + model resolution via `resolve_model`.
+- Provider shims (`openai_llm.py`, `anthropic_llm.py`, `google_flash.py`) now subclass `ContentSummarizer` for compatibility.
 - Callers:
-  - `app/pipeline/worker.py` → swap to new summarization helper.
-  - `app/pipeline/sequential_task_processor.py` → same swap.
+  - `app/pipeline/worker.py` → uses `get_llm_service()` (shared summarizer) for article/news payloads.
+  - `app/pipeline/sequential_task_processor.py` → uses `get_llm_service()` for summarize tasks.
 
 ## Chat / Deep Dive
 - `app/services/chat_agent.py` → already pydantic-ai but streaming; refactor to use shared `llm_models.build_pydantic_model` and sync `run_sync` calls, plus updated initial suggestions prompt.

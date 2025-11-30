@@ -55,7 +55,7 @@ class TestPipelineWithRealData:
         # Mock external dependencies
         with (
             patch("app.pipeline.worker.get_http_service") as mock_http,
-            patch("app.pipeline.worker.get_openai_summarization_service") as mock_llm,
+            patch("app.pipeline.worker.get_llm_service") as mock_llm,
             patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
             patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
             patch("app.pipeline.worker.get_queue_service") as mock_queue,
@@ -135,7 +135,7 @@ class TestPipelineWithRealData:
 
         # Mock dependencies
         with (
-            patch("app.pipeline.worker.get_openai_summarization_service") as mock_llm,
+            patch("app.pipeline.worker.get_llm_service") as mock_llm,
             patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
             patch("app.pipeline.worker.get_queue_service") as mock_queue,
             patch("app.pipeline.worker.create_error_logger") as mock_error_logger,
