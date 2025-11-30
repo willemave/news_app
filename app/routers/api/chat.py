@@ -322,7 +322,7 @@ async def send_message(
         model=session.llm_model,
     )
 
-    result = await run_chat_turn(db, session, request.message)
+    await run_chat_turn(db, session, request.message)
     messages = _extract_messages_for_display(db, session_id)
     assistant_message = next(
         (msg for msg in reversed(messages) if msg.role == ChatMessageRole.ASSISTANT),

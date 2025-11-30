@@ -1,7 +1,7 @@
 """Application-wide constants and defaults."""
 
 # Default LLM models
-TWEET_SUGGESTION_MODEL = "google-gla:gemini-2.0-flash"
+TWEET_SUGGESTION_MODEL = "google-gla:gemini-3-pro-preview"
 
 # Worker type constants for checkout mechanism
 WORKER_DOWNLOADER = "downloader"
