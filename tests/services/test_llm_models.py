@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
+from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIModel
 
 from app.services import llm_models
@@ -47,3 +47,16 @@ def test_build_pydantic_model_google(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(model, GoogleModel)
     assert model_settings is not None
     assert model_settings["google_thinking_config"] == {"include_thoughts": False}
+
+
+def test_build_pydantic_model_google_gemini3(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_models, "get_settings", lambda: _settings(google_api_key="test-key"))
+
+    model, model_settings = llm_models.build_pydantic_model("gemini-3-pro-preview")
+
+    assert isinstance(model, GoogleModel)
+    assert model_settings is not None
+    assert model_settings["google_thinking_config"] == {
+        "include_thoughts": False,
+        "thinking_level": "low",
+    }

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Tuple
 
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -39,13 +38,15 @@ PROVIDER_DEFAULTS: dict[str, str] = {
 
 DEFAULT_PROVIDER = LLMProvider.GOOGLE.value
 DEFAULT_MODEL = PROVIDER_DEFAULTS[DEFAULT_PROVIDER]
-PREFIX_TO_PROVIDER: dict[str, str] = {prefix: provider for provider, prefix in PROVIDER_PREFIXES.items()}
+PREFIX_TO_PROVIDER: dict[str, str] = {
+    prefix: provider for provider, prefix in PROVIDER_PREFIXES.items()
+}
 
 
 def resolve_model(
     provider: LLMProvider | str | None,
     model_hint: str | None,
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     """Resolve provider + model hint into canonical provider and full model spec.
 
     Args:
@@ -67,7 +68,9 @@ def resolve_model(
     if model_hint and ":" in model_hint:
         provider_prefix = model_hint.split(":", 1)[0]
         hinted_provider = PREFIX_TO_PROVIDER.get(provider_prefix, provider_prefix)
-        canonical_provider = hinted_provider if hinted_provider in PROVIDER_DEFAULTS else provider_name
+        canonical_provider = (
+            hinted_provider if hinted_provider in PROVIDER_DEFAULTS else provider_name
+        )
         return canonical_provider, model_hint
 
     model_prefix = PROVIDER_PREFIXES.get(provider_name, provider_name)
@@ -77,7 +80,7 @@ def resolve_model(
     return provider_name, PROVIDER_DEFAULTS.get(provider_name, DEFAULT_MODEL)
 
 
-def build_pydantic_model(model_spec: str) -> Tuple[Model | str, GoogleModelSettings | None]:
+def build_pydantic_model(model_spec: str) -> tuple[Model | str, GoogleModelSettings | None]:
     """Construct a pydantic-ai Model with explicit providers where required.
 
     Args:
@@ -108,7 +111,8 @@ def build_pydantic_model(model_spec: str) -> Tuple[Model | str, GoogleModelSetti
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
         model = GoogleModel(model_to_use, provider=GoogleProvider(api_key=settings.google_api_key))
-        # Configure thinking for Google models - use low thinking level for Gemini 3
+        # Configure thinking for Google models – suppress thought traces and
+        # explicitly lower thinking depth on Gemini 3 to reduce latency.
         thinking_config: dict[str, object] = {"include_thoughts": False}
         if model_to_use.startswith("gemini-3"):
             thinking_config["thinking_level"] = "low"
@@ -122,7 +126,11 @@ def build_pydantic_model(model_spec: str) -> Tuple[Model | str, GoogleModelSetti
         model_to_use = model_name if provider_prefix == "anthropic" else model_spec
         return AnthropicModel(model_to_use, provider=provider), None
 
-    if provider_prefix == "openai" or model_spec.startswith("openai:") or model_spec.startswith("gpt-"):
+    if (
+        provider_prefix == "openai"
+        or model_spec.startswith("openai:")
+        or model_spec.startswith("gpt-")
+    ):
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY not configured in settings.")
         model_to_use = (
@@ -130,6 +138,9 @@ def build_pydantic_model(model_spec: str) -> Tuple[Model | str, GoogleModelSetti
             if provider_prefix
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
-        return OpenAIModel(model_to_use, provider=OpenAIProvider(api_key=settings.openai_api_key)), None
+        return (
+            OpenAIModel(model_to_use, provider=OpenAIProvider(api_key=settings.openai_api_key)),
+            None,
+        )
 
     return model_spec, None

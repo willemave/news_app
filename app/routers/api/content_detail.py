@@ -147,7 +147,7 @@ async def get_chatgpt_url(
     db: Annotated[Session, Depends(get_db_session)],
     user_prompt: Annotated[
         str | None,
-        Query(None, max_length=2000, description="Optional user prompt to prepend to chat"),
+        Query(max_length=2000, description="Optional user prompt to prepend to chat"),
     ] = None,
 ) -> ChatGPTUrlResponse:
     """Generate ChatGPT URL for chatting about the content.

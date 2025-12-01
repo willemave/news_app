@@ -76,6 +76,8 @@ def _extract_messages_for_display(
         ModelMessagesTypeAdapter,
         ModelRequest,
         ModelResponse,
+        TextPart,
+        UserPromptPart,
     )
 
     messages: list[ChatMessageDto] = []
@@ -96,10 +98,9 @@ def _extract_messages_for_display(
 
             for model_msg in msg_list:
                 if isinstance(model_msg, ModelRequest):
-                    # Extract user messages from request parts
+                    # Only show user-authored parts; hide tool-return/system parts
                     for part in model_msg.parts:
-                        if hasattr(part, "content") and isinstance(part.content, str):
-                            # UserPromptPart or similar
+                        if isinstance(part, UserPromptPart) and part.content:
                             msg_counter += 1
                             messages.append(
                                 ChatMessageDto(
@@ -111,10 +112,9 @@ def _extract_messages_for_display(
                                 )
                             )
                 elif isinstance(model_msg, ModelResponse):
-                    # Extract assistant messages from response parts
+                    # Only show assistant text parts; hide tool calls/returns
                     for part in model_msg.parts:
-                        if hasattr(part, "content") and isinstance(part.content, str):
-                            # TextPart
+                        if isinstance(part, TextPart) and part.content:
                             msg_counter += 1
                             messages.append(
                                 ChatMessageDto(

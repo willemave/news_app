@@ -46,6 +46,9 @@ struct ChatSessionsView: View {
                         viewModel.sessions.insert(session, at: 0)
                     }
                 )
+                .presentationDetents([.height(320)])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(20)
             }
         }
     }
@@ -163,72 +166,90 @@ struct NewChatSheet: View {
     @State private var initialMessage: String = ""
     @State private var isCreating = false
     @State private var errorMessage: String?
+    @FocusState private var isTextFieldFocused: Bool
 
     private let chatService = ChatService.shared
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("What would you like to discuss?", text: $initialMessage, axis: .vertical)
-                        .lineLimit(3...6)
-                } header: {
-                    Text("Start a conversation")
-                } footer: {
-                    Text("Using \(provider.displayName)")
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button("Cancel") {
+                    isPresented = false
                 }
+
+                Spacer()
+
+                Text("New Chat")
+                    .font(.headline)
+
+                Spacer()
+
+                // Invisible spacer to balance Cancel button
+                Text("Cancel")
+                    .opacity(0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+
+            // Content
+            VStack(spacing: 16) {
+                TextField("Message", text: $initialMessage, axis: .vertical)
+                    .lineLimit(3...5)
+                    .textFieldStyle(.plain)
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(10)
+                    .focused($isTextFieldFocused)
 
                 if let error = errorMessage {
-                    Section {
-                        Text(error)
-                            .foregroundColor(.red)
-                    }
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
                 }
-            }
-            .navigationTitle("New Chat")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        isPresented = false
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Start") {
+
+                HStack(spacing: 12) {
+                    Button {
                         Task { await createSession() }
+                    } label: {
+                        Text("Just Chat")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.bordered)
                     .disabled(isCreating)
-                }
-            }
-            .disabled(isCreating)
-            .overlay {
-                if isCreating {
-                    ZStack {
-                        Color.black.opacity(0.3)
-                            .ignoresSafeArea()
 
-                        VStack(spacing: 16) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.blue.opacity(0.15))
-                                    .frame(width: 70, height: 70)
-
-                                Image(systemName: "brain.head.profile")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(.blue)
-                                    .symbolEffect(.pulse, options: .repeating)
-                            }
-
-                            Text("Starting chat...")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                        }
-                        .padding(32)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(16)
+                    Button {
+                        Task { await createSession() }
+                    } label: {
+                        Text("Start")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isCreating || initialMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .padding(.horizontal, 20)
+
+            Spacer()
+        }
+        .disabled(isCreating)
+        .overlay {
+            if isCreating {
+                ZStack {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+
+                    ProgressView()
+                        .scaleEffect(1.2)
+                        .padding(24)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(12)
+                }
+            }
+        }
+        .onAppear {
+            isTextFieldFocused = true
         }
     }
 
