@@ -16,8 +16,8 @@ from app.constants import TWEET_SUGGESTION_MODEL
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
-from app.services.llm_prompts import get_tweet_generation_prompt
 from app.services.llm_agents import get_basic_agent
+from app.services.llm_prompts import get_tweet_generation_prompt
 from app.utils.error_logger import GenericErrorLogger
 from app.utils.json_repair import try_repair_truncated_json
 
@@ -228,13 +228,14 @@ def _parse_suggestions_response(raw_response: str) -> list[dict[str, Any]] | Non
 
         try:
             data = json.loads(cleaned)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             # Try to repair truncated JSON
             repaired = try_repair_truncated_json(cleaned)
             if repaired:
                 data = json.loads(repaired)
             else:
-                raise
+                logger.warning("Could not parse tweet suggestions JSON: %s", exc)
+                return None
 
         # Extract suggestions array
         suggestions = data.get("suggestions", [])

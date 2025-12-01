@@ -93,7 +93,7 @@ flowchart LR
 - **Content detail/actions**: `GET /{id}` (detail with validated metadata), `GET /{id}/chat-url` (ChatGPT deeplink), `POST /{id}/convert-to-article`, `POST /{id}/tweet-suggestions` (Gemini model defined in `TWEET_SUGGESTION_MODEL`).
 - **State**: `POST /{id}/mark-read`, `POST /bulk-mark-read` (read_status), `POST /{id}/favorites/toggle` + `GET /favorites` (favorites).
 - **User submissions**: `POST /submit` to create or reuse content, infer type/platform, enqueue processing; returns `task_id` and `already_exists` flag.
-- **User scraper configs (`/api/scrapers`)**: CRUD for per-user feed configs; validates `feed_url` and allowed types.
+- **User scraper configs (`/api/scrapers`)**: CRUD for per-user feed configs; validates `feed_url` and allowed types. Supports type filtering (`?type=podcast_rss` or `?types=substack,atom`) and returns derived `feed_url`/`limit` fields (limit optional 1–100, default 10).
 - **Chat (`/api/chat`)**: list/create sessions, get session detail, send message (runs agent and persists), initial suggestions for article sessions.
 - **Compatibility**: `app/routers/api_content.py` re-exports the API router for older imports; admin/content/logs routers serve Jinja pages.
 

@@ -43,12 +43,19 @@ struct ContentCard: View {
                     .lineLimit(5)
                     .truncationMode(.tail)
 
-                // Platform • Source
+                // Platform • Source • Processed date
                 HStack(spacing: 6) {
                     PlatformIcon(platform: content.platform)
                         .opacity(content.platform == nil ? 0 : 1)
                     if let source = content.source {
                         Text(source)
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    if let processedDate = content.processedDateDisplay {
+                        Text(processedDate)
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .lineLimit(1)

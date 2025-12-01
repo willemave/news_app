@@ -10,6 +10,7 @@ struct ScraperConfig: Identifiable, Codable {
     let scraperType: String
     let displayName: String?
     let config: [String: AnyCodable]
+    let limit: Int?
     let isActive: Bool
     let createdAt: String
 
@@ -28,6 +29,7 @@ struct ScraperConfig: Identifiable, Codable {
         case scraperType = "scraper_type"
         case displayName = "display_name"
         case config
+        case limit
         case isActive = "is_active"
         case createdAt = "created_at"
     }

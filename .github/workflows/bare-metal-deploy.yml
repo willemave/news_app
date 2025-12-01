@@ -17,6 +17,7 @@ jobs:
       DEPLOY_OWNER_GROUP: ${{ vars.DEPLOY_OWNER_GROUP }}
       DEPLOY_PROGRAMS: ${{ vars.DEPLOY_PROGRAMS }}
       DEPLOY_PYTHON_VERSION: ${{ vars.DEPLOY_PYTHON_VERSION }}
+      DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,19 +43,22 @@ jobs:
       - name: Trust remote host key
         env:
           DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT }}
         run: |
           set -euo pipefail
           if [[ -z "${DEPLOY_SSH_HOST:-}" ]]; then
             echo "DEPLOY_SSH_HOST secret is not set" >&2
             exit 1
           fi
+          PORT="${DEPLOY_SSH_PORT:-22}"
           mkdir -p ~/.ssh
-          ssh-keyscan -H "$DEPLOY_SSH_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "$PORT" -H "$DEPLOY_SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Rsync build to server and restart services
         env:
           DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
           DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT }}
         run: |
           set -euo pipefail
 
@@ -64,12 +68,17 @@ jobs:
           fi
 
           REMOTE="${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}"
+          PORT="${DEPLOY_SSH_PORT:-22}"
+          SSH_OPTS=(-p "$PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes)
           REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/news_app}"
           OWNER_GROUP="${DEPLOY_OWNER_GROUP:-newsapp:newsapp}"
           PROGRAMS="${DEPLOY_PROGRAMS:-news_app_server news_app_workers news_app_scrapers}"
 
+          echo "→ Verifying SSH connectivity"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "echo 'SSH ok: $(whoami)@$(hostname) on port $PORT'"
+
           echo "→ Ensuring remote path and ownership"
-          ssh "$REMOTE" "sudo mkdir -p '$REMOTE_DIR' && sudo chown '$OWNER_GROUP' '$REMOTE_DIR' && sudo chmod 755 '$REMOTE_DIR'"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo mkdir -p '$REMOTE_DIR' && sudo chown '$OWNER_GROUP' '$REMOTE_DIR' && sudo chmod 755 '$REMOTE_DIR'"
 
           echo "→ Syncing repo (including .venv) to $REMOTE:$REMOTE_DIR"
           EXCLUDES=(
@@ -94,7 +103,7 @@ jobs:
             ".env"
           )
 
-          RSYNC_ARGS=(-az --delete --rsync-path="sudo rsync" --info=progress2 --chown="$OWNER_GROUP")
+          RSYNC_ARGS=(-az --delete --rsync-path="sudo rsync" --info=progress2 --chown="$OWNER_GROUP" -e "ssh -p $PORT -o StrictHostKeyChecking=yes -o BatchMode=yes")
           for ex in "${EXCLUDES[@]}"; do
             RSYNC_ARGS+=(--exclude "$ex")
           done
@@ -102,7 +111,7 @@ jobs:
           rsync "${RSYNC_ARGS[@]}" ./ "$REMOTE:$REMOTE_DIR/"
 
           echo "→ Refreshing env file if present"
-          ssh "$REMOTE" "cd '$REMOTE_DIR' && if [[ -f .env.racknerd ]]; then sudo cp .env.racknerd .env && sudo chown '$OWNER_GROUP' .env && sudo chmod 600 .env; else echo 'Warning: .env.racknerd missing; skipping copy' >&2; fi"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "cd '$REMOTE_DIR' && if [[ -f .env.racknerd ]]; then sudo cp .env.racknerd .env && sudo chown '$OWNER_GROUP' .env && sudo chmod 600 .env; else echo 'Warning: .env.racknerd missing; skipping copy' >&2; fi"
 
           echo "→ Restarting supervisor programs: $PROGRAMS"
-          ssh "$REMOTE" "sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl restart $PROGRAMS && sudo supervisorctl status"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl restart $PROGRAMS && sudo supervisorctl status"

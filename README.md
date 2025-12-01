@@ -116,6 +116,9 @@ Native SwiftUI application with:
 - Read status synchronization
 - Pull-to-refresh
 - Settings and API configuration
+- Sources management via drill-down screens:
+  - Feed Sources (Substack/Atom/YouTube) using `/api/scrapers?types=substack,atom,youtube`
+  - Podcast Sources using `/api/scrapers?type=podcast_rss` with optional `limit` (1–100, default 10)
 
 ## 🚀 Quick Start
 

@@ -139,9 +139,9 @@
           </svg>
         </button>
         
-        <button onclick="openInChatGPT({{ content.id }})" 
+        <button onclick="openChatModal({{ content.id }})" 
                 class="inline-flex items-center text-purple-600 hover:text-purple-800 transition-colors">
-          <span class="mr-1">Chat with AI</span>
+          <span class="mr-1">Start AI Chat</span>
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 2C10.34 2 9 3.34 9 5c0 .38.07.75.21 1.09C8.5 6.38 7.81 6.5 7.16 6.82c-.47-.98-1.48-1.66-2.66-1.66C2.84 5.16 1.5 6.5 1.5 8.16c0 .51.13.99.36 1.42C1.33 10.34 1 11.31 1 12.33c0 1.02.33 1.99.86 2.75-.23.43-.36.91-.36 1.42 0 1.66 1.34 3 3 3 .72 0 1.38-.25 1.91-.67.65.32 1.34.5 2.09.5.38 0 .75-.07 1.09-.21.29.7.99 1.21 1.82 1.21 1.08 0 1.96-.88 1.96-1.96 0-.27-.06-.53-.16-.77.51-.23.98-.58 1.35-1.01.43.23.91.36 1.42.36 1.66 0 3-1.34 3-3 0-1.18-.68-2.19-1.66-2.68.01-.11.01-.21.01-.32 0-1.02-.33-1.99-.86-2.75.23-.43.36-.91.36-1.42 0-1.66-1.34-3-3-3-.72 0-1.38.25-1.91.67C14.34 2.88 13.75 2.5 13 2.38 12.75 2.14 12.38 2 12 2zm0 2.5c.28 0 .5.22.5.5v3c0 .28-.22.5-.5.5s-.5-.22-.5-.5V5c0-.28.22-.5.5-.5zm-3.5 2c.18 0 .35.06.5.16l2.12 2.12c.2.2.2.51 0 .71-.2.2-.51.2-.71 0L8.29 7.37c-.2-.2-.2-.51 0-.71.1-.1.26-.16.41-.16h.8zm7 0h.8c.15 0 .31.06.41.16.2.2.2.51 0 .71l-2.12 2.12c-.2.2-.51.2-.71 0-.2-.2-.2-.51 0-.71l2.12-2.12c.15-.1.32-.16.5-.16zM4.5 10.5c.28 0 .5.22.5.5s-.22.5-.5.5H3c-.28 0-.5-.22-.5-.5s.22-.5.5-.5h1.5zm16.5 0c.28 0 .5.22.5.5s-.22.5-.5.5h-1.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5H21zM8.5 14.5c.18 0 .35.06.5.16.2.2.2.51 0 .71l-2.12 2.12c-.2.2-.51.2-.71 0-.2-.2-.2-.51 0-.71l2.12-2.12c.1-.1.26-.16.41-.16h.8zm7 0h.8c.15 0 .31.06.41.16l2.12 2.12c.2.2.2.51 0 .71-.2.2-.51.2-.71 0l-2.12-2.12c-.2-.2-.2-.51 0-.71.15-.1.32-.16.5-.16zM12 15.5c.28 0 .5.22.5.5v3c0 .28-.22.5-.5.5s-.5-.22-.5-.5v-3c0-.28.22-.5.5-.5z"/>
           </svg>
@@ -361,7 +361,191 @@
   </div>
 </div>
 
+<!-- Pre-chat Modal -->
+<div id="chat-modal" class="fixed inset-0 hidden items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm z-50">
+  <div class="bg-white w-full max-w-2xl mx-4 rounded-lg shadow-2xl p-6 relative">
+    <button aria-label="Close chat options" onclick="closeChatModal()" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl">&times;</button>
+    <h2 class="text-xl font-semibold text-gray-900 mb-2">How do you want to start?</h2>
+    <p class="text-sm text-gray-600 mb-4">Pick a starting prompt or record a quick question. The prompt you choose appears in the chat session.</p>
+
+    <div class="space-y-3">
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium text-gray-900">Dig deeper into the key points</p>
+            <p class="text-xs text-gray-600">Expand the article's main points with implications and follow-ups.</p>
+          </div>
+          <button class="text-xs px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700" onclick="selectPrompt('deepDive')">Use prompt</button>
+        </div>
+        <div class="mt-2 bg-gray-50 text-[11px] text-gray-800 rounded p-3 font-mono leading-snug" id="prompt-preview-deepDive"></div>
+      </div>
+
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium text-gray-900">Corroborate with fresh sources</p>
+            <p class="text-xs text-gray-600">Cross-check claims using current, credible links and surface disagreements.</p>
+          </div>
+          <button class="text-xs px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700" onclick="selectPrompt('corroborate')">Use prompt</button>
+        </div>
+        <div class="mt-2 bg-gray-50 text-[11px] text-gray-800 rounded p-3 font-mono leading-snug" id="prompt-preview-corroborate"></div>
+      </div>
+
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium text-gray-900">Ask with audio</p>
+            <p class="text-xs text-gray-600">Record a quick question; we transcribe locally before starting chat.</p>
+          </div>
+          <button id="audio-toggle" class="text-xs px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700" onclick="toggleAudioRecording()">Start recording</button>
+        </div>
+        <p id="audio-status" class="mt-2 text-xs text-gray-500">Not recording</p>
+        <textarea id="audio-transcript" class="mt-2 w-full border border-gray-200 rounded p-2 text-sm" rows="2" placeholder="Transcript will appear here (you can edit before sending)"></textarea>
+        <div class="flex justify-end mt-2">
+          <button class="text-xs px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700" onclick="launchAudioPrompt()">Start chat with transcript</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+const PRECHAT_PROMPTS = {
+    deepDive: "Dig deeper into the key points. For each major point, expand on reasoning, supporting evidence, and practical implications. Keep responses concise and numbered.",
+    corroborate: "Corroborate the main claims using current, reputable sources. List each claim with 2-3 supporting or conflicting sources, include URLs, and note confidence or gaps."
+};
+
+let currentContentId = {{ content.id }};
+let recognition = null;
+let isRecording = false;
+
+document.addEventListener('DOMContentLoaded', () => {
+    renderPromptPreviews();
+});
+
+function renderPromptPreviews() {
+    const deepDiveEl = document.getElementById('prompt-preview-deepDive');
+    const corroborateEl = document.getElementById('prompt-preview-corroborate');
+    if (deepDiveEl) {
+        deepDiveEl.textContent = PRECHAT_PROMPTS.deepDive;
+    }
+    if (corroborateEl) {
+        corroborateEl.textContent = PRECHAT_PROMPTS.corroborate;
+    }
+}
+
+function openChatModal(contentId) {
+    currentContentId = contentId;
+    const modal = document.getElementById('chat-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        document.body.classList.add('overflow-hidden');
+    }
+}
+
+function closeChatModal() {
+    const modal = document.getElementById('chat-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.body.classList.remove('overflow-hidden');
+    }
+    stopAudioRecording();
+}
+
+async function selectPrompt(key) {
+    const promptText = PRECHAT_PROMPTS[key];
+    if (!promptText) return;
+    await openInChatGPT(currentContentId, promptText);
+    closeChatModal();
+}
+
+function buildAudioPrompt(transcript) {
+    return `The user asked (audio transcript): "${transcript}"\nUsing the article context, answer clearly. If the context lacks an answer, say so and suggest where to look.`;
+}
+
+function getSpeechRecognizer() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert('Speech recognition is not supported in this browser. Please type your question.');
+        return null;
+    }
+    const recognizer = new SpeechRecognition();
+    recognizer.continuous = false;
+    recognizer.interimResults = false;
+    recognizer.lang = 'en-US';
+    return recognizer;
+}
+
+function toggleAudioRecording() {
+    if (isRecording) {
+        stopAudioRecording();
+        return;
+    }
+
+    const recognizer = getSpeechRecognizer();
+    if (!recognizer) {
+        return;
+    }
+
+    recognition = recognizer;
+    isRecording = true;
+    updateAudioStatus('Listening...');
+    document.getElementById('audio-toggle').textContent = 'Stop recording';
+
+    recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+            .map(result => result[0].transcript)
+            .join(' ')
+            .trim();
+        const textarea = document.getElementById('audio-transcript');
+        if (textarea) {
+            textarea.value = transcript;
+        }
+    };
+
+    recognition.onerror = () => {
+        updateAudioStatus('Could not transcribe audio.');
+        stopAudioRecording();
+    };
+
+    recognition.onend = () => {
+        stopAudioRecording();
+    };
+
+    recognition.start();
+}
+
+function stopAudioRecording() {
+    if (recognition && isRecording) {
+        recognition.stop();
+    }
+    isRecording = false;
+    updateAudioStatus('Not recording');
+    const toggleBtn = document.getElementById('audio-toggle');
+    if (toggleBtn) {
+        toggleBtn.textContent = 'Start recording';
+    }
+}
+
+function updateAudioStatus(text) {
+    const statusEl = document.getElementById('audio-status');
+    if (statusEl) {
+        statusEl.textContent = text;
+    }
+}
+
+async function launchAudioPrompt() {
+    const transcript = (document.getElementById('audio-transcript')?.value || '').trim();
+    if (!transcript) {
+        alert('Record or type a question first.');
+        return;
+    }
+    await openInChatGPT(currentContentId, buildAudioPrompt(transcript));
+    closeChatModal();
+}
+
 function toggleAccordion(sectionId) {
     const content = document.getElementById(`${sectionId}-content`);
     const icon = document.getElementById(`${sectionId}-icon`);
@@ -396,46 +580,48 @@ async function toggleFavorite(contentId) {
     }
 }
 
-async function openInChatGPT(contentId) {
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  const appStoreURL = 'https://apps.apple.com/us/app/chatgpt/id6448311069';
-  const deepLink = 'chatgpt://chat/new';
-
-  if (isIOS) {
-    // Try native app first
-    window.location.href = deepLink;
-    // After a short delay, fall back to the App Store if the app isn't installed
-    setTimeout(async () => {
-      try {
-        const resp = await fetch(`/api/content/${contentId}/chat-url`);
-        if (resp.ok) {
-          const data = await resp.json();
-          // Offer App Store as primary fallback on iOS, but if user returns, open web
-          window.location.href = appStoreURL;
-          // As a secondary fallback (e.g., user cancels App Store), open web URL
-          setTimeout(() => window.open(data.chat_url, '_blank'), 1800);
-        } else {
-          window.location.href = appStoreURL;
-        }
-      } catch (_) {
-        window.location.href = appStoreURL;
-      }
-    }, 1200);
-    return;
-  }
-
-  // Non‑iOS: open the web URL
-  try {
-    const response = await fetch(`/api/content/${contentId}/chat-url`);
-    if (response.ok) {
-      const data = await response.json();
-      window.open(data.chat_url, '_blank');
-    } else {
-      console.error('Failed to get ChatGPT URL');
+async function fetchChatUrl(contentId, userPrompt = '') {
+    const params = new URLSearchParams();
+    if (userPrompt) {
+        params.set('user_prompt', userPrompt);
     }
-  } catch (error) {
-    console.error('Error opening ChatGPT:', error);
-  }
+    const query = params.toString();
+    const resp = await fetch(`/api/content/${contentId}/chat-url${query ? `?${query}` : ''}`);
+    if (!resp.ok) {
+        throw new Error('Failed to get ChatGPT URL');
+    }
+    return resp.json();
+}
+
+async function openInChatGPT(contentId, userPrompt = '') {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const appStoreURL = 'https://apps.apple.com/us/app/chatgpt/id6448311069';
+    const deepLink = 'chatgpt://chat/new';
+
+    const chatUrlPromise = fetchChatUrl(contentId, userPrompt);
+
+    if (isIOS) {
+        // Try native app first
+        window.location.href = deepLink;
+
+        setTimeout(async () => {
+            try {
+                const data = await chatUrlPromise;
+                window.location.href = appStoreURL;
+                setTimeout(() => window.open(data.chat_url, '_blank'), 1800);
+            } catch (error) {
+                window.location.href = appStoreURL;
+            }
+        }, 1200);
+        return;
+    }
+
+    try {
+        const data = await chatUrlPromise;
+        window.open(data.chat_url, '_blank');
+    } catch (error) {
+        console.error('Error opening ChatGPT:', error);
+    }
 }
 </script>
 {% endblock %}

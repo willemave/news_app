@@ -11,14 +11,19 @@ class ScraperSettingsViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
+    private let filterTypes: [String]?
     private let service = ScraperConfigService.shared
+
+    init(filterTypes: [String]? = nil) {
+        self.filterTypes = filterTypes
+    }
 
     func loadConfigs() async {
         print("DEBUG: ScraperSettingsViewModel.loadConfigs() called")
         isLoading = true
         errorMessage = nil
         do {
-            configs = try await service.listConfigs()
+            configs = try await service.listConfigs(types: filterTypes)
             print("DEBUG: Successfully loaded \(configs.count) scraper configs")
             for config in configs {
                 print("DEBUG: Config: \(config.displayName ?? "N/A") (\(config.scraperType))")
@@ -30,13 +35,14 @@ class ScraperSettingsViewModel: ObservableObject {
         isLoading = false
     }
 
-    func addConfig(scraperType: String, displayName: String?, feedURL: String) async {
+    func addConfig(scraperType: String, displayName: String?, feedURL: String, limit: Int? = nil) async {
         errorMessage = nil
         do {
             let newConfig = try await service.createConfig(
                 scraperType: scraperType,
                 displayName: displayName,
                 feedURL: feedURL,
+                limit: limit,
                 isActive: true
             )
             configs.insert(newConfig, at: 0)
@@ -45,13 +51,20 @@ class ScraperSettingsViewModel: ObservableObject {
         }
     }
 
-    func updateConfig(_ config: ScraperConfig, isActive: Bool? = nil, displayName: String? = nil, feedURL: String? = nil) async {
+    func updateConfig(
+        _ config: ScraperConfig,
+        isActive: Bool? = nil,
+        displayName: String? = nil,
+        feedURL: String? = nil,
+        limit: Int? = nil
+    ) async {
         errorMessage = nil
         do {
             let updated = try await service.updateConfig(
                 configId: config.id,
                 displayName: displayName,
                 feedURL: feedURL,
+                limit: limit,
                 isActive: isActive
             )
             if let index = configs.firstIndex(where: { $0.id == updated.id }) {

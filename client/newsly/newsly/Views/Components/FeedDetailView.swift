@@ -13,6 +13,7 @@ struct FeedDetailView: View {
     @State private var displayName: String
     @State private var feedURL: String
     @State private var isActive: Bool
+    @State private var limit: String
     @State private var showingDeleteAlert = false
     @State private var isSaving = false
     @State private var showingSaveSuccess = false
@@ -23,6 +24,7 @@ struct FeedDetailView: View {
         _displayName = State(initialValue: config.displayName ?? "")
         _feedURL = State(initialValue: config.feedURL ?? "")
         _isActive = State(initialValue: config.isActive)
+        _limit = State(initialValue: config.limit.map(String.init) ?? "")
     }
 
     var body: some View {
@@ -62,6 +64,17 @@ struct FeedDetailView: View {
                             .disableAutocorrection(true)
                     }
                     .padding(.vertical, 4)
+
+                    if config.scraperType == "podcast_rss" {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Limit (1-100, optional)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("Limit", text: $limit)
+                                .keyboardType(.numberPad)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
 
                 if viewModel.errorMessage != nil {
@@ -107,7 +120,12 @@ struct FeedDetailView: View {
                             Text("Save")
                         }
                     }
-                    .disabled(isSaving || !hasChanges || feedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(
+                        isSaving
+                            || !hasChanges
+                            || feedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || !limitIsValid
+                    )
                 }
             }
             .alert("Delete Feed", isPresented: $showingDeleteAlert) {
@@ -146,7 +164,20 @@ struct FeedDetailView: View {
     private var hasChanges: Bool {
         displayName != (config.displayName ?? "") ||
         feedURL != (config.feedURL ?? "") ||
-        isActive != config.isActive
+        isActive != config.isActive ||
+        (config.scraperType == "podcast_rss" && normalizedLimit != config.limit)
+    }
+
+    private var normalizedLimit: Int? {
+        let trimmed = limit.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Int(trimmed)
+    }
+
+    private var limitIsValid: Bool {
+        guard config.scraperType == "podcast_rss" else { return true }
+        guard let value = normalizedLimit else { return true }
+        return (1...100).contains(value)
     }
 
     private func saveChanges() async {
@@ -157,7 +188,8 @@ struct FeedDetailView: View {
             config,
             isActive: isActive != config.isActive ? isActive : nil,
             displayName: displayName != (config.displayName ?? "") ? displayName : nil,
-            feedURL: feedURL != (config.feedURL ?? "") ? feedURL : nil
+            feedURL: feedURL != (config.feedURL ?? "") ? feedURL : nil,
+            limit: (config.scraperType == "podcast_rss" && normalizedLimit != config.limit) ? normalizedLimit : nil
         )
 
         if viewModel.errorMessage == nil {

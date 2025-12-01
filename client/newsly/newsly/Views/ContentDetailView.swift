@@ -24,9 +24,14 @@ struct ContentDetailView: View {
     @State private var isConverting: Bool = false
     // Tweet suggestions sheet state
     @State private var showTweetSheet: Bool = false
-    // Deep dive chat sheet state
+    // Chat sheet state
     @State private var showDeepDiveSheet: Bool = false
     @State private var deepDiveSession: ChatSessionSummary?
+    @State private var showChatOptionsSheet: Bool = false
+    @State private var isStartingChat: Bool = false
+    @State private var chatError: String?
+    @State private var audioTranscript: String = ""
+    @StateObject private var dictationService = VoiceDictationService.shared
     // Share sheet options
     @State private var showShareOptions: Bool = false
 
@@ -113,9 +118,7 @@ struct ContentDetailView: View {
 
                             // Deep Dive chat button
                             Button(action: {
-                                Task {
-                                    await startDeepDive(contentId: content.id)
-                                }
+                                showChatOptionsSheet = true
                             }) {
                                 Image(systemName: "brain.head.profile")
                                     .font(.system(size: 18))
@@ -390,6 +393,58 @@ struct ContentDetailView: View {
                 TweetSuggestionsSheet(contentId: content.id)
             }
         }
+        .sheet(isPresented: $showChatOptionsSheet, onDismiss: {
+            dictationService.cancelRecording()
+            audioTranscript = ""
+            chatError = nil
+        }) {
+            if let content = viewModel.content {
+                NavigationStack {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Start a chat")
+                            .font(.headline)
+
+                        Text("Pick how you want to kick off the conversation. Your chosen prompt is sent as the first message in chat.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        if let chatError {
+                            Text(chatError)
+                                .font(.footnote)
+                                .foregroundColor(.red)
+                        }
+
+                        chatPromptCard(
+                            title: "Dig deeper into key points",
+                            detail: "Expand reasoning, evidence, and implications for each main point.",
+                            prompt: deepDivePrompt(for: content),
+                            contentId: content.id
+                        )
+
+                        chatPromptCard(
+                            title: "Corroborate with fresh sources",
+                            detail: "Verify claims with current, credible links; surface disagreements.",
+                            prompt: corroboratePrompt(for: content),
+                            contentId: content.id
+                        )
+
+                        audioPromptCard(for: content)
+
+                        if isStartingChat {
+                            HStack {
+                                ProgressView()
+                                Text("Starting chat...")
+                                    .font(.footnote)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 4)
+                        }
+                    }
+                    .padding(20)
+                    .presentationDetents([.fraction(0.55), .large])
+                }
+            }
+        }
         .sheet(isPresented: $showDeepDiveSheet) {
             if let session = deepDiveSession {
                 NavigationStack {
@@ -399,15 +454,141 @@ struct ContentDetailView: View {
         }
     }
 
-    // MARK: - Deep Dive Helper
-    private func startDeepDive(contentId: Int) async {
+    // MARK: - Chat Helpers
+    private func startChatWithPrompt(_ prompt: String, contentId: Int) async {
+        guard !isStartingChat else { return }
+
+        isStartingChat = true
+        chatError = nil
+
         do {
             let session = try await ChatService.shared.startArticleChat(contentId: contentId)
+            _ = try await ChatService.shared.sendMessage(sessionId: session.id, message: prompt)
             deepDiveSession = session
+            showChatOptionsSheet = false
             showDeepDiveSheet = true
         } catch {
-            // Could show an error toast here
-            print("Failed to start deep dive: \(error)")
+            chatError = error.localizedDescription
+        }
+
+        isStartingChat = false
+    }
+
+    private func deepDivePrompt(for content: ContentDetail) -> String {
+        "Dig deeper into the key points of \(content.displayTitle). For each main point, explain reasoning, supporting evidence, and practical implications. Keep answers concise and numbered."
+    }
+
+    private func corroboratePrompt(for content: ContentDetail) -> String {
+        "Corroborate the main claims in \(content.displayTitle) using recent, reputable sources. For each claim, list 2-3 supporting or conflicting sources with URLs, note disagreements, and flag gaps or weak evidence."
+    }
+
+    private func audioPrompt(_ transcript: String, content: ContentDetail) -> String {
+        "User voice question about \(content.displayTitle): \(transcript)\nUse the article context first; if the answer is not in the source, say so and suggest where to look next."
+    }
+
+    @ViewBuilder
+    private func chatPromptCard(title: String, detail: String, prompt: String, contentId: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    Task { await startChatWithPrompt(prompt, contentId: contentId) }
+                } label: {
+                    Text("Use prompt")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isStartingChat)
+            }
+
+            Text(prompt)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .padding(12)
+        .background(Color(.systemGray5).opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func audioPromptCard(for content: ContentDetail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Ask with audio")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("Record a quick question; we transcribe it and send as your first chat message.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    Task { await toggleRecording() }
+                } label: {
+                    Label(dictationService.isRecording ? "Stop" : "Record", systemImage: dictationService.isRecording ? "stop.circle" : "mic")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if dictationService.isTranscribing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Transcribing...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            } else {
+                TextEditor(text: $audioTranscript)
+                    .frame(minHeight: 80)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.3))
+                    )
+                    .font(.caption)
+            }
+
+            Button {
+                Task { await startChatWithPrompt(audioPrompt(audioTranscript, content: content), contentId: content.id) }
+            } label: {
+                Text("Start chat with transcript")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(audioTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isStartingChat)
+        }
+        .padding(12)
+        .background(Color(.systemGray5).opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func toggleRecording() async {
+        do {
+            if dictationService.isRecording {
+                let transcript = try await dictationService.stopRecordingAndTranscribe()
+                audioTranscript = transcript
+            } else {
+                try await dictationService.startRecording()
+            }
+        } catch {
+            chatError = error.localizedDescription
         }
     }
 

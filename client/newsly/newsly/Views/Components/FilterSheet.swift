@@ -59,7 +59,7 @@ struct FilterSheet: View {
                             HStack {
                                 Image(systemName: "gear")
                                     .foregroundColor(.accentColor)
-                                Text("Server Settings")
+                                Text("Settings")
                             }
                         }
                     }

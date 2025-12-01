@@ -3,7 +3,7 @@
 from typing import Annotated
 from urllib.parse import quote_plus
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -145,8 +145,16 @@ async def get_content_detail(
 async def get_chatgpt_url(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
+    user_prompt: Annotated[
+        str | None,
+        Query(None, max_length=2000, description="Optional user prompt to prepend to chat"),
+    ] = None,
 ) -> ChatGPTUrlResponse:
-    """Generate ChatGPT URL for chatting about the content."""
+    """Generate ChatGPT URL for chatting about the content.
+
+    If ``user_prompt`` is provided, it is prepended to the generated prompt so the
+    selection the user made in the UI appears as the first message in ChatGPT.
+    """
     content = db.query(Content).filter(Content.id == content_id).first()
 
     if not content:
@@ -161,6 +169,11 @@ async def get_chatgpt_url(
 
     # Build the prompt with context
     prompt_parts = []
+
+    if user_prompt:
+        prompt_parts.append("USER PROMPT:")
+        prompt_parts.append(user_prompt.strip())
+        prompt_parts.append("")
 
     # Add title and source context
     prompt_parts.append(f"I'd like to discuss this {domain_content.content_type.value}:")

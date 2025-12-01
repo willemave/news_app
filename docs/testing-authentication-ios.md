@@ -50,6 +50,7 @@ You can use this token to test the iOS app...
 2. At the bottom of the login screen, tap **"🐛 Debug Menu"** button
    - *Note: This button only appears in DEBUG builds*
 3. Alternatively, you can access it from Settings tab after authenticating
+4. Server configuration (host/port/protocol) now lives inside the Debug Menu
 
 ### Step 4: Set Test Token
 
@@ -204,7 +205,7 @@ To test actual Apple Sign In on a real device:
 
 ### "Can't connect to backend"
 - Verify backend is running: `curl http://localhost:8000/health`
-- Check Settings > Server Configuration
+- Check Debug Menu > Server Configuration
 - For simulator, use `localhost` or `127.0.0.1`
 
 ## Notes

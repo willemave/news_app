@@ -8,7 +8,7 @@ import Foundation
 struct CreateScraperConfigPayload: Codable {
     let scraperType: String
     let displayName: String?
-    let config: [String: String]
+    let config: ScraperConfigBody
     let isActive: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -21,7 +21,7 @@ struct CreateScraperConfigPayload: Codable {
 
 struct UpdateScraperConfigPayload: Codable {
     let displayName: String?
-    let config: [String: String]?
+    let config: ScraperConfigBody?
     let isActive: Bool?
 
     enum CodingKeys: String, CodingKey {
@@ -31,36 +31,60 @@ struct UpdateScraperConfigPayload: Codable {
     }
 }
 
+struct ScraperConfigBody: Codable {
+    let feedURL: String?
+    let limit: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case feedURL = "feed_url"
+        case limit
+    }
+}
+
 class ScraperConfigService {
     static let shared = ScraperConfigService()
     private let client = APIClient.shared
 
     private init() {}
 
-    func listConfigs() async throws -> [ScraperConfig] {
-        print("DEBUG: ScraperConfigService.listConfigs() - calling \(APIEndpoints.scraperConfigs)")
-        let configs: [ScraperConfig] = try await client.request(APIEndpoints.scraperConfigs)
+    func listConfigs(types: [String]? = nil) async throws -> [ScraperConfig] {
+        var path = APIEndpoints.scraperConfigs
+        if let types, !types.isEmpty {
+            let typeParam = types.joined(separator: ",")
+            path = "\(path)?types=\(typeParam)"
+        }
+        print("DEBUG: ScraperConfigService.listConfigs() - calling \(path)")
+        let configs: [ScraperConfig] = try await client.request(path)
         print("DEBUG: ScraperConfigService.listConfigs() - received \(configs.count) configs")
         return configs
     }
 
-    func createConfig(scraperType: String, displayName: String?, feedURL: String, isActive: Bool) async throws -> ScraperConfig {
+    func createConfig(
+        scraperType: String,
+        displayName: String?,
+        feedURL: String,
+        limit: Int?,
+        isActive: Bool
+    ) async throws -> ScraperConfig {
         let payload = CreateScraperConfigPayload(
             scraperType: scraperType,
             displayName: displayName,
-            config: ["feed_url": feedURL],
+            config: ScraperConfigBody(feedURL: feedURL, limit: limit),
             isActive: isActive
         )
         let body = try JSONEncoder().encode(payload)
         return try await client.request(APIEndpoints.scraperConfigs, method: "POST", body: body)
     }
 
-    func updateConfig(configId: Int, displayName: String?, feedURL: String?, isActive: Bool?) async throws -> ScraperConfig {
-        let payload = UpdateScraperConfigPayload(
-            displayName: displayName,
-            config: feedURL.map { ["feed_url": $0] },
-            isActive: isActive
-        )
+    func updateConfig(
+        configId: Int,
+        displayName: String?,
+        feedURL: String?,
+        limit: Int?,
+        isActive: Bool?
+    ) async throws -> ScraperConfig {
+        let configBody = (feedURL != nil || limit != nil) ? ScraperConfigBody(feedURL: feedURL, limit: limit) : nil
+        let payload = UpdateScraperConfigPayload(displayName: displayName, config: configBody, isActive: isActive)
         let body = try JSONEncoder().encode(payload)
         return try await client.request(APIEndpoints.scraperConfig(id: configId), method: "PUT", body: body)
     }

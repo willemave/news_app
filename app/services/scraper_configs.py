@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_
@@ -20,7 +21,7 @@ ALLOWED_SCRAPER_TYPES = {"substack", "atom", "podcast_rss", "youtube"}
 class CreateUserScraperConfig(BaseModel):
     """Payload for creating a scraper config."""
 
-    scraper_type: str = Field(..., pattern="^(substack|atom|podcast_rss|youtube)$")
+    scraper_type: Literal["substack", "atom", "podcast_rss", "youtube"]
     display_name: str | None = Field(None, max_length=255)
     config: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
@@ -31,6 +32,11 @@ class CreateUserScraperConfig(BaseModel):
         feed_url = config.get("feed_url")
         if not isinstance(feed_url, str) or not feed_url.strip():
             raise ValueError("config.feed_url is required")
+        config["feed_url"] = feed_url.strip()
+
+        limit = config.get("limit")
+        if limit is not None and (not isinstance(limit, int) or not 1 <= limit <= 100):
+            raise ValueError("config.limit must be an integer between 1 and 100")
         return config
 
 
@@ -49,6 +55,11 @@ class UpdateUserScraperConfig(BaseModel):
         feed_url = config.get("feed_url")
         if not isinstance(feed_url, str) or not feed_url.strip():
             raise ValueError("config.feed_url is required")
+        config["feed_url"] = feed_url.strip()
+
+        limit = config.get("limit")
+        if limit is not None and (not isinstance(limit, int) or not 1 <= limit <= 100):
+            raise ValueError("config.limit must be an integer between 1 and 100")
         return config
 
 
@@ -57,14 +68,21 @@ def _normalize_feed_url(config: dict[str, Any]) -> str:
     return feed_url
 
 
-def list_user_scraper_configs(db: Session, user_id: int) -> list[UserScraperConfig]:
-    """Return scraper configs for a user."""
-    return (
-        db.query(UserScraperConfig)
-        .filter(UserScraperConfig.user_id == user_id)
-        .order_by(UserScraperConfig.created_at.desc())
-        .all()
-    )
+def _extract_limit(config: dict[str, Any], default_limit: int) -> int:
+    limit = config.get("limit")
+    if isinstance(limit, int) and 1 <= limit <= 100:
+        return limit
+    return default_limit
+
+
+def list_user_scraper_configs(
+    db: Session, user_id: int, allowed_types: set[str] | None = None
+) -> list[UserScraperConfig]:
+    """Return scraper configs for a user, optionally filtered by types."""
+    query = db.query(UserScraperConfig).filter(UserScraperConfig.user_id == user_id)
+    if allowed_types:
+        query = query.filter(UserScraperConfig.scraper_type.in_(allowed_types))
+    return query.order_by(UserScraperConfig.created_at.desc()).all()
 
 
 def list_active_configs_by_type(db: Session, scraper_type: str) -> list[UserScraperConfig]:
@@ -91,6 +109,8 @@ def create_user_scraper_config(
     if data.scraper_type not in ALLOWED_SCRAPER_TYPES:
         raise ValueError("Unsupported scraper_type")
 
+    normalized_config = {**data.config, "feed_url": feed_url}
+
     existing = (
         db.query(UserScraperConfig)
         .filter(
@@ -109,7 +129,7 @@ def create_user_scraper_config(
         user_id=user_id,
         scraper_type=data.scraper_type,
         display_name=data.display_name,
-        config=data.config,
+        config=normalized_config,
         feed_url=feed_url,
         is_active=data.is_active,
     )
@@ -144,8 +164,10 @@ def update_user_scraper_config(
     if data.display_name is not None:
         record.display_name = data.display_name
     if data.config is not None:
-        record.config = data.config
-        record.feed_url = _normalize_feed_url(data.config)
+        normalized_feed_url = _normalize_feed_url(data.config)
+        normalized_config = {**data.config, "feed_url": normalized_feed_url}
+        record.config = normalized_config
+        record.feed_url = normalized_feed_url
     if data.is_active is not None:
         record.is_active = data.is_active
 
@@ -188,11 +210,12 @@ def build_feed_payloads(
         if not feed_url:
             logger.warning("Skipping config without feed_url. id=%s", config.id)
             continue
+        limit = _extract_limit(config.config, default_limit)
         feeds.append(
             {
                 "url": feed_url,
                 "name": config.display_name or config.config.get("name") or "Custom feed",
-                "limit": config.config.get("limit", default_limit),
+                "limit": limit,
                 "user_id": config.user_id,
                 "config_id": config.id,
             }
