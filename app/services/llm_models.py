@@ -108,7 +108,11 @@ def build_pydantic_model(model_spec: str) -> Tuple[Model | str, GoogleModelSetti
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
         model = GoogleModel(model_to_use, provider=GoogleProvider(api_key=settings.google_api_key))
-        model_settings = GoogleModelSettings(google_thinking_config={"include_thoughts": False})
+        # Configure thinking for Google models - use low thinking level for Gemini 3
+        thinking_config: dict[str, object] = {"include_thoughts": False}
+        if model_to_use.startswith("gemini-3"):
+            thinking_config["thinking_level"] = "low"
+        model_settings = GoogleModelSettings(google_thinking_config=thinking_config)
         return model, model_settings
 
     if provider_prefix == "anthropic" or model_spec.startswith("claude-"):
