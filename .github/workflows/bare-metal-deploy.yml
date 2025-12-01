@@ -113,5 +113,9 @@ jobs:
           echo "→ Refreshing env file if present"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "cd '$REMOTE_DIR' && if [[ -f .env.racknerd ]]; then sudo cp .env.racknerd .env && sudo chown '$OWNER_GROUP' .env && sudo chmod 600 .env; else echo 'Warning: .env.racknerd missing; skipping copy' >&2; fi"
 
+          SERVICE_USER="${OWNER_GROUP%%:*}"
+          echo "→ Installing Playwright Chromium browser on remote"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -u $SERVICE_USER -H bash -c 'cd $REMOTE_DIR && if [[ -x .venv/bin/playwright ]]; then .venv/bin/playwright install chromium; else echo \"Playwright CLI not found; skipping browser install\"; fi'"
+
           echo "→ Restarting supervisor programs: $PROGRAMS"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl restart $PROGRAMS && sudo supervisorctl status"

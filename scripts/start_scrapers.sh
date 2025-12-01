@@ -21,14 +21,14 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-# Check if virtual environment exists
-if [ ! -f ".venv/bin/python" ]; then
-    echo "ERROR: Virtual environment not found. Please run 'uv venv' first."
-    exit 1
+# If there is a project venv, use it, otherwise assume the current env is correct
+if [ -f ".venv/bin/activate" ]; then
+    echo "Activating project .venv"
+    # shellcheck source=/dev/null
+    source .venv/bin/activate
+else
+    echo "No .venv found, using current Python environment: $(python -c 'import sys; print(sys.executable)')"
 fi
-
-# Activate virtual environment
-source .venv/bin/activate
 
 # Display database target for transparency
 DATABASE_TARGET=$(PROJECT_ROOT="$PROJECT_ROOT" python <<'PY'
