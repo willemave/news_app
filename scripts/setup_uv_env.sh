@@ -108,7 +108,7 @@ fi
 
 if "$NEEDS_VENV_REBUILD"; then
   echo "[setup] Creating virtual environment with Python $PYTHON_VERSION"
-  uv venv --python "$PYTHON_VERSION" "$VENV_PATH"
+  uv venv --clear --python "$PYTHON_VERSION" "$VENV_PATH"
   CURRENT_VENV_VERSION="$($VENV_PY_BIN -c 'import sys; print(sys.version.split()[0])')"
 else
   echo "[setup] Reusing existing virtualenv (.venv) with Python ${CURRENT_VENV_VERSION:-unknown}"

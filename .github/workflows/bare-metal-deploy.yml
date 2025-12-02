@@ -22,20 +22,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ vars.DEPLOY_PYTHON_VERSION || '3.13' }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
-
-      # Note: We do NOT build the venv locally. Virtualenvs are not portable
-      # across machines. The venv will be created on the remote server via
-      # setup_uv_env.sh after rsync.
-
       - name: Start ssh-agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
