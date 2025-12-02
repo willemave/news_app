@@ -102,7 +102,14 @@
       "Bash(http GET:*)",
       "Bash(timeout 30 .venv/bin/python:*)",
       "Bash(lsof:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(git check-ignore:*)",
+      "Bash(pip install:*)",
+      "Bash(.venv/bin/ruff check:*)",
+      "Bash(.venv/bin/ruff format:*)",
+      "Bash(git filter-repo:*)",
+      "Bash(brew list:*)",
+      "Bash(brew install:*)"
     ],
     "deny": []
   },
