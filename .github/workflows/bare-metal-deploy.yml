@@ -89,6 +89,7 @@ jobs:
             "*.sqlite"
             ".DS_Store"
             ".env"
+            ".env.*"
           )
 
           RSYNC_ARGS=(-az --delete --rsync-path="sudo rsync" --info=progress2 --chown="$OWNER_GROUP" -e "ssh -p $PORT -o StrictHostKeyChecking=yes -o BatchMode=yes")

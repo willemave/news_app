@@ -6,6 +6,8 @@ news_app.egg-info
 node_modules/
 # Environments
 .env
+.env.*
+!.env.example
 .code/
 client/newsly/newsly.xcodeproj/project.xcworkspace/xcuserdata/willem.xcuserdatad/*.xcuserstate
 news_app.db
