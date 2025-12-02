@@ -9,12 +9,12 @@ This script:
 """
 
 import argparse
+import os
 import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add parent directory to path for imports (use os.path for Python 3.13 compatibility)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -23,11 +23,43 @@ from app.core.settings import get_settings
 from app.models.schema import Content, ContentStatus, ProcessingTask
 
 
-def reset_errored_content(days: int = None, dry_run: bool = False):
+def parse_datetime(value: str) -> datetime:
+    """Parse a datetime string in various formats.
+
+    Supports:
+        - ISO format: 2024-01-15T10:30:00
+        - Date only: 2024-01-15 (assumes start of day)
+        - Date and time: 2024-01-15 10:30
+    """
+    formats = [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    raise argparse.ArgumentTypeError(
+        f"Invalid datetime format: {value}. Use YYYY-MM-DD or YYYY-MM-DD HH:MM"
+    )
+
+
+def reset_errored_content(
+    days: int | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    dry_run: bool = False,
+):
     """Reset errored content for re-processing.
 
     Args:
         days: Only reset content errored within this many days (None = all errored content)
+        since: Only reset content errored on or after this datetime
+        until: Only reset content errored before this datetime
         dry_run: If True, show what would be reset without making changes
     """
     # Get database settings
@@ -42,13 +74,19 @@ def reset_errored_content(days: int = None, dry_run: bool = False):
             # Build query for errored content
             query = db.query(Content).filter(Content.status == ContentStatus.FAILED.value)
 
-            # Add date filter if specified
+            # Add date filters
             if days:
                 cutoff_date = datetime.utcnow() - timedelta(days=days)
                 query = query.filter(Content.updated_at >= cutoff_date)
-                print(
-                    f"Filtering to content errored since {cutoff_date.strftime('%Y-%m-%d %H:%M:%S')} UTC"
-                )
+                cutoff_str = cutoff_date.strftime("%Y-%m-%d %H:%M:%S")
+                print(f"Filtering to content errored since {cutoff_str} UTC")
+            if since:
+                query = query.filter(Content.updated_at >= since)
+                since_str = since.strftime("%Y-%m-%d %H:%M:%S")
+                print(f"Filtering to content errored on or after {since_str}")
+            if until:
+                query = query.filter(Content.updated_at < until)
+                print(f"Filtering to content errored before {until.strftime('%Y-%m-%d %H:%M:%S')}")
 
             # Get errored content
             errored_content = query.all()
@@ -62,9 +100,8 @@ def reset_errored_content(days: int = None, dry_run: bool = False):
             if dry_run:
                 print("\nDRY RUN - Would reset the following content:")
                 for content in errored_content[:20]:  # Show first 20 in dry run
-                    print(
-                        f"  - ID: {content.id}, Type: {content.content_type}, Source: {content.source}"
-                    )
+                    ctype = content.content_type
+                    print(f"  - ID: {content.id}, Type: {ctype}, Source: {content.source}")
                     print(f"    URL: {content.url[:80]}...")
                     if content.error_message:
                         print(f"    Error: {content.error_message[:100]}...")
@@ -146,15 +183,21 @@ def main():
 Examples:
   # Reset all errored content
   python scripts/reset_errored_content.py
-  
+
   # Reset only content errored in the last 7 days
   python scripts/reset_errored_content.py --days 7
-  
+
   # Dry run to see what would be reset (last 3 days)
   python scripts/reset_errored_content.py --days 3 --dry-run
-  
-  # Reset all errored content from today
-  python scripts/reset_errored_content.py --days 1
+
+  # Reset content errored since a specific date
+  python scripts/reset_errored_content.py --since 2024-12-01
+
+  # Reset content errored in a specific date range
+  python scripts/reset_errored_content.py --since "2024-12-01 08:00" --until "2024-12-01 12:00"
+
+  # Combine --since with --until for precise ranges
+  python scripts/reset_errored_content.py --since 2024-12-01T00:00:00 --until 2024-12-02T00:00:00
         """,
     )
 
@@ -165,15 +208,31 @@ Examples:
     )
 
     parser.add_argument(
+        "--since",
+        type=parse_datetime,
+        help="Only reset content errored on or after this datetime (YYYY-MM-DD)",
+    )
+
+    parser.add_argument(
+        "--until",
+        type=parse_datetime,
+        help="Only reset content errored before this datetime (YYYY-MM-DD or YYYY-MM-DD HH:MM)",
+    )
+
+    parser.add_argument(
         "--dry-run", action="store_true", help="Show what would be reset without making changes"
     )
 
     args = parser.parse_args()
 
+    # Validate conflicting options
+    if args.days and (args.since or args.until):
+        parser.error("Cannot use --days together with --since/--until")
+
     if args.dry_run:
         print("DRY RUN MODE - No changes will be made\n")
 
-    reset_errored_content(days=args.days, dry_run=args.dry_run)
+    reset_errored_content(days=args.days, since=args.since, until=args.until, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
