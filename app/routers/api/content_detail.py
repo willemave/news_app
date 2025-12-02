@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
+from app.core.timing import timed
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
 from app.models.schema import Content
@@ -37,16 +38,19 @@ async def get_content_detail(
     """Get detailed view of a specific content item."""
     from app.services import favorites, read_status
 
-    content = db.query(Content).filter(Content.id == content_id).first()
+    with timed("query content_by_id"):
+        content = db.query(Content).filter(Content.id == content_id).first()
 
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Check if content is read
-    is_read = read_status.is_content_read(db, content_id, current_user.id)
+    with timed("is_content_read"):
+        is_read = read_status.is_content_read(db, content_id, current_user.id)
 
     # Check if content is favorited
-    is_favorited = favorites.is_content_favorited(db, content_id, current_user.id)
+    with timed("is_content_favorited"):
+        is_favorited = favorites.is_content_favorited(db, content_id, current_user.id)
 
     # Convert to domain object to validate metadata
     try:

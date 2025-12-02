@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
+from app.core.timing import timed
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry
@@ -84,10 +85,12 @@ async def list_contents(
             raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Get read content IDs first
-    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
+    with timed("get_read_content_ids"):
+        read_content_ids = read_status.get_read_content_ids(db, current_user.id)
 
     # Get favorited content IDs
-    favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
+    with timed("get_favorite_content_ids"):
+        favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
 
     inbox_exists = (
         db.query(ContentStatusEntry.id)
@@ -120,12 +123,13 @@ async def list_contents(
             .order_by(func.date(Content.created_at).desc())
         )
 
-        for row in available_dates_query.all():
-            if row.date:
-                if isinstance(row.date, str):
-                    available_dates.append(row.date)
-                else:
-                    available_dates.append(row.date.strftime("%Y-%m-%d"))
+        with timed("query available_dates"):
+            for row in available_dates_query.all():
+                if row.date:
+                    if isinstance(row.date, str):
+                        available_dates.append(row.date)
+                    else:
+                        available_dates.append(row.date.strftime("%Y-%m-%d"))
 
     # Query content
     query = db.query(Content)
@@ -173,7 +177,8 @@ async def list_contents(
     query = query.order_by(Content.created_at.desc(), Content.id.desc())
 
     # Fetch limit + 1 to determine if there are more results
-    contents = query.limit(limit + 1).all()
+    with timed("query content_list"):
+        contents = query.limit(limit + 1).all()
 
     # Check if there are more results
     has_more = len(contents) > limit
@@ -342,8 +347,10 @@ async def search_contents(
             raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Preload state flags
-    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
-    favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
+    with timed("search: get_read_content_ids"):
+        read_content_ids = read_status.get_read_content_ids(db, current_user.id)
+    with timed("search: get_favorite_content_ids"):
+        favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
 
     inbox_exists = (
         db.query(ContentStatusEntry.id)
@@ -407,7 +414,8 @@ async def search_contents(
         search_query = search_query.offset(offset)
 
     # Fetch limit + 1 to determine if there are more results
-    results = search_query.limit(limit + 1).all()
+    with timed("query search_results"):
+        results = search_query.limit(limit + 1).all()
 
     # Check if there are more results
     has_more = len(results) > limit
@@ -498,7 +506,8 @@ async def get_unread_counts(
     from app.services import read_status
 
     # Get read content IDs
-    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
+    with timed("unread_counts: get_read_content_ids"):
+        read_content_ids = read_status.get_read_content_ids(db, current_user.id)
 
     inbox_exists = (
         db.query(ContentStatusEntry.id)
@@ -528,7 +537,8 @@ async def get_unread_counts(
     )
 
     # Get all visible content
-    all_content = base_query.all()
+    with timed("query unread_counts"):
+        all_content = base_query.all()
 
     # Count unread items by type
     counts = {"article": 0, "podcast": 0, "news": 0}

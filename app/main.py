@@ -1,3 +1,5 @@
+import time
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,19 +64,36 @@ async def admin_auth_redirect_handler(_request: Request, exc: AdminAuthRequired)
     return RedirectResponse(url=exc.redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
-# Request logging middleware
+# Request logging middleware with timing
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming HTTP requests."""
-    logger.info(f">>> Incoming request: {request.method} {request.url.path}")
+    """Log all incoming HTTP requests with timing information."""
+    start_time = time.perf_counter()
+
+    logger.info(f">>> {request.method} {request.url.path}")
     logger.debug(f"    Headers: {dict(request.headers)}")
     logger.debug(f"    Client: {request.client.host if request.client else 'unknown'}")
 
     response = await call_next(request)
 
-    logger.info(
-        f"<<< Response: {request.method} {request.url.path} - Status {response.status_code}"
-    )
+    duration_ms = (time.perf_counter() - start_time) * 1000
+
+    # Add timing header to response
+    response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
+
+    # Log with severity based on duration
+    method = request.method
+    path = request.url.path
+    status_code = response.status_code
+    time_str = f"{duration_ms:.2f}ms"
+
+    if duration_ms < 100:
+        logger.info(f"<<< {method} {path} - {status_code} [{time_str}]")
+    elif duration_ms < 500:
+        logger.info(f"<<< {method} {path} - {status_code} [{time_str}] (slow)")
+    else:
+        logger.warning(f"<<< {method} {path} - {status_code} [{time_str}] (very slow)")
+
     return response
 
 
