@@ -189,7 +189,7 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
         user_message = user_template.format(content=content_body)
         agent = get_summarization_agent(request.model_spec, prompt_content_type, system_prompt)
         result = agent.run_sync(user_message)
-        summary = result.data
+        summary = result.output
         return _finalize_summary(summary, request.content_type)
     except Exception as error:  # noqa: BLE001
         item_id = str(request.content_id or "unknown")
