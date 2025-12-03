@@ -3,7 +3,6 @@ This module defines the strategy for processing standard HTML web pages using cr
 """
 
 import asyncio
-import contextlib
 import logging
 import re
 from html import unescape
@@ -393,7 +392,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                     content_source="raw_html",
                     options={
                         "ignore_links": False,
-                        "ignore_images": False,
+                        "ignore_images": True,  # Avoid Base64 data URIs bloating content
                         "escape_html": False,
                         "body_width": 0,
                     },
