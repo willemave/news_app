@@ -60,20 +60,27 @@ def test_substack_env_override_success(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert "Substack" not in metrics or "scrape_config_missing" not in metrics["Substack"]
 
 
-def test_podcast_missing_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_podcast_no_feeds_configured(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test that podcast scraper handles no feeds gracefully."""
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     monkeypatch.setenv("NEWSAPP_CONFIG_DIR", str(config_dir))
     caplog.set_level(logging.WARNING)
 
+    # PodcastUnifiedScraper now loads from database via _load_podcast_feeds()
+    # When no feeds are configured, scrape() returns empty list with warning
     scraper = PodcastUnifiedScraper()
-    assert scraper.feeds == []
+
+    # Mock the database call to return no feeds
+    monkeypatch.setattr(scraper, "_load_podcast_feeds", lambda: [])
+
+    result = scraper.scrape()
+    assert result == []
 
     warn_messages = [record.message for record in caplog.records if record.levelno == logging.WARNING]
-    assert any("config_missing" in message for message in warn_messages)
-
-    metrics = get_scraper_metrics()
-    assert metrics["Podcast"]["scrape_config_missing"] == 1
+    assert any("No podcast feeds configured" in message for message in warn_messages)
 
 
 def test_reddit_config_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

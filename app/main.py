@@ -24,6 +24,28 @@ app = FastAPI(
 
 
 # Exception handlers
+def _serialize_validation_errors(errors: list) -> list:
+    """Convert validation errors to JSON-serializable format."""
+    serialized = []
+    for error in errors:
+        serialized_error = {
+            "loc": error.get("loc"),
+            "msg": str(error.get("msg", "")),
+            "type": error.get("type"),
+        }
+        # Only include input if it's JSON-serializable
+        if "input" in error:
+            try:
+                import json
+
+                json.dumps(error["input"])
+                serialized_error["input"] = error["input"]
+            except (TypeError, ValueError):
+                serialized_error["input"] = str(error["input"])
+        serialized.append(serialized_error)
+    return serialized
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """
@@ -51,10 +73,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         logger.error(f"  - Field: {error['loc']}, Error: {error['msg']}, Type: {error['type']}")
     logger.error("=" * 80)
 
-    # Return standard FastAPI validation error response
+    # Return standard FastAPI validation error response with serialized errors
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors(), "body": body_text},
+        content={"detail": _serialize_validation_errors(exc.errors()), "body": body_text},
     )
 
 

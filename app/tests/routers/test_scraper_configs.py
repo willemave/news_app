@@ -89,7 +89,8 @@ def test_scraper_config_limit_validation(client, test_user):
             "is_active": True,
         },
     )
-    assert bad_resp.status_code == 400
+    # Pydantic validation errors return 422
+    assert bad_resp.status_code == 422
 
     ok_resp = client.post(
         "/api/scrapers",

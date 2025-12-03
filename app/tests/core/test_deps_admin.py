@@ -1,9 +1,10 @@
 """Tests for admin authentication dependency."""
-import pytest
-from fastapi import HTTPException, Request
-from unittest.mock import Mock
 
-from app.core.deps import require_admin
+import pytest
+from fastapi import Request
+from unittest.mock import Mock, MagicMock
+
+from app.core.deps import require_admin, AdminAuthRequired
 
 
 def test_require_admin_valid_session(monkeypatch):
@@ -18,20 +19,28 @@ def test_require_admin_valid_session(monkeypatch):
     mock_request = Mock(spec=Request)
     mock_request.cookies = {"admin_session": test_session_token}
 
-    # Should not raise
-    require_admin(mock_request)
+    # Create mock db session
+    mock_db = MagicMock()
+    mock_admin_user = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_admin_user
+
+    # Should not raise, should return admin user
+    result = require_admin(mock_request, mock_db)
+    assert result == mock_admin_user
 
 
 def test_require_admin_no_cookie():
     """Test require_admin without session cookie."""
     mock_request = Mock(spec=Request)
     mock_request.cookies = {}
+    mock_request.url.path = "/admin/dashboard"
 
-    with pytest.raises(HTTPException) as exc_info:
-        require_admin(mock_request)
+    mock_db = MagicMock()
 
-    assert exc_info.value.status_code == 401
-    assert "Admin authentication required" in str(exc_info.value.detail)
+    with pytest.raises(AdminAuthRequired) as exc_info:
+        require_admin(mock_request, mock_db)
+
+    assert "/auth/admin/login" in exc_info.value.redirect_url
 
 
 def test_require_admin_invalid_session(monkeypatch):
@@ -41,11 +50,14 @@ def test_require_admin_invalid_session(monkeypatch):
 
     mock_request = Mock(spec=Request)
     mock_request.cookies = {"admin_session": "invalid_token"}
+    mock_request.url.path = "/admin/dashboard"
 
-    with pytest.raises(HTTPException) as exc_info:
-        require_admin(mock_request)
+    mock_db = MagicMock()
 
-    assert exc_info.value.status_code == 401
+    with pytest.raises(AdminAuthRequired) as exc_info:
+        require_admin(mock_request, mock_db)
+
+    assert "/auth/admin/login" in exc_info.value.redirect_url
 
 
 def test_require_admin_expired_session(monkeypatch):
@@ -56,8 +68,11 @@ def test_require_admin_expired_session(monkeypatch):
 
     mock_request = Mock(spec=Request)
     mock_request.cookies = {"admin_session": "expired_token"}
+    mock_request.url.path = "/admin/dashboard"
 
-    with pytest.raises(HTTPException) as exc_info:
-        require_admin(mock_request)
+    mock_db = MagicMock()
 
-    assert exc_info.value.status_code == 401
+    with pytest.raises(AdminAuthRequired) as exc_info:
+        require_admin(mock_request, mock_db)
+
+    assert "/auth/admin/login" in exc_info.value.redirect_url

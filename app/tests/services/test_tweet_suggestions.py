@@ -453,7 +453,7 @@ class TestTweetSuggestionService:
                 "summary": {
                     "title": "Podcast Episode",
                     "overview": "Overview of the podcast.",
-                    "bullet_points": [{"text": "Key takeaway"}],
+                    "bullet_points": ["Key takeaway"],
                 }
             },
         )
