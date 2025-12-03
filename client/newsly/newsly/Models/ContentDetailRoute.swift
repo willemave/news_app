@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct ContentDetailRoute: Hashable {
+struct ContentDetailRoute: Hashable, Codable {
     let contentId: Int
     let contentType: ContentType
     let allContentIds: [Int]
