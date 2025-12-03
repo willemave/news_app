@@ -21,8 +21,9 @@ from app.routers.api.chat_models import (
     SendMessageResponse,
 )
 from app.routers.api.models import CreateChatSessionRequest, SendChatMessageRequest
-from app.services.chat_agent import generate_initial_suggestions, resolve_model, run_chat_turn
+from app.services.chat_agent import generate_initial_suggestions, run_chat_turn
 from app.services.event_logger import log_event
+from app.services.llm_models import resolve_model
 
 logger = get_logger(__name__)
 

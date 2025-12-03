@@ -111,7 +111,10 @@
       "Bash(brew list:*)",
       "Bash(brew install:*)",
       "Bash(timeout 120 .venv/bin/python:*)",
-      "Bash(bd list:*)"
+      "Bash(bd list:*)",
+      "Bash(unzip:*)",
+      "Bash(.venv/bin/pytest app/tests/ -v)",
+      "Bash(.venv/bin/pytest:*)"
     ],
     "deny": []
   },
