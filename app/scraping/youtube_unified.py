@@ -102,9 +102,8 @@ class YouTubeClientConfig(BaseModel):
         if normalized in {"none", "null"}:
             return None
         if normalized not in cls.SUPPORTED_PROVIDERS:
-            raise ValueError(
-                f"Unsupported po_token_provider '{value}'. Supported: {sorted(cls.SUPPORTED_PROVIDERS)}"
-            )
+            supported = sorted(cls.SUPPORTED_PROVIDERS)
+            raise ValueError(f"Unsupported po_token_provider '{value}'. Use: {supported}")
         return normalized
 
     @field_validator("po_token_base_url")
@@ -184,10 +183,7 @@ class YouTubeUnifiedScraper(BaseScraper):
             self._cookiefile = str(cookies_path)
         else:
             if cookies_path and not cookies_path.exists():
-                logger.warning(
-                    "YouTube cookies file not found at %s; continuing without authenticated requests",
-                    cookies_path,
-                )
+                logger.warning("YouTube cookies not found at %s", cookies_path)
             self._cookiefile = None
 
         self._throttle_seconds = self.client_config.throttle_seconds
@@ -203,10 +199,7 @@ class YouTubeUnifiedScraper(BaseScraper):
             channel_results = self._scrape_channel(channel)
 
             if channel_results is None:
-                logger.warning(
-                    "Channel %s returned no results (None); skipping extend to avoid runtime errors",
-                    channel.name,
-                )
+                logger.warning("Channel %s returned None; skipping", channel.name)
                 continue
 
             if not isinstance(channel_results, list):

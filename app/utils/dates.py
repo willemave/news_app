@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, tzinfo
-from typing import Mapping
 
 from dateutil import parser as date_parser
 from dateutil import tz
@@ -43,9 +43,6 @@ def parse_date_with_tz(value: str | datetime | None, default_tz: tzinfo = UTC) -
         except (ValueError, TypeError, date_parser.ParserError):
             return None
 
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=default_tz)
-    else:
-        parsed = parsed.astimezone(UTC)
+    parsed = parsed.replace(tzinfo=default_tz) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
     return parsed

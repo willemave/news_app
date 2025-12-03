@@ -26,7 +26,9 @@ def _cached_agent(model_spec: str, output_type: type[Any], system_prompt: str) -
     )
 
 
-def get_basic_agent(model_spec: str, output_type: type[OutputT], system_prompt: str) -> Agent[None, OutputT]:
+def get_basic_agent[OutputT](
+    model_spec: str, output_type: type[OutputT], system_prompt: str
+) -> Agent[None, OutputT]:
     """Return a cached agent for an arbitrary task."""
     agent = _cached_agent(model_spec, output_type, system_prompt)
     return cast(Agent[None, OutputT], agent)
@@ -38,12 +40,10 @@ def get_summarization_agent(
     system_prompt: str,
 ) -> Agent[None, StructuredSummary | NewsSummary]:
     """Return a summarization agent for the requested content type."""
-    content_kind = content_type.value if isinstance(content_type, ContentType) else str(content_type)
+    ct = content_type
+    content_kind = ct.value if isinstance(ct, ContentType) else str(ct)
     summary_type: type[StructuredSummary | NewsSummary]
-    if content_kind in {"news", "news_digest"}:
-        summary_type = NewsSummary
-    else:
-        summary_type = StructuredSummary
+    summary_type = NewsSummary if content_kind in {"news", "news_digest"} else StructuredSummary
 
     agent = _cached_agent(model_spec, summary_type, system_prompt)
     return cast(Agent[None, StructuredSummary | NewsSummary], agent)

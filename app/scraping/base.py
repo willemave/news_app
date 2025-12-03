@@ -148,9 +148,13 @@ class BaseScraper(ABC):
                     db.add(content)
                     db.flush()
 
+                    needs_inbox = content_type_value in {
+                        ContentType.ARTICLE.value,
+                        ContentType.PODCAST.value,
+                    }
                     ensure_inbox_status(
                         db,
-                        user_id=user_id if content_type_value in {ContentType.ARTICLE.value, ContentType.PODCAST.value} else None,
+                        user_id=user_id if needs_inbox else None,
                         content_id=content.id,
                         content_type=content_type_value,
                     )

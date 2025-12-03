@@ -297,9 +297,7 @@ class RedditUnifiedScraper(BaseScraper):
                     password=settings.reddit_password,
                 )
             else:
-                logger.warning(
-                    "REDDIT_READ_ONLY is false but username/password missing; falling back to read-only"
-                )
+                logger.warning("REDDIT_READ_ONLY=false but credentials missing; using read-only")
 
         reddit = praw.Reddit(**reddit_kwargs)
         reddit.read_only = settings.reddit_read_only or not (

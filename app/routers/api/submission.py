@@ -35,4 +35,3 @@ async def submit_content(
 
     status_code = status.HTTP_200_OK if result.already_exists else status.HTTP_201_CREATED
     return JSONResponse(status_code=status_code, content=result.model_dump(mode="json"))
-

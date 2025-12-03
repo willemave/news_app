@@ -186,16 +186,13 @@ class TwitterUnifiedScraper(BaseScraper):
                     try:
                         # Try to navigate to the list page
                         response = page.goto(list_url, wait_until="domcontentloaded", timeout=15000)
-                        logger.info(
-                            f"Page response status: {response.status if response else 'No response'}"
-                        )
+                        status = response.status if response else "No response"
+                        logger.info(f"Page response status: {status}")
 
                         # Check if we're redirected to login
                         current_url = page.url
                         if "login" in current_url.lower() or "authenticate" in current_url.lower():
-                            logger.warning(
-                                f"Twitter requires login to access this list. Current URL: {current_url}"
-                            )
+                            logger.warning(f"Twitter requires login. URL: {current_url}")
                             raise Exception(
                                 "Login required - cannot access list without authentication"
                             )
@@ -648,8 +645,7 @@ class TwitterUnifiedScraper(BaseScraper):
             return
         self._auth_warning_lists.add(identifier)
         logger.warning(
-            "Twitter list '%s' (%s) appears to require authentication. "
-            "Provide a cookies export (auth_token + ct0) via config client.cookies_path to enable scraping.",
+            "Twitter list '%s' (%s) requires auth. Add cookies via cookies_path.",
             list_name,
             list_id,
         )

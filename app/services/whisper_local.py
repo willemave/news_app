@@ -18,9 +18,7 @@ class WhisperLocalTranscriptionService:
         self.model_name = getattr(settings, "whisper_model_size", "base")
         self.device = self._get_device()
         self.model = None
-        logger.info(
-            f"Initialized local Whisper service with model: {self.model_name}, device: {self.device}"
-        )
+        logger.info(f"Whisper service: model={self.model_name}, device={self.device}")
 
     def _get_device(self) -> str:
         """Determine the best device to use for inference."""

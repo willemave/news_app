@@ -189,9 +189,7 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
         "quotes": "\n".join(f'- "{q}"' for q in quotes) if quotes else "N/A",
         "questions": "\n".join(f"- {q}" for q in questions) if questions else "N/A",
         "counter_arguments": (
-            "\n".join(f"- {arg}" for arg in counter_arguments)
-            if counter_arguments
-            else "N/A"
+            "\n".join(f"- {arg}" for arg in counter_arguments) if counter_arguments else "N/A"
         ),
     }
 

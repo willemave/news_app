@@ -6,15 +6,14 @@ from pathlib import Path
 from typing import Any
 
 import feedparser
-import yaml
 
 from app.core.db import get_db
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
+from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
 from app.utils.error_logger import create_error_logger, log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
-from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
 
 logger = get_logger(__name__)
 _MISSING_CONFIG_WARNINGS: set[str] = set()

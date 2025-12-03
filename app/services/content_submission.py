@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Tuple
 from urllib.parse import urlparse
 
 from pydantic import HttpUrl, TypeAdapter
@@ -53,7 +52,7 @@ def normalize_url(raw_url: str) -> str:
 
 def infer_content_type_and_platform(
     url: str, provided_type: ContentType | None, platform_hint: str | None
-) -> Tuple[ContentType, str | None]:
+) -> tuple[ContentType, str | None]:
     """Infer content type and platform based on host/path or provided hints.
 
     Args:

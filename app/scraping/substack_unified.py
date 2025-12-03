@@ -10,13 +10,13 @@ from typing import Any
 import feedparser
 import yaml
 
-from app.core.logging import get_logger
 from app.core.db import get_db
+from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
+from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
 from app.utils.error_logger import create_error_logger, log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
-from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
 
 ENCODING_OVERRIDE_EXCEPTIONS = tuple(
     exc
@@ -155,7 +155,7 @@ class SubstackScraper(BaseScraper):
                         bozo_exc, ENCODING_OVERRIDE_EXCEPTIONS
                     ):
                         logger.debug(
-                            "Feed %s has encoding declaration mismatch (CharacterEncodingOverride): %s",
+                            "Feed %s has encoding mismatch: %s",
                             feed_url,
                             bozo_exc,
                         )

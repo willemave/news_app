@@ -109,7 +109,9 @@
       "Bash(.venv/bin/ruff format:*)",
       "Bash(git filter-repo:*)",
       "Bash(brew list:*)",
-      "Bash(brew install:*)"
+      "Bash(brew install:*)",
+      "Bash(timeout 120 .venv/bin/python:*)",
+      "Bash(bd list:*)"
     ],
     "deny": []
   },

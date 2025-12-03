@@ -249,7 +249,7 @@ async def reset_error_logs(_: None = Depends(require_admin)):
             db.commit()
 
         logger.info(
-            f"Reset error logs: deleted {deleted_files_count} files and {deleted_db_count} database records"
+            f"Reset error logs: deleted {deleted_files_count} files, {deleted_db_count} DB records"
         )
 
         # Redirect back to errors page
@@ -579,7 +579,7 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
                     msg = msg[:400] + "..."
                 lines.append(f"    {j}. [{ts}] ({src}) {et}: {msg}")
 
-                # If there is an exception/traceback, add the last line (exception) and first TB line
+                # Add exception/traceback if present: last exception line and first TB line
                 tb = (entry.get("stack_trace") or "").strip()
                 if tb:
                     tb_lines = [ln for ln in tb.split("\n") if ln.strip()]
@@ -625,7 +625,7 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
         detected.append("- LLM service errors — handle rate limits, retries, and fallbacks.")
     if not detected:
         detected.append(
-            "- General logging issues — many entries lack structured fields (component, error_type). Consider improving logging schema."
+            "- General logging issues — entries lack structured fields. Improve logging."
         )
     lines.extend(detected)
     lines.append("")

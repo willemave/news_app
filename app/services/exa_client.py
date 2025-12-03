@@ -94,9 +94,9 @@ def _extract_clean_snippet(text: str, max_chars: int) -> str:
         is_nav = any(pattern in line_lower for pattern in nav_patterns)
 
         # Check if line is just a short markdown link (category/breadcrumb)
-        is_short_link = (
-            line_stripped.startswith("- [") and len(line_stripped) < 80
-        ) or (line_stripped.startswith("[") and "](" in line_stripped and len(line_stripped) < 60)
+        is_short_link = (line_stripped.startswith("- [") and len(line_stripped) < 80) or (
+            line_stripped.startswith("[") and "](" in line_stripped and len(line_stripped) < 60
+        )
 
         # Check if line is just a keyboard shortcut or very short
         is_shortcut = len(line_stripped) < 10 and not line_stripped.startswith("#")

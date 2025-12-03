@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Tuple
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentQuote, ContentType, NewsSummary, StructuredSummary
@@ -48,7 +48,7 @@ def _normalize_content_type(content_type: str | ContentType) -> str:
     return content_type.value if isinstance(content_type, ContentType) else str(content_type)
 
 
-DEFAULT_SUMMARIZATION_MODELS: Dict[str, str] = {
+DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "news": "openai:gpt-5-mini",
     "news_digest": "openai:gpt-5-mini",
     "article": "anthropic:claude-haiku-4-5-20251001",
@@ -58,7 +58,7 @@ DEFAULT_SUMMARIZATION_MODELS: Dict[str, str] = {
 FALLBACK_SUMMARIZATION_MODEL = "google-gla:gemini-2.5-flash-lite-preview-06-17"
 
 
-def _model_hint_from_spec(model_spec: str) -> Tuple[str, str]:
+def _model_hint_from_spec(model_spec: str) -> tuple[str, str]:
     if ":" in model_spec:
         provider_prefix, hint = model_spec.split(":", 1)
         return provider_prefix, hint
@@ -69,10 +69,10 @@ def _model_hint_from_spec(model_spec: str) -> Tuple[str, str]:
 class ContentSummarizer:
     """Shared summarizer that routes to the right model based on content type."""
 
-    default_models: Dict[str, str] = field(default_factory=lambda: DEFAULT_SUMMARIZATION_MODELS)
+    default_models: dict[str, str] = field(default_factory=lambda: DEFAULT_SUMMARIZATION_MODELS)
     provider_hint: str | None = None
     model_hint: str | None = None
-    _model_resolver: Callable[[str | None, str | None], Tuple[str, str]] = resolve_model
+    _model_resolver: Callable[[str | None, str | None], tuple[str, str]] = resolve_model
 
     def summarize(
         self,
@@ -172,9 +172,8 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
             )
             payload = payload[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated due to length]"
 
-        content_type_value = (
-            request.content_type.value if isinstance(request.content_type, ContentType) else str(request.content_type)
-        )
+        ct = request.content_type
+        content_type_value = ct.value if isinstance(ct, ContentType) else str(ct)
 
         prompt_content_type = "news_digest" if content_type_value == "news" else content_type_value
 

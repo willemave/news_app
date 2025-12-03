@@ -324,9 +324,7 @@ class ContentWorker:
                 summarization_content_type = llm_data.get("content_type") or "article"
                 if content.content_type == ContentType.NEWS:
                     summarization_content_type = "news_digest"
-                llm_provider = (
-                    "openai" if content.content_type == ContentType.NEWS else "anthropic"
-                )
+                llm_provider = "openai" if content.content_type == ContentType.NEWS else "anthropic"
                 aggregator_context = None
                 if content.content_type == ContentType.NEWS:
                     aggregator_context = self._build_news_context(content.metadata)

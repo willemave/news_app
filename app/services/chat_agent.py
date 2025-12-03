@@ -14,11 +14,14 @@ from app.models.schema import ChatMessage, ChatSession, Content
 from app.services.exa_client import exa_search, get_exa_client
 from app.services.llm_models import (  # noqa: F401 (re-export for API schemas)
     LLMProvider as ChatModelProvider,
+)
+from app.services.llm_models import (
     build_pydantic_model,
-    resolve_model,
 )
 
 logger = get_logger(__name__)
+
+
 @dataclass
 class ChatDeps:
     """Dependencies passed to the chat agent."""
@@ -167,7 +170,10 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
 
         duration_ms = (perf_counter() - tool_start) * 1000
         logger.info(
-            f"[Tool:exa_web_search] Completed | session_id={session_id} duration_ms={duration_ms:.1f} results={len(results)}"
+            "[Tool:exa_web_search] Completed | sid=%s ms=%.1f results=%d",
+            session_id,
+            duration_ms,
+            len(results),
         )
 
         # Format results as structured text for the LLM to synthesize
@@ -369,9 +375,7 @@ async def run_chat_turn(
         )
         agent_ms = (perf_counter() - agent_start) * 1000
         new_messages = result.new_messages()
-        save_start = perf_counter()
         save_messages(db, session.id, new_messages)
-        save_ms = (perf_counter() - save_start) * 1000
 
         session.last_message_at = datetime.utcnow()
         session.updated_at = datetime.utcnow()
@@ -386,14 +390,13 @@ async def run_chat_turn(
             for tc in tool_calls
         ]
         logger.info(
-            "[ChatTurn] completed | session_id=%s model=%s total_ms=%.1f deps_ms=%.1f history_ms=%.1f agent_ms=%.1f save_ms=%.1f tool_calls=%s",
+            "[ChatTurn] sid=%s model=%s total=%.1f deps=%.1f hist=%.1f agent=%.1f tools=%s",
             session.id,
             session.llm_model,
             total_ms,
             deps_ms,
             history_ms,
             agent_ms,
-            save_ms,
             tool_names,
         )
 
@@ -413,7 +416,7 @@ INITIAL_QUESTIONS_PROMPT = """
 You are starting a new conversation about the article described in your context.
 
 Write a short welcome message (1-2 sentences) that:
-- Briefly states what kinds of help you can provide (explaining, critiquing, brainstorming, applying ideas).
+- Briefly states what help you can provide (explain, critique, brainstorm, apply ideas).
 - Sounds friendly and concise.
 
 After the welcome, propose 2-4 concrete directions the user could take next:
@@ -472,7 +475,7 @@ async def generate_initial_suggestions(
             for tc in tool_calls
         ]
         logger.info(
-            "[InitialSuggestions] completed | session_id=%s total_ms=%.1f agent_ms=%.1f save_ms=%.1f tool_calls=%s",
+            "[InitialSuggestions] sid=%s total=%.1f agent=%.1f save=%.1f tools=%s",
             session.id,
             total_ms,
             agent_ms,

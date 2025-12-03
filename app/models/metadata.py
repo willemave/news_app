@@ -109,7 +109,7 @@ class StructuredSummary(BaseModel):
     questions: list[str] = Field(
         default_factory=list,
         max_items=10,
-        description="Thought-provoking questions to help readers think critically about the content",
+        description="Questions to help readers think critically about the content",
     )
     counter_arguments: list[str] = Field(
         default_factory=list,

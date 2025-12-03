@@ -77,7 +77,7 @@ async def list_contents(
             if not PaginationCursor.validate_cursor(cursor_data, current_filters):
                 raise HTTPException(
                     status_code=400,
-                    detail="Cursor invalid: filters have changed. Please start a new pagination sequence.",
+                    detail="Cursor invalid: filters changed. Start a new pagination.",
                 )
             last_id = cursor_data["last_id"]
             last_created_at = cursor_data["last_created_at"]
@@ -339,7 +339,7 @@ async def search_contents(
             if not PaginationCursor.validate_cursor(cursor_data, current_filters):
                 raise HTTPException(
                     status_code=400,
-                    detail="Cursor invalid: search parameters have changed. Please start a new search.",
+                    detail="Cursor invalid: search params changed. Start a new search.",
                 )
             last_id = cursor_data["last_id"]
             last_created_at = cursor_data["last_created_at"]
