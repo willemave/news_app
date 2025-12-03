@@ -8,6 +8,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
+from app.services.http import NonRetryableError
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -50,11 +51,19 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
     def download_content(self, url: str) -> bytes:
         """Download PDF content from the given URL."""
         logger.info(f"PdfStrategy: Downloading PDF content from {url}")
-        response = self.http_client.get(url)
-        logger.info(
-            f"PdfStrategy: Successfully downloaded PDF from {url}. Final URL: {response.url}"
-        )
-        return response.content  # Returns PDF as bytes
+        try:
+            response = self.http_client.get(url)
+            logger.info(
+                f"PdfStrategy: Successfully downloaded PDF from {url}. Final URL: {response.url}"
+            )
+            return response.content  # Returns PDF as bytes
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            # 4xx client errors are non-retryable (403 Forbidden, 404 Not Found, etc.)
+            if 400 <= status_code < 500:
+                logger.warning(f"PdfStrategy: HTTP {status_code} for {url} - marking as failed")
+                raise NonRetryableError(f"HTTP {status_code}: {e}") from e
+            raise
 
     def extract_data(self, content: bytes, url: str) -> dict[str, Any]:
         """Extract text from PDF content using Google Gemini API."""

@@ -61,7 +61,8 @@ def normalize_news_metadata(
     ]
     article_title = next((title for title in candidate_titles if title), None)
     if article_title:
-        article["title"] = article_title
+        # Truncate to 500 chars to match NewsArticleMetadata.title max_length
+        article["title"] = article_title[:500] if len(article_title) > 500 else article_title
 
     # Infer source domain either from the URL or fallback source metadata.
     if not _coerce_str(article.get("source_domain")) and article.get("url"):

@@ -675,6 +675,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 "err_ssl_protocol_error",
                 "err_connection_refused",
                 "err_cert_",  # Catches various certificate errors
+                "timeout",  # Page load timeouts indicate site issues
+                "wait condition failed",  # Crawl4ai selector wait failures
             ]
             if any(term in error_str for term in non_retryable_terms):
                 # Raise NonRetryableError to prevent infinite retries
