@@ -170,6 +170,13 @@ class ContentDetailViewModel: ObservableObject {
         sections.append("# \(content.displayTitle)")
 
         var keyPoints = content.structuredSummary?.bulletPoints ?? content.bulletPoints
+
+        // For news content, extract key points from newsMetadata
+        if keyPoints.isEmpty, content.contentType == "news",
+           let newsKeyPoints = content.newsMetadata?.summary?.keyPoints, !newsKeyPoints.isEmpty {
+            keyPoints = newsKeyPoints.map { BulletPoint(text: $0, category: nil) }
+        }
+
         if keyPoints.isEmpty, let summary = content.summary, !summary.isEmpty {
             keyPoints = [BulletPoint(text: summary, category: nil)]
         } else if keyPoints.isEmpty, let shortSummary = content.shortSummary, !shortSummary.isEmpty {
