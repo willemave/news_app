@@ -10,7 +10,7 @@ from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.models.schema import ChatMessage, ChatSession, Content
+from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.exa_client import exa_search, get_exa_client
 from app.services.llm_models import (  # noqa: F401 (re-export for API schemas)
     LLMProvider as ChatModelProvider,
@@ -279,19 +279,21 @@ def save_messages(
     db: Session,
     session_id: int,
     messages: list[ModelMessage],
-) -> None:
+    status: MessageProcessingStatus = MessageProcessingStatus.COMPLETED,
+) -> ChatMessage:
     """Save new messages to the database.
 
     Args:
         db: Database session.
         session_id: Chat session ID.
         messages: List of ModelMessage objects to save.
-    """
-    if not messages:
-        return
+        status: Processing status for the message.
 
+    Returns:
+        The created ChatMessage record.
+    """
     try:
-        # Serialize messages to JSON
+        # Serialize messages to JSON (empty list if no messages)
         message_json = ModelMessagesTypeAdapter.dump_json(messages).decode("utf-8")
 
         # Create new ChatMessage record
@@ -299,14 +301,97 @@ def save_messages(
             session_id=session_id,
             message_list=message_json,
             created_at=datetime.utcnow(),
+            status=status.value,
         )
         db.add(db_message)
         db.commit()
+        db.refresh(db_message)
         logger.debug(f"Saved {len(messages)} messages for session {session_id}")
+        return db_message
     except Exception as e:
         logger.error(f"Failed to save messages: {e}")
         db.rollback()
         raise
+
+
+def create_processing_message(
+    db: Session,
+    session_id: int,
+    user_prompt: str,
+) -> ChatMessage:
+    """Create a placeholder message record with processing status.
+
+    This is called immediately when a user sends a message, before LLM processing.
+    The user_prompt is stored as a UserPromptPart so it can be displayed immediately.
+
+    Args:
+        db: Database session.
+        session_id: Chat session ID.
+        user_prompt: The user's message text.
+
+    Returns:
+        The created ChatMessage record with status=processing.
+    """
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    # Create a ModelRequest with just the user prompt
+    user_message = ModelRequest(parts=[UserPromptPart(content=user_prompt)])
+    return save_messages(db, session_id, [user_message], status=MessageProcessingStatus.PROCESSING)
+
+
+def update_message_completed(
+    db: Session,
+    message_id: int,
+    messages: list[ModelMessage],
+) -> ChatMessage:
+    """Update a processing message with the completed result.
+
+    Args:
+        db: Database session.
+        message_id: ChatMessage ID to update.
+        messages: Full list of messages (user + assistant).
+
+    Returns:
+        The updated ChatMessage record.
+    """
+    db_message = db.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+    if not db_message:
+        raise ValueError(f"Message {message_id} not found")
+
+    message_json = ModelMessagesTypeAdapter.dump_json(messages).decode("utf-8")
+    db_message.message_list = message_json
+    db_message.status = MessageProcessingStatus.COMPLETED.value
+    db.commit()
+    db.refresh(db_message)
+    logger.debug(f"Updated message {message_id} to completed")
+    return db_message
+
+
+def update_message_failed(
+    db: Session,
+    message_id: int,
+    error: str,
+) -> ChatMessage:
+    """Mark a processing message as failed.
+
+    Args:
+        db: Database session.
+        message_id: ChatMessage ID to update.
+        error: Error message describing the failure.
+
+    Returns:
+        The updated ChatMessage record.
+    """
+    db_message = db.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+    if not db_message:
+        raise ValueError(f"Message {message_id} not found")
+
+    db_message.status = MessageProcessingStatus.FAILED.value
+    db_message.error = error
+    db.commit()
+    db.refresh(db_message)
+    logger.warning(f"Message {message_id} failed: {error}")
+    return db_message
 
 
 @dataclass
@@ -410,6 +495,93 @@ async def run_chat_turn(
         logger.error("Chat error for session %s: %s", session.id, exc)
         db.rollback()
         raise
+
+
+async def process_message_async(
+    session_id: int,
+    message_id: int,
+    user_prompt: str,
+) -> None:
+    """Process a chat message asynchronously in the background.
+
+    This function runs independently after the endpoint returns.
+    It gets a fresh DB session, processes the LLM call, and updates
+    the message record with the result.
+
+    Args:
+        session_id: Chat session ID.
+        message_id: ChatMessage ID to update on completion.
+        user_prompt: The user's message text.
+    """
+    from app.core.db import SessionLocal
+    from app.services.event_logger import log_event
+
+    db = SessionLocal()
+    try:
+        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not session:
+            logger.error(f"Session {session_id} not found for async processing")
+            return
+
+        logger.info(
+            "[AsyncChat] processing | session_id=%s message_id=%s",
+            session_id,
+            message_id,
+        )
+
+        # Build dependencies
+        deps = _build_chat_deps(db, session)
+
+        # Load history (excluding the processing message we just created)
+        history = load_message_history(db, session.id)
+        # Remove the last message if it's the processing placeholder
+        # (it only contains the user prompt, no assistant response yet)
+
+        # Run the agent
+        agent_start = perf_counter()
+        result = await run_in_threadpool(
+            _run_agent_sync, session.llm_model, user_prompt, deps, history
+        )
+        agent_ms = (perf_counter() - agent_start) * 1000
+
+        # Update the message with the complete result
+        new_messages = result.new_messages()
+        update_message_completed(db, message_id, new_messages)
+
+        # Update session timestamps
+        session.last_message_at = datetime.utcnow()
+        session.updated_at = datetime.utcnow()
+        db.commit()
+
+        logger.info(
+            "[AsyncChat] completed | session_id=%s message_id=%s agent_ms=%.1f",
+            session_id,
+            message_id,
+            agent_ms,
+        )
+
+        log_event(
+            event_type="chat",
+            event_name="message_sent",
+            status="completed",
+            user_id=session.user_id,
+            session_id=session_id,
+            model=session.llm_model,
+        )
+
+    except Exception as exc:
+        logger.error(
+            "[AsyncChat] failed | session_id=%s message_id=%s error=%s",
+            session_id,
+            message_id,
+            exc,
+        )
+        try:
+            update_message_failed(db, message_id, str(exc))
+        except Exception as update_exc:
+            logger.error(f"Failed to update message status: {update_exc}")
+    finally:
+        db.close()
 
 
 INITIAL_QUESTIONS_PROMPT = """

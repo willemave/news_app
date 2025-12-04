@@ -1,5 +1,6 @@
 """Chat session endpoints for deep-dive conversations."""
 
+import asyncio
 from datetime import datetime
 from typing import Annotated
 
@@ -10,7 +11,7 @@ from app.core.db import get_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
-from app.models.schema import ChatMessage, ChatSession, Content
+from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.models.user import User
 from app.routers.api.chat_models import (
     ChatMessageDto,
@@ -18,10 +19,18 @@ from app.routers.api.chat_models import (
     ChatSessionDetailDto,
     ChatSessionSummaryDto,
     CreateChatSessionResponse,
+    MessageStatusResponse,
     SendMessageResponse,
 )
+from app.routers.api.chat_models import (
+    MessageProcessingStatus as MessageProcessingStatusDto,
+)
 from app.routers.api.models import CreateChatSessionRequest, SendChatMessageRequest
-from app.services.chat_agent import generate_initial_suggestions, run_chat_turn
+from app.services.chat_agent import (
+    create_processing_message,
+    generate_initial_suggestions,
+    process_message_async,
+)
 from app.services.event_logger import log_event
 from app.services.llm_models import resolve_model
 
@@ -34,6 +43,7 @@ def _session_to_summary(
     session: ChatSession,
     article_title: str | None = None,
     article_url: str | None = None,
+    has_pending_message: bool = False,
 ) -> ChatSessionSummaryDto:
     """Convert database ChatSession to API response."""
     return ChatSessionSummaryDto(
@@ -50,6 +60,7 @@ def _session_to_summary(
         article_title=article_title,
         article_url=article_url,
         is_archived=session.is_archived,
+        has_pending_message=has_pending_message,
     )
 
 
@@ -170,6 +181,21 @@ async def list_sessions(
         .all()
     )
 
+    # Get session IDs that have pending messages (for efficiency)
+    session_ids = [s.id for s in sessions]
+    pending_session_ids = set()
+    if session_ids:
+        pending_messages = (
+            db.query(ChatMessage.session_id)
+            .filter(
+                ChatMessage.session_id.in_(session_ids),
+                ChatMessage.status == MessageProcessingStatus.PROCESSING.value,
+            )
+            .distinct()
+            .all()
+        )
+        pending_session_ids = {m.session_id for m in pending_messages}
+
     # Build response with article titles and URLs
     result = []
     for session in sessions:
@@ -181,7 +207,8 @@ async def list_sessions(
                 article_title = _resolve_article_title(content)
                 article_url = content.url
 
-        result.append(_session_to_summary(session, article_title, article_url))
+        has_pending = session.id in pending_session_ids
+        result.append(_session_to_summary(session, article_title, article_url, has_pending))
 
     return result
 
@@ -305,8 +332,11 @@ async def get_session(
 @router.post(
     "/sessions/{session_id}/messages",
     response_model=SendMessageResponse,
-    summary="Send message",
-    description="Send a message in a chat session and receive the assistant reply.",
+    summary="Send message (async)",
+    description=(
+        "Send a message in a chat session. Returns immediately with a message_id "
+        "to poll for completion. The assistant response is processed in the background."
+    ),
 )
 async def send_message(
     session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
@@ -314,7 +344,11 @@ async def send_message(
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> SendMessageResponse:
-    """Send a message and return the assistant response."""
+    """Send a message and start async processing.
+
+    Returns immediately with the user message and a message_id.
+    Poll GET /messages/{message_id}/status for completion.
+    """
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
     if not session:
@@ -332,26 +366,124 @@ async def send_message(
         model=session.llm_model,
     )
 
-    await run_chat_turn(db, session, request.message)
-    messages = _extract_messages_for_display(db, session_id)
-    assistant_message = next(
-        (msg for msg in reversed(messages) if msg.role == ChatMessageRole.ASSISTANT),
-        None,
-    )
+    # Create the processing message record immediately
+    db_message = create_processing_message(db, session_id, request.message)
 
-    if assistant_message is None:
-        raise HTTPException(status_code=500, detail="Assistant response missing")
+    # Start async processing in the background
+    asyncio.create_task(process_message_async(session_id, db_message.id, request.message))
 
-    log_event(
-        event_type="chat",
-        event_name="message_sent",
-        status="completed",
-        user_id=current_user.id,
+    # Build user message DTO for immediate response
+    user_message = ChatMessageDto(
+        id=db_message.id,
         session_id=session_id,
-        model=session.llm_model,
+        role=ChatMessageRole.USER,
+        content=request.message,
+        timestamp=db_message.created_at,
+        status=MessageProcessingStatusDto.PROCESSING,
     )
 
-    return SendMessageResponse(session_id=session.id, assistant_message=assistant_message)
+    return SendMessageResponse(
+        session_id=session.id,
+        user_message=user_message,
+        message_id=db_message.id,
+        status=MessageProcessingStatusDto.PROCESSING,
+    )
+
+
+@router.get(
+    "/messages/{message_id}/status",
+    response_model=MessageStatusResponse,
+    summary="Poll message status",
+    description=(
+        "Poll for the status of an async message. Returns the assistant response when completed."
+    ),
+)
+async def get_message_status(
+    message_id: Annotated[int, Path(..., description="Message ID to poll", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> MessageStatusResponse:
+    """Poll for message completion status.
+
+    Returns the current status and assistant message if completed.
+    Poll every 500ms-1s until status is 'completed' or 'failed'.
+    """
+    from pydantic_ai.messages import (
+        ModelMessagesTypeAdapter,
+        ModelResponse,
+        TextPart,
+    )
+
+    db_message = db.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+
+    if not db_message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    # Verify ownership via session
+    session = db.query(ChatSession).filter(ChatSession.id == db_message.session_id).first()
+
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this message")
+
+    status = MessageProcessingStatusDto(db_message.status)
+
+    # If still processing, return status only
+    if status == MessageProcessingStatusDto.PROCESSING:
+        return MessageStatusResponse(
+            message_id=message_id,
+            status=status,
+            assistant_message=None,
+            error=None,
+        )
+
+    # If failed, return status with error
+    if status == MessageProcessingStatusDto.FAILED:
+        return MessageStatusResponse(
+            message_id=message_id,
+            status=status,
+            assistant_message=None,
+            error=db_message.error,
+        )
+
+    # If completed, extract assistant message
+    try:
+        msg_list = ModelMessagesTypeAdapter.validate_json(db_message.message_list)
+
+        # Find the last assistant text response
+        assistant_content = None
+        for model_msg in reversed(msg_list):
+            if isinstance(model_msg, ModelResponse):
+                for part in model_msg.parts:
+                    if isinstance(part, TextPart) and part.content:
+                        assistant_content = part.content
+                        break
+                if assistant_content:
+                    break
+
+        if not assistant_content:
+            raise HTTPException(status_code=500, detail="Assistant response missing")
+
+        assistant_message = ChatMessageDto(
+            id=message_id,
+            session_id=db_message.session_id,
+            role=ChatMessageRole.ASSISTANT,
+            content=assistant_content,
+            timestamp=db_message.created_at,
+            status=MessageProcessingStatusDto.COMPLETED,
+        )
+
+        return MessageStatusResponse(
+            message_id=message_id,
+            status=status,
+            assistant_message=assistant_message,
+            error=None,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to extract assistant message: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse message") from None
 
 
 @router.post(

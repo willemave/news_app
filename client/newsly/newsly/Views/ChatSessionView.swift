@@ -743,7 +743,8 @@ struct InitialSuggestionsLoadingView: View {
             updatedAt: nil,
             lastMessageAt: nil,
             articleTitle: nil,
-            articleUrl: nil
+            articleUrl: nil,
+            hasPendingMessage: false
         ))
     }
 }

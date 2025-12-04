@@ -28,6 +28,7 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     let lastMessageAt: String?
     let articleTitle: String?
     let articleUrl: String?
+    let hasPendingMessage: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -42,6 +43,12 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         case lastMessageAt = "last_message_at"
         case articleTitle = "article_title"
         case articleUrl = "article_url"
+        case hasPendingMessage = "has_pending_message"
+    }
+
+    /// True if the session has a message currently being processed
+    var isProcessing: Bool {
+        hasPendingMessage ?? false
     }
 
     var displayTitle: String {

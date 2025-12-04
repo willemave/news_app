@@ -15,12 +15,53 @@ enum ChatMessageRole: String, Codable {
     case tool
 }
 
+/// Processing status for async chat messages
+enum MessageProcessingStatus: String, Codable {
+    case processing
+    case completed
+    case failed
+}
+
 /// Individual message in a chat session
 struct ChatMessage: Codable, Identifiable {
     let id: Int
     let role: ChatMessageRole
     let timestamp: String
     let content: String
+    let status: MessageProcessingStatus?
+    let error: String?
+
+    // Allow status to be optional (default to completed for backward compatibility)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        role = try container.decode(ChatMessageRole.self, forKey: .role)
+        timestamp = try container.decode(String.self, forKey: .timestamp)
+        content = try container.decode(String.self, forKey: .content)
+        status = try container.decodeIfPresent(MessageProcessingStatus.self, forKey: .status)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+    }
+
+    init(id: Int, role: ChatMessageRole, timestamp: String, content: String, status: MessageProcessingStatus? = nil, error: String? = nil) {
+        self.id = id
+        self.role = role
+        self.timestamp = timestamp
+        self.content = content
+        self.status = status
+        self.error = error
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, role, timestamp, content, status, error
+    }
+
+    var isProcessing: Bool {
+        status == .processing
+    }
+
+    var hasFailed: Bool {
+        status == .failed
+    }
 
     var formattedTime: String {
         // Try ISO8601 with fractional seconds

@@ -16,6 +16,14 @@ class ChatMessageRole(str, Enum):
     SYSTEM = "system"
 
 
+class MessageProcessingStatus(str, Enum):
+    """Processing status for async chat messages."""
+
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ChatMessageDto(BaseModel):
     """Flattened chat message returned to clients."""
 
@@ -24,6 +32,11 @@ class ChatMessageDto(BaseModel):
     role: ChatMessageRole = Field(..., description="Message role")
     content: str = Field(..., description="Message content")
     timestamp: datetime = Field(..., description="Timestamp when message was stored")
+    status: MessageProcessingStatus = Field(
+        default=MessageProcessingStatus.COMPLETED,
+        description="Processing status for async messages",
+    )
+    error: str | None = Field(default=None, description="Error message if processing failed")
 
 
 class ChatSessionSummaryDto(BaseModel):
@@ -42,6 +55,10 @@ class ChatSessionSummaryDto(BaseModel):
     is_archived: bool
     article_title: str | None = None
     article_url: str | None = None
+    has_pending_message: bool = Field(
+        default=False,
+        description="True if session has a message currently being processed",
+    )
 
 
 class ChatSessionDetailDto(BaseModel):
@@ -52,10 +69,30 @@ class ChatSessionDetailDto(BaseModel):
 
 
 class SendMessageResponse(BaseModel):
-    """Response after sending a chat message."""
+    """Response after sending a chat message (async).
+
+    Returns immediately with the user message and a message_id to poll for completion.
+    """
 
     session_id: int
-    assistant_message: ChatMessageDto
+    user_message: ChatMessageDto = Field(..., description="The user's message")
+    message_id: int = Field(..., description="ID to poll for assistant response")
+    status: MessageProcessingStatus = Field(
+        default=MessageProcessingStatus.PROCESSING,
+        description="Current processing status",
+    )
+
+
+class MessageStatusResponse(BaseModel):
+    """Response when polling for message completion status."""
+
+    message_id: int
+    status: MessageProcessingStatus
+    assistant_message: ChatMessageDto | None = Field(
+        default=None,
+        description="Assistant response (present when status=completed)",
+    )
+    error: str | None = Field(default=None, description="Error message if status=failed")
 
 
 class CreateChatSessionResponse(BaseModel):

@@ -18,14 +18,46 @@ struct CreateChatSessionResponse: Codable {
     let session: ChatSessionSummary
 }
 
-/// Response after sending a message (non-streaming)
+/// Response after sending a message (async)
+/// Returns immediately with user message and message_id to poll for completion
 struct SendChatMessageResponse: Codable {
     let sessionId: Int
-    let assistantMessage: ChatMessage
+    let userMessage: ChatMessage
+    let messageId: Int
+    let status: MessageProcessingStatus
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
+        case userMessage = "user_message"
+        case messageId = "message_id"
+        case status
+    }
+}
+
+/// Response when polling for message completion status
+struct MessageStatusResponse: Codable {
+    let messageId: Int
+    let status: MessageProcessingStatus
+    let assistantMessage: ChatMessage?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case messageId = "message_id"
+        case status
         case assistantMessage = "assistant_message"
+        case error
+    }
+
+    var isCompleted: Bool {
+        status == .completed
+    }
+
+    var isProcessing: Bool {
+        status == .processing
+    }
+
+    var hasFailed: Bool {
+        status == .failed
     }
 }
 

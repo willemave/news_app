@@ -123,6 +123,22 @@ struct ChatSessionRow: View {
                 Text(session.displayTitle)
                     .font(.headline)
                     .lineLimit(1)
+
+                // Processing indicator
+                if session.isProcessing {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        Text("Thinking...")
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(4)
+                }
+
                 Spacer()
                 Text(session.providerDisplayName)
                     .font(.caption)

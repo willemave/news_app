@@ -1,3 +1,4 @@
+import enum
 from datetime import datetime
 from typing import Any
 
@@ -278,6 +279,14 @@ class ChatSession(Base):
     )
 
 
+class MessageProcessingStatus(str, enum.Enum):
+    """Processing status for async chat messages."""
+
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ChatMessage(Base):
     """Chat message history stored as pydantic-ai ModelMessage JSON."""
 
@@ -287,5 +296,13 @@ class ChatMessage(Base):
     session_id = Column(Integer, nullable=False, index=True)  # soft ref to chat_sessions.id
     message_list = Column(Text, nullable=False)  # JSON from ModelMessagesTypeAdapter
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Async processing fields
+    status = Column(
+        String(20),
+        nullable=False,
+        default=MessageProcessingStatus.COMPLETED.value,
+        index=True,
+    )
+    error = Column(Text, nullable=True)  # Error message if status=failed
 
     __table_args__ = (Index("idx_chat_messages_session_created", "session_id", "created_at"),)
