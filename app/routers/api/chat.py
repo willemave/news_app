@@ -33,6 +33,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 def _session_to_summary(
     session: ChatSession,
     article_title: str | None = None,
+    article_url: str | None = None,
 ) -> ChatSessionSummaryDto:
     """Convert database ChatSession to API response."""
     return ChatSessionSummaryDto(
@@ -47,6 +48,7 @@ def _session_to_summary(
         updated_at=session.updated_at,
         last_message_at=session.last_message_at,
         article_title=article_title,
+        article_url=article_url,
         is_archived=session.is_archived,
     )
 
@@ -168,16 +170,18 @@ async def list_sessions(
         .all()
     )
 
-    # Build response with article titles
+    # Build response with article titles and URLs
     result = []
     for session in sessions:
         article_title = None
+        article_url = None
         if session.content_id:
             content = db.query(Content).filter(Content.id == session.content_id).first()
             if content:
                 article_title = _resolve_article_title(content)
+                article_url = content.url
 
-        result.append(_session_to_summary(session, article_title))
+        result.append(_session_to_summary(session, article_title, article_url))
 
     return result
 
@@ -209,13 +213,15 @@ async def create_session(
     else:
         session_type = "ad_hoc"
 
-    # Get article title if content_id provided
+    # Get article title and URL if content_id provided
     article_title = None
+    article_url = None
     if request.content_id:
         content = db.query(Content).filter(Content.id == request.content_id).first()
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
         article_title = _resolve_article_title(content)
+        article_url = content.url
 
     # Build session title
     if request.topic and article_title:
@@ -256,7 +262,8 @@ async def create_session(
         model=model_spec,
     )
 
-    return CreateChatSessionResponse(session=_session_to_summary(session, article_title))
+    session_summary = _session_to_summary(session, article_title, article_url)
+    return CreateChatSessionResponse(session=session_summary)
 
 
 @router.get(
@@ -279,17 +286,19 @@ async def get_session(
     if session.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
-    # Get article title
+    # Get article title and URL
     article_title = None
+    article_url = None
     if session.content_id:
         content = db.query(Content).filter(Content.id == session.content_id).first()
         if content:
             article_title = content.title
+            article_url = content.url
 
     # Load messages
     messages = _extract_messages_for_display(db, session_id)
 
-    session_summary = _session_to_summary(session, article_title)
+    session_summary = _session_to_summary(session, article_title, article_url)
     return ChatSessionDetailDto(session=session_summary, messages=messages)
 
 

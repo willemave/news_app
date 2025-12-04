@@ -8,6 +8,44 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Share Content
+
+struct ShareContent: Identifiable {
+    let id = UUID()
+    let messageContent: String
+    let articleTitle: String?
+    let articleUrl: String?
+
+    var shareText: String {
+        var text = messageContent
+
+        if let title = articleTitle {
+            text = "**\(title)**\n\n\(text)"
+        }
+
+        if let url = articleUrl {
+            text += "\n\n\(url)"
+        }
+
+        return text
+    }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let content: ShareContent
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let activityItems: [Any] = [content.shareText]
+        let controller = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 // MARK: - Selectable Text (UITextView wrapper)
 
 struct SelectableText: UIViewRepresentable {
@@ -177,6 +215,7 @@ struct ChatSessionView: View {
     @FocusState private var isInputFocused: Bool
     @State private var showingModelPicker = false
     @State private var navigateToNewSession: ChatSessionSummary?
+    @State private var shareContent: ShareContent?
 
     init(session: ChatSessionSummary) {
         _viewModel = StateObject(wrappedValue: ChatSessionViewModel(session: session))
@@ -238,6 +277,9 @@ struct ChatSessionView: View {
         }
         .navigationDestination(item: $navigateToNewSession) { session in
             ChatSessionView(session: session)
+        }
+        .sheet(item: $shareContent) { content in
+            ShareSheet(content: content)
         }
     }
 
@@ -315,9 +357,21 @@ struct ChatSessionView: View {
                         .padding(.top, 60)
                     } else {
                         ForEach(viewModel.allMessages) { message in
-                            MessageBubble(message: message) { selectedText in
-                                Task { await viewModel.digDeeper(into: selectedText) }
-                            }
+                            MessageBubble(
+                                message: message,
+                                articleTitle: viewModel.session?.articleTitle,
+                                articleUrl: viewModel.session?.articleUrl,
+                                onDigDeeper: { selectedText in
+                                    Task { await viewModel.digDeeper(into: selectedText) }
+                                },
+                                onShare: { content in
+                                    shareContent = ShareContent(
+                                        messageContent: content,
+                                        articleTitle: viewModel.session?.articleTitle,
+                                        articleUrl: viewModel.session?.articleUrl
+                                    )
+                                }
+                            )
                             .id(message.id)
                         }
 
@@ -449,7 +503,10 @@ struct ChatSessionView: View {
 
 struct MessageBubble: View {
     let message: ChatMessage
+    let articleTitle: String?
+    let articleUrl: String?
     var onDigDeeper: ((String) -> Void)?
+    var onShare: ((String) -> Void)?
     @State private var calculatedHeight: CGFloat = .zero
 
     var body: some View {
@@ -466,12 +523,25 @@ struct MessageBubble: View {
                     .background(message.isUser ? Color.blue : Color(.systemGray5))
                     .cornerRadius(18)
 
-                if !message.formattedTime.isEmpty {
-                    Text(message.formattedTime)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
+                HStack(spacing: 8) {
+                    if !message.formattedTime.isEmpty {
+                        Text(message.formattedTime)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+
+                    // Share button for assistant messages
+                    if message.isAssistant {
+                        Button {
+                            onShare?(message.content)
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
+                .padding(.horizontal, 4)
             }
 
             if !message.isUser {
@@ -672,7 +742,8 @@ struct InitialSuggestionsLoadingView: View {
             createdAt: "2025-11-28T12:00:00Z",
             updatedAt: nil,
             lastMessageAt: nil,
-            articleTitle: nil
+            articleTitle: nil,
+            articleUrl: nil
         ))
     }
 }

@@ -27,6 +27,7 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     let updatedAt: String?
     let lastMessageAt: String?
     let articleTitle: String?
+    let articleUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -40,6 +41,7 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         case updatedAt = "updated_at"
         case lastMessageAt = "last_message_at"
         case articleTitle = "article_title"
+        case articleUrl = "article_url"
     }
 
     var displayTitle: String {

@@ -41,6 +41,7 @@ class ChatSessionSummaryDto(BaseModel):
     last_message_at: datetime | None
     is_archived: bool
     article_title: str | None = None
+    article_url: str | None = None
 
 
 class ChatSessionDetailDto(BaseModel):
