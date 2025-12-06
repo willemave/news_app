@@ -214,7 +214,7 @@ struct ChatSessionView: View {
     @StateObject private var viewModel: ChatSessionViewModel
     @FocusState private var isInputFocused: Bool
     @State private var showingModelPicker = false
-    @State private var navigateToNewSession: ChatSessionSummary?
+    @State private var navigateToNewSessionId: Int?
     @State private var shareContent: ShareContent?
 
     init(session: ChatSessionSummary) {
@@ -275,8 +275,8 @@ struct ChatSessionView: View {
                 }
             }
         }
-        .navigationDestination(item: $navigateToNewSession) { session in
-            ChatSessionView(session: session)
+        .navigationDestination(item: $navigateToNewSessionId) { sessionId in
+            ChatSessionView(sessionId: sessionId)
         }
         .sheet(item: $shareContent) { content in
             ShareSheet(content: content)
@@ -305,7 +305,7 @@ struct ChatSessionView: View {
                 )
             }
 
-            navigateToNewSession = newSession
+            navigateToNewSessionId = newSession.id
         } catch {
             viewModel.errorMessage = "Failed to switch model: \(error.localizedDescription)"
         }

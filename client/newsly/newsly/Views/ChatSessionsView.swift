@@ -11,6 +11,7 @@ struct ChatSessionsView: View {
     @StateObject private var viewModel = ChatSessionsViewModel()
     @State private var showingNewChat = false
     @State private var selectedProvider: ChatModelProvider = .google
+    @State private var selectedSessionId: Int?
 
     var body: some View {
         NavigationStack {
@@ -18,6 +19,9 @@ struct ChatSessionsView: View {
                 contentBody
             }
             .navigationTitle("Chats")
+            .navigationDestination(item: $selectedSessionId) { sessionId in
+                ChatSessionView(sessionId: sessionId)
+            }
             .task {
                 await viewModel.loadSessions()
             }
@@ -44,6 +48,8 @@ struct ChatSessionsView: View {
                     isPresented: $showingNewChat,
                     onCreateSession: { session in
                         viewModel.sessions.insert(session, at: 0)
+                        // Navigate to new session
+                        selectedSessionId = session.id
                     }
                 )
                 .presentationDetents([.height(320)])
@@ -98,9 +104,12 @@ struct ChatSessionsView: View {
     private var sessionListView: some View {
         List {
             ForEach(viewModel.sessions) { session in
-                NavigationLink(destination: ChatSessionView(session: session)) {
+                Button {
+                    selectedSessionId = session.id
+                } label: {
                     ChatSessionRow(session: session)
                 }
+                .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             }
             .onDelete(perform: viewModel.deleteSession)
