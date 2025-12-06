@@ -54,8 +54,12 @@ class ChatSessionViewModel: ObservableObject {
             session = detail.session
             messages = detail.messages.filter { !$0.content.isEmpty }
 
+            // Check if there's a processing message we need to poll for
+            if let processingMessage = detail.messages.first(where: { $0.isProcessing }) {
+                await pollForMessageCompletion(messageId: processingMessage.id)
+            }
             // If this is an article-based session with no messages, load initial suggestions
-            if detail.session.contentId != nil && detail.messages.isEmpty {
+            else if detail.session.contentId != nil && detail.messages.isEmpty {
                 await loadInitialSuggestions()
             }
         } catch {
@@ -64,6 +68,53 @@ class ChatSessionViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Poll for a processing message to complete
+    private func pollForMessageCompletion(messageId: Int) async {
+        isSending = true
+        startThinkingTimer()
+
+        do {
+            // Use the polling sendMessage which handles the polling loop
+            let assistantMessage = try await pollUntilComplete(messageId: messageId)
+            messages.append(assistantMessage)
+        } catch {
+            logger.error("[ViewModel] pollForMessageCompletion error | error=\(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+        }
+
+        isSending = false
+        stopThinkingTimer()
+    }
+
+    /// Poll until message is complete
+    private func pollUntilComplete(messageId: Int) async throws -> ChatMessage {
+        let maxAttempts = 120 // 60 seconds at 500ms intervals
+        var attempts = 0
+
+        while attempts < maxAttempts {
+            try Task.checkCancellation()
+
+            let status = try await chatService.getMessageStatus(messageId: messageId)
+
+            switch status.status {
+            case .completed:
+                guard let assistantMessage = status.assistantMessage else {
+                    throw ChatServiceError.missingAssistantMessage
+                }
+                return assistantMessage
+
+            case .failed:
+                throw ChatServiceError.processingFailed(status.error ?? "Unknown error")
+
+            case .processing:
+                attempts += 1
+                try await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            }
+        }
+
+        throw ChatServiceError.timeout
     }
 
     /// Load initial follow-up question suggestions for article-based sessions

@@ -84,7 +84,7 @@ def _extract_messages_for_display(
     """Load messages from DB and convert to display format.
 
     Extracts user and assistant text messages from the ModelMessage format
-    stored in the database.
+    stored in the database. Includes status for async message processing.
     """
     from pydantic_ai.messages import (
         ModelMessagesTypeAdapter,
@@ -95,7 +95,6 @@ def _extract_messages_for_display(
     )
 
     messages: list[ChatMessageDto] = []
-    msg_counter = 0
 
     # Query chat_messages ordered by created_at
     db_messages = (
@@ -109,34 +108,37 @@ def _extract_messages_for_display(
         try:
             # Deserialize JSON to list of ModelMessage
             msg_list = ModelMessagesTypeAdapter.validate_json(db_msg.message_list)
+            status = MessageProcessingStatusDto(db_msg.status)
 
             for model_msg in msg_list:
                 if isinstance(model_msg, ModelRequest):
                     # Only show user-authored parts; hide tool-return/system parts
                     for part in model_msg.parts:
                         if isinstance(part, UserPromptPart) and part.content:
-                            msg_counter += 1
                             messages.append(
                                 ChatMessageDto(
-                                    id=msg_counter,
+                                    id=db_msg.id,  # Use DB ID for polling
                                     session_id=session_id,
                                     role=ChatMessageRole.USER,
                                     timestamp=db_msg.created_at,
                                     content=part.content,
+                                    status=status,
+                                    error=db_msg.error,
                                 )
                             )
                 elif isinstance(model_msg, ModelResponse):
                     # Only show assistant text parts; hide tool calls/returns
                     for part in model_msg.parts:
                         if isinstance(part, TextPart) and part.content:
-                            msg_counter += 1
                             messages.append(
                                 ChatMessageDto(
-                                    id=msg_counter,
+                                    id=db_msg.id,  # Use DB ID for polling
                                     session_id=session_id,
                                     role=ChatMessageRole.ASSISTANT,
                                     timestamp=db_msg.created_at,
                                     content=part.content,
+                                    status=status,
+                                    error=db_msg.error,
                                 )
                             )
         except Exception as e:

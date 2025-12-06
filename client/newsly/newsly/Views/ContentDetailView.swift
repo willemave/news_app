@@ -498,7 +498,8 @@ struct ContentDetailView: View {
 
         do {
             let session = try await ChatService.shared.startArticleChat(contentId: contentId)
-            _ = try await ChatService.shared.sendMessage(sessionId: session.id, message: prompt)
+            // Send message async (don't wait for completion - chat view will poll)
+            _ = try await ChatService.shared.sendMessageAsync(sessionId: session.id, message: prompt)
             deepDiveSession = session
             showChatOptionsSheet = false
             showDeepDiveSheet = true
