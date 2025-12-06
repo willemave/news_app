@@ -112,8 +112,8 @@ git add <files>                       # Stage code
 bd sync                               # Commit beads
 git commit -m "..."                   # Commit code
 bd sync                               # Sync any new beads
-git push                              # Push to remote
 ```
+Only push if explicitly requested by the user.
 
 ---
 
