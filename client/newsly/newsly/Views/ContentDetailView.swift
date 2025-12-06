@@ -13,6 +13,7 @@ struct ContentDetailView: View {
     let allContentIds: [Int]
     let onConvert: ((Int) async -> Void)?
     @StateObject private var viewModel = ContentDetailViewModel()
+    @StateObject private var chatSessionManager = ActiveChatSessionManager.shared
     @EnvironmentObject var readingStateStore: ReadingStateStore
     @Environment(\.dismiss) private var dismiss
     @State private var dragAmount: CGFloat = 0
@@ -336,9 +337,43 @@ struct ContentDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Hide the main tab bar while viewing details
         .toolbar(.hidden, for: .tabBar)
-        // Sticky bottom action bar
+        // Sticky bottom action bar with optional chat banner
         .safeAreaInset(edge: .bottom) {
-            bottomBar
+            VStack(spacing: 0) {
+                // Chat status banner (when there's an active session for this content)
+                if let content = viewModel.content,
+                   let activeSession = chatSessionManager.getSession(forContentId: content.id) {
+                    ChatStatusBanner(
+                        session: activeSession,
+                        onTap: {
+                            // Open the chat session - create summary from active session
+                            let session = ChatSessionSummary(
+                                id: activeSession.id,
+                                contentId: activeSession.contentId,
+                                title: nil,
+                                sessionType: "article_brain",
+                                topic: nil,
+                                llmProvider: "google",
+                                llmModel: "gemini-2.0-flash",
+                                createdAt: ISO8601DateFormatter().string(from: Date()),
+                                updatedAt: nil,
+                                lastMessageAt: nil,
+                                articleTitle: activeSession.contentTitle,
+                                articleUrl: nil,
+                                hasPendingMessage: false
+                            )
+                            deepDiveSession = session
+                            showDeepDiveSheet = true
+                            chatSessionManager.stopTracking(contentId: content.id)
+                        },
+                        onDismiss: {
+                            chatSessionManager.markAsViewed(contentId: content.id)
+                        }
+                    )
+                }
+
+                bottomBar
+            }
         }
         .task {
             let idToLoad = allContentIds.isEmpty ? initialContentId : allContentIds[currentIndex]
@@ -492,17 +527,27 @@ struct ContentDetailView: View {
 
     private func startChatWithPrompt(_ prompt: String, contentId: Int) async {
         guard !isStartingChat else { return }
+        guard let content = viewModel.content else { return }
 
         isStartingChat = true
         chatError = nil
 
         do {
             let session = try await ChatService.shared.startArticleChat(contentId: contentId)
-            // Send message async (don't wait for completion - chat view will poll)
-            _ = try await ChatService.shared.sendMessageAsync(sessionId: session.id, message: prompt)
+            // Send message async (don't wait for completion)
+            let response = try await ChatService.shared.sendMessageAsync(sessionId: session.id, message: prompt)
+
+            // Register with manager for background polling - don't show sheet
+            chatSessionManager.startTracking(
+                session: session,
+                contentId: contentId,
+                contentTitle: content.displayTitle,
+                messageId: response.messageId
+            )
+
             deepDiveSession = session
             showChatOptionsSheet = false
-            showDeepDiveSheet = true
+            // Don't show sheet immediately - show banner instead
         } catch {
             chatError = error.localizedDescription
         }

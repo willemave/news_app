@@ -25,6 +25,10 @@ struct newslyApp: App {
                     ContentView()
                         .environmentObject(authViewModel)
                         .withToast()
+                        .task {
+                            // Request notification permissions for chat completion alerts
+                            await LocalNotificationService.shared.requestAuthorization()
+                        }
                 case .unauthenticated:
                     AuthenticationView()
                         .environmentObject(authViewModel)
