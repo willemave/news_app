@@ -12,6 +12,7 @@ struct ChatSessionsView: View {
     @State private var showingNewChat = false
     @State private var selectedProvider: ChatModelProvider = .google
     @State private var selectedSessionId: Int?
+    @State private var pendingNavigationSessionId: Int?
 
     var body: some View {
         NavigationStack {
@@ -42,14 +43,20 @@ struct ChatSessionsView: View {
                     .accessibilityLabel("New Chat")
                 }
             }
-            .sheet(isPresented: $showingNewChat) {
+            .sheet(isPresented: $showingNewChat, onDismiss: {
+                // Navigate after sheet dismisses to avoid conflicts
+                if let sessionId = pendingNavigationSessionId {
+                    pendingNavigationSessionId = nil
+                    selectedSessionId = sessionId
+                }
+            }) {
                 NewChatSheet(
                     provider: selectedProvider,
                     isPresented: $showingNewChat,
                     onCreateSession: { session in
                         viewModel.sessions.insert(session, at: 0)
-                        // Navigate to new session
-                        selectedSessionId = session.id
+                        // Queue navigation for after sheet dismisses
+                        pendingNavigationSessionId = session.id
                     }
                 )
                 .presentationDetents([.height(320)])
