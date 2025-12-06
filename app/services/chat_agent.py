@@ -513,51 +513,112 @@ async def process_message_async(
         message_id: ChatMessage ID to update on completion.
         user_prompt: The user's message text.
     """
-    from app.core.db import SessionLocal
+    from app.core.db import get_session_factory
     from app.services.event_logger import log_event
 
+    total_start = perf_counter()
+    trimmed_prompt = user_prompt.replace("\n", " ")[:100]
+    if len(user_prompt) > 100:
+        trimmed_prompt = f"{trimmed_prompt}..."
+
+    logger.info(
+        "[AsyncChat:START] sid=%s mid=%s prompt='%s'",
+        session_id,
+        message_id,
+        trimmed_prompt,
+    )
+
+    SessionLocal = get_session_factory()
     db = SessionLocal()
     try:
         session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if not session:
-            logger.error(f"Session {session_id} not found for async processing")
+            logger.error("[AsyncChat:ERROR] Session %s not found", session_id)
             return
 
         logger.info(
-            "[AsyncChat] processing | session_id=%s message_id=%s",
+            "[AsyncChat:SESSION] sid=%s model=%s content_id=%s topic=%s",
             session_id,
-            message_id,
+            session.llm_model,
+            session.content_id,
+            session.topic,
         )
 
         # Build dependencies
+        deps_start = perf_counter()
         deps = _build_chat_deps(db, session)
+        deps_ms = (perf_counter() - deps_start) * 1000
+        context_len = len(deps.article_context) if deps.article_context else 0
+        logger.info(
+            "[AsyncChat:DEPS] sid=%s deps_ms=%.1f context_chars=%d has_content=%s",
+            session_id,
+            deps_ms,
+            context_len,
+            deps.content is not None,
+        )
 
         # Load history (excluding the processing message we just created)
+        history_start = perf_counter()
         history = load_message_history(db, session.id)
-        # Remove the last message if it's the processing placeholder
-        # (it only contains the user prompt, no assistant response yet)
+        history_ms = (perf_counter() - history_start) * 1000
+        logger.info(
+            "[AsyncChat:HISTORY] sid=%s history_ms=%.1f message_count=%d",
+            session_id,
+            history_ms,
+            len(history),
+        )
 
         # Run the agent
+        logger.info(
+            "[AsyncChat:LLM_START] sid=%s model=%s history_len=%d",
+            session_id,
+            session.llm_model,
+            len(history),
+        )
         agent_start = perf_counter()
         result = await run_in_threadpool(
             _run_agent_sync, session.llm_model, user_prompt, deps, history
         )
         agent_ms = (perf_counter() - agent_start) * 1000
 
+        # Extract tool calls info
+        tool_calls = getattr(result, "tool_calls", []) or []
+        tool_names = [
+            getattr(tc, "name", None)
+            or getattr(tc, "function_name", None)
+            or getattr(tc, "tool_name", None)
+            for tc in tool_calls
+        ]
+        output_len = len(result.output) if result.output else 0
+        logger.info(
+            "[AsyncChat:LLM_DONE] sid=%s agent_ms=%.1f output_chars=%d tools=%s",
+            session_id,
+            agent_ms,
+            output_len,
+            tool_names if tool_names else "none",
+        )
+
         # Update the message with the complete result
+        save_start = perf_counter()
         new_messages = result.new_messages()
         update_message_completed(db, message_id, new_messages)
+        save_ms = (perf_counter() - save_start) * 1000
 
         # Update session timestamps
         session.last_message_at = datetime.utcnow()
         session.updated_at = datetime.utcnow()
         db.commit()
 
+        total_ms = (perf_counter() - total_start) * 1000
         logger.info(
-            "[AsyncChat] completed | session_id=%s message_id=%s agent_ms=%.1f",
+            "[AsyncChat:DONE] sid=%s mid=%s total=%.0f deps=%.0f hist=%.0f llm=%.0f save=%.0f ms",
             session_id,
             message_id,
+            total_ms,
+            deps_ms,
+            history_ms,
             agent_ms,
+            save_ms,
         )
 
         log_event(
@@ -570,16 +631,18 @@ async def process_message_async(
         )
 
     except Exception as exc:
+        total_ms = (perf_counter() - total_start) * 1000
         logger.error(
-            "[AsyncChat] failed | session_id=%s message_id=%s error=%s",
+            "[AsyncChat:FAILED] sid=%s mid=%s total_ms=%.1f error=%s",
             session_id,
             message_id,
+            total_ms,
             exc,
         )
         try:
             update_message_failed(db, message_id, str(exc))
         except Exception as update_exc:
-            logger.error(f"Failed to update message status: {update_exc}")
+            logger.error("[AsyncChat:UPDATE_FAILED] mid=%s error=%s", message_id, update_exc)
     finally:
         db.close()
 

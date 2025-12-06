@@ -7,29 +7,27 @@ import SwiftUI
 
 struct MoreView: View {
     var body: some View {
-        NavigationView {
-            List {
-                NavigationLink {
-                    SearchView()
-                } label: {
-                    Label("Search", systemImage: "magnifyingglass")
-                }
-
-                NavigationLink {
-                    RecentlyReadView()
-                } label: {
-                    Label("Recently Read", systemImage: "clock.fill")
-                }
-
-                NavigationLink {
-                    SettingsView()
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
+        List {
+            NavigationLink {
+                SearchView()
+            } label: {
+                Label("Search", systemImage: "magnifyingglass")
             }
-            .navigationTitle("More")
-            .navigationBarTitleDisplayMode(.large)
+
+            NavigationLink {
+                RecentlyReadView()
+            } label: {
+                Label("Recently Read", systemImage: "clock.fill")
+            }
+
+            NavigationLink {
+                SettingsView()
+            } label: {
+                Label("Settings", systemImage: "gear")
+            }
         }
+        .navigationTitle("More")
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 

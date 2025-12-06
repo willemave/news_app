@@ -1,10 +1,10 @@
 """Chat session endpoints for deep-dive conversations."""
 
-import asyncio
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -95,6 +95,7 @@ def _extract_messages_for_display(
     )
 
     messages: list[ChatMessageDto] = []
+    display_id = 0  # Unique ID for each display message (user/assistant parts)
 
     # Query chat_messages ordered by created_at
     db_messages = (
@@ -115,9 +116,10 @@ def _extract_messages_for_display(
                     # Only show user-authored parts; hide tool-return/system parts
                     for part in model_msg.parts:
                         if isinstance(part, UserPromptPart) and part.content:
+                            display_id += 1
                             messages.append(
                                 ChatMessageDto(
-                                    id=db_msg.id,  # Use DB ID for polling
+                                    id=display_id,  # Unique display ID
                                     session_id=session_id,
                                     role=ChatMessageRole.USER,
                                     timestamp=db_msg.created_at,
@@ -130,9 +132,10 @@ def _extract_messages_for_display(
                     # Only show assistant text parts; hide tool calls/returns
                     for part in model_msg.parts:
                         if isinstance(part, TextPart) and part.content:
+                            display_id += 1
                             messages.append(
                                 ChatMessageDto(
-                                    id=db_msg.id,  # Use DB ID for polling
+                                    id=display_id,  # Unique display ID
                                     session_id=session_id,
                                     role=ChatMessageRole.ASSISTANT,
                                     timestamp=db_msg.created_at,
@@ -173,11 +176,10 @@ async def list_sessions(
     if content_id is not None:
         query = query.filter(ChatSession.content_id == content_id)
 
-    # Order by most recent activity
+    # Order by most recent activity (coalesce with created_at for new sessions)
     sessions = (
         query.order_by(
-            ChatSession.last_message_at.desc().nullslast(),
-            ChatSession.created_at.desc(),
+            func.coalesce(ChatSession.last_message_at, ChatSession.created_at).desc(),
         )
         .limit(limit)
         .all()
@@ -343,6 +345,7 @@ async def get_session(
 async def send_message(
     session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
     request: SendChatMessageRequest,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> SendMessageResponse:
@@ -371,8 +374,19 @@ async def send_message(
     # Create the processing message record immediately
     db_message = create_processing_message(db, session_id, request.message)
 
-    # Start async processing in the background
-    asyncio.create_task(process_message_async(session_id, db_message.id, request.message))
+    trimmed_msg = request.message.replace("\n", " ")[:100]
+    if len(request.message) > 100:
+        trimmed_msg = f"{trimmed_msg}..."
+    logger.info(
+        "[Chat:SEND] sid=%s mid=%s user=%s prompt='%s'",
+        session_id,
+        db_message.id,
+        current_user.id,
+        trimmed_msg,
+    )
+
+    # Start async processing using BackgroundTasks (not asyncio.create_task which can be GC'd)
+    background_tasks.add_task(process_message_async, session_id, db_message.id, request.message)
 
     # Build user message DTO for immediate response
     user_message = ChatMessageDto(

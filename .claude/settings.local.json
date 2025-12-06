@@ -114,7 +114,8 @@
       "Bash(bd list:*)",
       "Bash(unzip:*)",
       "Bash(.venv/bin/pytest app/tests/ -v)",
-      "Bash(.venv/bin/pytest:*)"
+      "Bash(.venv/bin/pytest:*)",
+      "Bash(wt merge:*)"
     ],
     "deny": []
   },

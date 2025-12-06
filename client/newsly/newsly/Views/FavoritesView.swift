@@ -13,36 +13,35 @@ struct FavoritesView: View {
     @State private var showingFilters = false
     
     var body: some View {
-        NavigationStack {
-            ZStack {
-                VStack(spacing: 0) {
-                    contentBody
-                }
-                .task {
-                    await viewModel.loadFavorites()
-                }
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            showingFilters = true
-                        } label: {
-                            Image(systemName: "line.3.horizontal.decrease.circle")
-                        }
-                        .accessibilityLabel("Filters")
+        ZStack {
+            VStack(spacing: 0) {
+                contentBody
+            }
+            .navigationTitle("Favorites")
+            .task {
+                await viewModel.loadFavorites()
+            }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingFilters = true
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
                     }
+                    .accessibilityLabel("Filters")
                 }
-                .sheet(isPresented: $showingFilters) {
-                    FilterSheet(
-                        selectedContentType: $viewModel.selectedContentType,
-                        selectedDate: $viewModel.selectedDate,
-                        selectedReadFilter: $viewModel.selectedReadFilter,
-                        isPresented: $showingFilters,
-                        contentTypes: viewModel.contentTypes,
-                        availableDates: viewModel.availableDates
-                    )
-                    .onDisappear {
-                        Task { await viewModel.loadFavorites() }
-                    }
+            }
+            .sheet(isPresented: $showingFilters) {
+                FilterSheet(
+                    selectedContentType: $viewModel.selectedContentType,
+                    selectedDate: $viewModel.selectedDate,
+                    selectedReadFilter: $viewModel.selectedReadFilter,
+                    isPresented: $showingFilters,
+                    contentTypes: viewModel.contentTypes,
+                    availableDates: viewModel.availableDates
+                )
+                .onDisappear {
+                    Task { await viewModel.loadFavorites() }
                 }
             }
         }

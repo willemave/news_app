@@ -114,7 +114,8 @@ echo ""
 echo "🚀 Starting FastAPI server..."
 
 # Build server command arguments
-SERVER_ARGS=(python -m uvicorn app.main:app --host 0.0.0.0 --port 8000)
+# --no-access-log: disable uvicorn's access logging (we use custom middleware in app/main.py)
+SERVER_ARGS=(python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log)
 
 # Add reload flag if in development
 if [ "${ENVIRONMENT:-development}" = "development" ]; then

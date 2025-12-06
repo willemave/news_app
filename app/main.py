@@ -86,15 +86,27 @@ async def admin_auth_redirect_handler(_request: Request, exc: AdminAuthRequired)
     return RedirectResponse(url=exc.redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
+# Paths to skip in request logging (high-frequency polling endpoints)
+SKIP_LOG_PATHS = {"/health", "/api/content/chat/messages", "/api/content/unread-counts"}
+
+
+def _should_skip_logging(path: str) -> bool:
+    """Check if request path should skip logging (status polling etc)."""
+    return any(path.startswith(skip_path) for skip_path in SKIP_LOG_PATHS)
+
+
 # Request logging middleware with timing
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all incoming HTTP requests with timing information."""
     start_time = time.perf_counter()
+    path = request.url.path
+    skip_logging = _should_skip_logging(path)
 
-    logger.info(f">>> {request.method} {request.url.path}")
-    logger.debug(f"    Headers: {dict(request.headers)}")
-    logger.debug(f"    Client: {request.client.host if request.client else 'unknown'}")
+    if not skip_logging:
+        logger.info(f">>> {request.method} {path}")
+        logger.debug(f"    Headers: {dict(request.headers)}")
+        logger.debug(f"    Client: {request.client.host if request.client else 'unknown'}")
 
     response = await call_next(request)
 
@@ -103,9 +115,11 @@ async def log_requests(request: Request, call_next):
     # Add timing header to response
     response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
 
+    if skip_logging:
+        return response
+
     # Log with severity based on duration
     method = request.method
-    path = request.url.path
     status_code = response.status_code
     time_str = f"{duration_ms:.2f}ms"
 

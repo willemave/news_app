@@ -8,61 +8,61 @@
 import SwiftUI
 
 struct ChatSessionsView: View {
+    let onSelectSession: ((ChatSessionRoute) -> Void)?
+
     @StateObject private var viewModel = ChatSessionsViewModel()
     @State private var showingNewChat = false
     @State private var selectedProvider: ChatModelProvider = .google
-    @State private var selectedSessionId: Int?
-    @State private var pendingNavigationSessionId: Int?
+    @State private var pendingNavigationRoute: ChatSessionRoute?
+
+    init(onSelectSession: ((ChatSessionRoute) -> Void)? = nil) {
+        self.onSelectSession = onSelectSession
+    }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                contentBody
-            }
-            .navigationTitle("Chats")
-            .navigationDestination(item: $selectedSessionId) { sessionId in
-                ChatSessionView(sessionId: sessionId)
-            }
-            .task {
-                await viewModel.loadSessions()
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        ForEach(ChatModelProvider.allCases, id: \.self) { provider in
-                            Button {
-                                selectedProvider = provider
-                                showingNewChat = true
-                            } label: {
-                                Label(provider.displayName, systemImage: provider.iconName)
-                            }
+        ZStack {
+            contentBody
+        }
+        .navigationTitle("Chats")
+        .onAppear {
+            Task { await viewModel.loadSessions() }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    ForEach(ChatModelProvider.allCases, id: \.self) { provider in
+                        Button {
+                            selectedProvider = provider
+                            showingNewChat = true
+                        } label: {
+                            Label(provider.displayName, systemImage: provider.iconName)
                         }
-                    } label: {
-                        Image(systemName: "plus.circle")
                     }
-                    .accessibilityLabel("New Chat")
+                } label: {
+                    Image(systemName: "plus.circle")
                 }
+                .accessibilityLabel("New Chat")
             }
-            .sheet(isPresented: $showingNewChat, onDismiss: {
-                // Navigate after sheet dismisses to avoid conflicts
-                if let sessionId = pendingNavigationSessionId {
-                    pendingNavigationSessionId = nil
-                    selectedSessionId = sessionId
+        }
+        .sheet(isPresented: $showingNewChat, onDismiss: {
+            // Navigate after sheet dismisses to avoid conflicts
+            if let route = pendingNavigationRoute {
+                pendingNavigationRoute = nil
+                onSelectSession?(route)
+            }
+        }) {
+            NewChatSheet(
+                provider: selectedProvider,
+                isPresented: $showingNewChat,
+                onCreateSession: { session in
+                    viewModel.sessions.insert(session, at: 0)
+                    // Queue navigation for after sheet dismisses
+                    pendingNavigationRoute = ChatSessionRoute(sessionId: session.id)
                 }
-            }) {
-                NewChatSheet(
-                    provider: selectedProvider,
-                    isPresented: $showingNewChat,
-                    onCreateSession: { session in
-                        viewModel.sessions.insert(session, at: 0)
-                        // Queue navigation for after sheet dismisses
-                        pendingNavigationSessionId = session.id
-                    }
-                )
-                .presentationDetents([.height(320)])
-                .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(20)
-            }
+            )
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.hidden)
+            .presentationCornerRadius(20)
         }
     }
 
@@ -112,7 +112,7 @@ struct ChatSessionsView: View {
         List {
             ForEach(viewModel.sessions) { session in
                 Button {
-                    selectedSessionId = session.id
+                    onSelectSession?(ChatSessionRoute(sessionId: session.id))
                 } label: {
                     ChatSessionRow(session: session)
                 }

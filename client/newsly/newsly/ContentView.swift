@@ -12,7 +12,7 @@ struct ContentView: View {
     @StateObject private var readingStateStore = ReadingStateStore()
     @StateObject private var tabCoordinator: TabCoordinatorViewModel
 
-    @State private var path: [ContentDetailRoute] = []
+    @State private var path = NavigationPath()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -75,7 +75,9 @@ struct ContentView: View {
                 .badge(shortBadge)
                 .tag(RootTab.shortNews)
 
-                ChatSessionsView()
+                ChatSessionsView(onSelectSession: { route in
+                    path.append(route)
+                })
                     .tabItem {
                         Label("Chats", systemImage: "brain.head.profile")
                     }
@@ -99,6 +101,9 @@ struct ContentView: View {
                     allContentIds: route.allContentIds
                 )
                 .environmentObject(readingStateStore)
+            }
+            .navigationDestination(for: ChatSessionRoute.self) { route in
+                ChatSessionView(sessionId: route.sessionId)
             }
         }
         .environmentObject(readingStateStore)
@@ -132,12 +137,12 @@ struct ContentView: View {
             currentIds = ids.isEmpty ? [state.contentId] : ids
         }
 
-        path = [
+        path.append(
             ContentDetailRoute(
                 contentId: state.contentId,
                 contentType: state.contentType,
                 allContentIds: currentIds
             )
-        ]
+        )
     }
 }
