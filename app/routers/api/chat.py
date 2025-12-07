@@ -36,7 +36,7 @@ from app.services.chat_agent import (
     process_message_async,
 )
 from app.services.event_logger import log_event
-from app.services.llm_models import resolve_model
+from app.services.llm_models import is_deep_research_provider, resolve_model
 
 logger = get_logger(__name__)
 
@@ -241,7 +241,9 @@ async def create_session(
     provider, model_spec = resolve_model(request.llm_provider, request.llm_model_hint)
 
     # Determine session type
-    if request.topic:
+    if is_deep_research_provider(request.llm_provider):
+        session_type = "deep_research"
+    elif request.topic:
         session_type = "topic"
     elif request.content_id:
         session_type = "article_brain"
@@ -445,7 +447,15 @@ async def send_message(
     )
 
     # Start async processing using BackgroundTasks (not asyncio.create_task which can be GC'd)
-    background_tasks.add_task(process_message_async, session_id, db_message.id, request.message)
+    # Route to deep research service for deep_research sessions
+    if session.session_type == "deep_research":
+        from app.services.deep_research import process_deep_research_message
+
+        background_tasks.add_task(
+            process_deep_research_message, session_id, db_message.id, request.message
+        )
+    else:
+        background_tasks.add_task(process_message_async, session_id, db_message.id, request.message)
 
     # Build user message DTO for immediate response
     user_message = ChatMessageDto(

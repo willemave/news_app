@@ -12,6 +12,7 @@ enum ChatModelProvider: String, Codable, CaseIterable {
     case openai
     case anthropic
     case google
+    case deep_research
 
     var displayName: String {
         switch self {
@@ -21,6 +22,8 @@ enum ChatModelProvider: String, Codable, CaseIterable {
             return "Claude"
         case .google:
             return "Gemini"
+        case .deep_research:
+            return "Deep Research"
         }
     }
 
@@ -33,6 +36,8 @@ enum ChatModelProvider: String, Codable, CaseIterable {
             return "sparkles"
         case .google:
             return "diamond"
+        case .deep_research:
+            return "magnifyingglass.circle.fill"
         }
     }
 
@@ -45,6 +50,8 @@ enum ChatModelProvider: String, Codable, CaseIterable {
             return "claude-icon"
         case .google:
             return "gemini-icon"
+        case .deep_research:
+            return "deep-research-icon"
         }
     }
 
@@ -56,6 +63,13 @@ enum ChatModelProvider: String, Codable, CaseIterable {
             return "claude-sonnet-4-5-20250929"
         case .google:
             return "gemini-3-pro-preview"
+        case .deep_research:
+            return "o4-mini-deep-research-2025-06-26"
         }
+    }
+
+    /// Whether this provider uses deep research (longer processing times)
+    var isDeepResearch: Bool {
+        self == .deep_research
     }
 }

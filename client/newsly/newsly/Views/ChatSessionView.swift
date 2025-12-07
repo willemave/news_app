@@ -233,7 +233,6 @@ struct ChatSessionView: View {
             // Input area
             inputBar
         }
-        .navigationTitle(viewModel.session?.displayTitle ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadSession()
@@ -241,6 +240,23 @@ struct ChatSessionView: View {
         }
         .toolbar {
             if let session = viewModel.session {
+                // Session type indicator (leading)
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 2) {
+                        Text(session.displayTitle)
+                            .font(.headline)
+                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            Image(systemName: session.sessionTypeIconName)
+                                .font(.caption2)
+                            Text(session.sessionTypeLabel)
+                                .font(.caption2)
+                        }
+                        .foregroundColor(session.isDeepResearch ? .purple : .secondary)
+                    }
+                }
+
+                // Provider selector (trailing)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Section {
@@ -256,7 +272,7 @@ struct ChatSessionView: View {
                                 } label: {
                                     Label(provider.displayName, systemImage: provider.iconName)
                                 }
-                                .disabled(provider.rawValue == session.llmProvider)
+                                .disabled(provider.rawValue == session.llmProvider || session.isDeepResearch)
                             }
                         }
                     } label: {

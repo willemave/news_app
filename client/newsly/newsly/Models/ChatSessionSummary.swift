@@ -107,6 +107,8 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "Claude"
         case "google":
             return "Gemini"
+        case "deep_research":
+            return "Deep Research"
         default:
             return llmProvider.capitalized
         }
@@ -121,6 +123,8 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "claude-icon"
         case "google":
             return "gemini-icon"
+        case "deep_research":
+            return "deep-research-icon"
         default:
             return nil
         }
@@ -135,8 +139,47 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "sparkles"
         case "google":
             return "diamond"
+        case "deep_research":
+            return "magnifyingglass.circle.fill"
         default:
             return "cpu"
+        }
+    }
+
+    /// Whether this is a deep research session
+    var isDeepResearch: Bool {
+        sessionType == "deep_research" || llmProvider.lowercased() == "deep_research"
+    }
+
+    /// Icon name for the session type (used in chat list)
+    var sessionTypeIconName: String {
+        switch sessionType {
+        case "deep_research":
+            return "magnifyingglass.circle.fill"
+        case "topic":
+            return "text.magnifyingglass"
+        case "article_brain":
+            return "doc.text.magnifyingglass"
+        case "ad_hoc":
+            return "bubble.left.and.bubble.right"
+        default:
+            return "bubble.left"
+        }
+    }
+
+    /// Human-readable label for the session type
+    var sessionTypeLabel: String {
+        switch sessionType {
+        case "deep_research":
+            return "Deep Research"
+        case "topic":
+            return "Search"
+        case "article_brain":
+            return "Dig Deeper"
+        case "ad_hoc":
+            return "Chat"
+        default:
+            return "Chat"
         }
     }
 }

@@ -21,6 +21,7 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
+    DEEP_RESEARCH = "deep_research"
 
 
 # Provider prefixes and defaults are kept in sync with chat_agent usage.
@@ -28,13 +29,18 @@ PROVIDER_PREFIXES: dict[str, str] = {
     LLMProvider.OPENAI.value: "openai",
     LLMProvider.ANTHROPIC.value: "anthropic",
     LLMProvider.GOOGLE.value: "google-gla",
+    LLMProvider.DEEP_RESEARCH.value: "deep_research",
 }
 
 PROVIDER_DEFAULTS: dict[str, str] = {
     LLMProvider.OPENAI.value: "openai:gpt-5.1",
     LLMProvider.ANTHROPIC.value: "anthropic:claude-sonnet-4-5-20250929",
     LLMProvider.GOOGLE.value: "google-gla:gemini-3-pro-preview",
+    LLMProvider.DEEP_RESEARCH.value: "deep_research:o4-mini-deep-research-2025-06-26",
 }
+
+# Deep research model constant for easy reference
+DEEP_RESEARCH_MODEL = "o4-mini-deep-research-2025-06-26"
 
 DEFAULT_PROVIDER = LLMProvider.GOOGLE.value
 DEFAULT_MODEL = PROVIDER_DEFAULTS[DEFAULT_PROVIDER]
@@ -144,3 +150,36 @@ def build_pydantic_model(model_spec: str) -> tuple[Model | str, GoogleModelSetti
         )
 
     return model_spec, None
+
+
+def is_deep_research_provider(provider: LLMProvider | str | None) -> bool:
+    """Check if the given provider is deep research.
+
+    Args:
+        provider: Provider enum or string.
+
+    Returns:
+        True if deep research provider.
+    """
+    if provider is None:
+        return False
+    raw = provider.value if isinstance(provider, Enum) else str(provider)
+    return raw == LLMProvider.DEEP_RESEARCH.value
+
+
+def is_deep_research_model(model_spec: str | None) -> bool:
+    """Check if the given model spec is for deep research.
+
+    Args:
+        model_spec: Model specification string.
+
+    Returns:
+        True if this is a deep research model.
+    """
+    if not model_spec:
+        return False
+    return (
+        model_spec.startswith("deep_research:")
+        or "deep-research" in model_spec
+        or model_spec == DEEP_RESEARCH_MODEL
+    )

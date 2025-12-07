@@ -190,12 +190,15 @@ struct ChatSessionRow: View {
                     .lineLimit(2)
             }
 
-            HStack {
-                if let sessionType = session.sessionType {
-                    Text(sessionType.replacingOccurrences(of: "_", with: " ").capitalized)
-                        .font(.caption2)
-                        .foregroundColor(.blue)
-                }
+            HStack(spacing: 6) {
+                // Session type icon and label
+                Image(systemName: session.sessionTypeIconName)
+                    .font(.caption)
+                    .foregroundColor(session.isDeepResearch ? .purple : .blue)
+                Text(session.sessionTypeLabel)
+                    .font(.caption2)
+                    .foregroundColor(session.isDeepResearch ? .purple : .blue)
+
                 Spacer()
                 Text(session.formattedDate)
                     .font(.caption)

@@ -257,4 +257,17 @@ class ChatService {
             initialMessage: initialMessage
         )
     }
+
+    /// Start a deep research session for an article
+    /// Deep research uses OpenAI's o4-mini-deep-research model for comprehensive research
+    func startDeepResearch(
+        contentId: Int? = nil,
+        topic: String? = nil
+    ) async throws -> ChatSessionSummary {
+        return try await createSession(
+            contentId: contentId,
+            topic: topic,
+            provider: .deep_research
+        )
+    }
 }
