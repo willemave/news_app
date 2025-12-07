@@ -2,7 +2,7 @@
 
 > Technical reference for the FastAPI backend, content pipeline, chat system, and SwiftUI client contracts.
 
-**Last Updated:** 2025-11-29  
+**Last Updated:** 2025-12-06  
 **Runtime:** Python 3.13, FastAPI + SQLAlchemy 2, Pydantic v2, pydantic-ai  
 **Database:** PostgreSQL (prod) / SQLite (dev)  
 **Clients:** SwiftUI (iOS 17+), Jinja admin views
@@ -12,6 +12,7 @@
 - Processing workers apply URL strategies, fetch/extract content, summarize with LLMs, and persist typed metadata.
 - API surface covers auth, feed/list/search, read/favorite state, conversions, tweet ideas, chat, and user-managed scrapers.
 - Deep-dive chat uses pydantic-ai agents with Exa web search; conversations are stored server-side.
+- Deep Research mode uses OpenAI's o4-mini-deep-research model for comprehensive async research (2-5 min).
 - Admin/Jinja web UI shares the same services as the mobile API.
 
 ```mermaid
@@ -28,6 +29,7 @@ flowchart LR
   Worker --> LLM[ContentSummarizer\npydantic-ai]
   Worker --> Media[(media/logs dirs)]
   API <--> Chat[Chat Agent\nExa search]
+  API <--> DeepResearch[Deep Research\nOpenAI o4-mini]
 ```
 
 ## Codebase Map
@@ -63,6 +65,7 @@ flowchart LR
 | `RobustHttpClient` | app/http_client/robust_http_client.py | Resilient HTTP GET/HEAD with retries/logging | `get`, `head`, `close` |
 | `ScraperRunner` | app/scraping/runner.py | Orchestrates scrapers, logs stats to EventLog | `run_all(_with_stats)`, `run_scraper`, `list_scrapers` |
 | `Chat Agent` | app/services/chat_agent.py | pydantic-ai agent with Exa tool, message persistence | `get_chat_agent`, `run_chat_turn`, `generate_initial_suggestions` |
+| `DeepResearchClient` | app/services/deep_research.py | OpenAI Responses API client for async deep research | `start_research`, `poll_result`, `wait_for_completion`, `process_deep_research_message` |
 | `Event Logger` | app/services/event_logger.py | Structured event logging to DB | `log_event`, `track_event`, `get_recent_events` |
 
 ## Database Schema (ORM in `app/models/schema.py`)
@@ -77,7 +80,7 @@ flowchart LR
 | `content_status` | Per-user feed membership (inbox/archive) | UQ `(user_id, content_id)`, `status`, timestamps |
 | `user_scraper_configs` | User-managed feeds (substack/atom/podcast_rss/youtube) | UQ `(user_id, scraper_type, feed_url)`, `config` JSON, `is_active` |
 | `event_logs` | Structured event telemetry | `event_type`, `event_name`, `status`, `data` JSON, `created_at` |
-| `chat_sessions` | Stored chat threads | `user_id`, `content_id` (optional), `title`, `session_type`, `topic`, `llm_model`, `llm_provider`, `last_message_at`, `is_archived` |
+| `chat_sessions` | Stored chat threads | `user_id`, `content_id` (optional), `title`, `session_type` (`article_brain/topic/ad_hoc/deep_research`), `topic`, `llm_model`, `llm_provider`, `last_message_at`, `is_archived` |
 | `chat_messages` | Persisted pydantic-ai messages | `session_id`, `message_list` JSON (ModelMessagesTypeAdapter), `created_at` |
 
 ## Domain & Pydantic Types
@@ -134,12 +137,15 @@ flowchart LR
 ## Deep-Dive Chat
 - **Data model**: `chat_sessions` + `chat_messages` (serialized pydantic-ai `ModelMessage` lists). Sessions store provider/model, topic/session_type, archive flag.
 - **Agent**: `app/services/chat_agent.py` builds pydantic-ai `Agent` with system prompt + Exa search tool (`exa_web_search`); article context pulled from summaries/content; model resolution via `app/services/llm_models.py` (OpenAI/Anthropic/Google with API-key aware construction).
-- **Endpoints**: create/list/get sessions, send messages (runs agent, appends DB message list), initial suggestions for article sessions. Message displays extract user/assistant text from stored message lists.
+- **Deep Research**: `app/services/deep_research.py` uses OpenAI's Responses API with `o4-mini-deep-research` model for comprehensive research. Runs as background task (~2-5 min) with web search and code interpreter tools. Uses `background=True` mode with polling via `AsyncOpenAI` SDK.
+- **Session Types**: `article_brain` (dig deeper into article), `topic` (search/corroborate), `ad_hoc` (general chat), `deep_research` (comprehensive async research).
+- **Endpoints**: create/list/get sessions, send messages (runs agent, appends DB message list), initial suggestions for article sessions. Deep research sessions route to `process_deep_research_message` background task instead of pydantic-ai agent. Message displays extract user/assistant text from stored message lists.
 
 ## iOS Client (high level)
 - Located in `client/newsly/`; SwiftUI app uses Apple Sign In → `POST /auth/apple`, stores JWT in Keychain, refreshes via `/auth/refresh`.
 - API client attaches Bearer tokens, retries on 401 with refresh token; consumes list/search/detail/read/favorites, submission, chat, tweet suggestions endpoints.
 - Views model feed (list/search with cursor), detail, favorites, chat sessions/messages; supports share-sheet submissions and topic/ad-hoc chats.
+- **Chat UI**: Chat list shows session type icons (dig deeper, search, deep research, chat) with purple highlight for deep research. Article detail "Start a Chat" sheet offers Dig Deeper, Corroborate, Deep Research (~2-5 min), and voice input options. `ChatModelProvider` enum defines available providers (OpenAI, Anthropic, Google, Deep Research).
 
 ## Security & Observability Notes
 - **Gaps**: Apple token signature verification disabled (dev only) in `app/core/security.py`; admin sessions stored in-memory (`app/routers/auth.py`); CORS allows all origins; JWT secret/ADMIN_PASSWORD must be provided via env.
@@ -152,3 +158,4 @@ flowchart LR
 3) Podcasts: download → transcribe → summarize; tasks chained via queue.
 4) API list/search filters: only summarized articles/podcasts + completed news, excludes `classification=skip`, requires `content_status` inbox rows for per-user feeds.
 5) Chat sessions reference `contents` (optional) and persist assistant/user messages; Exa search tool available when `EXA_API_KEY` is set.
+6) Deep research sessions use OpenAI Responses API: message sent → background task polls for completion (2-5 min) → result persisted to `chat_messages`.
