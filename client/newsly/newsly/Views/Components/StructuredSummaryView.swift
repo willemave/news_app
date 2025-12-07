@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct StructuredSummaryView: View {
     let summary: StructuredSummary
@@ -258,6 +259,12 @@ struct KeyPointRow: View {
         }
         .contentShape(Rectangle())
         .contextMenu {
+            Button {
+                UIPasteboard.general.string = point.text
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+
             if contentId != nil {
                 Button {
                     onDigDeeper?(point.text)
