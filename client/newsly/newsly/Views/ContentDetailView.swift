@@ -458,14 +458,16 @@ struct ContentDetailView: View {
 
                         chatPromptCard(
                             title: "Dig deeper",
-                            detail: nil,
+                            icon: "doc.text.magnifyingglass",
+                            iconColor: .blue,
                             prompt: deepDivePrompt(for: content),
                             contentId: content.id
                         )
 
                         chatPromptCard(
                             title: "Corroborate",
-                            detail: nil,
+                            icon: "checkmark.shield",
+                            iconColor: .green,
                             prompt: corroboratePrompt(for: content),
                             contentId: content.id
                         )
@@ -633,11 +635,19 @@ struct ContentDetailView: View {
     }
 
     @ViewBuilder
-    private func chatPromptCard(title: String, detail: String?, prompt: String, contentId: Int) -> some View {
+    private func chatPromptCard(
+        title: String,
+        icon: String,
+        iconColor: Color,
+        prompt: String,
+        contentId: Int
+    ) -> some View {
         Button {
             Task { await startChatWithPrompt(prompt, contentId: contentId) }
         } label: {
             HStack {
+                Image(systemName: icon)
+                    .foregroundColor(iconColor)
                 Text(title)
                     .font(.body)
                 Spacer()
@@ -660,11 +670,14 @@ struct ContentDetailView: View {
             Task { await toggleRecording() }
         } label: {
             HStack {
+                Image(systemName: dictationService.isRecording ? "stop.circle.fill" : "mic.fill")
+                    .foregroundColor(dictationService.isRecording ? .red : .orange)
                 Text("Ask with voice")
                     .font(.body)
                 Spacer()
-                Image(systemName: dictationService.isRecording ? "stop.circle.fill" : "mic")
-                    .foregroundColor(dictationService.isRecording ? .red : .secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
