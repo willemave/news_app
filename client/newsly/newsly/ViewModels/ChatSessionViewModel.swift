@@ -58,6 +58,10 @@ class ChatSessionViewModel: ObservableObject {
             if let processingMessage = detail.messages.first(where: { $0.isProcessing }) {
                 await pollForMessageCompletion(messageId: processingMessage.id)
             }
+            // If this is a topic-focused session (like "Dig deeper") with no messages, auto-send the topic
+            else if let topic = detail.session.topic, !topic.isEmpty, detail.messages.isEmpty {
+                await sendMessage(text: topic)
+            }
             // If this is an article-based session with no messages, load initial suggestions
             else if detail.session.contentId != nil && detail.messages.isEmpty {
                 await loadInitialSuggestions()
