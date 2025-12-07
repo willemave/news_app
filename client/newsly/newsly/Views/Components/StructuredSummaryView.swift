@@ -26,25 +26,13 @@ struct StructuredSummaryView: View {
                 DisclosureGroup(isExpanded: $isKeyPointsExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(summary.bulletPoints, id: \.text) { point in
-                            HStack(alignment: .top, spacing: 12) {
-                                Circle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 6, height: 6)
-                                    .padding(.top, 7)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(point.text)
-                                        .font(.callout)
-                                        .fixedSize(horizontal: false, vertical: true)
-
-                                    if let category = point.category {
-                                        Text(category.replacingOccurrences(of: "_", with: " ").capitalized)
-                                            .font(.footnote)
-                                            .foregroundColor(categoryColor(for: category))
-                                            .fontWeight(.medium)
-                                    }
+                            KeyPointRow(
+                                point: point,
+                                contentId: contentId,
+                                onDigDeeper: { pointText in
+                                    startKeyPointChat(keyPoint: pointText)
                                 }
-                            }
+                            )
                         }
                     }
                     .padding(.top, 12)
@@ -196,6 +184,23 @@ struct StructuredSummaryView: View {
         }
     }
 
+    private func startKeyPointChat(keyPoint: String) {
+        guard let contentId = contentId else { return }
+        Task {
+            do {
+                // Create a topic chat focused on this key point
+                let session = try await ChatService.shared.startTopicChat(
+                    contentId: contentId,
+                    topic: "Dig deeper: \(keyPoint)"
+                )
+                topicSession = session
+                showTopicSheet = true
+            } catch {
+                print("Failed to start key point chat: \(error)")
+            }
+        }
+    }
+
     // Helper function for category colors
     private func categoryColor(for category: String) -> Color {
         switch category.lowercased() {
@@ -207,6 +212,59 @@ struct StructuredSummaryView: View {
             return .blue
         default:
             return .gray
+        }
+    }
+}
+
+// MARK: - Key Point Row
+
+struct KeyPointRow: View {
+    let point: BulletPoint
+    let contentId: Int?
+    var onDigDeeper: ((String) -> Void)?
+
+    private func categoryColor(for category: String) -> Color {
+        switch category.lowercased() {
+        case "key_finding":
+            return .green
+        case "warning":
+            return .red
+        case "recommendation":
+            return .blue
+        default:
+            return .gray
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 6, height: 6)
+                .padding(.top, 7)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(point.text)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let category = point.category {
+                    Text(category.replacingOccurrences(of: "_", with: " ").capitalized)
+                        .font(.footnote)
+                        .foregroundColor(categoryColor(for: category))
+                        .fontWeight(.medium)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            if contentId != nil {
+                Button {
+                    onDigDeeper?(point.text)
+                } label: {
+                    Label("Dig Deeper", systemImage: "brain.head.profile")
+                }
+            }
         }
     }
 }
