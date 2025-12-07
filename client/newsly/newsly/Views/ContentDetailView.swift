@@ -183,6 +183,37 @@ struct ContentDetailView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
 
+                    // Chat status banner (inline, under header)
+                    if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
+                        ChatStatusBanner(
+                            session: activeSession,
+                            onTap: {
+                                let session = ChatSessionSummary(
+                                    id: activeSession.id,
+                                    contentId: activeSession.contentId,
+                                    title: nil,
+                                    sessionType: "article_brain",
+                                    topic: nil,
+                                    llmProvider: "google",
+                                    llmModel: "gemini-2.0-flash",
+                                    createdAt: ISO8601DateFormatter().string(from: Date()),
+                                    updatedAt: nil,
+                                    lastMessageAt: nil,
+                                    articleTitle: activeSession.contentTitle,
+                                    articleUrl: nil,
+                                    hasPendingMessage: false
+                                )
+                                deepDiveSession = session
+                                showDeepDiveSheet = true
+                                chatSessionManager.stopTracking(contentId: content.id)
+                            },
+                            onDismiss: {
+                                chatSessionManager.markAsViewed(contentId: content.id)
+                            },
+                            style: .inline
+                        )
+                    }
+
                     Divider()
                         .padding(.vertical, 8)
 
@@ -337,43 +368,9 @@ struct ContentDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Hide the main tab bar while viewing details
         .toolbar(.hidden, for: .tabBar)
-        // Sticky bottom action bar with optional chat banner
+        // Sticky bottom action bar
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                // Chat status banner (when there's an active session for this content)
-                if let content = viewModel.content,
-                   let activeSession = chatSessionManager.getSession(forContentId: content.id) {
-                    ChatStatusBanner(
-                        session: activeSession,
-                        onTap: {
-                            // Open the chat session - create summary from active session
-                            let session = ChatSessionSummary(
-                                id: activeSession.id,
-                                contentId: activeSession.contentId,
-                                title: nil,
-                                sessionType: "article_brain",
-                                topic: nil,
-                                llmProvider: "google",
-                                llmModel: "gemini-2.0-flash",
-                                createdAt: ISO8601DateFormatter().string(from: Date()),
-                                updatedAt: nil,
-                                lastMessageAt: nil,
-                                articleTitle: activeSession.contentTitle,
-                                articleUrl: nil,
-                                hasPendingMessage: false
-                            )
-                            deepDiveSession = session
-                            showDeepDiveSheet = true
-                            chatSessionManager.stopTracking(contentId: content.id)
-                        },
-                        onDismiss: {
-                            chatSessionManager.markAsViewed(contentId: content.id)
-                        }
-                    )
-                }
-
-                bottomBar
-            }
+            bottomBar
         }
         .task {
             let idToLoad = allContentIds.isEmpty ? initialContentId : allContentIds[currentIndex]

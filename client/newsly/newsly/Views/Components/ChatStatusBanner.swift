@@ -12,6 +12,12 @@ struct ChatStatusBanner: View {
     let session: ActiveChatSession
     let onTap: () -> Void
     let onDismiss: () -> Void
+    var style: BannerStyle = .floating
+
+    enum BannerStyle {
+        case floating  // Card with shadow (for overlays)
+        case inline    // Simple bar (for inline content)
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -24,10 +30,12 @@ struct ChatStatusBanner: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
 
-                Text(session.contentTitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                if style == .floating {
+                    Text(session.contentTitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -35,13 +43,10 @@ struct ChatStatusBanner: View {
             // Action button or dismiss
             actionButton
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, style == .inline ? 20 : 16)
+        .padding(.vertical, style == .inline ? 10 : 12)
         .background(backgroundColor)
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .applyBannerStyle(style)
         .onTapGesture {
             if case .completed = session.status {
                 onTap()
@@ -109,11 +114,28 @@ struct ChatStatusBanner: View {
     private var backgroundColor: Color {
         switch session.status {
         case .processing:
-            return Color(.systemBackground)
+            return Color(.secondarySystemBackground)
         case .completed:
-            return Color(.systemBackground)
+            return Color(.secondarySystemBackground)
         case .failed:
             return Color.red.opacity(0.1)
+        }
+    }
+}
+
+// MARK: - Banner Style Modifier
+private extension View {
+    @ViewBuilder
+    func applyBannerStyle(_ style: ChatStatusBanner.BannerStyle) -> some View {
+        switch style {
+        case .floating:
+            self
+                .cornerRadius(12)
+                .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+        case .inline:
+            self
         }
     }
 }
