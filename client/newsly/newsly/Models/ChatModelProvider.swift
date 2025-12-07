@@ -24,6 +24,7 @@ enum ChatModelProvider: String, Codable, CaseIterable {
         }
     }
 
+    /// SF Symbol icon name (used for menus that require system images)
     var iconName: String {
         switch self {
         case .openai:
@@ -32,6 +33,18 @@ enum ChatModelProvider: String, Codable, CaseIterable {
             return "sparkles"
         case .google:
             return "diamond"
+        }
+    }
+
+    /// Custom asset icon name
+    var iconAsset: String {
+        switch self {
+        case .openai:
+            return "openai-icon"
+        case .anthropic:
+            return "claude-icon"
+        case .google:
+            return "gemini-icon"
         }
     }
 

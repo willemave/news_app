@@ -112,7 +112,22 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         }
     }
 
-    var providerIconName: String {
+    /// Returns the custom asset icon name for the provider
+    var providerIconAsset: String? {
+        switch llmProvider.lowercased() {
+        case "openai":
+            return "openai-icon"
+        case "anthropic":
+            return "claude-icon"
+        case "google":
+            return "gemini-icon"
+        default:
+            return nil
+        }
+    }
+
+    /// Returns a fallback SF Symbol if custom icon is not available
+    var providerIconFallback: String {
         switch llmProvider.lowercased() {
         case "openai":
             return "brain.head.profile"

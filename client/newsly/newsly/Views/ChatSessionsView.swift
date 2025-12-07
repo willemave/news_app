@@ -128,6 +128,30 @@ struct ChatSessionsView: View {
     }
 }
 
+// MARK: - Provider Icon
+
+struct ProviderIcon: View {
+    let session: ChatSessionSummary
+
+    var body: some View {
+        Group {
+            if let assetName = session.providerIconAsset {
+                Image(assetName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: session.providerIconFallback)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(width: 26, height: 26)
+        .background(Color.secondary.opacity(0.1))
+        .cornerRadius(6)
+    }
+}
+
 // MARK: - Session Row
 
 struct ChatSessionRow: View {
@@ -156,12 +180,7 @@ struct ChatSessionRow: View {
                 }
 
                 Spacer()
-                Image(systemName: session.providerIconName)
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-                    .frame(width: 24, height: 24)
-                    .background(Color.secondary.opacity(0.1))
-                    .cornerRadius(6)
+                ProviderIcon(session: session)
             }
 
             if let subtitle = session.displaySubtitle {
