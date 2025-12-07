@@ -25,7 +25,11 @@ from app.routers.api.chat_models import (
 from app.routers.api.chat_models import (
     MessageProcessingStatus as MessageProcessingStatusDto,
 )
-from app.routers.api.models import CreateChatSessionRequest, SendChatMessageRequest
+from app.routers.api.models import (
+    CreateChatSessionRequest,
+    SendChatMessageRequest,
+    UpdateChatSessionRequest,
+)
 from app.services.chat_agent import (
     create_processing_message,
     generate_initial_suggestions,
@@ -295,6 +299,61 @@ async def create_session(
 
     session_summary = _session_to_summary(session, article_title, article_url)
     return CreateChatSessionResponse(session=session_summary)
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=ChatSessionSummaryDto,
+    summary="Update chat session",
+    description="Update a chat session's settings, such as the LLM provider.",
+)
+async def update_session(
+    session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
+    request: UpdateChatSessionRequest,
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ChatSessionSummaryDto:
+    """Update a chat session's provider or other settings.
+
+    Allows switching LLM provider mid-conversation while preserving chat history.
+    """
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this session")
+
+    # Update provider if specified
+    if request.llm_provider is not None:
+        provider, model_spec = resolve_model(request.llm_provider, request.llm_model_hint)
+        session.llm_provider = provider
+        session.llm_model = model_spec
+        session.updated_at = datetime.utcnow()
+
+        log_event(
+            event_type="chat",
+            event_name="session_provider_changed",
+            status="completed",
+            user_id=current_user.id,
+            session_id=session.id,
+            model=model_spec,
+        )
+
+    db.commit()
+    db.refresh(session)
+
+    # Get article title and URL if content_id exists
+    article_title = None
+    article_url = None
+    if session.content_id:
+        content = db.query(Content).filter(Content.id == session.content_id).first()
+        if content:
+            article_title = _resolve_article_title(content)
+            article_url = content.url
+
+    return _session_to_summary(session, article_title, article_url)
 
 
 @router.get(

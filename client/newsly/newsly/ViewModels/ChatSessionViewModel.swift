@@ -212,6 +212,11 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         stopThinkingTimer()
     }
 
+    /// Update the session with new data (e.g., after provider switch)
+    func updateSession(_ updatedSession: ChatSessionSummary) {
+        self.session = updatedSession
+    }
+
     /// All messages including any streaming message
     var allMessages: [ChatMessage] {
         return messages

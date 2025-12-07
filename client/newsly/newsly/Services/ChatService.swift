@@ -28,6 +28,17 @@ enum ChatServiceError: LocalizedError {
     }
 }
 
+/// Request to update a chat session
+struct UpdateChatSessionRequest: Codable {
+    var llmProvider: String?
+    var llmModelHint: String?
+
+    enum CodingKeys: String, CodingKey {
+        case llmProvider = "llm_provider"
+        case llmModelHint = "llm_model_hint"
+    }
+}
+
 class ChatService {
     static let shared = ChatService()
     private let client = APIClient.shared
@@ -98,6 +109,26 @@ class ChatService {
     func getSessionForContent(contentId: Int) async throws -> ChatSessionSummary? {
         let sessions = try await listSessions(contentId: contentId, limit: 1)
         return sessions.first
+    }
+
+    /// Update a session's provider (allows switching models mid-conversation)
+    func updateSessionProvider(
+        sessionId: Int,
+        provider: ChatModelProvider
+    ) async throws -> ChatSessionSummary {
+        let request = UpdateChatSessionRequest(
+            llmProvider: provider.rawValue,
+            llmModelHint: nil
+        )
+
+        let encoder = JSONEncoder()
+        let body = try encoder.encode(request)
+
+        return try await client.request(
+            APIEndpoints.chatSession(id: sessionId),
+            method: "PATCH",
+            body: body
+        )
     }
 
     // MARK: - Messaging

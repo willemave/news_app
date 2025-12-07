@@ -111,4 +111,17 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return llmProvider.capitalized
         }
     }
+
+    var providerIconName: String {
+        switch llmProvider.lowercased() {
+        case "openai":
+            return "brain.head.profile"
+        case "anthropic":
+            return "sparkles"
+        case "google":
+            return "diamond"
+        default:
+            return "cpu"
+        }
+    }
 }

@@ -156,13 +156,12 @@ struct ChatSessionRow: View {
                 }
 
                 Spacer()
-                Text(session.providerDisplayName)
-                    .font(.caption)
+                Image(systemName: session.providerIconName)
+                    .font(.system(size: 14))
                     .foregroundColor(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .frame(width: 24, height: 24)
                     .background(Color.secondary.opacity(0.1))
-                    .cornerRadius(4)
+                    .cornerRadius(6)
             }
 
             if let subtitle = session.displaySubtitle {

@@ -283,29 +283,19 @@ struct ChatSessionView: View {
         }
     }
 
-    /// Switch to a different provider by creating a new session
+    /// Switch to a different provider without restarting the chat
     private func switchToProvider(_ provider: ChatModelProvider) async {
         guard let currentSession = viewModel.session else { return }
 
-        // If this session has a content_id, create a new article chat with different provider
-        // Otherwise create an ad-hoc chat
         do {
             let chatService = ChatService.shared
-            let newSession: ChatSessionSummary
+            let updatedSession = try await chatService.updateSessionProvider(
+                sessionId: currentSession.id,
+                provider: provider
+            )
 
-            if let contentId = currentSession.contentId {
-                newSession = try await chatService.createSession(
-                    contentId: contentId,
-                    topic: currentSession.topic,
-                    provider: provider
-                )
-            } else {
-                newSession = try await chatService.createSession(
-                    provider: provider
-                )
-            }
-
-            navigateToNewSessionId = newSession.id
+            // Update the local session state to reflect the new provider
+            viewModel.updateSession(updatedSession)
         } catch {
             viewModel.errorMessage = "Failed to switch model: \(error.localizedDescription)"
         }
@@ -415,6 +405,20 @@ struct ChatSessionView: View {
             }
 
             HStack(alignment: .bottom, spacing: 12) {
+                Menu {
+                    Button {
+                        Task { await viewModel.sendCounterArgumentsPrompt() }
+                    } label: {
+                        Label("Find counterbalancing arguments online", systemImage: "globe")
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(.blue)
+                }
+                .disabled(viewModel.isSending || viewModel.isRecording || viewModel.isTranscribing)
+                .accessibilityLabel("Chat actions")
+
                 TextField("Message", text: $viewModel.inputText, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...5)
@@ -423,23 +427,6 @@ struct ChatSessionView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(20)
                     .focused($isInputFocused)
-
-                Menu {
-                    Button {
-                        Task { await viewModel.sendCounterArgumentsPrompt() }
-                    } label: {
-                        Label("Find counterbalancing arguments online", systemImage: "globe")
-                    }
-                } label: {
-                    Image(systemName: "magnifyingglass.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(.blue)
-                        .frame(width: 32, height: 32)
-                        .background(Color(.systemGray6))
-                        .clipShape(Circle())
-                }
-                .disabled(viewModel.isSending || viewModel.isRecording || viewModel.isTranscribing)
-                .accessibilityLabel("Chat actions")
 
                 // Microphone button
                 if viewModel.voiceDictationAvailable {

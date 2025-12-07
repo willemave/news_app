@@ -140,6 +140,25 @@ class CreateChatSessionRequest(BaseModel):
         }
 
 
+class UpdateChatSessionRequest(BaseModel):
+    """Request to update a chat session."""
+
+    llm_provider: ChatModelProvider | None = Field(
+        None, description="New LLM provider to use for this session"
+    )
+    llm_model_hint: str | None = Field(
+        None, max_length=100, description="Optional specific model to use"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "llm_provider": "anthropic",
+                "llm_model_hint": None,
+            }
+        }
+
+
 class CreateChatSessionResponse(BaseModel):
     """Response after creating a chat session."""
 
