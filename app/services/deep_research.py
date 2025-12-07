@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
 
-import httpx
+from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
@@ -38,33 +38,32 @@ class DeepResearchResult:
 
 
 class DeepResearchClient:
-    """Client for OpenAI's deep research Responses API."""
+    """Client for OpenAI's deep research Responses API using official SDK."""
 
     def __init__(self) -> None:
         """Initialize the deep research client."""
         self._settings = get_settings()
-        self._client: httpx.AsyncClient | None = None
+        self._client: AsyncOpenAI | None = None
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create the HTTP client."""
+    def _get_client(self) -> AsyncOpenAI:
+        """Get or create the OpenAI async client."""
         if self._client is None:
             if not self._settings.openai_api_key:
+                logger.error("[DeepResearch:CLIENT] OPENAI_API_KEY not configured")
                 raise ValueError("OPENAI_API_KEY not configured in settings")
-            self._client = httpx.AsyncClient(
-                base_url="https://api.openai.com/v1",
-                headers={
-                    "Authorization": f"Bearer {self._settings.openai_api_key}",
-                    "Content-Type": "application/json",
-                },
-                timeout=httpx.Timeout(DEEP_RESEARCH_TIMEOUT),
+            logger.debug("[DeepResearch:CLIENT] Creating new OpenAI async client")
+            self._client = AsyncOpenAI(
+                api_key=self._settings.openai_api_key,
+                timeout=DEEP_RESEARCH_TIMEOUT,
             )
         return self._client
 
     async def close(self) -> None:
-        """Close the HTTP client."""
+        """Close the OpenAI client."""
         if self._client:
-            await self._client.aclose()
+            await self._client.close()
             self._client = None
+            logger.debug("[DeepResearch:CLIENT] Closed OpenAI client")
 
     async def start_research(
         self,
@@ -81,45 +80,67 @@ class DeepResearchClient:
             The response ID for polling.
 
         Raises:
-            httpx.HTTPError: If the request fails.
+            openai.APIError: If the request fails.
             ValueError: If the API key is not configured.
         """
-        client = await self._get_client()
+        client = self._get_client()
 
         # Build the input with optional context
         full_input = query
         if context:
             full_input = f"Context:\n{context}\n\nResearch Query:\n{query}"
-
-        payload = {
-            "model": DEEP_RESEARCH_MODEL,
-            "input": full_input,
-            "reasoning": {"summary": "detailed"},
-            "background": True,
-            "tools": [
-                {"type": "web_search_preview"},
-                {"type": "code_interpreter", "container": {"type": "auto"}},
-            ],
-        }
+            logger.debug(
+                "[DeepResearch:CONTEXT] Added context (len=%d) to query",
+                len(context),
+            )
 
         logger.info(
-            "[DeepResearch:START] Submitting query (len=%d) to background",
+            "[DeepResearch:START] model=%s input_len=%d has_context=%s",
+            DEEP_RESEARCH_MODEL,
             len(full_input),
+            context is not None,
         )
 
-        response = await client.post("/responses", json=payload)
-        response.raise_for_status()
+        try:
+            # Use the responses API with background mode
+            response = await client.responses.create(
+                model=DEEP_RESEARCH_MODEL,
+                input=full_input,
+                reasoning={"summary": "detailed"},
+                background=True,
+                tools=[
+                    {"type": "web_search_preview"},
+                    {"type": "code_interpreter", "container": {"type": "auto"}},
+                ],
+            )
 
-        data = response.json()
-        response_id = data.get("id")
+            response_id = response.id
+            logger.info(
+                "[DeepResearch:QUEUED] response_id=%s status=%s",
+                response_id,
+                response.status,
+            )
+            return response_id
 
-        logger.info(
-            "[DeepResearch:QUEUED] response_id=%s status=%s",
-            response_id,
-            data.get("status"),
-        )
-
-        return response_id
+        except RateLimitError as e:
+            logger.error(
+                "[DeepResearch:RATE_LIMIT] Rate limit exceeded: %s",
+                str(e),
+            )
+            raise
+        except APIConnectionError as e:
+            logger.error(
+                "[DeepResearch:CONNECTION_ERROR] Connection failed: %s",
+                str(e),
+            )
+            raise
+        except APIError as e:
+            logger.error(
+                "[DeepResearch:API_ERROR] API error status=%s message=%s",
+                e.status_code,
+                str(e),
+            )
+            raise
 
     async def poll_result(self, response_id: str) -> DeepResearchResult:
         """Poll for the result of a deep research query.
@@ -130,41 +151,73 @@ class DeepResearchClient:
         Returns:
             DeepResearchResult with current status and any available output.
         """
-        client = await self._get_client()
+        client = self._get_client()
 
-        response = await client.get(f"/responses/{response_id}")
-        response.raise_for_status()
+        try:
+            response = await client.responses.retrieve(response_id)
+        except APIError as e:
+            logger.error(
+                "[DeepResearch:POLL_ERROR] GET /responses/%s failed status=%s",
+                response_id,
+                e.status_code,
+            )
+            raise
 
-        data = response.json()
-        status = data.get("status", "unknown")
+        status = response.status or "unknown"
+
+        logger.debug(
+            "[DeepResearch:POLL] response_id=%s status=%s",
+            response_id,
+            status,
+        )
 
         # Extract output text from the response
         output_text = None
         sources = None
 
         if status in ("succeeded", "completed"):
-            output_items = data.get("output", [])
-            for item in output_items:
-                if item.get("type") == "message":
-                    content = item.get("content", [])
-                    for c in content:
-                        if c.get("type") == "output_text":
-                            output_text = c.get("text", "")
+            # Try to get output_text directly first
+            if hasattr(response, "output_text") and response.output_text:
+                output_text = response.output_text
+            elif hasattr(response, "output") and response.output:
+                # Parse output items for message content
+                for item in response.output:
+                    if hasattr(item, "type") and item.type == "message":
+                        if hasattr(item, "content"):
+                            for c in item.content:
+                                if hasattr(c, "type") and c.type == "output_text":
+                                    output_text = getattr(c, "text", "")
+                                    break
+                        if output_text:
                             break
-                    if output_text:
-                        break
 
-            # If output_text not found in new format, try legacy format
-            if not output_text:
-                output_text = data.get("output_text")
+            # Log token usage if available
+            if hasattr(response, "usage") and response.usage:
+                usage = response.usage
+                logger.info(
+                    "[DeepResearch:USAGE] response_id=%s input_tokens=%s output_tokens=%s total=%s",
+                    response_id,
+                    getattr(usage, "input_tokens", None),
+                    getattr(usage, "output_tokens", None),
+                    getattr(usage, "total_tokens", None),
+                )
+
+        # Build usage dict from response
+        usage_dict = None
+        if hasattr(response, "usage") and response.usage:
+            usage_dict = {
+                "input_tokens": getattr(response.usage, "input_tokens", None),
+                "output_tokens": getattr(response.usage, "output_tokens", None),
+                "total_tokens": getattr(response.usage, "total_tokens", None),
+            }
 
         return DeepResearchResult(
             response_id=response_id,
             status=status,
             output_text=output_text,
             sources=sources,
-            usage=data.get("usage"),
-            error=data.get("error"),
+            usage=usage_dict,
+            error=getattr(response, "error", None),
         )
 
     async def wait_for_completion(
@@ -191,28 +244,33 @@ class DeepResearchClient:
             if result.status in ("succeeded", "completed"):
                 duration = perf_counter() - start_time
                 logger.info(
-                    "[DeepResearch:COMPLETE] response_id=%s duration=%.1fs attempts=%d",
+                    "[DeepResearch:COMPLETE] id=%s dur=%.1fs attempts=%d len=%d",
                     response_id,
                     duration,
                     attempt + 1,
+                    len(result.output_text) if result.output_text else 0,
                 )
                 return result
 
             if result.status == "failed":
+                duration = perf_counter() - start_time
                 logger.error(
-                    "[DeepResearch:FAILED] response_id=%s error=%s",
+                    "[DeepResearch:FAILED] response_id=%s duration=%.1fs error=%s",
                     response_id,
+                    duration,
                     result.error,
                 )
                 return result
 
             # Still processing, wait and poll again
-            if attempt % 10 == 0:  # Log every 10 attempts
+            if attempt % 10 == 0:  # Log every 10 attempts (~20 seconds)
+                elapsed = perf_counter() - start_time
                 logger.info(
-                    "[DeepResearch:POLLING] response_id=%s status=%s attempt=%d",
+                    "[DeepResearch:POLLING] response_id=%s status=%s attempt=%d elapsed=%.0fs",
                     response_id,
                     result.status,
                     attempt + 1,
+                    elapsed,
                 )
 
             await asyncio.sleep(poll_interval)
@@ -220,9 +278,10 @@ class DeepResearchClient:
         # Timeout
         duration = perf_counter() - start_time
         logger.error(
-            "[DeepResearch:TIMEOUT] response_id=%s duration=%.1fs",
+            "[DeepResearch:TIMEOUT] response_id=%s duration=%.1fs max_attempts=%d",
             response_id,
             duration,
+            max_attempts,
         )
         return DeepResearchResult(
             response_id=response_id,
@@ -284,9 +343,10 @@ async def process_deep_research_message(
         trimmed_prompt = f"{trimmed_prompt}..."
 
     logger.info(
-        "[DeepResearch:PROCESS_START] sid=%s mid=%s prompt='%s'",
+        "[DeepResearch:PROCESS_START] sid=%s mid=%s prompt_len=%d prompt='%s'",
         session_id,
         message_id,
+        len(user_prompt),
         trimmed_prompt,
     )
 
@@ -299,22 +359,41 @@ async def process_deep_research_message(
             logger.error("[DeepResearch:ERROR] Session %s not found", session_id)
             return
 
+        logger.debug(
+            "[DeepResearch:SESSION] sid=%s user_id=%s content_id=%s type=%s",
+            session_id,
+            session.user_id,
+            session.content_id,
+            session.session_type,
+        )
+
         # Build context from article if available
         context = None
         if session.content_id:
             content = db.query(Content).filter(Content.id == session.content_id).first()
             if content:
                 context = _build_research_context(content)
+                logger.debug(
+                    "[DeepResearch:CONTEXT] Built context from content_id=%s len=%d",
+                    session.content_id,
+                    len(context) if context else 0,
+                )
+            else:
+                logger.warning(
+                    "[DeepResearch:CONTEXT] Content not found content_id=%s",
+                    session.content_id,
+                )
 
         # Start the deep research
         client = get_deep_research_client()
         response_id = await client.start_research(user_prompt, context)
 
         logger.info(
-            "[DeepResearch:SUBMITTED] sid=%s mid=%s response_id=%s",
+            "[DeepResearch:SUBMITTED] sid=%s mid=%s response_id=%s user_id=%s",
             session_id,
             message_id,
             response_id,
+            session.user_id,
         )
 
         # Wait for completion
@@ -344,12 +423,22 @@ async def process_deep_research_message(
 
                 total_ms = (perf_counter() - total_start) * 1000
                 logger.info(
-                    "[DeepResearch:DONE] sid=%s mid=%s total=%.0fms output_len=%d",
+                    "[DeepResearch:DONE] sid=%s mid=%s user_id=%s total=%.0fms output_len=%d",
                     session_id,
                     message_id,
+                    session.user_id,
                     total_ms,
                     len(result.output_text),
                 )
+
+                # Log event with usage metrics
+                usage_data = {}
+                if result.usage:
+                    usage_data = {
+                        "input_tokens": result.usage.get("input_tokens"),
+                        "output_tokens": result.usage.get("output_tokens"),
+                        "total_tokens": result.usage.get("total_tokens"),
+                    }
 
                 log_event(
                     event_type="chat",
@@ -357,23 +446,43 @@ async def process_deep_research_message(
                     status="completed",
                     user_id=session.user_id,
                     session_id=session_id,
+                    message_id=message_id,
                     response_id=response_id,
+                    content_id=session.content_id,
+                    duration_ms=total_ms,
+                    output_len=len(result.output_text),
+                    **usage_data,
                 )
         else:
             # Research failed or timed out
             error_msg = result.error or f"Research failed with status: {result.status}"
             _update_message_failed(db, message_id, error_msg)
 
+            total_ms = (perf_counter() - total_start) * 1000
             logger.error(
-                "[DeepResearch:FAILED] sid=%s mid=%s error=%s",
+                "[DeepResearch:FAILED] sid=%s mid=%s user_id=%s total=%.0fms error=%s",
                 session_id,
                 message_id,
+                session.user_id,
+                total_ms,
                 error_msg,
+            )
+
+            log_event(
+                event_type="chat",
+                event_name="deep_research_failed",
+                status="failed",
+                user_id=session.user_id,
+                session_id=session_id,
+                message_id=message_id,
+                response_id=response_id,
+                error=error_msg,
+                duration_ms=total_ms,
             )
 
     except Exception as exc:
         total_ms = (perf_counter() - total_start) * 1000
-        logger.error(
+        logger.exception(
             "[DeepResearch:EXCEPTION] sid=%s mid=%s total_ms=%.1f error=%s",
             session_id,
             message_id,
@@ -422,7 +531,16 @@ def _build_research_context(content: Content) -> str | None:
                 for point in points[:5]:
                     parts.append(f"  - {point}")
 
-    return "\n".join(parts) if parts else None
+    context = "\n".join(parts) if parts else None
+
+    if context:
+        logger.debug(
+            "[DeepResearch:CONTEXT] Built context with %d parts, len=%d",
+            len(parts),
+            len(context),
+        )
+
+    return context
 
 
 def _update_message_failed(db: Session, message_id: int, error: str) -> None:
@@ -432,3 +550,4 @@ def _update_message_failed(db: Session, message_id: int, error: str) -> None:
         db_message.status = MessageProcessingStatus.FAILED.value
         db_message.error = error
         db.commit()
+        logger.debug("[DeepResearch:DB] Updated message %s to failed", message_id)
