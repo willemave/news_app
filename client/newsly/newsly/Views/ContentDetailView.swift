@@ -470,6 +470,8 @@ struct ContentDetailView: View {
                             contentId: content.id
                         )
 
+                        deepResearchCard(for: content)
+
                         audioPromptCard(for: content)
 
                         if isStartingChat {
@@ -487,7 +489,7 @@ struct ContentDetailView: View {
 
                     Spacer()
                 }
-                .presentationDetents([.height(340)])
+                .presentationDetents([.height(400)])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(20)
             }
@@ -562,6 +564,72 @@ struct ContentDetailView: View {
 
     private func audioPrompt(_ transcript: String, content: ContentDetail) -> String {
         "User voice question about \(content.displayTitle): \(transcript)\nUse the article context first; if the answer is not in the source, say so and suggest where to look next."
+    }
+
+    private func deepResearchPrompt(for content: ContentDetail) -> String {
+        "Conduct comprehensive research on \(content.displayTitle). Find additional sources, verify claims, identify related developments, and provide a thorough analysis with citations."
+    }
+
+    private func startDeepResearchWithPrompt(_ prompt: String, contentId: Int) async {
+        guard !isStartingChat else { return }
+        guard let content = viewModel.content else { return }
+
+        isStartingChat = true
+        chatError = nil
+
+        do {
+            let session = try await ChatService.shared.startDeepResearch(contentId: contentId)
+            let response = try await ChatService.shared.sendMessageAsync(
+                sessionId: session.id,
+                message: prompt
+            )
+
+            chatSessionManager.startTracking(
+                session: session,
+                contentId: contentId,
+                contentTitle: content.displayTitle,
+                messageId: response.messageId
+            )
+
+            deepDiveSession = session
+            showChatOptionsSheet = false
+        } catch {
+            chatError = error.localizedDescription
+        }
+
+        isStartingChat = false
+    }
+
+    @ViewBuilder
+    private func deepResearchCard(for content: ContentDetail) -> some View {
+        Button {
+            Task {
+                await startDeepResearchWithPrompt(
+                    deepResearchPrompt(for: content),
+                    contentId: content.id
+                )
+            }
+        } label: {
+            HStack {
+                Image(systemName: "magnifyingglass.circle.fill")
+                    .foregroundColor(.purple)
+                Text("Deep Research")
+                    .font(.body)
+                Spacer()
+                Text("~2-5 min")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(10)
+        }
+        .buttonStyle(.plain)
+        .disabled(isStartingChat)
     }
 
     @ViewBuilder
