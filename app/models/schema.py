@@ -70,6 +70,8 @@ class Content(Base):
         Index("idx_created_at", "created_at"),
         Index("idx_content_aggregate", "content_type", "is_aggregate"),
         Index("idx_url_content_type", "url", "content_type", unique=True),
+        # Performance index for visibility queries (classification + status + content_type)
+        Index("idx_contents_classification_status", "classification", "status", "content_type"),
     )
 
     @validates("content_metadata")
@@ -231,6 +233,8 @@ class ContentStatusEntry(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "content_id", name="idx_content_status_user_content"),
+        # Performance index for inbox lookups (user_id + status + content_id)
+        Index("idx_content_status_user_status_content", "user_id", "status", "content_id"),
     )
 
 
