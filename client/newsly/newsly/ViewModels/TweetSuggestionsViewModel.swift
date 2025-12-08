@@ -22,6 +22,7 @@ final class TweetSuggestionsViewModel: ObservableObject {
     @Published var isRegenerating = false
     @Published var errorMessage: String?
     @Published var selectedSuggestionId: Int?
+    @Published var selectedProvider: ChatModelProvider = .google
 
     // Voice dictation state
     @Published var isRecording = false
@@ -100,6 +101,13 @@ final class TweetSuggestionsViewModel: ObservableObject {
         }
     }
 
+    /// Switch to a different LLM provider and regenerate.
+    func switchProvider(to provider: ChatModelProvider) async {
+        guard provider != selectedProvider else { return }
+        selectedProvider = provider
+        await regenerate()
+    }
+
     /// Generate tweet suggestions.
     func generateSuggestions() async {
         guard let contentId = contentId else { return }
@@ -112,7 +120,8 @@ final class TweetSuggestionsViewModel: ObservableObject {
             let response = try await contentService.generateTweetSuggestions(
                 id: contentId,
                 message: message,
-                creativity: creativity
+                creativity: creativity,
+                provider: selectedProvider
             )
             suggestions = response.suggestions
             logger.info("Generated \(response.suggestions.count) tweet suggestions")

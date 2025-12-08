@@ -12,7 +12,7 @@ from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.settings import ModelSettings
 from tenacity import RetryCallState, retry, stop_after_attempt, wait_exponential
 
-from app.constants import TWEET_SUGGESTION_MODEL
+from app.constants import TWEET_MODELS, TWEET_SUGGESTION_MODEL
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
@@ -315,20 +315,28 @@ def _log_generation_failure(retry_state: RetryCallState) -> None:
 
 
 class TweetSuggestionService:
-    """Service for generating tweet suggestions using Gemini."""
+    """Service for generating tweet suggestions using various LLM providers."""
 
     def __init__(self):
         google_api_key = getattr(settings, "google_api_key", None)
         if not google_api_key:
             raise ValueError("Google API key is required for tweet suggestions")
 
-        self.model_name = TWEET_MODEL
-        logger.info("Initialized TweetSuggestionService with model %s", self.model_name)
+        self.default_model = TWEET_MODEL
+        logger.info("Initialized TweetSuggestionService with default model %s", self.default_model)
 
-    def _build_agent(self, system_prompt: str) -> Agent[None, TweetSuggestionsPayload]:
+    def _get_model_for_provider(self, provider: str | None) -> str:
+        """Get the model name for a given provider."""
+        if provider and provider in TWEET_MODELS:
+            return TWEET_MODELS[provider]
+        return self.default_model
+
+    def _build_agent(
+        self, system_prompt: str, model_name: str
+    ) -> Agent[None, TweetSuggestionsPayload]:
         """Create a configured pydantic-ai agent for tweet suggestions."""
         return get_basic_agent(
-            model_spec=self.model_name,
+            model_spec=model_name,
             output_type=TweetSuggestionsPayload,
             system_prompt=system_prompt,
         )
@@ -343,6 +351,7 @@ class TweetSuggestionService:
         content: ContentData,
         message: str | None = None,
         creativity: int = 5,
+        llm_provider: str | None = None,
     ) -> TweetSuggestionsResult | None:
         """
         Generate tweet suggestions for content.
@@ -351,11 +360,13 @@ class TweetSuggestionService:
             content: The ContentData to generate tweets for.
             message: Optional user guidance/tweak message.
             creativity: Creativity level 1-10.
+            llm_provider: Optional LLM provider (openai, anthropic, google).
 
         Returns:
             TweetSuggestionsResult with 3 suggestions, or None on failure.
         """
         content_id = content.id or 0
+        model_name = self._get_model_for_provider(llm_provider)
 
         try:
             # Extract context from content
@@ -373,8 +384,8 @@ class TweetSuggestionService:
             # Calculate temperature from creativity
             temperature = creativity_to_temperature(creativity)
 
-            # Run Gemini via pydantic-ai
-            agent = self._build_agent(system_prompt=system_message)
+            # Run LLM via pydantic-ai
+            agent = self._build_agent(system_prompt=system_message, model_name=model_name)
             run_result = agent.run_sync(
                 user_message,
                 model_settings=ModelSettings(
@@ -396,10 +407,11 @@ class TweetSuggestionService:
             usage = run_result.usage()
             if usage:
                 logger.info(
-                    "Tweet generation - content_id: %d, creativity: %d, "
+                    "Tweet generation - content_id: %d, creativity: %d, model: %s, "
                     "input_tokens: %d, output_tokens: %d",
                     content_id,
                     creativity,
+                    model_name,
                     usage.input_tokens,
                     usage.output_tokens,
                 )
@@ -407,21 +419,23 @@ class TweetSuggestionService:
             return TweetSuggestionsResult(
                 content_id=content_id,
                 creativity=creativity,
-                model=self.model_name,
+                model=model_name,
                 suggestions=suggestions,
             )
 
         except (ModelRetry, ValidationError, ValueError) as e:
             logger.warning(
-                "Gemini validation error generating tweets | content_id=%s error=%s",
+                "LLM validation error generating tweets | content_id=%s model=%s error=%s",
                 content_id,
+                model_name,
                 e,
             )
             raise
         except Exception as e:
             logger.error(
-                "Unexpected error generating tweets with Gemini | content_id=%s error=%s",
+                "Unexpected error generating tweets | content_id=%s model=%s error=%s",
                 content_id,
+                model_name,
                 e,
             )
             raise
@@ -443,6 +457,7 @@ def generate_tweet_suggestions(
     content: ContentData,
     message: str | None = None,
     creativity: int = 5,
+    llm_provider: str | None = None,
 ) -> TweetSuggestionsResult | None:
     """
     Convenience function to generate tweet suggestions.
@@ -451,9 +466,10 @@ def generate_tweet_suggestions(
         content: The ContentData to generate tweets for
         message: Optional user guidance/tweak message
         creativity: Creativity level 1-10
+        llm_provider: Optional LLM provider (openai, anthropic, google)
 
     Returns:
         TweetSuggestionsResult with 3 suggestions, or None on failure
     """
     service = get_tweet_suggestion_service()
-    return service.generate_suggestions(content, message, creativity)
+    return service.generate_suggestions(content, message, creativity, llm_provider)

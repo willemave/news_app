@@ -24,10 +24,18 @@ struct TweetSuggestion: Codable, Identifiable {
 struct TweetSuggestionsRequest: Codable {
     let message: String?
     let creativity: Int
+    let llmProvider: String?
 
-    init(message: String? = nil, creativity: Int = 5) {
+    enum CodingKeys: String, CodingKey {
+        case message
+        case creativity
+        case llmProvider = "llm_provider"
+    }
+
+    init(message: String? = nil, creativity: Int = 5, llmProvider: String? = nil) {
         self.message = message
         self.creativity = creativity
+        self.llmProvider = llmProvider
     }
 }
 

@@ -580,12 +580,17 @@ class TweetSuggestionsRequest(BaseModel):
         le=10,
         description="Creativity level 1-10 (1=factual, 10=bold/playful)",
     )
+    llm_provider: str | None = Field(
+        None,
+        description="LLM provider to use (openai, anthropic, google). Defaults to google.",
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "emphasize the startup angle",
                 "creativity": 7,
+                "llm_provider": "google",
             }
         }
 

@@ -3,6 +3,13 @@
 # Default LLM models
 TWEET_SUGGESTION_MODEL = "google-gla:gemini-3-pro-preview"
 
+# LLM provider models for tweet suggestions
+TWEET_MODELS = {
+    "google": "google-gla:gemini-3-pro-preview",
+    "openai": "openai:gpt-4o",
+    "anthropic": "anthropic:claude-sonnet-4-5-20250929",
+}
+
 # Worker type constants for checkout mechanism
 WORKER_DOWNLOADER = "downloader"
 WORKER_TRANSCRIBER = "transcriber"

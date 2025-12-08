@@ -72,4 +72,9 @@ enum ChatModelProvider: String, Codable, CaseIterable {
     var isDeepResearch: Bool {
         self == .deep_research
     }
+
+    /// Providers available for tweet generation (excludes deep research)
+    static var tweetProviders: [ChatModelProvider] {
+        allCases.filter { !$0.isDeepResearch }
+    }
 }

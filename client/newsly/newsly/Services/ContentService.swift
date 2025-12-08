@@ -304,9 +304,14 @@ class ContentService {
     func generateTweetSuggestions(
         id: Int,
         message: String? = nil,
-        creativity: Int = 5
+        creativity: Int = 5,
+        provider: ChatModelProvider? = nil
     ) async throws -> TweetSuggestionsResponse {
-        let request = TweetSuggestionsRequest(message: message, creativity: creativity)
+        let request = TweetSuggestionsRequest(
+            message: message,
+            creativity: creativity,
+            llmProvider: provider?.rawValue
+        )
         let encoder = JSONEncoder()
         let body = try encoder.encode(request)
 

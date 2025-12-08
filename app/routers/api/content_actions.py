@@ -196,6 +196,7 @@ async def get_tweet_suggestions(
         content=content_data,
         message=request.message,
         creativity=request.creativity,
+        llm_provider=request.llm_provider,
     )
 
     if result is None:

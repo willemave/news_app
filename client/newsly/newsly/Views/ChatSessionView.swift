@@ -272,7 +272,7 @@ struct ChatSessionView: View {
                                 } label: {
                                     Label(provider.displayName, systemImage: provider.iconName)
                                 }
-                                .disabled(provider.rawValue == session.llmProvider || session.isDeepResearch)
+                                .disabled(provider.rawValue == session.llmProvider)
                             }
                         }
                     } label: {

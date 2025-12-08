@@ -41,6 +41,37 @@ struct TweetSuggestionsSheet: View {
                         dismiss()
                     }
                 }
+
+                // Model selector (trailing)
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Section {
+                            Text("Current: \(viewModel.selectedProvider.displayName)")
+                                .font(.caption)
+                        }
+                        Section("Switch Model") {
+                            ForEach(ChatModelProvider.tweetProviders, id: \.self) { provider in
+                                Button {
+                                    Task {
+                                        await viewModel.switchProvider(to: provider)
+                                    }
+                                } label: {
+                                    Label(provider.displayName, systemImage: provider.iconName)
+                                }
+                                .disabled(provider == viewModel.selectedProvider)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(viewModel.selectedProvider.displayName)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                    }
+                    .disabled(viewModel.isLoading || viewModel.isRegenerating)
+                }
             }
             .task {
                 await viewModel.initialize(contentId: contentId)
@@ -136,7 +167,7 @@ struct TweetSuggestionsSheet: View {
             }
         } label: {
             Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                .font(.system(size: 32))
+                .font(.system(size: 40))
                 .foregroundColor(viewModel.isRecording ? .red : .blue)
                 .symbolEffect(.pulse, isActive: viewModel.isRecording)
         }
