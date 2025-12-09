@@ -115,7 +115,9 @@
       "Bash(unzip:*)",
       "Bash(.venv/bin/pytest app/tests/ -v)",
       "Bash(.venv/bin/pytest:*)",
-      "Bash(wt merge:*)"
+      "Bash(wt merge:*)",
+      "mcp__exa__get_code_context_exa",
+      "Bash(timeout 120 python:*)"
     ],
     "deny": []
   },

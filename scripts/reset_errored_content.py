@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Reset errored content for re-processing.
+Reset errored or stuck content for re-processing.
 This script:
-1. Finds content with 'error' status
+1. Finds content with 'failed' status OR stuck in 'processing' status
 2. Optionally filters by date range
 3. Resets status to 'new' and clears error data
 4. Creates new processing tasks for the content
@@ -11,12 +11,12 @@ This script:
 import argparse
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 # Add parent directory to path for imports (use os.path for Python 3.13 compatibility)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, or_
 from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import get_settings
@@ -52,14 +52,16 @@ def reset_errored_content(
     days: int | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    stuck_hours: float | None = None,
     dry_run: bool = False,
 ):
-    """Reset errored content for re-processing.
+    """Reset errored or stuck content for re-processing.
 
     Args:
         days: Only reset content errored within this many days (None = all errored content)
         since: Only reset content errored on or after this datetime
         until: Only reset content errored before this datetime
+        stuck_hours: Also include content stuck in 'processing' for more than X hours
         dry_run: If True, show what would be reset without making changes
     """
     # Get database settings
@@ -71,12 +73,23 @@ def reset_errored_content(
 
     with SessionLocal() as db:
         try:
-            # Build query for errored content
-            query = db.query(Content).filter(Content.status == ContentStatus.FAILED.value)
+            # Build query for errored content and optionally stuck processing content
+            status_conditions = [Content.status == ContentStatus.FAILED.value]
+
+            # Add stuck processing condition if specified
+            if stuck_hours is not None:
+                stuck_cutoff = datetime.now(UTC) - timedelta(hours=stuck_hours)
+                stuck_condition = (Content.status == ContentStatus.PROCESSING.value) & (
+                    Content.updated_at < stuck_cutoff
+                )
+                status_conditions.append(stuck_condition)
+                print(f"Including content stuck in 'processing' for more than {stuck_hours} hours")
+
+            query = db.query(Content).filter(or_(*status_conditions))
 
             # Add date filters
             if days:
-                cutoff_date = datetime.utcnow() - timedelta(days=days)
+                cutoff_date = datetime.now(UTC) - timedelta(days=days)
                 query = query.filter(Content.updated_at >= cutoff_date)
                 cutoff_str = cutoff_date.strftime("%Y-%m-%d %H:%M:%S")
                 print(f"Filtering to content errored since {cutoff_str} UTC")
@@ -88,29 +101,41 @@ def reset_errored_content(
                 query = query.filter(Content.updated_at < until)
                 print(f"Filtering to content errored before {until.strftime('%Y-%m-%d %H:%M:%S')}")
 
-            # Get errored content
-            errored_content = query.all()
+            # Get errored/stuck content
+            affected_content = query.all()
 
-            if not errored_content:
-                print("No errored content found matching criteria")
+            if not affected_content:
+                print("No errored or stuck content found matching criteria")
                 return
 
-            print(f"Found {len(errored_content)} errored content items")
+            # Count by status for reporting
+            failed_count = sum(
+                1 for c in affected_content if c.status == ContentStatus.FAILED.value
+            )
+            stuck_count = sum(
+                1 for c in affected_content if c.status == ContentStatus.PROCESSING.value
+            )
+            print(f"Found {len(affected_content)} content items to reset:")
+            if failed_count:
+                print(f"  - {failed_count} with 'failed' status")
+            if stuck_count:
+                print(f"  - {stuck_count} stuck in 'processing' status")
 
             if dry_run:
                 print("\nDRY RUN - Would reset the following content:")
-                for content in errored_content[:20]:  # Show first 20 in dry run
+                for content in affected_content[:20]:  # Show first 20 in dry run
                     ctype = content.content_type
-                    print(f"  - ID: {content.id}, Type: {ctype}, Source: {content.source}")
-                    print(f"    URL: {content.url[:80]}...")
+                    status = content.status
+                    print(f"  - ID: {content.id}, Type: {ctype}, Status: {status}")
+                    print(f"    Source: {content.source}, URL: {content.url[:60]}...")
                     if content.error_message:
                         print(f"    Error: {content.error_message[:100]}...")
-                if len(errored_content) > 20:
-                    print(f"  ... and {len(errored_content) - 20} more")
+                if len(affected_content) > 20:
+                    print(f"  ... and {len(affected_content) - 20} more")
                 return
 
-            # Delete existing processing tasks for errored content
-            content_ids = [c.id for c in errored_content]
+            # Delete existing processing tasks for affected content
+            content_ids = [c.id for c in affected_content]
             deleted_tasks = (
                 db.query(ProcessingTask)
                 .filter(ProcessingTask.content_id.in_(content_ids))
@@ -122,7 +147,10 @@ def reset_errored_content(
             reset_count = 0
             new_tasks = []
 
-            for content in errored_content:
+            for content in affected_content:
+                # Capture original status before reset
+                original_status = content.status
+
                 # Reset content fields
                 content.status = ContentStatus.NEW.value
                 content.error_message = None
@@ -141,7 +169,7 @@ def reset_errored_content(
                         "content_type": content.content_type,
                         "url": content.url,
                         "source": content.source,
-                        "reset_from_error": True,
+                        "reset_from_status": original_status,
                         "original_error": content.error_message[:500]
                         if content.error_message
                         else None,
@@ -156,13 +184,13 @@ def reset_errored_content(
             # Commit all changes
             db.commit()
 
-            print(f"\nSuccessfully reset {reset_count} errored content items")
+            print(f"\nSuccessfully reset {reset_count} content items")
             print(f"Created {len(new_tasks)} new processing tasks")
             print("\nYou can now run 'python scripts/run_workers.py' to process the reset content")
 
             # Show summary by content type
-            type_counts = {}
-            for content in errored_content:
+            type_counts: dict[str, int] = {}
+            for content in affected_content:
                 type_counts[content.content_type] = type_counts.get(content.content_type, 0) + 1
 
             print("\nContent reset by type:")
@@ -177,27 +205,30 @@ def reset_errored_content(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Reset errored content for re-processing",
+        description="Reset errored or stuck content for re-processing",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Reset all errored content
   python scripts/reset_errored_content.py
 
+  # Reset errored content + content stuck in 'processing' for 24+ hours
+  python scripts/reset_errored_content.py --stuck-hours 24
+
   # Reset only content errored in the last 7 days
   python scripts/reset_errored_content.py --days 7
 
-  # Dry run to see what would be reset (last 3 days)
-  python scripts/reset_errored_content.py --days 3 --dry-run
+  # Reset failed + stuck content from the last 14 days
+  python scripts/reset_errored_content.py --days 14 --stuck-hours 12
+
+  # Dry run to see what would be reset (last 3 days + stuck 6+ hours)
+  python scripts/reset_errored_content.py --days 3 --stuck-hours 6 --dry-run
 
   # Reset content errored since a specific date
   python scripts/reset_errored_content.py --since 2024-12-01
 
   # Reset content errored in a specific date range
   python scripts/reset_errored_content.py --since "2024-12-01 08:00" --until "2024-12-01 12:00"
-
-  # Combine --since with --until for precise ranges
-  python scripts/reset_errored_content.py --since 2024-12-01T00:00:00 --until 2024-12-02T00:00:00
         """,
     )
 
@@ -220,6 +251,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--stuck-hours",
+        type=float,
+        help="Also reset content stuck in 'processing' status for more than X hours",
+    )
+
+    parser.add_argument(
         "--dry-run", action="store_true", help="Show what would be reset without making changes"
     )
 
@@ -232,7 +269,13 @@ Examples:
     if args.dry_run:
         print("DRY RUN MODE - No changes will be made\n")
 
-    reset_errored_content(days=args.days, since=args.since, until=args.until, dry_run=args.dry_run)
+    reset_errored_content(
+        days=args.days,
+        since=args.since,
+        until=args.until,
+        stuck_hours=args.stuck_hours,
+        dry_run=args.dry_run,
+    )
 
 
 if __name__ == "__main__":
