@@ -116,15 +116,29 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                 }
 
             except yt_dlp.utils.DownloadError as e:
-                # YouTube-specific errors (geo-blocking, age-restriction, etc.)
-                error_msg = f"YouTube download error for {url}: {str(e)}"
+                error_str = str(e)
+                # Check for bot detection / authentication required errors - skip instead of fail
+                if (
+                    "Sign in to confirm you're not a bot" in error_str
+                    or "requires authentication" in error_str.lower()
+                ):
+                    logger.warning(f"YouTube requires authentication for {url}, marking as skipped")
+                    return {
+                        "skip_processing": True,
+                        "skip_reason": "YouTube requires authentication (bot detection)",
+                        "title": f"YouTube Video: {url}",
+                        "content_type": "youtube",
+                    }
+
+                # For other download errors (geo-blocking, age-restriction, etc.), raise
+                error_msg = f"YouTube download error for {url}: {error_str}"
                 logger.error(error_msg)
                 logger.error(
                     f"This may indicate: geo-blocking, age-restriction, "
                     f"rate-limiting, or outdated yt-dlp (current: {yt_dlp.version.__version__})"
                 )
                 raise ValueError(
-                    f"Failed to extract YouTube video: {str(e)}. "
+                    f"Failed to extract YouTube video: {error_str}. "
                     "The video may be geo-blocked, age-restricted, or require authentication."
                 ) from e
             except Exception as e:

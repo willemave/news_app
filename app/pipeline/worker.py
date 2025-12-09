@@ -82,7 +82,13 @@ class ContentWorker:
 
     def _mark_summarization_failure(self, content: ContentData, reason: str) -> None:
         """Persist summarization failure details for the given content."""
-        logger.warning("Marking content %s as failed due to summarization error", content.id)
+        logger.error(
+            "MISSING_SUMMARY: Content %s (%s) failed summarization. Reason: %s, URL: %s",
+            content.id,
+            content.content_type.value,
+            reason,
+            content.url,
+        )
 
         content.status = ContentStatus.FAILED
         content.error_message = reason
@@ -227,10 +233,15 @@ class ContentWorker:
             else:
                 llm_data = strategy.prepare_for_llm(extracted_data) or {}
 
-            # Check if strategy marked this content to be skipped (e.g., images)
+            # Check if strategy marked this content to be skipped (e.g., images, YouTube auth)
             if extracted_data.get("skip_processing") or llm_data.get("skip_processing"):
+                skip_reason = (
+                    extracted_data.get("skip_reason")
+                    or llm_data.get("skip_reason")
+                    or "marked by strategy"
+                )
                 logger.info(
-                    f"Skipping processing for content {content.id} as marked by strategy "
+                    f"Skipping processing for content {content.id}: {skip_reason} "
                     f"({strategy.__class__.__name__})"
                 )
                 content.status = ContentStatus.SKIPPED
@@ -414,6 +425,28 @@ class ContentWorker:
             else:
                 # Fallback to created_at if no publication date
                 content.publication_date = content.created_at
+
+            # Verify structured summary was generated before marking complete
+            if not content.metadata.get("summary"):
+                logger.error(
+                    "MISSING_SUMMARY: Content %s (%s) completed without structured summary. "
+                    "URL: %s, Strategy: %s",
+                    content.id,
+                    content.content_type.value,
+                    content.url,
+                    strategy.__class__.__name__,
+                )
+                self.error_logger.log_processing_error(
+                    item_id=str(content.id),
+                    error=ValueError("Content completed without structured summary"),
+                    operation="verify_summary",
+                    context={
+                        "url": str(content.url),
+                        "content_type": content.content_type.value,
+                        "strategy": strategy.__class__.__name__,
+                        "has_content": bool(content.metadata.get("content")),
+                    },
+                )
 
             # Update status
             content.status = ContentStatus.COMPLETED
