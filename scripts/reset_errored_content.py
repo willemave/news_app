@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-Reset errored or stuck content for re-processing.
+Reset errored or stuck articles/podcasts for re-processing.
 This script:
-1. Finds content with 'failed' status OR stuck in 'processing' status
-2. Optionally filters by date range
-3. Resets status to 'new' and clears error data
-4. Creates new processing tasks for the content
+1. Finds articles/podcasts with 'failed' status OR stuck in 'processing' status
+2. Optionally includes 'completed' content missing a summary
+3. Optionally filters by date range
+4. Resets status to 'new' and clears error data
+5. Creates new processing tasks for the content
+
+Note: Only processes articles and podcasts, not news items.
 """
 
 import argparse
@@ -16,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 # Add parent directory to path for imports (use os.path for Python 3.13 compatibility)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import create_engine, or_
+from sqlalchemy import create_engine, func, or_
 from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import get_settings
@@ -53,15 +56,17 @@ def reset_errored_content(
     since: datetime | None = None,
     until: datetime | None = None,
     stuck_hours: float | None = None,
+    missing_summary: bool = False,
     dry_run: bool = False,
 ):
-    """Reset errored or stuck content for re-processing.
+    """Reset errored or stuck articles/podcasts for re-processing.
 
     Args:
         days: Only reset content errored within this many days (None = all errored content)
         since: Only reset content errored on or after this datetime
         until: Only reset content errored before this datetime
         stuck_hours: Also include content stuck in 'processing' for more than X hours
+        missing_summary: Also include 'completed' content that's missing a summary
         dry_run: If True, show what would be reset without making changes
     """
     # Get database settings
@@ -73,6 +78,10 @@ def reset_errored_content(
 
     with SessionLocal() as db:
         try:
+            # Only process articles and podcasts, not news
+            allowed_types = ["article", "podcast"]
+            print(f"Filtering to content types: {', '.join(allowed_types)}")
+
             # Build query for errored content and optionally stuck processing content
             status_conditions = [Content.status == ContentStatus.FAILED.value]
 
@@ -85,7 +94,19 @@ def reset_errored_content(
                 status_conditions.append(stuck_condition)
                 print(f"Including content stuck in 'processing' for more than {stuck_hours} hours")
 
-            query = db.query(Content).filter(or_(*status_conditions))
+            # Add missing summary condition if specified
+            if missing_summary:
+                # Content is 'completed' but has no summary in metadata
+                # Use json_extract for SQLite compatibility
+                missing_summary_condition = (Content.status == ContentStatus.COMPLETED.value) & (
+                    func.json_extract(Content.content_metadata, "$.summary").is_(None)
+                )
+                status_conditions.append(missing_summary_condition)
+                print("Including 'completed' content missing a summary")
+
+            query = db.query(Content).filter(
+                Content.content_type.in_(allowed_types), or_(*status_conditions)
+            )
 
             # Add date filters
             if days:
@@ -105,7 +126,7 @@ def reset_errored_content(
             affected_content = query.all()
 
             if not affected_content:
-                print("No errored or stuck content found matching criteria")
+                print("No errored, stuck, or incomplete content found matching criteria")
                 return
 
             # Count by status for reporting
@@ -115,11 +136,16 @@ def reset_errored_content(
             stuck_count = sum(
                 1 for c in affected_content if c.status == ContentStatus.PROCESSING.value
             )
+            missing_summary_count = sum(
+                1 for c in affected_content if c.status == ContentStatus.COMPLETED.value
+            )
             print(f"Found {len(affected_content)} content items to reset:")
             if failed_count:
                 print(f"  - {failed_count} with 'failed' status")
             if stuck_count:
                 print(f"  - {stuck_count} stuck in 'processing' status")
+            if missing_summary_count:
+                print(f"  - {missing_summary_count} 'completed' but missing summary")
 
             if dry_run:
                 print("\nDRY RUN - Would reset the following content:")
@@ -205,30 +231,29 @@ def reset_errored_content(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Reset errored or stuck content for re-processing",
+        description="Reset errored or stuck articles/podcasts for re-processing",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Reset all errored content
+  # Reset all failed articles/podcasts
   python scripts/reset_errored_content.py
 
-  # Reset errored content + content stuck in 'processing' for 24+ hours
+  # Reset failed + stuck + missing summary content from last 14 days
+  python scripts/reset_errored_content.py --days 14 --stuck-hours 24 --missing-summary
+
+  # Reset content stuck in 'processing' for 24+ hours
   python scripts/reset_errored_content.py --stuck-hours 24
 
-  # Reset only content errored in the last 7 days
-  python scripts/reset_errored_content.py --days 7
+  # Reset 'completed' content that's missing a summary
+  python scripts/reset_errored_content.py --missing-summary
 
-  # Reset failed + stuck content from the last 14 days
-  python scripts/reset_errored_content.py --days 14 --stuck-hours 12
-
-  # Dry run to see what would be reset (last 3 days + stuck 6+ hours)
-  python scripts/reset_errored_content.py --days 3 --stuck-hours 6 --dry-run
+  # Dry run to see what would be reset
+  python scripts/reset_errored_content.py --days 14 --stuck-hours 24 --missing-summary --dry-run
 
   # Reset content errored since a specific date
   python scripts/reset_errored_content.py --since 2024-12-01
 
-  # Reset content errored in a specific date range
-  python scripts/reset_errored_content.py --since "2024-12-01 08:00" --until "2024-12-01 12:00"
+Note: Only processes articles and podcasts, not news items.
         """,
     )
 
@@ -257,6 +282,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--missing-summary",
+        action="store_true",
+        help="Also reset 'completed' content that's missing a summary",
+    )
+
+    parser.add_argument(
         "--dry-run", action="store_true", help="Show what would be reset without making changes"
     )
 
@@ -274,6 +305,7 @@ Examples:
         since=args.since,
         until=args.until,
         stuck_hours=args.stuck_hours,
+        missing_summary=args.missing_summary,
         dry_run=args.dry_run,
     )
 

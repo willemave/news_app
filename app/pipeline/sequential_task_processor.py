@@ -223,7 +223,14 @@ class SequentialTaskProcessor:
                     logger.info(f"Successfully summarized content {content_id}")
                     return True
                 else:
-                    logger.error(f"Failed to generate summary for content {content_id}")
+                    logger.error(
+                        "MISSING_SUMMARY: Content %s (%s) - LLM summarization returned None. "
+                        "Title: %s, Text length: %s",
+                        content_id,
+                        content.content_type,
+                        content.title,
+                        len(text_to_summarize) if text_to_summarize else 0,
+                    )
                     return False
 
         except Exception as e:

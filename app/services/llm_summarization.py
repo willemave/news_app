@@ -192,7 +192,15 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
         return _finalize_summary(summary, request.content_type)
     except Exception as error:  # noqa: BLE001
         item_id = str(request.content_id or "unknown")
-        logger.error("Summarization failed for content %s: %s", item_id, error)
+        logger.error(
+            "MISSING_SUMMARY: Summarization failed for content %s: %s. "
+            "Model: %s, Content type: %s, Payload length: %s",
+            item_id,
+            error,
+            request.model_spec,
+            request.content_type,
+            len(request.content) if request.content else 0,
+        )
         error_logger.log_processing_error(
             item_id=item_id,
             error=error,
@@ -200,6 +208,7 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
             context={
                 "model_spec": request.model_spec,
                 "content_type": str(request.content_type),
+                "payload_length": len(request.content) if request.content else 0,
             },
         )
         return None
