@@ -60,9 +60,9 @@ struct ChatSessionsView: View {
                     pendingNavigationRoute = ChatSessionRoute(sessionId: session.id)
                 }
             )
-            .presentationDetents([.height(320)])
+            .presentationDetents([.height(380)])
             .presentationDragIndicator(.hidden)
-            .presentationCornerRadius(20)
+            .presentationCornerRadius(24)
         }
     }
 
@@ -223,83 +223,121 @@ struct NewChatSheet: View {
 
     private let chatService = ChatService.shared
 
+    private var providerColor: Color {
+        switch provider.accentColor {
+        case "green": return .green
+        case "orange": return .orange
+        case "purple": return .purple
+        default: return .blue
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Button("Cancel") {
-                    isPresented = false
+            // Drag indicator
+            RoundedRectangle(cornerRadius: 2.5)
+                .fill(Color(.tertiaryLabel))
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+
+            // Provider header
+            VStack(spacing: 8) {
+                // Provider icon
+                ZStack {
+                    Circle()
+                        .fill(providerColor.opacity(0.15))
+                        .frame(width: 56, height: 56)
+
+                    Image(provider.iconAsset)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 28, height: 28)
                 }
 
-                Spacer()
+                VStack(spacing: 2) {
+                    Text(provider.displayName)
+                        .font(.title3)
+                        .fontWeight(.semibold)
 
-                Text("New Chat")
-                    .font(.headline)
-
-                Spacer()
-
-                // Invisible spacer to balance Cancel button
-                Text("Cancel")
-                    .opacity(0)
+                    Text(provider.tagline)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 20)
 
-            // Content
-            VStack(spacing: 16) {
-                TextField("Message", text: $initialMessage, axis: .vertical)
-                    .lineLimit(3...5)
-                    .textFieldStyle(.plain)
-                    .padding(12)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(10)
-                    .focused($isTextFieldFocused)
+            // Message input
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topLeading) {
+                    if initialMessage.isEmpty {
+                        Text("What would you like to explore?")
+                            .foregroundColor(Color(.placeholderText))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                    }
+
+                    TextEditor(text: $initialMessage)
+                        .scrollContentBackground(.hidden)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .focused($isTextFieldFocused)
+                }
+                .frame(height: 100)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(12)
 
                 if let error = errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
-
-                HStack(spacing: 12) {
-                    Button {
-                        Task { await createSession() }
-                    } label: {
-                        Text("Just Chat")
-                            .frame(maxWidth: .infinity)
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.caption)
+                        Text(error)
+                            .font(.caption)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isCreating)
-
-                    Button {
-                        Task { await createSession() }
-                    } label: {
-                        Text("Start")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isCreating || initialMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .foregroundColor(.red)
                 }
             }
             .padding(.horizontal, 20)
 
             Spacer()
-        }
-        .disabled(isCreating)
-        .overlay {
-            if isCreating {
-                ZStack {
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
 
-                    ProgressView()
-                        .scaleEffect(1.2)
-                        .padding(24)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(12)
+            // Action buttons
+            VStack(spacing: 10) {
+                Button {
+                    Task { await createSession() }
+                } label: {
+                    HStack {
+                        if isCreating {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                        }
+                        Text(initialMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                             ? "Start Chat"
+                             : "Send")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(providerColor)
+                    .cornerRadius(12)
                 }
+                .disabled(isCreating)
+
+                Button {
+                    isPresented = false
+                } label: {
+                    Text("Cancel")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.bottom, 8)
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
         }
         .onAppear {
             isTextFieldFocused = true

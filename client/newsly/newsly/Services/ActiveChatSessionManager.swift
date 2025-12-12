@@ -99,6 +99,16 @@ class ActiveChatSessionManager: ObservableObject {
         return activeSessions[contentId] != nil || completedSessions[contentId] != nil
     }
 
+    /// Number of sessions currently processing (for tab badge)
+    var processingCount: Int {
+        activeSessions.count
+    }
+
+    /// Whether any sessions are currently processing
+    var hasProcessingSessions: Bool {
+        !activeSessions.isEmpty
+    }
+
     /// Poll for message completion
     private func pollForCompletion(contentId: Int, messageId: Int) async {
         var attempts = 0

@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var unreadCountService = UnreadCountService.shared
     @StateObject private var readingStateStore = ReadingStateStore()
     @StateObject private var tabCoordinator: TabCoordinatorViewModel
+    @StateObject private var chatSessionManager = ActiveChatSessionManager.shared
 
     @State private var path = NavigationPath()
     @Environment(\.scenePhase) private var scenePhase
@@ -48,6 +49,10 @@ struct ContentView: View {
         unreadCountService.newsCount > 0 ? String(unreadCountService.newsCount) : nil
     }
 
+    private var chatBadge: String? {
+        chatSessionManager.hasProcessingSessions ? "●" : nil
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             TabView(selection: $tabCoordinator.selectedTab) {
@@ -81,6 +86,7 @@ struct ContentView: View {
                     .tabItem {
                         Label("Chats", systemImage: "brain.head.profile")
                     }
+                    .badge(chatBadge)
                     .tag(RootTab.chats)
 
                 FavoritesView()

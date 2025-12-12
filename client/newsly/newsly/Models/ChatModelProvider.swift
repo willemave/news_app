@@ -73,6 +73,34 @@ enum ChatModelProvider: String, Codable, CaseIterable {
         self == .deep_research
     }
 
+    /// Short description for the provider
+    var tagline: String {
+        switch self {
+        case .openai:
+            return "Fast, versatile reasoning"
+        case .anthropic:
+            return "Thoughtful, nuanced responses"
+        case .google:
+            return "Balanced performance"
+        case .deep_research:
+            return "Comprehensive analysis (2-5 min)"
+        }
+    }
+
+    /// Accent color for this provider
+    var accentColor: String {
+        switch self {
+        case .openai:
+            return "green"
+        case .anthropic:
+            return "orange"
+        case .google:
+            return "blue"
+        case .deep_research:
+            return "purple"
+        }
+    }
+
     /// Providers available for tweet generation (excludes deep research)
     static var tweetProviders: [ChatModelProvider] {
         allCases.filter { !$0.isDeepResearch }
