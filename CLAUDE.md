@@ -30,7 +30,51 @@
 * **Input validation**: Always validate at boundaries (API, external services).
 * **SQL injection prevention**: Use parameterized queries, never f-strings.
 * **Graceful degradation**: Circuit breakers for external services.
-* **Error context**: Include request IDs, user context in error logs.
+* **Error logging**: Use `logger.error()` or `logger.exception()` directly with structured `extra` fields (see below).
+
+### Error Logging Convention
+
+Use `logger.error()` or `logger.exception()` directly with structured `extra` fields:
+
+```python
+from app.core.logging import get_logger
+logger = get_logger(__name__)
+
+# For errors with tracebacks (in except blocks):
+try:
+    process_item(item_id)
+except Exception as e:
+    logger.exception(
+        "Failed to process item %s: %s",
+        item_id,
+        e,
+        extra={
+            "component": "worker_name",
+            "operation": "process_item",
+            "item_id": item_id,
+            "context_data": {"url": url, "status": status},
+        },
+    )
+
+# For error conditions without tracebacks:
+logger.error(
+    "Invalid state for item %s",
+    item_id,
+    extra={
+        "component": "validator",
+        "operation": "validate",
+        "context_data": {"expected": "active", "actual": state},
+    },
+)
+```
+
+Standard `extra` fields:
+- `component`: Module/worker name (e.g., `"content_worker"`, `"http_service"`)
+- `operation`: Operation name (e.g., `"summarize"`, `"http_fetch"`)
+- `item_id`: ID of item being processed (optional)
+- `context_data`: Dict with additional context (optional)
+
+Errors at level ERROR+ are automatically written to JSONL files in `logs/errors/`.
 
 ---
 

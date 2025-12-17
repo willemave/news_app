@@ -2,7 +2,7 @@
 
 > Technical reference for the FastAPI backend, content pipeline, chat system, and SwiftUI client contracts.
 
-**Last Updated:** 2025-12-06  
+**Last Updated:** 2025-12-16  
 **Runtime:** Python 3.13, FastAPI + SQLAlchemy 2, Pydantic v2, pydantic-ai  
 **Database:** PostgreSQL (prod) / SQLite (dev)  
 **Clients:** SwiftUI (iOS 17+), Jinja admin views
@@ -149,7 +149,7 @@ flowchart LR
 
 ## Security & Observability Notes
 - **Gaps**: Apple token signature verification disabled (dev only) in `app/core/security.py`; admin sessions stored in-memory (`app/routers/auth.py`); CORS allows all origins; JWT secret/ADMIN_PASSWORD must be provided via env.
-- **Logging/Telemetry**: request logging middleware; structured `EventLog` via `log_event/track_event`; processing errors captured with `app/utils/error_logger.py` helpers; content metadata stores `processing_errors` on failures.
+- **Logging/Telemetry**: request logging middleware; structured `EventLog` via `log_event/track_event`; processing errors use `logger.error()`/`logger.exception()` with structured `extra` fields (`component`, `operation`, `item_id`, `context_data`); errors at ERROR+ level auto-written to JSONL files in `logs/errors/` with sensitive data redaction.
 - **Storage**: media/log paths default to `./data/media` and `./logs` (settings override); podcast downloads sanitized to filesystem-safe names.
 
 ## Data Flow Cheat Sheet
