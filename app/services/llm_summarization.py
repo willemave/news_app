@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentQuote, ContentType, NewsSummary, StructuredSummary
@@ -15,7 +16,16 @@ from app.utils.error_logger import GenericErrorLogger
 logger = get_logger(__name__)
 error_logger = GenericErrorLogger("llm_summarization")
 
-MAX_CONTENT_LENGTH = 1_500_000
+MAX_SUMMARIZATION_PAYLOAD_CHARS = 220_000
+FALLBACK_SUMMARIZATION_PAYLOAD_CHARS = 120_000
+
+CONTEXT_LENGTH_ERROR_HINTS: tuple[str, ...] = (
+    "context_length_exceeded",
+    "input tokens exceed",
+    "maximum context length",
+    "too many tokens",
+    "prompt is too long",
+)
 
 
 @dataclass
@@ -48,6 +58,42 @@ def _normalize_content_type(content_type: str | ContentType) -> str:
     return content_type.value if isinstance(content_type, ContentType) else str(content_type)
 
 
+def _is_context_length_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(hint in message for hint in CONTEXT_LENGTH_ERROR_HINTS)
+
+
+def _extract_agent_output(result: Any) -> Any:
+    if hasattr(result, "output"):
+        return result.output
+    if hasattr(result, "data"):
+        return result.data
+    raise AttributeError("Agent result missing output/data attribute")
+
+
+def _clip_payload(payload: str, max_chars: int) -> tuple[str, bool]:
+    if max_chars <= 0:
+        return "", True
+    if len(payload) <= max_chars:
+        return payload, False
+
+    marker = "\n\n[... CONTENT TRUNCATED ...]\n\n"
+    if max_chars <= len(marker):
+        return payload[:max_chars], True
+
+    remaining = max_chars - len(marker)
+    head_size = remaining // 2
+    tail_size = remaining - head_size
+
+    head = payload[:head_size].rstrip()
+    tail = payload[-tail_size:].lstrip() if tail_size else ""
+    clipped = f"{head}{marker}{tail}"
+
+    if len(clipped) > max_chars:
+        clipped = clipped[:max_chars]
+    return clipped, True
+
+
 DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "news": "openai:gpt-5-mini",
     "news_digest": "openai:gpt-5-mini",
@@ -55,7 +101,7 @@ DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "podcast": "anthropic:claude-haiku-4-5-20251001",
 }
 
-FALLBACK_SUMMARIZATION_MODEL = "google-gla:gemini-2.5-flash-lite-preview-06-17"
+FALLBACK_SUMMARIZATION_MODEL = "google-gla:gemini-2.5-flash-preview-09-2025"
 
 
 def _model_hint_from_spec(model_spec: str) -> tuple[str, str]:
@@ -164,13 +210,14 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
             logger.warning("Empty summarization payload provided")
             return None
 
-        if len(payload) > MAX_CONTENT_LENGTH:
+        raw_payload = payload
+        payload, was_truncated = _clip_payload(payload, MAX_SUMMARIZATION_PAYLOAD_CHARS)
+        if was_truncated:
             logger.warning(
-                "Content length %s exceeds max %s; truncating for summarization",
-                len(payload),
-                MAX_CONTENT_LENGTH,
+                "Content length %s exceeds max %s; truncating (head+tail) for summarization",
+                len(raw_payload),
+                MAX_SUMMARIZATION_PAYLOAD_CHARS,
             )
-            payload = payload[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated due to length]"
 
         ct = request.content_type
         content_type_value = ct.value if isinstance(ct, ContentType) else str(ct)
@@ -181,14 +228,50 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
             prompt_content_type, request.max_bullet_points, request.max_quotes
         )
 
-        content_body = payload
-        if request.title:
-            content_body = f"Title: {request.title}\n\n{content_body}"
-
-        user_message = user_template.format(content=content_body)
         agent = get_summarization_agent(request.model_spec, prompt_content_type, system_prompt)
-        result = agent.run_sync(user_message)
-        summary = result.output
+
+        def _build_user_message(content_payload: str) -> str:
+            content_body = content_payload
+            if request.title:
+                content_body = f"Title: {request.title}\n\n{content_body}"
+            return user_template.format(content=content_body)
+
+        try:
+            result = agent.run_sync(_build_user_message(payload))
+        except Exception as error:  # noqa: BLE001
+            if _is_context_length_error(error):
+                logger.warning(
+                    "Summarization context too long for content %s with model %s; "
+                    "retrying with fallback model %s",
+                    request.content_id or "unknown",
+                    request.model_spec,
+                    FALLBACK_SUMMARIZATION_MODEL,
+                )
+                # Retry with Gemini fallback model (larger context window)
+                fallback_agent = get_summarization_agent(
+                    FALLBACK_SUMMARIZATION_MODEL, prompt_content_type, system_prompt
+                )
+                try:
+                    result = fallback_agent.run_sync(_build_user_message(payload))
+                except Exception as fallback_error:  # noqa: BLE001
+                    # If fallback also fails with context error, try clipping content
+                    if _is_context_length_error(fallback_error):
+                        fallback_payload, _ = _clip_payload(
+                            raw_payload, FALLBACK_SUMMARIZATION_PAYLOAD_CHARS
+                        )
+                        logger.warning(
+                            "Fallback model also exceeded context; clipping to %s chars",
+                            FALLBACK_SUMMARIZATION_PAYLOAD_CHARS,
+                        )
+                        result = fallback_agent.run_sync(_build_user_message(fallback_payload))
+                    else:
+                        raise
+            else:
+                raise
+
+        summary = _extract_agent_output(result)
+        if summary is None:
+            return None
         return _finalize_summary(summary, request.content_type)
     except Exception as error:  # noqa: BLE001
         item_id = str(request.content_id or "unknown")

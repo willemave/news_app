@@ -152,7 +152,7 @@ class TestSequentialTaskProcessor:
         mock_content = Mock()
         mock_content.id = 123
         mock_content.content_type = "article"
-        mock_content.metadata = {"content": "This is test content for summarization."}
+        mock_content.content_metadata = {"content": "This is test content for summarization."}
 
         # Mock database session
         mock_db = Mock()
@@ -173,9 +173,12 @@ class TestSequentialTaskProcessor:
                 "This is test content for summarization.",
                 content_type="article",
                 content_id=123,
+                max_bullet_points=6,
+                max_quotes=8,
+                provider_override=None,
             )
             assert mock_content.status == "completed"
-            assert mock_content.metadata["summary"] == {"summary": "Test summary"}
+            assert mock_content.content_metadata["summary"] == {"summary": "Test summary"}
             mock_db.commit.assert_called_once()
 
     def test_process_summarize_task_no_content(self, processor):
@@ -293,31 +296,35 @@ class TestSequentialTaskProcessor:
         def mock_dequeue(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            if call_count > 10:  # Stop after 10 empty polls
+            if call_count > 20:  # Stop after leaving startup phase
                 processor.running = False
             return None
 
         processor.queue_service.dequeue.side_effect = mock_dequeue
 
-        with patch("app.pipeline.sequential_task_processor.setup_logging"):
-            with patch("time.sleep") as mock_sleep:
-                processor.run()
+        with (
+            patch("app.pipeline.sequential_task_processor.setup_logging"),
+            patch("time.sleep") as mock_sleep,
+        ):
+            processor.run()
 
         # Should have called sleep with backoff after multiple empty polls
         assert mock_sleep.called
-        # Should have called with 5 second backoff after max_empty_polls
-        mock_sleep.assert_any_call(5)
+        # Startup uses 10ms sleeps; backoff uses 100ms sleeps.
+        mock_sleep.assert_any_call(0.1)
 
     def test_run_signal_handler(self, processor):
         """Test signal handler setup."""
-        with patch("signal.signal") as mock_signal:
-            with patch("app.pipeline.sequential_task_processor.setup_logging"):
-                # Stop immediately
-                processor.running = False
-                processor.run()
+        with (
+            patch("signal.signal") as mock_signal,
+            patch("app.pipeline.sequential_task_processor.setup_logging"),
+        ):
+            # Stop immediately
+            processor.running = False
+            processor.run()
 
-                # Verify signal handlers were set
-                assert mock_signal.call_count >= 2  # SIGINT and SIGTERM
+            # Verify signal handlers were set
+            assert mock_signal.call_count >= 2  # SIGINT and SIGTERM
 
     def test_run_single_task(self, processor):
         """Test run_single_task method."""
@@ -386,10 +393,9 @@ class TestSequentialTaskProcessor:
 
         processor.queue_service.dequeue.side_effect = mock_dequeue_with_error
 
-        with patch("app.pipeline.sequential_task_processor.setup_logging"):
-            with patch("time.sleep"):
-                # Should not raise, just log and continue
-                processor.run()
+        with patch("app.pipeline.sequential_task_processor.setup_logging"), patch("time.sleep"):
+            # Should not raise, just log and continue
+            processor.run()
 
         # Processor should have stopped gracefully
         assert processor.running is False

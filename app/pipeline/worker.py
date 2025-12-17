@@ -6,7 +6,7 @@ from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
-from app.models.metadata import ContentData, ContentStatus, ContentType, NewsSummary
+from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content
 from app.pipeline.checkout import get_checkout_manager
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
@@ -32,7 +32,6 @@ class ContentWorker:
     def __init__(self):
         self.checkout_manager = get_checkout_manager()
         self.http_service = get_http_service()
-        self.llm_service = get_llm_service()
         self.queue_service = get_queue_service()
         self.strategy_registry = get_strategy_registry()
         self.podcast_download_worker = PodcastDownloadWorker()
@@ -79,45 +78,6 @@ class ContentWorker:
         content.status = ContentStatus.FAILED
         content.error_message = reason
         content.processed_at = datetime.now(UTC)
-
-    def _mark_summarization_failure(self, content: ContentData, reason: str) -> None:
-        """Persist summarization failure details for the given content."""
-        logger.error(
-            "MISSING_SUMMARY: Content %s (%s) failed summarization. Reason: %s, URL: %s",
-            content.id,
-            content.content_type.value,
-            reason,
-            content.url,
-        )
-
-        content.status = ContentStatus.FAILED
-        content.error_message = reason
-        content.metadata.pop("summary", None)
-
-        with get_db() as db:
-            db_content = db.query(Content).filter(Content.id == content.id).first()
-            if not db_content:
-                logger.error("Content %s disappeared before failure persistence", content.id)
-                return
-
-            metadata = dict(db_content.content_metadata or {})
-            metadata.pop("summary", None)
-            existing_errors = metadata.get("processing_errors")
-            processing_errors = existing_errors.copy() if isinstance(existing_errors, list) else []
-            processing_errors.append(
-                {
-                    "stage": "summarization",
-                    "reason": reason,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-            )
-            metadata["processing_errors"] = processing_errors
-
-            db_content.content_metadata = metadata
-            db_content.status = ContentStatus.FAILED.value
-            db_content.error_message = reason
-            db_content.processed_at = datetime.now(UTC)
-            db.commit()
 
     def process_content(self, content_id: int, worker_id: str) -> bool:
         """
@@ -327,78 +287,16 @@ class ContentWorker:
                 )
                 return True
 
-            # Generate structured summary using LLM service
+            # Store content_to_summarize in metadata for the SUMMARIZE task
             if llm_data.get("content_to_summarize"):
-                summarization_content_type = llm_data.get("content_type") or "article"
-                llm_payload = llm_data["content_to_summarize"]
-
-                summarization_content_type = llm_data.get("content_type") or "article"
-                if content.content_type == ContentType.NEWS:
-                    summarization_content_type = "news_digest"
-                llm_provider = "openai" if content.content_type == ContentType.NEWS else "anthropic"
-                aggregator_context = None
-                if content.content_type == ContentType.NEWS:
-                    aggregator_context = self._build_news_context(content.metadata)
-                    if aggregator_context:
-                        llm_payload = (
-                            f"Context:\n{aggregator_context}\n\nArticle Content:\n{llm_payload}"
-                        )
-
-                logger.debug(
-                    "Summarizing content %s using %s (payload_length=%s, type=%s)",
+                # Content is already stored in metadata["content"] from extraction
+                # Enqueue SUMMARIZE task to handle summarization asynchronously
+                self.queue_service.enqueue(TaskType.SUMMARIZE, content_id=content.id)
+                logger.info(
+                    "Enqueued SUMMARIZE task for content %s (%s)",
                     content.id,
-                    llm_provider,
-                    len(llm_payload) if isinstance(llm_payload, str) else "binary",
-                    summarization_content_type,
+                    content.content_type.value,
                 )
-
-                if content.content_type == ContentType.NEWS:
-                    summary = self.llm_service.summarize_content(
-                        content=llm_payload,
-                        max_bullet_points=4,
-                        max_quotes=0,
-                        content_type=summarization_content_type,
-                        content_id=content.id,
-                        provider_override="openai",
-                    )
-                else:
-                    summary = self.llm_service.summarize_content(
-                        content=llm_payload,
-                        content_type=summarization_content_type,
-                        content_id=content.id,
-                    )
-
-                if summary:
-                    summary_dict = summary.model_dump(mode="json", by_alias=True)
-
-                    if isinstance(summary, NewsSummary):
-                        news_summary_payload = summary_dict.copy()
-                        news_summary_payload.setdefault("classification", summary.classification)
-                        content.metadata["summary"] = news_summary_payload
-                        # Classification will be synced to DB column by domain_to_content
-                        article_section = content.metadata.get("article", {})
-                        article_section.setdefault(
-                            "url",
-                            news_summary_payload.get("final_url_after_redirects")
-                            or news_summary_payload.get("article", {}).get("url"),
-                        )
-                        if summary.title and not article_section.get("title"):
-                            article_section["title"] = summary.title
-                        content.metadata["article"] = article_section
-                        content.title = summary.title
-                        logger.info("Generated news digest summary for content %s", content.id)
-                    else:
-                        content.metadata["summary"] = summary_dict
-                        # Classification will be synced to DB column by domain_to_content
-                        if summary_dict.get("title") and not content.title:
-                            content.title = summary_dict["title"]
-                        logger.info(
-                            f"Generated summary and formatted markdown for content {content.id}"
-                        )
-                else:
-                    failure_reason = "LLM summarization did not return a result"
-                    self._mark_summarization_failure(content, failure_reason)
-                    return False
             else:
                 logger.error(
                     "No LLM payload generated for content %s; keys=%s",
@@ -426,35 +324,15 @@ class ContentWorker:
                 # Fallback to created_at if no publication date
                 content.publication_date = content.created_at
 
-            # Verify structured summary was generated before marking complete
-            if not content.metadata.get("summary"):
-                logger.error(
-                    "MISSING_SUMMARY: Content %s (%s) completed without structured summary. "
-                    "URL: %s, Strategy: %s",
-                    content.id,
-                    content.content_type.value,
-                    content.url,
-                    strategy.__class__.__name__,
-                )
-                self.error_logger.log_processing_error(
-                    item_id=str(content.id),
-                    error=ValueError("Content completed without structured summary"),
-                    operation="verify_summary",
-                    context={
-                        "url": str(content.url),
-                        "content_type": content.content_type.value,
-                        "strategy": strategy.__class__.__name__,
-                        "has_content": bool(content.metadata.get("content")),
-                    },
-                )
-
-            # Update status
-            content.status = ContentStatus.COMPLETED
+            # Update status - keep as PROCESSING, SUMMARIZE task will set COMPLETED
+            content.status = ContentStatus.PROCESSING
             content.processed_at = datetime.now(UTC)
 
             logger.info(
-                f"Successfully processed article {content.id} [{strategy.__class__.__name__}] "
-                f"Title: {content.title[:50] if content.title else 'No title'}..."
+                "Extracted article %s [%s], awaiting summarization. Title: %s...",
+                content.id,
+                strategy.__class__.__name__,
+                content.title[:50] if content.title else "No title",
             )
 
             return True
@@ -512,55 +390,6 @@ class ContentWorker:
         if normalized.startswith("http://"):
             normalized = "https://" + normalized[len("http://") :]
         return normalized
-
-    def _build_news_context(self, metadata: dict[str, Any]) -> str:
-        article = metadata.get("article", {})
-        aggregator = metadata.get("aggregator", {})
-        lines: list[str] = []
-
-        article_title = article.get("title") or ""
-        article_url = article.get("url") or ""
-
-        if article_title:
-            lines.append(f"Article Title: {article_title}")
-        if article_url:
-            lines.append(f"Article URL: {article_url}")
-
-        if aggregator:
-            name = aggregator.get("name") or metadata.get("platform")
-            agg_title = aggregator.get("title")
-            agg_url = aggregator.get("url")
-            author = aggregator.get("author")
-
-            context_bits = []
-            if name:
-                context_bits.append(name)
-            if author:
-                context_bits.append(f"by {author}")
-            if agg_title and agg_title != article_title:
-                lines.append(f"Aggregator Headline: {agg_title}")
-            if context_bits:
-                lines.append("Aggregator Context: " + ", ".join(context_bits))
-            if agg_url:
-                lines.append(f"Aggregator URL: {agg_url}")
-
-            extra = aggregator.get("metadata") or {}
-            highlights = []
-            for field in ["score", "comments_count", "likes", "retweets", "replies"]:
-                value = extra.get(field)
-                if value is not None:
-                    highlights.append(f"{field}={value}")
-            if highlights:
-                lines.append("Signals: " + ", ".join(highlights))
-
-        summary_payload = metadata.get("summary") if isinstance(metadata, dict) else {}
-        excerpt = metadata.get("excerpt")
-        if not excerpt and isinstance(summary_payload, dict):
-            excerpt = summary_payload.get("overview") or summary_payload.get("summary")
-        if excerpt:
-            lines.append(f"Aggregator Summary: {excerpt}")
-
-        return "\n".join(lines)
 
     def _process_podcast(self, content: ContentData) -> bool:
         """Process podcast content."""

@@ -3,12 +3,13 @@
 import signal
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.db import get_db
 from app.core.logging import get_logger, setup_logging
 from app.core.settings import get_settings
+from app.models.metadata import ContentStatus, NewsSummary
 from app.models.schema import Content
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker, get_llm_service
@@ -170,72 +171,206 @@ class SequentialTaskProcessor:
                     logger.error(f"Content {content_id} not found")
                     return False
 
+                def _persist_failure(reason: str) -> None:
+                    metadata = dict(content.content_metadata or {})
+                    metadata.pop("summary", None)
+                    existing_errors = metadata.get("processing_errors")
+                    processing_errors = (
+                        existing_errors.copy() if isinstance(existing_errors, list) else []
+                    )
+                    processing_errors.append(
+                        {
+                            "stage": "summarization",
+                            "reason": reason,
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    )
+                    metadata["processing_errors"] = processing_errors
+
+                    content.content_metadata = metadata
+                    content.status = ContentStatus.FAILED.value
+                    content.error_message = reason[:500]
+                    content.processed_at = datetime.utcnow()
+                    db.commit()
+
                 # Get content to summarize
+                metadata = content.content_metadata or {}
                 if content.content_type == "article":
-                    text_to_summarize = (
-                        content.content_metadata.get("content", "")
-                        if content.content_metadata
-                        else ""
-                    )
+                    text_to_summarize = metadata.get("content", "")
+                elif content.content_type == "news":
+                    text_to_summarize = metadata.get("content", "")
+                    # Build aggregator context for news items
+                    aggregator_context = self._build_news_context(metadata)
+                    if aggregator_context and text_to_summarize:
+                        text_to_summarize = (
+                            f"Context:\n{aggregator_context}\n\n"
+                            f"Article Content:\n{text_to_summarize}"
+                        )
                 elif content.content_type == "podcast":
-                    text_to_summarize = (
-                        content.content_metadata.get("transcript", "")
-                        if content.content_metadata
-                        else ""
-                    )
+                    text_to_summarize = metadata.get("transcript", "")
                 else:
-                    logger.error(f"Unknown content type for summarization: {content.content_type}")
+                    reason = f"Unknown content type for summarization: {content.content_type}"
+                    logger.error(reason)
+                    _persist_failure(reason)
                     return False
 
                 if not text_to_summarize:
-                    logger.error(f"No text to summarize for content {content_id}")
+                    reason = f"No text to summarize for content {content_id}"
+                    logger.error(reason)
+                    _persist_failure(reason)
                     return False
 
+                # Determine summarization parameters based on content type
+                summarization_type = content.content_type
+                provider_override = None
+                max_bullet_points = 6
+                max_quotes = 8
+
+                if content.content_type == "news":
+                    summarization_type = "news_digest"
+                    provider_override = "openai"
+                    max_bullet_points = 4
+                    max_quotes = 0
+
                 logger.debug(
-                    "Summarizing content %s using provider defaults (type: %s)",
+                    "Summarizing content %s using provider %s (type: %s)",
                     content_id,
-                    content.content_type,
+                    provider_override or "default",
+                    summarization_type,
                 )
 
-                # Use LLM to generate summary synchronously
-                summary = self.llm_service.summarize_content(
-                    text_to_summarize,
-                    content_type=content.content_type,
-                    content_id=content.id,
-                )
+                try:
+                    summary = self.llm_service.summarize_content(
+                        text_to_summarize,
+                        content_type=summarization_type,
+                        content_id=content.id,
+                        max_bullet_points=max_bullet_points,
+                        max_quotes=max_quotes,
+                        provider_override=provider_override,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.error(
+                        "MISSING_SUMMARY: Summarization raised for content %s (%s): %s",
+                        content_id,
+                        content.content_type,
+                        e,
+                        exc_info=True,
+                    )
+                    _persist_failure(f"Summarization error: {e}")
+                    return False
 
-                if summary:
+                if summary is not None:
                     # Update content with summary
                     # Create a new dictionary to ensure SQLAlchemy detects the change
                     metadata = dict(content.content_metadata or {})
-                    if hasattr(summary, "model_dump"):
-                        metadata["summary"] = summary.model_dump(mode="json")
+                    summary_dict = (
+                        summary.model_dump(mode="json", by_alias=True)
+                        if hasattr(summary, "model_dump")
+                        else summary
+                    )
+
+                    # Handle NewsSummary specially to update article metadata
+                    if isinstance(summary, NewsSummary):
+                        summary_dict.setdefault("classification", summary.classification)
+                        metadata["summary"] = summary_dict
+
+                        # Update article section
+                        article_section = metadata.get("article", {})
+                        article_section.setdefault(
+                            "url",
+                            summary_dict.get("final_url_after_redirects")
+                            or summary_dict.get("article", {}).get("url"),
+                        )
+                        if summary.title and not article_section.get("title"):
+                            article_section["title"] = summary.title
+                        metadata["article"] = article_section
+
+                        # Update content title
+                        if summary.title:
+                            content.title = summary.title
+
+                        logger.info("Generated news digest summary for content %s", content_id)
                     else:
-                        metadata["summary"] = summary
+                        metadata["summary"] = summary_dict
+                        # Update title if provided
+                        if summary_dict.get("title") and not content.title:
+                            content.title = summary_dict["title"]
+                        logger.info("Generated summary for content %s", content_id)
+
                     metadata["summarization_date"] = datetime.utcnow().isoformat()
 
                     # Assign new dictionary to trigger SQLAlchemy change detection
                     content.content_metadata = metadata
-                    content.status = "completed"
+                    content.status = ContentStatus.COMPLETED.value
                     content.processed_at = datetime.utcnow()
                     db.commit()
 
-                    logger.info(f"Successfully summarized content {content_id}")
                     return True
-                else:
-                    logger.error(
-                        "MISSING_SUMMARY: Content %s (%s) - LLM summarization returned None. "
-                        "Title: %s, Text length: %s",
-                        content_id,
-                        content.content_type,
-                        content.title,
-                        len(text_to_summarize) if text_to_summarize else 0,
-                    )
-                    return False
+
+                logger.error(
+                    "MISSING_SUMMARY: Content %s (%s) - LLM summarization returned None. "
+                    "Title: %s, Text length: %s",
+                    content_id,
+                    content.content_type,
+                    content.title,
+                    len(text_to_summarize) if text_to_summarize else 0,
+                )
+                _persist_failure("LLM summarization returned None")
+                return False
 
         except Exception as e:
             logger.error(f"Summarization error: {e}", exc_info=True)
             return False
+
+    def _build_news_context(self, metadata: dict[str, Any]) -> str:
+        """Build aggregator context string for news items."""
+        article = metadata.get("article", {})
+        aggregator = metadata.get("aggregator", {})
+        lines: list[str] = []
+
+        article_title = article.get("title") or ""
+        article_url = article.get("url") or ""
+
+        if article_title:
+            lines.append(f"Article Title: {article_title}")
+        if article_url:
+            lines.append(f"Article URL: {article_url}")
+
+        if aggregator:
+            name = aggregator.get("name") or metadata.get("platform")
+            agg_title = aggregator.get("title")
+            agg_url = aggregator.get("url")
+            author = aggregator.get("author")
+
+            context_bits = []
+            if name:
+                context_bits.append(name)
+            if author:
+                context_bits.append(f"by {author}")
+            if agg_title and agg_title != article_title:
+                lines.append(f"Aggregator Headline: {agg_title}")
+            if context_bits:
+                lines.append("Aggregator Context: " + ", ".join(context_bits))
+            if agg_url:
+                lines.append(f"Aggregator URL: {agg_url}")
+
+            extra = aggregator.get("metadata") or {}
+            highlights = []
+            for field in ["score", "comments_count", "likes", "retweets", "replies"]:
+                value = extra.get(field)
+                if value is not None:
+                    highlights.append(f"{field}={value}")
+            if highlights:
+                lines.append("Signals: " + ", ".join(highlights))
+
+        summary_payload = metadata.get("summary") if isinstance(metadata, dict) else {}
+        excerpt = metadata.get("excerpt")
+        if not excerpt and isinstance(summary_payload, dict):
+            excerpt = summary_payload.get("overview") or summary_payload.get("summary")
+        if excerpt:
+            lines.append(f"Aggregator Summary: {excerpt}")
+
+        return "\n".join(lines)
 
     def run(self, max_tasks: int | None = None):
         """
