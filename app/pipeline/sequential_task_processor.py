@@ -15,6 +15,7 @@ from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscrib
 from app.pipeline.worker import ContentWorker, get_llm_service
 from app.scraping.runner import ScraperRunner
 from app.services.queue import QueueService, TaskType
+from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 
@@ -30,6 +31,8 @@ class SequentialTaskProcessor:
         logger.debug("Shared summarization service initialized")
         self.settings = get_settings()
         logger.debug("Settings loaded")
+        self.error_logger = create_error_logger("summarization")
+        logger.debug("Error logger initialized")
         self.running = True
         self.worker_id = "sequential-processor"
         logger.debug(f"SequentialTaskProcessor initialized with worker_id: {self.worker_id}")
@@ -159,17 +162,36 @@ class SequentialTaskProcessor:
             )
 
             if not content_id:
-                logger.error("No content_id provided for summarize task")
+                logger.error(
+                    "SUMMARIZE_TASK_ERROR: No content_id provided. Task data: %s",
+                    task_data,
+                )
                 return False
 
-            logger.info(f"Processing summarize task for content {content_id}")
+            logger.info("Processing summarize task for content %s", content_id)
 
             # Get content from database
             with get_db() as db:
                 content = db.query(Content).filter(Content.id == content_id).first()
                 if not content:
-                    logger.error(f"Content {content_id} not found")
+                    logger.error(
+                        "SUMMARIZE_TASK_ERROR: Content %s not found in database",
+                        content_id,
+                    )
                     return False
+
+                # Log content details for debugging
+                title_preview = "No title"
+                if content.title and isinstance(content.title, str):
+                    title_preview = content.title[:50]
+                logger.info(
+                    "Summarizing content %s: type=%s, title=%s, url=%s, status=%s",
+                    content_id,
+                    content.content_type,
+                    title_preview,
+                    content.url,
+                    content.status,
+                )
 
                 def _persist_failure(reason: str) -> None:
                     metadata = dict(content.content_metadata or {})
@@ -210,15 +232,61 @@ class SequentialTaskProcessor:
                     text_to_summarize = metadata.get("transcript", "")
                 else:
                     reason = f"Unknown content type for summarization: {content.content_type}"
-                    logger.error(reason)
+                    logger.error(
+                        "SUMMARIZE_TASK_ERROR: %s. Content %s, URL: %s",
+                        reason,
+                        content_id,
+                        content.url,
+                    )
+                    self.error_logger.log_processing_error(
+                        item_id=content_id,
+                        error=ValueError(reason),
+                        operation="summarize_task",
+                        context={
+                            "content_type": content.content_type,
+                            "url": str(content.url),
+                            "title": content.title,
+                        },
+                    )
                     _persist_failure(reason)
                     return False
 
                 if not text_to_summarize:
+                    # Determine what field was expected
+                    expected_field = (
+                        "transcript" if content.content_type == "podcast" else "content"
+                    )
                     reason = f"No text to summarize for content {content_id}"
-                    logger.error(reason)
+                    logger.error(
+                        "SUMMARIZE_TASK_ERROR: %s. Type: %s, expected field: %s, "
+                        "metadata keys: %s, URL: %s",
+                        reason,
+                        content.content_type,
+                        expected_field,
+                        list(metadata.keys()),
+                        content.url,
+                    )
+                    self.error_logger.log_processing_error(
+                        item_id=content_id,
+                        error=ValueError(reason),
+                        operation="summarize_task",
+                        context={
+                            "content_type": content.content_type,
+                            "expected_field": expected_field,
+                            "metadata_keys": list(metadata.keys()),
+                            "url": str(content.url),
+                            "title": content.title,
+                        },
+                    )
                     _persist_failure(reason)
                     return False
+
+                # Log text length for monitoring
+                logger.debug(
+                    "Content %s has %d characters to summarize",
+                    content_id,
+                    len(text_to_summarize),
+                )
 
                 # Determine summarization parameters based on content type
                 summarization_type = content.content_type
@@ -232,11 +300,14 @@ class SequentialTaskProcessor:
                     max_bullet_points = 4
                     max_quotes = 0
 
-                logger.debug(
-                    "Summarizing content %s using provider %s (type: %s)",
+                logger.info(
+                    "Calling LLM for content %s: provider=%s, type=%s, "
+                    "text_length=%d, max_bullets=%d",
                     content_id,
                     provider_override or "default",
                     summarization_type,
+                    len(text_to_summarize),
+                    max_bullet_points,
                 )
 
                 try:
@@ -250,11 +321,27 @@ class SequentialTaskProcessor:
                     )
                 except Exception as e:  # noqa: BLE001
                     logger.error(
-                        "MISSING_SUMMARY: Summarization raised for content %s (%s): %s",
+                        "SUMMARIZE_TASK_ERROR: LLM call failed for content %s (%s). "
+                        "Error: %s, URL: %s, text_length: %d",
                         content_id,
                         content.content_type,
-                        e,
+                        str(e),
+                        content.url,
+                        len(text_to_summarize),
                         exc_info=True,
+                    )
+                    self.error_logger.log_processing_error(
+                        item_id=content_id,
+                        error=e,
+                        operation="llm_summarization",
+                        context={
+                            "content_type": content.content_type,
+                            "summarization_type": summarization_type,
+                            "provider": provider_override or "default",
+                            "text_length": len(text_to_summarize),
+                            "url": str(content.url),
+                            "title": content.title,
+                        },
                     )
                     _persist_failure(f"Summarization error: {e}")
                     return False
@@ -307,15 +394,30 @@ class SequentialTaskProcessor:
 
                     return True
 
+                reason = "LLM summarization returned None"
                 logger.error(
-                    "MISSING_SUMMARY: Content %s (%s) - LLM summarization returned None. "
-                    "Title: %s, Text length: %s",
+                    "MISSING_SUMMARY: Content %s (%s) - %s. Title: %s, Text length: %s, URL: %s",
                     content_id,
                     content.content_type,
+                    reason,
                     content.title,
                     len(text_to_summarize) if text_to_summarize else 0,
+                    content.url,
                 )
-                _persist_failure("LLM summarization returned None")
+                self.error_logger.log_processing_error(
+                    item_id=content_id,
+                    error=ValueError(reason),
+                    operation="llm_summarization",
+                    context={
+                        "content_type": content.content_type,
+                        "summarization_type": summarization_type,
+                        "provider": provider_override or "default",
+                        "text_length": len(text_to_summarize) if text_to_summarize else 0,
+                        "url": str(content.url),
+                        "title": content.title,
+                    },
+                )
+                _persist_failure(reason)
                 return False
 
         except Exception as e:
