@@ -17,7 +17,6 @@ from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 from app.processing_strategies.html_strategy import HtmlProcessorStrategy
 from app.processing_strategies.pdf_strategy import PdfProcessorStrategy
-from app.utils.error_logger import create_error_logger
 
 logger = get_logger(__name__)
 
@@ -30,7 +29,6 @@ class HackerNewsProcessorStrategy(UrlProcessorStrategy):
 
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
-        self.error_logger = create_error_logger("hackernews_strategy")
         self.settings = get_settings()
         self.hn_api_base = "https://hacker-news.firebaseio.com/v0"
 

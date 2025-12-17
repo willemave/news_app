@@ -24,7 +24,7 @@ from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 from app.utils.dates import parse_date_with_tz
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import log_processing_error
 
 logger = get_logger(__name__)
 
@@ -38,7 +38,6 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
-        self.error_logger = create_error_logger("html_strategy")
         self.settings = get_settings()
 
     def _detect_source(self, url: str) -> str:
@@ -641,7 +640,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             traceback_str = traceback.format_exc()
 
             # Log the error
-            self.error_logger.log_processing_error(
+            log_processing_error(
+                "html_strategy",
                 item_id=url,
                 error=e,
                 operation="html_content_extraction",

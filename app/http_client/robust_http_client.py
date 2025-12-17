@@ -6,7 +6,7 @@ import httpx
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import log_http_error
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -45,7 +45,6 @@ class RobustHttpClient:
         self.default_headers = base_headers
 
         self._client: httpx.Client | None = None
-        self.error_logger = create_error_logger("robust_http_client")
 
     def _get_client(self) -> httpx.Client:
         """Initializes and returns the httpx.Client instance."""
@@ -114,7 +113,8 @@ class RobustHttpClient:
                     )
             return response
         except httpx.HTTPStatusError as e:
-            self.error_logger.log_http_error(
+            log_http_error(
+                "robust_http_client",
                 url=url,
                 response=e.response,
                 error=e,
@@ -126,7 +126,7 @@ class RobustHttpClient:
             )
             raise
         except httpx.RequestError as e:
-            self.error_logger.log_http_error(url=url, error=e, operation="http_get")
+            log_http_error("robust_http_client", url=url, error=e, operation="http_get")
             logger.error(f"Request error for GET {url}: {e}")
             raise
 
@@ -173,7 +173,8 @@ class RobustHttpClient:
                     )
             return response
         except httpx.HTTPStatusError as e:
-            self.error_logger.log_http_error(
+            log_http_error(
+                "robust_http_client",
                 url=url,
                 response=e.response,
                 error=e,
@@ -185,7 +186,7 @@ class RobustHttpClient:
             )
             raise
         except httpx.RequestError as e:
-            self.error_logger.log_http_error(url=url, error=e, operation="http_head")
+            log_http_error("robust_http_client", url=url, error=e, operation="http_head")
             logger.error(f"Request error for HEAD {url}: {e}")
             raise
 

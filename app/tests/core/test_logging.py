@@ -281,21 +281,21 @@ class TestBuildErrorJsonPayload:
         assert "operation" not in payload
 
 
-class TestGenericErrorLoggerIntegration:
-    """Integration tests for GenericErrorLogger with logging system."""
+class TestStandaloneFunctionIntegration:
+    """Integration tests for standalone error logging functions."""
 
     def test_log_error_calls_logger_exception(self):
         """Test that log_error uses logger.exception with extra fields."""
-        from app.utils.error_logger import GenericErrorLogger
+        from app.utils.error_logger import log_error
 
         with patch("app.utils.error_logger.get_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            error_logger = GenericErrorLogger("test_component")
             test_error = ValueError("Test error message")
 
-            error_logger.log_error(
+            log_error(
+                "test_component",
                 error=test_error,
                 operation="test_operation",
                 context={"key": "value"},
@@ -315,16 +315,16 @@ class TestGenericErrorLoggerIntegration:
 
     def test_log_http_error_includes_url_in_context(self):
         """Test that log_http_error includes URL in context."""
-        from app.utils.error_logger import GenericErrorLogger
+        from app.utils.error_logger import log_http_error
 
         with patch("app.utils.error_logger.get_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            error_logger = GenericErrorLogger("http_client")
             test_error = ConnectionError("Connection failed")
 
-            error_logger.log_http_error(
+            log_http_error(
+                "http_client",
                 url="https://example.com/api",
                 error=test_error,
                 operation="fetch",
@@ -338,16 +338,16 @@ class TestGenericErrorLoggerIntegration:
 
     def test_log_processing_error_includes_item_id(self):
         """Test that log_processing_error includes item_id."""
-        from app.utils.error_logger import GenericErrorLogger
+        from app.utils.error_logger import log_processing_error
 
         with patch("app.utils.error_logger.get_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            error_logger = GenericErrorLogger("processor")
             test_error = RuntimeError("Processing failed")
 
-            error_logger.log_processing_error(
+            log_processing_error(
+                "processor",
                 item_id=456,
                 error=test_error,
                 operation="transform",

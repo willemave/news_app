@@ -5,7 +5,7 @@ from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wai
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import log_http_error
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -108,7 +108,6 @@ class HttpService:
             "DNT": "1",
             "Connection": "keep-alive",
         }
-        self.error_logger = create_error_logger("http_service")
 
     def get_client(self, url: str = None) -> httpx.Client:
         """Get an HTTP client with appropriate SSL settings."""
@@ -157,7 +156,8 @@ class HttpService:
                 categorized_error = categorize_http_error(e)
 
                 # Log the error
-                self.error_logger.log_http_error(
+                log_http_error(
+                    "http_service",
                     url=url,
                     response=e.response,
                     error=e,
@@ -172,7 +172,8 @@ class HttpService:
                 # Check if this is an SSL error that shouldn't be retried
                 if is_ssl_error(e):
                     logger.warning(f"SSL error for {url}: {e}")
-                    self.error_logger.log_http_error(
+                    log_http_error(
+                        "http_service",
                         url=url,
                         error=e,
                         operation="http_fetch",
@@ -181,7 +182,8 @@ class HttpService:
                     raise NonRetryableError(f"SSL error: {e}") from e
 
                 # Regular connection errors can be retried
-                self.error_logger.log_http_error(
+                log_http_error(
+                    "http_service",
                     url=url,
                     error=e,
                     operation="http_fetch",
@@ -190,7 +192,7 @@ class HttpService:
                 raise
 
             except Exception as e:
-                self.error_logger.log_http_error(url=url, error=e, operation="http_fetch")
+                log_http_error("http_service", url=url, error=e, operation="http_fetch")
                 raise
 
     def fetch_content(
@@ -237,7 +239,8 @@ class HttpService:
                 categorized_error = categorize_http_error(e)
 
                 # Log the error
-                self.error_logger.log_http_error(
+                log_http_error(
+                    "http_service",
                     url=url,
                     response=e.response,
                     error=e,
@@ -252,7 +255,8 @@ class HttpService:
                 # Check if this is an SSL error that shouldn't be retried
                 if is_ssl_error(e):
                     logger.warning(f"SSL error for {url}: {e}")
-                    self.error_logger.log_http_error(
+                    log_http_error(
+                        "http_service",
                         url=url,
                         error=e,
                         operation="http_fetch",
@@ -261,7 +265,8 @@ class HttpService:
                     raise NonRetryableError(f"SSL error: {e}") from e
 
                 # Regular connection errors can be retried
-                self.error_logger.log_http_error(
+                log_http_error(
+                    "http_service",
                     url=url,
                     error=e,
                     operation="http_fetch",
@@ -270,7 +275,7 @@ class HttpService:
                 raise
 
             except Exception as e:
-                self.error_logger.log_http_error(url=url, error=e, operation="http_fetch")
+                log_http_error("http_service", url=url, error=e, operation="http_fetch")
                 raise
 
 

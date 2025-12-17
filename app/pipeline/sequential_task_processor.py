@@ -15,7 +15,7 @@ from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscrib
 from app.pipeline.worker import ContentWorker, get_llm_service
 from app.scraping.runner import ScraperRunner
 from app.services.queue import QueueService, TaskType
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import log_processing_error
 
 logger = get_logger(__name__)
 
@@ -31,8 +31,6 @@ class SequentialTaskProcessor:
         logger.debug("Shared summarization service initialized")
         self.settings = get_settings()
         logger.debug("Settings loaded")
-        self.error_logger = create_error_logger("summarization")
-        logger.debug("Error logger initialized")
         self.running = True
         self.worker_id = "sequential-processor"
         logger.debug(f"SequentialTaskProcessor initialized with worker_id: {self.worker_id}")
@@ -238,7 +236,8 @@ class SequentialTaskProcessor:
                         content_id,
                         content.url,
                     )
-                    self.error_logger.log_processing_error(
+                    log_processing_error(
+                        "summarization",
                         item_id=content_id,
                         error=ValueError(reason),
                         operation="summarize_task",
@@ -266,7 +265,8 @@ class SequentialTaskProcessor:
                         list(metadata.keys()),
                         content.url,
                     )
-                    self.error_logger.log_processing_error(
+                    log_processing_error(
+                        "summarization",
                         item_id=content_id,
                         error=ValueError(reason),
                         operation="summarize_task",
@@ -330,7 +330,8 @@ class SequentialTaskProcessor:
                         len(text_to_summarize),
                         exc_info=True,
                     )
-                    self.error_logger.log_processing_error(
+                    log_processing_error(
+                        "summarization",
                         item_id=content_id,
                         error=e,
                         operation="llm_summarization",
@@ -404,7 +405,8 @@ class SequentialTaskProcessor:
                     len(text_to_summarize) if text_to_summarize else 0,
                     content.url,
                 )
-                self.error_logger.log_processing_error(
+                log_processing_error(
+                    "summarization",
                     item_id=content_id,
                     error=ValueError(reason),
                     operation="llm_summarization",

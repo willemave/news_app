@@ -14,7 +14,7 @@ from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
 from app.services.queue import TaskType, get_queue_service
 from app.services.whisper_local import get_whisper_local_service
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import log_processing_error
 
 # Resolve project root (two levels up from this file: app/ → project root)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -51,7 +51,6 @@ class PodcastDownloadWorker:
         self.base_dir = settings.podcast_media_dir
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.queue_service = get_queue_service()
-        self.error_logger = create_error_logger("podcast_download_worker")
 
     def _validate_url(self, url: str) -> bool:
         """Validate URL format and basic reachability."""
@@ -277,7 +276,8 @@ class PodcastDownloadWorker:
             logger.error(f"Error downloading podcast {content_id}: {error_msg}")
 
             # Log detailed error information
-            self.error_logger.log_processing_error(
+            log_processing_error(
+                "podcast_download_worker",
                 item_id=content_id,
                 error=e,
                 operation="podcast_download",

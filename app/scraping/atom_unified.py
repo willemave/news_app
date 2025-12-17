@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
-from app.utils.error_logger import create_error_logger, log_scraper_event
+from app.utils.error_logger import log_error, log_feed_error, log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
 
 ENCODING_OVERRIDE_EXCEPTIONS = tuple(
@@ -106,7 +106,6 @@ class AtomScraper(BaseScraper):
 
     def __init__(self, config_path: str | Path | None = None):
         super().__init__("Atom")
-        self.error_logger = create_error_logger("atom_scraper", "logs/errors")
 
     def _load_feeds(self) -> list[dict[str, Any]]:
         """Load active Atom feeds for all users."""
@@ -162,7 +161,8 @@ class AtomScraper(BaseScraper):
                         )
                     else:
                         # Log detailed parsing error
-                        self.error_logger.log_feed_error(
+                        log_feed_error(
+                            "atom_scraper",
                             feed_url=feed_url,
                             error=bozo_exc,
                             feed_name=parsed_feed.feed.get("title", "Unknown Feed"),
@@ -197,8 +197,12 @@ class AtomScraper(BaseScraper):
 
             except Exception as e:
                 # Log comprehensive error details
-                self.error_logger.log_feed_error(
-                    feed_url=feed_url, error=e, feed_name="Unknown Feed", operation="feed_scraping"
+                log_feed_error(
+                    "atom_scraper",
+                    feed_url=feed_url,
+                    error=e,
+                    feed_name="Unknown Feed",
+                    operation="feed_scraping",
                 )
                 logger.error(f"Error scraping feed {feed_url}: {e}", exc_info=True)
 
@@ -220,7 +224,8 @@ class AtomScraper(BaseScraper):
 
         if not link:
             # Log detailed entry error
-            self.error_logger.log_error(
+            log_error(
+                "atom_scraper",
                 error=Exception(f"Missing link for entry: {title}"),
                 operation="entry_processing",
                 context={

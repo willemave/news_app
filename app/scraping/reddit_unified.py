@@ -13,7 +13,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import create_error_logger, log_scraper_event
+from app.utils.error_logger import log_error, log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
 
 logger = get_logger(__name__)
@@ -55,7 +55,6 @@ class RedditUnifiedScraper(BaseScraper):
         super().__init__("Reddit")
         self.config_path = _resolve_reddit_config_path(config_path)
         self.subreddits = self._load_subreddit_config()
-        self.error_logger = create_error_logger("reddit_scraper")
         self._reddit_client: praw.Reddit | None = None
 
     def _load_subreddit_config(self) -> dict[str, int]:
@@ -114,7 +113,8 @@ class RedditUnifiedScraper(BaseScraper):
                 all_items.extend(items)
                 logger.info("Scraped %s items from r/%s", len(items), subreddit_name)
             except prawcore.PrawcoreException as error:
-                self.error_logger.log_error(
+                log_error(
+                    "reddit_scraper",
                     error=error,
                     operation="scrape_subreddit",
                     context={"subreddit": subreddit_name},
@@ -122,7 +122,8 @@ class RedditUnifiedScraper(BaseScraper):
                 logger.error("Error scraping r/%s: %s", subreddit_name, error)
                 continue
             except Exception as error:  # pragma: no cover - defensive
-                self.error_logger.log_error(
+                log_error(
+                    "reddit_scraper",
                     error=error,
                     operation="scrape_subreddit",
                     context={"subreddit": subreddit_name},
@@ -225,7 +226,8 @@ class RedditUnifiedScraper(BaseScraper):
                     break
 
         except prawcore.PrawcoreException as error:
-            self.error_logger.log_error(
+            log_error(
+                "reddit_scraper",
                 error=error,
                 operation="fetch_subreddit",
                 context={"subreddit": subreddit_name},

@@ -12,7 +12,7 @@ from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
-from app.utils.error_logger import create_error_logger, log_scraper_event
+from app.utils.error_logger import log_feed_error, log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
 
 logger = get_logger(__name__)
@@ -50,7 +50,6 @@ class PodcastUnifiedScraper(BaseScraper):
 
     def __init__(self, config_path: str | Path | None = None):
         super().__init__("Podcast")
-        self.error_logger = create_error_logger("podcast_scraper", "logs/errors")
 
     def _load_podcast_feeds(self) -> list[dict[str, Any]]:
         """Load podcast feed URLs from user configs."""
@@ -96,7 +95,8 @@ class PodcastUnifiedScraper(BaseScraper):
                     # Check if it's HTML instead of XML
                     if "is not an xml media type" in exception_str:
                         logger.error(f"Feed {feed_url} returned HTML instead of XML. Skipping.")
-                        self.error_logger.log_feed_error(
+                        log_feed_error(
+                            "podcast_scraper",
                             feed_url=feed_url,
                             error=parsed_feed.bozo_exception,
                             feed_name=feed_name,
@@ -107,7 +107,8 @@ class PodcastUnifiedScraper(BaseScraper):
                     # Check for malformed XML
                     if "not well-formed" in exception_str or "saxparseexception" in exception_str:
                         logger.error(f"Feed {feed_url} contains malformed XML. Skipping.")
-                        self.error_logger.log_feed_error(
+                        log_feed_error(
+                            "podcast_scraper",
                             feed_url=feed_url,
                             error=parsed_feed.bozo_exception,
                             feed_name=feed_name,
@@ -122,7 +123,8 @@ class PodcastUnifiedScraper(BaseScraper):
 
                     # Only log other errors
                     if not is_encoding_issue:
-                        self.error_logger.log_feed_error(
+                        log_feed_error(
+                            "podcast_scraper",
                             feed_url=feed_url,
                             error=parsed_feed.bozo_exception,
                             feed_name=feed_name,
@@ -161,8 +163,12 @@ class PodcastUnifiedScraper(BaseScraper):
 
             except Exception as e:
                 # Log comprehensive error details
-                self.error_logger.log_feed_error(
-                    feed_url=feed_url, error=e, feed_name=feed_name, operation="feed_scraping"
+                log_feed_error(
+                    "podcast_scraper",
+                    feed_url=feed_url,
+                    error=e,
+                    feed_name=feed_name,
+                    operation="feed_scraping",
                 )
                 logger.error(f"Error scraping feed {feed_url}: {e}")
 

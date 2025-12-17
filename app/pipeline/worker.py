@@ -15,7 +15,7 @@ from app.services.http import NonRetryableError, get_http_service
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 from app.services.queue import TaskType, get_queue_service
 from app.utils.dates import parse_date_with_tz
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import log_processing_error
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -36,7 +36,6 @@ class ContentWorker:
         self.strategy_registry = get_strategy_registry()
         self.podcast_download_worker = PodcastDownloadWorker()
         self.podcast_transcribe_worker = PodcastTranscribeWorker()
-        self.error_logger = create_error_logger("content_worker")
 
     def _mark_article_extraction_failure(
         self,
@@ -119,7 +118,8 @@ class ContentWorker:
             return success
 
         except Exception as e:
-            self.error_logger.log_processing_error(
+            log_processing_error(
+                "content_worker",
                 item_id=str(content_id),
                 error=e,
                 operation="process_content",
@@ -338,7 +338,8 @@ class ContentWorker:
             return True
 
         except Exception as e:
-            self.error_logger.log_processing_error(
+            log_processing_error(
+                "content_worker",
                 item_id=str(content.id),
                 error=e,
                 operation="process_article",
@@ -417,7 +418,8 @@ class ContentWorker:
             return True
 
         except Exception as e:
-            self.error_logger.log_processing_error(
+            log_processing_error(
+                "content_worker",
                 item_id=str(content.id),
                 error=e,
                 operation="process_podcast",

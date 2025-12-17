@@ -1,5 +1,4 @@
 from app.core.settings import Settings, get_settings
-from app.utils.error_logger import create_error_logger
 
 
 def test_settings_default_directories(monkeypatch, tmp_path):
@@ -18,8 +17,8 @@ def test_settings_default_directories(monkeypatch, tmp_path):
     assert settings.logs_dir == (tmp_path / "logs").resolve()
 
 
-def test_error_logger_respects_configured_logs_dir(monkeypatch, tmp_path):
-    """Ensure the error logger writes files to the configured logs directory."""
+def test_logs_dir_from_settings(monkeypatch, tmp_path):
+    """Ensure logs_dir setting is correctly resolved."""
 
     log_root = tmp_path / "custom_logs"
     monkeypatch.setenv("DATABASE_URL", "sqlite:///tmp.db")
@@ -29,11 +28,8 @@ def test_error_logger_respects_configured_logs_dir(monkeypatch, tmp_path):
 
     get_settings.cache_clear()
     try:
-        logger = create_error_logger("test_component")
-        expected_dir = (log_root / "errors").resolve()
-
-        assert logger.log_dir == expected_dir
-        assert logger.log_dir.exists()
-        assert logger.log_file.parent == expected_dir
+        settings = get_settings()
+        expected_dir = log_root.resolve()
+        assert settings.logs_dir == expected_dir
     finally:
         get_settings.cache_clear()

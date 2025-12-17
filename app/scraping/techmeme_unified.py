@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, HttpUrl, ValidationError
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import log_error, log_feed_error
 
 logger = get_logger(__name__)
 
@@ -81,7 +81,6 @@ class TechmemeScraper(BaseScraper):
             resolved_path = PROJECT_ROOT / resolved_path
         self.config_path = resolved_path
         self.settings = load_techmeme_config(resolved_path)
-        self.error_logger = create_error_logger("techmeme_scraper", "logs/errors")
 
     def scrape(self) -> list[dict[str, Any]]:
         """Scrape Techmeme feed entries and normalize into aggregator items."""
@@ -92,7 +91,8 @@ class TechmemeScraper(BaseScraper):
         try:
             parsed_feed = feedparser.parse(str(feed_settings.url))
         except Exception as exc:  # pragma: no cover - network failure guard
-            self.error_logger.log_feed_error(
+            log_feed_error(
+                "techmeme_scraper",
                 feed_url=str(feed_settings.url),
                 error=exc,
                 feed_name="Techmeme",
@@ -104,7 +104,8 @@ class TechmemeScraper(BaseScraper):
         if getattr(parsed_feed, "bozo", 0):
             bozo_exc = getattr(parsed_feed, "bozo_exception", None)
             if bozo_exc and not isinstance(bozo_exc, ENCODING_OVERRIDE_EXCEPTIONS):
-                self.error_logger.log_feed_error(
+                log_feed_error(
+                    "techmeme_scraper",
                     feed_url=str(feed_settings.url),
                     error=bozo_exc,
                     feed_name=getattr(parsed_feed.feed, "title", "Techmeme"),
@@ -121,7 +122,8 @@ class TechmemeScraper(BaseScraper):
             try:
                 item = self._process_entry(entry, feed_settings, feed_title)
             except Exception as exc:  # pragma: no cover - defensive logging
-                self.error_logger.log_error(
+                log_error(
+                    "techmeme_scraper",
                     error=exc,
                     operation="entry_processing",
                     context={

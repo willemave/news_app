@@ -11,10 +11,9 @@ from app.models.metadata import ContentQuote, ContentType, NewsSummary, Structur
 from app.services.llm_agents import get_summarization_agent
 from app.services.llm_models import resolve_model
 from app.services.llm_prompts import generate_summary_prompt
-from app.utils.error_logger import GenericErrorLogger
+from app.utils.error_logger import log_processing_error
 
 logger = get_logger(__name__)
-error_logger = GenericErrorLogger("llm_summarization")
 
 MAX_SUMMARIZATION_PAYLOAD_CHARS = 220_000
 FALLBACK_SUMMARIZATION_PAYLOAD_CHARS = 120_000
@@ -284,7 +283,8 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
             request.content_type,
             len(request.content) if request.content else 0,
         )
-        error_logger.log_processing_error(
+        log_processing_error(
+            "llm_summarization",
             item_id=item_id,
             error=error,
             operation="summarization",

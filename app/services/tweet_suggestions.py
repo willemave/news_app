@@ -18,12 +18,11 @@ from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_prompts import get_tweet_generation_prompt
-from app.utils.error_logger import GenericErrorLogger
+from app.utils.error_logger import log_processing_error
 from app.utils.json_repair import try_repair_truncated_json
 
 logger = get_logger(__name__)
 settings = get_settings()
-error_logger = GenericErrorLogger("tweet_suggestions")
 
 # Model for tweet generation
 TWEET_MODEL = TWEET_SUGGESTION_MODEL
@@ -245,7 +244,8 @@ def _parse_suggestions_response(raw_response: str) -> list[dict[str, Any]] | Non
 
     except Exception as e:
         logger.error("Failed to parse tweet suggestions: %s", e)
-        error_logger.log_processing_error(
+        log_processing_error(
+            "tweet_suggestions",
             item_id="unknown",
             error=e,
             operation="parse_tweet_suggestions",
@@ -305,7 +305,8 @@ def _log_generation_failure(retry_state: RetryCallState) -> None:
         error,
     )
     if error:
-        error_logger.log_processing_error(
+        log_processing_error(
+            "tweet_suggestions",
             item_id=str(content_id),
             error=error,
             operation="tweet_generation_failure",

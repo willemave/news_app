@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import create_error_logger
+from app.utils.error_logger import log_error
 
 try:  # pragma: no cover - import guard for optional dependency in tests
     import yt_dlp  # type: ignore
@@ -176,7 +176,6 @@ class YouTubeUnifiedScraper(BaseScraper):
 
         self.channels = channels or discovered_channels
         self.client_config = client_config or discovered_client
-        self.error_logger = create_error_logger("youtube_scraper")
 
         cookies_path = self.client_config.resolved_cookies_path()
         if cookies_path and cookies_path.exists():
@@ -275,7 +274,8 @@ class YouTubeUnifiedScraper(BaseScraper):
         try:
             entries = self._extract_channel_entries(channel)
         except Exception as exc:  # pragma: no cover - safety net
-            self.error_logger.log_error(
+            log_error(
+                "youtube_scraper",
                 error=exc,
                 operation="channel_listing",
                 context={"channel": channel.name, "target_url": channel.target_url},
@@ -304,7 +304,8 @@ class YouTubeUnifiedScraper(BaseScraper):
                     self._throttle_if_needed(idx)
                     video_info = self._extract_video_info(video_url)
                 except Exception as exc:  # pragma: no cover - yt-dlp errors hard to replicate
-                    self.error_logger.log_error(
+                    log_error(
+                        "youtube_scraper",
                         error=exc,
                         operation="video_metadata",
                         context={"channel": channel.name, "video_url": video_url},
