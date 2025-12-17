@@ -12,7 +12,7 @@ from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
-from app.utils.error_logger import log_feed_error, log_scraper_event
+from app.utils.error_logger import log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
 
 logger = get_logger(__name__)
@@ -94,25 +94,27 @@ class PodcastUnifiedScraper(BaseScraper):
 
                     # Check if it's HTML instead of XML
                     if "is not an xml media type" in exception_str:
-                        logger.error(f"Feed {feed_url} returned HTML instead of XML. Skipping.")
-                        log_feed_error(
-                            "podcast_scraper",
-                            feed_url=feed_url,
-                            error=parsed_feed.bozo_exception,
-                            feed_name=feed_name,
-                            operation="feed_parsing",
+                        logger.error(
+                            "Feed %s returned HTML instead of XML. Skipping.",
+                            feed_url,
+                            extra={
+                                "component": "podcast_scraper",
+                                "operation": "feed_parsing",
+                                "context_data": {"feed_url": feed_url, "feed_name": feed_name},
+                            },
                         )
                         continue
 
                     # Check for malformed XML
                     if "not well-formed" in exception_str or "saxparseexception" in exception_str:
-                        logger.error(f"Feed {feed_url} contains malformed XML. Skipping.")
-                        log_feed_error(
-                            "podcast_scraper",
-                            feed_url=feed_url,
-                            error=parsed_feed.bozo_exception,
-                            feed_name=feed_name,
-                            operation="feed_parsing",
+                        logger.error(
+                            "Feed %s contains malformed XML. Skipping.",
+                            feed_url,
+                            extra={
+                                "component": "podcast_scraper",
+                                "operation": "feed_parsing",
+                                "context_data": {"feed_url": feed_url, "feed_name": feed_name},
+                            },
                         )
                         continue
 
@@ -123,15 +125,15 @@ class PodcastUnifiedScraper(BaseScraper):
 
                     # Only log other errors
                     if not is_encoding_issue:
-                        log_feed_error(
-                            "podcast_scraper",
-                            feed_url=feed_url,
-                            error=parsed_feed.bozo_exception,
-                            feed_name=feed_name,
-                            operation="feed_parsing",
-                        )
                         logger.warning(
-                            f"Feed {feed_url} may be ill-formed: {parsed_feed.bozo_exception}"
+                            "Feed %s may be ill-formed: %s",
+                            feed_url,
+                            parsed_feed.bozo_exception,
+                            extra={
+                                "component": "podcast_scraper",
+                                "operation": "feed_parsing",
+                                "context_data": {"feed_url": feed_url, "feed_name": feed_name},
+                            },
                         )
                     else:
                         logger.debug(
@@ -163,14 +165,16 @@ class PodcastUnifiedScraper(BaseScraper):
 
             except Exception as e:
                 # Log comprehensive error details
-                log_feed_error(
-                    "podcast_scraper",
-                    feed_url=feed_url,
-                    error=e,
-                    feed_name=feed_name,
-                    operation="feed_scraping",
+                logger.exception(
+                    "Error scraping feed %s: %s",
+                    feed_url,
+                    e,
+                    extra={
+                        "component": "podcast_scraper",
+                        "operation": "feed_scraping",
+                        "context_data": {"feed_url": feed_url, "feed_name": feed_name},
+                    },
                 )
-                logger.error(f"Error scraping feed {feed_url}: {e}")
 
         logger.info(f"Podcast scraping completed. Processed {len(items)} total items")
         return items

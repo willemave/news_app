@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
-from app.utils.error_logger import log_error, log_feed_error, log_scraper_event
+from app.utils.error_logger import log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
 
 ENCODING_OVERRIDE_EXCEPTIONS = tuple(
@@ -161,14 +161,19 @@ class AtomScraper(BaseScraper):
                         )
                     else:
                         # Log detailed parsing error
-                        log_feed_error(
-                            "atom_scraper",
-                            feed_url=feed_url,
-                            error=bozo_exc,
-                            feed_name=parsed_feed.feed.get("title", "Unknown Feed"),
-                            operation="feed_parsing",
+                        logger.warning(
+                            "Feed %s may be ill-formed: %s",
+                            feed_url,
+                            bozo_exc,
+                            extra={
+                                "component": "atom_scraper",
+                                "operation": "feed_parsing",
+                                "context_data": {
+                                    "feed_url": feed_url,
+                                    "feed_name": parsed_feed.feed.get("title", "Unknown Feed"),
+                                },
+                            },
                         )
-                        logger.warning("Feed %s may be ill-formed: %s", feed_url, bozo_exc)
 
                 # Extract feed name and description
                 feed_name = parsed_feed.feed.get("title", "Unknown Feed")
@@ -197,14 +202,16 @@ class AtomScraper(BaseScraper):
 
             except Exception as e:
                 # Log comprehensive error details
-                log_feed_error(
-                    "atom_scraper",
-                    feed_url=feed_url,
-                    error=e,
-                    feed_name="Unknown Feed",
-                    operation="feed_scraping",
+                logger.exception(
+                    "Error scraping feed %s: %s",
+                    feed_url,
+                    e,
+                    extra={
+                        "component": "atom_scraper",
+                        "operation": "feed_scraping",
+                        "context_data": {"feed_url": feed_url, "feed_name": "Unknown Feed"},
+                    },
                 )
-                logger.error(f"Error scraping feed {feed_url}: {e}", exc_info=True)
 
         logger.info(f"Atom scraping completed. Processed {len(items)} total items")
         return items
@@ -224,19 +231,22 @@ class AtomScraper(BaseScraper):
 
         if not link:
             # Log detailed entry error
-            log_error(
-                "atom_scraper",
-                error=Exception(f"Missing link for entry: {title}"),
-                operation="entry_processing",
-                context={
-                    "feed_url": feed_url,
-                    "feed_name": feed_name,
-                    "entry_title": title,
-                    "entry_id": entry.get("id"),
-                    "error_type": "missing_link",
+            logger.warning(
+                "Skipping entry with no link in feed %s: %s",
+                feed_name,
+                title,
+                extra={
+                    "component": "atom_scraper",
+                    "operation": "entry_processing",
+                    "context_data": {
+                        "feed_url": feed_url,
+                        "feed_name": feed_name,
+                        "entry_title": title,
+                        "entry_id": entry.get("id"),
+                        "error_type": "missing_link",
+                    },
                 },
             )
-            logger.warning(f"Skipping entry with no link in feed {feed_name}: {title}")
             return None
 
         # Extract content from Atom entry

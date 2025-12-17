@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import log_error
 
 try:  # pragma: no cover - import guard for optional dependency in tests
     import yt_dlp  # type: ignore
@@ -274,11 +273,15 @@ class YouTubeUnifiedScraper(BaseScraper):
         try:
             entries = self._extract_channel_entries(channel)
         except Exception as exc:  # pragma: no cover - safety net
-            log_error(
-                "youtube_scraper",
-                error=exc,
-                operation="channel_listing",
-                context={"channel": channel.name, "target_url": channel.target_url},
+            logger.exception(
+                "Error listing channel %s: %s",
+                channel.name,
+                exc,
+                extra={
+                    "component": "youtube_scraper",
+                    "operation": "channel_listing",
+                    "context_data": {"channel": channel.name, "target_url": channel.target_url},
+                },
             )
             return []
 
@@ -304,11 +307,15 @@ class YouTubeUnifiedScraper(BaseScraper):
                     self._throttle_if_needed(idx)
                     video_info = self._extract_video_info(video_url)
                 except Exception as exc:  # pragma: no cover - yt-dlp errors hard to replicate
-                    log_error(
-                        "youtube_scraper",
-                        error=exc,
-                        operation="video_metadata",
-                        context={"channel": channel.name, "video_url": video_url},
+                    logger.exception(
+                        "Error extracting video metadata for %s: %s",
+                        video_url,
+                        exc,
+                        extra={
+                            "component": "youtube_scraper",
+                            "operation": "video_metadata",
+                            "context_data": {"channel": channel.name, "video_url": video_url},
+                        },
                     )
                     continue
 

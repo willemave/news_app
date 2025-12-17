@@ -6,7 +6,6 @@ import httpx
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.utils.error_logger import log_http_error
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -113,21 +112,29 @@ class RobustHttpClient:
                     )
             return response
         except httpx.HTTPStatusError as e:
-            log_http_error(
-                "robust_http_client",
-                url=url,
-                response=e.response,
-                error=e,
-                operation="http_get",
-                context={"status_code": e.response.status_code},
-            )
             logger.error(
-                f"HTTP error {e.response.status_code} for GET {url}: {e.response.text[:200]}"
+                "HTTP error %s for GET %s: %s",
+                e.response.status_code,
+                url,
+                e.response.text[:200],
+                extra={
+                    "component": "robust_http_client",
+                    "operation": "http_get",
+                    "context_data": {"url": url, "status_code": e.response.status_code},
+                },
             )
             raise
         except httpx.RequestError as e:
-            log_http_error("robust_http_client", url=url, error=e, operation="http_get")
-            logger.error(f"Request error for GET {url}: {e}")
+            logger.exception(
+                "Request error for GET %s: %s",
+                url,
+                e,
+                extra={
+                    "component": "robust_http_client",
+                    "operation": "http_get",
+                    "context_data": {"url": url},
+                },
+            )
             raise
 
     def head(
@@ -173,21 +180,29 @@ class RobustHttpClient:
                     )
             return response
         except httpx.HTTPStatusError as e:
-            log_http_error(
-                "robust_http_client",
-                url=url,
-                response=e.response,
-                error=e,
-                operation="http_head",
-                context={"status_code": e.response.status_code},
-            )
             logger.error(
-                f"HTTP error {e.response.status_code} for HEAD {url}: {e.response.text[:200]}"
+                "HTTP error %s for HEAD %s: %s",
+                e.response.status_code,
+                url,
+                e.response.text[:200],
+                extra={
+                    "component": "robust_http_client",
+                    "operation": "http_head",
+                    "context_data": {"url": url, "status_code": e.response.status_code},
+                },
             )
             raise
         except httpx.RequestError as e:
-            log_http_error("robust_http_client", url=url, error=e, operation="http_head")
-            logger.error(f"Request error for HEAD {url}: {e}")
+            logger.exception(
+                "Request error for HEAD %s: %s",
+                url,
+                e,
+                extra={
+                    "component": "robust_http_client",
+                    "operation": "http_head",
+                    "context_data": {"url": url},
+                },
+            )
             raise
 
     def close(self) -> None:

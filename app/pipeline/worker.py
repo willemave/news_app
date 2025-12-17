@@ -15,7 +15,6 @@ from app.services.http import NonRetryableError, get_http_service
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 from app.services.queue import TaskType, get_queue_service
 from app.utils.dates import parse_date_with_tz
-from app.utils.error_logger import log_processing_error
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -118,17 +117,17 @@ class ContentWorker:
             return success
 
         except Exception as e:
-            log_processing_error(
-                "content_worker",
-                item_id=str(content_id),
-                error=e,
-                operation="process_content",
-                context={
-                    "worker_id": worker_id,
-                    "content_id": content_id,
+            logger.exception(
+                "Error processing content %s: %s",
+                content_id,
+                e,
+                extra={
+                    "component": "content_worker",
+                    "operation": "process_content",
+                    "item_id": str(content_id),
+                    "context_data": {"worker_id": worker_id, "content_id": content_id},
                 },
             )
-            logger.error(f"Error processing content {content_id}: {e}")
             return False
 
     def _process_article(self, content: ContentData) -> bool:
@@ -338,17 +337,20 @@ class ContentWorker:
             return True
 
         except Exception as e:
-            log_processing_error(
-                "content_worker",
-                item_id=str(content.id),
-                error=e,
-                operation="process_article",
-                context={
-                    "url": str(content.url),
-                    "content_type": content.content_type.value,
+            logger.exception(
+                "Error processing article %s: %s",
+                content.url,
+                e,
+                extra={
+                    "component": "content_worker",
+                    "operation": "process_article",
+                    "item_id": str(content.id),
+                    "context_data": {
+                        "url": str(content.url),
+                        "content_type": content.content_type.value,
+                    },
                 },
             )
-            logger.error(f"Error processing article {content.url}: {e}")
             return False
 
     def _resolve_article_url(self, content: ContentData) -> str:
@@ -418,17 +420,20 @@ class ContentWorker:
             return True
 
         except Exception as e:
-            log_processing_error(
-                "content_worker",
-                item_id=str(content.id),
-                error=e,
-                operation="process_podcast",
-                context={
-                    "url": str(content.url),
-                    "content_type": content.content_type.value,
+            logger.exception(
+                "Error processing podcast %s: %s",
+                content.url,
+                e,
+                extra={
+                    "component": "content_worker",
+                    "operation": "process_podcast",
+                    "item_id": str(content.id),
+                    "context_data": {
+                        "url": str(content.url),
+                        "content_type": content.content_type.value,
+                    },
                 },
             )
-            logger.error(f"Error processing podcast {content.url}: {e}")
             return False
 
     def _process_podcast_sync(self, content: ContentData) -> bool:

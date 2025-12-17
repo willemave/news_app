@@ -24,7 +24,6 @@ from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 from app.utils.dates import parse_date_with_tz
-from app.utils.error_logger import log_processing_error
 
 logger = get_logger(__name__)
 
@@ -640,23 +639,21 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             traceback_str = traceback.format_exc()
 
             # Log the error
-            log_processing_error(
-                "html_strategy",
-                item_id=url,
-                error=e,
-                operation="html_content_extraction",
-                context={
-                    "url": url,
-                    "strategy": "html",
-                    "source": source,
-                    "method": "crawl4ai",
-                    "traceback": traceback_str,
-                },
-            )
-            logger.error(
-                "HtmlStrategy: %s\nTraceback: %s",
+            logger.exception(
+                "HtmlStrategy: %s",
                 error_msg,
-                traceback_str,
+                extra={
+                    "component": "html_strategy",
+                    "operation": "html_content_extraction",
+                    "item_id": url,
+                    "context_data": {
+                        "url": url,
+                        "strategy": "html",
+                        "source": source,
+                        "method": "crawl4ai",
+                        "traceback": traceback_str,
+                    },
+                },
             )
 
             # Check if this is a non-retryable error

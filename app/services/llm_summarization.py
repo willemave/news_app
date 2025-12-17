@@ -11,7 +11,6 @@ from app.models.metadata import ContentQuote, ContentType, NewsSummary, Structur
 from app.services.llm_agents import get_summarization_agent
 from app.services.llm_models import resolve_model
 from app.services.llm_prompts import generate_summary_prompt
-from app.utils.error_logger import log_processing_error
 
 logger = get_logger(__name__)
 
@@ -274,7 +273,7 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
         return _finalize_summary(summary, request.content_type)
     except Exception as error:  # noqa: BLE001
         item_id = str(request.content_id or "unknown")
-        logger.error(
+        logger.exception(
             "MISSING_SUMMARY: Summarization failed for content %s: %s. "
             "Model: %s, Content type: %s, Payload length: %s",
             item_id,
@@ -282,16 +281,15 @@ def summarize_content(request: SummarizationRequest) -> StructuredSummary | News
             request.model_spec,
             request.content_type,
             len(request.content) if request.content else 0,
-        )
-        log_processing_error(
-            "llm_summarization",
-            item_id=item_id,
-            error=error,
-            operation="summarization",
-            context={
-                "model_spec": request.model_spec,
-                "content_type": str(request.content_type),
-                "payload_length": len(request.content) if request.content else 0,
+            extra={
+                "component": "llm_summarization",
+                "operation": "summarization",
+                "item_id": item_id,
+                "context_data": {
+                    "model_spec": request.model_spec,
+                    "content_type": str(request.content_type),
+                    "payload_length": len(request.content) if request.content else 0,
+                },
             },
         )
         return None

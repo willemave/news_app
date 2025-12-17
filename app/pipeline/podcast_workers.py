@@ -14,7 +14,6 @@ from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
 from app.services.queue import TaskType, get_queue_service
 from app.services.whisper_local import get_whisper_local_service
-from app.utils.error_logger import log_processing_error
 
 # Resolve project root (two levels up from this file: app/ → project root)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -273,18 +272,19 @@ class PodcastDownloadWorker:
 
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Error downloading podcast {content_id}: {error_msg}")
-
-            # Log detailed error information
-            log_processing_error(
-                "podcast_download_worker",
-                item_id=content_id,
-                error=e,
-                operation="podcast_download",
-                context={
-                    "audio_url": audio_url if "audio_url" in locals() else None,
-                    "file_path": str(file_path) if file_path else None,
-                    "error_type": type(e).__name__,
+            logger.exception(
+                "Error downloading podcast %s: %s",
+                content_id,
+                error_msg,
+                extra={
+                    "component": "podcast_download_worker",
+                    "operation": "podcast_download",
+                    "item_id": content_id,
+                    "context_data": {
+                        "audio_url": audio_url if "audio_url" in locals() else None,
+                        "file_path": str(file_path) if file_path else None,
+                        "error_type": type(e).__name__,
+                    },
                 },
             )
 

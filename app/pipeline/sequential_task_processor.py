@@ -15,7 +15,6 @@ from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscrib
 from app.pipeline.worker import ContentWorker, get_llm_service
 from app.scraping.runner import ScraperRunner
 from app.services.queue import QueueService, TaskType
-from app.utils.error_logger import log_processing_error
 
 logger = get_logger(__name__)
 
@@ -235,16 +234,15 @@ class SequentialTaskProcessor:
                         reason,
                         content_id,
                         content.url,
-                    )
-                    log_processing_error(
-                        "summarization",
-                        item_id=content_id,
-                        error=ValueError(reason),
-                        operation="summarize_task",
-                        context={
-                            "content_type": content.content_type,
-                            "url": str(content.url),
-                            "title": content.title,
+                        extra={
+                            "component": "summarization",
+                            "operation": "summarize_task",
+                            "item_id": content_id,
+                            "context_data": {
+                                "content_type": content.content_type,
+                                "url": str(content.url),
+                                "title": content.title,
+                            },
                         },
                     )
                     _persist_failure(reason)
@@ -264,18 +262,17 @@ class SequentialTaskProcessor:
                         expected_field,
                         list(metadata.keys()),
                         content.url,
-                    )
-                    log_processing_error(
-                        "summarization",
-                        item_id=content_id,
-                        error=ValueError(reason),
-                        operation="summarize_task",
-                        context={
-                            "content_type": content.content_type,
-                            "expected_field": expected_field,
-                            "metadata_keys": list(metadata.keys()),
-                            "url": str(content.url),
-                            "title": content.title,
+                        extra={
+                            "component": "summarization",
+                            "operation": "summarize_task",
+                            "item_id": content_id,
+                            "context_data": {
+                                "content_type": content.content_type,
+                                "expected_field": expected_field,
+                                "metadata_keys": list(metadata.keys()),
+                                "url": str(content.url),
+                                "title": content.title,
+                            },
                         },
                     )
                     _persist_failure(reason)
@@ -320,7 +317,7 @@ class SequentialTaskProcessor:
                         provider_override=provider_override,
                     )
                 except Exception as e:  # noqa: BLE001
-                    logger.error(
+                    logger.exception(
                         "SUMMARIZE_TASK_ERROR: LLM call failed for content %s (%s). "
                         "Error: %s, URL: %s, text_length: %d",
                         content_id,
@@ -328,20 +325,18 @@ class SequentialTaskProcessor:
                         str(e),
                         content.url,
                         len(text_to_summarize),
-                        exc_info=True,
-                    )
-                    log_processing_error(
-                        "summarization",
-                        item_id=content_id,
-                        error=e,
-                        operation="llm_summarization",
-                        context={
-                            "content_type": content.content_type,
-                            "summarization_type": summarization_type,
-                            "provider": provider_override or "default",
-                            "text_length": len(text_to_summarize),
-                            "url": str(content.url),
-                            "title": content.title,
+                        extra={
+                            "component": "summarization",
+                            "operation": "llm_summarization",
+                            "item_id": content_id,
+                            "context_data": {
+                                "content_type": content.content_type,
+                                "summarization_type": summarization_type,
+                                "provider": provider_override or "default",
+                                "text_length": len(text_to_summarize),
+                                "url": str(content.url),
+                                "title": content.title,
+                            },
                         },
                     )
                     _persist_failure(f"Summarization error: {e}")
@@ -404,19 +399,18 @@ class SequentialTaskProcessor:
                     content.title,
                     len(text_to_summarize) if text_to_summarize else 0,
                     content.url,
-                )
-                log_processing_error(
-                    "summarization",
-                    item_id=content_id,
-                    error=ValueError(reason),
-                    operation="llm_summarization",
-                    context={
-                        "content_type": content.content_type,
-                        "summarization_type": summarization_type,
-                        "provider": provider_override or "default",
-                        "text_length": len(text_to_summarize) if text_to_summarize else 0,
-                        "url": str(content.url),
-                        "title": content.title,
+                    extra={
+                        "component": "summarization",
+                        "operation": "llm_summarization",
+                        "item_id": content_id,
+                        "context_data": {
+                            "content_type": content.content_type,
+                            "summarization_type": summarization_type,
+                            "provider": provider_override or "default",
+                            "text_length": len(text_to_summarize) if text_to_summarize else 0,
+                            "url": str(content.url),
+                            "title": content.title,
+                        },
                     },
                 )
                 _persist_failure(reason)

@@ -18,7 +18,6 @@ from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_prompts import get_tweet_generation_prompt
-from app.utils.error_logger import log_processing_error
 from app.utils.json_repair import try_repair_truncated_json
 
 logger = get_logger(__name__)
@@ -243,13 +242,15 @@ def _parse_suggestions_response(raw_response: str) -> list[dict[str, Any]] | Non
         return suggestions
 
     except Exception as e:
-        logger.error("Failed to parse tweet suggestions: %s", e)
-        log_processing_error(
-            "tweet_suggestions",
-            item_id="unknown",
-            error=e,
-            operation="parse_tweet_suggestions",
-            context={"raw_response": raw_response[:500]},
+        logger.exception(
+            "Failed to parse tweet suggestions: %s",
+            e,
+            extra={
+                "component": "tweet_suggestions",
+                "operation": "parse_tweet_suggestions",
+                "item_id": "unknown",
+                "context_data": {"raw_response": raw_response[:500]},
+            },
         )
         return None
 
@@ -298,19 +299,24 @@ def _log_generation_failure(retry_state: RetryCallState) -> None:
         creativity = retry_state.args[3]
 
     error = retry_state.outcome.exception() if retry_state.outcome else None
-    logger.error(
-        "Tweet generation failed after %d attempts | content_id=%s error=%s",
-        retry_state.attempt_number,
-        content_id,
-        error,
-    )
     if error:
-        log_processing_error(
-            "tweet_suggestions",
-            item_id=str(content_id),
-            error=error,
-            operation="tweet_generation_failure",
-            context={"creativity": creativity},
+        logger.exception(
+            "Tweet generation failed after %d attempts | content_id=%s error=%s",
+            retry_state.attempt_number,
+            content_id,
+            error,
+            extra={
+                "component": "tweet_suggestions",
+                "operation": "tweet_generation_failure",
+                "item_id": str(content_id),
+                "context_data": {"creativity": creativity},
+            },
+        )
+    else:
+        logger.error(
+            "Tweet generation failed after %d attempts | content_id=%s",
+            retry_state.attempt_number,
+            content_id,
         )
     return None
 

@@ -15,7 +15,6 @@ from pydantic import BaseModel, Field, HttpUrl, ValidationError
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import log_error, log_feed_error
 
 logger = get_logger(__name__)
 
@@ -91,27 +90,32 @@ class TechmemeScraper(BaseScraper):
         try:
             parsed_feed = feedparser.parse(str(feed_settings.url))
         except Exception as exc:  # pragma: no cover - network failure guard
-            log_feed_error(
-                "techmeme_scraper",
-                feed_url=str(feed_settings.url),
-                error=exc,
-                feed_name="Techmeme",
-                operation="feed_fetch",
+            logger.exception(
+                "Failed to fetch Techmeme feed: %s",
+                exc,
+                extra={
+                    "component": "techmeme_scraper",
+                    "operation": "feed_fetch",
+                    "context_data": {"feed_url": str(feed_settings.url), "feed_name": "Techmeme"},
+                },
             )
-            logger.error("Failed to fetch Techmeme feed: %s", exc, exc_info=True)
             return items
 
         if getattr(parsed_feed, "bozo", 0):
             bozo_exc = getattr(parsed_feed, "bozo_exception", None)
             if bozo_exc and not isinstance(bozo_exc, ENCODING_OVERRIDE_EXCEPTIONS):
-                log_feed_error(
-                    "techmeme_scraper",
-                    feed_url=str(feed_settings.url),
-                    error=bozo_exc,
-                    feed_name=getattr(parsed_feed.feed, "title", "Techmeme"),
-                    operation="feed_parsing",
+                logger.warning(
+                    "Techmeme feed reported parsing issues: %s",
+                    bozo_exc,
+                    extra={
+                        "component": "techmeme_scraper",
+                        "operation": "feed_parsing",
+                        "context_data": {
+                            "feed_url": str(feed_settings.url),
+                            "feed_name": getattr(parsed_feed.feed, "title", "Techmeme"),
+                        },
+                    },
                 )
-                logger.warning("Techmeme feed reported parsing issues: %s", bozo_exc)
             else:
                 logger.debug("Techmeme feed encoding warning ignored: %s", bozo_exc)
 
@@ -122,18 +126,19 @@ class TechmemeScraper(BaseScraper):
             try:
                 item = self._process_entry(entry, feed_settings, feed_title)
             except Exception as exc:  # pragma: no cover - defensive logging
-                log_error(
-                    "techmeme_scraper",
-                    error=exc,
-                    operation="entry_processing",
-                    context={
-                        "feed_url": str(feed_settings.url),
-                        "entry_id": entry.get("id"),
-                        "entry_title": entry.get("title"),
+                logger.exception(
+                    "Error processing Techmeme entry %s: %s",
+                    entry.get("id"),
+                    exc,
+                    extra={
+                        "component": "techmeme_scraper",
+                        "operation": "entry_processing",
+                        "context_data": {
+                            "feed_url": str(feed_settings.url),
+                            "entry_id": entry.get("id"),
+                            "entry_title": entry.get("title"),
+                        },
                     },
-                )
-                logger.error(
-                    "Error processing Techmeme entry %s: %s", entry.get("id"), exc, exc_info=True
                 )
                 continue
 

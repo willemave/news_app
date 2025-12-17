@@ -5,7 +5,6 @@ from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wai
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.utils.error_logger import log_http_error
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -156,13 +155,15 @@ class HttpService:
                 categorized_error = categorize_http_error(e)
 
                 # Log the error
-                log_http_error(
-                    "http_service",
-                    url=url,
-                    response=e.response,
-                    error=e,
-                    operation="http_fetch",
-                    context={"status_code": e.response.status_code},
+                logger.error(
+                    "HTTP error %s for %s",
+                    e.response.status_code,
+                    url,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_fetch",
+                        "context_data": {"url": url, "status_code": e.response.status_code},
+                    },
                 )
 
                 # Raise categorized error (may be NonRetryableError)
@@ -171,28 +172,42 @@ class HttpService:
             except httpx.ConnectError as e:
                 # Check if this is an SSL error that shouldn't be retried
                 if is_ssl_error(e):
-                    logger.warning(f"SSL error for {url}: {e}")
-                    log_http_error(
-                        "http_service",
-                        url=url,
-                        error=e,
-                        operation="http_fetch",
-                        context={"error_type": "ssl_error"},
+                    logger.warning(
+                        "SSL error for %s: %s",
+                        url,
+                        e,
+                        extra={
+                            "component": "http_service",
+                            "operation": "http_fetch",
+                            "context_data": {"url": url, "error_type": "ssl_error"},
+                        },
                     )
                     raise NonRetryableError(f"SSL error: {e}") from e
 
                 # Regular connection errors can be retried
-                log_http_error(
-                    "http_service",
-                    url=url,
-                    error=e,
-                    operation="http_fetch",
-                    context={"error_type": "connection_error"},
+                logger.exception(
+                    "Connection error for %s: %s",
+                    url,
+                    e,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_fetch",
+                        "context_data": {"url": url, "error_type": "connection_error"},
+                    },
                 )
                 raise
 
             except Exception as e:
-                log_http_error("http_service", url=url, error=e, operation="http_fetch")
+                logger.exception(
+                    "HTTP fetch error for %s: %s",
+                    url,
+                    e,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_fetch",
+                        "context_data": {"url": url},
+                    },
+                )
                 raise
 
     def fetch_content(
@@ -239,13 +254,15 @@ class HttpService:
                 categorized_error = categorize_http_error(e)
 
                 # Log the error
-                log_http_error(
-                    "http_service",
-                    url=url,
-                    response=e.response,
-                    error=e,
-                    operation="http_fetch",
-                    context={"status_code": e.response.status_code},
+                logger.error(
+                    "HTTP error %s for %s",
+                    e.response.status_code,
+                    url,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_fetch",
+                        "context_data": {"url": url, "status_code": e.response.status_code},
+                    },
                 )
 
                 # Raise categorized error (may be NonRetryableError)
@@ -254,28 +271,42 @@ class HttpService:
             except httpx.ConnectError as e:
                 # Check if this is an SSL error that shouldn't be retried
                 if is_ssl_error(e):
-                    logger.warning(f"SSL error for {url}: {e}")
-                    log_http_error(
-                        "http_service",
-                        url=url,
-                        error=e,
-                        operation="http_fetch",
-                        context={"error_type": "ssl_error"},
+                    logger.warning(
+                        "SSL error for %s: %s",
+                        url,
+                        e,
+                        extra={
+                            "component": "http_service",
+                            "operation": "http_fetch",
+                            "context_data": {"url": url, "error_type": "ssl_error"},
+                        },
                     )
                     raise NonRetryableError(f"SSL error: {e}") from e
 
                 # Regular connection errors can be retried
-                log_http_error(
-                    "http_service",
-                    url=url,
-                    error=e,
-                    operation="http_fetch",
-                    context={"error_type": "connection_error"},
+                logger.exception(
+                    "Connection error for %s: %s",
+                    url,
+                    e,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_fetch",
+                        "context_data": {"url": url, "error_type": "connection_error"},
+                    },
                 )
                 raise
 
             except Exception as e:
-                log_http_error("http_service", url=url, error=e, operation="http_fetch")
+                logger.exception(
+                    "HTTP fetch error for %s: %s",
+                    url,
+                    e,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_fetch",
+                        "context_data": {"url": url},
+                    },
+                )
                 raise
 
 

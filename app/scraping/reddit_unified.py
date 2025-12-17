@@ -13,7 +13,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
-from app.utils.error_logger import log_error, log_scraper_event
+from app.utils.error_logger import log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
 
 logger = get_logger(__name__)
@@ -113,22 +113,28 @@ class RedditUnifiedScraper(BaseScraper):
                 all_items.extend(items)
                 logger.info("Scraped %s items from r/%s", len(items), subreddit_name)
             except prawcore.PrawcoreException as error:
-                log_error(
-                    "reddit_scraper",
-                    error=error,
-                    operation="scrape_subreddit",
-                    context={"subreddit": subreddit_name},
+                logger.exception(
+                    "Error scraping r/%s: %s",
+                    subreddit_name,
+                    error,
+                    extra={
+                        "component": "reddit_scraper",
+                        "operation": "scrape_subreddit",
+                        "context_data": {"subreddit": subreddit_name},
+                    },
                 )
-                logger.error("Error scraping r/%s: %s", subreddit_name, error)
                 continue
             except Exception as error:  # pragma: no cover - defensive
-                log_error(
-                    "reddit_scraper",
-                    error=error,
-                    operation="scrape_subreddit",
-                    context={"subreddit": subreddit_name},
+                logger.exception(
+                    "Unexpected error scraping r/%s: %s",
+                    subreddit_name,
+                    error,
+                    extra={
+                        "component": "reddit_scraper",
+                        "operation": "scrape_subreddit",
+                        "context_data": {"subreddit": subreddit_name},
+                    },
                 )
-                logger.error("Unexpected error scraping r/%s: %s", subreddit_name, error)
                 continue
 
         logger.info(f"Total Reddit items scraped: {len(all_items)}")
@@ -226,13 +232,16 @@ class RedditUnifiedScraper(BaseScraper):
                     break
 
         except prawcore.PrawcoreException as error:
-            log_error(
-                "reddit_scraper",
-                error=error,
-                operation="fetch_subreddit",
-                context={"subreddit": subreddit_name},
+            logger.exception(
+                "Error fetching from r/%s: %s",
+                subreddit_name,
+                error,
+                extra={
+                    "component": "reddit_scraper",
+                    "operation": "fetch_subreddit",
+                    "context_data": {"subreddit": subreddit_name},
+                },
             )
-            logger.error("Error fetching from r/%s: %s", subreddit_name, error)
 
         return items
 
