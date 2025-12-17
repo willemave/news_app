@@ -37,9 +37,11 @@ establish_ssh_connection() {
 #       --promote-user USER         Run remote promote step as this user (default: root)
 #       --extra-exclude PATTERN     Additional rsync exclude (can repeat)
 #       --dry-run                   Show what would be done by rsync
+#       --env-only                  Only sync .env.racknerd (skip full app sync)
 #
 # Example:
 #   scripts/deploy/push_app.sh --install --restart-supervisor
+#   scripts/deploy/push_app.sh --env-only  # Quick env update
 
 REMOTE_HOST="willem@192.3.250.10"
 REMOTE_DIR="/opt/news_app"
@@ -56,6 +58,7 @@ PROMOTE_USER="root"
 ENV_REFRESHED=false
 FORCE_ENV=false
 REMOVE_REMOTE_VENV_REASON=""
+ENV_ONLY=false
 
 EXCLUDES=(
   ".git/"
@@ -95,6 +98,7 @@ while [[ $# -gt 0 ]]; do
     --promote-user) PROMOTE_USER="$2"; shift 2 ;;
     --extra-exclude) EXCLUDES+=("$2"); shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
+    --env-only) ENV_ONLY=true; shift ;;
     -\?|--help|-h)
       sed -n '1,80p' "$0" | sed -n '1,50p' | sed 's/^# \{0,1\}//' ; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -142,6 +146,32 @@ fi
 
 # Establish persistent SSH connection and authenticate sudo once
 establish_ssh_connection
+
+# Handle --env-only: just sync .env.racknerd and copy to .env
+if "$ENV_ONLY"; then
+  echo "→ Syncing only .env.racknerd to $REMOTE_HOST:$REMOTE_DIR"
+  if [[ ! -f ".env.racknerd" ]]; then
+    echo "Error: .env.racknerd not found in $REPO_ROOT" >&2
+    exit 1
+  fi
+  # Sync to staging first (willem has write access there)
+  ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "mkdir -p '$REMOTE_STAGING'"
+  rsync -az -e "ssh -S $SSH_CONTROL_PATH" .env.racknerd "$REMOTE_HOST:$REMOTE_STAGING/.env.racknerd"
+
+  echo "→ Copying .env.racknerd to app dir and .env via sudo"
+  CP_ENV_CMD=$(printf "bash -lc %q" "sudo cp '$REMOTE_STAGING/.env.racknerd' '$REMOTE_DIR/.env.racknerd' && sudo cp '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env' && sudo chown '$SERVICE_USER:$SERVICE_GROUP' '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env' && sudo chmod 600 '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env'")
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$CP_ENV_CMD"
+
+  if "$RESTART_SUP"; then
+    echo "→ Restarting supervisor programs"
+    ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart all"
+    echo "→ Final supervisor status:"
+    ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl status"
+  fi
+
+  echo "✅ Env sync completed to $REMOTE_HOST:$REMOTE_DIR"
+  exit 0
+fi
 
 # Check remote uv.lock hash to determine if venv needs refresh
 REMOTE_UV_LOCK_HASH=""

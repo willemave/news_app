@@ -117,7 +117,17 @@
       "Bash(.venv/bin/pytest:*)",
       "Bash(wt merge:*)",
       "mcp__exa__get_code_context_exa",
-      "Bash(timeout 120 python:*)"
+      "Bash(timeout 120 python:*)",
+      "Bash(scripts/deploy/push_app.sh:*)",
+      "Bash(git -C /Users/willem/Development/news_app log --all --oneline -- \"BOOTSTRAP_SUMMARY.md\" \"FEED_BOOTSTRAP_README.md\" \"FEED_DEBUG_REPORT.md\" \"FIX_SUMMARY.md\")",
+      "Bash(git -C /Users/willem/Development/news_app log --all --oneline -- \"README_BOOTSTRAP.md\")",
+      "Bash(git -C /Users/willem/Development/news_app log --oneline -- alembic/versions/)",
+      "Bash(git -C /Users/willem/Development/news_app log --all --name-status)",
+      "Bash(git -C /Users/willem/Development/news_app check-ignore -v -- \"requirements.txt\" \"git_config_dump.txt\" \"BOOTSTRAP_SUMMARY.md\" \".claude/settings.local.json\")",
+      "Bash(xargs ls:*)",
+      "Bash(git -C /Users/willem/Development/news_app status --porcelain -- \".clinerules\" \".env*\" \"git_config_dump.txt\")",
+      "Bash(git -C /Users/Willem/Development/news_app log --diff-filter=D --summary)",
+      "Bash(git -C /Users/Willem/Development/news_app worktree list)"
     ],
     "deny": []
   },

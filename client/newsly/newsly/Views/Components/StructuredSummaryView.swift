@@ -16,7 +16,6 @@ struct StructuredSummaryView: View {
     @State private var isKeyPointsExpanded = true
     @State private var isQuestionsExpanded = false
     @State private var isCounterArgsExpanded = false
-    @State private var showTopicSheet = false
     @State private var selectedTopic: String?
     @State private var topicSession: ChatSessionSummary?
 
@@ -160,11 +159,9 @@ struct StructuredSummaryView: View {
                 }
             }
         }
-        .sheet(isPresented: $showTopicSheet) {
-            if let session = topicSession {
-                NavigationStack {
-                    ChatSessionView(session: session)
-                }
+        .sheet(item: $topicSession) { session in
+            NavigationStack {
+                ChatSessionView(session: session)
             }
         }
     }
@@ -178,7 +175,6 @@ struct StructuredSummaryView: View {
                     topic: topic
                 )
                 topicSession = session
-                showTopicSheet = true
             } catch {
                 print("Failed to start topic chat: \(error)")
             }
@@ -195,7 +191,6 @@ struct StructuredSummaryView: View {
                     topic: "Dig deeper: \(keyPoint)"
                 )
                 topicSession = session
-                showTopicSheet = true
             } catch {
                 print("Failed to start key point chat: \(error)")
             }
