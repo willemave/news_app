@@ -1,7 +1,7 @@
 """Tests for ContentWorker."""
 
 from datetime import datetime
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -9,10 +9,6 @@ from app.models.metadata import (
     ContentData,
     ContentStatus,
     ContentType,
-    ContentQuote,
-    NewsSummary,
-    StructuredSummary,
-    SummaryBulletPoint,
 )
 from app.pipeline.worker import ContentWorker
 from app.services.http import NonRetryableError
@@ -25,7 +21,6 @@ def mock_dependencies():
     with (
         patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
         patch("app.pipeline.worker.get_http_service") as mock_http,
-        patch("app.pipeline.worker.get_llm_service") as mock_llm,
         patch("app.pipeline.worker.get_queue_service") as mock_queue,
         patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
         patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
@@ -36,7 +31,6 @@ def mock_dependencies():
         yield {
             "checkout": mock_checkout,
             "http": mock_http,
-            "llm": mock_llm,
             "queue": mock_queue,
             "registry": mock_registry,
             "download": mock_download,
@@ -55,7 +49,6 @@ class TestContentWorker:
 
         assert worker.checkout_manager is not None
         assert worker.http_service is not None
-        assert worker.llm_service is not None
         assert worker.queue_service is not None
         assert worker.strategy_registry is not None
         assert worker.podcast_download_worker is not None
@@ -123,41 +116,21 @@ class TestContentWorker:
 
         worker.strategy_registry.get_strategy.return_value = mock_strategy
 
-        # Mock LLM service
-        structured_summary = StructuredSummary(
-            title="Generated Summary Title",
-            overview=(
-                "This overview provides sufficient detail to exceed the minimum length "
-                "requirement for structured summaries."
-            ),
-            bullet_points=[
-                SummaryBulletPoint(text="Point one carries insight", category="key_finding"),
-                SummaryBulletPoint(text="Point two offers detail", category="insight"),
-                SummaryBulletPoint(text="Point three wraps up nicely", category="implication"),
-            ],
-            quotes=[ContentQuote(text="Notable quote for extra color", context="Author")],
-            topics=["ai", "news"],
-            classification="to_read",
-            full_markdown="# Heading\n\nDetailed markdown body.",
-        )
-        worker.llm_service.summarize_content.return_value = structured_summary
-
         # Mock content_to_domain function
         with patch("app.pipeline.worker.content_to_domain") as mock_converter:
             mock_converter.return_value = content_data
 
             result = worker.process_content(123, "test-worker")
 
+        # Verify success - article extraction now enqueues SUMMARIZE task
         assert result is True
         mock_strategy.download_content.assert_called_once_with("https://example.com/article")
         mock_strategy.extract_data.assert_called_once()
-        worker.llm_service.summarize_content.assert_called_once_with(
-            content="This is test content.", content_type="article", content_id=123
-        )
+        # Verify SUMMARIZE task was enqueued (summarization happens asynchronously)
+        worker.queue_service.enqueue.assert_called_with(TaskType.SUMMARIZE, content_id=123)
         mock_db.commit.assert_called()
-        expected_summary = structured_summary.model_dump(mode="json", by_alias=True)
-        assert content_data.metadata["summary"] == expected_summary
-        assert mock_content.content_metadata["summary"] == expected_summary
+        # Content is stored in metadata for the SUMMARIZE task
+        assert content_data.metadata.get("content") is not None
 
     def test_process_article_sync_no_strategy(self, mock_dependencies):
         """Test article processing when no strategy available."""
@@ -262,7 +235,7 @@ class TestContentWorker:
         assert resolved == "https://example.com/story"
 
     def test_process_news_story(self, mock_dependencies):
-        """Ensure news content is summarized using the news digest pathway."""
+        """Ensure news content extraction enqueues SUMMARIZE task."""
         worker = ContentWorker()
 
         mock_content = Mock()
@@ -313,30 +286,16 @@ class TestContentWorker:
         mock_strategy.extract_internal_urls.return_value = []
         worker.strategy_registry.get_strategy.return_value = mock_strategy
 
-        news_summary = NewsSummary(
-            title="Techmeme: Example Story",
-            article_url="https://example.com/story",
-            key_points=[
-                "Key takeaway one",
-                "Key takeaway two",
-            ],
-            summary="Short overview",
-            classification="to_read",
-        )
-        worker.llm_service.summarize_content.return_value = news_summary
-
         with patch("app.pipeline.worker.content_to_domain") as mock_converter:
             mock_converter.return_value = content_data
             result = worker.process_content(501, "test-worker")
 
+        # News extraction succeeds and enqueues SUMMARIZE task
         assert result is True
-        assert content_data.title == news_summary.title
-        summary_payload = content_data.metadata["summary"]
-        assert summary_payload["overview"] == "Short overview"
-        assert summary_payload["bullet_points"] == news_summary.key_points
-        worker.llm_service.summarize_content.assert_called_once()
-        call_args = worker.llm_service.summarize_content.call_args
-        assert call_args.kwargs.get("content_type") == "news_digest"
+        # Content is stored in metadata for SUMMARIZE task
+        assert content_data.metadata.get("content") is not None
+        # SUMMARIZE task is enqueued
+        worker.queue_service.enqueue.assert_called_with(TaskType.SUMMARIZE, content_id=501)
 
     def test_process_article_sync_extraction_error(self, mock_dependencies):
         """Test article processing with extraction error."""
@@ -384,13 +343,10 @@ class TestContentWorker:
     def test_process_article_marks_failed_on_crawl_fallback(self, mock_dependencies):
         """Ensure crawl fallback metadata marks the item as failed instead of completed."""
         worker = ContentWorker()
-        worker.llm_service = MagicMock()
 
         mock_content = Mock()
         mock_content.id = 1472
-        mock_content.url = (
-            "https://signalsandthreads.com/why-ml-needs-a-new-programming-language"
-        )
+        mock_content.url = "https://signalsandthreads.com/why-ml-needs-a-new-programming-language"
         mock_content.content_type = ContentType.ARTICLE.value
 
         content_data = ContentData(
@@ -445,101 +401,18 @@ class TestContentWorker:
 
             result = worker.process_content(1472, "test-worker")
 
+        # Extraction failure marks content as failed, no SUMMARIZE task is enqueued
         assert result is True
         assert content_data.status == ContentStatus.FAILED
         assert content_data.error_message == fallback_error
         assert content_data.metadata.get("extraction_failed") is True
         assert "summary" not in content_data.metadata
         assert content_data.metadata.get("content") is None
-        worker.llm_service.summarize_content.assert_not_called()
+        # No SUMMARIZE task should be enqueued for extraction failures
+        worker.queue_service.enqueue.assert_not_called()
         mock_domain_to_content.assert_called_once_with(content_data, mock_content)
-
-    def test_mark_summarization_failure_updates_metadata(self, mock_dependencies):
-        """Summarization failures should persist error context and mark content failed."""
-        worker = ContentWorker()
-
-        content = ContentData(
-            id=812,
-            url="https://example.com/story",
-            content_type=ContentType.ARTICLE,
-            status=ContentStatus.PROCESSING,
-            metadata={"summary": {"overview": "old summary"}},
-            title="Sample",
-            created_at=datetime.utcnow(),
-        )
-
-        db_content = Mock()
-        db_content.id = content.id
-        db_content.content_metadata = {}
-        db_content.status = ContentStatus.NEW.value
-
-        mock_db = Mock()
-        mock_db.query.return_value.filter.return_value.first.return_value = db_content
-        mock_dependencies["get_db"].return_value.__enter__.return_value = mock_db
-
-        worker._mark_summarization_failure(content, "LLM failed to produce summary")
-
-        assert content.status == ContentStatus.FAILED
-        assert content.error_message == "LLM failed to produce summary"
-        assert "summary" not in content.metadata
-
-        assert db_content.status == ContentStatus.FAILED.value
-        assert db_content.error_message == "LLM failed to produce summary"
-        assert "processing_errors" in db_content.content_metadata
-        error_record = db_content.content_metadata["processing_errors"][0]
-        assert error_record["stage"] == "summarization"
-        assert error_record["reason"] == "LLM failed to produce summary"
-        assert "timestamp" in error_record
-        mock_db.commit.assert_called_once()
-
-    def test_process_article_summary_failure_triggers_retry(self, mock_dependencies):
-        """Summary failure should mark failure helper and bubble up False for retry."""
-        worker = ContentWorker()
-
-        mock_content = Mock()
-        mock_content.id = 900
-        mock_content.url = "https://example.com/article"
-        mock_content.content_type = ContentType.ARTICLE.value
-
-        content_data = ContentData(
-            id=900,
-            url="https://example.com/article",
-            content_type=ContentType.ARTICLE,
-            status=ContentStatus.NEW,
-            metadata={},
-            title="Test Article",
-            created_at=datetime.utcnow(),
-        )
-
-        mock_db = Mock()
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_content
-        mock_dependencies["get_db"].return_value.__enter__.return_value = mock_db
-
-        mock_strategy = Mock()
-        mock_strategy.preprocess_url.return_value = "https://example.com/article"
-        mock_strategy.download_content.return_value = "<html>content</html>"
-        mock_strategy.extract_data.return_value = {
-            "title": "Test Article",
-            "text_content": "body",
-            "content_type": "html",
-            "final_url_after_redirects": "https://example.com/article",
-        }
-        mock_strategy.prepare_for_llm.return_value = {"content_to_summarize": "body"}
-        worker.strategy_registry.get_strategy.return_value = mock_strategy
-        worker.llm_service.summarize_content.return_value = None
-
-        with patch("app.pipeline.worker.content_to_domain") as mock_converter, patch.object(
-            ContentWorker, "_mark_summarization_failure"
-        ) as mock_mark:
-            mock_converter.return_value = content_data
-            mock_mark.side_effect = lambda *_: None
-
-            result = worker.process_content(900, "test-worker")
-
-        assert result is False
-        mock_mark.assert_called_once()
-        assert mock_mark.call_args.args[1] == "LLM summarization did not return a result"
-        mock_db.commit.assert_not_called()
+        # Commit is called to persist the failed status
+        mock_db.commit.assert_called()
 
     def test_process_podcast_sync_success(self, mock_dependencies):
         """Test successful podcast processing."""

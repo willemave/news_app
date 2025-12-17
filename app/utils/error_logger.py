@@ -1,54 +1,46 @@
 """
 Generic Error Logger - Simple, universal error logging with full context capture.
+
+This module provides structured error logging that integrates with the JSONL
+error handler in app/core/logging.py. Errors are automatically written to
+logs/errors/ in JSONL format via the standard logging infrastructure.
 """
 
 import json
 import logging
-import traceback
 from collections import defaultdict
-from dataclasses import asdict, dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
-from app.core.settings import get_settings
 
-logger = get_logger(__name__)
 SCRAPER_METRICS: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-
-
-@dataclass
-class ErrorContext:
-    """Structured error context data."""
-
-    timestamp: str
-    component: str
-    operation: str | None
-    error_type: str
-    error_message: str
-    stack_trace: str | None = None
-    context_data: dict[str, Any] | None = None
-    http_details: dict[str, Any] | None = None
-    item_id: str | int | None = None
 
 
 class GenericErrorLogger:
     """
     Simple, universal error logger with full context capture.
-    Designed to replace complex RSS-specific logger with better debugging info.
+
+    This logger uses Python's standard logging infrastructure with extra fields
+    that are picked up by the JSONL error handler configured in setup_logging().
+    Errors are automatically written to logs/errors/*.jsonl.
     """
 
-    def __init__(self, component: str, log_dir: str | Path | None = None):
-        self.component = component
-        settings = get_settings()
-        base_dir = Path(log_dir) if log_dir else settings.logs_dir / "errors"
-        self.log_dir = base_dir.resolve()
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, component: str, log_dir: str | None = None):
+        """
+        Initialize the error logger.
 
-        # Create timestamped log file
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_file = self.log_dir / f"{component}_{timestamp}.jsonl"
+        Args:
+            component: Component name for identifying the source of errors.
+            log_dir: Deprecated - no longer used. JSONL output is handled by
+                     the centralized logging handler.
+        """
+        self.component = component
+        self._logger = get_logger(f"error.{component}")
+        if log_dir is not None:
+            self._logger.debug(
+                "log_dir parameter is deprecated; JSONL output is handled by setup_logging()"
+            )
 
     def log_error(
         self,
@@ -58,31 +50,39 @@ class GenericErrorLogger:
         http_response: Any | None = None,
         item_id: str | int | None = None,
     ) -> None:
-        """Log error with full context."""
+        """Log error with full context.
 
+        Args:
+            error: The exception that occurred.
+            operation: Name of the operation that failed.
+            context: Additional context data.
+            http_response: HTTP response object (if applicable).
+            item_id: ID of the item being processed (if applicable).
+        """
         # Extract HTTP details if response provided
         http_details = None
         if http_response:
             http_details = self._extract_http_details(http_response)
 
-        error_context = ErrorContext(
-            timestamp=datetime.now().isoformat(),
-            component=self.component,
-            operation=operation,
-            error_type=type(error).__name__,
-            error_message=str(error),
-            stack_trace=traceback.format_exc(),
-            context_data=context,
-            http_details=http_details,
-            item_id=item_id,
-        )
-
-        self._write_log(error_context)
-
-        # Also log to console for immediate visibility
+        # Build log message
         operation_str = f" during {operation}" if operation else ""
         item_str = f" (item: {item_id})" if item_id else ""
-        logger.error(f"{self.component} error{operation_str}{item_str}: {error}")
+        message = f"{self.component} error{operation_str}{item_str}: {error}"
+
+        # Use logger.exception to include stack trace, with extra fields for JSONL
+        self._logger.exception(
+            message,
+            exc_info=error,
+            extra={
+                "component": self.component,
+                "operation": operation,
+                "context_data": context,
+                "http_details": http_details,
+                "item_id": item_id,
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+            },
+        )
 
     def log_http_error(
         self,
@@ -92,8 +92,15 @@ class GenericErrorLogger:
         operation: str | None = None,
         context: dict[str, Any] | None = None,
     ) -> None:
-        """Log HTTP-specific errors with response details."""
+        """Log HTTP-specific errors with response details.
 
+        Args:
+            url: The URL that was requested.
+            response: HTTP response object (if available).
+            error: The exception that occurred (if any).
+            operation: Name of the operation that failed.
+            context: Additional context data.
+        """
         # Build context with URL
         full_context = {"url": url}
         if context:
@@ -118,8 +125,14 @@ class GenericErrorLogger:
         operation: str | None = None,
         context: dict[str, Any] | None = None,
     ) -> None:
-        """Log processing errors with item context."""
+        """Log processing errors with item context.
 
+        Args:
+            item_id: ID of the item being processed.
+            error: The exception that occurred.
+            operation: Name of the operation that failed.
+            context: Additional context data.
+        """
         self.log_error(
             error=error,
             operation=operation or "content_processing",
@@ -135,8 +148,15 @@ class GenericErrorLogger:
         entries_processed: int | None = None,
         operation: str | None = None,
     ) -> None:
-        """Log feed-specific errors (for RSS/feed processing)."""
+        """Log feed-specific errors (for RSS/feed processing).
 
+        Args:
+            feed_url: URL of the feed that failed.
+            error: The exception that occurred.
+            feed_name: Name of the feed (if known).
+            entries_processed: Number of entries processed before failure.
+            operation: Name of the operation that failed.
+        """
         context = {
             "feed_url": feed_url,
             "feed_name": feed_name,
@@ -146,8 +166,15 @@ class GenericErrorLogger:
         self.log_error(error=error, operation=operation or "feed_processing", context=context)
 
     def _extract_http_details(self, response: Any) -> dict[str, Any]:
-        """Extract useful details from HTTP response object."""
-        details = {}
+        """Extract useful details from HTTP response object.
+
+        Args:
+            response: HTTP response object.
+
+        Returns:
+            Dictionary with extracted HTTP details.
+        """
+        details: dict[str, Any] = {}
 
         try:
             # Handle different response object types
@@ -180,31 +207,20 @@ class GenericErrorLogger:
 
         return details
 
-    def _write_log(self, error_context: ErrorContext) -> None:
-        """Write error context to JSON Lines file."""
-        try:
-            with open(self.log_file, "a") as f:
-                json_line = json.dumps(asdict(error_context), default=str, ensure_ascii=False)
-                f.write(json_line + "\n")
-        except Exception as e:
-            logger.error(f"Failed to write error log: {e}")
-
     def get_recent_errors(self, limit: int = 10) -> list:
-        """Get recent errors from log file."""
-        errors = []
-        try:
-            if self.log_file.exists():
-                with open(self.log_file) as f:
-                    lines = f.readlines()
-                    for line in lines[-limit:]:
-                        try:
-                            errors.append(json.loads(line.strip()))
-                        except json.JSONDecodeError:
-                            continue
-        except Exception as e:
-            logger.error(f"Failed to read error log: {e}")
+        """Get recent errors - deprecated, use logs router instead.
 
-        return errors
+        This method is deprecated. Recent errors can be retrieved via the
+        admin logs API which reads from the centralized JSONL files.
+
+        Args:
+            limit: Maximum number of errors to return.
+
+        Returns:
+            Empty list (deprecated functionality).
+        """
+        self._logger.warning("get_recent_errors() is deprecated; use the admin logs API instead")
+        return []
 
 
 def log_scraper_event(
@@ -215,7 +231,16 @@ def log_scraper_event(
     metric: str | None = None,
     **fields: Any,
 ) -> None:
-    """Emit a structured scraper event log and optionally increment metrics."""
+    """Emit a structured scraper event log and optionally increment metrics.
+
+    Args:
+        service: Name of the scraper service.
+        event: Event type/name.
+        level: Log level (default INFO).
+        metric: Metric name to increment (optional).
+        **fields: Additional fields to include in the log.
+    """
+    logger = get_logger(f"scraper.{service}")
 
     payload = {
         "timestamp": datetime.now().isoformat(),
@@ -231,32 +256,38 @@ def log_scraper_event(
 
 
 def increment_scraper_metric(service: str, metric: str, amount: int = 1) -> None:
-    """Increment a scraper metric counter."""
+    """Increment a scraper metric counter.
 
+    Args:
+        service: Name of the scraper service.
+        metric: Metric name to increment.
+        amount: Amount to increment by (default 1).
+    """
     SCRAPER_METRICS[service][metric] += amount
 
 
 def get_scraper_metrics() -> dict[str, dict[str, int]]:
-    """Return current scraper metric counters (primarily for tests)."""
+    """Return current scraper metric counters (primarily for tests).
 
+    Returns:
+        Dictionary mapping service names to metric dictionaries.
+    """
     return {service: dict(metrics) for service, metrics in SCRAPER_METRICS.items()}
 
 
 def reset_scraper_metrics() -> None:
     """Clear scraper metrics. Useful in tests to avoid cross pollution."""
-
     SCRAPER_METRICS.clear()
 
 
-def create_error_logger(component: str, log_dir: str | Path | None = None) -> GenericErrorLogger:
+def create_error_logger(component: str, log_dir: str | None = None) -> GenericErrorLogger:
     """Factory function to create error logger.
 
     Args:
         component: Component name for scoping log files.
-        log_dir: Optional override for the log directory.
+        log_dir: Deprecated - no longer used.
 
     Returns:
         GenericErrorLogger: Configured error logger instance.
     """
-
     return GenericErrorLogger(component, log_dir)
