@@ -432,6 +432,10 @@ class ImageGenerationService:
                 contents=prompt,
                 config=GenerateContentConfig(
                     response_modalities=["IMAGE", "TEXT"],
+                    image_config=ImageConfig(
+                        aspect_ratio="16:9",
+                        image_size="1K",
+                    ),
                 ),
             )
 
