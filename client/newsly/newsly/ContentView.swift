@@ -12,6 +12,7 @@ struct ContentView: View {
     @StateObject private var readingStateStore = ReadingStateStore()
     @StateObject private var tabCoordinator: TabCoordinatorViewModel
     @StateObject private var chatSessionManager = ActiveChatSessionManager.shared
+    @ObservedObject private var settings = AppSettings.shared
 
     @State private var path = NavigationPath()
     @Environment(\.scenePhase) private var scenePhase
@@ -56,12 +57,23 @@ struct ContentView: View {
     var body: some View {
         NavigationStack(path: $path) {
             TabView(selection: $tabCoordinator.selectedTab) {
-                LongFormView(
-                    viewModel: tabCoordinator.longContentVM,
-                    onSelect: { route in
-                        path.append(route)
+                Group {
+                    if settings.useLongFormCardStack {
+                        LongFormCardStackView(
+                            viewModel: tabCoordinator.longContentVM,
+                            onSelect: { route in
+                                path.append(route)
+                            }
+                        )
+                    } else {
+                        LongFormView(
+                            viewModel: tabCoordinator.longContentVM,
+                            onSelect: { route in
+                                path.append(route)
+                            }
+                        )
                     }
-                )
+                }
                 .tabItem {
                     Label("Long", systemImage: "doc.richtext")
                 }
@@ -84,16 +96,10 @@ struct ContentView: View {
                     path.append(route)
                 })
                     .tabItem {
-                        Label("Chats", systemImage: "brain.head.profile")
+                        Label("Chats", systemImage: "bubble.left.and.bubble.right.fill")
                     }
                     .badge(chatBadge)
                     .tag(RootTab.chats)
-
-                FavoritesView()
-                    .tabItem {
-                        Label("Favorites", systemImage: "star.fill")
-                    }
-                    .tag(RootTab.favorites)
 
                 MoreView()
                     .tabItem {

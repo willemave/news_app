@@ -1,0 +1,260 @@
+//
+//  LongFormCardStackView.swift
+//  newsly
+//
+//  Swipeable card stack view for articles and podcasts.
+//
+
+import SwiftUI
+import UIKit
+
+struct LongFormCardStackView: View {
+    @ObservedObject var viewModel: LongContentListViewModel
+    let onSelect: (ContentDetailRoute) -> Void
+
+    @ObservedObject private var settings = AppSettings.shared
+    @StateObject private var keyPointsLoader = CardStackKeyPointsLoader()
+
+    @State private var currentIndex: Int = 0
+    @State private var dragOffset: CGFloat = 0
+
+    private let swipeThreshold: CGFloat = 100
+    private let velocityThreshold: CGFloat = 500
+    private let cardHorizontalPadding: CGFloat = 24
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                if viewModel.state == .initialLoading && items.isEmpty {
+                    LoadingView()
+                } else if case .error(let error) = viewModel.state, items.isEmpty {
+                    ErrorView(message: error.localizedDescription) {
+                        viewModel.refreshTrigger.send(())
+                    }
+                } else if items.isEmpty {
+                    emptyStateView
+                } else {
+                    cardStackContent(geometry: geometry)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onAppear {
+            viewModel.setReadFilter(settings.showReadContent ? .all : .unread)
+            viewModel.refreshTrigger.send(())
+        }
+        .onChange(of: settings.showReadContent) { _, showRead in
+            viewModel.setReadFilter(showRead ? .all : .unread)
+        }
+        .onChange(of: items.count) { oldCount, newCount in
+            if newCount > 0 && currentIndex >= newCount {
+                currentIndex = max(0, newCount - 1)
+            }
+            if oldCount == 0 && newCount > 0 {
+                currentIndex = 0
+            }
+        }
+        .task(id: currentIndex) {
+            await prefetchKeyPoints()
+        }
+    }
+
+    private var items: [ContentSummary] {
+        viewModel.currentItems()
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "doc.richtext")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            Text("No long-form content found.")
+                .foregroundColor(.secondary)
+            Button("Refresh") {
+                viewModel.refreshTrigger.send(())
+            }
+            .buttonStyle(.bordered)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func cardStackContent(geometry: GeometryProxy) -> some View {
+        let cardWidth = geometry.size.width - (cardHorizontalPadding * 2)
+        let cardHeight = geometry.size.height - 40
+
+        VStack(spacing: 0) {
+            Spacer().frame(height: 20)
+
+            ZStack {
+                ForEach(visibleCardIndices, id: \.self) { index in
+                    let relativeOffset = index - currentIndex
+                    let content = items[index]
+
+                    ArticleCardView(
+                        content: content,
+                        keyPoints: keyPointsLoader.keyPoints(for: content.id),
+                        isLoadingKeyPoints: keyPointsLoader.isLoading(content.id),
+                        onFavorite: { Task { await viewModel.toggleFavorite(content.id) } },
+                        onMarkRead: { viewModel.markAsRead(content.id) },
+                        onTap: { navigateToDetail(content) },
+                        scale: scaleForOffset(relativeOffset),
+                        yOffset: yOffsetForOffset(relativeOffset),
+                        cardOpacity: opacityForOffset(relativeOffset)
+                    )
+                    .frame(width: cardWidth, height: cardHeight)
+                    .offset(x: xOffsetForCard(at: index, width: cardWidth))
+                    .zIndex(Double(100 - abs(relativeOffset)))
+                    .animation(
+                        .interactiveSpring(response: 0.35, dampingFraction: 0.85),
+                        value: currentIndex
+                    )
+                    .animation(
+                        .interactiveSpring(response: 0.35, dampingFraction: 0.85),
+                        value: dragOffset
+                    )
+                }
+            }
+            .frame(width: cardWidth, height: cardHeight)
+            .contentShape(Rectangle())
+            .highPriorityGesture(dragGesture)
+
+            Spacer().frame(height: 20)
+
+            paginationIndicator
+                .padding(.bottom, 8)
+        }
+    }
+
+    private var visibleCardIndices: [Int] {
+        guard !items.isEmpty else { return [] }
+        // Include previous card (for swipe-back), current, and 2 shadow cards
+        // Render in reverse order so current card is on top
+        let start = max(0, currentIndex - 1)
+        let end = min(items.count - 1, currentIndex + 2)
+        return Array((start...end).reversed())
+    }
+
+    private func scaleForOffset(_ offset: Int) -> CGFloat {
+        if offset <= 0 { return 1.0 }
+        // Shadow cards get progressively smaller
+        return max(0.92, 1.0 - CGFloat(offset) * 0.03)
+    }
+
+    private func yOffsetForOffset(_ offset: Int) -> CGFloat {
+        if offset <= 0 { return 0 }
+        // Shadow cards shift down slightly
+        return CGFloat(offset) * 6
+    }
+
+    private func opacityForOffset(_ offset: Int) -> Double {
+        if offset <= 0 { return 1.0 }
+        // Shadow cards are more visible to hint at swiping
+        return max(0.6, 1.0 - Double(offset) * 0.2)
+    }
+
+    private func xOffsetForCard(at index: Int, width: CGFloat) -> CGFloat {
+        let relativeOffset = index - currentIndex
+
+        if relativeOffset < 0 {
+            // Previous cards are off-screen to the left
+            return CGFloat(relativeOffset) * (width + 40)
+        }
+
+        if relativeOffset == 0 {
+            // Current card moves with drag
+            return dragOffset
+        }
+
+        // Shadow cards peek from the right edge
+        // Each card peeks out ~18pt more than the one in front
+        let peekAmount: CGFloat = 18
+        let baseOffset = CGFloat(relativeOffset) * peekAmount
+
+        // Parallax: shadow cards shift left slightly as user drags left
+        // This creates anticipation that the next card will appear
+        let parallaxFactor: CGFloat = 0.15
+        let parallaxOffset = min(0, dragOffset * parallaxFactor * CGFloat(relativeOffset))
+
+        return baseOffset + parallaxOffset
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 30)
+            .onChanged { value in
+                if abs(value.translation.width) > abs(value.translation.height) {
+                    dragOffset = value.translation.width
+                }
+            }
+            .onEnded { value in
+                handleDragEnd(
+                    translation: value.translation.width,
+                    predictedEnd: value.predictedEndTranslation.width
+                )
+            }
+    }
+
+    private func handleDragEnd(translation: CGFloat, predictedEnd: CGFloat) {
+        let velocity = predictedEnd - translation
+        var targetIndex = currentIndex
+
+        if translation < -swipeThreshold || velocity < -velocityThreshold {
+            if currentIndex < items.count - 1 {
+                targetIndex = currentIndex + 1
+            }
+        } else if translation > swipeThreshold || velocity > velocityThreshold {
+            if currentIndex > 0 {
+                targetIndex = currentIndex - 1
+            }
+        }
+
+        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+            currentIndex = targetIndex
+            dragOffset = 0
+        }
+
+        if targetIndex != currentIndex {
+            triggerHaptic()
+        }
+
+        if currentIndex >= items.count - 3 {
+            viewModel.loadMoreTrigger.send(())
+        }
+    }
+
+    private var paginationIndicator: some View {
+        HStack(spacing: 4) {
+            Text("\(currentIndex + 1)")
+                .fontWeight(.semibold)
+            Text("/")
+                .foregroundColor(.secondary)
+            Text("\(items.count)")
+                .foregroundColor(.secondary)
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial)
+        .cornerRadius(12)
+    }
+
+    private func navigateToDetail(_ content: ContentSummary) {
+        let route = ContentDetailRoute(
+            summary: content,
+            allContentIds: items.map(\.id)
+        )
+        onSelect(route)
+    }
+
+    private func prefetchKeyPoints() async {
+        let contentIds = items.map(\.id)
+        await keyPointsLoader.prefetch(contentIds: contentIds, aroundIndex: currentIndex)
+    }
+
+    private func triggerHaptic() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+    }
+}

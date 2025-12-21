@@ -48,11 +48,7 @@ struct ContentListView: View {
                                         .opacity(0)
                                         .buttonStyle(PlainButtonStyle())
 
-                                        ContentCard(
-                                            content: content,
-                                            onMarkAsRead: { await viewModel.markAsRead(content.id) },
-                                            onToggleFavorite: { await viewModel.toggleFavorite(content.id) }
-                                        )
+                                        ContentCard(content: content)
                                         .contentShape(Rectangle())
                                     }
                                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))

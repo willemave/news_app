@@ -115,8 +115,8 @@ Track work using beads (`.beads/` directory). TodoWrite tool is fine for in-sess
 
 ### LLM Task Planning Workflow
 1. **Start session**: Run `bd ready` to see available work
-2. **Plan complex tasks**: Use `bd create` to break work into issues with dependencies
-3. **Claim work**: `bd update <id> --status=in_progress` before starting
+2. **Plan complex tasks**: After planning, **always** use `bd create` to break work into beads issues with dependencies. This is required for any multi-step implementation.
+3. **Claim work**: `bd update <id> --status=in_progress` before starting each task
 4. **Complete work**: `bd close <id>` immediately when done
 5. **Iterate**: Check `bd ready` for next available task
 
@@ -152,11 +152,15 @@ Before completing work, **always run**:
 ```bash
 ruff check . && ruff format .         # Lint and format Python changes
 git status                            # Check changes
+git diff                              # Review all changes before committing
 git add <files>                       # Stage code
 bd sync                               # Commit beads
 git commit -m "..."                   # Commit code
 bd sync                               # Sync any new beads
 ```
+
+**Important**: After closing beads tasks and before committing, always show `git diff` of all changed files to the user for review. This ensures visibility into what was implemented.
+
 Only push if explicitly requested by the user.
 
 ---

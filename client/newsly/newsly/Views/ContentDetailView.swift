@@ -217,6 +217,13 @@ struct ContentDetailView: View {
                     Divider()
                         .padding(.vertical, 8)
 
+                    // Hero Image Section
+                    if let imageUrlString = content.imageUrl {
+                        heroImageView(imageUrlString: imageUrlString)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 12)
+                    }
+
                     // Structured Summary Section
                     if let structuredSummary = content.structuredSummary {
                         StructuredSummaryView(summary: structuredSummary, contentId: content.id)
@@ -726,6 +733,44 @@ struct ContentDetailView: View {
         } catch {
             chatError = error.localizedDescription
         }
+    }
+
+    // MARK: - Hero Image
+    @ViewBuilder
+    private func heroImageView(imageUrlString: String) -> some View {
+        if let imageUrl = buildImageURL(from: imageUrlString) {
+            AsyncImage(url: imageUrl) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 200)
+                        .clipped()
+                        .cornerRadius(12)
+                case .failure:
+                    EmptyView()
+                case .empty:
+                    ProgressView()
+                        .frame(height: 200)
+                @unknown default:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    private func buildImageURL(from urlString: String) -> URL? {
+        // If it's already a full URL, use it
+        if urlString.hasPrefix("http://") || urlString.hasPrefix("https://") {
+            return URL(string: urlString)
+        }
+        // Otherwise, it's a relative path - prepend base URL
+        guard let baseURL = URL(string: AppSettings.shared.baseURL) else {
+            return nil
+        }
+        return baseURL.appendingPathComponent(urlString)
     }
 
     // MARK: - Bottom Bar

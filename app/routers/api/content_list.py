@@ -1,6 +1,7 @@
 """Content listing and search endpoints."""
 
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,11 +12,48 @@ from app.core.db import get_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
 from app.domain.converters import content_to_domain
-from app.models.metadata import ContentStatus, ContentType
+from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content, ContentReadStatus, ContentStatusEntry
 from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse, UnreadCountsResponse
 from app.utils.pagination import PaginationCursor
+
+# Image storage paths
+IMAGES_DIR = Path("static/images/content")
+NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
+
+
+def get_content_image_url(domain_content: ContentData) -> str | None:
+    """Get the image URL for a content item.
+
+    Priority:
+    1. For podcasts: use existing thumbnail_url if present (YouTube)
+    2. For news: check news_thumbnails directory first
+    3. Check if generated image exists in content directory
+    """
+    content_id = domain_content.id
+    if not content_id:
+        return None
+
+    # For podcasts, prefer existing thumbnail
+    if domain_content.content_type == ContentType.PODCAST:
+        metadata = domain_content.metadata or {}
+        if metadata.get("thumbnail_url"):
+            return metadata["thumbnail_url"]
+
+    # For news items, check news thumbnails directory first
+    if domain_content.content_type == ContentType.NEWS:
+        news_image_path = NEWS_THUMBNAILS_DIR / f"{content_id}.png"
+        if news_image_path.exists():
+            return f"/static/images/news_thumbnails/{content_id}.png"
+
+    # Check for generated image in content directory
+    image_path = IMAGES_DIR / f"{content_id}.png"
+    if image_path.exists():
+        return f"/static/images/content/{content_id}.png"
+
+    return None
+
 
 router = APIRouter()
 
@@ -261,6 +299,7 @@ async def list_contents(
                     user_status="inbox"
                     if domain_content.content_type in (ContentType.ARTICLE, ContentType.PODCAST)
                     else None,
+                    image_url=get_content_image_url(domain_content),
                 )
             )
         except Exception as e:
@@ -474,6 +513,7 @@ async def search_contents(
                     user_status="inbox"
                     if domain_content.content_type in (ContentType.ARTICLE, ContentType.PODCAST)
                     else None,
+                    image_url=get_content_image_url(domain_content),
                 )
             )
         except Exception as e:

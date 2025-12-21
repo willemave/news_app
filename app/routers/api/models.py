@@ -241,6 +241,9 @@ class ContentSummaryResponse(BaseModel):
     user_status: str | None = Field(
         None, description="Per-user content status (e.g., inbox, archived)"
     )
+    image_url: str | None = Field(
+        None, description="URL of AI-generated image or thumbnail for this content"
+    )
 
     class Config:
         json_schema_extra = {
@@ -260,6 +263,7 @@ class ContentSummaryResponse(BaseModel):
                 "is_read": False,
                 "is_aggregate": False,
                 "item_count": None,
+                "image_url": "/static/images/content/123.png",
             }
         }
 
@@ -365,6 +369,9 @@ class ContentDetailResponse(BaseModel):
     )
     news_summary: str | None = Field(
         None, description="Short overview synthesized for news digests"
+    )
+    image_url: str | None = Field(
+        None, description="URL of AI-generated image or thumbnail for this content"
     )
 
     class Config:

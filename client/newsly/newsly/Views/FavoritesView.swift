@@ -93,11 +93,7 @@ struct FavoritesView: View {
                     .opacity(0)
                     .buttonStyle(PlainButtonStyle())
 
-                    ContentCard(
-                        content: content,
-                        onMarkAsRead: { await viewModel.markAsRead(content.id) },
-                        onToggleFavorite: { await viewModel.toggleFavorite(content.id) }
-                    )
+                    ContentCard(content: content)
                 }
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 .listRowSeparator(.hidden)

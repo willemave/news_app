@@ -46,15 +46,7 @@ struct LongFormView: View {
                                             allContentIds: viewModel.currentItems().map(\.id)
                                         )
                                     ) {
-                                        ContentCard(
-                                            content: content,
-                                            onMarkAsRead: {
-                                                viewModel.markAsRead(content.id)
-                                            },
-                                            onToggleFavorite: {
-                                                await viewModel.toggleFavorite(content.id)
-                                            }
-                                        )
+                                        ContentCard(content: content)
                                     }
 
                                     if content.id != viewModel.currentItems().last?.id {

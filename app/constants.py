@@ -3,6 +3,9 @@
 # Default LLM models
 TWEET_SUGGESTION_MODEL = "google-gla:gemini-3-pro-preview"
 
+# Image generation model (Gemini with native image output)
+IMAGE_GENERATION_MODEL = "google-gla:gemini-3-pro-image-preview"
+
 # LLM provider models for tweet suggestions
 TWEET_MODELS = {
     "google": "google-gla:gemini-3-pro-preview",

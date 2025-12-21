@@ -55,6 +55,8 @@ class SequentialTaskProcessor:
                 result = self._process_transcribe_task(task_data)
             elif task_type == TaskType.SUMMARIZE:
                 result = self._process_summarize_task(task_data)
+            elif task_type == TaskType.GENERATE_IMAGE:
+                result = self._process_generate_image_task(task_data)
             else:
                 logger.error(f"Unknown task type: {task_type}")
                 result = False
@@ -388,6 +390,13 @@ class SequentialTaskProcessor:
                     content.processed_at = datetime.utcnow()
                     db.commit()
 
+                    # Enqueue image generation task
+                    self.queue_service.enqueue(
+                        task_type=TaskType.GENERATE_IMAGE,
+                        content_id=content_id,
+                    )
+                    logger.info("Enqueued image generation for content %s", content_id)
+
                     return True
 
                 reason = "LLM summarization returned None"
@@ -469,6 +478,84 @@ class SequentialTaskProcessor:
             lines.append(f"Aggregator Summary: {excerpt}")
 
         return "\n".join(lines)
+
+    def _process_generate_image_task(self, task_data: dict[str, Any]) -> bool:
+        """Generate an AI image for content."""
+        try:
+            content_id = task_data.get("content_id") or task_data.get("payload", {}).get(
+                "content_id"
+            )
+            if not content_id:
+                logger.error("No content_id provided for image generation task")
+                return False
+
+            content_id = int(content_id)
+            logger.info("Generating image for content %s", content_id)
+
+            # Get content from database
+            with get_db() as db:
+                content = db.query(Content).filter(Content.id == content_id).first()
+                if not content:
+                    logger.error("Content %s not found for image generation", content_id)
+                    return False
+
+                # Convert to domain model
+                from app.domain.converters import content_to_domain
+
+                domain_content = content_to_domain(content)
+
+                # Generate image
+                from app.services.image_generation import get_image_generation_service
+
+                image_service = get_image_generation_service()
+                result = image_service.generate_image(domain_content)
+
+                if result.success:
+                    # Update metadata to record generation
+                    metadata = dict(content.content_metadata or {})
+                    metadata["image_generated_at"] = datetime.now(UTC).isoformat()
+                    content.content_metadata = metadata
+                    db.commit()
+
+                    logger.info(
+                        "Successfully generated image for content %s at %s",
+                        content_id,
+                        result.image_path,
+                    )
+                    return True
+                else:
+                    if result.error_message and "Skipped" in result.error_message:
+                        # Not an error, just skipped (e.g., YouTube podcast)
+                        logger.info(
+                            "Image generation skipped for %s: %s",
+                            content_id,
+                            result.error_message,
+                        )
+                        return True
+                    logger.error(
+                        "Image generation failed for %s: %s",
+                        content_id,
+                        result.error_message,
+                        extra={
+                            "component": "image_generation",
+                            "operation": "generate_image",
+                            "item_id": content_id,
+                        },
+                    )
+                    return False
+
+        except Exception as e:
+            logger.exception(
+                "Image generation error for content %s: %s",
+                content_id,
+                e,
+                extra={
+                    "component": "image_generation",
+                    "operation": "generate_image_task",
+                    "item_id": content_id,
+                },
+            )
+            return False
 
     def run(self, max_tasks: int | None = None):
         """

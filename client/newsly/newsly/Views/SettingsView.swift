@@ -47,6 +47,25 @@ struct SettingsView: View {
                     Text("When enabled, both read and unread articles will be displayed")
                         .font(.caption)
                         .foregroundColor(.secondary)
+
+                    Toggle("Card Stack View", isOn: $settings.useLongFormCardStack)
+                    Text("Display articles and podcasts as a swipeable card stack")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Section(header: Text("Library")) {
+                    NavigationLink {
+                        FavoritesView()
+                    } label: {
+                        HStack {
+                            Label("Favorites", systemImage: "star.fill")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+                    }
                 }
 
                 Section(header: Text("Sources")) {

@@ -24,7 +24,8 @@ struct ContentSummary: Codable, Identifiable {
     var isFavorited: Bool
     let isAggregate: Bool
     let itemCount: Int?
-    
+    let imageUrl: String?
+
     enum CodingKeys: String, CodingKey {
         case id
         case contentType = "content_type"
@@ -42,6 +43,7 @@ struct ContentSummary: Codable, Identifiable {
         case isFavorited = "is_favorited"
         case isAggregate = "is_aggregate"
         case itemCount = "item_count"
+        case imageUrl = "image_url"
     }
 
     init(
@@ -60,7 +62,8 @@ struct ContentSummary: Codable, Identifiable {
         isRead: Bool,
         isFavorited: Bool,
         isAggregate: Bool = false,
-        itemCount: Int? = nil
+        itemCount: Int? = nil,
+        imageUrl: String? = nil
     ) {
         self.id = id
         self.contentType = contentType
@@ -78,6 +81,7 @@ struct ContentSummary: Codable, Identifiable {
         self.isFavorited = isFavorited
         self.isAggregate = isAggregate
         self.itemCount = itemCount
+        self.imageUrl = imageUrl
     }
 
     init(from decoder: Decoder) throws {
@@ -98,7 +102,8 @@ struct ContentSummary: Codable, Identifiable {
             isRead: try container.decode(Bool.self, forKey: .isRead),
             isFavorited: try container.decodeIfPresent(Bool.self, forKey: .isFavorited) ?? false,
             isAggregate: try container.decodeIfPresent(Bool.self, forKey: .isAggregate) ?? false,
-            itemCount: try container.decodeIfPresent(Int.self, forKey: .itemCount)
+            itemCount: try container.decodeIfPresent(Int.self, forKey: .itemCount),
+            imageUrl: try container.decodeIfPresent(String.self, forKey: .imageUrl)
         )
     }
 
@@ -120,6 +125,7 @@ struct ContentSummary: Codable, Identifiable {
         try container.encode(isFavorited, forKey: .isFavorited)
         try container.encode(isAggregate, forKey: .isAggregate)
         try container.encodeIfPresent(itemCount, forKey: .itemCount)
+        try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
     }
 
     var contentTypeEnum: ContentType? {
@@ -186,7 +192,8 @@ struct ContentSummary: Codable, Identifiable {
             isRead: isRead ?? self.isRead,
             isFavorited: isFavorited ?? self.isFavorited,
             isAggregate: isAggregate,
-            itemCount: itemCount
+            itemCount: itemCount,
+            imageUrl: imageUrl
         )
     }
 

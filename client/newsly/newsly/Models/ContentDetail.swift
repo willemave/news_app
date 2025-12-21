@@ -36,7 +36,8 @@ struct ContentDetail: Codable, Identifiable {
     let isAggregate: Bool
     let renderedMarkdown: String?
     let newsItems: [NewsItem]?
-    
+    let imageUrl: String?
+
     enum CodingKeys: String, CodingKey {
         case id
         case contentType = "content_type"
@@ -66,6 +67,7 @@ struct ContentDetail: Codable, Identifiable {
         case isAggregate = "is_aggregate"
         case renderedMarkdown = "rendered_markdown"
         case newsItems = "news_items"
+        case imageUrl = "image_url"
     }
     
     var contentTypeEnum: ContentType? {

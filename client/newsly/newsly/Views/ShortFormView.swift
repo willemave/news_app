@@ -134,40 +134,48 @@ private struct ScrollPositionDetector: View {
 private struct ShortNewsRow: View {
     let item: ContentSummary
 
+    private let thumbnailSize: CGFloat = 60
+
     private var textOpacity: Double {
         item.isRead ? 0.5 : 1.0
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.displayTitle)
-                    .font(.headline)
-                    .foregroundColor(.primary.opacity(textOpacity))
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
+            HStack(alignment: .top, spacing: 12) {
+                // Thumbnail on left
+                thumbnailView
 
-                if let summary = item.shortSummary, !summary.isEmpty {
-                    Text(summary)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary.opacity(textOpacity))
+                // Text content
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.displayTitle)
+                        .font(.headline)
+                        .foregroundColor(.primary.opacity(textOpacity))
                         .lineLimit(3)
-                }
+                        .multilineTextAlignment(.leading)
 
-                HStack(spacing: 6) {
-                    if let source = item.source {
-                        Text(source)
-                            .font(.caption)
+                    if let summary = item.shortSummary, !summary.isEmpty {
+                        Text(summary)
+                            .font(.subheadline)
                             .foregroundColor(.secondary.opacity(textOpacity))
+                            .lineLimit(2)
                     }
-                    if let platform = item.platform {
-                        Text(platform)
-                            .font(.caption2)
-                            .foregroundColor(.secondary.opacity(textOpacity))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.gray.opacity(item.isRead ? 0.05 : 0.1))
-                            .clipShape(Capsule())
+
+                    HStack(spacing: 6) {
+                        if let source = item.source {
+                            Text(source)
+                                .font(.caption)
+                                .foregroundColor(.secondary.opacity(textOpacity))
+                        }
+                        if let platform = item.platform {
+                            Text(platform)
+                                .font(.caption2)
+                                .foregroundColor(.secondary.opacity(textOpacity))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.gray.opacity(item.isRead ? 0.05 : 0.1))
+                                .clipShape(Capsule())
+                        }
                     }
                 }
             }
@@ -175,5 +183,52 @@ private struct ShortNewsRow: View {
             Divider()
         }
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var thumbnailView: some View {
+        if let imageUrlString = item.imageUrl,
+           let imageUrl = buildImageURL(from: imageUrlString) {
+            AsyncImage(url: imageUrl) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: thumbnailSize, height: thumbnailSize)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                case .failure:
+                    thumbnailPlaceholder
+                case .empty:
+                    ProgressView()
+                        .frame(width: thumbnailSize, height: thumbnailSize)
+                @unknown default:
+                    thumbnailPlaceholder
+                }
+            }
+        } else {
+            thumbnailPlaceholder
+        }
+    }
+
+    private var thumbnailPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.secondary.opacity(0.15))
+            .frame(width: thumbnailSize, height: thumbnailSize)
+            .overlay(
+                Image(systemName: "newspaper")
+                    .font(.system(size: 20))
+                    .foregroundColor(.secondary.opacity(0.6))
+            )
+    }
+
+    private func buildImageURL(from urlString: String) -> URL? {
+        if urlString.hasPrefix("http://") || urlString.hasPrefix("https://") {
+            return URL(string: urlString)
+        }
+        guard let baseURL = URL(string: AppSettings.shared.baseURL) else {
+            return nil
+        }
+        return baseURL.appendingPathComponent(urlString)
     }
 }

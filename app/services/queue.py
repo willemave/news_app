@@ -22,6 +22,7 @@ class TaskType(str, Enum):
     DOWNLOAD_AUDIO = "download_audio"
     TRANSCRIBE = "transcribe"
     SUMMARIZE = "summarize"
+    GENERATE_IMAGE = "generate_image"
 
 
 class TaskStatus(str, Enum):
