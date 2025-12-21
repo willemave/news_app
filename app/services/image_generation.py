@@ -274,15 +274,15 @@ def _build_infographic_prompt(content: ContentData) -> str:
 
     content_context = "\n".join(parts)
 
-    return f"""Create a visually striking, editorial-style illustration for a news article.
+    return f"""Create an infographic that explains the article at a glance.
 
 {content_context}
 
 Style requirements:
 - Modern, clean editorial illustration style
-- Bold colors with good contrast
-- Abstract or conceptual representation of the theme
-- Professional, suitable for a news app
+- Subtle, muted color palette with good contrast
+- Conceptual representation of the theme
+- Suitable for a news app
 - No text or logos in the image
 - 16:9 aspect ratio optimized for mobile display
 """
