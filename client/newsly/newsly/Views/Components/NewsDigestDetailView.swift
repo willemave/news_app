@@ -37,19 +37,6 @@ struct NewsDigestDetailView: View {
     @ViewBuilder
     private func summarySection(summary: NewsSummaryMetadata) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Digest Summary")
-                    .font(.title2)
-                    .fontWeight(.bold)
-
-                if let summarizationDate = summary.summarizationDate,
-                   let formatted = formatDate(summarizationDate) {
-                    Text("Generated \(formatted)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
             if let overview = summary.summary, !overview.isEmpty {
                 Text(overview)
                     .font(.callout)
@@ -57,40 +44,20 @@ struct NewsDigestDetailView: View {
             }
 
             if !summary.keyPoints.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Key Points")
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(summary.keyPoints.enumerated()), id: \.offset) { _, point in
+                        HStack(alignment: .top, spacing: 12) {
+                            Circle()
+                                .fill(Color.accentColor)
+                                .frame(width: 6, height: 6)
+                                .padding(.top, 7)
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(summary.keyPoints.enumerated()), id: \.offset) { index, point in
-                            HStack(alignment: .top, spacing: 12) {
-                                Circle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 6, height: 6)
-                                    .padding(.top, 7)
-
-                                Text(point)
-                                    .font(.callout)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("Key point \(index + 1): \(point)")
+                            Text(point)
+                                .font(.callout)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
-            }
-
-            if let articleURLString = summary.articleURL,
-               let articleURL = URL(string: articleURLString) {
-                let linkTitle = summary.title ?? content.displayTitle
-                Link(destination: articleURL) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.up.right.square")
-                        Text(linkTitle)
-                            .lineLimit(2)
-                    }
-                }
-                .font(.callout)
             }
         }
     }
@@ -263,21 +230,4 @@ struct NewsDigestDetailView: View {
         }
     }
 
-    private func formatDate(_ isoString: String) -> String? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        var date = formatter.date(from: isoString)
-        if date == nil {
-            formatter.formatOptions = [.withInternetDateTime]
-            date = formatter.date(from: isoString)
-        }
-
-        guard let parsed = date else { return nil }
-
-        let displayFormatter = DateFormatter()
-        displayFormatter.dateStyle = .medium
-        displayFormatter.timeStyle = .short
-        return displayFormatter.string(from: parsed)
-    }
 }

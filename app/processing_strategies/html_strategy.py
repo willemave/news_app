@@ -610,6 +610,19 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 publication_date,
                 author,
             )
+
+            # Extract feed links from HTML for potential feed detection
+            feed_links = None
+            if result.cleaned_html:
+                from app.services.feed_detection import extract_feed_links
+
+                feed_links = extract_feed_links(result.cleaned_html, final_url)
+                if feed_links:
+                    logger.debug(
+                        "HtmlStrategy: Found %d feed link(s) in HTML",
+                        len(feed_links),
+                    )
+
             return {
                 "title": title,
                 "author": author,
@@ -620,6 +633,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 "source": host,
                 "final_url_after_redirects": final_url,
                 "table_markdown": table_markdown or None,
+                "feed_links": feed_links,  # For feed detection in worker
             }
 
         except Exception as e:

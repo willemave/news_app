@@ -309,6 +309,25 @@ class ContentListResponse(BaseModel):
         }
 
 
+class DetectedFeed(BaseModel):
+    """Detected RSS/Atom feed from content page."""
+
+    url: str = Field(..., description="Feed URL")
+    type: str = Field(..., description="Feed type: substack, podcast_rss, or atom")
+    title: str | None = Field(None, description="Feed title from link tag")
+    format: str = Field("rss", description="Feed format: rss or atom")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "url": "https://example.substack.com/feed",
+                "type": "substack",
+                "title": "Example Newsletter",
+                "format": "rss",
+            }
+        }
+
+
 class ContentDetailResponse(BaseModel):
     """Detailed response for a single content item."""
 
@@ -372,6 +391,9 @@ class ContentDetailResponse(BaseModel):
     )
     image_url: str | None = Field(
         None, description="URL of AI-generated image or thumbnail for this content"
+    )
+    detected_feed: DetectedFeed | None = Field(
+        None, description="Detected RSS/Atom feed for this content (only for user submissions)"
     )
 
     class Config:

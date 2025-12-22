@@ -107,11 +107,12 @@ struct ArticleCardView: View {
     private var contentTypeBadge: some View {
         HStack(spacing: 4) {
             Image(systemName: contentTypeIcon)
-                .font(.caption2)
+                .font(.caption)
             Text(content.contentType.capitalized)
-                .font(.caption2)
+                .font(.caption)
                 .fontWeight(.medium)
         }
+        .foregroundColor(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.ultraThinMaterial)

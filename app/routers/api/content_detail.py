@@ -14,7 +14,7 @@ from app.models.metadata import ContentType
 from app.models.schema import Content
 from app.models.user import User
 from app.routers.api.content_list import get_content_image_url
-from app.routers.api.models import ChatGPTUrlResponse, ContentDetailResponse
+from app.routers.api.models import ChatGPTUrlResponse, ContentDetailResponse, DetectedFeed
 
 router = APIRouter()
 
@@ -96,6 +96,17 @@ async def get_content_detail(
         rendered_markdown = None
         news_items = []
 
+    # Extract detected feed from metadata if present
+    detected_feed = None
+    detected_feed_data = (domain_content.metadata or {}).get("detected_feed")
+    if detected_feed_data:
+        detected_feed = DetectedFeed(
+            url=detected_feed_data["url"],
+            type=detected_feed_data["type"],
+            title=detected_feed_data.get("title"),
+            format=detected_feed_data.get("format", "rss"),
+        )
+
     # Return the validated content with all properties from ContentData
     return ContentDetailResponse(
         id=domain_content.id,
@@ -136,6 +147,7 @@ async def get_content_detail(
         news_key_points=news_key_points,
         news_summary=news_summary_text,
         image_url=get_content_image_url(domain_content),
+        detected_feed=detected_feed,
     )
 
 

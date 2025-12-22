@@ -13,6 +13,7 @@ struct StructuredSummaryView: View {
     var contentId: Int?
     var onTopicDeepDive: ((String) -> Void)?
 
+    @State private var isQuotesExpanded = true
     @State private var isKeyPointsExpanded = true
     @State private var isQuestionsExpanded = false
     @State private var isCounterArgsExpanded = false
@@ -21,6 +22,41 @@ struct StructuredSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // Quotes Section (first, expanded by default)
+            if !summary.quotes.isEmpty {
+                DisclosureGroup(isExpanded: $isQuotesExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(summary.quotes, id: \.text) { quote in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(quote.text)
+                                    .font(.callout)
+                                    .italic()
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                if let context = quote.context {
+                                    Text("— \(context)")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.leading, 16)
+                            .overlay(
+                                Rectangle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 3),
+                                alignment: .leading
+                            )
+                        }
+                    }
+                    .padding(.top, 12)
+                } label: {
+                    Text("Notable Quotes")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                }
+                .tint(.primary)
+            }
+
             // Key Points Section (expanded by default)
             if !summary.bulletPoints.isEmpty {
                 DisclosureGroup(isExpanded: $isKeyPointsExpanded) {
@@ -95,38 +131,6 @@ struct StructuredSummaryView: View {
                         .fontWeight(.semibold)
                 }
                 .tint(.primary)
-            }
-
-            if !summary.quotes.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Notable Quotes")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-
-                    ForEach(summary.quotes, id: \.text) { quote in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .top, spacing: 0) {
-                                Text(quote.text)
-                                    .font(.callout)
-                                    .italic()
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-
-                            if let context = quote.context {
-                                Text("— \(context)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.leading, 16)
-                        .overlay(
-                            Rectangle()
-                                .fill(Color.accentColor)
-                                .frame(width: 3),
-                            alignment: .leading
-                        )
-                    }
-                }
             }
 
             if !summary.topics.isEmpty {

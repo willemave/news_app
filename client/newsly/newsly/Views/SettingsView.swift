@@ -48,8 +48,8 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    Toggle("Card Stack View", isOn: $settings.useLongFormCardStack)
-                    Text("Display articles and podcasts as a swipeable card stack")
+                    Toggle("Use Card Stack", isOn: $settings.useLongFormCardStack)
+                    Text("When off, displays articles and podcasts as a scrollable list")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

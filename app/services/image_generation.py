@@ -241,42 +241,33 @@ Create a refined, elegant thumbnail image."""
 
 
 def _build_infographic_prompt(content: ContentData) -> str:
-    """Build prompt for complex editorial infographic (existing logic)."""
-    parts = []
+    """Build prompt for complex editorial infographic."""
     summary = content.metadata.get("summary", {})
-
     title = summary.get("title") or content.display_title
-    parts.append(f"Title: {title}")
 
-    overview = summary.get("overview", "")
-    if overview:
-        parts.append(f"Summary: {overview}")
+    # Extract key points (first 3)
+    key_points = []
+    for bp in summary.get("bullet_points", [])[:3]:
+        text = bp.get("text") if isinstance(bp, dict) else bp
+        if text:
+            key_points.append(text)
 
-    bullet_points = summary.get("bullet_points", [])
-    if bullet_points:
-        key_points = []
-        for bp in bullet_points[:3]:
-            text = bp.get("text") if isinstance(bp, dict) else bp
-            if text:
-                key_points.append(text)
-        if key_points:
-            parts.append("Key points: " + "; ".join(key_points))
+    # Extract quotes (first 2)
+    quotes = []
+    for q in summary.get("quotes", [])[:2]:
+        text = q.get("text") if isinstance(q, dict) else q
+        if text:
+            quotes.append(text)
 
-    quotes = summary.get("quotes", [])
+    parts = [f"Title: {title}"]
+    if key_points:
+        parts.append("Key points: " + "; ".join(key_points))
     if quotes:
-        quote_texts = []
-        for q in quotes[:2]:
-            text = q.get("text") if isinstance(q, dict) else q
-            if text:
-                quote_texts.append(f'"{text}"')
-        if quote_texts:
-            parts.append("Quotes: " + " ".join(quote_texts))
-
-    content_context = "\n".join(parts)
+        parts.append("Quotes: " + "; ".join(quotes))
 
     return f"""Create an infographic that explains the article at a glance.
 
-{content_context}
+{chr(10).join(parts)}
 
 Style requirements:
 - Modern, clean editorial illustration style
@@ -431,7 +422,7 @@ class ImageGenerationService:
                 model=INFOGRAPHIC_MODEL,
                 contents=prompt,
                 config=GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
+                    response_modalities=["IMAGE"],
                     image_config=ImageConfig(
                         aspect_ratio="16:9",
                         image_size="1K",

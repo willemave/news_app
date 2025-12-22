@@ -92,4 +92,31 @@ class ScraperConfigService {
     func deleteConfig(configId: Int) async throws {
         try await client.requestVoid(APIEndpoints.scraperConfig(id: configId), method: "DELETE")
     }
+
+    /// Subscribe to a detected feed.
+    func subscribeFeed(
+        feedURL: String,
+        feedType: String,
+        displayName: String?
+    ) async throws -> ScraperConfig {
+        let payload = SubscribeFeedPayload(
+            feedURL: feedURL,
+            feedType: feedType,
+            displayName: displayName
+        )
+        let body = try JSONEncoder().encode(payload)
+        return try await client.request(APIEndpoints.subscribeFeed, method: "POST", body: body)
+    }
+}
+
+struct SubscribeFeedPayload: Codable {
+    let feedURL: String
+    let feedType: String
+    let displayName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case feedURL = "feed_url"
+        case feedType = "feed_type"
+        case displayName = "display_name"
+    }
 }

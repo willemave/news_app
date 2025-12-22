@@ -40,6 +40,7 @@ enum APIEndpoints {
     static func scraperConfig(id: Int) -> String {
         return "/api/scrapers/\(id)"
     }
+    static let subscribeFeed = "/api/scrapers/subscribe"
     static func tweetSuggestions(id: Int) -> String {
         return "/api/content/\(id)/tweet-suggestions"
     }

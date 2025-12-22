@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MarkdownUI
+import UIKit
 
 struct ContentDetailView: View {
     let initialContentId: Int
@@ -36,6 +37,13 @@ struct ContentDetailView: View {
     @StateObject private var dictationService = VoiceDictationService.shared
     // Share sheet options
     @State private var showShareOptions: Bool = false
+    // Full image viewer
+    @State private var showFullImage: Bool = false
+    @State private var fullImageURL: URL?
+    // Swipe haptic feedback
+    @State private var didTriggerSwipeHaptic: Bool = false
+    // Transcript/Full Article collapsed state
+    @State private var isTranscriptExpanded: Bool = false
 
     init(contentId: Int, allContentIds: [Int] = [], onConvert: ((Int) async -> Void)? = nil) {
         self.initialContentId = contentId
@@ -61,127 +69,8 @@ struct ContentDetailView: View {
                     .frame(minHeight: 400)
                 } else if let content = viewModel.content {
                     VStack(alignment: .leading, spacing: 0) {
-                    // Compact Header Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(content.displayTitle)
-                            .font(.title)
-                            .fontWeight(.bold)
-
-                        // Compact Metadata Row
-                        HStack(spacing: 8) {
-                            if let contentType = content.contentTypeEnum {
-                                ContentTypeBadge(contentType: contentType)
-                            }
-
-                            if let source = content.source {
-                                Text(source)
-                                    .font(.callout)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            if content.source != nil && content.publicationDate != nil {
-                                Text("•")
-                                    .font(.callout)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            if let pubDate = content.publicationDate {
-                                Text(formatDate(pubDate))
-                                    .font(.callout)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            // Show created_at
-                            Text("•")
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                            Text(formatDateSimple(content.createdAt))
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-
-                            Spacer()
-                        }
-
-                        // Compact Action Buttons Row
-                        HStack(spacing: 8) {
-                            if let url = URL(string: content.url) {
-                                Link(destination: url) {
-                                    Image(systemName: "arrow.up.right.square")
-                                        .font(.system(size: 18))
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-
-                            Button(action: { showShareOptions = true }) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 18))
-                            }
-                            .buttonStyle(.bordered)
-
-                            // Deep Dive chat button
-                            Button(action: {
-                                Task { await handleChatButtonTapped(content) }
-                            }) {
-                                Image(systemName: "brain.head.profile")
-                                    .font(.system(size: 18))
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(isCheckingChatSession)
-
-                            // Tweet button
-                            Button(action: {
-                                showTweetSheet = true
-                            }) {
-                                Image(systemName: "text.bubble")
-                                    .font(.system(size: 18))
-                            }
-                            .buttonStyle(.bordered)
-
-                            // Convert to article button for news only
-                            if content.contentTypeEnum == .news, let onConvert = onConvert {
-                                Button(action: {
-                                    Task {
-                                        isConverting = true
-                                        await onConvert(content.id)
-                                        isConverting = false
-                                    }
-                                }) {
-                                    if isConverting {
-                                        ProgressView()
-                                            .scaleEffect(0.7)
-                                    } else {
-                                        Image(systemName: "arrow.right.circle")
-                                            .font(.system(size: 18))
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(isConverting)
-                            }
-
-                            // Favorite button
-                            Button(action: {
-                                Task {
-                                    await viewModel.toggleFavorite()
-                                }
-                            }) {
-                                Image(systemName: content.isFavorited ? "star.fill" : "star")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(content.isFavorited ? .yellow : .primary)
-                            }
-                            .buttonStyle(.bordered)
-
-                            Spacer()
-
-                            // Navigation indicators
-                            if allContentIds.count > 1 {
-                                Text("\(currentIndex + 1) / \(allContentIds.count)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
+                    // Header with background image
+                    headerWithImage(content: content)
 
                     // Chat status banner (inline, under header)
                     if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
@@ -214,14 +103,19 @@ struct ContentDetailView: View {
                         )
                     }
 
-                    Divider()
-                        .padding(.vertical, 8)
-
-                    // Hero Image Section
-                    if let imageUrlString = content.imageUrl {
-                        heroImageView(imageUrlString: imageUrlString)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 12)
+                    // Detected feed subscription card (only for self-submitted content)
+                    if let feed = content.detectedFeed, content.source == "self submission" {
+                        DetectedFeedCard(
+                            feed: feed,
+                            isSubscribing: viewModel.isSubscribingToFeed,
+                            hasSubscribed: viewModel.feedSubscriptionSuccess,
+                            subscriptionError: viewModel.feedSubscriptionError,
+                            onSubscribe: {
+                                Task { await viewModel.subscribeToDetectedFeed() }
+                            }
+                        )
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
                     }
 
                     // Structured Summary Section
@@ -287,34 +181,38 @@ struct ContentDetailView: View {
                         }
                     }
 
-                    // Full Content Section
+                    // Full Content Section (collapsible, collapsed by default)
                     // For podcasts, check podcastMetadata.transcript first, then fall back to fullMarkdown
                     if content.contentTypeEnum == .podcast, let podcastMetadata = content.podcastMetadata, let transcript = podcastMetadata.transcript {
                         Divider()
                             .padding(.vertical, 8)
 
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Transcript")
-                                .font(.title2)
-                                .fontWeight(.bold)
-
+                        DisclosureGroup(isExpanded: $isTranscriptExpanded) {
                             Markdown(transcript)
                                 .markdownTheme(.gitHub)
+                                .padding(.top, 12)
+                        } label: {
+                            Text("Transcript")
+                                .font(.title3)
+                                .fontWeight(.semibold)
                         }
+                        .tint(.primary)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                     } else if let fullMarkdown = content.fullMarkdown {
                         Divider()
                             .padding(.vertical, 8)
 
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(content.contentTypeEnum == .podcast ? "Transcript" : "Full Article")
-                                .font(.title2)
-                                .fontWeight(.bold)
-
+                        DisclosureGroup(isExpanded: $isTranscriptExpanded) {
                             Markdown(fullMarkdown)
                                 .markdownTheme(.gitHub)
+                                .padding(.top, 12)
+                        } label: {
+                            Text(content.contentTypeEnum == .podcast ? "Transcript" : "Full Article")
+                                .font(.title3)
+                                .fontWeight(.semibold)
                         }
+                        .tint(.primary)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                     }
@@ -323,51 +221,96 @@ struct ContentDetailView: View {
             }
         }
         .textSelection(.enabled)
+        .overlay(alignment: .leading) {
+            // Left edge indicator (previous)
+            if dragAmount > 30 && currentIndex > 0 {
+                swipeIndicator(direction: .previous, progress: min(1.0, dragAmount / 100))
+            }
+        }
+        .overlay(alignment: .trailing) {
+            // Right edge indicator (next)
+            if dragAmount < -30 && currentIndex < allContentIds.count - 1 {
+                swipeIndicator(direction: .next, progress: min(1.0, abs(dragAmount) / 100))
+            }
+        }
         .offset(x: dragAmount)
-        .animation(.spring(), value: dragAmount)
+        .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: dragAmount)
         .simultaneousGesture(
-            DragGesture(minimumDistance: 80, coordinateSpace: .global)
+            DragGesture(minimumDistance: 50, coordinateSpace: .global)
                 .onChanged { value in
-                    // Only respond to fast, clearly horizontal swipes
                     let horizontalAmount = abs(value.translation.width)
                     let verticalAmount = abs(value.translation.height)
 
-                    // Require the swipe to be significantly more horizontal than vertical
-                    // Increased threshold to avoid interfering with text selection
-                    if horizontalAmount > verticalAmount * 3 && horizontalAmount > 80 {
-                        dragAmount = value.translation.width * 0.3
+                    // Require horizontal swipe
+                    if horizontalAmount > verticalAmount * 2 && horizontalAmount > 30 {
+                        // More responsive drag with resistance at edges
+                        let canGoLeft = currentIndex < allContentIds.count - 1
+                        let canGoRight = currentIndex > 0
+
+                        var newOffset = value.translation.width * 0.6
+
+                        // Add resistance if can't navigate in that direction
+                        if newOffset < 0 && !canGoLeft {
+                            newOffset = newOffset * 0.2
+                        } else if newOffset > 0 && !canGoRight {
+                            newOffset = newOffset * 0.2
+                        }
+
+                        dragAmount = newOffset
+
+                        // Haptic feedback when crossing threshold
+                        if abs(newOffset) > 80 && !didTriggerSwipeHaptic {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            didTriggerSwipeHaptic = true
+                        }
                     }
                 }
                 .onEnded { value in
+                    didTriggerSwipeHaptic = false
                     let horizontalAmount = abs(value.translation.width)
                     let verticalAmount = abs(value.translation.height)
 
-                    // Only process as navigation if it's a clear horizontal swipe
-                    // Increased thresholds to better distinguish from text selection
-                    if horizontalAmount > verticalAmount * 3 && horizontalAmount > 120 {
-                        if value.translation.width > 120 && currentIndex > 0 {
-                            // Swipe right - previous article
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                    if horizontalAmount > verticalAmount * 2 && horizontalAmount > 80 {
+                        if value.translation.width > 80 && currentIndex > 0 {
+                            // Swipe right - previous
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            withAnimation(.easeOut(duration: 0.2)) {
                                 dragAmount = UIScreen.main.bounds.width
                             }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                dragAmount = 0
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                // Reset without animation, then navigate
+                                var transaction = Transaction()
+                                transaction.disablesAnimations = true
+                                withTransaction(transaction) {
+                                    dragAmount = 0
+                                }
                                 navigateToPrevious()
                             }
-                        } else if value.translation.width < -120 && currentIndex < allContentIds.count - 1 {
-                            // Swipe left - next article
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            return
+                        } else if value.translation.width < -80 && currentIndex < allContentIds.count - 1 {
+                            // Swipe left - next
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            withAnimation(.easeOut(duration: 0.2)) {
                                 dragAmount = -UIScreen.main.bounds.width
                             }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                dragAmount = 0
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                // Reset without animation, then navigate
+                                var transaction = Transaction()
+                                transaction.disablesAnimations = true
+                                withTransaction(transaction) {
+                                    dragAmount = 0
+                                }
                                 navigateToNext()
                             }
+                            return
                         }
                     }
 
-                    // Always snap back
-                    withAnimation(.spring()) {
+                    // Snap back
+                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
                         dragAmount = 0
                     }
                 }
@@ -375,10 +318,6 @@ struct ContentDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Hide the main tab bar while viewing details
         .toolbar(.hidden, for: .tabBar)
-        // Sticky bottom action bar
-        .safeAreaInset(edge: .bottom) {
-            bottomBar
-        }
         .task {
             let idToLoad = allContentIds.isEmpty ? initialContentId : allContentIds[currentIndex]
             viewModel.updateContentId(idToLoad)
@@ -735,28 +674,171 @@ struct ContentDetailView: View {
         }
     }
 
-    // MARK: - Hero Image
+    // MARK: - Header with Thumbnail
     @ViewBuilder
-    private func heroImageView(imageUrlString: String) -> some View {
-        if let imageUrl = buildImageURL(from: imageUrlString) {
-            AsyncImage(url: imageUrl) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 200)
-                        .clipped()
-                        .cornerRadius(12)
-                case .failure:
-                    EmptyView()
-                case .empty:
-                    ProgressView()
-                        .frame(height: 200)
-                @unknown default:
-                    EmptyView()
+    private func headerWithImage(content: ContentDetail) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Title row with optional thumbnail
+            HStack(alignment: .top, spacing: 14) {
+                // Thumbnail on left (tappable)
+                if let imageUrlString = content.imageUrl,
+                   let imageUrl = buildImageURL(from: imageUrlString) {
+                    Button {
+                        fullImageURL = imageUrl
+                        showFullImage = true
+                    } label: {
+                        AsyncImage(url: imageUrl) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 80, height: 80)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            case .failure:
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.secondary.opacity(0.2))
+                                    .frame(width: 80, height: 80)
+                            case .empty:
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.secondary.opacity(0.1))
+                                    .frame(width: 80, height: 80)
+                                    .overlay(ProgressView())
+                            @unknown default:
+                                EmptyView()
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
+
+                // Title
+                Text(content.displayTitle)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Metadata Row - cleaner formatting
+            HStack(spacing: 6) {
+                if let contentType = content.contentTypeEnum {
+                    Text(contentType.rawValue.capitalized)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                if let source = content.source {
+                    Text("•")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.6))
+                    Text(source)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                Text("•")
+                    .font(.caption)
+                    .foregroundColor(.secondary.opacity(0.6))
+
+                Text(formatDateSimple(content.createdAt))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                Spacer()
+            }
+
+            // Action Buttons Row
+            HStack(spacing: 8) {
+                if let url = URL(string: content.url) {
+                    Link(destination: url) {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 18))
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Button(action: { showShareOptions = true }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 18))
+                }
+                .buttonStyle(.bordered)
+
+                // Deep Dive chat button
+                Button(action: {
+                    Task { await handleChatButtonTapped(content) }
+                }) {
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 18))
+                }
+                .buttonStyle(.bordered)
+                .disabled(isCheckingChatSession)
+
+                // Tweet button
+                Button(action: {
+                    showTweetSheet = true
+                }) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 18))
+                }
+                .buttonStyle(.bordered)
+
+                // Convert to article button for news only
+                if content.contentTypeEnum == .news, let onConvert = onConvert {
+                    Button(action: {
+                        Task {
+                            isConverting = true
+                            await onConvert(content.id)
+                            isConverting = false
+                        }
+                    }) {
+                        if isConverting {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "arrow.right.circle")
+                                .font(.system(size: 18))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isConverting)
+                }
+
+                // Favorite button
+                Button(action: {
+                    Task {
+                        await viewModel.toggleFavorite()
+                    }
+                }) {
+                    Image(systemName: content.isFavorited ? "star.fill" : "star")
+                        .font(.system(size: 18))
+                        .foregroundColor(content.isFavorited ? .yellow : .primary)
+                }
+                .buttonStyle(.bordered)
+
+                // Next button
+                if currentIndex < allContentIds.count - 1 {
+                    Button(action: {
+                        withAnimation(.easeInOut) { navigateToNext() }
+                    }) {
+                        HStack(spacing: 6) {
+                            Text("Next")
+                                .font(.system(size: 16))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 16))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .fullScreenCover(isPresented: $showFullImage) {
+            if let url = fullImageURL {
+                FullImageView(imageURL: url, isPresented: $showFullImage)
             }
         }
     }
@@ -773,60 +855,36 @@ struct ContentDetailView: View {
         return baseURL.appendingPathComponent(urlString)
     }
 
-    // MARK: - Bottom Bar
-    private var bottomBar: some View {
-        let canGoPrev = currentIndex > 0
-        let canGoNext = currentIndex < allContentIds.count - 1
-
-        return HStack(spacing: 12) {
-            // Previous (icon only)
-            Button {
-                withAnimation(.easeInOut) { navigateToPrevious() }
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
-            .disabled(!canGoPrev)
-            .accessibilityLabel("Previous Article")
-
-            // Favorite (icon only)
-            Button {
-                Task { await viewModel.toggleFavorite() }
-            } label: {
-                Image(systemName: (viewModel.content?.isFavorited ?? false) ? "star.fill" : "star")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint((viewModel.content?.isFavorited ?? false) ? .yellow : .gray)
-            .accessibilityLabel("Favorite")
-
-            // Next (icon only)
-            Button {
-                withAnimation(.easeInOut) { navigateToNext() }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
-            .disabled(!canGoNext)
-            .accessibilityLabel("Next Article")
-        }
-        .padding(.horizontal)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .background(.ultraThinMaterial)
-        .overlay(
-            Divider()
-                .background(Color.secondary.opacity(0.4)), alignment: .top
-        )
+    // MARK: - Swipe Indicator
+    private enum SwipeDirection {
+        case previous, next
     }
-    
+
+    @ViewBuilder
+    private func swipeIndicator(direction: SwipeDirection, progress: CGFloat) -> some View {
+        let iconName = direction == .previous ? "chevron.left" : "chevron.right"
+
+        VStack {
+            Spacer()
+            HStack {
+                if direction == .next { Spacer() }
+                Image(systemName: iconName)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(
+                        Circle()
+                            .fill(Color.accentColor.opacity(0.9))
+                    )
+                    .scaleEffect(0.8 + (progress * 0.4))
+                    .opacity(Double(progress))
+                    .padding(.horizontal, 8)
+                if direction == .previous { Spacer() }
+            }
+            Spacer()
+        }
+    }
+
     private var statusIcon: String {
         guard let content = viewModel.content else { return "circle" }
         switch content.status {

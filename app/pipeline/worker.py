@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
@@ -259,6 +260,31 @@ class ContentWorker:
             for field in hn_fields:
                 if field in extracted_data:
                     metadata_update[field] = extracted_data[field]
+
+            # Detect feeds for user-submitted content
+            feed_links = extracted_data.get("feed_links")
+            if feed_links and existing_metadata.get("source") == SELF_SUBMISSION_SOURCE:
+                from app.services.feed_detection import classify_feed_type_with_llm
+
+                primary_feed = feed_links[0]
+                classification = classify_feed_type_with_llm(
+                    feed_url=primary_feed["feed_url"],
+                    page_url=final_url,
+                    page_title=extracted_data.get("title"),
+                )
+                feed_type = classification.feed_type if classification else "atom"
+                metadata_update["detected_feed"] = {
+                    "url": primary_feed["feed_url"],
+                    "type": feed_type,
+                    "title": primary_feed.get("title"),
+                    "format": primary_feed.get("feed_format", "rss"),
+                }
+                logger.info(
+                    "Detected feed for content %s: %s (type=%s)",
+                    content.id,
+                    primary_feed["feed_url"],
+                    feed_type,
+                )
 
             content.metadata.update(metadata_update)
 

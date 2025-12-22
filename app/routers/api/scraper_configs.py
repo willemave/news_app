@@ -159,3 +159,62 @@ async def delete_scraper_config_endpoint(
         delete_user_scraper_config(db, current_user.id, config_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+class SubscribeToFeedRequest(BaseModel):
+    """Request to subscribe to a detected feed."""
+
+    feed_url: str
+    feed_type: str
+    display_name: str | None = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "feed_url": "https://example.substack.com/feed",
+                "feed_type": "substack",
+                "display_name": "Example Newsletter",
+            }
+        }
+
+
+@router.post(
+    "/subscribe", response_model=ScraperConfigResponse, status_code=status.HTTP_201_CREATED
+)
+async def subscribe_to_feed(
+    payload: SubscribeToFeedRequest,
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ScraperConfigResponse:
+    """Subscribe to a feed detected from content.
+
+    Convenience endpoint that creates a scraper config from a detected feed.
+    """
+    if payload.feed_type not in ALLOWED_SCRAPER_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported feed type: {payload.feed_type}",
+        )
+
+    create_payload = CreateUserScraperConfig(
+        scraper_type=payload.feed_type,
+        display_name=payload.display_name,
+        config={"feed_url": payload.feed_url},
+        is_active=True,
+    )
+
+    try:
+        record = create_user_scraper_config(db, current_user.id, create_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return ScraperConfigResponse(
+        id=record.id,
+        scraper_type=record.scraper_type,
+        display_name=record.display_name,
+        config=record.config or {},
+        feed_url=(record.config or {}).get("feed_url"),
+        limit=_coerce_limit(record.config or {}),
+        is_active=record.is_active,
+        created_at=record.created_at,
+    )

@@ -15,7 +15,7 @@ class AppSettings: ObservableObject {
     @AppStorage("serverPort", store: SharedContainer.userDefaults) var serverPort: String = "8000"
     @AppStorage("useHTTPS", store: SharedContainer.userDefaults) var useHTTPS: Bool = false
     @AppStorage("showReadContent", store: SharedContainer.userDefaults) var showReadContent: Bool = false
-    @AppStorage("useLongFormCardStack", store: SharedContainer.userDefaults) var useLongFormCardStack: Bool = false
+    @AppStorage("useLongFormCardStack", store: SharedContainer.userDefaults) var useLongFormCardStack: Bool = true
 
     var baseURL: String {
         let scheme = useHTTPS ? "https" : "http"

@@ -24,9 +24,15 @@ class ContentDetailViewModel: ObservableObject {
     @Published var errorMessage: String?
     // Indicates if the item was already marked as read when it was fetched
     @Published var wasAlreadyReadWhenLoaded: Bool = false
-    
+
+    // Feed subscription state
+    @Published var isSubscribingToFeed = false
+    @Published var feedSubscriptionSuccess = false
+    @Published var feedSubscriptionError: String?
+
     private let contentService = ContentService.shared
     private let unreadCountService = UnreadCountService.shared
+    private let scraperConfigService = ScraperConfigService.shared
     private var contentId: Int = 0
     
     init(contentId: Int = 0) {
@@ -122,6 +128,32 @@ class ContentDetailViewModel: ObservableObject {
             content?.isFavorited = currentContent.isFavorited
             errorMessage = "Failed to update favorite status"
         }
+    }
+
+    /// Subscribe to the detected feed for this content.
+    func subscribeToDetectedFeed() async {
+        guard let feed = content?.detectedFeed else {
+            feedSubscriptionError = "No feed detected"
+            return
+        }
+
+        isSubscribingToFeed = true
+        feedSubscriptionError = nil
+
+        do {
+            _ = try await scraperConfigService.subscribeFeed(
+                feedURL: feed.url,
+                feedType: feed.type,
+                displayName: feed.title
+            )
+            feedSubscriptionSuccess = true
+            logger.info("[ContentDetail] Successfully subscribed to feed | url=\(feed.url, privacy: .public) type=\(feed.type, privacy: .public)")
+        } catch {
+            feedSubscriptionError = error.localizedDescription
+            logger.error("[ContentDetail] Failed to subscribe to feed | error=\(error.localizedDescription)")
+        }
+
+        isSubscribingToFeed = false
     }
 
     private func buildFullMarkdown() -> String? {

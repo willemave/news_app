@@ -37,6 +37,7 @@ struct ContentDetail: Codable, Identifiable {
     let renderedMarkdown: String?
     let newsItems: [NewsItem]?
     let imageUrl: String?
+    let detectedFeed: DetectedFeed?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -68,6 +69,7 @@ struct ContentDetail: Codable, Identifiable {
         case renderedMarkdown = "rendered_markdown"
         case newsItems = "news_items"
         case imageUrl = "image_url"
+        case detectedFeed = "detected_feed"
     }
     
     var contentTypeEnum: ContentType? {
