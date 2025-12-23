@@ -1,8 +1,12 @@
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings
+
+# Load .env file into os.environ so libraries like openai/pydantic-ai can read it
+load_dotenv(override=True)
 
 
 class Settings(BaseSettings):
