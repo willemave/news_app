@@ -47,6 +47,8 @@ class SequentialTaskProcessor:
             result = False
             if task_type == TaskType.SCRAPE:
                 result = self._process_scrape_task(task_data)
+            elif task_type == TaskType.ANALYZE_URL:
+                result = self._process_analyze_url_task(task_data)
             elif task_type == TaskType.PROCESS_CONTENT:
                 result = self._process_content_task(task_data)
             elif task_type == TaskType.DOWNLOAD_AUDIO:
@@ -88,6 +90,127 @@ class SequentialTaskProcessor:
             return True
         except Exception as e:
             logger.error(f"Scraper error: {e}", exc_info=True)
+            return False
+
+    def _process_analyze_url_task(self, task_data: dict[str, Any]) -> bool:
+        """Analyze URL to determine content type, then enqueue PROCESS_CONTENT.
+
+        Uses pattern matching for known platforms (fast) or LLM web search
+        for unknown URLs to determine content type and extract metadata.
+        """
+        from app.models.metadata import ContentType
+        from app.services.content_analyzer import AnalysisError, get_content_analyzer
+        from app.services.content_submission import (
+            infer_content_type_and_platform,
+            should_use_llm_analysis,
+        )
+
+        try:
+            content_id = task_data.get("content_id") or task_data.get("payload", {}).get(
+                "content_id"
+            )
+            if not content_id:
+                logger.error("No content_id provided for analyze_url task")
+                return False
+
+            content_id = int(content_id)
+            logger.info(f"Analyzing URL for content {content_id}")
+
+            with get_db() as db:
+                content = db.query(Content).filter(Content.id == content_id).first()
+                if not content:
+                    logger.error(f"Content {content_id} not found for URL analysis")
+                    return False
+
+                url = content.url
+                metadata = dict(content.content_metadata or {})
+
+                # Check if this is a known platform (fast path)
+                if not should_use_llm_analysis(url):
+                    # Use pattern-based detection
+                    detected_type, platform = infer_content_type_and_platform(url, None, None)
+                    logger.info(
+                        f"Pattern-based detection for {content_id}: type={detected_type.value}, "
+                        f"platform={platform}"
+                    )
+
+                    content.content_type = detected_type.value
+                    if platform:
+                        content.platform = platform
+                        metadata["platform"] = platform
+
+                    content.content_metadata = metadata
+                    db.commit()
+
+                else:
+                    # Use LLM analysis with web search
+                    analyzer = get_content_analyzer()
+                    result = analyzer.analyze_url(url)
+
+                    if isinstance(result, AnalysisError):
+                        # Fall back to pattern detection on error
+                        logger.warning(
+                            f"LLM analysis failed for {content_id}, using pattern detection: "
+                            f"{result.message}"
+                        )
+                        detected_type, platform = infer_content_type_and_platform(url, None, None)
+                        content.content_type = detected_type.value
+                        if platform:
+                            content.platform = platform
+                            metadata["platform"] = platform
+                    else:
+                        # Map LLM result to ContentType
+                        if result.content_type == "article":
+                            content.content_type = ContentType.ARTICLE.value
+                        elif result.content_type in ("podcast", "video"):
+                            content.content_type = ContentType.PODCAST.value
+                        else:
+                            content.content_type = ContentType.ARTICLE.value
+
+                        # Store extracted metadata
+                        if result.platform:
+                            content.platform = result.platform
+                            metadata["platform"] = result.platform
+                        if result.media_url:
+                            metadata["audio_url"] = result.media_url
+                        if result.media_format:
+                            metadata["media_format"] = result.media_format
+                        if result.title:
+                            metadata["extracted_title"] = result.title
+                            if not content.title:
+                                content.title = result.title
+                        if result.description:
+                            metadata["extracted_description"] = result.description
+                        if result.duration_seconds:
+                            metadata["duration"] = result.duration_seconds
+                        if result.content_type == "video":
+                            metadata["is_video"] = True
+                            metadata["video_url"] = url
+
+                        logger.info(
+                            f"LLM analysis complete for {content_id}: "
+                            f"type={content.content_type}, platform={content.platform}"
+                        )
+
+                    content.content_metadata = metadata
+                    db.commit()
+
+            # Enqueue PROCESS_CONTENT task
+            self.queue_service.enqueue(TaskType.PROCESS_CONTENT, content_id=content_id)
+            logger.info(f"Enqueued PROCESS_CONTENT for content {content_id}")
+
+            return True
+
+        except Exception as e:
+            logger.exception(
+                f"URL analysis error for content_id {content_id}: {e}",
+                extra={
+                    "component": "sequential_task_processor",
+                    "operation": "analyze_url",
+                    "item_id": content_id,
+                    "context_data": {"error": str(e)},
+                },
+            )
             return False
 
     def _process_content_task(self, task_data: dict[str, Any]) -> bool:

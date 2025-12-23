@@ -6,26 +6,30 @@ from app.models.schema import Content, ProcessingTask
 from app.services.queue import TaskStatus, TaskType
 
 
-def test_submit_article_creates_content_and_task(client, db_session):
-    """Submitting a new article should persist content and enqueue processing."""
+def test_submit_url_creates_content_and_analyze_task(client, db_session):
+    """Submitting a new URL should persist content with UNKNOWN type and enqueue ANALYZE_URL."""
     response = client.post("/api/content/submit", json={"url": "https://example.com/article"})
 
     assert response.status_code == 201
     data = response.json()
 
-    assert data["content_type"] == ContentType.ARTICLE.value
+    # New submissions always have UNKNOWN type until analyzed
+    assert data["content_type"] == ContentType.UNKNOWN.value
     assert data["already_exists"] is False
     assert data["source"] == SELF_SUBMISSION_SOURCE
+    assert data["message"] == "Content queued for analysis"
 
     created = db_session.query(Content).filter(Content.id == data["content_id"]).first()
     assert created is not None
     assert created.source == SELF_SUBMISSION_SOURCE
     assert created.status == ContentStatus.NEW.value
+    assert created.content_type == ContentType.UNKNOWN.value
     assert created.classification == "to_read"
 
+    # Task should be ANALYZE_URL, not PROCESS_CONTENT
     task = db_session.query(ProcessingTask).filter_by(content_id=created.id).first()
     assert task is not None
-    assert task.task_type == TaskType.PROCESS_CONTENT.value
+    assert task.task_type == TaskType.ANALYZE_URL.value
     assert task.status == TaskStatus.PENDING.value
 
 
@@ -42,27 +46,35 @@ def test_duplicate_submission_reuses_existing_record(client, db_session):
 
     response = client.post(
         "/api/content/submit",
-        json={"url": existing.url, "content_type": ContentType.ARTICLE.value},
+        json={"url": existing.url},
     )
 
     assert response.status_code == 200
     data = response.json()
     assert data["already_exists"] is True
     assert data["content_id"] == existing.id
+    # Existing content keeps its type
+    assert data["content_type"] == ContentType.ARTICLE.value
 
     contents = db_session.query(Content).filter(Content.url == existing.url).all()
     assert len(contents) == 1
 
+    # Should have either ANALYZE_URL or PROCESS_CONTENT task
     tasks = (
         db_session.query(ProcessingTask)
-        .filter_by(content_id=existing.id, task_type=TaskType.PROCESS_CONTENT.value)
+        .filter_by(content_id=existing.id)
+        .filter(
+            ProcessingTask.task_type.in_(
+                [TaskType.ANALYZE_URL.value, TaskType.PROCESS_CONTENT.value]
+            )
+        )
         .all()
     )
     assert len(tasks) == 1
 
 
-def test_submit_podcast_infers_platform(client, db_session):
-    """Spotify URLs should be treated as podcasts with platform hint."""
+def test_submit_spotify_url_creates_unknown_type(client, db_session):
+    """Spotify URLs are submitted with UNKNOWN type; type detection happens async."""
     response = client.post(
         "/api/content/submit",
         json={"url": "https://open.spotify.com/episode/abcdef"},
@@ -70,8 +82,10 @@ def test_submit_podcast_infers_platform(client, db_session):
 
     assert response.status_code == 201
     data = response.json()
-    assert data["content_type"] == ContentType.PODCAST.value
-    assert data["platform"] == "spotify"
+    # All new submissions have UNKNOWN type - ANALYZE_URL task will determine actual type
+    assert data["content_type"] == ContentType.UNKNOWN.value
+    # Platform is not set until ANALYZE_URL task runs
+    assert data["platform"] is None
 
 
 def test_reject_invalid_scheme(client):

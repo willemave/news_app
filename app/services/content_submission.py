@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from urllib.parse import urlparse
 
 from pydantic import HttpUrl, TypeAdapter
@@ -15,10 +14,6 @@ from app.models.metadata import ContentClassification, ContentStatus, ContentTyp
 from app.models.schema import Content, ProcessingTask
 from app.models.user import User
 from app.routers.api.models import ContentSubmissionResponse, SubmitContentRequest
-from app.services.content_analyzer import (
-    AnalysisError,
-    get_content_analyzer,
-)
 from app.services.queue import TaskStatus, TaskType
 from app.services.scraper_configs import ensure_inbox_status
 
@@ -134,140 +129,25 @@ def should_use_llm_analysis(url: str) -> bool:
     return hostname_no_www not in PODCAST_HOST_PLATFORMS
 
 
-def analyze_and_classify_url(
-    url: str,
-    provided_type: ContentType | None = None,
-    platform_hint: str | None = None,
-) -> tuple[ContentType, str | None, dict[str, Any]]:
-    """Analyze URL and determine content type, platform, and metadata.
-
-    Uses OpenAI web search for unknown URLs, falls back to pattern matching
-    if the LLM call fails or for known platforms.
-
-    Args:
-        url: Normalized URL to analyze.
-        provided_type: Optional explicit content type from client.
-        platform_hint: Optional platform hint from client.
-
-    Returns:
-        Tuple of (content_type, platform, extra_metadata).
-        extra_metadata may contain: audio_url, media_format, extracted_title,
-        duration, is_video, video_url.
-    """
-    extra_metadata: dict[str, Any] = {}
-
-    # If explicit type provided, trust it and skip analysis
-    if provided_type:
-        platform = _normalize_platform(platform_hint)
-        return provided_type, platform, extra_metadata
-
-    # For known platforms, use fast pattern-based detection
-    if not should_use_llm_analysis(url):
-        content_type, platform = infer_content_type_and_platform(url, None, platform_hint)
-        logger.debug(
-            "Using pattern-based detection for known platform: type=%s, platform=%s",
-            content_type.value,
-            platform,
-        )
-        return content_type, platform, extra_metadata
-
-    # Use LLM analysis for unknown URLs
-    try:
-        analyzer = get_content_analyzer()
-        result = analyzer.analyze_url(url)
-
-        if isinstance(result, AnalysisError):
-            logger.warning(
-                "LLM analysis failed, falling back to pattern detection: %s",
-                result.message,
-                extra={
-                    "component": "content_submission",
-                    "operation": "analyze_and_classify_url",
-                    "context_data": {"url": url, "error": result.message},
-                },
-            )
-            content_type, platform = infer_content_type_and_platform(url, None, platform_hint)
-            return content_type, platform, extra_metadata
-
-        # Map analysis result to ContentType
-        if result.content_type == "article":
-            content_type = ContentType.ARTICLE
-        elif result.content_type in ("podcast", "video"):
-            # Both podcast and video are processed through podcast pipeline
-            content_type = ContentType.PODCAST
-        else:
-            content_type = ContentType.ARTICLE
-
-        # Use detected platform or fall back to hint
-        platform = result.platform or _normalize_platform(platform_hint)
-
-        # Store extracted metadata for use by workers
-        if result.media_url:
-            extra_metadata["audio_url"] = result.media_url
-            if result.media_format:
-                extra_metadata["media_format"] = result.media_format
-
-        if result.title:
-            extra_metadata["extracted_title"] = result.title
-
-        if result.description:
-            extra_metadata["extracted_description"] = result.description
-
-        if result.duration_seconds:
-            extra_metadata["duration"] = result.duration_seconds
-
-        if result.content_type == "video":
-            extra_metadata["is_video"] = True
-            extra_metadata["video_url"] = url
-
-        logger.info(
-            "LLM analysis complete: type=%s, platform=%s, has_media_url=%s",
-            content_type.value,
-            platform,
-            result.media_url is not None,
-            extra={
-                "component": "content_submission",
-                "operation": "analyze_and_classify_url",
-                "context_data": {
-                    "url": url,
-                    "content_type": content_type.value,
-                    "platform": platform,
-                    "has_media_url": result.media_url is not None,
-                    "confidence": result.confidence,
-                },
-            },
-        )
-
-        return content_type, platform, extra_metadata
-
-    except Exception as e:
-        logger.exception(
-            "Unexpected error in LLM analysis, falling back to pattern detection: %s",
-            e,
-            extra={
-                "component": "content_submission",
-                "operation": "analyze_and_classify_url",
-                "context_data": {"url": url, "error": str(e)},
-            },
-        )
-        content_type, platform = infer_content_type_and_platform(url, None, platform_hint)
-        return content_type, platform, extra_metadata
-
-
-def _ensure_processing_task(db: Session, content_id: int) -> int:
-    """Create a processing task if one is not already pending/processing.
+def _ensure_analyze_url_task(db: Session, content_id: int) -> int:
+    """Create an ANALYZE_URL task if one is not already pending/processing.
 
     Args:
         db: Active database session.
-        content_id: Content identifier to process.
+        content_id: Content identifier to analyze.
 
     Returns:
         ProcessingTask ID.
     """
+    # Check for existing ANALYZE_URL or PROCESS_CONTENT task
     existing_task = (
         db.query(ProcessingTask)
         .filter(ProcessingTask.content_id == content_id)
-        .filter(ProcessingTask.task_type == TaskType.PROCESS_CONTENT.value)
+        .filter(
+            ProcessingTask.task_type.in_(
+                [TaskType.ANALYZE_URL.value, TaskType.PROCESS_CONTENT.value]
+            )
+        )
         .filter(ProcessingTask.status.in_([TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]))
         .first()
     )
@@ -275,7 +155,7 @@ def _ensure_processing_task(db: Session, content_id: int) -> int:
         return existing_task.id
 
     task = ProcessingTask(
-        task_type=TaskType.PROCESS_CONTENT.value,
+        task_type=TaskType.ANALYZE_URL.value,
         content_id=content_id,
         payload={"content_id": content_id},
         status=TaskStatus.PENDING.value,
@@ -289,11 +169,11 @@ def _ensure_processing_task(db: Session, content_id: int) -> int:
 def submit_user_content(
     db: Session, payload: SubmitContentRequest, current_user: User
 ) -> ContentSubmissionResponse:
-    """Persist and enqueue a user-submitted article or podcast.
+    """Persist and enqueue a user-submitted URL for async analysis.
 
-    Uses LLM-powered content analysis for unknown URLs to determine content type
-    and extract media URLs. Falls back to pattern-based detection for known
-    platforms or on analysis failure.
+    Creates content with UNKNOWN type and enqueues ANALYZE_URL task.
+    The async task will determine content type (via pattern matching or LLM)
+    and then enqueue PROCESS_CONTENT.
 
     Args:
         db: Active database session.
@@ -304,29 +184,19 @@ def submit_user_content(
         Submission response describing the created or existing content.
     """
     normalized_url = normalize_url(str(payload.url))
-    explicit_type = ContentType(payload.content_type) if payload.content_type else None
 
-    # Use LLM-powered analysis for unknown URLs, pattern matching for known platforms
-    content_type, platform, extra_metadata = analyze_and_classify_url(
-        normalized_url, explicit_type, payload.platform
-    )
-
-    existing = (
-        db.query(Content)
-        .filter(Content.url == normalized_url)
-        .filter(Content.content_type == content_type.value)
-        .first()
-    )
+    # Check if content already exists (by URL only, regardless of type)
+    existing = db.query(Content).filter(Content.url == normalized_url).first()
     if existing:
         status_created = ensure_inbox_status(
-            db, current_user.id, existing.id, content_type=content_type.value
+            db, current_user.id, existing.id, content_type=existing.content_type
         )
         if status_created:
             db.commit()
-        task_id = _ensure_processing_task(db, existing.id)
+        task_id = _ensure_analyze_url_task(db, existing.id)
         return ContentSubmissionResponse(
             content_id=existing.id,
-            content_type=content_type,
+            content_type=ContentType(existing.content_type),
             status=ContentStatus(existing.status),
             platform=existing.platform,
             already_exists=True,
@@ -335,26 +205,20 @@ def submit_user_content(
             source=existing.source or SELF_SUBMISSION_SOURCE,
         )
 
-    # Build metadata with LLM-extracted info
+    # Build initial metadata
     metadata = {
         "source": SELF_SUBMISSION_SOURCE,
-        "platform": platform,
         "submitted_by_user_id": current_user.id,
         "submitted_via": "share_sheet",
-        **extra_metadata,  # Include audio_url, extracted_title, etc.
     }
 
-    # Use extracted title if no client title provided
-    title = payload.title
-    if not title and extra_metadata.get("extracted_title"):
-        title = extra_metadata["extracted_title"]
-
+    # Create content with UNKNOWN type - will be updated by ANALYZE_URL task
     new_content = Content(
         url=normalized_url,
-        content_type=content_type.value,
-        title=title,
+        content_type=ContentType.UNKNOWN.value,
+        title=payload.title,
         source=SELF_SUBMISSION_SOURCE,
-        platform=platform,
+        platform=None,
         is_aggregate=False,
         status=ContentStatus.NEW.value,
         classification=ContentClassification.TO_READ.value,
@@ -368,18 +232,13 @@ def submit_user_content(
     except IntegrityError as exc:
         db.rollback()
         logger.warning("Self-submission hit duplicate constraint for %s: %s", normalized_url, exc)
-        existing = (
-            db.query(Content)
-            .filter(Content.url == normalized_url)
-            .filter(Content.content_type == content_type.value)
-            .first()
-        )
+        existing = db.query(Content).filter(Content.url == normalized_url).first()
         if not existing:
             raise
-        task_id = _ensure_processing_task(db, existing.id)
+        task_id = _ensure_analyze_url_task(db, existing.id)
         return ContentSubmissionResponse(
             content_id=existing.id,
-            content_type=content_type,
+            content_type=ContentType(existing.content_type),
             status=ContentStatus(existing.status),
             platform=existing.platform,
             already_exists=True,
@@ -390,19 +249,19 @@ def submit_user_content(
 
     db.refresh(new_content)
     status_created = ensure_inbox_status(
-        db, current_user.id, new_content.id, content_type=content_type.value
+        db, current_user.id, new_content.id, content_type=new_content.content_type
     )
     if status_created:
         db.commit()
-    task_id = _ensure_processing_task(db, new_content.id)
+    task_id = _ensure_analyze_url_task(db, new_content.id)
 
     return ContentSubmissionResponse(
         content_id=new_content.id,
-        content_type=content_type,
+        content_type=ContentType.UNKNOWN,
         status=ContentStatus(new_content.status),
-        platform=platform,
+        platform=None,
         already_exists=False,
-        message="Content queued for processing",
+        message="Content queued for analysis",
         task_id=task_id,
         source=new_content.source or SELF_SUBMISSION_SOURCE,
     )

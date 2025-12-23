@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 
 class TaskType(str, Enum):
     SCRAPE = "scrape"
+    ANALYZE_URL = "analyze_url"  # Analyze URL to determine content type
     PROCESS_CONTENT = "process_content"
     DOWNLOAD_AUDIO = "download_audio"
     TRANSCRIBE = "transcribe"

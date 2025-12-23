@@ -1,18 +1,18 @@
-"""Content analysis service using OpenAI web search for type detection and media URL extraction.
+"""Content analysis service using pydantic-ai with web search for type detection.
 
-Uses OpenAI's Responses API with web_search_preview tool to analyze URLs and determine:
-- Content type (article, podcast, video)
-- Direct media URLs (mp3/mp4) for podcasts and videos
-- Platform identification
+Uses pydantic-ai Agent with OpenAI Responses API and WebSearchTool to analyze URLs
+and determine content type (article, podcast, video), extract media URLs, and
+identify platforms.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
-from openai import APIConnectionError, APIError, OpenAI, RateLimitError
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent, WebSearchTool
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
@@ -20,12 +20,11 @@ from app.core.settings import get_settings
 logger = get_logger(__name__)
 
 # Configuration
-CONTENT_ANALYSIS_MODEL = "gpt-4o"
-CONTENT_ANALYSIS_TIMEOUT = 15.0  # Slightly longer for web search
+CONTENT_ANALYSIS_MODEL = "openai-responses:gpt-5-mini"
 
 
 class ContentAnalysisResult(BaseModel):
-    """Structured output schema for OpenAI content analysis."""
+    """Structured output schema for content analysis."""
 
     content_type: Literal["article", "podcast", "video"] = Field(
         ...,
@@ -75,34 +74,56 @@ class AnalysisError:
     recoverable: bool = True
 
 
+# System prompt for the content analyzer agent
+CONTENT_ANALYZER_SYSTEM_PROMPT = """\
+You are a content type analyzer. Your job is to analyze URLs and determine:
+1. What type of content it is (article, podcast episode, or video)
+2. Extract any direct media file URLs for podcasts/videos
+3. Identify the platform (spotify, youtube, substack, etc.)
+4. Extract title, description, and duration when available
+
+Guidelines:
+- Use web search to access and analyze the page content
+- For podcasts/videos, look for direct media URLs (.mp3, .mp4, .m4a, .webm)
+- Check <audio>/<video> tags, RSS enclosures, download links, embedded players
+- If clearly a blog post or news article, set content_type to "article"
+- If audio podcast episode, set content_type to "podcast"
+- If video (YouTube, Vimeo, etc.), set content_type to "video"
+- Only include media_url if you find an actual direct file URL
+- Set confidence based on how certain you are about the content type"""
+
+
 class ContentAnalyzer:
     """Analyzes URLs to determine content type and extract media URLs.
 
-    Uses OpenAI's Responses API with web_search_preview tool to fetch
-    and analyze web pages, extracting structured information about
+    Uses pydantic-ai Agent with OpenAI Responses API and WebSearchTool
+    to fetch and analyze web pages, extracting structured information about
     the content type and any available media URLs.
     """
 
     def __init__(self) -> None:
         """Initialize the content analyzer."""
         self._settings = get_settings()
-        self._client: OpenAI | None = None
+        self._agent: Agent[None, ContentAnalysisResult] | None = None
 
-    def _get_client(self) -> OpenAI:
-        """Get or create the synchronous OpenAI client."""
-        if self._client is None:
+    def _get_agent(self) -> Agent[None, ContentAnalysisResult]:
+        """Get or create the pydantic-ai Agent."""
+        if self._agent is None:
             if not self._settings.openai_api_key:
                 raise ValueError("OPENAI_API_KEY not configured")
-            self._client = OpenAI(
-                api_key=self._settings.openai_api_key,
-                timeout=CONTENT_ANALYSIS_TIMEOUT,
+
+            self._agent = Agent(
+                CONTENT_ANALYSIS_MODEL,
+                output_type=ContentAnalysisResult,
+                system_prompt=CONTENT_ANALYZER_SYSTEM_PROMPT,
+                builtin_tools=[WebSearchTool()],
             )
-        return self._client
+        return self._agent
 
     def analyze_url(self, url: str) -> ContentAnalysisResult | AnalysisError:
         """Analyze a URL to determine content type and extract media URL.
 
-        Uses OpenAI's web search tool to fetch and analyze the page content.
+        Uses pydantic-ai Agent with WebSearchTool to fetch and analyze the page.
 
         Args:
             url: The URL to analyze.
@@ -111,121 +132,18 @@ class ContentAnalyzer:
             ContentAnalysisResult on success, AnalysisError on failure.
         """
         try:
-            client = self._get_client()
+            agent = self._get_agent()
 
             logger.info(
                 "Starting content analysis for URL",
                 extra={
                     "component": "content_analyzer",
                     "operation": "analyze_url",
-                    "context_data": {"url": url},
+                    "context_data": {"url": url, "model": CONTENT_ANALYSIS_MODEL},
                 },
             )
 
-            # Build the JSON schema for structured output
-            schema = ContentAnalysisResult.model_json_schema()
-
-            # Use Responses API with web_search_preview tool
-            response = client.responses.create(
-                model=CONTENT_ANALYSIS_MODEL,
-                input=self._build_analysis_prompt(url),
-                tools=[{"type": "web_search_preview"}],
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "content_analysis",
-                        "schema": schema,
-                        "strict": True,
-                    }
-                },
-            )
-
-            # Extract structured output
-            output_text = self._extract_output_text(response)
-            if not output_text:
-                logger.warning(
-                    "No output from content analysis",
-                    extra={
-                        "component": "content_analyzer",
-                        "operation": "analyze_url",
-                        "context_data": {"url": url},
-                    },
-                )
-                return AnalysisError("No output from content analysis")
-
-            # Parse JSON response into Pydantic model
-            result = ContentAnalysisResult.model_validate_json(output_text)
-
-            logger.info(
-                "Content analysis complete: type=%s, has_media_url=%s, platform=%s",
-                result.content_type,
-                result.media_url is not None,
-                result.platform,
-                extra={
-                    "component": "content_analyzer",
-                    "operation": "analyze_url",
-                    "context_data": {
-                        "url": url,
-                        "content_type": result.content_type,
-                        "has_media_url": result.media_url is not None,
-                        "platform": result.platform,
-                    },
-                },
-            )
-            return result
-
-        except RateLimitError as e:
-            logger.warning(
-                "Rate limit hit during content analysis: %s",
-                e,
-                extra={
-                    "component": "content_analyzer",
-                    "operation": "analyze_url",
-                    "context_data": {"url": url, "error": str(e)},
-                },
-            )
-            return AnalysisError(f"Rate limit: {e}", recoverable=True)
-
-        except APIConnectionError as e:
-            logger.warning(
-                "Connection error during content analysis: %s",
-                e,
-                extra={
-                    "component": "content_analyzer",
-                    "operation": "analyze_url",
-                    "context_data": {"url": url, "error": str(e)},
-                },
-            )
-            return AnalysisError(f"Connection error: {e}", recoverable=True)
-
-        except APIError as e:
-            logger.warning(
-                "API error during content analysis: status=%s, message=%s",
-                e.status_code,
-                str(e),
-                extra={
-                    "component": "content_analyzer",
-                    "operation": "analyze_url",
-                    "context_data": {"url": url, "status_code": e.status_code, "error": str(e)},
-                },
-            )
-            return AnalysisError(f"API error: {e}", recoverable=True)
-
-        except Exception as e:
-            logger.exception(
-                "Unexpected error during content analysis: %s",
-                e,
-                extra={
-                    "component": "content_analyzer",
-                    "operation": "analyze_url",
-                    "context_data": {"url": url, "error": str(e)},
-                },
-            )
-            return AnalysisError(str(e), recoverable=True)
-
-    def _build_analysis_prompt(self, url: str) -> str:
-        """Build the analysis prompt for OpenAI."""
-        return f"""Analyze this URL and determine what type of content it is:
+            prompt = f"""Analyze this URL and determine what type of content it is:
 
 URL: {url}
 
@@ -241,36 +159,51 @@ Instructions:
 5. Identify the platform (spotify, youtube, substack, medium, etc.)
 6. For duration, look for timestamps like "45:23" or "45 minutes"
 
-Important:
-- If this is clearly an article/blog post, set content_type to "article"
-- If this is an audio podcast episode, set content_type to "podcast"
-- If this is a video (YouTube, Vimeo, etc.), set content_type to "video"
-- Only include media_url if you find an actual direct file URL
-- Set confidence based on how certain you are about the content type
+Return your analysis."""
 
-Return your analysis as structured JSON."""
+            result = agent.run_sync(prompt)
 
-    def _extract_output_text(self, response: Any) -> str | None:
-        """Extract text output from OpenAI response.
+            logger.info(
+                "Content analysis complete: type=%s, has_media_url=%s, platform=%s",
+                result.output.content_type,
+                result.output.media_url is not None,
+                result.output.platform,
+                extra={
+                    "component": "content_analyzer",
+                    "operation": "analyze_url",
+                    "context_data": {
+                        "url": url,
+                        "content_type": result.output.content_type,
+                        "has_media_url": result.output.media_url is not None,
+                        "platform": result.output.platform,
+                    },
+                },
+            )
+            return result.output
 
-        The Responses API can return output in different formats depending
-        on the response structure.
-        """
-        # Try output_text property first (most common)
-        if hasattr(response, "output_text") and response.output_text:
-            return response.output_text
+        except UnexpectedModelBehavior as e:
+            logger.warning(
+                "Model behavior error during content analysis: %s",
+                e,
+                extra={
+                    "component": "content_analyzer",
+                    "operation": "analyze_url",
+                    "context_data": {"url": url, "error": str(e)},
+                },
+            )
+            return AnalysisError(f"Model error: {e}", recoverable=True)
 
-        # Try parsing output items for message content
-        if hasattr(response, "output") and response.output:
-            for item in response.output:
-                if hasattr(item, "type") and item.type == "message" and hasattr(item, "content"):
-                    for content_item in item.content:
-                        if hasattr(content_item, "type"):
-                            if content_item.type == "output_text":
-                                return getattr(content_item, "text", None)
-                            if content_item.type == "text":
-                                return getattr(content_item, "text", None)
-        return None
+        except Exception as e:
+            logger.exception(
+                "Unexpected error during content analysis: %s",
+                e,
+                extra={
+                    "component": "content_analyzer",
+                    "operation": "analyze_url",
+                    "context_data": {"url": url, "error": str(e)},
+                },
+            )
+            return AnalysisError(str(e), recoverable=True)
 
 
 # Global instance for singleton pattern

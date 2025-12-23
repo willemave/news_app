@@ -229,7 +229,7 @@ def ensure_inbox_status(
     """Ensure a content_status row exists for this user/content."""
     if user_id is None:
         return False
-    if content_type and content_type not in ("article", "podcast"):
+    if content_type and content_type not in ("article", "podcast", "unknown"):
         return False
 
     existing = (

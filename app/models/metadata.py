@@ -27,6 +27,7 @@ class ContentType(str, Enum):
     ARTICLE = "article"
     PODCAST = "podcast"
     NEWS = "news"
+    UNKNOWN = "unknown"  # URL pending LLM analysis to determine type
 
 
 class ContentStatus(str, Enum):
@@ -654,6 +655,9 @@ def validate_content_metadata(
     if content_type == ContentType.NEWS.value:
         enriched = _ensure_news_article_metadata(cleaned_metadata)
         return NewsMetadata(**enriched)
+    if content_type == ContentType.UNKNOWN.value:
+        # UNKNOWN content uses minimal ArticleMetadata as placeholder
+        return ArticleMetadata(**cleaned_metadata)
     raise ValueError(f"Unknown content type: {content_type}")
 
 
