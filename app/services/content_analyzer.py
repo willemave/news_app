@@ -78,18 +78,21 @@ class AnalysisError:
 CONTENT_ANALYZER_SYSTEM_PROMPT = """\
 You are a content type analyzer. Your job is to analyze URLs and determine:
 1. What type of content it is (article, podcast episode, or video)
-2. Extract any direct media file URLs for podcasts/videos
+2. Extract any media URLs for podcasts/videos
 3. Identify the platform (spotify, youtube, substack, etc.)
 4. Extract title, description, and duration when available
 
 Guidelines:
 - Use web search to access and analyze the page content
-- For podcasts/videos, look for direct media URLs (.mp3, .mp4, .m4a, .webm)
-- Check <audio>/<video> tags, RSS enclosures, download links, embedded players
-- If clearly a blog post or news article, set content_type to "article"
-- If audio podcast episode, set content_type to "podcast"
-- If video (YouTube, Vimeo, etc.), set content_type to "video"
-- Only include media_url if you find an actual direct file URL
+- IMPORTANT: Many newsletter/blog posts EMBED podcast episodes or videos. \
+If you find links to Spotify, Apple Podcasts, YouTube, or other podcast/video \
+platforms within the page, classify as "podcast" or "video" accordingly.
+- For media_url: prefer direct file URLs (.mp3, .mp4), but if not available, \
+use the Spotify/Apple/YouTube episode link as media_url
+- Check for: <audio>/<video> tags, podcast platform links, RSS enclosures, \
+embedded players, "Listen on Spotify/Apple" buttons
+- Only classify as "article" if there is NO embedded podcast or video content
+- If video content (YouTube, Vimeo, etc.), set content_type to "video"
 - Set confidence based on how certain you are about the content type"""
 
 
