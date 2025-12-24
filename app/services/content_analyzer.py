@@ -101,12 +101,15 @@ You are a content type analyzer. Analyze the provided page content to determine:
 2. Platform links (Spotify, Apple Podcasts, YouTube, etc.)
 3. Title and description
 
-CRITICAL RULES:
-- If the page contains links to Spotify episodes, Apple Podcasts, YouTube videos, \
-or any podcast player embeds → classify as "podcast" or "video"
-- Newsletter posts that EMBED a podcast interview → classify as "podcast"
-- Only classify as "article" if there are NO podcast/video links or embeds
-- Use the detected_media info provided to help determine type"""
+CRITICAL RULES - PRIORITY ORDER:
+1. If page contains ANY podcast links (Spotify, Apple Podcasts, Overcast, etc.) \
+→ classify as "podcast" and use the podcast link as media_url
+2. If page contains video links (YouTube, Vimeo) → classify as "video"
+3. Only classify as "article" if there are NO podcast/video links
+
+SUBSTACK PRIORITY: Substack posts often embed podcast episodes. If you see both \
+substack.com AND a podcast platform link → ALWAYS classify as "podcast" and \
+set platform to the podcast platform (spotify, apple_podcasts, etc.), NOT substack."""
 
 
 def _fetch_page_content(url: str) -> tuple[str | None, str | None]:
@@ -227,19 +230,30 @@ class ContentAnalyzer:
 
             # Step 3: If we found podcast/video platforms, we can classify quickly
             if detected["platforms"]:
-                # Determine primary platform and content type
-                platform = detected["platforms"][0]
-                media_url = (
-                    detected["platform_urls"][0]
-                    if detected["platform_urls"]
-                    else detected["audio_urls"][0]
-                    if detected["audio_urls"]
-                    else None
-                )
+                # Prioritize podcast platforms over video platforms
+                video_only = ("youtube", "vimeo")
+                podcast_platforms = [p for p in detected["platforms"] if p not in video_only]
+                video_platforms = [p for p in detected["platforms"] if p in video_only]
 
-                content_type: Literal["article", "podcast", "video"] = "podcast"
-                if platform in ("youtube", "vimeo"):
+                # Prefer podcast if available, otherwise video
+                if podcast_platforms:
+                    platform = podcast_platforms[0]
+                    content_type: Literal["article", "podcast", "video"] = "podcast"
+                else:
+                    platform = video_platforms[0]
                     content_type = "video"
+
+                # Find media URL for the selected platform
+                media_url = None
+                for url in detected["platform_urls"]:
+                    url_lower = url.lower()
+                    if platform in url_lower or (platform == "spotify" and "spotify" in url_lower):
+                        media_url = url
+                        break
+                if not media_url and detected["platform_urls"]:
+                    media_url = detected["platform_urls"][0]
+                if not media_url and detected["audio_urls"]:
+                    media_url = detected["audio_urls"][0]
 
                 # Extract title from text (first line often)
                 title = text.split("\n")[0][:200] if text else None
