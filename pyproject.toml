@@ -40,6 +40,7 @@ dependencies = [
     "pydantic-ai>=1.2.1",
     "exa-py>=1.0.0",
     "pillow>=12.0.0",
+    "trafilatura>=2.0.0",
 ]
 
 [tool.setuptools.packages.find]

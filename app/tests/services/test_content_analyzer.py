@@ -1,6 +1,6 @@
 """Tests for content analyzer service."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -148,45 +148,33 @@ class TestContentAnalyzer:
         with pytest.raises(ValueError, match="OPENAI_API_KEY not configured"):
             analyzer._get_agent()
 
-    @patch("app.services.content_analyzer.Agent")
+    @patch("app.services.content_analyzer._fetch_page_content")
     @patch("app.services.content_analyzer.get_settings")
-    def test_analyze_url_success(self, mock_settings, mock_agent_class):
-        """Successful URL analysis returns ContentAnalysisResult."""
+    def test_analyze_url_with_spotify_link(self, mock_settings, mock_fetch):
+        """URL with Spotify link is detected as podcast via fast-path."""
         mock_settings.return_value.openai_api_key = "test-key"
 
-        # Mock the agent result
-        mock_result = MagicMock()
-        mock_result.output = ContentAnalysisResult(
-            content_type="podcast",
-            original_url="https://example.com/pod",
-            media_url="https://cdn.example.com/audio.mp3",
-            media_format="mp3",
-            title="Test Episode",
-            platform="transistor",
-            confidence=0.9,
+        # Mock page fetch with Spotify link in HTML
+        mock_fetch.return_value = (
+            '<a href="https://open.spotify.com/episode/abc123">Listen</a>',
+            "Test Episode Title\nSome content...",
         )
-
-        mock_agent = MagicMock()
-        mock_agent.run_sync.return_value = mock_result
-        mock_agent_class.return_value = mock_agent
 
         analyzer = ContentAnalyzer()
         result = analyzer.analyze_url("https://example.com/pod")
 
         assert isinstance(result, ContentAnalysisResult)
         assert result.content_type == "podcast"
-        assert result.media_url == "https://cdn.example.com/audio.mp3"
-        assert result.platform == "transistor"
+        assert "spotify.com" in result.media_url
+        assert result.platform == "spotify"
+        assert result.confidence == 0.95
 
-    @patch("app.services.content_analyzer.Agent")
+    @patch("app.services.content_analyzer._fetch_page_content")
     @patch("app.services.content_analyzer.get_settings")
-    def test_analyze_url_exception_returns_error(self, mock_settings, mock_agent_class):
-        """Exceptions during analysis return AnalysisError."""
+    def test_analyze_url_fetch_failure_returns_error(self, mock_settings, mock_fetch):
+        """Failed page fetch returns AnalysisError."""
         mock_settings.return_value.openai_api_key = "test-key"
-
-        mock_agent = MagicMock()
-        mock_agent.run_sync.side_effect = Exception("Network error")
-        mock_agent_class.return_value = mock_agent
+        mock_fetch.return_value = (None, None)
 
         analyzer = ContentAnalyzer()
         result = analyzer.analyze_url("https://example.com/article")

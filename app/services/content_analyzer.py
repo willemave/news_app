@@ -1,26 +1,46 @@
-"""Content analysis service using pydantic-ai with web search for type detection.
+"""Content analysis service using page fetching and LLM analysis.
 
-Uses pydantic-ai Agent with OpenAI Responses API and WebSearchTool to analyze URLs
-and determine content type (article, podcast, video), extract media URLs, and
-identify platforms.
+Fetches actual page content using trafilatura, then uses an LLM to analyze
+the HTML for embedded podcast/video links and determine content type.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
+import httpx
+import trafilatura
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, WebSearchTool
-from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai import Agent
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 
 logger = get_logger(__name__)
 
-# Configuration
-CONTENT_ANALYSIS_MODEL = "openai-responses:gpt-5-mini"
+# Configuration - use standard chat model, not responses API
+CONTENT_ANALYSIS_MODEL = "openai:gpt-4o-mini"
+
+# Patterns to detect podcast/video platform links in HTML
+PODCAST_VIDEO_PATTERNS = [
+    (r'open\.spotify\.com/episode/([a-zA-Z0-9]+)', 'spotify'),
+    (r'podcasts\.apple\.com/.+/podcast/.+/id(\d+)', 'apple_podcasts'),
+    (r'music\.apple\.com/.+/album/.+/(\d+)', 'apple_music'),
+    (r'youtube\.com/watch\?v=([a-zA-Z0-9_-]+)', 'youtube'),
+    (r'youtu\.be/([a-zA-Z0-9_-]+)', 'youtube'),
+    (r'overcast\.fm/\+([a-zA-Z0-9]+)', 'overcast'),
+    (r'player\.vimeo\.com/video/(\d+)', 'vimeo'),
+]
+
+# Audio file patterns
+AUDIO_FILE_PATTERNS = [
+    r'(https?://[^\s"\'<>]+\.mp3(?:\?[^\s"\'<>]*)?)',
+    r'(https?://[^\s"\'<>]+\.m4a(?:\?[^\s"\'<>]*)?)',
+    r'(https?://[^\s"\'<>]+\.wav(?:\?[^\s"\'<>]*)?)',
+    r'(https?://[^\s"\'<>]+\.ogg(?:\?[^\s"\'<>]*)?)',
+]
 
 
 class ContentAnalysisResult(BaseModel):
@@ -76,32 +96,86 @@ class AnalysisError:
 
 # System prompt for the content analyzer agent
 CONTENT_ANALYZER_SYSTEM_PROMPT = """\
-You are a content type analyzer. Your job is to analyze URLs and determine:
-1. What type of content it is (article, podcast episode, or video)
-2. Extract any media URLs for podcasts/videos
-3. Identify the platform (spotify, youtube, substack, etc.)
-4. Extract title, description, and duration when available
+You are a content type analyzer. Analyze the provided page content to determine:
+1. Content type: article, podcast, or video
+2. Platform links (Spotify, Apple Podcasts, YouTube, etc.)
+3. Title and description
 
-Guidelines:
-- Use web search to access and analyze the page content
-- IMPORTANT: Many newsletter/blog posts EMBED podcast episodes or videos. \
-If you find links to Spotify, Apple Podcasts, YouTube, or other podcast/video \
-platforms within the page, classify as "podcast" or "video" accordingly.
-- For media_url: prefer direct file URLs (.mp3, .mp4), but if not available, \
-use the Spotify/Apple/YouTube episode link as media_url
-- Check for: <audio>/<video> tags, podcast platform links, RSS enclosures, \
-embedded players, "Listen on Spotify/Apple" buttons
-- Only classify as "article" if there is NO embedded podcast or video content
-- If video content (YouTube, Vimeo, etc.), set content_type to "video"
-- Set confidence based on how certain you are about the content type"""
+CRITICAL RULES:
+- If the page contains links to Spotify episodes, Apple Podcasts, YouTube videos, \
+or any podcast player embeds → classify as "podcast" or "video"
+- Newsletter posts that EMBED a podcast interview → classify as "podcast"
+- Only classify as "article" if there are NO podcast/video links or embeds
+- Use the detected_media info provided to help determine type"""
+
+
+def _fetch_page_content(url: str) -> tuple[str | None, str | None]:
+    """Fetch page HTML and extract text content.
+
+    Returns:
+        Tuple of (raw_html, extracted_text). Either may be None on failure.
+    """
+    try:
+        with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+            response = client.get(
+                url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    )
+                },
+            )
+            response.raise_for_status()
+            html = response.text
+            # Extract readable text using trafilatura
+            text = trafilatura.extract(html, include_links=True) or ""
+            return html, text
+    except Exception as e:
+        logger.warning(f"Failed to fetch page content: {e}")
+        return None, None
+
+
+def _detect_media_in_html(html: str) -> dict:
+    """Scan HTML for podcast/video platform links and audio files.
+
+    Returns:
+        Dict with detected platforms and media URLs.
+    """
+    detected = {
+        "platforms": [],
+        "platform_urls": [],
+        "audio_urls": [],
+    }
+
+    # Check for podcast/video platform links
+    for pattern, platform in PODCAST_VIDEO_PATTERNS:
+        # Extract full URLs containing the pattern
+        url_pattern = rf'(https?://[^\s"\'<>]*?{pattern.split("(")[0]}[^\s"\'<>]*)'
+        urls = re.findall(url_pattern, html, re.IGNORECASE)
+        if urls:
+            detected["platforms"].append(platform)
+            detected["platform_urls"].extend(urls[:3])  # Limit to 3
+
+    # Check for direct audio files
+    for pattern in AUDIO_FILE_PATTERNS:
+        matches = re.findall(pattern, html, re.IGNORECASE)
+        detected["audio_urls"].extend(matches[:3])
+
+    # Deduplicate
+    detected["platforms"] = list(set(detected["platforms"]))
+    detected["platform_urls"] = list(set(detected["platform_urls"]))
+    detected["audio_urls"] = list(set(detected["audio_urls"]))
+
+    return detected
 
 
 class ContentAnalyzer:
     """Analyzes URLs to determine content type and extract media URLs.
 
-    Uses pydantic-ai Agent with OpenAI Responses API and WebSearchTool
-    to fetch and analyze web pages, extracting structured information about
-    the content type and any available media URLs.
+    Fetches actual page content, scans for podcast/video links, then uses
+    an LLM to analyze and classify the content.
     """
 
     def __init__(self) -> None:
@@ -119,14 +193,13 @@ class ContentAnalyzer:
                 CONTENT_ANALYSIS_MODEL,
                 output_type=ContentAnalysisResult,
                 system_prompt=CONTENT_ANALYZER_SYSTEM_PROMPT,
-                builtin_tools=[WebSearchTool()],
             )
         return self._agent
 
     def analyze_url(self, url: str) -> ContentAnalysisResult | AnalysisError:
         """Analyze a URL to determine content type and extract media URL.
 
-        Uses pydantic-ai Agent with WebSearchTool to fetch and analyze the page.
+        Fetches the page, scans for media links, then uses LLM to analyze.
 
         Args:
             url: The URL to analyze.
@@ -135,8 +208,6 @@ class ContentAnalyzer:
             ContentAnalysisResult on success, AnalysisError on failure.
         """
         try:
-            agent = self._get_agent()
-
             logger.info(
                 "Starting content analysis for URL",
                 extra={
@@ -146,30 +217,88 @@ class ContentAnalyzer:
                 },
             )
 
-            prompt = f"""Analyze this URL and determine what type of content it is:
+            # Step 1: Fetch the actual page content
+            html, text = _fetch_page_content(url)
+            if not html:
+                return AnalysisError("Failed to fetch page content", recoverable=True)
+
+            # Step 2: Scan HTML for podcast/video links
+            detected = _detect_media_in_html(html)
+
+            # Step 3: If we found podcast/video platforms, we can classify quickly
+            if detected["platforms"]:
+                # Determine primary platform and content type
+                platform = detected["platforms"][0]
+                media_url = (
+                    detected["platform_urls"][0]
+                    if detected["platform_urls"]
+                    else detected["audio_urls"][0]
+                    if detected["audio_urls"]
+                    else None
+                )
+
+                content_type: Literal["article", "podcast", "video"] = "podcast"
+                if platform in ("youtube", "vimeo"):
+                    content_type = "video"
+
+                # Extract title from text (first line often)
+                title = text.split("\n")[0][:200] if text else None
+
+                logger.info(
+                    "Fast-path detection: found %s links, classifying as %s",
+                    detected["platforms"],
+                    content_type,
+                    extra={
+                        "component": "content_analyzer",
+                        "operation": "analyze_url",
+                        "context_data": {
+                            "url": url,
+                            "platforms": detected["platforms"],
+                            "content_type": content_type,
+                        },
+                    },
+                )
+
+                return ContentAnalysisResult(
+                    content_type=content_type,
+                    original_url=url,
+                    media_url=media_url,
+                    media_format="mp3" if content_type == "podcast" else "mp4",
+                    title=title,
+                    platform=platform,
+                    confidence=0.95,
+                )
+
+            # Step 4: No obvious media links - use LLM to analyze content
+            agent = self._get_agent()
+
+            # Truncate text for LLM context
+            text_snippet = (text or "")[:8000]
+
+            prompt = f"""Analyze this page content and determine content type:
 
 URL: {url}
 
-Instructions:
-1. Use web search to access and analyze the page content at this URL
-2. Determine if this is an article, podcast episode, or video
-3. For podcasts and videos, look for the direct media file URL:
-   - Check for <audio> or <video> source tags
-   - Look for RSS feed enclosure URLs
-   - Find download links or embedded player source URLs
-   - The media_url should end in .mp3, .mp4, .m4a, .webm, or similar
-4. Extract the title and description if visible on the page
-5. Identify the platform (spotify, youtube, substack, medium, etc.)
-6. For duration, look for timestamps like "45:23" or "45 minutes"
+DETECTED MEDIA (from HTML scan):
+- Podcast/Video platforms found: {detected['platforms'] or 'None'}
+- Platform URLs: {detected['platform_urls'][:2] or 'None'}
+- Audio file URLs: {detected['audio_urls'][:2] or 'None'}
 
-Return your analysis."""
+PAGE TEXT (first 8000 chars):
+{text_snippet}
+
+Based on the above, determine:
+1. Is this an article, podcast, or video?
+2. What platform is it from?
+3. What is the title?
+
+REMEMBER: If ANY podcast/video platform links were detected, classify accordingly."""
 
             result = agent.run_sync(prompt)
 
             logger.info(
-                "Content analysis complete: type=%s, has_media_url=%s, platform=%s",
+                "LLM analysis complete: type=%s, platform=%s",
                 result.output.content_type,
-                result.output.media_url is not None,
                 result.output.platform,
                 extra={
                     "component": "content_analyzer",
@@ -177,24 +306,11 @@ Return your analysis."""
                     "context_data": {
                         "url": url,
                         "content_type": result.output.content_type,
-                        "has_media_url": result.output.media_url is not None,
                         "platform": result.output.platform,
                     },
                 },
             )
             return result.output
-
-        except UnexpectedModelBehavior as e:
-            logger.warning(
-                "Model behavior error during content analysis: %s",
-                e,
-                extra={
-                    "component": "content_analyzer",
-                    "operation": "analyze_url",
-                    "context_data": {"url": url, "error": str(e)},
-                },
-            )
-            return AnalysisError(f"Model error: {e}", recoverable=True)
 
         except Exception as e:
             logger.exception(
