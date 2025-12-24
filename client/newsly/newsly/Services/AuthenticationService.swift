@@ -88,6 +88,8 @@ final class AuthenticationService: NSObject {
                 // Save new access token AND new refresh token (token rotation)
                 KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
                 KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
+                // Also save to shared UserDefaults for extension access
+                SharedContainer.userDefaults.set(tokenResponse.accessToken, forKey: "accessToken")
 
                 // Update OpenAI API key if provided
                 if let openaiApiKey = tokenResponse.openaiApiKey {
@@ -136,6 +138,7 @@ final class AuthenticationService: NSObject {
     /// Logout user (clear all tokens)
     func logout() {
         KeychainManager.shared.clearAll()
+        SharedContainer.userDefaults.removeObject(forKey: "accessToken")
     }
 
     /// Get current user from backend
@@ -361,6 +364,8 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
         KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
         KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
         KeychainManager.shared.saveToken(String(tokenResponse.user.id), key: .userId)
+        // Also save to shared UserDefaults for extension access
+        SharedContainer.userDefaults.set(tokenResponse.accessToken, forKey: "accessToken")
 
         // Save OpenAI API key if provided
         if let openaiApiKey = tokenResponse.openaiApiKey {

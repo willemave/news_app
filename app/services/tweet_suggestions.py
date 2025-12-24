@@ -17,7 +17,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
 from app.services.llm_agents import get_basic_agent
-from app.services.llm_prompts import get_tweet_generation_prompt
+from app.services.llm_prompts import get_tweet_generation_prompt, length_to_char_range
 from app.utils.json_repair import try_repair_truncated_json
 
 logger = get_logger(__name__)
@@ -67,6 +67,7 @@ class TweetSuggestionsResult:
 
     content_id: int
     creativity: int
+    length: str
     model: str
     suggestions: list[TweetSuggestionData]
 
@@ -257,12 +258,14 @@ def _parse_suggestions_response(raw_response: str) -> list[dict[str, Any]] | Non
 
 def _validate_and_truncate_tweets(
     suggestions: list[dict[str, Any]],
+    max_chars: int = 400,
 ) -> list[TweetSuggestionData]:
     """
-    Validate suggestions and truncate if over 400 chars.
+    Validate suggestions and truncate if over max_chars.
 
     Args:
         suggestions: List of suggestion dicts from LLM
+        max_chars: Maximum character limit for tweets
 
     Returns:
         List of validated TweetSuggestionData
@@ -272,10 +275,10 @@ def _validate_and_truncate_tweets(
         text = suggestion.get("text", "")
         style_label = suggestion.get("style_label")
 
-        # Truncate if too long (400 char limit for longer-form tweets)
-        if len(text) > 400:
-            logger.warning("Tweet %d exceeds 400 chars (%d), truncating", i, len(text))
-            text = text[:397] + "..."
+        # Truncate if too long
+        if len(text) > max_chars:
+            logger.warning("Tweet %d exceeds %d chars (%d), truncating", i, max_chars, len(text))
+            text = text[: max_chars - 3] + "..."
 
         result.append(
             TweetSuggestionData(
@@ -358,6 +361,7 @@ class TweetSuggestionService:
         content: ContentData,
         message: str | None = None,
         creativity: int = 5,
+        length: str = "medium",
         llm_provider: str | None = None,
     ) -> TweetSuggestionsResult | None:
         """
@@ -367,6 +371,7 @@ class TweetSuggestionService:
             content: The ContentData to generate tweets for.
             message: Optional user guidance/tweak message.
             creativity: Creativity level 1-10.
+            length: Tweet length preference ("short", "medium", "long").
             llm_provider: Optional LLM provider (openai, anthropic, google).
 
         Returns:
@@ -379,10 +384,11 @@ class TweetSuggestionService:
             # Extract context from content
             context = _extract_content_context(content)
 
-            # Get prompts
+            # Get prompts with length preference
             system_message, user_template = get_tweet_generation_prompt(
                 creativity=creativity,
                 user_message=message,
+                length=length,
             )
 
             # Format user message with content context
@@ -403,9 +409,11 @@ class TweetSuggestionService:
 
             payload = run_result.output
 
-            # Validate and truncate
+            # Validate and truncate based on length preference
+            _, max_chars = length_to_char_range(length)
             suggestions = _validate_and_truncate_tweets(
-                [suggestion.model_dump() for suggestion in payload.suggestions]
+                [suggestion.model_dump() for suggestion in payload.suggestions],
+                max_chars=max_chars,
             )
             if len(suggestions) != 3:
                 raise ValueError(f"Expected 3 suggestions after validation, got {len(suggestions)}")
@@ -426,6 +434,7 @@ class TweetSuggestionService:
             return TweetSuggestionsResult(
                 content_id=content_id,
                 creativity=creativity,
+                length=length,
                 model=model_name,
                 suggestions=suggestions,
             )
@@ -464,6 +473,7 @@ def generate_tweet_suggestions(
     content: ContentData,
     message: str | None = None,
     creativity: int = 5,
+    length: str = "medium",
     llm_provider: str | None = None,
 ) -> TweetSuggestionsResult | None:
     """
@@ -473,10 +483,11 @@ def generate_tweet_suggestions(
         content: The ContentData to generate tweets for
         message: Optional user guidance/tweak message
         creativity: Creativity level 1-10
+        length: Tweet length preference ("short", "medium", "long")
         llm_provider: Optional LLM provider (openai, anthropic, google)
 
     Returns:
         TweetSuggestionsResult with 3 suggestions, or None on failure
     """
     service = get_tweet_suggestion_service()
-    return service.generate_suggestions(content, message, creativity, llm_provider)
+    return service.generate_suggestions(content, message, creativity, length, llm_provider)

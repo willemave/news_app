@@ -14,6 +14,7 @@ from app.models.schema import Content
 from app.models.user import User
 from app.routers.api.models import (
     ConvertNewsResponse,
+    TweetLength,
     TweetSuggestion,
     TweetSuggestionsRequest,
     TweetSuggestionsResponse,
@@ -196,6 +197,7 @@ async def get_tweet_suggestions(
         content=content_data,
         message=request.message,
         creativity=request.creativity,
+        length=request.length.value,
         llm_provider=request.llm_provider,
     )
 
@@ -229,6 +231,7 @@ async def get_tweet_suggestions(
     return TweetSuggestionsResponse(
         content_id=result.content_id,
         creativity=result.creativity,
+        length=TweetLength(result.length),
         model=result.model,
         suggestions=[
             TweetSuggestion(

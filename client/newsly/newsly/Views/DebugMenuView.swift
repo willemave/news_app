@@ -205,6 +205,16 @@ struct DebugMenuView: View {
 
         // Save tokens to keychain
         KeychainManager.shared.saveToken(accessToken, key: .accessToken)
+        // Also save to shared UserDefaults for extension access
+        SharedContainer.userDefaults.set(accessToken, forKey: "accessToken")
+        SharedContainer.userDefaults.synchronize()  // Force sync to disk
+        print("🔐 [Main] Saved token to SharedDefaults (group: \(SharedContainer.appGroupId ?? "nil"))")
+        print("🔐 [Main] Verify read back: \(SharedContainer.userDefaults.string(forKey: "accessToken")?.prefix(20) ?? "nil")...")
+        // Debug: Print container path
+        if let groupId = SharedContainer.appGroupId {
+            let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
+            print("🔐 [Main] Container URL: \(containerURL?.path ?? "nil")")
+        }
 
         if !refreshToken.isEmpty {
             KeychainManager.shared.saveToken(refreshToken, key: .refreshToken)

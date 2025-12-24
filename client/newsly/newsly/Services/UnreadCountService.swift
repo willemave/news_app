@@ -5,6 +5,7 @@
 //  Created by Assistant on 7/8/25.
 //
 
+import Combine
 import Foundation
 
 struct UnreadCountsResponse: Codable {

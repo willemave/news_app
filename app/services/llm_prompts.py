@@ -403,8 +403,28 @@ def creativity_to_style_hints(creativity: int) -> str:
 - Emojis allowed (max 2) only if they add punch"""
 
 
+def length_to_char_range(length: str) -> tuple[int, int]:
+    """
+    Map length preference to character range.
+
+    Args:
+        length: "short", "medium", or "long"
+
+    Returns:
+        Tuple of (min_chars, max_chars)
+    """
+    ranges = {
+        "short": (100, 180),
+        "medium": (180, 280),
+        "long": (280, 400),
+    }
+    return ranges.get(length, (180, 280))
+
+
 def get_tweet_generation_prompt(
-    creativity: int, user_message: str | None = None
+    creativity: int,
+    user_message: str | None = None,
+    length: str = "medium",
 ) -> tuple[str, str]:
     """
     Generate prompts for tweet generation from article/news content.
@@ -412,18 +432,20 @@ def get_tweet_generation_prompt(
     Args:
         creativity: Integer 1-10 indicating desired creativity level
         user_message: Optional user guidance for tweet generation
+        length: Tweet length preference ("short", "medium", "long")
 
     Returns:
         Tuple of (system_message, user_message_template)
         The user_message_template contains placeholders for content details.
     """
     style_hints = creativity_to_style_hints(creativity)
+    min_chars, max_chars = length_to_char_range(length)
 
     system_message = f"""You are an expert social media writer for a tech/AI/startup audience.
 Your task is to generate exactly 3 tweet suggestions with their corresponding probabilities about the provided content.
 
 Core Guidelines:
-- Each tweet must be 200-400 characters (strict limit: 400 max)
+- Each tweet must be {min_chars}-{max_chars} characters (strict limit: {max_chars} max)
 - Be concise and impactful with one main idea per tweet
 - Start with a strong hook that grabs attention
 - Conversational tone

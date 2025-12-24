@@ -2,156 +2,199 @@
 //  ShareViewController.swift
 //  ShareExtension
 //
-//  Created by Assistant on 11/19/25.
+//  Created by Willem Ave on 12/21/25.
 //
 
-import SwiftUI
 import UIKit
+import Social
 import UniformTypeIdentifiers
 
-final class ShareViewController: UIViewController {
+class ShareViewController: SLComposeServiceViewController {
+
+    private var sharedURL: URL?
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        // Configure keychain with shared access group (same as main app)
         if let accessGroup = SharedContainer.keychainAccessGroup {
             KeychainManager.shared.configure(accessGroup: accessGroup)
         }
 
-        extractSharedURL { [weak self] url in
-            DispatchQueue.main.async {
-                self?.presentShareView(url: url)
-            }
-        }
+        // Customize UI
+        placeholder = "Add a note (optional)"
+        navigationItem.rightBarButtonItem?.title = "Submit"
+
+        extractSharedURL()
     }
 
-    private func presentShareView(url: URL?) {
-        let shareView = ShareSubmissionView(sharedURL: url, extensionContext: extensionContext)
-        let hosting = UIHostingController(rootView: shareView)
-        addChild(hosting)
-        hosting.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(hosting.view)
-        NSLayoutConstraint.activate([
-            hosting.view.topAnchor.constraint(equalTo: view.topAnchor),
-            hosting.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        hosting.didMove(toParent: self)
+    override func isContentValid() -> Bool {
+        return sharedURL != nil
     }
 
-    private func extractSharedURL(completion: @escaping (URL?) -> Void) {
-        guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
-            completion(nil)
+    override func didSelectPost() {
+        guard let url = sharedURL else {
+            showError("No URL found")
             return
         }
 
-        for item in items {
-            guard let attachments = item.attachments else { continue }
-            for provider in attachments where provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, _ in
-                    if let url = item as? URL {
-                        completion(url)
-                    } else if let url = (item as? NSURL)?.absoluteURL {
-                        completion(url)
-                    } else {
-                        completion(nil)
-                    }
-                }
-                return
-            }
-        }
-
-        completion(nil)
-    }
-}
-
-private enum ShareSubmissionState {
-    case idle
-    case submitting
-    case success(String)
-    case failure(String)
-}
-
-struct ShareSubmissionView: View {
-    let sharedURL: URL?
-    let extensionContext: NSExtensionContext?
-
-    @State private var state: ShareSubmissionState = .idle
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Send to Newsly")
-                .font(.headline)
-
-            if let url = sharedURL {
-                Text(url.absoluteString)
-                    .font(.footnote)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(4)
-            } else {
-                Text("No URL detected in this share. Only URL shares are supported.")
-                    .font(.footnote)
-                    .multilineTextAlignment(.center)
-            }
-
-            switch state {
-            case .idle:
-                Button {
-                    guard let url = sharedURL else {
-                        state = .failure("No shareable URL found.")
-                        return
-                    }
-                    submit(url: url)
-                } label: {
-                    Label("Submit URL", systemImage: "paperplane.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(sharedURL == nil)
-            case .submitting:
-                ProgressView("Submitting…")
-            case .success(let message):
-                Label(message, systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Button("Close") {
-                    extensionContext?.completeRequest(returningItems: nil)
-                }
-            case .failure(let message):
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Button("Dismiss") {
-                    extensionContext?.cancelRequest(withError: NSError(domain: "ShareExtension", code: 1))
-                }
-            }
-
-            Spacer()
-        }
-        .padding()
-        .onAppear {
-            guard case .idle = state, let url = sharedURL else { return }
-            submit(url: url)
-        }
-    }
-
-    private func submit(url: URL) {
-        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
-            state = .failure("Only http/https URLs are supported.")
-            return
-        }
-
-        state = .submitting
         Task {
             do {
-                let response = try await ContentService.shared.submitContent(url: url)
+                try await submitURL(url, note: contentText)
                 await MainActor.run {
-                    state = .success(response.message)
+                    self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
                 }
             } catch {
                 await MainActor.run {
-                    state = .failure(error.localizedDescription)
+                    self.showError(error.localizedDescription)
                 }
             }
         }
     }
+
+    override func configurationItems() -> [Any]! {
+        return []
+    }
+
+    // MARK: - URL Extraction
+
+    private func extractSharedURL() {
+        guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
+            return
+        }
+
+        for item in extensionItems {
+            guard let attachments = item.attachments else { continue }
+
+            for attachment in attachments {
+                // Try URL type first
+                if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                    attachment.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { [weak self] item, _ in
+                        if let url = item as? URL {
+                            DispatchQueue.main.async {
+                                self?.sharedURL = url
+                                self?.validateContent()
+                            }
+                        }
+                    }
+                    return
+                }
+
+                // Try plain text (might be a URL string)
+                if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                    attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { [weak self] item, _ in
+                        if let text = item as? String, let url = URL(string: text), url.scheme != nil {
+                            DispatchQueue.main.async {
+                                self?.sharedURL = url
+                                self?.validateContent()
+                            }
+                        }
+                    }
+                    return
+                }
+            }
+        }
+    }
+
+    // MARK: - API Submission
+
+    private func submitURL(_ url: URL, note: String?) async throws {
+        // Debug: Check what we can access
+        let keychainToken = KeychainManager.shared.getToken(key: .accessToken)
+        let sharedToken = SharedContainer.userDefaults.string(forKey: "accessToken")
+
+        // Extra debug: check if we can create the UserDefaults with the suite name
+        if let groupId = SharedContainer.appGroupId {
+            let directDefaults = UserDefaults(suiteName: groupId)
+            let directToken = directDefaults?.string(forKey: "accessToken")
+            let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
+            print("🔐 [ShareExt] Direct UserDefaults(\(groupId)) exists: \(directDefaults != nil)")
+            print("🔐 [ShareExt] Direct token: \(directToken != nil ? "found" : "nil")")
+            print("🔐 [ShareExt] Container URL: \(containerURL?.path ?? "nil")")
+        }
+
+        print("🔐 [ShareExt] Keychain token: \(keychainToken != nil ? "found" : "nil")")
+        print("🔐 [ShareExt] SharedDefaults token: \(sharedToken != nil ? "found (\(sharedToken!.prefix(20))...)" : "nil")")
+        print("🔐 [ShareExt] App group: \(SharedContainer.appGroupId ?? "nil")")
+
+        // Get auth token - try keychain first, then shared UserDefaults as fallback
+        let token: String
+        if let keychainToken = keychainToken {
+            token = keychainToken
+        } else if let sharedToken = sharedToken {
+            token = sharedToken
+        } else {
+            throw ShareError.notAuthenticated
+        }
+
+        // Build request
+        let baseURL = AppSettings.shared.baseURL
+        guard let requestURL = URL(string: "\(baseURL)/api/content/submit") else {
+            throw ShareError.invalidURL
+        }
+
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let body: [String: Any] = [
+            "url": url.absoluteString,
+            "note": note ?? ""
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ShareError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 401 {
+                throw ShareError.notAuthenticated
+            }
+            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw ShareError.serverError(message)
+        }
+    }
+
+    // MARK: - Error Handling
+
+    private func showError(_ message: String) {
+        let alert = UIAlertController(
+            title: "Error",
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+            self.extensionContext?.cancelRequest(withError: ShareError.userCancelled)
+        })
+        present(alert, animated: true)
+    }
 }
 
+// MARK: - Errors
+
+enum ShareError: LocalizedError {
+    case notAuthenticated
+    case invalidURL
+    case invalidResponse
+    case serverError(String)
+    case userCancelled
+
+    var errorDescription: String? {
+        switch self {
+        case .notAuthenticated:
+            return "Please sign in to the Newsly app first"
+        case .invalidURL:
+            return "Invalid URL"
+        case .invalidResponse:
+            return "Invalid server response"
+        case .serverError(let message):
+            return message
+        case .userCancelled:
+            return "Cancelled"
+        }
+    }
+}

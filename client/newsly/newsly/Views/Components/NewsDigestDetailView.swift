@@ -14,6 +14,13 @@ struct NewsDigestDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
+            // Discussion link at the top for quick access
+            if let aggregator = metadata.aggregator,
+               let urlString = aggregator.url,
+               let url = URL(string: urlString) {
+                discussionLink(url: url, aggregatorName: aggregator.name)
+            }
+
             if let summary = metadata.summary {
                 summarySection(summary: summary)
             }
@@ -31,6 +38,28 @@ struct NewsDigestDetailView: View {
             }
 
             legacyFallbackSection
+        }
+    }
+
+    @ViewBuilder
+    private func discussionLink(url: URL, aggregatorName: String?) -> some View {
+        Link(destination: url) {
+            HStack(spacing: 10) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.body)
+                    .foregroundColor(.orange)
+                Text("Join the discussion")
+                    .font(.callout)
+                    .fontWeight(.medium)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(10)
         }
     }
 
@@ -134,16 +163,6 @@ struct NewsDigestDetailView: View {
                     .font(.callout)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let urlString = aggregator.url, let url = URL(string: urlString) {
-                Link(destination: url) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.up.right.square")
-                        Text("Open discussion")
-                    }
-                }
-                .font(.callout)
             }
 
             if !aggregator.relatedLinks.isEmpty {

@@ -16,6 +16,8 @@ logs_from_server/
 
 static/*
 
+*.out
+
 .beads/issues.jsonl
 
 data/*

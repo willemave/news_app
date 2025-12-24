@@ -604,6 +604,14 @@ class TweetSuggestion(BaseModel):
         }
 
 
+class TweetLength(str, Enum):
+    """Tweet length preference."""
+
+    SHORT = "short"  # 100-180 chars - concise, punchy
+    MEDIUM = "medium"  # 180-280 chars - balanced
+    LONG = "long"  # 280-400 chars - detailed
+
+
 class TweetSuggestionsRequest(BaseModel):
     """Request body for generating tweet suggestions."""
 
@@ -618,6 +626,10 @@ class TweetSuggestionsRequest(BaseModel):
         le=10,
         description="Creativity level 1-10 (1=factual, 10=bold/playful)",
     )
+    length: TweetLength = Field(
+        TweetLength.MEDIUM,
+        description="Tweet length preference (short=100-180, medium=180-280, long=280-400 chars)",
+    )
     llm_provider: str | None = Field(
         None,
         description="LLM provider to use (openai, anthropic, google). Defaults to google.",
@@ -628,6 +640,7 @@ class TweetSuggestionsRequest(BaseModel):
             "example": {
                 "message": "emphasize the startup angle",
                 "creativity": 7,
+                "length": "medium",
                 "llm_provider": "google",
             }
         }
@@ -638,6 +651,7 @@ class TweetSuggestionsResponse(BaseModel):
 
     content_id: int = Field(..., description="ID of the content these tweets are about")
     creativity: int = Field(..., description="Creativity level used for generation")
+    length: TweetLength = Field(..., description="Length preference used for generation")
     model: str = Field(
         default=TWEET_SUGGESTION_MODEL,
         description="LLM model used for generation",

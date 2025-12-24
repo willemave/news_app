@@ -127,7 +127,14 @@
       "Bash(xargs ls:*)",
       "Bash(git -C /Users/willem/Development/news_app status --porcelain -- \".clinerules\" \".env*\" \"git_config_dump.txt\")",
       "Bash(git -C /Users/Willem/Development/news_app log --diff-filter=D --summary)",
-      "Bash(git -C /Users/Willem/Development/news_app worktree list)"
+      "Bash(git -C /Users/Willem/Development/news_app worktree list)",
+      "Bash(yt-dlp --version:*)",
+      "Bash(bd dep:*)",
+      "Bash(bd blocked)",
+      "Bash(bd ready:*)",
+      "Bash(timeout 60 .venv/bin/python:*)",
+      "Bash(git -C /Users/willem/Development/news_app diff app/services/content_analyzer.py)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidHlwZSI6ImFjY2VzcyIsImV4cCI6MTc2NzE2MDkxNywiaWF0IjoxNzY2NTU2MTE3fQ.kgWKcGFLLPGuREGFgP2ezTD9MvhdhL4lBx6z2_TMSIw\")"
     ],
     "deny": []
   },

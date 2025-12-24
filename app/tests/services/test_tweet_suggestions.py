@@ -6,7 +6,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.models.metadata import ContentData, ContentStatus, ContentType
-from app.services.llm_prompts import creativity_to_style_hints, get_tweet_generation_prompt
+from app.services.llm_prompts import (
+    creativity_to_style_hints,
+    get_tweet_generation_prompt,
+    length_to_char_range,
+)
 from app.services.tweet_suggestions import (
     TWEET_MODEL,
     TweetSuggestionLLM,
@@ -65,6 +69,34 @@ class TestCreativityMapping:
             assert "contrarian" in hints.lower() or "provocative" in hints.lower()
 
 
+class TestLengthMapping:
+    """Tests for length to character range mapping."""
+
+    def test_length_short(self) -> None:
+        """Short length maps to 100-180 chars."""
+        min_chars, max_chars = length_to_char_range("short")
+        assert min_chars == 100
+        assert max_chars == 180
+
+    def test_length_medium(self) -> None:
+        """Medium length maps to 180-280 chars."""
+        min_chars, max_chars = length_to_char_range("medium")
+        assert min_chars == 180
+        assert max_chars == 280
+
+    def test_length_long(self) -> None:
+        """Long length maps to 280-400 chars."""
+        min_chars, max_chars = length_to_char_range("long")
+        assert min_chars == 280
+        assert max_chars == 400
+
+    def test_length_default(self) -> None:
+        """Unknown length defaults to medium."""
+        min_chars, max_chars = length_to_char_range("unknown")
+        assert min_chars == 180
+        assert max_chars == 280
+
+
 class TestPromptGeneration:
     """Tests for tweet generation prompt."""
 
@@ -98,6 +130,24 @@ class TestPromptGeneration:
             creativity=5, user_message="focus on startups"
         )
         assert "focus on startups" in user_template
+
+    def test_prompt_includes_length_short(self) -> None:
+        """Prompt includes correct char limits for short length."""
+        system_msg, _ = get_tweet_generation_prompt(creativity=5, length="short")
+        assert "100-180" in system_msg
+        assert "180 max" in system_msg
+
+    def test_prompt_includes_length_medium(self) -> None:
+        """Prompt includes correct char limits for medium length."""
+        system_msg, _ = get_tweet_generation_prompt(creativity=5, length="medium")
+        assert "180-280" in system_msg
+        assert "280 max" in system_msg
+
+    def test_prompt_includes_length_long(self) -> None:
+        """Prompt includes correct char limits for long length."""
+        system_msg, _ = get_tweet_generation_prompt(creativity=5, length="long")
+        assert "280-400" in system_msg
+        assert "400 max" in system_msg
 
 
 class TestContentContextExtraction:
@@ -355,6 +405,25 @@ class TestTweetValidation:
         assert len(result[0].text) == 400
         assert result[0].text.endswith("...")
 
+    def test_truncate_with_custom_max_chars(self) -> None:
+        """Tweets are truncated based on custom max_chars."""
+        text_200 = "A" * 200  # Over 180 chars for short
+        suggestions = [
+            {"id": 1, "text": text_200, "style_label": "a"},
+            {"id": 2, "text": "Normal", "style_label": "b"},
+            {"id": 3, "text": "Another", "style_label": "c"},
+        ]
+
+        # Test with short limit (180)
+        result = _validate_and_truncate_tweets(suggestions, max_chars=180)
+        assert len(result[0].text) == 180
+        assert result[0].text.endswith("...")
+
+        # Test with medium limit (280) - should not truncate
+        result = _validate_and_truncate_tweets(suggestions, max_chars=280)
+        assert len(result[0].text) == 200
+        assert not result[0].text.endswith("...")
+
     def test_preserve_style_labels(self) -> None:
         """Style labels are preserved in validation."""
         suggestions = [
@@ -413,13 +482,14 @@ class TestTweetSuggestionService:
         settings.google_api_key = "test-key"
         service = TweetSuggestionService()
         try:
-            result = service.generate_suggestions(content, creativity=5)
+            result = service.generate_suggestions(content, creativity=5, length="short")
         finally:
             settings.google_api_key = original_key
 
         assert result is not None
         assert result.content_id == 1
         assert result.creativity == 5
+        assert result.length == "short"
         assert result.model == TWEET_MODEL
         assert len(result.suggestions) == 3
         assert result.suggestions[0].text == "Great article!"
