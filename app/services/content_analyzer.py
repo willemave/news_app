@@ -25,13 +25,13 @@ CONTENT_ANALYSIS_MODEL = "openai:gpt-4o-mini"
 
 # Patterns to detect podcast/video platform links in HTML
 PODCAST_VIDEO_PATTERNS = [
-    (r'open\.spotify\.com/episode/([a-zA-Z0-9]+)', 'spotify'),
-    (r'podcasts\.apple\.com/.+/podcast/.+/id(\d+)', 'apple_podcasts'),
-    (r'music\.apple\.com/.+/album/.+/(\d+)', 'apple_music'),
-    (r'youtube\.com/watch\?v=([a-zA-Z0-9_-]+)', 'youtube'),
-    (r'youtu\.be/([a-zA-Z0-9_-]+)', 'youtube'),
-    (r'overcast\.fm/\+([a-zA-Z0-9]+)', 'overcast'),
-    (r'player\.vimeo\.com/video/(\d+)', 'vimeo'),
+    (r"open\.spotify\.com/episode/([a-zA-Z0-9]+)", "spotify"),
+    (r"podcasts\.apple\.com/.+/podcast/.+/id(\d+)", "apple_podcasts"),
+    (r"music\.apple\.com/.+/album/.+/(\d+)", "apple_music"),
+    (r"youtube\.com/watch\?v=([a-zA-Z0-9_-]+)", "youtube"),
+    (r"youtu\.be/([a-zA-Z0-9_-]+)", "youtube"),
+    (r"overcast\.fm/\+([a-zA-Z0-9]+)", "overcast"),
+    (r"player\.vimeo\.com/video/(\d+)", "vimeo"),
 ]
 
 # Audio file patterns
@@ -96,20 +96,18 @@ class AnalysisError:
 
 # System prompt for the content analyzer agent
 CONTENT_ANALYZER_SYSTEM_PROMPT = """\
-You are a content type analyzer. Analyze the provided page content to determine:
-1. Content type: article, podcast, or video
-2. Platform links (Spotify, Apple Podcasts, YouTube, etc.)
-3. Title and description
+You classify web pages as article, podcast, or video.
 
-CRITICAL RULES - PRIORITY ORDER:
-1. If page contains ANY podcast links (Spotify, Apple Podcasts, Overcast, etc.) \
-→ classify as "podcast" and use the podcast link as media_url
-2. If page contains video links (YouTube, Vimeo) → classify as "video"
-3. Only classify as "article" if there are NO podcast/video links
+CLASSIFICATION RULES (in priority order):
+1. PODCAST: If ANY podcast platform link detected (Spotify, Apple Podcasts, Overcast) \
+→ content_type="podcast", platform=the podcast platform, media_url=the podcast link
+2. VIDEO: If YouTube/Vimeo link detected (and no podcast links) → content_type="video"
+3. ARTICLE: Only if NO podcast or video links detected
 
-SUBSTACK PRIORITY: Substack posts often embed podcast episodes. If you see both \
-substack.com AND a podcast platform link → ALWAYS classify as "podcast" and \
-set platform to the podcast platform (spotify, apple_podcasts, etc.), NOT substack."""
+IMPORTANT: Newsletter/Substack posts that embed podcast episodes should be \
+classified as "podcast" with the podcast platform (not "substack").
+
+Always set media_url to the detected platform URL when available."""
 
 
 def _fetch_page_content(url: str) -> tuple[str | None, str | None]:
@@ -228,85 +226,25 @@ class ContentAnalyzer:
             # Step 2: Scan HTML for podcast/video links
             detected = _detect_media_in_html(html)
 
-            # Step 3: If we found podcast/video platforms, we can classify quickly
-            if detected["platforms"]:
-                # Prioritize podcast platforms over video platforms
-                video_only = ("youtube", "vimeo")
-                podcast_platforms = [p for p in detected["platforms"] if p not in video_only]
-                video_platforms = [p for p in detected["platforms"] if p in video_only]
-
-                # Prefer podcast if available, otherwise video
-                if podcast_platforms:
-                    platform = podcast_platforms[0]
-                    content_type: Literal["article", "podcast", "video"] = "podcast"
-                else:
-                    platform = video_platforms[0]
-                    content_type = "video"
-
-                # Find media URL for the selected platform
-                media_url = None
-                for url in detected["platform_urls"]:
-                    url_lower = url.lower()
-                    if platform in url_lower or (platform == "spotify" and "spotify" in url_lower):
-                        media_url = url
-                        break
-                if not media_url and detected["platform_urls"]:
-                    media_url = detected["platform_urls"][0]
-                if not media_url and detected["audio_urls"]:
-                    media_url = detected["audio_urls"][0]
-
-                # Extract title from text (first line often)
-                title = text.split("\n")[0][:200] if text else None
-
-                logger.info(
-                    "Fast-path detection: found %s links, classifying as %s",
-                    detected["platforms"],
-                    content_type,
-                    extra={
-                        "component": "content_analyzer",
-                        "operation": "analyze_url",
-                        "context_data": {
-                            "url": url,
-                            "platforms": detected["platforms"],
-                            "content_type": content_type,
-                        },
-                    },
-                )
-
-                return ContentAnalysisResult(
-                    content_type=content_type,
-                    original_url=url,
-                    media_url=media_url,
-                    media_format="mp3" if content_type == "podcast" else "mp4",
-                    title=title,
-                    platform=platform,
-                    confidence=0.95,
-                )
-
-            # Step 4: No obvious media links - use LLM to analyze content
+            # Step 3: Use LLM to analyze content with detected media info
             agent = self._get_agent()
 
             # Truncate text for LLM context
-            text_snippet = (text or "")[:8000]
+            text_snippet = (text or "")[:6000]
 
-            prompt = f"""Analyze this page content and determine content type:
+            prompt = f"""Analyze this page and classify its content type.
 
 URL: {url}
 
-DETECTED MEDIA (from HTML scan):
-- Podcast/Video platforms found: {detected['platforms'] or 'None'}
-- Platform URLs: {detected['platform_urls'][:2] or 'None'}
-- Audio file URLs: {detected['audio_urls'][:2] or 'None'}
+DETECTED MEDIA LINKS (extracted from HTML):
+- Platforms found: {detected["platforms"] or "None"}
+- Platform URLs: {detected["platform_urls"][:3] or "None"}
+- Direct audio files: {detected["audio_urls"][:2] or "None"}
 
-PAGE TEXT (first 8000 chars):
+PAGE CONTENT:
 {text_snippet}
 
-Based on the above, determine:
-1. Is this an article, podcast, or video?
-2. What platform is it from?
-3. What is the title?
-
-REMEMBER: If ANY podcast/video platform links were detected, classify accordingly."""
+Return your classification. Use the first detected platform URL as media_url if available."""
 
             result = agent.run_sync(prompt)
 

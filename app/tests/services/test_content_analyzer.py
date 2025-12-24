@@ -151,7 +151,7 @@ class TestContentAnalyzer:
     @patch("app.services.content_analyzer._fetch_page_content")
     @patch("app.services.content_analyzer.get_settings")
     def test_analyze_url_with_spotify_link(self, mock_settings, mock_fetch):
-        """URL with Spotify link is detected as podcast via fast-path."""
+        """URL with Spotify link is detected as podcast."""
         mock_settings.return_value.openai_api_key = "test-key"
 
         # Mock page fetch with Spotify link in HTML
@@ -167,7 +167,7 @@ class TestContentAnalyzer:
         assert result.content_type == "podcast"
         assert "spotify.com" in result.media_url
         assert result.platform == "spotify"
-        assert result.confidence == 0.95
+        assert result.confidence >= 0.8  # LLM returns variable confidence
 
     @patch("app.services.content_analyzer._fetch_page_content")
     @patch("app.services.content_analyzer.get_settings")
