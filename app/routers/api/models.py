@@ -242,7 +242,10 @@ class ContentSummaryResponse(BaseModel):
         None, description="Per-user content status (e.g., inbox, archived)"
     )
     image_url: str | None = Field(
-        None, description="URL of AI-generated image or thumbnail for this content"
+        None, description="URL of full-size AI-generated image for this content"
+    )
+    thumbnail_url: str | None = Field(
+        None, description="URL of 200px thumbnail image for fast loading in list views"
     )
 
     class Config:
@@ -264,6 +267,7 @@ class ContentSummaryResponse(BaseModel):
                 "is_aggregate": False,
                 "item_count": None,
                 "image_url": "/static/images/content/123.png",
+                "thumbnail_url": "/static/images/thumbnails/123.png",
             }
         }
 
@@ -390,7 +394,10 @@ class ContentDetailResponse(BaseModel):
         None, description="Short overview synthesized for news digests"
     )
     image_url: str | None = Field(
-        None, description="URL of AI-generated image or thumbnail for this content"
+        None, description="URL of full-size AI-generated image for this content"
+    )
+    thumbnail_url: str | None = Field(
+        None, description="URL of 200px thumbnail image for fast loading"
     )
     detected_feed: DetectedFeed | None = Field(
         None, description="Detected RSS/Atom feed for this content (only for user submissions)"
@@ -455,6 +462,8 @@ class ContentDetailResponse(BaseModel):
                 "is_aggregate": False,
                 "rendered_markdown": None,
                 "news_items": [],
+                "image_url": "/static/images/content/123.png",
+                "thumbnail_url": "/static/images/thumbnails/123.png",
             }
         }
 

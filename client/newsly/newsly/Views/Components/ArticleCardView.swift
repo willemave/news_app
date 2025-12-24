@@ -55,19 +55,19 @@ struct ArticleCardView: View {
         ZStack(alignment: .topTrailing) {
             if let imageUrlString = content.imageUrl,
                let imageUrl = buildImageURL(from: imageUrlString) {
-                AsyncImage(url: imageUrl) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(height: heroImageHeight)
-                            .clipped()
-                    case .failure, .empty:
-                        placeholderImage
-                    @unknown default:
-                        placeholderImage
-                    }
+                // Use progressive loading: thumbnail first, then full image
+                let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
+                CachedAsyncImage(
+                    url: imageUrl,
+                    thumbnailUrl: thumbnailUrl
+                ) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: heroImageHeight)
+                        .clipped()
+                } placeholder: {
+                    placeholderImage
                 }
             } else {
                 placeholderImage

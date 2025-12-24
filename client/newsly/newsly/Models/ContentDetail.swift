@@ -37,6 +37,7 @@ struct ContentDetail: Codable, Identifiable {
     let renderedMarkdown: String?
     let newsItems: [NewsItem]?
     let imageUrl: String?
+    let thumbnailUrl: String?
     let detectedFeed: DetectedFeed?
 
     enum CodingKeys: String, CodingKey {
@@ -69,6 +70,7 @@ struct ContentDetail: Codable, Identifiable {
         case renderedMarkdown = "rendered_markdown"
         case newsItems = "news_items"
         case imageUrl = "image_url"
+        case thumbnailUrl = "thumbnail_url"
         case detectedFeed = "detected_feed"
     }
     

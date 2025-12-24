@@ -40,6 +40,7 @@ struct ContentDetailView: View {
     // Full image viewer
     @State private var showFullImage: Bool = false
     @State private var fullImageURL: URL?
+    @State private var fullThumbnailURL: URL?
     // Swipe haptic feedback
     @State private var didTriggerSwipeHaptic: Bool = false
     // Transcript/Full Article collapsed state
@@ -685,28 +686,25 @@ struct ContentDetailView: View {
                    let imageUrl = buildImageURL(from: imageUrlString) {
                     Button {
                         fullImageURL = imageUrl
+                        fullThumbnailURL = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
                         showFullImage = true
                     } label: {
-                        AsyncImage(url: imageUrl) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 80, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            case .failure:
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.secondary.opacity(0.2))
-                                    .frame(width: 80, height: 80)
-                            case .empty:
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.secondary.opacity(0.1))
-                                    .frame(width: 80, height: 80)
-                                    .overlay(ProgressView())
-                            @unknown default:
-                                EmptyView()
-                            }
+                        // Use thumbnail URL for faster loading in detail view
+                        let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
+                        CachedAsyncImage(
+                            url: thumbnailUrl ?? imageUrl,
+                            thumbnailUrl: nil
+                        ) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 80, height: 80)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        } placeholder: {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.secondary.opacity(0.1))
+                                .frame(width: 80, height: 80)
+                                .overlay(ProgressView())
                         }
                     }
                     .buttonStyle(.plain)
@@ -838,7 +836,7 @@ struct ContentDetailView: View {
         .padding(.bottom, 12)
         .fullScreenCover(isPresented: $showFullImage) {
             if let url = fullImageURL {
-                FullImageView(imageURL: url, isPresented: $showFullImage)
+                FullImageView(imageURL: url, thumbnailURL: fullThumbnailURL, isPresented: $showFullImage)
             }
         }
     }

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from google import genai
 from google.genai.types import GenerateContentConfig, ImageConfig
+from PIL import Image
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentType
@@ -27,6 +28,10 @@ INFOGRAPHIC_MODEL = "gemini-3-pro-image-preview"
 # Image storage paths
 NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
 INFOGRAPHICS_DIR = Path("static/images/content")
+THUMBNAILS_DIR = Path("static/images/thumbnails")
+
+# Thumbnail settings
+THUMBNAIL_SIZE = (200, 200)  # Max dimensions for thumbnails
 
 
 @dataclass
@@ -37,6 +42,7 @@ class ImageGenerationResult:
     image_path: str
     success: bool
     error_message: str | None = None
+    thumbnail_path: str | None = None
 
 
 # ============================================================================
@@ -312,12 +318,57 @@ class ImageGenerationService:
         # Ensure output directories exist
         NEWS_THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
         INFOGRAPHICS_DIR.mkdir(parents=True, exist_ok=True)
+        THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
 
         logger.info(
             "Initialized ImageGenerationService with models: news=%s, infographic=%s",
             NEWS_THUMBNAIL_MODEL,
             INFOGRAPHIC_MODEL,
         )
+
+    def generate_thumbnail(self, source_path: Path, content_id: int) -> Path | None:
+        """Generate a thumbnail from a full-size image using Pillow.
+
+        Args:
+            source_path: Path to the full-size image.
+            content_id: Content ID for naming the thumbnail.
+
+        Returns:
+            Path to the generated thumbnail, or None if generation failed.
+        """
+        try:
+            thumbnail_path = THUMBNAILS_DIR / f"{content_id}.png"
+
+            with Image.open(source_path) as img:
+                # Convert to RGB if necessary (for PNG with transparency)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+
+                # Use LANCZOS resampling for high-quality downscaling
+                img.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
+
+                # Save with optimization
+                img.save(thumbnail_path, "PNG", optimize=True)
+
+            logger.debug(
+                "Generated thumbnail for content %s: %s",
+                content_id,
+                thumbnail_path,
+            )
+            return thumbnail_path
+
+        except Exception as e:
+            logger.warning(
+                "Failed to generate thumbnail for content %s: %s",
+                content_id,
+                e,
+                extra={
+                    "component": "image_generation",
+                    "operation": "generate_thumbnail",
+                    "item_id": content_id,
+                },
+            )
+            return None
 
     def get_image_url(self, content_id: int, content_type: str = "article") -> str | None:
         """Get the URL for a content's image if it exists."""
@@ -329,6 +380,13 @@ class ImageGenerationService:
             path = INFOGRAPHICS_DIR / f"{content_id}.png"
             if path.exists():
                 return f"/static/images/content/{content_id}.png"
+        return None
+
+    def get_thumbnail_url(self, content_id: int) -> str | None:
+        """Get the URL for a content's thumbnail if it exists."""
+        path = THUMBNAILS_DIR / f"{content_id}.png"
+        if path.exists():
+            return f"/static/images/thumbnails/{content_id}.png"
         return None
 
     def generate_image(self, content: ContentData) -> ImageGenerationResult:
@@ -384,12 +442,16 @@ class ImageGenerationService:
             if not image_saved:
                 raise ValueError("No image generated in response")
 
+            # Generate thumbnail from the full-size image
+            thumbnail_path = self.generate_thumbnail(image_path, content_id)
+
             logger.info("Generated news thumbnail for %s at %s", content_id, image_path)
 
             return ImageGenerationResult(
                 content_id=content_id,
                 image_path=str(image_path),
                 success=True,
+                thumbnail_path=str(thumbnail_path) if thumbnail_path else None,
             )
 
         except Exception as e:
@@ -447,12 +509,16 @@ class ImageGenerationService:
             if not image_saved:
                 raise ValueError("No image generated in response")
 
+            # Generate thumbnail from the full-size image
+            thumbnail_path = self.generate_thumbnail(image_path, content_id)
+
             logger.info("Generated infographic for %s at %s", content_id, image_path)
 
             return ImageGenerationResult(
                 content_id=content_id,
                 image_path=str(image_path),
                 success=True,
+                thumbnail_path=str(thumbnail_path) if thumbnail_path else None,
             )
 
         except Exception as e:

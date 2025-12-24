@@ -13,7 +13,7 @@ from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
 from app.models.schema import Content
 from app.models.user import User
-from app.routers.api.content_list import get_content_image_url
+from app.routers.api.content_list import get_content_image_url, get_content_thumbnail_url
 from app.routers.api.models import ChatGPTUrlResponse, ContentDetailResponse, DetectedFeed
 
 router = APIRouter()
@@ -147,6 +147,7 @@ async def get_content_detail(
         news_key_points=news_key_points,
         news_summary=news_summary_text,
         image_url=get_content_image_url(domain_content),
+        thumbnail_url=get_content_thumbnail_url(domain_content.id),
         detected_feed=detected_feed,
     )
 

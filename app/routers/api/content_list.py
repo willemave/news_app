@@ -21,6 +21,22 @@ from app.utils.pagination import PaginationCursor
 # Image storage paths
 IMAGES_DIR = Path("static/images/content")
 NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
+THUMBNAILS_DIR = Path("static/images/thumbnails")
+
+
+def get_content_thumbnail_url(content_id: int | None) -> str | None:
+    """Get the thumbnail URL for a content item if it exists.
+
+    Thumbnails are 200px versions of full-size images for fast loading in list views.
+    """
+    if not content_id:
+        return None
+
+    thumbnail_path = THUMBNAILS_DIR / f"{content_id}.png"
+    if thumbnail_path.exists():
+        return f"/static/images/thumbnails/{content_id}.png"
+
+    return None
 
 
 def get_content_image_url(domain_content: ContentData) -> str | None:
@@ -300,6 +316,7 @@ async def list_contents(
                     if domain_content.content_type in (ContentType.ARTICLE, ContentType.PODCAST)
                     else None,
                     image_url=get_content_image_url(domain_content),
+                    thumbnail_url=get_content_thumbnail_url(domain_content.id),
                 )
             )
         except Exception as e:
@@ -514,6 +531,7 @@ async def search_contents(
                     if domain_content.content_type in (ContentType.ARTICLE, ContentType.PODCAST)
                     else None,
                     image_url=get_content_image_url(domain_content),
+                    thumbnail_url=get_content_thumbnail_url(domain_content.id),
                 )
             )
         except Exception as e:

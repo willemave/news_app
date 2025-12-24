@@ -9,62 +9,59 @@ import SwiftUI
 
 struct FullImageView: View {
     let imageURL: URL
+    let thumbnailURL: URL?
     @Binding var isPresented: Bool
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
+
+    init(imageURL: URL, thumbnailURL: URL? = nil, isPresented: Binding<Bool>) {
+        self.imageURL = imageURL
+        self.thumbnailURL = thumbnailURL
+        self._isPresented = isPresented
+    }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            AsyncImage(url: imageURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .scaleEffect(scale)
-                        .gesture(
-                            MagnificationGesture()
-                                .onChanged { value in
-                                    scale = lastScale * value
-                                }
-                                .onEnded { _ in
-                                    lastScale = scale
-                                    // Snap back if too small
-                                    if scale < 1.0 {
-                                        withAnimation {
-                                            scale = 1.0
-                                            lastScale = 1.0
-                                        }
+            CachedAsyncImage(
+                url: imageURL,
+                thumbnailUrl: thumbnailURL
+            ) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .scaleEffect(scale)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                scale = lastScale * value
+                            }
+                            .onEnded { _ in
+                                lastScale = scale
+                                // Snap back if too small
+                                if scale < 1.0 {
+                                    withAnimation {
+                                        scale = 1.0
+                                        lastScale = 1.0
                                     }
                                 }
-                        )
-                        .onTapGesture(count: 2) {
-                            withAnimation {
-                                if scale > 1.0 {
-                                    scale = 1.0
-                                    lastScale = 1.0
-                                } else {
-                                    scale = 2.0
-                                    lastScale = 2.0
-                                }
+                            }
+                    )
+                    .onTapGesture(count: 2) {
+                        withAnimation {
+                            if scale > 1.0 {
+                                scale = 1.0
+                                lastScale = 1.0
+                            } else {
+                                scale = 2.0
+                                lastScale = 2.0
                             }
                         }
-                case .failure:
-                    VStack(spacing: 12) {
-                        Image(systemName: "photo")
-                            .font(.largeTitle)
-                            .foregroundColor(.gray)
-                        Text("Failed to load image")
-                            .foregroundColor(.gray)
                     }
-                case .empty:
-                    ProgressView()
-                        .tint(.white)
-                @unknown default:
-                    EmptyView()
-                }
+            } placeholder: {
+                ProgressView()
+                    .tint(.white)
             }
 
             // Close button

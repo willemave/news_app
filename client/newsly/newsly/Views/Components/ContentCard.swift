@@ -66,24 +66,19 @@ struct ContentCard: View {
 
     @ViewBuilder
     private var thumbnailView: some View {
-        if let imageUrlString = content.imageUrl,
+        // Prefer thumbnail URL for faster loading, fall back to full image
+        let displayUrl = content.thumbnailUrl ?? content.imageUrl
+        if let imageUrlString = displayUrl,
            let imageUrl = buildImageURL(from: imageUrlString) {
-            AsyncImage(url: imageUrl) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: thumbnailSize, height: thumbnailSize)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                case .failure:
-                    thumbnailPlaceholder
-                case .empty:
-                    ProgressView()
-                        .frame(width: thumbnailSize, height: thumbnailSize)
-                @unknown default:
-                    thumbnailPlaceholder
-                }
+            CachedAsyncImage(url: imageUrl) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: thumbnailSize, height: thumbnailSize)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } placeholder: {
+                ProgressView()
+                    .frame(width: thumbnailSize, height: thumbnailSize)
             }
         } else {
             thumbnailPlaceholder

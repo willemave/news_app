@@ -25,6 +25,7 @@ struct ContentSummary: Codable, Identifiable {
     let isAggregate: Bool
     let itemCount: Int?
     let imageUrl: String?
+    let thumbnailUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -44,6 +45,7 @@ struct ContentSummary: Codable, Identifiable {
         case isAggregate = "is_aggregate"
         case itemCount = "item_count"
         case imageUrl = "image_url"
+        case thumbnailUrl = "thumbnail_url"
     }
 
     init(
@@ -63,7 +65,8 @@ struct ContentSummary: Codable, Identifiable {
         isFavorited: Bool,
         isAggregate: Bool = false,
         itemCount: Int? = nil,
-        imageUrl: String? = nil
+        imageUrl: String? = nil,
+        thumbnailUrl: String? = nil
     ) {
         self.id = id
         self.contentType = contentType
@@ -82,6 +85,7 @@ struct ContentSummary: Codable, Identifiable {
         self.isAggregate = isAggregate
         self.itemCount = itemCount
         self.imageUrl = imageUrl
+        self.thumbnailUrl = thumbnailUrl
     }
 
     init(from decoder: Decoder) throws {
@@ -103,7 +107,8 @@ struct ContentSummary: Codable, Identifiable {
             isFavorited: try container.decodeIfPresent(Bool.self, forKey: .isFavorited) ?? false,
             isAggregate: try container.decodeIfPresent(Bool.self, forKey: .isAggregate) ?? false,
             itemCount: try container.decodeIfPresent(Int.self, forKey: .itemCount),
-            imageUrl: try container.decodeIfPresent(String.self, forKey: .imageUrl)
+            imageUrl: try container.decodeIfPresent(String.self, forKey: .imageUrl),
+            thumbnailUrl: try container.decodeIfPresent(String.self, forKey: .thumbnailUrl)
         )
     }
 
@@ -126,6 +131,7 @@ struct ContentSummary: Codable, Identifiable {
         try container.encode(isAggregate, forKey: .isAggregate)
         try container.encodeIfPresent(itemCount, forKey: .itemCount)
         try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try container.encodeIfPresent(thumbnailUrl, forKey: .thumbnailUrl)
     }
 
     var contentTypeEnum: ContentType? {
@@ -193,7 +199,8 @@ struct ContentSummary: Codable, Identifiable {
             isFavorited: isFavorited ?? self.isFavorited,
             isAggregate: isAggregate,
             itemCount: itemCount,
-            imageUrl: imageUrl
+            imageUrl: imageUrl,
+            thumbnailUrl: thumbnailUrl
         )
     }
 
