@@ -11,7 +11,13 @@ from app.core.db import get_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
-from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
+from app.models.schema import (
+    ChatMessage,
+    ChatSession,
+    Content,
+    ContentFavorites,
+    MessageProcessingStatus,
+)
 from app.models.user import User
 from app.routers.api.chat_models import (
     ChatMessageDto,
@@ -47,7 +53,11 @@ def _session_to_summary(
     session: ChatSession,
     article_title: str | None = None,
     article_url: str | None = None,
+    article_summary: str | None = None,
+    article_source: str | None = None,
     has_pending_message: bool = False,
+    is_favorite: bool = False,
+    has_messages: bool = True,
 ) -> ChatSessionSummaryDto:
     """Convert database ChatSession to API response."""
     return ChatSessionSummaryDto(
@@ -63,8 +73,12 @@ def _session_to_summary(
         last_message_at=session.last_message_at,
         article_title=article_title,
         article_url=article_url,
+        article_summary=article_summary,
+        article_source=article_source,
         is_archived=session.is_archived,
         has_pending_message=has_pending_message,
+        is_favorite=is_favorite,
+        has_messages=has_messages,
     )
 
 
@@ -191,8 +205,11 @@ async def list_sessions(
 
     # Get session IDs that have pending messages (for efficiency)
     session_ids = [s.id for s in sessions]
-    pending_session_ids = set()
+    pending_session_ids: set[int] = set()
+    sessions_with_messages: set[int] = set()
+
     if session_ids:
+        # Check for pending messages
         pending_messages = (
             db.query(ChatMessage.session_id)
             .filter(
@@ -204,19 +221,61 @@ async def list_sessions(
         )
         pending_session_ids = {m.session_id for m in pending_messages}
 
-    # Build response with article titles and URLs
+        # Check which sessions have any messages at all
+        sessions_with_any_messages = (
+            db.query(ChatMessage.session_id)
+            .filter(ChatMessage.session_id.in_(session_ids))
+            .distinct()
+            .all()
+        )
+        sessions_with_messages = {m.session_id for m in sessions_with_any_messages}
+
+    # Get favorite content IDs for this user
+    content_ids = [s.content_id for s in sessions if s.content_id]
+    favorite_content_ids: set[int] = set()
+    if content_ids:
+        favorites = (
+            db.query(ContentFavorites.content_id)
+            .filter(
+                ContentFavorites.user_id == current_user.id,
+                ContentFavorites.content_id.in_(content_ids),
+            )
+            .all()
+        )
+        favorite_content_ids = {f.content_id for f in favorites}
+
+    # Build response with article titles, URLs, summaries, and sources
     result = []
     for session in sessions:
         article_title = None
         article_url = None
+        article_summary = None
+        article_source = None
+
         if session.content_id:
             content = db.query(Content).filter(Content.id == session.content_id).first()
             if content:
                 article_title = _resolve_article_title(content)
                 article_url = content.url
+                article_summary = content.short_summary
+                article_source = content.source
 
         has_pending = session.id in pending_session_ids
-        result.append(_session_to_summary(session, article_title, article_url, has_pending))
+        is_favorite = session.content_id in favorite_content_ids if session.content_id else False
+        has_messages = session.id in sessions_with_messages
+
+        result.append(
+            _session_to_summary(
+                session,
+                article_title=article_title,
+                article_url=article_url,
+                article_summary=article_summary,
+                article_source=article_source,
+                has_pending_message=has_pending,
+                is_favorite=is_favorite,
+                has_messages=has_messages,
+            )
+        )
 
     return result
 

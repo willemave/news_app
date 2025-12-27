@@ -240,12 +240,29 @@ struct ChatSessionView: View {
         }
         .toolbar {
             if let session = viewModel.session {
-                // Session type indicator (leading)
+                // Session title (tappable if linked to article)
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 2) {
-                        Text(session.displayTitle)
-                            .font(.headline)
-                            .lineLimit(1)
+                        if let articleUrl = session.articleUrl, let url = URL(string: articleUrl) {
+                            // Tappable title that opens the article
+                            Button {
+                                UIApplication.shared.open(url)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(session.displayTitle)
+                                        .font(.headline)
+                                        .lineLimit(1)
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.caption2)
+                                }
+                                .foregroundColor(.primary)
+                            }
+                        } else {
+                            Text(session.displayTitle)
+                                .font(.headline)
+                                .lineLimit(1)
+                        }
+
                         HStack(spacing: 4) {
                             Image(systemName: session.sessionTypeIconName)
                                 .font(.caption2)
@@ -256,7 +273,7 @@ struct ChatSessionView: View {
                     }
                 }
 
-                // Provider selector (trailing)
+                // Provider selector (trailing, icon-only)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Section {
@@ -276,17 +293,22 @@ struct ChatSessionView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 4) {
-                            Text(session.providerDisplayName)
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
+                        // Icon-only button (smaller footprint)
+                        Group {
+                            if let assetName = session.providerIconAsset {
+                                Image(assetName)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 22, height: 22)
+                            } else {
+                                Image(systemName: session.providerIconFallback)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .frame(width: 32, height: 32)
                         .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(6)
+                        .cornerRadius(8)
                     }
                 }
             }
@@ -346,6 +368,15 @@ struct ChatSessionView: View {
                             if viewModel.isSending {
                                 // Loading initial suggestions
                                 InitialSuggestionsLoadingView()
+                            } else if let session = viewModel.session,
+                                      let articleTitle = session.articleTitle {
+                                // Empty session with article - show article preview
+                                articlePreviewCard(
+                                    title: articleTitle,
+                                    source: session.articleSource,
+                                    summary: session.articleSummary,
+                                    url: session.articleUrl
+                                )
                             } else {
                                 Image(systemName: "bubble.left.and.bubble.right")
                                     .font(.system(size: 48))
@@ -360,7 +391,7 @@ struct ChatSessionView: View {
                                     .foregroundColor(.blue)
                             }
                         }
-                        .padding(.top, 60)
+                        .padding(.top, 40)
                     } else {
                         ForEach(viewModel.allMessages) { message in
                             MessageBubble(
@@ -402,6 +433,71 @@ struct ChatSessionView: View {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
+        }
+    }
+
+    // MARK: - Article Preview Card (for empty favorites)
+
+    @ViewBuilder
+    private func articlePreviewCard(
+        title: String,
+        source: String?,
+        summary: String?,
+        url: String?
+    ) -> some View {
+        VStack(spacing: 16) {
+            // Article card
+            VStack(alignment: .leading, spacing: 12) {
+                Text(title)
+                    .font(.headline)
+                    .lineLimit(3)
+
+                if let source = source {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text")
+                            .font(.caption)
+                        Text(source)
+                            .font(.caption)
+                    }
+                    .foregroundColor(.secondary)
+                }
+
+                if let summary = summary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(4)
+                }
+
+                if let urlString = url, let articleUrl = URL(string: urlString) {
+                    Link(destination: articleUrl) {
+                        HStack(spacing: 4) {
+                            Text("Read original article")
+                                .font(.caption)
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.blue)
+                    }
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(12)
+            .padding(.horizontal)
+
+            // Prompt to start chatting
+            VStack(spacing: 8) {
+                Text("Ask me anything about this article")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Text("I can summarize, explain, find related topics, or answer your questions.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal)
         }
     }
 

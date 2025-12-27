@@ -28,7 +28,11 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     let lastMessageAt: String?
     let articleTitle: String?
     let articleUrl: String?
+    let articleSummary: String?
+    let articleSource: String?
     let hasPendingMessage: Bool?
+    let isFavorite: Bool?
+    let hasMessages: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -43,12 +47,31 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         case lastMessageAt = "last_message_at"
         case articleTitle = "article_title"
         case articleUrl = "article_url"
+        case articleSummary = "article_summary"
+        case articleSource = "article_source"
         case hasPendingMessage = "has_pending_message"
+        case isFavorite = "is_favorite"
+        case hasMessages = "has_messages"
     }
 
     /// True if the session has a message currently being processed
     var isProcessing: Bool {
         hasPendingMessage ?? false
+    }
+
+    /// True if the linked content is favorited
+    var isFavorited: Bool {
+        isFavorite ?? false
+    }
+
+    /// True if the session has any messages
+    var hasAnyMessages: Bool {
+        hasMessages ?? true
+    }
+
+    /// True if this is a favorited article with no chat messages yet
+    var isEmptyFavorite: Bool {
+        isFavorited && !hasAnyMessages
     }
 
     var displayTitle: String {
@@ -58,6 +81,10 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     var displaySubtitle: String? {
         if let topic = topic, !topic.isEmpty {
             return topic
+        }
+        // For empty favorites, show the source
+        if isEmptyFavorite, let source = articleSource {
+            return source
         }
         if sessionType == "article_brain", let articleTitle = articleTitle {
             return "About: \(articleTitle)"

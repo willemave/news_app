@@ -1,5 +1,5 @@
 //
-//  ChatSessionsView.swift
+//  KnowledgeView.swift
 //  newsly
 //
 //  Created by Assistant on 11/28/25.
@@ -7,24 +7,56 @@
 
 import SwiftUI
 
-struct ChatSessionsView: View {
+struct KnowledgeView: View {
     let onSelectSession: ((ChatSessionRoute) -> Void)?
+    let onSelectContent: ((ContentDetailRoute) -> Void)?
 
     @StateObject private var viewModel = ChatSessionsViewModel()
     @State private var showingNewChat = false
     @State private var selectedProvider: ChatModelProvider = .google
     @State private var pendingNavigationRoute: ChatSessionRoute?
 
-    init(onSelectSession: ((ChatSessionRoute) -> Void)? = nil) {
+    /// Tracks the last time this tab was opened for badge calculation
+    @AppStorage("knowledgeTabLastOpenedAt") private var lastOpenedTimestamp: Double = 0
+
+    /// Captured threshold for showing "new" items (frozen on appear)
+    @State private var newItemThreshold: Date = .distantPast
+
+    init(
+        onSelectSession: ((ChatSessionRoute) -> Void)? = nil,
+        onSelectContent: ((ContentDetailRoute) -> Void)? = nil
+    ) {
         self.onSelectSession = onSelectSession
+        self.onSelectContent = onSelectContent
+    }
+
+    /// Number of new items since last tab open
+    var newItemCount: Int {
+        guard lastOpenedTimestamp > 0 else { return 0 }
+        let threshold = Date(timeIntervalSince1970: lastOpenedTimestamp)
+        return viewModel.sessions.filter { session in
+            parseDate(session.createdAt) > threshold
+        }.count
+    }
+
+    /// Check if a session is new (created after last visit)
+    private func isNewSession(_ session: ChatSessionSummary) -> Bool {
+        guard newItemThreshold != .distantPast else { return false }
+        return parseDate(session.createdAt) > newItemThreshold
     }
 
     var body: some View {
         ZStack {
             contentBody
         }
-        .navigationTitle("Chats")
+        .navigationTitle("Knowledge")
         .onAppear {
+            // Capture previous threshold before updating (for "New" indicators)
+            if lastOpenedTimestamp > 0 {
+                newItemThreshold = Date(timeIntervalSince1970: lastOpenedTimestamp)
+            }
+            // Mark tab as opened (for badge tracking)
+            lastOpenedTimestamp = Date().timeIntervalSince1970
             Task { await viewModel.loadSessions() }
         }
         .toolbar {
@@ -84,12 +116,13 @@ struct ChatSessionsView: View {
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "bubble.left.and.bubble.right")
+            Image(systemName: "books.vertical")
                 .font(.largeTitle)
                 .foregroundColor(.secondary)
-            Text("No chats yet")
+            Text("Your Knowledge Base")
+                .font(.headline)
                 .foregroundColor(.secondary)
-            Text("Start a deep dive conversation about any article by tapping the brain icon, or create an ad-hoc chat.")
+            Text("Save articles to build your knowledge base. Tap the star on any article to add it here and start exploring with AI.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -108,13 +141,32 @@ struct ChatSessionsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Parse a date string to Date
+    private func parseDate(_ dateString: String) -> Date {
+        // Try ISO8601 with fractional seconds
+        let iso8601WithFractional = ISO8601DateFormatter()
+        iso8601WithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso8601WithFractional.date(from: dateString) {
+            return date
+        }
+
+        // Try ISO8601 without fractional seconds
+        let iso8601 = ISO8601DateFormatter()
+        iso8601.formatOptions = [.withInternetDateTime]
+        if let date = iso8601.date(from: dateString) {
+            return date
+        }
+
+        return Date.distantPast
+    }
+
     private var sessionListView: some View {
         List {
             ForEach(viewModel.sessions) { session in
                 Button {
                     onSelectSession?(ChatSessionRoute(sessionId: session.id))
                 } label: {
-                    ChatSessionRow(session: session)
+                    ChatSessionRow(session: session, isNew: isNewSession(session))
                 }
                 .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
@@ -156,13 +208,33 @@ struct ProviderIcon: View {
 
 struct ChatSessionRow: View {
     let session: ChatSessionSummary
+    var isNew: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
+                // Star icon for favorites
+                if session.isFavorited {
+                    Image(systemName: "star.fill")
+                        .font(.caption)
+                        .foregroundColor(.yellow)
+                }
+
                 Text(session.displayTitle)
                     .font(.headline)
                     .lineLimit(1)
+
+                // New indicator
+                if isNew {
+                    Text("New")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green)
+                        .cornerRadius(4)
+                }
 
                 // Processing indicator
                 if session.isProcessing {
@@ -180,10 +252,28 @@ struct ChatSessionRow: View {
                 }
 
                 Spacer()
-                ProviderIcon(session: session)
+
+                // Show provider icon for active chats, or "Saved" badge for empty favorites
+                if session.isEmptyFavorite {
+                    Text("Saved")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(4)
+                } else {
+                    ProviderIcon(session: session)
+                }
             }
 
-            if let subtitle = session.displaySubtitle {
+            // For empty favorites, show article summary if available
+            if session.isEmptyFavorite, let summary = session.articleSummary, !summary.isEmpty {
+                Text(summary)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            } else if let subtitle = session.displaySubtitle {
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
@@ -191,13 +281,25 @@ struct ChatSessionRow: View {
             }
 
             HStack(spacing: 6) {
-                // Session type icon and label
-                Image(systemName: session.sessionTypeIconName)
-                    .font(.caption)
-                    .foregroundColor(session.isDeepResearch ? .purple : .blue)
-                Text(session.sessionTypeLabel)
-                    .font(.caption2)
-                    .foregroundColor(session.isDeepResearch ? .purple : .blue)
+                // Show different indicator for empty favorites
+                if session.isEmptyFavorite {
+                    Image(systemName: "doc.text")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if let source = session.articleSource {
+                        Text(source)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    // Session type icon and label
+                    Image(systemName: session.sessionTypeIconName)
+                        .font(.caption)
+                        .foregroundColor(session.isDeepResearch ? .purple : .blue)
+                    Text(session.sessionTypeLabel)
+                        .font(.caption2)
+                        .foregroundColor(session.isDeepResearch ? .purple : .blue)
+                }
 
                 Spacer()
                 Text(session.formattedDate)
@@ -364,5 +466,5 @@ struct NewChatSheet: View {
 }
 
 #Preview {
-    ChatSessionsView()
+    KnowledgeView()
 }

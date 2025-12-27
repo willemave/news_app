@@ -50,7 +50,8 @@ struct ContentView: View {
         unreadCountService.newsCount > 0 ? String(unreadCountService.newsCount) : nil
     }
 
-    private var chatBadge: String? {
+    private var knowledgeBadge: String? {
+        // Show processing indicator if any sessions are being processed
         chatSessionManager.hasProcessingSessions ? "●" : nil
     }
 
@@ -92,14 +93,19 @@ struct ContentView: View {
                 .badge(shortBadge)
                 .tag(RootTab.shortNews)
 
-                ChatSessionsView(onSelectSession: { route in
-                    path.append(route)
-                })
-                    .tabItem {
-                        Label("Chats", systemImage: "bubble.left.and.bubble.right.fill")
+                KnowledgeView(
+                    onSelectSession: { route in
+                        path.append(route)
+                    },
+                    onSelectContent: { route in
+                        path.append(route)
                     }
-                    .badge(chatBadge)
-                    .tag(RootTab.chats)
+                )
+                    .tabItem {
+                        Label("Knowledge", systemImage: "books.vertical.fill")
+                    }
+                    .badge(knowledgeBadge)
+                    .tag(RootTab.knowledge)
 
                 MoreView()
                     .tabItem {

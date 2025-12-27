@@ -55,9 +55,25 @@ class ChatSessionSummaryDto(BaseModel):
     is_archived: bool
     article_title: str | None = None
     article_url: str | None = None
+    article_summary: str | None = Field(
+        default=None,
+        description="Short summary of the article (for empty session display)",
+    )
+    article_source: str | None = Field(
+        default=None,
+        description="Source name of the article (for empty session display)",
+    )
     has_pending_message: bool = Field(
         default=False,
         description="True if session has a message currently being processed",
+    )
+    is_favorite: bool = Field(
+        default=False,
+        description="True if the linked content is favorited by the user",
+    )
+    has_messages: bool = Field(
+        default=True,
+        description="True if session has any messages (false for new favorites)",
     )
 
 
