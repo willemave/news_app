@@ -65,10 +65,14 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     }
     
     private func loadImage() {
-        guard let url = url else { return }
-        
+        guard let url = url else {
+            print("CachedAsyncImage: No URL provided")
+            return
+        }
+
+        print("CachedAsyncImage: Loading image from \(url)")
         isLoading = true
-        
+
         loadingTask = Task {
             // Try to load from cache first
             if let cached = await ImageCacheService.shared.image(for: url) {
@@ -102,8 +106,11 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             
             // Download full image
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
+                print("CachedAsyncImage: Downloading from \(url)")
+                let (data, response) = try await URLSession.shared.data(from: url)
+                print("CachedAsyncImage: Got \(data.count) bytes, status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
                 if let image = UIImage(data: data) {
+                    print("CachedAsyncImage: Successfully decoded image")
                     await ImageCacheService.shared.cache(image, for: url)
                     await MainActor.run {
                         withAnimation(.easeIn(duration: 0.2)) {
@@ -111,8 +118,11 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
                             isLoading = false
                         }
                     }
+                } else {
+                    print("CachedAsyncImage: Failed to decode image data")
                 }
             } catch {
+                print("CachedAsyncImage: Download error: \(error)")
                 await MainActor.run {
                     isLoading = false
                 }

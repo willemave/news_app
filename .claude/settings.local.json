@@ -134,7 +134,13 @@
       "Bash(bd ready:*)",
       "Bash(timeout 60 .venv/bin/python:*)",
       "Bash(git -C /Users/willem/Development/news_app diff app/services/content_analyzer.py)",
-      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidHlwZSI6ImFjY2VzcyIsImV4cCI6MTc2NzE2MDkxNywiaWF0IjoxNzY2NTU2MTE3fQ.kgWKcGFLLPGuREGFgP2ezTD9MvhdhL4lBx6z2_TMSIw\")"
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidHlwZSI6ImFjY2VzcyIsImV4cCI6MTc2NzE2MDkxNywiaWF0IjoxNzY2NTU2MTE3fQ.kgWKcGFLLPGuREGFgP2ezTD9MvhdhL4lBx6z2_TMSIw\")",
+      "mcp__exa__web_search_exa",
+      "Bash(.venv/bin/alembic revision:*)",
+      "Bash(timeout 300 python:*)",
+      "Bash(.venv/bin/alembic upgrade:*)",
+      "Bash(timeout 600 python:*)",
+      "Bash(timeout 900 python scripts/test_interleaved_summary.py:*)"
     ],
     "deny": []
   },

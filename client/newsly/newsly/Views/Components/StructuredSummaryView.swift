@@ -8,6 +8,14 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Design Tokens
+private enum SummaryDesign {
+    static let sectionSpacing: CGFloat = 20
+    static let itemSpacing: CGFloat = 12
+    static let cornerRadius: CGFloat = 12
+    static let quoteBarWidth: CGFloat = 3
+}
+
 struct StructuredSummaryView: View {
     let summary: StructuredSummary
     var contentId: Int?
@@ -21,48 +29,34 @@ struct StructuredSummaryView: View {
     @State private var topicSession: ChatSessionSummary?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: SummaryDesign.sectionSpacing) {
             // Quotes Section (first, expanded by default)
             if !summary.quotes.isEmpty {
-                DisclosureGroup(isExpanded: $isQuotesExpanded) {
-                    VStack(alignment: .leading, spacing: 12) {
+                modernSection(
+                    title: "Notable Quotes",
+                    icon: "quote.opening",
+                    iconColor: .purple,
+                    isExpanded: $isQuotesExpanded
+                ) {
+                    VStack(alignment: .leading, spacing: 16) {
                         ForEach(summary.quotes, id: \.text) { quote in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(quote.text)
-                                    .font(.callout)
-                                    .italic()
-                                    .fixedSize(horizontal: false, vertical: true)
-
-                                if let context = quote.context {
-                                    Text("— \(context)")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.leading, 16)
-                            .overlay(
-                                Rectangle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 3),
-                                alignment: .leading
-                            )
+                            modernQuoteCard(quote: quote)
                         }
                     }
-                    .padding(.top, 12)
-                } label: {
-                    Text("Notable Quotes")
-                        .font(.title3)
-                        .fontWeight(.semibold)
                 }
-                .tint(.primary)
             }
 
             // Key Points Section (expanded by default)
             if !summary.bulletPoints.isEmpty {
-                DisclosureGroup(isExpanded: $isKeyPointsExpanded) {
-                    VStack(alignment: .leading, spacing: 12) {
+                modernSection(
+                    title: "Key Points",
+                    icon: "list.bullet.rectangle",
+                    iconColor: .blue,
+                    isExpanded: $isKeyPointsExpanded
+                ) {
+                    VStack(alignment: .leading, spacing: SummaryDesign.itemSpacing) {
                         ForEach(summary.bulletPoints, id: \.text) { point in
-                            KeyPointRow(
+                            ModernKeyPointRow(
                                 point: point,
                                 contentId: contentId,
                                 onDigDeeper: { pointText in
@@ -71,93 +65,59 @@ struct StructuredSummaryView: View {
                             )
                         }
                     }
-                    .padding(.top, 12)
-                } label: {
-                    Text("Key Points")
-                        .font(.title3)
-                        .fontWeight(.semibold)
                 }
-                .tint(.primary)
             }
 
             // Questions Section
             if !(summary.questions ?? []).isEmpty {
-                DisclosureGroup(isExpanded: $isQuestionsExpanded) {
-                    VStack(alignment: .leading, spacing: 12) {
+                modernSection(
+                    title: "Questions to Explore",
+                    icon: "questionmark.circle",
+                    iconColor: .orange,
+                    isExpanded: $isQuestionsExpanded
+                ) {
+                    VStack(alignment: .leading, spacing: SummaryDesign.itemSpacing) {
                         ForEach(Array((summary.questions ?? []).enumerated()), id: \.offset) { index, question in
-                            HStack(alignment: .top, spacing: 12) {
-                                Text("\(index + 1)")
-                                    .font(.callout)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.accentColor)
-                                    .frame(width: 24, alignment: .trailing)
-
-                                Text(question)
-                                    .font(.callout)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                            modernQuestionRow(index: index + 1, question: question)
                         }
                     }
-                    .padding(.top, 12)
-                } label: {
-                    Text("Questions to Ask")
-                        .font(.title3)
-                        .fontWeight(.semibold)
                 }
-                .tint(.primary)
             }
 
             // Counter Arguments Section
             if !(summary.counterArguments ?? []).isEmpty {
-                DisclosureGroup(isExpanded: $isCounterArgsExpanded) {
-                    VStack(alignment: .leading, spacing: 12) {
+                modernSection(
+                    title: "Counter Arguments",
+                    icon: "arrow.left.arrow.right",
+                    iconColor: .red,
+                    isExpanded: $isCounterArgsExpanded
+                ) {
+                    VStack(alignment: .leading, spacing: SummaryDesign.itemSpacing) {
                         ForEach(summary.counterArguments ?? [], id: \.self) { argument in
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.callout)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 20)
-
-                                Text(argument)
-                                    .font(.callout)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                            modernCounterArgRow(argument: argument)
                         }
                     }
-                    .padding(.top, 12)
-                } label: {
-                    Text("Counter Arguments")
-                        .font(.title3)
-                        .fontWeight(.semibold)
                 }
-                .tint(.primary)
             }
 
+            // Topics Section (always visible, no disclosure)
             if !summary.topics.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Topics")
-                        .font(.title3)
-                        .fontWeight(.semibold)
+                    HStack(spacing: 8) {
+                        Image(systemName: "tag")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text("Topics")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .textCase(.uppercase)
+                            .tracking(0.5)
+                    }
 
                     FlowLayout(spacing: 8) {
                         ForEach(summary.topics, id: \.self) { topic in
-                            Text(topic)
-                                .font(.callout)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.accentColor.opacity(0.15))
-                                .foregroundColor(.accentColor)
-                                .clipShape(Capsule())
-                                .contextMenu {
-                                    if contentId != nil {
-                                        Button {
-                                            selectedTopic = topic
-                                            startTopicChat(topic: topic)
-                                        } label: {
-                                            Label("Deep Dive: \(topic)", systemImage: "brain.head.profile")
-                                        }
-                                    }
-                                }
+                            modernTopicPill(topic: topic)
                         }
                     }
                 }
@@ -168,6 +128,144 @@ struct StructuredSummaryView: View {
                 ChatSessionView(session: session)
             }
         }
+    }
+
+    // MARK: - Modern Section Component
+    @ViewBuilder
+    private func modernSection<Content: View>(
+        title: String,
+        icon: String,
+        iconColor: Color,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: icon)
+                            .font(.subheadline)
+                            .foregroundColor(iconColor)
+                        Text(title)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                content()
+                    .padding(.top, 14)
+            }
+        }
+    }
+
+    // MARK: - Modern Quote Card
+    @ViewBuilder
+    private func modernQuoteCard(quote: Quote) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(quote.text)
+                .font(.callout)
+                .italic()
+                .foregroundColor(.primary.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let context = quote.context {
+                Text("— \(context)")
+                    .font(.footnote)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.leading, 14)
+        .padding(.vertical, 2)
+        .overlay(
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [.purple.opacity(0.8), .purple.opacity(0.4)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: SummaryDesign.quoteBarWidth),
+            alignment: .leading
+        )
+    }
+
+    // MARK: - Modern Question Row
+    @ViewBuilder
+    private func modernQuestionRow(index: Int, question: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(index)")
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .frame(width: 22, height: 22)
+                .background(
+                    Circle()
+                        .fill(Color.orange.opacity(0.8))
+                )
+
+            Text(question)
+                .font(.callout)
+                .foregroundColor(.primary.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Modern Counter Argument Row (no background)
+    @ViewBuilder
+    private func modernCounterArgRow(argument: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundColor(.orange)
+                .frame(width: 16)
+                .padding(.top, 2)
+
+            Text(argument)
+                .font(.callout)
+                .foregroundColor(.primary.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Modern Topic Pill (flat, no border)
+    @ViewBuilder
+    private func modernTopicPill(topic: String) -> some View {
+        Text(topic)
+            .font(.footnote)
+            .fontWeight(.medium)
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(.tertiarySystemFill))
+            .clipShape(Capsule())
+            .contextMenu {
+                if contentId != nil {
+                    Button {
+                        selectedTopic = topic
+                        startTopicChat(topic: topic)
+                    } label: {
+                        Label("Deep Dive: \(topic)", systemImage: "brain.head.profile")
+                    }
+                }
+            }
     }
 
     private func startTopicChat(topic: String) {
@@ -216,43 +314,59 @@ struct StructuredSummaryView: View {
     }
 }
 
-// MARK: - Key Point Row
+// MARK: - Modern Key Point Row
 
-struct KeyPointRow: View {
+struct ModernKeyPointRow: View {
     let point: BulletPoint
     let contentId: Int?
     var onDigDeeper: ((String) -> Void)?
 
-    private func categoryColor(for category: String) -> Color {
+    @Environment(\.colorScheme) private var colorScheme
+
+    private func categoryConfig(for category: String) -> (color: Color, icon: String) {
         switch category.lowercased() {
         case "key_finding":
-            return .green
+            return (.green, "checkmark.circle.fill")
         case "warning":
-            return .red
+            return (.red, "exclamationmark.triangle.fill")
         case "recommendation":
-            return .blue
+            return (.blue, "lightbulb.fill")
         default:
-            return .gray
+            return (.secondary, "circle.fill")
         }
+    }
+
+    private var bulletColor: Color {
+        if let category = point.category {
+            return categoryConfig(for: category).color
+        }
+        return .blue.opacity(0.7)
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
+            // Modern bullet with category color
             Circle()
-                .fill(Color.accentColor)
+                .fill(bulletColor)
                 .frame(width: 6, height: 6)
                 .padding(.top, 7)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(point.text)
                     .font(.callout)
+                    .foregroundColor(.primary.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let category = point.category {
-                    Text(category.replacingOccurrences(of: "_", with: " ").capitalized)
-                        .font(.footnote)
-                        .foregroundColor(categoryColor(for: category))
-                        .fontWeight(.medium)
+                    let config = categoryConfig(for: category)
+                    HStack(spacing: 4) {
+                        Image(systemName: config.icon)
+                            .font(.caption2)
+                        Text(category.replacingOccurrences(of: "_", with: " ").capitalized)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundColor(config.color.opacity(0.9))
                 }
             }
         }
@@ -274,6 +388,9 @@ struct KeyPointRow: View {
         }
     }
 }
+
+// Legacy alias for backwards compatibility
+typealias KeyPointRow = ModernKeyPointRow
 
 // Simple flow layout for topics
 struct FlowLayout: Layout {

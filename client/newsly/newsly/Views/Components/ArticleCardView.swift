@@ -57,6 +57,7 @@ struct ArticleCardView: View {
                let imageUrl = buildImageURL(from: imageUrlString) {
                 // Use progressive loading: thumbnail first, then full image
                 let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
+                let _ = print("ArticleCardView: imageUrl=\(imageUrl), thumbnailUrl=\(thumbnailUrl?.absoluteString ?? "nil")")
                 CachedAsyncImage(
                     url: imageUrl,
                     thumbnailUrl: thumbnailUrl
@@ -70,6 +71,7 @@ struct ArticleCardView: View {
                     placeholderImage
                 }
             } else {
+                let _ = print("ArticleCardView: No image URL for content \(content.id), imageUrl=\(content.imageUrl ?? "nil")")
                 placeholderImage
             }
 
@@ -262,9 +264,9 @@ struct ArticleCardView: View {
             return URL(string: urlString)
         }
         // Otherwise, it's a relative path - prepend base URL
-        guard let baseURL = URL(string: AppSettings.shared.baseURL) else {
-            return nil
-        }
-        return baseURL.appendingPathComponent(urlString)
+        // Use string concatenation instead of appendingPathComponent to preserve path structure
+        let baseURL = AppSettings.shared.baseURL
+        let fullURL = urlString.hasPrefix("/") ? baseURL + urlString : baseURL + "/" + urlString
+        return URL(string: fullURL)
     }
 }

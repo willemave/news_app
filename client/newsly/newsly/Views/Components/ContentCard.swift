@@ -117,9 +117,9 @@ struct ContentCard: View {
         }
 
         // Otherwise, it's a relative path - prepend base URL
-        guard let baseURL = URL(string: AppSettings.shared.baseURL) else {
-            return nil
-        }
-        return baseURL.appendingPathComponent(urlString)
+        // Use string concatenation instead of appendingPathComponent to preserve path structure
+        let baseURL = AppSettings.shared.baseURL
+        let fullURL = urlString.hasPrefix("/") ? baseURL + urlString : baseURL + "/" + urlString
+        return URL(string: fullURL)
     }
 }

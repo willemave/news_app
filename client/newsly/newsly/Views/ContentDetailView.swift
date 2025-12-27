@@ -9,6 +9,21 @@ import SwiftUI
 import MarkdownUI
 import UIKit
 
+// MARK: - Design Tokens
+private enum DetailDesign {
+    // Spacing
+    static let horizontalPadding: CGFloat = 20
+    static let sectionSpacing: CGFloat = 20
+    static let cardPadding: CGFloat = 16
+
+    // Corner radii
+    static let cardRadius: CGFloat = 14
+    static let buttonRadius: CGFloat = 10
+
+    // Hero
+    static let heroHeight: CGFloat = 220
+}
+
 struct ContentDetailView: View {
     let initialContentId: Int
     let allContentIds: [Int]
@@ -45,7 +60,6 @@ struct ContentDetailView: View {
     @State private var didTriggerSwipeHaptic: Bool = false
     // Transcript/Full Article collapsed state
     @State private var isTranscriptExpanded: Bool = false
-
     init(contentId: Int, allContentIds: [Int] = [], onConvert: ((Int) async -> Void)? = nil) {
         self.initialContentId = contentId
         self.allContentIds = allContentIds.isEmpty ? [contentId] : allContentIds
@@ -70,155 +84,153 @@ struct ContentDetailView: View {
                     .frame(minHeight: 400)
                 } else if let content = viewModel.content {
                     VStack(alignment: .leading, spacing: 0) {
-                    // Header with background image
-                    headerWithImage(content: content)
+                        // Modern hero header
+                        heroHeader(content: content)
 
-                    // Chat status banner (inline, under header)
-                    if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
-                        ChatStatusBanner(
-                            session: activeSession,
-                            onTap: {
-                                let session = ChatSessionSummary(
-                                    id: activeSession.id,
-                                    contentId: activeSession.contentId,
-                                    title: nil,
-                                    sessionType: "article_brain",
-                                    topic: nil,
-                                    llmProvider: "google",
-                                    llmModel: "gemini-2.0-flash",
-                                    createdAt: ISO8601DateFormatter().string(from: Date()),
-                                    updatedAt: nil,
-                                    lastMessageAt: nil,
-                                    articleTitle: activeSession.contentTitle,
-                                    articleUrl: nil,
-                                    hasPendingMessage: false
-                                )
-                                deepDiveSession = session
-                                showDeepDiveSheet = true
-                                chatSessionManager.stopTracking(contentId: content.id)
-                            },
-                            onDismiss: {
-                                chatSessionManager.markAsViewed(contentId: content.id)
-                            },
-                            style: .inline
-                        )
-                    }
+                        // Floating action bar
+                        actionBar(content: content)
+                            .padding(.horizontal, DetailDesign.horizontalPadding)
+                            .padding(.top, 16)
 
-                    // Detected feed subscription card (only for self-submitted content)
-                    if let feed = content.detectedFeed, content.source == "self submission" {
-                        DetectedFeedCard(
-                            feed: feed,
-                            isSubscribing: viewModel.isSubscribingToFeed,
-                            hasSubscribed: viewModel.feedSubscriptionSuccess,
-                            subscriptionError: viewModel.feedSubscriptionError,
-                            onSubscribe: {
-                                Task { await viewModel.subscribeToDetectedFeed() }
-                            }
-                        )
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                    }
+                        // Chat status banner (inline, under header)
+                        if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
+                            ChatStatusBanner(
+                                session: activeSession,
+                                onTap: {
+                                    let session = ChatSessionSummary(
+                                        id: activeSession.id,
+                                        contentId: activeSession.contentId,
+                                        title: nil,
+                                        sessionType: "article_brain",
+                                        topic: nil,
+                                        llmProvider: "google",
+                                        llmModel: "gemini-2.0-flash",
+                                        createdAt: ISO8601DateFormatter().string(from: Date()),
+                                        updatedAt: nil,
+                                        lastMessageAt: nil,
+                                        articleTitle: activeSession.contentTitle,
+                                        articleUrl: nil,
+                                        hasPendingMessage: false
+                                    )
+                                    deepDiveSession = session
+                                    showDeepDiveSheet = true
+                                    chatSessionManager.stopTracking(contentId: content.id)
+                                },
+                                onDismiss: {
+                                    chatSessionManager.markAsViewed(contentId: content.id)
+                                },
+                                style: .inline
+                            )
+                            .padding(.horizontal, DetailDesign.horizontalPadding)
+                            .padding(.top, 12)
+                        }
 
-                    // Structured Summary Section
-                    if let structuredSummary = content.structuredSummary {
-                        StructuredSummaryView(summary: structuredSummary, contentId: content.id)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                    }
+                        // Detected feed subscription card (only for self-submitted content)
+                        if let feed = content.detectedFeed, content.source == "self submission" {
+                            DetectedFeedCard(
+                                feed: feed,
+                                isSubscribing: viewModel.isSubscribingToFeed,
+                                hasSubscribed: viewModel.feedSubscriptionSuccess,
+                                subscriptionError: viewModel.feedSubscriptionError,
+                                onSubscribe: {
+                                    Task { await viewModel.subscribeToDetectedFeed() }
+                                }
+                            )
+                            .padding(.horizontal, DetailDesign.horizontalPadding)
+                            .padding(.top, 12)
+                        }
 
-                    if content.contentTypeEnum == .news {
-                        if let newsMetadata = content.newsMetadata {
-                            Divider()
-                                .padding(.vertical, 8)
+                        // Structured Summary Section (no background wrapper)
+                        if let structuredSummary = content.structuredSummary {
+                            StructuredSummaryView(summary: structuredSummary, contentId: content.id)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.sectionSpacing)
+                        }
 
-                            NewsDigestDetailView(content: content, metadata: newsMetadata)
-                                .padding(.horizontal, 20)
-                        } else {
-                            Divider()
-                                .padding(.vertical, 8)
-
-                            VStack(alignment: .leading, spacing: 16) {
-                                Text("News Updates")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-
-                                if let markdown = content.renderedMarkdown, !markdown.isEmpty {
-                                    Markdown(markdown)
-                                        .markdownTheme(.gitHub)
-                                } else if let items = content.newsItems, !items.isEmpty {
+                        if content.contentTypeEnum == .news {
+                            if let newsMetadata = content.newsMetadata {
+                                modernSectionCard {
+                                    NewsDigestDetailView(content: content, metadata: newsMetadata)
+                                }
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.sectionSpacing)
+                            } else {
+                                modernSectionCard {
                                     VStack(alignment: .leading, spacing: 16) {
-                                        ForEach(items) { item in
-                                            VStack(alignment: .leading, spacing: 8) {
-                                                if let url = URL(string: item.url) {
-                                                    Link(item.title ?? item.url, destination: url)
-                                                        .font(.headline)
-                                                } else {
-                                                    Text(item.title ?? item.url)
-                                                        .font(.headline)
-                                                }
+                                        sectionHeader("News Updates", icon: "newspaper")
 
-                                                if let summary = item.summary, !summary.isEmpty {
-                                                    Text(summary)
-                                                        .font(.callout)
-                                                        .foregroundColor(.secondary)
+                                        if let markdown = content.renderedMarkdown, !markdown.isEmpty {
+                                            Markdown(markdown)
+                                                .markdownTheme(.gitHub)
+                                        } else if let items = content.newsItems, !items.isEmpty {
+                                            VStack(alignment: .leading, spacing: 16) {
+                                                ForEach(items) { item in
+                                                    VStack(alignment: .leading, spacing: 8) {
+                                                        if let url = URL(string: item.url) {
+                                                            Link(item.title ?? item.url, destination: url)
+                                                                .font(.subheadline)
+                                                                .fontWeight(.medium)
+                                                        } else {
+                                                            Text(item.title ?? item.url)
+                                                                .font(.subheadline)
+                                                                .fontWeight(.medium)
+                                                        }
+
+                                                        if let summary = item.summary, !summary.isEmpty {
+                                                            Text(summary)
+                                                                .font(.footnote)
+                                                                .foregroundColor(.secondary)
+                                                        }
+                                                    }
+
+                                                    if item.id != items.last?.id {
+                                                        Divider()
+                                                            .opacity(0.5)
+                                                    }
                                                 }
                                             }
-
-                                            if item.id != items.last?.id {
-                                                Divider()
-                                                    .padding(.vertical, 4)
-        }
-    }
-
-}
-                                } else {
-                                    Text("No news metadata available.")
-                                        .font(.body)
-                                        .foregroundColor(.secondary)
+                                        } else {
+                                            Text("No news metadata available.")
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
                                 }
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.sectionSpacing)
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
                         }
-                    }
 
-                    // Full Content Section (collapsible, collapsed by default)
-                    // For podcasts, check podcastMetadata.transcript first, then fall back to fullMarkdown
-                    if content.contentTypeEnum == .podcast, let podcastMetadata = content.podcastMetadata, let transcript = podcastMetadata.transcript {
-                        Divider()
-                            .padding(.vertical, 8)
-
-                        DisclosureGroup(isExpanded: $isTranscriptExpanded) {
-                            Markdown(transcript)
-                                .markdownTheme(.gitHub)
-                                .padding(.top, 12)
-                        } label: {
-                            Text("Transcript")
-                                .font(.title3)
-                                .fontWeight(.semibold)
+                        // Full Content Section (collapsible, modern style)
+                        if content.contentTypeEnum == .podcast, let podcastMetadata = content.podcastMetadata, let transcript = podcastMetadata.transcript {
+                            modernExpandableSection(
+                                title: "Transcript",
+                                icon: "text.alignleft",
+                                isExpanded: $isTranscriptExpanded
+                            ) {
+                                Markdown(transcript)
+                                    .markdownTheme(.gitHub)
+                            }
+                            .padding(.horizontal, DetailDesign.horizontalPadding)
+                            .padding(.top, DetailDesign.sectionSpacing)
+                        } else if let fullMarkdown = content.fullMarkdown {
+                            modernExpandableSection(
+                                title: content.contentTypeEnum == .podcast ? "Transcript" : "Full Article",
+                                icon: "doc.text",
+                                isExpanded: $isTranscriptExpanded
+                            ) {
+                                Markdown(fullMarkdown)
+                                    .markdownTheme(.gitHub)
+                            }
+                            .padding(.horizontal, DetailDesign.horizontalPadding)
+                            .padding(.top, DetailDesign.sectionSpacing)
                         }
-                        .tint(.primary)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                    } else if let fullMarkdown = content.fullMarkdown {
-                        Divider()
-                            .padding(.vertical, 8)
 
-                        DisclosureGroup(isExpanded: $isTranscriptExpanded) {
-                            Markdown(fullMarkdown)
-                                .markdownTheme(.gitHub)
-                                .padding(.top, 12)
-                        } label: {
-                            Text(content.contentTypeEnum == .podcast ? "Transcript" : "Full Article")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                        }
-                        .tint(.primary)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
+                        // Bottom spacing
+                        Spacer()
+                            .frame(height: 40)
                     }
                 }
-            }
             }
         }
         .textSelection(.enabled)
@@ -381,26 +393,54 @@ struct ContentDetailView: View {
         }) {
             if let content = viewModel.content {
                 VStack(spacing: 0) {
-                    // Header
+                    // Modern drag indicator
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 36, height: 5)
+                        .padding(.top, 8)
+
+                    // Modern header
                     HStack {
-                        Button("Cancel") {
-                            showChatOptionsSheet = false
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("AI Chat")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                            Text("Choose how to explore this article")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
+
                         Spacer()
-                        Text("Start a Chat")
-                            .font(.headline)
-                        Spacer()
-                        Text("Cancel").opacity(0)
+
+                        Button {
+                            showChatOptionsSheet = false
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                                .frame(width: 30, height: 30)
+                                .background(Color(.tertiarySystemBackground))
+                                .clipShape(Circle())
+                        }
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 20)
 
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
                         if let chatError {
-                            Text(chatError)
-                                .font(.footnote)
-                                .foregroundColor(.red)
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundColor(.red)
+                                Text(chatError)
+                                    .font(.footnote)
+                                    .foregroundColor(.red)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.red.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
 
                         chatPromptCard(
@@ -424,23 +464,25 @@ struct ContentDetailView: View {
                         audioPromptCard(for: content)
 
                         if isStartingChat {
-                            HStack {
+                            HStack(spacing: 10) {
                                 ProgressView()
-                                    .scaleEffect(0.9)
-                                Text("Starting...")
+                                    .scaleEffect(0.8)
+                                Text("Starting conversation...")
                                     .font(.footnote)
+                                    .foregroundColor(.secondary)
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.top, 4)
+                            .padding(.vertical, 12)
                         }
                     }
                     .padding(.horizontal, 20)
 
                     Spacer()
                 }
-                .presentationDetents([.height(400)])
+                .background(Color(.systemBackground))
+                .presentationDetents([.height(480)])
                 .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(20)
+                .presentationCornerRadius(24)
             }
         }
         .sheet(isPresented: $showDeepDiveSheet) {
@@ -559,23 +601,13 @@ struct ContentDetailView: View {
                 )
             }
         } label: {
-            HStack {
-                Image(systemName: "magnifyingglass.circle.fill")
-                    .foregroundColor(.purple)
-                Text("Deep Research")
-                    .font(.body)
-                Spacer()
-                Text("~2-5 min")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(10)
+            modernChatOptionCard(
+                icon: "magnifyingglass.circle.fill",
+                iconColor: .purple,
+                title: "Deep Research",
+                subtitle: "Comprehensive analysis with sources",
+                badge: "~2-5 min"
+            )
         }
         .buttonStyle(.plain)
         .disabled(isStartingChat)
@@ -592,23 +624,72 @@ struct ContentDetailView: View {
         Button {
             Task { await startChatWithPrompt(prompt, contentId: contentId) }
         } label: {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(iconColor)
-                Text(title)
-                    .font(.body)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(10)
+            modernChatOptionCard(
+                icon: icon,
+                iconColor: iconColor,
+                title: title,
+                subtitle: chatSubtitle(for: title)
+            )
         }
         .buttonStyle(.plain)
         .disabled(isStartingChat)
+    }
+
+    private func chatSubtitle(for title: String) -> String {
+        switch title {
+        case "Dig deeper":
+            return "Explore key points in detail"
+        case "Corroborate":
+            return "Verify claims with sources"
+        default:
+            return "Start a conversation"
+        }
+    }
+
+    @ViewBuilder
+    private func modernChatOptionCard(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        subtitle: String,
+        badge: String? = nil
+    ) -> some View {
+        HStack(spacing: 12) {
+            // Icon container
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(iconColor)
+                .frame(width: 32, height: 32)
+                .background(iconColor.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            if let badge = badge {
+                Text(badge)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundColor(.secondary.opacity(0.4))
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     @ViewBuilder
@@ -616,47 +697,69 @@ struct ContentDetailView: View {
         Button {
             Task { await toggleRecording() }
         } label: {
-            HStack {
+            HStack(spacing: 12) {
                 Image(systemName: dictationService.isRecording ? "stop.circle.fill" : "mic.fill")
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundColor(dictationService.isRecording ? .red : .orange)
-                Text("Ask with voice")
-                    .font(.body)
+                    .frame(width: 32, height: 32)
+                    .background((dictationService.isRecording ? Color.red : Color.orange).opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(dictationService.isRecording ? "Stop Recording" : "Ask with Voice")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    Text(dictationService.isRecording ? "Tap to finish" : "Record your question")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
                 Spacer()
+
                 Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.secondary.opacity(0.4))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(12)
             .background(Color(.secondarySystemBackground))
-            .cornerRadius(10)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .disabled(isStartingChat)
 
         if dictationService.isTranscribing {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 ProgressView()
                     .scaleEffect(0.8)
                 Text("Transcribing...")
-                    .font(.caption)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
             }
+            .padding(.vertical, 8)
         } else if !audioTranscript.isEmpty {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 Text(audioTranscript)
-                    .font(.caption)
-                    .padding(10)
+                    .font(.footnote)
+                    .foregroundColor(.primary.opacity(0.9))
+                    .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 Button {
                     Task { await startChatWithPrompt(audioPrompt(audioTranscript, content: content), contentId: content.id) }
                 } label: {
-                    Text("Send")
+                    Text("Send Question")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.accentColor)
+                        .foregroundColor(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .buttonStyle(.borderedProminent)
                 .disabled(isStartingChat)
             }
         }
@@ -675,169 +778,282 @@ struct ContentDetailView: View {
         }
     }
 
-    // MARK: - Header with Thumbnail
+    // MARK: - Modern Hero Header
     @ViewBuilder
-    private func headerWithImage(content: ContentDetail) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Title row with optional thumbnail
-            HStack(alignment: .top, spacing: 14) {
-                // Thumbnail on left (tappable)
-                if let imageUrlString = content.imageUrl,
-                   let imageUrl = buildImageURL(from: imageUrlString) {
-                    Button {
-                        fullImageURL = imageUrl
-                        fullThumbnailURL = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
-                        showFullImage = true
-                    } label: {
-                        // Use thumbnail URL for faster loading in detail view
-                        let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
+    private func heroHeader(content: ContentDetail) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Hero image (optional, tappable) - extends to top of screen
+            if let imageUrlString = content.imageUrl,
+               let imageUrl = buildImageURL(from: imageUrlString) {
+                Button {
+                    fullImageURL = imageUrl
+                    fullThumbnailURL = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
+                    showFullImage = true
+                } label: {
+                    let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
+                    GeometryReader { geo in
                         CachedAsyncImage(
-                            url: thumbnailUrl ?? imageUrl,
-                            thumbnailUrl: nil
+                            url: imageUrl,
+                            thumbnailUrl: thumbnailUrl
                         ) { image in
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 80, height: 80)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .frame(width: geo.size.width, height: geo.size.height + geo.safeAreaInsets.top)
+                                .offset(y: -geo.safeAreaInsets.top)
+                                .clipped()
                         } placeholder: {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.secondary.opacity(0.1))
-                                .frame(width: 80, height: 80)
+                            Rectangle()
+                                .fill(Color(.systemGray5))
+                                .frame(width: geo.size.width, height: geo.size.height + geo.safeAreaInsets.top)
+                                .offset(y: -geo.safeAreaInsets.top)
                                 .overlay(ProgressView())
                         }
                     }
-                    .buttonStyle(.plain)
+                    .frame(height: 220)
                 }
+                .buttonStyle(.plain)
+            }
 
+            // Title and metadata section
+            VStack(alignment: .leading, spacing: 8) {
                 // Title
                 Text(content.displayTitle)
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
 
-            // Metadata Row - cleaner formatting
-            HStack(spacing: 6) {
-                if let contentType = content.contentTypeEnum {
-                    Text(contentType.rawValue.capitalized)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
+                // Metadata row
+                HStack(spacing: 6) {
+                    HStack(spacing: 4) {
+                        Image(systemName: contentTypeIcon(for: content))
+                            .font(.caption2)
+                        Text(content.contentTypeEnum?.rawValue.capitalized ?? "Article")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundColor(.accentColor)
 
-                if let source = content.source {
-                    Text("•")
+                    if let source = content.source {
+                        Text("·")
+                            .foregroundColor(.secondary.opacity(0.4))
+                        Text(source)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Text("·")
+                        .foregroundColor(.secondary.opacity(0.4))
+
+                    Text(formatDateSimple(content.createdAt))
                         .font(.caption)
-                        .foregroundColor(.secondary.opacity(0.6))
-                    Text(source)
-                        .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
-
-                Text("•")
-                    .font(.caption)
-                    .foregroundColor(.secondary.opacity(0.6))
-
-                Text(formatDateSimple(content.createdAt))
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-
-                Spacer()
             }
-
-            // Action Buttons Row
-            HStack(spacing: 8) {
-                if let url = URL(string: content.url) {
-                    Link(destination: url) {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 18))
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-
-                Button(action: { showShareOptions = true }) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 18))
-                }
-                .buttonStyle(.bordered)
-
-                // Deep Dive chat button
-                Button(action: {
-                    Task { await handleChatButtonTapped(content) }
-                }) {
-                    Image(systemName: "brain.head.profile")
-                        .font(.system(size: 18))
-                }
-                .buttonStyle(.bordered)
-                .disabled(isCheckingChatSession)
-
-                // Tweet button
-                Button(action: {
-                    showTweetSheet = true
-                }) {
-                    Image(systemName: "text.bubble")
-                        .font(.system(size: 18))
-                }
-                .buttonStyle(.bordered)
-
-                // Convert to article button for news only
-                if content.contentTypeEnum == .news, let onConvert = onConvert {
-                    Button(action: {
-                        Task {
-                            isConverting = true
-                            await onConvert(content.id)
-                            isConverting = false
-                        }
-                    }) {
-                        if isConverting {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                        } else {
-                            Image(systemName: "arrow.right.circle")
-                                .font(.system(size: 18))
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isConverting)
-                }
-
-                // Favorite button
-                Button(action: {
-                    Task {
-                        await viewModel.toggleFavorite()
-                    }
-                }) {
-                    Image(systemName: content.isFavorited ? "star.fill" : "star")
-                        .font(.system(size: 18))
-                        .foregroundColor(content.isFavorited ? .yellow : .primary)
-                }
-                .buttonStyle(.bordered)
-
-                // Next button
-                if currentIndex < allContentIds.count - 1 {
-                    Button(action: {
-                        withAnimation(.easeInOut) { navigateToNext() }
-                    }) {
-                        HStack(spacing: 6) {
-                            Text("Next")
-                                .font(.system(size: 16))
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 16))
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                }
-
-                Spacer()
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, DetailDesign.horizontalPadding)
+            .padding(.top, 16)
+            .padding(.bottom, 16)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
         .fullScreenCover(isPresented: $showFullImage) {
             if let url = fullImageURL {
                 FullImageView(imageURL: url, thumbnailURL: fullThumbnailURL, isPresented: $showFullImage)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func heroPlaceholder(content: ContentDetail) -> some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(.systemGray4),
+                        Color(.systemGray5)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(height: DetailDesign.heroHeight)
+            .overlay(
+                Image(systemName: contentTypeIcon(for: content))
+                    .font(.system(size: 56, weight: .ultraLight))
+                    .foregroundColor(.white.opacity(0.3))
+            )
+    }
+
+    private func contentTypeIcon(for content: ContentDetail) -> String {
+        switch content.contentTypeEnum {
+        case .article: return "doc.text"
+        case .podcast: return "headphones"
+        case .news: return "newspaper"
+        case .none: return "doc.text"
+        }
+    }
+
+    // MARK: - Modern Action Bar (Icon-only, compact)
+    @ViewBuilder
+    private func actionBar(content: ContentDetail) -> some View {
+        HStack(spacing: 6) {
+            // Primary action - Open in browser
+            if let url = URL(string: content.url) {
+                Link(destination: url) {
+                    iconButton(icon: "safari", isPrimary: true)
+                }
+            }
+
+            // Share
+            Button(action: { showShareOptions = true }) {
+                iconButton(icon: "square.and.arrow.up")
+            }
+
+            // Tweet
+            Button(action: { showTweetSheet = true }) {
+                iconButton(icon: "text.bubble")
+            }
+
+            // Convert (news only)
+            if content.contentTypeEnum == .news, let onConvert = onConvert {
+                Button(action: {
+                    Task {
+                        isConverting = true
+                        await onConvert(content.id)
+                        isConverting = false
+                    }
+                }) {
+                    if isConverting {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 36, height: 36)
+                            .background(Color(.tertiarySystemFill))
+                            .clipShape(Circle())
+                    } else {
+                        iconButton(icon: "arrow.right.circle")
+                    }
+                }
+                .disabled(isConverting)
+            }
+
+            // Favorite + Deep Dive (combined action)
+            // Tapping favorites the article and shows chat options
+            Button(action: {
+                Task {
+                    // First, favorite if not already
+                    if !content.isFavorited {
+                        await viewModel.toggleFavorite()
+                    }
+                    // Then show chat options
+                    await handleChatButtonTapped(content)
+                }
+            }) {
+                iconButton(
+                    icon: content.isFavorited ? "star.fill" : "star",
+                    tint: content.isFavorited ? .yellow : nil
+                )
+            }
+            .disabled(isCheckingChatSession)
+
+            Spacer()
+
+            // Navigation - Next
+            if currentIndex < allContentIds.count - 1 {
+                Button(action: {
+                    withAnimation(.easeInOut) { navigateToNext() }
+                }) {
+                    HStack(spacing: 4) {
+                        Text("Next")
+                            .font(.footnote)
+                            .fontWeight(.semibold)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                    }
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.tertiarySystemFill))
+                    .clipShape(Capsule())
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func iconButton(icon: String, isPrimary: Bool = false, tint: Color? = nil) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundColor(tint ?? (isPrimary ? .white : .primary))
+            .frame(width: 36, height: 36)
+            .background(isPrimary ? Color.accentColor : Color(.tertiarySystemFill))
+            .clipShape(Circle())
+    }
+
+    // MARK: - Modern Section Components (Flat, no borders)
+    @ViewBuilder
+    private func modernSectionCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(DetailDesign.cardPadding)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: DetailDesign.cardRadius))
+    }
+
+    @ViewBuilder
+    private func modernExpandableSection<Content: View>(
+        title: String,
+        icon: String,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: icon)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text(title)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                }
+                .padding(DetailDesign.cardPadding)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                content()
+                    .padding(.horizontal, DetailDesign.cardPadding)
+                    .padding(.bottom, DetailDesign.cardPadding)
+            }
+        }
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: DetailDesign.cardRadius))
+    }
+
+    @ViewBuilder
+    private func sectionHeader(_ title: String, icon: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
         }
     }
 
@@ -847,10 +1063,10 @@ struct ContentDetailView: View {
             return URL(string: urlString)
         }
         // Otherwise, it's a relative path - prepend base URL
-        guard let baseURL = URL(string: AppSettings.shared.baseURL) else {
-            return nil
-        }
-        return baseURL.appendingPathComponent(urlString)
+        // Use string concatenation instead of appendingPathComponent to preserve path structure
+        let baseURL = AppSettings.shared.baseURL
+        let fullURL = urlString.hasPrefix("/") ? baseURL + urlString : baseURL + "/" + urlString
+        return URL(string: fullURL)
     }
 
     // MARK: - Swipe Indicator
