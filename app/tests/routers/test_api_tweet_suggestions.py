@@ -44,6 +44,7 @@ def test_tweet_suggestions_success(client: TestClient, db_session: Session) -> N
     mock_result = TweetSuggestionsResult(
         content_id=article.id,
         creativity=5,
+        length="medium",
         model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="Tweet 1", style_label="insightful"),
@@ -93,6 +94,7 @@ def test_tweet_suggestions_with_message(client: TestClient, db_session: Session)
     mock_result = TweetSuggestionsResult(
         content_id=article.id,
         creativity=7,
+        length="medium",
         model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="Startup focused tweet", style_label="a"),
@@ -121,9 +123,7 @@ def test_tweet_suggestions_with_message(client: TestClient, db_session: Session)
     assert response.status_code == 200
 
 
-def test_tweet_suggestions_content_not_found(
-    client: TestClient, db_session: Session
-) -> None:
+def test_tweet_suggestions_content_not_found(client: TestClient, db_session: Session) -> None:
     """Test 404 for non-existent content."""
     response = client.post(
         "/api/content/99999/tweet-suggestions",
@@ -134,9 +134,7 @@ def test_tweet_suggestions_content_not_found(
     assert "not found" in response.json()["detail"].lower()
 
 
-def test_tweet_suggestions_content_not_completed(
-    client: TestClient, db_session: Session
-) -> None:
+def test_tweet_suggestions_content_not_completed(client: TestClient, db_session: Session) -> None:
     """Test 400 for content that's not completed."""
     # Create content with NEW status
     article = Content(
@@ -158,9 +156,7 @@ def test_tweet_suggestions_content_not_completed(
     assert "not ready" in response.json()["detail"].lower()
 
 
-def test_tweet_suggestions_podcast_supported(
-    client: TestClient, db_session: Session
-) -> None:
+def test_tweet_suggestions_podcast_supported(client: TestClient, db_session: Session) -> None:
     """Podcasts are now supported for tweet generation."""
     podcast = Content(
         url="https://example.com/podcast",
@@ -182,6 +178,7 @@ def test_tweet_suggestions_podcast_supported(
     mock_result = TweetSuggestionsResult(
         content_id=podcast.id,
         creativity=5,
+        length="medium",
         model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="Podcast tweet 1", style_label="a"),
@@ -204,9 +201,7 @@ def test_tweet_suggestions_podcast_supported(
     assert data["content_id"] == podcast.id
 
 
-def test_tweet_suggestions_creativity_out_of_range(
-    client: TestClient, db_session: Session
-) -> None:
+def test_tweet_suggestions_creativity_out_of_range(client: TestClient, db_session: Session) -> None:
     """Test 422 for creativity values outside valid range."""
     article = Content(
         url="https://example.com/article",
@@ -233,9 +228,7 @@ def test_tweet_suggestions_creativity_out_of_range(
     assert response.status_code == 422
 
 
-def test_tweet_suggestions_llm_failure(
-    client: TestClient, db_session: Session
-) -> None:
+def test_tweet_suggestions_llm_failure(client: TestClient, db_session: Session) -> None:
     """Test 502 when LLM generation fails."""
     article = Content(
         url="https://example.com/article",
@@ -268,9 +261,7 @@ def test_tweet_suggestions_llm_failure(
     assert "failed" in response.json()["detail"].lower()
 
 
-def test_tweet_suggestions_news_content(
-    client: TestClient, db_session: Session
-) -> None:
+def test_tweet_suggestions_news_content(client: TestClient, db_session: Session) -> None:
     """Test tweet generation works for news content type."""
     news = Content(
         url="https://news.ycombinator.com/item?id=12345",
@@ -296,6 +287,7 @@ def test_tweet_suggestions_news_content(
     mock_result = TweetSuggestionsResult(
         content_id=news.id,
         creativity=5,
+        length="medium",
         model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="News tweet 1", style_label="a"),
@@ -318,9 +310,7 @@ def test_tweet_suggestions_news_content(
     assert data["content_id"] == news.id
 
 
-def test_tweet_suggestions_default_creativity(
-    client: TestClient, db_session: Session
-) -> None:
+def test_tweet_suggestions_default_creativity(client: TestClient, db_session: Session) -> None:
     """Test that default creativity (5) is used when not provided."""
     article = Content(
         url="https://example.com/article",
@@ -342,6 +332,7 @@ def test_tweet_suggestions_default_creativity(
     mock_result = TweetSuggestionsResult(
         content_id=article.id,
         creativity=5,  # Default
+        length="medium",
         model=TWEET_MODEL,
         suggestions=[
             TweetSuggestionData(id=1, text="Tweet 1", style_label="a"),

@@ -165,7 +165,9 @@ class TestContentAnalyzer:
 
         assert isinstance(result, ContentAnalysisResult)
         assert result.content_type == "podcast"
-        assert "spotify.com" in result.media_url
+        # media_url should be None for platform links (Spotify, Apple Podcasts, etc.)
+        # Only direct audio file URLs (.mp3, .m4a, etc.) should be in media_url
+        assert result.media_url is None
         assert result.platform == "spotify"
         assert result.confidence >= 0.8  # LLM returns variable confidence
 
