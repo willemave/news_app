@@ -843,7 +843,11 @@ struct InitialSuggestionsLoadingView: View {
             lastMessageAt: nil,
             articleTitle: nil,
             articleUrl: nil,
-            hasPendingMessage: false
+            articleSummary: nil,
+            articleSource: nil,
+            hasPendingMessage: false,
+            isFavorite: false,
+            hasMessages: true
         ))
     }
 }

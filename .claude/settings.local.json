@@ -169,11 +169,11 @@
     ],
     "Stop": [
       {
-        "matcher": "",
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Evaluate if this session made significant changes to the codebase that warrant documentation updates. Consider: new features added, API changes, architectural changes, new dependencies, schema changes, or significant refactoring.\n\nIf the session was substantial (more than trivial fixes/typos), respond with continue=true and instruct Claude to:\n1. Review CLAUDE.md and update any sections that are now outdated\n2. Review docs/architecture.md and update relevant sections\n3. Keep updates concise and accurate - only change what's necessary\n4. Commit the documentation changes with message 'docs: update documentation after session changes'\n\nIf the session was minor (small fixes, questions only, no code changes), respond with continue=false."
+            "prompt": "You are evaluating whether a Claude Code session should continue to update documentation.\n\nFirst, check the input JSON ($ARGUMENTS). If stop_hook_active is true, you MUST respond with: {\"ok\": true, \"continue\": true} to prevent infinite loops.\n\nOtherwise, evaluate if this session made significant changes to the codebase that warrant documentation updates. Consider: new features added, API changes, architectural changes, new dependencies, schema changes, or significant refactoring.\n\nIf the session was substantial (more than trivial fixes/typos), respond with:\n{\"ok\": true, \"continue\": false, \"reason\": \"Session made substantial changes. Please: 1) Review CLAUDE.md and update any outdated sections, 2) Review docs/architecture.md and update relevant sections, 3) Keep updates concise - only change what's necessary, 4) Commit documentation changes with message 'docs: update documentation after session changes'\"}\n\nIf the session was minor (small fixes, questions only, no code changes), respond with:\n{\"ok\": true, \"continue\": true}",
+            "timeout": 60
           }
         ]
       }
