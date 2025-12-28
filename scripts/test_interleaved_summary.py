@@ -29,33 +29,33 @@ from app.services.llm_models import resolve_model
 class InterleavedInsight(BaseModel):
     """A single insight that combines a topic with supporting quote."""
 
-    topic: str = Field(..., description="The key topic or theme (2-5 words)")
+    topic: str = Field(..., min_length=3, max_length=50, description="The key topic or theme (2-5 words)")
     insight: str = Field(
-        ..., description="The key insight about this topic (1-2 sentences)"
+        ..., min_length=50, description="The key insight about this topic (2-3 sentences, be specific)"
     )
     supporting_quote: str | None = Field(
-        None, description="Direct quote from the article that supports this insight"
+        None, min_length=20, description="Full direct quote (20+ words) from the article that supports this insight"
     )
     quote_attribution: str | None = Field(
-        None, description="Who said the quote, if available"
+        None, description="Who said the quote - author name, speaker, or publication"
     )
 
 
 class InterleavedSummary(BaseModel):
     """Summary format that interleaves topics with quotes."""
 
-    title: str = Field(..., description="Descriptive title for the content")
+    title: str = Field(..., min_length=10, description="Descriptive title for the content")
     hook: str = Field(
-        ..., description="Opening hook that captures the main takeaway (1-2 sentences)"
+        ..., min_length=80, description="Opening hook that captures the main takeaway (2-3 sentences)"
     )
     insights: list[InterleavedInsight] = Field(
         ...,
-        min_length=3,
+        min_length=5,
         max_length=6,
-        description="Key insights with supporting quotes",
+        description="5-6 key insights with supporting quotes",
     )
     takeaway: str = Field(
-        ..., description="Final takeaway or implication for the reader (1-2 sentences)"
+        ..., min_length=80, description="Final takeaway or implication for the reader (2-3 sentences)"
     )
     classification: str = Field(..., description="'to_read' or 'skip'")
 
@@ -67,14 +67,20 @@ Your task is to create an "interleaved" summary where each insight is paired wit
 the content that supports or illustrates it. This creates a more engaging, evidence-based summary.
 
 Guidelines:
-1. Start with a compelling hook that captures the main story
-2. For each insight:
+1. Start with a compelling hook that captures the main story (2-3 sentences)
+2. Generate 5-6 insights (not fewer). For each insight:
    - Identify a key topic/theme (2-5 words)
-   - Write the core insight (1-2 sentences)
-   - Include a direct quote that supports this insight (if available)
-   - Note who said the quote (if available)
-3. End with a takeaway that tells the reader why this matters to them
+   - Write a substantive insight (2-3 sentences minimum, be specific with data/details)
+   - Include a FULL direct quote (20+ words) that supports this insight - do not truncate
+   - Always note who said the quote when available (author name, publication, speaker)
+3. End with a takeaway that tells the reader why this matters to them (2-3 sentences)
 4. Classify as "to_read" if substantive, "skip" if promotional/shallow
+
+IMPORTANT:
+- Be thorough and detailed - avoid brevity
+- Quotes must be substantial (20+ words), not fragments
+- Each insight should provide real value, not just restate the topic
+- Include specific numbers, names, and data points when available
 
 The goal is to create summaries that feel like a curated narrative rather than
 separate bullet lists of topics and quotes."""
@@ -108,6 +114,23 @@ def get_last_n_articles(n: int = 10) -> list[Content]:
         for article in articles:
             session.expunge(article)
         return articles
+
+
+def get_article_title(article: Content) -> str:
+    """Get the best available title for an article."""
+    # Use DB title if it's real
+    if article.title and article.title != "Untitled":
+        return article.title
+
+    # Fall back to summary title from LLM
+    metadata = article.content_metadata or {}
+    summary_data = metadata.get("summary", {})
+    if isinstance(summary_data, dict):
+        summary_title = summary_data.get("title", "")
+        if summary_title:
+            return summary_title
+
+    return article.title or "Unknown"
 
 
 def get_article_content(article: Content) -> str:
@@ -151,19 +174,20 @@ async def run_test(
     model_name: str,
     article: Content,
     content: str,
+    display_title: str,
 ) -> TestResult:
     """Run a single test with one model on one article."""
     start = datetime.now()
 
     try:
-        user_msg = f"Title: {article.title or 'Unknown'}\n\nContent:\n\n{content[:50000]}"
+        user_msg = f"Title: {display_title}\n\nContent:\n\n{content[:50000]}"
         result = await agent.run(user_msg)
         duration_ms = int((datetime.now() - start).total_seconds() * 1000)
 
         return TestResult(
             model_name=model_name,
             article_id=article.id,
-            article_title=article.title or "Unknown",
+            article_title=display_title,
             summary=result.output,
             error=None,
             duration_ms=duration_ms,
@@ -173,7 +197,7 @@ async def run_test(
         return TestResult(
             model_name=model_name,
             article_id=article.id,
-            article_title=article.title or "Unknown",
+            article_title=display_title,
             summary=None,
             error=str(e),
             duration_ms=duration_ms,
@@ -256,13 +280,14 @@ async def main():
             continue
 
         articles_processed += 1
+        display_title = get_article_title(article)
         print(f"\n{'='*80}")
-        print(f"Processing: [{article.id}] {article.title[:60]}...")
+        print(f"Processing: [{article.id}] {display_title[:60]}...")
         print(f"Content length: {len(content)} chars")
 
         for model_name, agent in agents.items():
             print(f"  Running {model_name}...", end=" ", flush=True)
-            result = await run_test(agent, model_name, article, content)
+            result = await run_test(agent, model_name, article, content, display_title)
             all_results.append(result)
             if result.error:
                 print(f"ERROR ({result.duration_ms}ms)")

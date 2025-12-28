@@ -110,7 +110,11 @@ struct ContentDetailView: View {
                                         lastMessageAt: nil,
                                         articleTitle: activeSession.contentTitle,
                                         articleUrl: nil,
-                                        hasPendingMessage: false
+                                        articleSummary: nil,
+                                        articleSource: nil,
+                                        hasPendingMessage: false,
+                                        isFavorite: false,
+                                        hasMessages: true
                                     )
                                     deepDiveSession = session
                                     showDeepDiveSheet = true
@@ -140,8 +144,12 @@ struct ContentDetailView: View {
                             .padding(.top, 12)
                         }
 
-                        // Structured Summary Section (no background wrapper)
-                        if let structuredSummary = content.structuredSummary {
+                        // Summary Section (interleaved or structured)
+                        if let interleavedSummary = content.interleavedSummary {
+                            InterleavedSummaryView(summary: interleavedSummary, contentId: content.id)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.sectionSpacing)
+                        } else if let structuredSummary = content.structuredSummary {
                             StructuredSummaryView(summary: structuredSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.sectionSpacing)

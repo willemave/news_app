@@ -49,13 +49,12 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db, init_db
 from app.models.metadata import (
     ArticleMetadata,
-    ContentQuote,
     ContentStatus,
     ContentType,
+    InterleavedInsight,
+    InterleavedSummary,
     NewsSummary,
     PodcastMetadata,
-    StructuredSummary,
-    SummaryBulletPoint,
 )
 from app.models.schema import Content
 
@@ -127,7 +126,7 @@ def generate_bullet_points(count: int = 4) -> list[dict[str, str]]:
     """Generate sample bullet points with categories."""
     categories = ["key_finding", "methodology", "conclusion", "insight", "context", "review"]
     points = [
-        "The research introduces a novel approach to solving the problem with innovative techniques.",
+        "The research introduces a novel approach to solving the problem.",
         "Experimental results demonstrate significant improvements over baseline methods.",
         "The methodology combines existing frameworks with new optimization strategies.",
         "Key findings suggest a paradigm shift in how we approach this domain.",
@@ -144,7 +143,7 @@ def generate_quotes(count: int = 2) -> list[dict[str, str]]:
     """Generate sample quotes with context."""
     quotes = [
         (
-            "The future belongs to those who understand both the technical and business implications of AI.",
+            "The future belongs to those who understand the implications of AI.",
             "Author's perspective",
         ),
         (
@@ -177,12 +176,105 @@ def generate_questions(count: int = 2) -> list[str]:
 def generate_counter_arguments(count: int = 2) -> list[str]:
     """Generate counter-arguments or alternative perspectives."""
     arguments = [
-        "Critics argue that the claimed improvements may not generalize beyond specific benchmarks.",
+        "Critics argue that improvements may not generalize beyond specific benchmarks.",
         "Alternative approaches might offer better explainability at the cost of performance.",
         "The methodology's reliance on proprietary data limits reproducibility.",
         "Some researchers question whether the results justify the computational costs.",
     ]
     return random.sample(arguments, min(count, len(arguments)))
+
+
+def generate_interleaved_insights(count: int = 5) -> list[InterleavedInsight]:
+    """Generate interleaved insights with topics, insights, and supporting quotes."""
+    insight_data = [
+        {
+            "topic": "Performance Improvements",
+            "insight": (
+                "The new approach demonstrates a 40% improvement in processing speed "
+                "while maintaining accuracy levels comparable to previous methods. "
+                "This represents a significant breakthrough for real-world applications."
+            ),
+            "quote": (
+                "We were genuinely surprised by the magnitude of these improvements. "
+                "The results exceeded our initial expectations and suggest there's still "
+                "significant room for optimization in this space."
+            ),
+            "attribution": "Lead Researcher",
+        },
+        {
+            "topic": "Adoption Challenges",
+            "insight": (
+                "Organizations face significant hurdles when implementing these technologies, "
+                "primarily around integration with existing systems and team training. "
+                "Early adopters report a 6-month average time to full productivity."
+            ),
+            "quote": (
+                "The technology works as advertised, but getting our entire team up to speed "
+                "took longer than expected. The learning curve is real, even for engineers."
+            ),
+            "attribution": "Engineering Director at Fortune 500",
+        },
+        {
+            "topic": "Market Implications",
+            "insight": (
+                "Industry analysts predict this development could reshape competitive dynamics "
+                "in the sector over the next 2-3 years. Companies slow to adopt risk losing ground."
+            ),
+            "quote": (
+                "This isn't just an incremental improvement—it's a paradigm shift that will "
+                "force every major player to reevaluate their technology roadmap."
+            ),
+            "attribution": "Industry Analyst",
+        },
+        {
+            "topic": "Technical Architecture",
+            "insight": (
+                "The underlying architecture leverages distributed computing and edge processing "
+                "to achieve its performance gains. This hybrid approach minimizes latency "
+                "while maximizing throughput."
+            ),
+            "quote": (
+                "We spent two years refining the architecture before it achieved our goals. "
+                "The key insight was moving critical processing closer to the edge."
+            ),
+            "attribution": "Chief Architect",
+        },
+        {
+            "topic": "Future Directions",
+            "insight": (
+                "The research team is already working on next-generation improvements that could "
+                "further enhance capabilities by another 30%. Preliminary results are promising."
+            ),
+            "quote": (
+                "What we've released today is just the beginning. Our roadmap includes features "
+                "that will make current limitations seem quaint by comparison."
+            ),
+            "attribution": "Product Lead",
+        },
+        {
+            "topic": "Cost Considerations",
+            "insight": (
+                "While initial implementation costs can be substantial, organizations report "
+                "achieving ROI within 12-18 months. The long-term cost savings are significant."
+            ),
+            "quote": (
+                "The upfront investment was significant, but we've already seen a 25% reduction "
+                "in operational costs that more than justifies the expense."
+            ),
+            "attribution": "CFO of Tech Startup",
+        },
+    ]
+
+    selected = random.sample(insight_data, min(count, len(insight_data)))
+    return [
+        InterleavedInsight(
+            topic=item["topic"],
+            insight=item["insight"],
+            supporting_quote=item["quote"] if random.random() > 0.2 else None,
+            quote_attribution=item["attribution"] if random.random() > 0.2 else None,
+        )
+        for item in selected
+    ]
 
 
 class ArticleGenerator:
@@ -193,34 +285,37 @@ class ArticleGenerator:
         url_base: str = "https://example.com/article",
         status: str = ContentStatus.COMPLETED.value,
     ) -> dict[str, Any]:
-        """Generate a complete article with metadata."""
+        """Generate a complete article with metadata using InterleavedSummary format."""
         article_id = random.randint(1000, 999999)
         url = f"{url_base}-{article_id}"
         title = random.choice(ARTICLE_TITLES)
         source = random.choice(ARTICLE_SOURCES)
         topics = random.choice(TOPICS)
 
-        # Generate structured summary
-        summary = StructuredSummary(
+        # Generate interleaved summary (new format for articles)
+        summary = InterleavedSummary(
+            summary_type="interleaved",
             title=title,
-            overview=f"This article explores {topics[0].lower()} with a focus on practical applications and future implications. It provides comprehensive analysis backed by research and real-world examples.",
-            bullet_points=[
-                SummaryBulletPoint(**bp) for bp in generate_bullet_points(random.randint(3, 6))
-            ],
-            quotes=[ContentQuote(**q) for q in generate_quotes(random.randint(1, 3))],
-            topics=topics,
-            questions=generate_questions(random.randint(1, 3)),
-            counter_arguments=generate_counter_arguments(random.randint(1, 2)),
-            summarization_date=random_datetime(7),
+            hook=(
+                f"This article explores {topics[0].lower()} with a focus on practical "
+                f"applications and future implications. It provides comprehensive analysis "
+                "backed by research and real-world examples demonstrating the impact."
+            ),
+            insights=generate_interleaved_insights(random.randint(5, 6)),
+            takeaway=(
+                "Understanding these developments is crucial for anyone looking to stay ahead "
+                "in the rapidly evolving landscape. The implications extend beyond immediate "
+                "applications to reshape how we think about solving complex problems."
+            ),
             classification="to_read" if random.random() > 0.2 else "skip",
-            full_markdown=f"# {title}\n\nFull article content in markdown format...",
+            summarization_date=random_datetime(7),
         )
 
         # Generate article metadata
         metadata = ArticleMetadata(
             source=source,
             content="Full article text content with multiple paragraphs...",
-            author=f"{random.choice(['John', 'Jane', 'Alex'])} {random.choice(['Smith', 'Doe', 'Johnson'])}",
+            author=random.choice(["John Smith", "Jane Doe", "Alex Johnson"]),
             publication_date=random_datetime(30),
             content_type="html",
             final_url_after_redirects=url,
@@ -250,7 +345,7 @@ class PodcastGenerator:
         url_base: str = "https://example.com/podcast",
         status: str = ContentStatus.COMPLETED.value,
     ) -> dict[str, Any]:
-        """Generate a complete podcast with metadata."""
+        """Generate a complete podcast with metadata using InterleavedSummary format."""
         episode_id = random.randint(1000, 999999)
         url = f"{url_base}/episode-{episode_id}.mp3"
         title = random.choice(PODCAST_TITLES)
@@ -258,20 +353,23 @@ class PodcastGenerator:
         topics = random.choice(TOPICS)
         episode_number = random.randint(1, 200)
 
-        # Generate structured summary
-        summary = StructuredSummary(
+        # Generate interleaved summary (new format for podcasts)
+        summary = InterleavedSummary(
+            summary_type="interleaved",
             title=title,
-            overview=f"In this episode, the hosts discuss {topics[0].lower()} and share insights from their experiences. The conversation covers key strategies, common pitfalls, and actionable advice for listeners.",
-            bullet_points=[
-                SummaryBulletPoint(**bp) for bp in generate_bullet_points(random.randint(4, 8))
-            ],
-            quotes=[ContentQuote(**q) for q in generate_quotes(random.randint(2, 4))],
-            topics=topics,
-            questions=generate_questions(random.randint(2, 3)),
-            counter_arguments=generate_counter_arguments(random.randint(1, 2)),
-            summarization_date=random_datetime(7),
+            hook=(
+                f"In this episode, the hosts discuss {topics[0].lower()} and share insights from "
+                "their experiences. The conversation covers key strategies, common pitfalls, and "
+                "actionable advice that listeners can apply immediately to their own work."
+            ),
+            insights=generate_interleaved_insights(random.randint(5, 6)),
+            takeaway=(
+                "This episode offers valuable perspectives for practitioners at all levels. "
+                "The guests' combined experience provides a nuanced view that challenges "
+                "conventional thinking while offering practical next steps for listeners."
+            ),
             classification="to_read" if random.random() > 0.15 else "skip",
-            full_markdown=f"# {title}\n\nFull episode summary in markdown...",
+            summarization_date=random_datetime(7),
         )
 
         # Generate podcast metadata
@@ -323,7 +421,7 @@ class NewsGenerator:
                 "Experts predict long-term implications for the sector",
                 "Initial reactions from market analysts are mixed",
             ],
-            summary="Breaking news with significant implications for the technology industry and broader markets.",
+            summary="Breaking news with significant implications for tech and broader markets.",
             classification="to_read" if random.random() > 0.3 else "skip",
             summarization_date=random_datetime(3),
         )

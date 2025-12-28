@@ -421,6 +421,9 @@ class SequentialTaskProcessor:
                     provider_override = "openai"
                     max_bullet_points = 4
                     max_quotes = 0
+                elif content.content_type in ("article", "podcast"):
+                    # Use interleaved format for articles and podcasts
+                    summarization_type = "interleaved"
 
                 logger.info(
                     "Calling LLM for content %s: provider=%s, type=%s, "

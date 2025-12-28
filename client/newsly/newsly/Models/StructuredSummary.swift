@@ -40,3 +40,41 @@ struct Quote: Codable {
     let text: String
     let context: String?
 }
+
+// MARK: - Interleaved Summary Format
+
+struct InterleavedInsight: Codable, Identifiable {
+    let topic: String
+    let insight: String
+    let supportingQuote: String?
+    let quoteAttribution: String?
+
+    var id: String { topic + insight.prefix(20) }
+
+    enum CodingKeys: String, CodingKey {
+        case topic
+        case insight
+        case supportingQuote = "supporting_quote"
+        case quoteAttribution = "quote_attribution"
+    }
+}
+
+struct InterleavedSummary: Codable {
+    let summaryType: String?
+    let title: String?
+    let hook: String
+    let insights: [InterleavedInsight]
+    let takeaway: String
+    let classification: String?
+    let summarizationDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case summaryType = "summary_type"
+        case title
+        case hook
+        case insights
+        case takeaway
+        case classification
+        case summarizationDate = "summarization_date"
+    }
+}

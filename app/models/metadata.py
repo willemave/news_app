@@ -64,6 +64,82 @@ class ContentQuote(BaseModel):
     context: str | None = Field(None, description="Context or attribution for the quote")
 
 
+class InterleavedInsight(BaseModel):
+    """Single insight with bundled topic, text, and supporting quote."""
+
+    topic: str = Field(
+        ..., min_length=2, max_length=50, description="Key topic or theme (2-5 words)"
+    )
+    insight: str = Field(
+        ..., min_length=50, description="Substantive insight (2-3 sentences)"
+    )
+    supporting_quote: str | None = Field(
+        None, min_length=20, description="Direct quote (20+ words) supporting the insight"
+    )
+    quote_attribution: str | None = Field(
+        None, description="Who said the quote - author, speaker, or publication"
+    )
+
+
+class InterleavedSummary(BaseModel):
+    """Interleaved summary format that weaves topics with supporting quotes."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "summary_type": "interleaved",
+                "title": "AI Advances in Natural Language Processing",
+                "hook": (
+                    "This article explores groundbreaking developments in NLP "
+                    "that could reshape how we interact with technology."
+                ),
+                "insights": [
+                    {
+                        "topic": "Performance Gains",
+                        "insight": (
+                            "The new model achieves 40% improvement in accuracy "
+                            "on standard benchmarks while using half the compute."
+                        ),
+                        "supporting_quote": (
+                            "We were surprised by the magnitude of the improvements, "
+                            "which exceeded our initial expectations significantly."
+                        ),
+                        "quote_attribution": "Lead Researcher",
+                    }
+                ],
+                "takeaway": (
+                    "These developments signal a fundamental shift in how AI systems "
+                    "process and understand human language."
+                ),
+                "classification": "to_read",
+                "summarization_date": "2025-06-14T10:30:00Z",
+            }
+        }
+    )
+
+    summary_type: str = Field(
+        default="interleaved", description="Discriminator field for iOS client"
+    )
+    title: str = Field(
+        ..., min_length=5, max_length=1000, description="Descriptive title for the content"
+    )
+    hook: str = Field(
+        ..., min_length=80, description="Opening hook (2-3 sentences) capturing the main story"
+    )
+    insights: list[InterleavedInsight] = Field(
+        ..., min_length=3, max_length=8, description="Key insights with supporting quotes"
+    )
+    takeaway: str = Field(
+        ..., min_length=80, description="Final takeaway (2-3 sentences) for the reader"
+    )
+    classification: str = Field(
+        default="to_read",
+        pattern="^(to_read|skip)$",
+        description="Content classification: 'to_read' or 'skip'",
+    )
+    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+
+
 class StructuredSummary(BaseModel):
     """Structured summary with bullet points and quotes."""
 
@@ -228,26 +304,32 @@ class BaseContentMetadata(BaseModel):
         None, description="Source of content (e.g., substack name, podcast name, subreddit name)"
     )
 
-    summary: StructuredSummary | NewsSummary | None = Field(
+    summary: StructuredSummary | InterleavedSummary | NewsSummary | None = Field(
         None, description="AI-generated structured summary"
     )
     word_count: int | None = Field(None, ge=0)
 
     @field_validator("summary", mode="before")
     @classmethod
-    def validate_summary(cls, value: StructuredSummary | NewsSummary | dict[str, Any] | None):
+    def validate_summary(
+        cls, value: StructuredSummary | InterleavedSummary | NewsSummary | dict[str, Any] | None
+    ):
         """Normalize summary payloads into structured models."""
-        if value is None or isinstance(value, StructuredSummary | NewsSummary):
+        if value is None or isinstance(value, (StructuredSummary, InterleavedSummary, NewsSummary)):
             return value
         if isinstance(value, dict):
             summary_type = value.get("summary_type")
+            if summary_type == "interleaved":
+                return InterleavedSummary.model_validate(value)
             if summary_type == "news_digest":
                 return NewsSummary.model_validate(value)
             try:
                 return StructuredSummary.model_validate(value)
             except Exception:
                 return NewsSummary.model_validate(value)
-        raise ValueError("Summary must be StructuredSummary, NewsSummary, or dict")
+        raise ValueError(
+            "Summary must be StructuredSummary, InterleavedSummary, NewsSummary, or dict"
+        )
 
 
 # Article metadata from app/schemas/metadata.py
@@ -543,9 +625,13 @@ class ContentData(BaseModel):
 
     @property
     def structured_summary(self) -> dict[str, Any] | None:
-        """Get structured summary if available."""
+        """Get structured or interleaved summary if available."""
         summary_data = self.metadata.get("summary")
-        if isinstance(summary_data, dict) and "bullet_points" in summary_data:
+        # Return if it's a structured summary (has bullet_points)
+        # or an interleaved summary (has insights)
+        if isinstance(summary_data, dict) and (
+            "bullet_points" in summary_data or "insights" in summary_data
+        ):
             return summary_data
         return None
 

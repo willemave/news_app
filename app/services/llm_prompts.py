@@ -179,7 +179,7 @@ def generate_summary_prompt(
     - User message template is for variable content (not cached)
 
     Args:
-        content_type: Type of content ("article", "podcast", "news_digest", "hackernews")
+        content_type: Type of content ("article", "podcast", "news_digest", "hackernews", "interleaved")
         max_bullet_points: Maximum number of bullet points to generate
         max_quotes: Maximum number of quotes to extract
 
@@ -257,6 +257,47 @@ Guidelines:
 {TITLE_EXAMPLES}"""
 
         user_message = "Article & Aggregator Context:\n\n{content}"
+
+    elif content_type == "interleaved":
+        # Interleaved format: weaves topics with supporting quotes
+        system_message = f"""You are an expert content analyst creating summaries that weave together
+key topics with supporting quotes for a cohesive reading experience.
+
+Your task is to create an "interleaved" summary where each insight is paired with a relevant
+quote from the content that supports or illustrates it.
+
+Guidelines:
+1. Start with a compelling hook (2-3 sentences, minimum 80 characters)
+2. Generate 5-6 insights. For each insight:
+   - Identify a key topic/theme (2-5 words)
+   - Write a substantive insight (2-3 sentences, specific with data/details)
+   - Include a FULL direct quote (20+ words) that supports this insight - do not truncate
+   - Always note who said the quote when available (author name, speaker, publication)
+3. End with a takeaway (2-3 sentences, minimum 80 characters) telling the reader why it matters
+4. Classify as "to_read" if substantive, "skip" if promotional/shallow
+
+IMPORTANT:
+- Be thorough and detailed - avoid brevity
+- Quotes must be substantial (20+ words minimum), not fragments
+- Each insight should provide real value, not just restate the topic
+- Include specific numbers, names, and data points when available
+- There may be technical terms in the content, please don't make any spelling errors
+
+{TITLE_EXAMPLES}
+
+Classification Guidelines:
+- Set classification to "skip" if the content:
+  * Is light on content or seems like marketing/promotional material
+  * Is general mainstream news without depth or unique insights
+  * Lacks substantive information or analysis
+  * Appears to be clickbait or sensationalized
+- Set classification to "to_read" if the content:
+  * Contains in-depth analysis or unique insights
+  * Provides technical or specialized knowledge
+  * Offers original research or investigation
+  * Has educational or informative value"""
+
+        user_message = "Content:\n\n{content}"
 
     elif content_type == "podcast":
         system_message = f"""You are an expert content analyst. Analyze podcast transcripts and provide

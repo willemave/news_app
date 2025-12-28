@@ -28,7 +28,7 @@ struct ContentDetail: Codable, Identifiable {
     var isFavorited: Bool
     let summary: String?
     let shortSummary: String?
-    let structuredSummary: StructuredSummary?
+    let structuredSummaryRaw: [String: AnyCodable]?
     let bulletPoints: [BulletPoint]
     let quotes: [Quote]
     let topics: [String]
@@ -61,7 +61,7 @@ struct ContentDetail: Codable, Identifiable {
         case isFavorited = "is_favorited"
         case summary
         case shortSummary = "short_summary"
-        case structuredSummary = "structured_summary"
+        case structuredSummaryRaw = "structured_summary"
         case bulletPoints = "bullet_points"
         case quotes
         case topics
@@ -110,6 +110,45 @@ struct ContentDetail: Codable, Identifiable {
 
         if let jsonData = try? JSONSerialization.data(withJSONObject: metadata.mapValues { $0.value }) {
             return try? decoder.decode(NewsMetadata.self, from: jsonData)
+        }
+        return nil
+    }
+
+    // MARK: - Summary Type Detection
+
+    /// Check if this content has an interleaved summary format
+    var hasInterleavedSummary: Bool {
+        guard let raw = structuredSummaryRaw,
+              let summaryType = raw["summary_type"]?.value as? String else {
+            return false
+        }
+        return summaryType == "interleaved"
+    }
+
+    /// Parse the raw summary as InterleavedSummary (returns nil if not interleaved format)
+    var interleavedSummary: InterleavedSummary? {
+        guard hasInterleavedSummary,
+              let raw = structuredSummaryRaw else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        if let jsonData = try? JSONSerialization.data(withJSONObject: raw.mapValues { $0.value }) {
+            return try? decoder.decode(InterleavedSummary.self, from: jsonData)
+        }
+        return nil
+    }
+
+    /// Parse the raw summary as StructuredSummary (returns nil if interleaved format)
+    var structuredSummary: StructuredSummary? {
+        guard !hasInterleavedSummary,
+              let raw = structuredSummaryRaw else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        if let jsonData = try? JSONSerialization.data(withJSONObject: raw.mapValues { $0.value }) {
+            return try? decoder.decode(StructuredSummary.self, from: jsonData)
         }
         return nil
     }
