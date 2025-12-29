@@ -107,6 +107,12 @@ Errors at level ERROR+ are automatically written to JSONL files in `logs/errors/
   npx @tailwindcss/cli -i ./static/css/styles.css -o ./static/css/app.css
   ```
 
+### Pipeline Notes
+* `POST /api/content/submit` creates `content_type=unknown`, queues `ANALYZE_URL` → `PROCESS_CONTENT`.
+* `ANALYZE_URL` uses pattern matching + LLM page analysis to set content type/platform/media.
+* `SUMMARIZE` writes interleaved summaries for articles/podcasts, news digests for news, then enqueues `GENERATE_IMAGE`.
+* `GENERATE_IMAGE` creates thumbnails/infographics and exposes `image_url`/`thumbnail_url` in API responses.
+
 ---
 
 ## 6. Beads Workflow (Issue Tracking)
@@ -232,8 +238,12 @@ docker compose up -d --build         # Rebuild and start
 | `app/core/settings.py` | Configuration |
 | `app/core/db.py` | Database setup |
 | `app/models/schema.py` | ORM models |
+| `app/services/content_analyzer.py` | URL analysis (LLM + trafilatura) |
+| `app/services/feed_detection.py` | RSS/Atom feed detection + classification |
+| `app/services/image_generation.py` | AI image + thumbnail generation |
 | `scripts/run_workers.py` | Worker entry |
 | `scripts/run_scrapers.py` | Scraper entry |
+| `client/newsly/ShareExtension/ShareViewController.swift` | iOS share extension entry |
 
 ### Environment Variables (Required)
 ```bash
@@ -241,6 +251,11 @@ DATABASE_URL="sqlite:///./news_app.db"
 JWT_SECRET_KEY=<generate with: python -c "import secrets; print(secrets.token_urlsafe(32))">
 ADMIN_PASSWORD=<secure-password>
 ```
+
+### Content Metadata + API Fields
+* `summary_type=interleaved` for article/podcast summaries.
+* User submissions may include `detected_feed` metadata (RSS/Atom classification).
+* `image_url` + `thumbnail_url` are returned in content list/detail when available.
 
 ### Content Types
 - `article` - Web articles, blog posts, papers
