@@ -10,6 +10,8 @@ import SwiftUI
 struct ArticleCardView: View {
     let content: ContentSummary
     let keyPoints: [String]?
+    let hook: String?
+    let topics: [String]?
     let isLoadingKeyPoints: Bool
     let onFavorite: () -> Void
     let onMarkRead: () -> Void
@@ -36,9 +38,10 @@ struct ArticleCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             heroImageSection
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 titleSection
                 metadataRow
+                hookSection
                 keyPointsSection
                 Spacer(minLength: 8)
                 actionButtonsRow
@@ -160,6 +163,36 @@ struct ArticleCardView: View {
     }
 
     @ViewBuilder
+    private var hookSection: some View {
+        if let hookText = hook, !hookText.isEmpty {
+            Text(hookText)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .italic()
+                .foregroundColor(.primary.opacity(0.85))
+                .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var topicsSection: some View {
+        if let topicsList = topics, !topicsList.isEmpty {
+            FlowLayout(spacing: 6) {
+                ForEach(topicsList.prefix(5), id: \.self) { topic in
+                    Text(topic)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.accentColor.opacity(0.12))
+                        .cornerRadius(12)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
     private var keyPointsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Key Points")
@@ -199,7 +232,6 @@ struct ArticleCardView: View {
             Text(text)
                 .font(.subheadline)
                 .foregroundColor(.primary.opacity(0.9))
-                .lineLimit(2)
                 .multilineTextAlignment(.leading)
         }
     }

@@ -140,7 +140,10 @@
       "Bash(timeout 300 python:*)",
       "Bash(.venv/bin/alembic upgrade:*)",
       "Bash(timeout 600 python:*)",
-      "Bash(timeout 900 python scripts/test_interleaved_summary.py:*)"
+      "Bash(timeout 900 python scripts/test_interleaved_summary.py:*)",
+      "Bash(git -C /Users/willem/Development/news_app diff client/newsly/)",
+      "Bash(git -C /Users/willem/Development/news_app diff app/models/metadata.py)",
+      "Bash(git -C /Users/willem/Development/news_app diff client/newsly/newsly/Views/Components/ArticleCardView.swift)"
     ],
     "deny": []
   },

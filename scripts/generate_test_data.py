@@ -56,7 +56,7 @@ from app.models.metadata import (
     NewsSummary,
     PodcastMetadata,
 )
-from app.models.schema import Content
+from app.models.schema import Content, ContentStatusEntry
 
 # Sample data pools
 ARTICLE_SOURCES = [
@@ -508,13 +508,14 @@ def generate_test_data(
     return data
 
 
-def insert_test_data(session: Session, data: list[dict[str, Any]]) -> list[int]:
+def insert_test_data(session: Session, data: list[dict[str, Any]], user_id: int = 1) -> list[int]:
     """
     Insert test data into the database.
 
     Args:
         session: SQLAlchemy session
         data: List of content dictionaries
+        user_id: User ID to add articles/podcasts to inbox for
 
     Returns:
         List of inserted content IDs
@@ -526,6 +527,15 @@ def insert_test_data(session: Session, data: list[dict[str, Any]]) -> list[int]:
         session.add(content)
         session.flush()  # Get the ID
         inserted_ids.append(content.id)
+
+        # Add articles and podcasts to user's inbox so they're visible
+        if item["content_type"] in ("article", "podcast"):
+            status_entry = ContentStatusEntry(
+                user_id=user_id,
+                content_id=content.id,
+                status="inbox",
+            )
+            session.add(status_entry)
 
     session.commit()
     return inserted_ids

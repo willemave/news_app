@@ -70,9 +70,7 @@ class InterleavedInsight(BaseModel):
     topic: str = Field(
         ..., min_length=2, max_length=50, description="Key topic or theme (2-5 words)"
     )
-    insight: str = Field(
-        ..., min_length=50, description="Substantive insight (2-3 sentences)"
-    )
+    insight: str = Field(..., min_length=50, description="Substantive insight (2-3 sentences)")
     supporting_quote: str | None = Field(
         None, min_length=20, description="Direct quote (20+ words) supporting the insight"
     )
@@ -637,23 +635,78 @@ class ContentData(BaseModel):
 
     @property
     def bullet_points(self) -> list[dict[str, str]]:
-        """Get bullet points from structured summary."""
-        if self.structured_summary:
+        """Get bullet points from structured or interleaved summary.
+
+        For interleaved summaries, converts insights to bullet point format.
+        """
+        if not self.structured_summary:
+            return []
+
+        # Standard structured summary with bullet_points
+        if "bullet_points" in self.structured_summary:
             return self.structured_summary.get("bullet_points", [])
+
+        # Interleaved summary - convert insights to bullet point format
+        insights = self.structured_summary.get("insights", [])
+        if insights:
+            return [
+                {"text": ins.get("insight", ""), "category": ins.get("topic", "")}
+                for ins in insights
+                if ins.get("insight")
+            ]
+
         return []
 
     @property
     def quotes(self) -> list[dict[str, str]]:
-        """Get quotes from structured summary."""
-        if self.structured_summary:
+        """Get quotes from structured or interleaved summary.
+
+        For interleaved summaries, extracts supporting quotes from insights.
+        """
+        if not self.structured_summary:
+            return []
+
+        # Standard structured summary with quotes
+        if "quotes" in self.structured_summary:
             return self.structured_summary.get("quotes", [])
-        return []
+
+        # Interleaved summary - extract supporting quotes from insights
+        insights = self.structured_summary.get("insights", [])
+        quotes = []
+        for ins in insights:
+            quote_text = ins.get("supporting_quote")
+            if quote_text:
+                quotes.append(
+                    {
+                        "text": quote_text,
+                        "context": ins.get("quote_attribution", ins.get("topic", "")),
+                    }
+                )
+        return quotes
 
     @property
     def topics(self) -> list[str]:
-        """Get topics from structured summary."""
+        """Get topics from structured or interleaved summary.
+
+        For interleaved summaries, extracts unique topic names from insights.
+        """
         if self.structured_summary:
-            return self.structured_summary.get("topics", [])
+            # Standard topics array
+            if "topics" in self.structured_summary:
+                return self.structured_summary.get("topics", [])
+
+            # Interleaved summary - extract unique topics from insights
+            insights = self.structured_summary.get("insights", [])
+            if insights:
+                seen = set()
+                topics = []
+                for ins in insights:
+                    topic = ins.get("topic")
+                    if topic and topic not in seen:
+                        seen.add(topic)
+                        topics.append(topic)
+                return topics
+
         return self.metadata.get("topics", [])
 
     @property

@@ -96,6 +96,8 @@ struct LongFormCardStackView: View {
                     ArticleCardView(
                         content: content,
                         keyPoints: keyPointsLoader.keyPoints(for: content.id),
+                        hook: keyPointsLoader.hook(for: content.id),
+                        topics: keyPointsLoader.topics(for: content.id),
                         isLoadingKeyPoints: keyPointsLoader.isLoading(content.id),
                         onFavorite: { Task { await viewModel.toggleFavorite(content.id) } },
                         onMarkRead: { viewModel.markAsRead(content.id) },

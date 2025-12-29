@@ -269,8 +269,8 @@ quote from the content that supports or illustrates it.
 Guidelines:
 1. Start with a compelling hook (2-3 sentences, minimum 80 characters)
 2. Generate 5-6 insights. For each insight:
-   - Identify a key topic/theme (2-5 words)
-   - Write a substantive insight (2-3 sentences, specific with data/details)
+   - Identify a key topic/theme (4-5 words, be descriptive)
+   - Write a substantive insight (2-10 sentences, specific with data/details)
    - Include a FULL direct quote (20+ words) that supports this insight - do not truncate
    - Always note who said the quote when available (author name, speaker, publication)
 3. End with a takeaway (2-3 sentences, minimum 80 characters) telling the reader why it matters

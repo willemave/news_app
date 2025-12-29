@@ -2,7 +2,7 @@
 //  CardStackKeyPointsLoader.swift
 //  newsly
 //
-//  Prefetches ContentDetail to extract key points for card stack display.
+//  Prefetches ContentDetail to extract key points, hook, and topics for card stack display.
 //
 
 import Foundation
@@ -10,15 +10,34 @@ import os.log
 
 private let logger = Logger(subsystem: "com.newsly", category: "CardStackKeyPointsLoader")
 
+/// Cached data for a content card including key points, hook, and topics
+struct CardPreviewData {
+    let keyPoints: [String]
+    let hook: String?
+    let topics: [String]
+}
+
 @MainActor
 class CardStackKeyPointsLoader: ObservableObject {
-    @Published var cache: [Int: [String]] = [:]
+    @Published var cache: [Int: CardPreviewData] = [:]
     @Published var loadingIds: Set<Int> = []
 
     private let contentService = ContentService.shared
 
-    func keyPoints(for contentId: Int) -> [String]? {
+    func previewData(for contentId: Int) -> CardPreviewData? {
         cache[contentId]
+    }
+
+    func keyPoints(for contentId: Int) -> [String]? {
+        cache[contentId]?.keyPoints
+    }
+
+    func hook(for contentId: Int) -> String? {
+        cache[contentId]?.hook
+    }
+
+    func topics(for contentId: Int) -> [String]? {
+        cache[contentId]?.topics
     }
 
     func isLoading(_ contentId: Int) -> Bool {
@@ -47,11 +66,22 @@ class CardStackKeyPointsLoader: ObservableObject {
             do {
                 let detail = try await contentService.fetchContentDetail(id: contentId)
                 let points = detail.bulletPoints.map { $0.text }
-                cache[contentId] = points
-                logger.debug("Fetched \(points.count) key points for content \(contentId)")
+
+                // Extract hook from interleaved summary if available
+                let hook = detail.interleavedSummary?.hook
+
+                // Get topics from content detail
+                let topics = detail.topics
+
+                cache[contentId] = CardPreviewData(
+                    keyPoints: points,
+                    hook: hook,
+                    topics: topics
+                )
+                logger.debug("Fetched preview data for content \(contentId): \(points.count) points, hook: \(hook != nil), topics: \(topics.count)")
             } catch {
-                logger.error("Failed to fetch key points for \(contentId): \(error.localizedDescription)")
-                cache[contentId] = []
+                logger.error("Failed to fetch preview data for \(contentId): \(error.localizedDescription)")
+                cache[contentId] = CardPreviewData(keyPoints: [], hook: nil, topics: [])
             }
 
             loadingIds.remove(contentId)
