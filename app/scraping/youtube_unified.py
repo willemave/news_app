@@ -24,6 +24,20 @@ PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 logger = get_logger(__name__)
 
 
+class _YtDlpLogger:
+    def __init__(self, base_logger):
+        self._logger = base_logger
+
+    def debug(self, msg: str) -> None:
+        self._logger.debug(msg)
+
+    def warning(self, msg: str) -> None:
+        self._logger.warning(msg)
+
+    def error(self, msg: str) -> None:
+        self._logger.warning(msg)
+
+
 class YouTubeChannelConfig(BaseModel):
     """Configuration for a single YouTube channel or playlist."""
 
@@ -233,6 +247,7 @@ class YouTubeUnifiedScraper(BaseScraper):
         opts = {**base_opts}
         if "http_headers" in base_opts:
             opts["http_headers"] = dict(base_opts["http_headers"])
+        opts["logger"] = _YtDlpLogger(logger)
 
         extractor_args = self._build_extractor_args()
         if extractor_args:
@@ -318,6 +333,8 @@ class YouTubeUnifiedScraper(BaseScraper):
                         },
                     )
                     continue
+                if video_info is None:
+                    continue
 
             if not self._passes_filters(video_info, channel.max_age_days):
                 continue
@@ -340,8 +357,15 @@ class YouTubeUnifiedScraper(BaseScraper):
         if yt_dlp is None:  # pragma: no cover - runtime safeguard when dependency missing
             raise RuntimeError("yt-dlp is required to run the YouTube scraper")
         listing_opts = self._build_listing_opts(channel.limit)
-        with yt_dlp.YoutubeDL(listing_opts) as ydl:
-            info = ydl.extract_info(channel.target_url, download=False)
+        try:
+            with yt_dlp.YoutubeDL(listing_opts) as ydl:
+                info = ydl.extract_info(channel.target_url, download=False)
+        except yt_dlp.utils.DownloadError as exc:  # pragma: no cover - network/error handling
+            error_str = str(exc)
+            if _should_skip_download_error(error_str):
+                logger.warning("Skipping channel listing for %s: %s", channel.name, error_str)
+                return []
+            raise
 
         entries = info.get("entries", []) if isinstance(info, dict) else []
         flattened: list[dict[str, Any]] = []
@@ -354,11 +378,18 @@ class YouTubeUnifiedScraper(BaseScraper):
 
         return flattened
 
-    def _extract_video_info(self, video_url: str) -> dict[str, Any]:
+    def _extract_video_info(self, video_url: str) -> dict[str, Any] | None:
         if yt_dlp is None:  # pragma: no cover - runtime safeguard when dependency missing
             raise RuntimeError("yt-dlp is required to run the YouTube scraper")
-        with yt_dlp.YoutubeDL(self._build_video_opts()) as ydl:
-            return ydl.extract_info(video_url, download=False)
+        try:
+            with yt_dlp.YoutubeDL(self._build_video_opts()) as ydl:
+                return ydl.extract_info(video_url, download=False)
+        except yt_dlp.utils.DownloadError as exc:  # pragma: no cover - network/error handling
+            error_str = str(exc)
+            if _should_skip_download_error(error_str):
+                logger.warning("Skipping video %s: %s", video_url, error_str)
+                return None
+            raise
 
     def _passes_filters(self, video_info: dict[str, Any], max_age_days: int | None) -> bool:
         if max_age_days in (None, 0):
@@ -507,6 +538,24 @@ class YouTubeUnifiedScraper(BaseScraper):
             return stdlib_utc
         except ImportError:  # pragma: no cover - python <3.11
             return stdlib_utc
+
+
+def load_youtube_client_config(
+    config_path: str | Path = "config/youtube.yml",
+) -> YouTubeClientConfig:
+    """Public helper to load client configuration for yt-dlp settings."""
+    resolved = YouTubeUnifiedScraper._resolve_config_path(config_path)
+    _, client_config = YouTubeUnifiedScraper._load_config(resolved)
+    return client_config
+
+
+def _should_skip_download_error(error_message: str) -> bool:
+    lowered = error_message.lower()
+    if "sign in to confirm" in lowered:
+        return True
+    if "requires authentication" in lowered:
+        return True
+    return "premieres in" in lowered
 
 
 def load_youtube_channels(

@@ -9,8 +9,23 @@ import yt_dlp
 
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
+from app.scraping.youtube_unified import YouTubeClientConfig, load_youtube_client_config
 
 logger = logging.getLogger(__name__)
+
+
+class _YtDlpLogger:
+    def __init__(self, base_logger):
+        self._logger = base_logger
+
+    def debug(self, msg: str) -> None:
+        self._logger.debug(msg)
+
+    def warning(self, msg: str) -> None:
+        self._logger.warning(msg)
+
+    def error(self, msg: str) -> None:
+        self._logger.warning(msg)
 
 
 class YouTubeProcessorStrategy(UrlProcessorStrategy):
@@ -18,12 +33,17 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
 
     def __init__(self, http_client: RobustHttpClient):
         super().__init__(http_client)
-        self.ydl_opts = {
+        self.client_config = self._load_client_config()
+        self.ydl_opts = self._build_ydl_opts(self.client_config)
+
+    def _build_ydl_opts(self, client_config: YouTubeClientConfig) -> dict[str, Any]:
+        opts: dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
             "ignoreerrors": False,  # Changed: Let exceptions bubble up for better error info
             "no_check_certificate": True,
+            "logger": _YtDlpLogger(logger),
             # Subtitle options
             "writesubtitles": True,
             "writeautomaticsub": True,
@@ -35,6 +55,46 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             ),
         }
+
+        cookies_path = client_config.resolved_cookies_path()
+        if cookies_path and cookies_path.exists():
+            opts["cookiefile"] = str(cookies_path)
+        elif cookies_path:
+            logger.warning("YouTube cookies not found at %s", cookies_path)
+
+        extractor_args = self._build_extractor_args(client_config)
+        if extractor_args:
+            opts["extractor_args"] = extractor_args
+
+        return opts
+
+    def _load_client_config(self) -> YouTubeClientConfig:
+        try:
+            return load_youtube_client_config()
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning("Failed to load YouTube client config: %s", exc)
+            return YouTubeClientConfig()
+
+    @staticmethod
+    def _build_extractor_args(
+        client_config: YouTubeClientConfig,
+    ) -> dict[str, dict[str, list[str]]]:
+        extractor_args: dict[str, dict[str, list[str]]] = {
+            "youtube": {
+                "player_client": [client_config.player_client],
+                "player_skip": ["configs"],
+            }
+        }
+
+        provider = client_config.po_token_provider
+        if provider:
+            provider_key = f"youtubepot-{provider}"
+            provider_args: dict[str, list[str]] = {}
+            if client_config.po_token_base_url:
+                provider_args["base_url"] = [str(client_config.po_token_base_url)]
+            extractor_args[provider_key] = provider_args
+
+        return extractor_args
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
         """Check if this strategy can handle the given URL."""
@@ -117,15 +177,11 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
 
             except yt_dlp.utils.DownloadError as e:
                 error_str = str(e)
-                # Check for bot detection / authentication required errors - skip instead of fail
-                if (
-                    "Sign in to confirm you're not a bot" in error_str
-                    or "requires authentication" in error_str.lower()
-                ):
-                    logger.warning(f"YouTube requires authentication for {url}, marking as skipped")
+                if self._should_skip_download_error(error_str):
+                    logger.warning("Skipping YouTube video %s: %s", url, error_str)
                     return {
                         "skip_processing": True,
-                        "skip_reason": "YouTube requires authentication (bot detection)",
+                        "skip_reason": "YouTube requires authentication or is a premiere",
                         "title": f"YouTube Video: {url}",
                         "content_type": "youtube",
                     }
@@ -203,6 +259,15 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
         except Exception as e:
             logger.error(f"Error downloading subtitle: {e}")
             return None
+
+    @staticmethod
+    def _should_skip_download_error(error_message: str) -> bool:
+        lowered = error_message.lower()
+        if "sign in to confirm" in lowered:
+            return True
+        if "requires authentication" in lowered:
+            return True
+        return "premieres in" in lowered
 
     def _parse_vtt(self, vtt_content: str) -> str:
         """Parse VTT subtitle format to plain text."""

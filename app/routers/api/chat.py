@@ -97,17 +97,7 @@ def _resolve_article_title(content: Content) -> str | None:
 
 def _extract_short_summary(content: Content) -> str | None:
     """Extract short summary from content metadata."""
-    if not content.content_metadata:
-        return None
-    summary = content.content_metadata.get("summary")
-    if isinstance(summary, dict):
-        if "overview" in summary:
-            return summary.get("overview")
-        if summary.get("summary_type") == "news_digest":
-            return summary.get("summary")
-    if isinstance(summary, str):
-        return summary
-    return None
+    return content.short_summary
 
 
 def _extract_messages_for_display(

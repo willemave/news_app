@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-
-try:  # Python 3.11+
-    from datetime import UTC  # type: ignore[attr-defined]
-except ImportError:  # pragma: no cover
-    UTC = UTC  # type: ignore[assignment]
 import textwrap
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.scraping.youtube_unified import (
@@ -14,6 +9,7 @@ from app.scraping.youtube_unified import (
     YouTubeClientConfig,
     YouTubeUnifiedScraper,
     load_youtube_channels,
+    load_youtube_client_config,
 )
 
 
@@ -170,3 +166,24 @@ def test_missing_config_returns_empty(tmp_path: Path) -> None:
     config_path = tmp_path / "does-not-exist.yml"
     channels = load_youtube_channels(config_path)
     assert channels == []
+
+
+def test_load_youtube_client_config(tmp_path: Path) -> None:
+    config = textwrap.dedent(
+        """
+        client:
+          cookies_path: "secrets/youtube_cookies.txt"
+          po_token_provider: "bgutilhttp"
+          po_token_base_url: "http://127.0.0.1:4416"
+          throttle_seconds: 3
+          player_client: "mweb"
+        """
+    )
+
+    config_path = write_config(tmp_path, config)
+    client_config = load_youtube_client_config(config_path)
+
+    assert client_config.po_token_provider == "bgutilhttp"
+    assert client_config.po_token_base_url == "http://127.0.0.1:4416"
+    assert client_config.throttle_seconds == 3
+    assert client_config.player_client == "mweb"

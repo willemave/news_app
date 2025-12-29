@@ -126,6 +126,21 @@ class Content(Base):
 
         return None
 
+    @property
+    def short_summary(self) -> str | None:
+        """Return a short summary for list views if available."""
+        if not self.content_metadata:
+            return None
+        summary = self.content_metadata.get("summary")
+        if isinstance(summary, dict):
+            if "overview" in summary:
+                return summary.get("overview")
+            if summary.get("summary_type") == "news_digest":
+                return summary.get("summary")
+        if isinstance(summary, str):
+            return summary
+        return None
+
 
 class ProcessingTask(Base):
     """Simple task queue to replace Huey"""
