@@ -88,6 +88,28 @@ def test_submit_spotify_url_creates_unknown_type(client, db_session):
     assert data["platform"] is None
 
 
+def test_submit_accepts_instruction_alias(client, db_session):
+    """Instruction/note field should be accepted and added to ANALYZE_URL payload."""
+    response = client.post(
+        "/api/content/submit",
+        json={
+            "url": "https://example.com/article",
+            "note": "Add all links from the page",
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+
+    created = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+    assert created is not None
+    assert "instruction" not in (created.content_metadata or {})
+
+    task = db_session.query(ProcessingTask).filter_by(content_id=created.id).first()
+    assert task is not None
+    assert task.payload.get("instruction") == "Add all links from the page"
+
+
 def test_reject_invalid_scheme(client):
     """Non-http(s) schemes should fail validation."""
     response = client.post("/api/content/submit", json={"url": "ftp://example.com/file"})

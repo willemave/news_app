@@ -286,8 +286,10 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
             for user in users:
                 admin_badge = "👑 ADMIN" if user.is_admin else ""
                 active_badge = "✅ ACTIVE" if user.is_active else "❌ INACTIVE"
+                user_name = user.full_name or "(no name)"
                 print(
-                    f"   ID: {user.id:3d} | {user.email:40s} | {user.full_name or '(no name)':30s} | {admin_badge:8s} | {active_badge}"
+                    f"   ID: {user.id:3d} | {user.email:40s} | {user_name:30s} | "
+                    f"{admin_badge:8s} | {active_badge}"
                 )
         return
 
@@ -338,9 +340,8 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
     print("🔄 MIGRATION CONFIGURATION")
     print("=" * 80)
     print(f"Target user ID:   {args.user_id}")
-    print(
-        f"Mode:             {'DRY RUN (no changes)' if args.dry_run else 'LIVE (will modify database)'}"
-    )
+    mode_label = "DRY RUN (no changes)" if args.dry_run else "LIVE (will modify database)"
+    print(f"Mode:             {mode_label}")
     print("Strategy:         Migrate ALL session data to user_id")
     print("=" * 80)
 
@@ -366,13 +367,19 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
         print("📊 MIGRATION SUMMARY")
         print("=" * 80)
         print(
-            f"Favorites:    {stats['favorites_found']:4d} found | {stats['favorites_migrated']:4d} migrated | {stats['favorites_skipped']:4d} skipped"
+            f"Favorites:    {stats['favorites_found']:4d} found | "
+            f"{stats['favorites_migrated']:4d} migrated | "
+            f"{stats['favorites_skipped']:4d} skipped"
         )
         print(
-            f"Read Status:  {stats['read_status_found']:4d} found | {stats['read_status_migrated']:4d} migrated | {stats['read_status_skipped']:4d} skipped"
+            f"Read Status:  {stats['read_status_found']:4d} found | "
+            f"{stats['read_status_migrated']:4d} migrated | "
+            f"{stats['read_status_skipped']:4d} skipped"
         )
         print(
-            f"Unlikes:      {stats['unlikes_found']:4d} found | {stats['unlikes_migrated']:4d} migrated | {stats['unlikes_skipped']:4d} skipped"
+            f"Unlikes:      {stats['unlikes_found']:4d} found | "
+            f"{stats['unlikes_migrated']:4d} migrated | "
+            f"{stats['unlikes_skipped']:4d} skipped"
         )
         print("=" * 80)
 
@@ -385,12 +392,14 @@ Note: This should be run BEFORE the Alembic migration that deletes session data.
 
         if args.dry_run:
             print(
-                f"\n💡 DRY RUN: Would migrate {total_migrated} records (skip {total_skipped} duplicates)"
+                f"\n💡 DRY RUN: Would migrate {total_migrated} records "
+                f"(skip {total_skipped} duplicates)"
             )
             print("   Run without --dry-run to apply changes")
         else:
             print(
-                f"\n✅ COMPLETE: Migrated {total_migrated} records (skipped {total_skipped} duplicates)"
+                f"\n✅ COMPLETE: Migrated {total_migrated} records "
+                f"(skipped {total_skipped} duplicates)"
             )
             print("\n⚠️  NEXT STEP: Run the Alembic migration to update table schema:")
             print("   python -m alembic upgrade head")

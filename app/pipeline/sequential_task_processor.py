@@ -9,11 +9,12 @@ from typing import Any
 from app.core.db import get_db
 from app.core.logging import get_logger, setup_logging
 from app.core.settings import get_settings
-from app.models.metadata import ContentStatus, NewsSummary
-from app.models.schema import Content
+from app.models.metadata import ContentStatus, ContentType, NewsSummary
+from app.models.schema import Content, ProcessingTask
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker, get_llm_service
 from app.scraping.runner import ScraperRunner
+from app.services.instruction_links import create_contents_from_instruction_links
 from app.services.queue import QueueService, TaskType
 
 logger = get_logger(__name__)
@@ -59,6 +60,8 @@ class SequentialTaskProcessor:
                 result = self._process_summarize_task(task_data)
             elif task_type == TaskType.GENERATE_IMAGE:
                 result = self._process_generate_image_task(task_data)
+            elif task_type == TaskType.GENERATE_THUMBNAIL:
+                result = self._process_generate_thumbnail_task(task_data)
             else:
                 logger.error(f"Unknown task type: {task_type}")
                 result = False
@@ -125,8 +128,13 @@ class SequentialTaskProcessor:
                 url = content.url
                 metadata = dict(content.content_metadata or {})
 
+                instruction = task_data.get("payload", {}).get("instruction")
+                task_id = task_data.get("id")
+                analysis_result = None
+
                 # Check if this is a known platform (fast path)
-                if not should_use_llm_analysis(url):
+                use_llm = should_use_llm_analysis(url) or bool(instruction)
+                if not use_llm:
                     # Use pattern-based detection
                     detected_type, platform = infer_content_type_and_platform(url, None, None)
                     logger.info(
@@ -145,7 +153,7 @@ class SequentialTaskProcessor:
                 else:
                     # Use LLM analysis with web search
                     analyzer = get_content_analyzer()
-                    result = analyzer.analyze_url(url)
+                    result = analyzer.analyze_url(url, instruction=instruction)
 
                     if isinstance(result, AnalysisError):
                         # Fall back to pattern detection on error
@@ -159,31 +167,32 @@ class SequentialTaskProcessor:
                             content.platform = platform
                             metadata["platform"] = platform
                     else:
+                        analysis = result.analysis
                         # Map LLM result to ContentType
-                        if result.content_type == "article":
+                        if analysis.content_type == "article":
                             content.content_type = ContentType.ARTICLE.value
-                        elif result.content_type in ("podcast", "video"):
+                        elif analysis.content_type in ("podcast", "video"):
                             content.content_type = ContentType.PODCAST.value
                         else:
                             content.content_type = ContentType.ARTICLE.value
 
                         # Store extracted metadata
-                        if result.platform:
-                            content.platform = result.platform
-                            metadata["platform"] = result.platform
-                        if result.media_url:
-                            metadata["audio_url"] = result.media_url
-                        if result.media_format:
-                            metadata["media_format"] = result.media_format
-                        if result.title:
-                            metadata["extracted_title"] = result.title
+                        if analysis.platform:
+                            content.platform = analysis.platform
+                            metadata["platform"] = analysis.platform
+                        if analysis.media_url:
+                            metadata["audio_url"] = analysis.media_url
+                        if analysis.media_format:
+                            metadata["media_format"] = analysis.media_format
+                        if analysis.title:
+                            metadata["extracted_title"] = analysis.title
                             if not content.title:
-                                content.title = result.title
-                        if result.description:
-                            metadata["extracted_description"] = result.description
-                        if result.duration_seconds:
-                            metadata["duration"] = result.duration_seconds
-                        if result.content_type == "video":
+                                content.title = analysis.title
+                        if analysis.description:
+                            metadata["extracted_description"] = analysis.description
+                        if analysis.duration_seconds:
+                            metadata["duration"] = analysis.duration_seconds
+                        if analysis.content_type == "video":
                             metadata["is_video"] = True
                             metadata["video_url"] = url
 
@@ -191,9 +200,35 @@ class SequentialTaskProcessor:
                             f"LLM analysis complete for {content_id}: "
                             f"type={content.content_type}, platform={content.platform}"
                         )
+                        analysis_result = result
 
                     content.content_metadata = metadata
                     db.commit()
+
+                if instruction and analysis_result and analysis_result.instruction:
+                    created_ids = create_contents_from_instruction_links(
+                        db,
+                        content,
+                        analysis_result.instruction.links,
+                    )
+                    if created_ids:
+                        logger.info(
+                            "Created %d content records from instruction links for %s",
+                            len(created_ids),
+                            content_id,
+                        )
+
+                if instruction and task_id:
+                    task = (
+                        db.query(ProcessingTask)
+                        .filter(ProcessingTask.id == int(task_id))
+                        .first()
+                    )
+                    if task and isinstance(task.payload, dict) and "instruction" in task.payload:
+                        updated_payload = dict(task.payload)
+                        updated_payload.pop("instruction", None)
+                        task.payload = updated_payload
+                        db.commit()
 
             # Enqueue PROCESS_CONTENT task
             self.queue_service.enqueue(TaskType.PROCESS_CONTENT, content_id=content_id)
@@ -516,12 +551,21 @@ class SequentialTaskProcessor:
                     content.processed_at = datetime.utcnow()
                     db.commit()
 
-                    # Enqueue image generation task
-                    self.queue_service.enqueue(
-                        task_type=TaskType.GENERATE_IMAGE,
-                        content_id=content_id,
-                    )
-                    logger.info("Enqueued image generation for content %s", content_id)
+                    if content.content_type == ContentType.NEWS.value:
+                        self.queue_service.enqueue(
+                            task_type=TaskType.GENERATE_THUMBNAIL,
+                            content_id=content_id,
+                        )
+                        logger.info(
+                            "Enqueued thumbnail generation for news content %s",
+                            content_id,
+                        )
+                    else:
+                        self.queue_service.enqueue(
+                            task_type=TaskType.GENERATE_IMAGE,
+                            content_id=content_id,
+                        )
+                        logger.info("Enqueued image generation for content %s", content_id)
 
                     return True
 
@@ -624,6 +668,12 @@ class SequentialTaskProcessor:
                 if not content:
                     logger.error("Content %s not found for image generation", content_id)
                     return False
+                if content.content_type == ContentType.NEWS.value:
+                    logger.info(
+                        "Skipping AI image generation for news content %s",
+                        content_id,
+                    )
+                    return True
 
                 # Convert to domain model
                 from app.domain.converters import content_to_domain
@@ -678,6 +728,79 @@ class SequentialTaskProcessor:
                 extra={
                     "component": "image_generation",
                     "operation": "generate_image_task",
+                    "item_id": content_id,
+                },
+            )
+            return False
+
+    def _process_generate_thumbnail_task(self, task_data: dict[str, Any]) -> bool:
+        """Generate a screenshot-based thumbnail for news content."""
+        try:
+            content_id = task_data.get("content_id") or task_data.get("payload", {}).get(
+                "content_id"
+            )
+            if not content_id:
+                logger.error("No content_id provided for thumbnail generation task")
+                return False
+
+            content_id = int(content_id)
+            logger.info("Generating thumbnail for content %s", content_id)
+
+            from app.services.news_thumbnail_screenshot import (
+                NewsThumbnailJob,
+                generate_news_thumbnail,
+            )
+
+            result = generate_news_thumbnail(NewsThumbnailJob(content_id=content_id))
+
+            if result.success:
+                if result.error_message and "Skipped" in result.error_message:
+                    logger.info(
+                        "Thumbnail generation skipped for %s: %s",
+                        content_id,
+                        result.error_message,
+                    )
+                    return True
+                with get_db() as db:
+                    content = db.query(Content).filter(Content.id == content_id).first()
+                    if not content:
+                        logger.error(
+                            "Content %s not found for thumbnail metadata update",
+                            content_id,
+                        )
+                        return False
+                    metadata = dict(content.content_metadata or {})
+                    metadata["image_generated_at"] = datetime.now(UTC).isoformat()
+                    content.content_metadata = metadata
+                    db.commit()
+
+                logger.info(
+                    "Successfully generated thumbnail for content %s at %s",
+                    content_id,
+                    result.image_path,
+                )
+                return True
+
+            logger.error(
+                "Thumbnail generation failed for %s: %s",
+                content_id,
+                result.error_message,
+                extra={
+                    "component": "thumbnail_generation",
+                    "operation": "generate_thumbnail",
+                    "item_id": content_id,
+                },
+            )
+            return False
+
+        except Exception as e:
+            logger.exception(
+                "Thumbnail generation error for content %s: %s",
+                content_id,
+                e,
+                extra={
+                    "component": "thumbnail_generation",
+                    "operation": "generate_thumbnail_task",
                     "item_id": content_id,
                 },
             )

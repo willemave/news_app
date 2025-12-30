@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
+from app.core.logging import get_logger
 from app.core.timing import timed
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentData, ContentStatus, ContentType
@@ -17,6 +18,8 @@ from app.models.schema import Content, ContentReadStatus, ContentStatusEntry
 from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse, UnreadCountsResponse
 from app.utils.pagination import PaginationCursor
+
+logger = get_logger(__name__)
 
 # Image storage paths
 IMAGES_DIR = Path("static/images/content")
@@ -88,30 +91,35 @@ router = APIRouter()
 async def list_contents(
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-    content_type: list[str] | None = Query(
-        None,
-        description=(
-            "Filter by content type(s). Can be specified multiple times "
-            "for multiple types (article/podcast/news)"
+    content_type: Annotated[
+        list[str] | None,
+        Query(
+            description=(
+                "Filter by content type(s). Can be specified multiple times "
+                "for multiple types (article/podcast/news)"
+            ),
         ),
-    ),
-    date: str | None = Query(
-        None,
-        description="Filter by date (YYYY-MM-DD format)",
-        regex="^\\d{4}-\\d{2}-\\d{2}$",
-    ),
-    read_filter: str = Query(
-        "all",
-        description="Filter by read status (all/read/unread)",
-        regex="^(all|read|unread)$",
-    ),
-    cursor: str | None = Query(None, description="Pagination cursor for next page"),
-    limit: int = Query(
-        25,
-        ge=1,
-        le=100,
-        description="Number of items per page (max 100)",
-    ),
+    ] = None,
+    date: Annotated[
+        str | None,
+        Query(description="Filter by date (YYYY-MM-DD format)", regex="^\\d{4}-\\d{2}-\\d{2}$"),
+    ] = None,
+    read_filter: Annotated[
+        str,
+        Query(
+            description="Filter by read status (all/read/unread)",
+            regex="^(all|read|unread)$",
+        ),
+    ] = "all",
+    cursor: Annotated[str | None, Query(description="Pagination cursor for next page")] = None,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=100,
+            description="Number of items per page (max 100)",
+        ),
+    ] = 25,
 ) -> ContentListResponse:
     """List content with optional filters and cursor-based pagination."""
     from app.services import favorites, read_status
@@ -321,7 +329,17 @@ async def list_contents(
             )
         except Exception as e:
             # Skip content with invalid metadata
-            print(f"Skipping content {c.id} due to validation error: {e}")
+            logger.warning(
+                "Skipping content %s due to validation error: %s",
+                c.id,
+                e,
+                extra={
+                    "component": "content_list",
+                    "operation": "build_content_list",
+                    "item_id": c.id,
+                    "context_data": {"content_id": c.id},
+                },
+            )
             continue
 
     # Get content types for filter
@@ -535,7 +553,17 @@ async def search_contents(
                 )
             )
         except Exception as e:
-            print(f"Skipping content {c.id} due to validation error: {e}")
+            logger.warning(
+                "Skipping content %s due to validation error: %s",
+                c.id,
+                e,
+                extra={
+                    "component": "content_list",
+                    "operation": "search_content",
+                    "item_id": c.id,
+                    "context_data": {"content_id": c.id},
+                },
+            )
             continue
 
     # Generate next cursor if there are more results

@@ -16,10 +16,6 @@ import yaml
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.core.db import get_db, init_db
-from app.models.schema import UserScraperConfig
-from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
-
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -45,6 +41,10 @@ def import_feeds_for_user(user_id: int, clear_existing: bool = False) -> dict[st
     Returns:
         Dict with counts by scraper type
     """
+    from app.core.db import get_db
+    from app.models.schema import UserScraperConfig
+    from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
+
     config_dir = project_root / "config"
     stats = {
         "substack": 0,
@@ -179,7 +179,11 @@ def import_feeds_for_user(user_id: int, clear_existing: bool = False) -> dict[st
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Import feeds from config files into UserScraperConfig")
+    from app.core.db import get_db, init_db
+
+    parser = argparse.ArgumentParser(
+        description="Import feeds from config files into UserScraperConfig"
+    )
     parser.add_argument(
         "--user-id",
         type=int,
@@ -230,7 +234,8 @@ def main():
     logger.info(f"Atom feeds:      {total_stats['atom']}")
     logger.info(f"Skipped:         {total_stats['skipped']}")
     logger.info(f"Errors:          {total_stats['errors']}")
-    logger.info(f"Total imported:  {total_stats['substack'] + total_stats['podcast_rss'] + total_stats['atom']}")
+    total_imported = total_stats["substack"] + total_stats["podcast_rss"] + total_stats["atom"]
+    logger.info(f"Total imported:  {total_imported}")
 
     return 0 if total_stats["errors"] == 0 else 1
 

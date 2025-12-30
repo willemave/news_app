@@ -1,5 +1,4 @@
 import json
-import logging
 import re
 from datetime import datetime
 from typing import Any
@@ -7,11 +6,12 @@ from typing import Any
 import httpx
 import yt_dlp
 
+from app.core.logging import get_logger
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 from app.scraping.youtube_unified import YouTubeClientConfig, load_youtube_client_config
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class _YtDlpLogger:

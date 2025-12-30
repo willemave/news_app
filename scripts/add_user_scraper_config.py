@@ -10,14 +10,14 @@ Usage:
 """
 
 import argparse
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.db import get_db, init_db
 from app.core.logging import get_logger, setup_logging
-from app.models.schema import User, UserScraperConfig
+from app.models.schema import User
 from app.services.scraper_configs import (
     CreateUserScraperConfig,
     create_user_scraper_config,
@@ -77,7 +77,7 @@ def add_config(
 
             new_config = create_user_scraper_config(db, user_id, config_data)
 
-            logger.info(f"\n✓ Successfully added scraper config:")
+            logger.info("\n✓ Successfully added scraper config:")
             logger.info(f"  ID: {new_config.id}")
             logger.info(f"  User: {user.email}")
             logger.info(f"  Type: {new_config.scraper_type}")
@@ -85,9 +85,9 @@ def add_config(
             logger.info(f"  URL: {new_config.feed_url}")
             logger.info(f"  Limit: {limit}")
 
-            logger.info(f"\nNext steps:")
+            logger.info("\nNext steps:")
             logger.info(f"  1. Run: ./scripts/bootstrap_feeds.sh --user-only --users {user_id}")
-            logger.info(f"  2. Run: ./scripts/start_workers.sh")
+            logger.info("  2. Run: ./scripts/start_workers.sh")
 
             return True
 

@@ -1,19 +1,20 @@
 """Repository for content favorites operations."""
 
-import logging
 from datetime import datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.models.schema import ChatMessage, ChatSession, Content, ContentFavorites
+from app.services.llm_models import DEFAULT_MODEL, DEFAULT_PROVIDER
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Default LLM settings for new favorite sessions
-DEFAULT_LLM_PROVIDER = "anthropic"
-DEFAULT_LLM_MODEL = "anthropic:claude-sonnet-4-20250514"
+DEFAULT_LLM_PROVIDER = DEFAULT_PROVIDER
+DEFAULT_LLM_MODEL = DEFAULT_MODEL
 
 
 def toggle_favorite(

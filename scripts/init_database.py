@@ -100,7 +100,9 @@ def create_schema(database_url: str) -> bool:
             # Check for our main tables in SQLite
             result = conn.execute(
                 text(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('contents', 'processing_tasks')"
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' "
+                    "AND name IN ('contents', 'processing_tasks')"
                 )
             )
 

@@ -24,6 +24,7 @@ class TaskType(str, Enum):
     TRANSCRIBE = "transcribe"
     SUMMARIZE = "summarize"
     GENERATE_IMAGE = "generate_image"
+    GENERATE_THUMBNAIL = "generate_thumbnail"
 
 
 class TaskStatus(str, Enum):

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -34,14 +35,18 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.UniqueConstraint("user_id", "scraper_type", "feed_url", name="uq_user_scraper_feed"),
     )
-    op.create_index("idx_user_scraper_user_type", "user_scraper_configs", ["user_id", "scraper_type"])
+    op.create_index(
+        "idx_user_scraper_user_type", "user_scraper_configs", ["user_id", "scraper_type"]
+    )
 
     op.create_table(
         "content_status",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("user_id", sa.Integer(), nullable=False, index=True),
         sa.Column("content_id", sa.Integer(), nullable=False, index=True),
-        sa.Column("status", sa.String(length=20), nullable=False, index=True, server_default="inbox"),
+        sa.Column(
+            "status", sa.String(length=20), nullable=False, index=True, server_default="inbox"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(),

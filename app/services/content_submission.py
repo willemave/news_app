@@ -41,7 +41,9 @@ def normalize_url(raw_url: str) -> str:
     return str(URL_ADAPTER.validate_python(raw_url)).strip()
 
 
-def _ensure_analyze_url_task(db: Session, content_id: int) -> int:
+def _ensure_analyze_url_task(
+    db: Session, content_id: int, instruction: str | None = None
+) -> int:
     """Create an ANALYZE_URL task if one is not already pending/processing.
 
     Args:
@@ -66,10 +68,14 @@ def _ensure_analyze_url_task(db: Session, content_id: int) -> int:
     if existing_task:
         return existing_task.id
 
+    payload: dict[str, object] = {"content_id": content_id}
+    if instruction and instruction.strip():
+        payload["instruction"] = instruction.strip()
+
     task = ProcessingTask(
         task_type=TaskType.ANALYZE_URL.value,
         content_id=content_id,
-        payload={"content_id": content_id},
+        payload=payload,
         status=TaskStatus.PENDING.value,
     )
     db.add(task)
@@ -98,6 +104,8 @@ def submit_user_content(
     normalized_url = normalize_url(str(payload.url))
 
     # Check if content already exists (by URL only, regardless of type)
+    instruction = payload.instruction.strip() if payload.instruction else None
+
     existing = db.query(Content).filter(Content.url == normalized_url).first()
     if existing:
         status_created = ensure_inbox_status(
@@ -105,7 +113,7 @@ def submit_user_content(
         )
         if status_created:
             db.commit()
-        task_id = _ensure_analyze_url_task(db, existing.id)
+        task_id = _ensure_analyze_url_task(db, existing.id, instruction=instruction)
         return ContentSubmissionResponse(
             content_id=existing.id,
             content_type=ContentType(existing.content_type),
@@ -147,7 +155,7 @@ def submit_user_content(
         existing = db.query(Content).filter(Content.url == normalized_url).first()
         if not existing:
             raise
-        task_id = _ensure_analyze_url_task(db, existing.id)
+        task_id = _ensure_analyze_url_task(db, existing.id, instruction=instruction)
         return ContentSubmissionResponse(
             content_id=existing.id,
             content_type=ContentType(existing.content_type),
@@ -165,7 +173,7 @@ def submit_user_content(
     )
     if status_created:
         db.commit()
-    task_id = _ensure_analyze_url_task(db, new_content.id)
+    task_id = _ensure_analyze_url_task(db, new_content.id, instruction=instruction)
 
     return ContentSubmissionResponse(
         content_id=new_content.id,

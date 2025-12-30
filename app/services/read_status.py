@@ -1,16 +1,25 @@
 """Repository for content read status operations."""
 
-import logging
 from collections.abc import Iterable
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.models.schema import ContentReadStatus
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+
+def _read_status_extra(operation: str, **context_data: Any) -> dict[str, Any]:
+    return {
+        "component": "read_status",
+        "operation": operation,
+        "context_data": {key: value for key, value in context_data.items() if value is not None},
+    }
 
 
 def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentReadStatus | None:
@@ -28,7 +37,7 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
         "[READ_STATUS] Marking content_id=%s as read for user_id=%s",
         content_id,
         user_id,
-        extra={"content_id": content_id, "user_id": user_id},
+        extra=_read_status_extra("mark_content_as_read", content_id=content_id, user_id=user_id),
     )
     try:
         existing = db.execute(
@@ -40,7 +49,9 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
         if existing:
             logger.debug(
                 "[READ_STATUS] Content already marked as read; refreshing timestamp",
-                extra={"content_id": content_id, "user_id": user_id},
+                extra=_read_status_extra(
+                    "mark_content_as_read", content_id=content_id, user_id=user_id
+                ),
             )
             existing.read_at = datetime.utcnow()
             db.commit()
@@ -57,13 +68,23 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
         logger.info(
             "[READ_STATUS] Created read status record with id=%s",
             read_status.id,
-            extra={"content_id": content_id, "user_id": user_id, "read_status_id": read_status.id},
+            extra=_read_status_extra(
+                "mark_content_as_read",
+                content_id=content_id,
+                user_id=user_id,
+                read_status_id=read_status.id,
+            ),
         )
         return read_status
     except IntegrityError as exc:
         logger.warning(
             "[READ_STATUS] Integrity error while marking read",
-            extra={"content_id": content_id, "user_id": user_id, "error": str(exc)},
+            extra=_read_status_extra(
+                "mark_content_as_read",
+                content_id=content_id,
+                user_id=user_id,
+                error=str(exc),
+            ),
             exc_info=True,
         )
         db.rollback()
@@ -71,7 +92,12 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "[READ_STATUS] Unexpected error while marking read",
-            extra={"content_id": content_id, "user_id": user_id, "error": str(exc)},
+            extra=_read_status_extra(
+                "mark_content_as_read",
+                content_id=content_id,
+                user_id=user_id,
+                error=str(exc),
+            ),
         )
         db.rollback()
         return None
@@ -101,7 +127,11 @@ def mark_contents_as_read(
         "[READ_STATUS] Bulk marking %s content items as read for user_id=%s",
         len(unique_ids),
         user_id,
-        extra={"content_ids": sorted(unique_ids), "user_id": user_id},
+        extra=_read_status_extra(
+            "mark_contents_as_read",
+            content_ids=sorted(unique_ids),
+            user_id=user_id,
+        ),
     )
 
     timestamp = datetime.utcnow()
@@ -140,7 +170,7 @@ def mark_contents_as_read(
     except IntegrityError as exc:
         logger.warning(
             "[READ_STATUS] Integrity error during bulk mark; retrying individually",
-            extra={"user_id": user_id, "error": str(exc)},
+            extra=_read_status_extra("mark_contents_as_read", user_id=user_id, error=str(exc)),
             exc_info=True,
         )
         db.rollback()
@@ -158,7 +188,7 @@ def mark_contents_as_read(
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "[READ_STATUS] Unexpected error during bulk mark",
-            extra={"user_id": user_id, "error": str(exc)},
+            extra=_read_status_extra("mark_contents_as_read", user_id=user_id, error=str(exc)),
         )
         db.rollback()
         return 0, sorted(unique_ids)
@@ -174,7 +204,11 @@ def get_read_content_ids(db: Session, user_id: int) -> list[int]:
     Returns:
         List of content IDs read by user
     """
-    logger.debug("[READ_STATUS] Fetching read content IDs for user_id=%s", user_id)
+    logger.debug(
+        "[READ_STATUS] Fetching read content IDs for user_id=%s",
+        user_id,
+        extra=_read_status_extra("get_read_content_ids", user_id=user_id),
+    )
     result = (
         db.execute(
             select(ContentReadStatus.content_id)
@@ -189,7 +223,11 @@ def get_read_content_ids(db: Session, user_id: int) -> list[int]:
         "[READ_STATUS] Found %s read content IDs for user_id=%s",
         len(content_ids),
         user_id,
-        extra={"read_count": len(content_ids), "user_id": user_id},
+        extra=_read_status_extra(
+            "get_read_content_ids",
+            read_count=len(content_ids),
+            user_id=user_id,
+        ),
     )
     return content_ids
 

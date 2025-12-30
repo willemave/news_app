@@ -9,18 +9,21 @@ import re
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from openai import APIConnectionError, APIError, OpenAI, RateLimitError
 from pydantic import BaseModel, Field
 
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.logging import get_logger
-from app.core.settings import get_settings
+from app.services.llm_agents import get_basic_agent
 
 logger = get_logger(__name__)
 
 # Configuration
-FEED_CLASSIFICATION_MODEL = "gpt-4o-mini"
+FEED_CLASSIFICATION_MODEL = "openai:gpt-4o-mini"
 FEED_CLASSIFICATION_TIMEOUT = 10.0
+FEED_CLASSIFICATION_SYSTEM_PROMPT = (
+    "You classify RSS/Atom feeds by inspecting the feed URL and page metadata. "
+    "Return structured output that matches the schema."
+)
 
 
 class FeedClassificationResult(BaseModel):
@@ -124,53 +127,17 @@ def classify_feed_type_with_llm(
     Returns:
         FeedClassificationResult on success, None on failure
     """
-    settings = get_settings()
-    if not settings.openai_api_key:
-        logger.warning(
-            "OpenAI API key not configured, skipping feed classification",
-            extra={
-                "component": "feed_detection",
-                "operation": "classify_feed_type",
-            },
-        )
-        return None
-
     try:
-        client = OpenAI(
-            api_key=settings.openai_api_key,
-            timeout=FEED_CLASSIFICATION_TIMEOUT,
-        )
-
         prompt = _build_classification_prompt(feed_url, page_url, page_title)
-        schema = FeedClassificationResult.model_json_schema()
-
-        response = client.chat.completions.create(
-            model=FEED_CLASSIFICATION_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "feed_classification",
-                    "schema": schema,
-                    "strict": True,
-                },
-            },
-            max_tokens=256,
+        agent = get_basic_agent(
+            model_spec=FEED_CLASSIFICATION_MODEL,
+            output_type=FeedClassificationResult,
+            system_prompt=FEED_CLASSIFICATION_SYSTEM_PROMPT,
         )
-
-        output_text = response.choices[0].message.content
-        if not output_text:
-            logger.warning(
-                "No output from feed classification",
-                extra={
-                    "component": "feed_detection",
-                    "operation": "classify_feed_type",
-                    "context_data": {"feed_url": feed_url, "page_url": page_url},
-                },
-            )
-            return None
-
-        result = FeedClassificationResult.model_validate_json(output_text)
+        result = agent.run_sync(
+            prompt,
+            model_settings={"timeout": FEED_CLASSIFICATION_TIMEOUT},
+        ).output
 
         logger.info(
             "Feed classified: type=%s, confidence=%.2f",
@@ -189,9 +156,9 @@ def classify_feed_type_with_llm(
         )
         return result
 
-    except (RateLimitError, APIConnectionError, APIError) as e:
+    except ValueError as e:
         logger.warning(
-            "API error during feed classification: %s",
+            "LLM configuration error during feed classification: %s",
             e,
             extra={
                 "component": "feed_detection",
@@ -201,7 +168,7 @@ def classify_feed_type_with_llm(
         )
         return None
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.exception(
             "Unexpected error during feed classification: %s",
             e,

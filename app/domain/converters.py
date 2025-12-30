@@ -4,8 +4,11 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
+from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
+
+logger = get_logger(__name__)
 
 
 def normalize_news_metadata(
@@ -120,9 +123,19 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             publication_date=db_content.publication_date,
         )
     except Exception as e:
-        # Log the error with details
-        print(f"Error converting content {db_content.id}: {e}")
-        print(f"Metadata: {db_content.content_metadata}")
+        logger.exception(
+            "Error converting content %s: %s",
+            db_content.id,
+            e,
+            extra={
+                "component": "content_converter",
+                "operation": "content_to_domain",
+                "context_data": {
+                    "content_id": db_content.id,
+                    "metadata": db_content.content_metadata,
+                },
+            },
+        )
         raise
 
 

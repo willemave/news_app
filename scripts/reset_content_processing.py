@@ -247,7 +247,8 @@ def main(argv: list[str] | None = None) -> None:
         print("\nCancellation complete. No new tasks were enqueued.")
     else:
         print(
-            "\nReset complete! You can now run 'python run_workers.py' to re-process targeted content."
+            "\nReset complete! You can now run 'python run_workers.py' "
+            "to re-process targeted content."
         )
 
 

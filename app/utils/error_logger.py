@@ -5,7 +5,6 @@ For error logging, use logger.error() or logger.exception() directly with
 structured extra fields. This module provides scraper-specific utilities.
 """
 
-import json
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -45,7 +44,16 @@ def log_scraper_event(
     }
     payload.update({k: v for k, v in fields.items() if v is not None})
 
-    logger.log(level, "SCRAPER_EVENT %s", json.dumps(payload, ensure_ascii=False))
+    logger.log(
+        level,
+        "Scraper event %s",
+        event,
+        extra={
+            "component": "scraper",
+            "operation": event,
+            "context_data": payload,
+        },
+    )
 
     if metric:
         SCRAPER_METRICS[service][metric] += 1

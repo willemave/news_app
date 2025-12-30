@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import AliasChoices, BaseModel, Field, HttpUrl
 
 from app.constants import TWEET_SUGGESTION_MODEL
 from app.models.metadata import ContentStatus, ContentType
@@ -484,6 +484,12 @@ class SubmitContentRequest(BaseModel):
     platform: str | None = Field(
         None, max_length=50, description="Optional platform hint (e.g., spotify, substack)"
     )
+    instruction: str | None = Field(
+        None,
+        max_length=4000,
+        validation_alias=AliasChoices("instruction", "note"),
+        description="Optional instruction for analyzing the submitted URL",
+    )
 
     class Config:
         json_schema_extra = {
@@ -492,6 +498,7 @@ class SubmitContentRequest(BaseModel):
                 "content_type": "podcast",
                 "title": "Great interview about AI",
                 "platform": "spotify",
+                "instruction": "Add all links mentioned in the episode page",
             }
         }
 

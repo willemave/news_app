@@ -13,7 +13,8 @@ Use this to:
 For scraping new content, use: python scripts/run_scrapers.py
 
 Usage:
-    python scripts/bootstrap_user_feeds.py [--users USER_ID [USER_ID ...]] [--days N] [--content-types TYPE [TYPE ...]]
+    python scripts/bootstrap_user_feeds.py [--users USER_ID [USER_ID ...]] \
+        [--days N] [--content-types TYPE [TYPE ...]]
 """
 
 import argparse
@@ -23,8 +24,6 @@ from datetime import datetime, timedelta
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from sqlalchemy import func
 
 from app.core.db import get_db, init_db
 from app.core.logging import get_logger, setup_logging
@@ -82,10 +81,14 @@ def get_existing_content_ids(
         query = query.filter(Content.status.in_(statuses))
     else:
         # Default: only completed content (skip failed/processing)
-        query = query.filter(Content.status.in_([
-            ContentStatus.COMPLETED.value,
-            ContentStatus.NEW.value,
-        ]))
+        query = query.filter(
+            Content.status.in_(
+                [
+                    ContentStatus.COMPLETED.value,
+                    ContentStatus.NEW.value,
+                ]
+            )
+        )
 
     content_ids = [row[0] for row in query.all()]
     logger.info(f"Found {len(content_ids)} existing content items")
@@ -227,11 +230,7 @@ def show_final_statistics(user_ids: list[int] | None = None):
         # Content stats by type
         logger.info("\nContent by type:")
         for content_type in ContentType:
-            count = (
-                db.query(Content)
-                .filter(Content.content_type == content_type.value)
-                .count()
-            )
+            count = db.query(Content).filter(Content.content_type == content_type.value).count()
             logger.info(f"  {content_type.value}s: {count}")
 
         # User inbox stats
@@ -243,10 +242,7 @@ def show_final_statistics(user_ids: list[int] | None = None):
         else:
             # Show all users with content
             target_user_ids = [
-                row[0]
-                for row in db.query(ContentStatusEntry.user_id)
-                .distinct()
-                .all()
+                row[0] for row in db.query(ContentStatusEntry.user_id).distinct().all()
             ]
 
         for user_id in target_user_ids:

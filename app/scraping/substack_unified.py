@@ -324,4 +324,12 @@ def run_substack_scraper():
 
 if __name__ == "__main__":
     count = run_substack_scraper()
-    print(f"Substack scraper processed {count} items")
+    logger.info(
+        "Substack scraper processed %s items",
+        count,
+        extra={
+            "component": "substack_scraper",
+            "operation": "run",
+            "context_data": {"processed_count": count},
+        },
+    )

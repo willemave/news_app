@@ -137,7 +137,8 @@ def check_url_in_db(
                  FROM processing_tasks
                  WHERE content_id = c.id) as processing_tasks
             FROM contents c
-            WHERE SUBSTR(c.url, 1, INSTR(c.url || '?', '?') - 1) = SUBSTR(? || '?', 1, INSTR(? || '?', '?') - 1)
+            WHERE SUBSTR(c.url, 1, INSTR(c.url || '?', '?') - 1)
+                = SUBSTR(? || '?', 1, INSTR(? || '?', '?') - 1)
             """,
             (normalized_url, normalized_url),
         )

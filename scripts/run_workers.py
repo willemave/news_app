@@ -89,7 +89,10 @@ def main():
                     pending = sum(stats.get("pending_by_type", {}).values())
                     by_status = stats.get("by_status", {})
                     logger.info(
-                        f"Queue stats - Pending: {pending}, Completed: {by_status.get('completed', 0)}, Failed: {by_status.get('failed', 0)}"
+                        "Queue stats - Pending: %s, Completed: %s, Failed: %s",
+                        pending,
+                        by_status.get("completed", 0),
+                        by_status.get("failed", 0),
                     )
 
         stats_thread = threading.Thread(target=show_stats, daemon=True)

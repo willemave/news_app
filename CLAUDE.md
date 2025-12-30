@@ -135,7 +135,6 @@ bd show <id>                          # Detailed issue view
 bd create --title="..." --type=task   # New issue (task|bug|feature)
 bd update <id> --status=in_progress   # Claim work
 bd close <id>                         # Mark complete
-bd sync                               # Sync with git remote
 ```
 
 ### Dependencies (for multi-step plans)
@@ -160,9 +159,7 @@ ruff check . && ruff format .         # Lint and format Python changes
 git status                            # Check changes
 git diff                              # Review all changes before committing
 git add <files>                       # Stage code
-bd sync                               # Commit beads
 git commit -m "..."                   # Commit code
-bd sync                               # Sync any new beads
 ```
 
 **Important**: After closing beads tasks and before committing, always show `git diff` of all changed files to the user for review. This ensures visibility into what was implemented.

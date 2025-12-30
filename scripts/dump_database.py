@@ -306,7 +306,8 @@ def main():
         dump_processing_tasks_table(console)
 
         console.print(
-            "\n[dim]Tip: Use 'python dump_database.py content <id>' or 'python dump_database.py task <id>' for detailed view[/dim]"
+            "\n[dim]Tip: Use 'python dump_database.py content <id>' or "
+            "'python dump_database.py task <id>' for detailed view[/dim]"
         )
 
 

@@ -8,12 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
+from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
 from app.models.schema import Content
 from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse
 from app.utils.pagination import PaginationCursor
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -190,7 +193,17 @@ async def get_favorites(
                 )
             )
         except Exception as e:
-            print(f"Skipping content {c.id} due to validation error: {e}")
+            logger.warning(
+                "Skipping content %s due to validation error: %s",
+                c.id,
+                e,
+                extra={
+                    "component": "favorites",
+                    "operation": "list_favorites",
+                    "item_id": c.id,
+                    "context_data": {"content_id": c.id},
+                },
+            )
             continue
 
     # Get content types for filter

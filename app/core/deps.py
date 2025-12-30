@@ -1,5 +1,6 @@
 """FastAPI dependencies for authentication and authorization."""
 
+from typing import Annotated
 from urllib.parse import quote
 
 import jwt
@@ -13,10 +14,12 @@ from app.models.user import User
 
 # HTTP Bearer token scheme for JWT authentication
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> User:
     """
     Get current authenticated user from JWT token.
@@ -63,8 +66,8 @@ def get_current_user(
 
 
 def get_optional_user(
-    db: Session = Depends(get_db),
-    credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
+    db: Annotated[Session, Depends(get_db)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(optional_security)],
 ) -> User | None:
     """
     Get current user if authenticated, None otherwise.
@@ -121,7 +124,7 @@ def get_or_create_admin_user(db: Session) -> User:
     return admin
 
 
-def require_admin(request: Request, db: Session = Depends(get_db)) -> User:
+def require_admin(request: Request, db: Annotated[Session, Depends(get_db)]) -> User:
     """
     Require admin authentication via session cookie.
 

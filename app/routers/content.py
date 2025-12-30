@@ -9,12 +9,15 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import require_admin
+from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.models.user import User
 from app.services import favorites, read_status
 from app.templates import templates
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -28,12 +31,43 @@ def get_or_create_session_id(
     session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE_NAME)] = None,
 ) -> str:
     """Get existing session ID or create a new one."""
-    print(f"[SESSION] Request path: {request.url.path}")
-    print(f"[SESSION] Request cookies: {request.cookies}")
-    print(f"[SESSION] Incoming session_id from cookie: {session_id}")
+    logger.debug(
+        "[SESSION] Request path: %s",
+        request.url.path,
+        extra={
+            "component": "session",
+            "operation": "get_or_create_session_id",
+            "context_data": {"path": request.url.path},
+        },
+    )
+    logger.debug(
+        "[SESSION] Request cookies: %s",
+        request.cookies,
+        extra={
+            "component": "session",
+            "operation": "get_or_create_session_id",
+            "context_data": {"cookies": request.cookies},
+        },
+    )
+    logger.debug(
+        "[SESSION] Incoming session_id from cookie: %s",
+        session_id,
+        extra={
+            "component": "session",
+            "operation": "get_or_create_session_id",
+            "context_data": {"session_id": session_id},
+        },
+    )
     if not session_id:
         session_id = secrets.token_urlsafe(32)
-        print(f"[SESSION] Creating new session_id: {session_id}")
+        logger.info(
+            "[SESSION] Creating new session_id",
+            extra={
+                "component": "session",
+                "operation": "get_or_create_session_id",
+                "context_data": {"session_id": session_id},
+            },
+        )
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session_id,
@@ -43,9 +77,25 @@ def get_or_create_session_id(
             secure=False,  # Set to True in production with HTTPS
             path="/",
         )
-        print(f"[SESSION] Cookie set with key={SESSION_COOKIE_NAME}, value={session_id}")
+        logger.debug(
+            "[SESSION] Cookie set with key=%s",
+            SESSION_COOKIE_NAME,
+            extra={
+                "component": "session",
+                "operation": "get_or_create_session_id",
+                "context_data": {"session_id": session_id},
+            },
+        )
     else:
-        print(f"[SESSION] Using existing session_id: {session_id}")
+        logger.debug(
+            "[SESSION] Using existing session_id: %s",
+            session_id,
+            extra={
+                "component": "session",
+                "operation": "get_or_create_session_id",
+                "context_data": {"session_id": session_id},
+            },
+        )
     return session_id
 
 
@@ -112,9 +162,24 @@ async def list_content(
     contents = query.order_by(Content.created_at.desc()).all()
 
     # Get read content IDs
-    print("DEBUG: Getting read content")
+    logger.debug(
+        "Getting read content",
+        extra={
+            "component": "content",
+            "operation": "list_content",
+            "context_data": {"user_id": admin_user.id},
+        },
+    )
     read_content_ids = read_status.get_read_content_ids(db, admin_user.id)
-    print(f"DEBUG: Found {len(read_content_ids)} read items: {read_content_ids}")
+    logger.debug(
+        "Found %s read items",
+        len(read_content_ids),
+        extra={
+            "component": "content",
+            "operation": "list_content",
+            "context_data": {"read_count": len(read_content_ids), "user_id": admin_user.id},
+        },
+    )
 
     # Get favorite content IDs
     favorite_content_ids = favorites.get_favorite_content_ids(db, admin_user.id)
@@ -134,7 +199,17 @@ async def list_content(
             domain_contents.append(domain_content)
         except Exception as e:
             # Skip content with invalid metadata
-            print(f"Skipping content {c.id} due to validation error: {e}")
+            logger.warning(
+                "Skipping content %s due to validation error: %s",
+                c.id,
+                e,
+                extra={
+                    "component": "content",
+                    "operation": "list_content",
+                    "item_id": c.id,
+                    "context_data": {"content_id": c.id},
+                },
+            )
             continue
 
     # Get content types for filter
@@ -170,11 +245,42 @@ async def content_detail(
         raise HTTPException(status_code=404, detail="Content not found")
 
     # Mark content as read
-    print(f"DEBUG: Marking content {content_id} as read")
+    logger.debug(
+        "Marking content %s as read",
+        content_id,
+        extra={
+            "component": "content",
+            "operation": "mark_content_read",
+            "item_id": content_id,
+            "context_data": {"content_id": content_id, "user_id": admin_user.id},
+        },
+    )
     result = read_status.mark_content_as_read(db, content_id, admin_user.id)
-    print(f"DEBUG: Mark as read result: {result}")
+    logger.debug(
+        "Mark as read result: %s",
+        result,
+        extra={
+            "component": "content",
+            "operation": "mark_content_read",
+            "item_id": content_id,
+            "context_data": {"content_id": content_id, "user_id": admin_user.id},
+        },
+    )
     if result:
-        print(f"DEBUG: Successfully marked content {content_id} as read at {result.read_at}")
+        logger.info(
+            "Successfully marked content %s as read",
+            content_id,
+            extra={
+                "component": "content",
+                "operation": "mark_content_read",
+                "item_id": content_id,
+                "context_data": {
+                    "content_id": content_id,
+                    "user_id": admin_user.id,
+                    "read_at": result.read_at,
+                },
+            },
+        )
 
     # Convert to domain object
     domain_content = content_to_domain(content)
@@ -233,7 +339,17 @@ async def favorites_list(
             domain_content = content_to_domain(c)
             domain_contents.append(domain_content)
         except Exception as e:
-            print(f"Skipping content {c.id} due to validation error: {e}")
+            logger.warning(
+                "Skipping content %s due to validation error: %s",
+                c.id,
+                e,
+                extra={
+                    "component": "content",
+                    "operation": "list_content_mobile",
+                    "item_id": c.id,
+                    "context_data": {"content_id": c.id},
+                },
+            )
             continue
 
     # Get content types for filter

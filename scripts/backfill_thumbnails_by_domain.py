@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Script to backfill screenshot thumbnails for news content.
+"""Backfill screenshot thumbnails for news items matching a domain.
 
 Usage:
-    python scripts/backfill_thumbnails.py --limit 50 --dry-run
-    python scripts/backfill_thumbnails.py --limit 50 --days-back 14
-    python scripts/backfill_thumbnails.py --include-existing  # Regenerate thumbnails
+    python scripts/backfill_thumbnails_by_domain.py --domain example.com --dry-run
+    python scripts/backfill_thumbnails_by_domain.py --domain example.com --include-existing
+    python scripts/backfill_thumbnails_by_domain.py --domain example.com --days-back 30
 """
 
 import argparse
@@ -27,53 +27,77 @@ from app.services.queue import QueueService, TaskType  # noqa: E402
 setup_logging()
 logger = get_logger(__name__)
 
-# Thumbnail storage path (matches image_generation.py)
-THUMBNAILS_DIR = Path("static/images/news_thumbnails")
+NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
+
+
+def _matches_domain(url: str | None, domain: str) -> bool:
+    if not url:
+        return False
+    return domain.lower() in url.lower()
+
+
+def _extract_candidate_urls(metadata: dict) -> list[str]:
+    urls: list[str] = []
+    article_section = metadata.get("article")
+    if isinstance(article_section, dict):
+        url = article_section.get("url")
+        if isinstance(url, str):
+            urls.append(url)
+
+    summary_section = metadata.get("summary")
+    if isinstance(summary_section, dict):
+        final_url = summary_section.get("final_url_after_redirects")
+        if isinstance(final_url, str):
+            urls.append(final_url)
+
+    return urls
 
 
 def backfill_thumbnails(
+    domain: str,
     dry_run: bool = False,
     limit: int | None = None,
-    days_back: float = 7,
+    days_back: float | None = None,
     skip_existing: bool = True,
 ) -> None:
-    """Enqueue thumbnail generation tasks for news content.
+    """Enqueue thumbnail generation tasks for news content matching a domain.
 
     Args:
-        dry_run: Show what would be enqueued without making changes
-        limit: Maximum number of items to enqueue
-        days_back: Number of days to look back
-        skip_existing: Skip content that already has generated thumbnails
+        domain: Domain substring to match in URLs.
+        dry_run: Show what would be enqueued without making changes.
+        limit: Maximum number of items to enqueue.
+        days_back: Number of days to look back. None for no cutoff.
+        skip_existing: Skip content that already has generated thumbnails.
     """
-    cutoff_date = datetime.now(UTC) - timedelta(days=days_back)
+    cutoff_date = None
+    if days_back is not None:
+        cutoff_date = datetime.now(UTC) - timedelta(days=days_back)
 
     print("Starting news thumbnail backfill")
+    print(f"  domain={domain}")
     print(f"  dry_run={dry_run}")
     print(f"  limit={limit}")
     print(f"  days_back={days_back}")
     print(f"  skip_existing={skip_existing}")
     print()
 
-    # Ensure thumbnails directory exists
-    THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
+    NEWS_THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
 
     queue_service = QueueService()
 
     with get_db() as db:
-        # Convert to naive datetime for SQLite compatibility
-        cutoff_date_naive = cutoff_date.replace(tzinfo=None)
-
-        # Process all completed news content (news doesn't use inbox workflow)
         query = db.query(Content).filter(
             and_(
-                Content.created_at >= cutoff_date_naive,
                 Content.status == ContentStatus.COMPLETED.value,
                 Content.content_type == "news",
             )
         )
 
-        query = query.order_by(Content.created_at.desc())
+        if cutoff_date is not None:
+            cutoff_date_naive = cutoff_date.replace(tzinfo=None)
+            query = query.filter(Content.created_at >= cutoff_date_naive)
 
+        query = query.order_by(Content.created_at.desc())
         if limit:
             query = query.limit(limit)
 
@@ -82,16 +106,25 @@ def backfill_thumbnails(
 
         enqueued = 0
         skipped_existing = 0
+        skipped_no_match = 0
         skipped_no_summary = 0
 
         for content in content_items:
-            # Skip if thumbnail already exists
-            if skip_existing and (THUMBNAILS_DIR / f"{content.id}.png").exists():
+            metadata = content.content_metadata or {}
+
+            candidate_urls = [str(content.url)] if content.url else []
+            if isinstance(metadata, dict):
+                candidate_urls.extend(_extract_candidate_urls(metadata))
+
+            if not any(_matches_domain(url, domain) for url in candidate_urls):
+                skipped_no_match += 1
+                continue
+
+            if skip_existing and (NEWS_THUMBNAILS_DIR / f"{content.id}.png").exists():
                 skipped_existing += 1
                 continue
 
-            # Skip if no summary
-            if not (content.content_metadata or {}).get("summary"):
+            if not (metadata or {}).get("summary"):
                 skipped_no_summary += 1
                 continue
 
@@ -117,13 +150,21 @@ def backfill_thumbnails(
             print(f"  Would enqueue for generation: {enqueued}")
         else:
             print(f"  Enqueued for generation: {enqueued}")
+        print(f"  Skipped (no domain match): {skipped_no_match}")
         print(f"  Skipped (already has thumbnail): {skipped_existing}")
         print(f"  Skipped (no summary): {skipped_no_summary}")
 
 
 def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Backfill screenshot thumbnails for news content")
+    parser = argparse.ArgumentParser(
+        description="Backfill screenshot thumbnails for news content matching a domain"
+    )
+    parser.add_argument(
+        "--domain",
+        required=True,
+        help="Domain substring to match (e.g., example.com)",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -137,8 +178,8 @@ def main() -> None:
     parser.add_argument(
         "--days-back",
         type=float,
-        default=7,
-        help="Number of days to look back (default: 7)",
+        default=None,
+        help="Number of days to look back (default: no cutoff)",
     )
     parser.add_argument(
         "--include-existing",
@@ -149,6 +190,7 @@ def main() -> None:
     args = parser.parse_args()
 
     backfill_thumbnails(
+        domain=args.domain,
         dry_run=args.dry_run,
         limit=args.limit,
         days_back=args.days_back,

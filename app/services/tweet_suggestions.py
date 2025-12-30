@@ -14,14 +14,13 @@ from tenacity import RetryCallState, retry, stop_after_attempt, wait_exponential
 
 from app.constants import TWEET_MODELS, TWEET_SUGGESTION_MODEL
 from app.core.logging import get_logger
-from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
 from app.services.llm_agents import get_basic_agent
+from app.services.llm_models import resolve_model
 from app.services.llm_prompts import get_tweet_generation_prompt, length_to_char_range
 from app.utils.json_repair import try_repair_truncated_json
 
 logger = get_logger(__name__)
-settings = get_settings()
 
 # Model for tweet generation
 TWEET_MODEL = TWEET_SUGGESTION_MODEL
@@ -291,6 +290,14 @@ def _validate_and_truncate_tweets(
     return result
 
 
+def _model_hint_from_spec(model_spec: str) -> tuple[str | None, str]:
+    """Split a model spec into provider prefix and hint."""
+    if ":" in model_spec:
+        provider_prefix, hint = model_spec.split(":", 1)
+        return provider_prefix, hint
+    return None, model_spec
+
+
 def _log_generation_failure(retry_state: RetryCallState) -> None:
     """Log final generation failure after all retries."""
     content = retry_state.args[1] if len(retry_state.args) > 1 else None
@@ -328,18 +335,19 @@ class TweetSuggestionService:
     """Service for generating tweet suggestions using various LLM providers."""
 
     def __init__(self):
-        google_api_key = getattr(settings, "google_api_key", None)
-        if not google_api_key:
-            raise ValueError("Google API key is required for tweet suggestions")
-
         self.default_model = TWEET_MODEL
         logger.info("Initialized TweetSuggestionService with default model %s", self.default_model)
 
     def _get_model_for_provider(self, provider: str | None) -> str:
         """Get the model name for a given provider."""
+        model_spec = self.default_model
         if provider and provider in TWEET_MODELS:
-            return TWEET_MODELS[provider]
-        return self.default_model
+            model_spec = TWEET_MODELS[provider]
+
+        default_provider_hint, model_hint = _model_hint_from_spec(model_spec)
+        provider_hint = provider or default_provider_hint
+        _, resolved_spec = resolve_model(provider_hint, model_hint)
+        return resolved_spec
 
     def _build_agent(
         self, system_prompt: str, model_name: str

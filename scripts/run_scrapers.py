@@ -103,7 +103,11 @@ def main():
                             errors=stats.errors,
                         )
                         logger.info(
-                            f"  Scraped: {stats.scraped}, Saved: {stats.saved}, Duplicates: {stats.duplicates}, Errors: {stats.errors}"
+                            "  Scraped: %s, Saved: %s, Duplicates: %s, Errors: %s",
+                            stats.scraped,
+                            stats.saved,
+                            stats.duplicates,
+                            stats.errors,
                         )
                     else:
                         scraper_results[scraper_name] = 0
@@ -142,7 +146,11 @@ def main():
                 for scraper_name, stats in scraper_stats.items():
                     logger.info(f"\n{scraper_name}:")
                     logger.info(
-                        f"  Scraped: {stats.scraped}, Saved: {stats.saved}, Duplicates: {stats.duplicates}, Errors: {stats.errors}"
+                        "  Scraped: %s, Saved: %s, Duplicates: %s, Errors: %s",
+                        stats.scraped,
+                        stats.saved,
+                        stats.duplicates,
+                        stats.errors,
                     )
 
             # Summary

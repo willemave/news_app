@@ -1,6 +1,5 @@
 """Read status management endpoints."""
 
-import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -10,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
+from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentReadStatus
@@ -17,7 +17,7 @@ from app.models.user import User
 from app.routers.api.models import BulkMarkReadRequest, ContentListResponse, ContentSummaryResponse
 from app.utils.pagination import PaginationCursor
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -361,7 +361,17 @@ async def get_recently_read(
             )
         except Exception as e:
             # Skip content with invalid metadata
-            print(f"Skipping content {c.id} due to validation error: {e}")
+            logger.warning(
+                "Skipping content %s due to validation error: %s",
+                c.id,
+                e,
+                extra={
+                    "component": "read_status_api",
+                    "operation": "recently_read_list",
+                    "item_id": c.id,
+                    "context_data": {"content_id": c.id},
+                },
+            )
             continue
 
     # Get content types for filter

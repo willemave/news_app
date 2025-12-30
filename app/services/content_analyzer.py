@@ -13,8 +13,8 @@ from typing import Literal
 import feedparser
 import httpx
 import trafilatura
+from openai import APIConnectionError, APIError, OpenAI, RateLimitError
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
@@ -22,8 +22,9 @@ from app.services.feed_detection import extract_feed_links
 
 logger = get_logger(__name__)
 
-# Configuration - use standard chat model, not responses API
-CONTENT_ANALYSIS_MODEL = "openai:gpt-4o-mini"
+# Configuration - use Responses API with web search
+CONTENT_ANALYSIS_MODEL = "gpt-5.2"
+MAX_ANALYSIS_TEXT_CHARS = 8000
 
 # Patterns to detect podcast/video platform links in HTML
 PODCAST_VIDEO_PATTERNS = [
@@ -88,6 +89,31 @@ class ContentAnalysisResult(BaseModel):
     )
 
 
+class InstructionLink(BaseModel):
+    """Single link result derived from instruction handling."""
+
+    url: str = Field(..., max_length=2048)
+    title: str | None = Field(None, max_length=500)
+    context: str | None = Field(None, max_length=1000)
+    content_type: Literal["article", "podcast", "video", "news", "unknown"] | None = None
+    platform: str | None = Field(None, max_length=50)
+    source: str | None = Field(None, max_length=200)
+
+
+class InstructionResult(BaseModel):
+    """Result for share instruction processing."""
+
+    text: str | None = Field(None, max_length=2000)
+    links: list[InstructionLink] = Field(default_factory=list)
+
+
+class ContentAnalysisOutput(BaseModel):
+    """Combined analysis output for URL analysis + instruction handling."""
+
+    analysis: ContentAnalysisResult
+    instruction: InstructionResult | None = None
+
+
 @dataclass
 class AnalysisError:
     """Error from content analysis."""
@@ -98,26 +124,35 @@ class AnalysisError:
 
 # System prompt for the content analyzer agent
 CONTENT_ANALYZER_SYSTEM_PROMPT = """\
-You classify web pages as article, podcast, or video.
+You classify web pages as article, podcast, or video and optionally extract links that \
+support a user instruction. Use web search when helpful.
 
-CLASSIFICATION RULES (in priority order):
+CLASSIFICATION RULES (priority order):
 1. LONG ARTICLE OVERRIDE: If page text is >3000 words AND contains a podcast embed, \
-classify as "article" - the text likely contains the podcast transcript already.
+classify as "article" (text likely contains transcript).
 2. PODCAST: If podcast platform link detected (Spotify, Apple Podcasts, Overcast) \
-AND text is short (<3000 words) → content_type="podcast", platform=the podcast platform
-3. VIDEO: If YouTube/Vimeo link detected (and no podcast links) → content_type="video"
-4. ARTICLE: If NO podcast or video links detected, OR text is long enough to be a transcript
+AND text is short (<3000 words) → content_type="podcast", platform=platform name.
+3. VIDEO: If YouTube/Vimeo link detected (and no podcast links) → content_type="video".
+4. ARTICLE: If NO podcast or video links detected, OR text is long enough to be a transcript.
 
-CRITICAL - media_url rules:
-- NEVER use Spotify, Apple Podcasts, or Overcast URLs as media_url - these are NOT \
-directly downloadable audio files!
-- ONLY use direct audio file URLs (.mp3, .m4a, .wav, .ogg) as media_url
-- If an "RSS audio URL" is provided, use that as media_url (it's a direct mp3 link)
-- If only platform links exist (no direct audio), set media_url to null
-- Always set platform to the detected platform name (spotify, apple_podcasts, etc.)
+CRITICAL media_url rules:
+- NEVER use Spotify/Apple Podcasts/Overcast URLs as media_url (not direct audio).
+- ONLY use direct audio file URLs (.mp3, .m4a, .wav, .ogg) as media_url.
+- If an RSS audio URL is provided, use it as media_url.
+- If only platform links exist, set media_url to null.
+- Always set platform to the detected platform name (spotify, apple_podcasts, etc.).
 
-Newsletter/Substack posts that embed podcast episodes: if short text, classify as \
-"podcast"; if long text (likely includes transcript), classify as "article"."""
+Instruction handling:
+- If an instruction is provided, return a concise text summary and 0+ relevant links.
+- Links should be relevant to the instruction and to understanding the submitted URL.
+- For each link, include optional metadata: content_type, platform, source.
+
+OUTPUT:
+- Return ONLY valid JSON.
+- Top-level keys: "analysis" and "instruction".
+- "analysis" must match ContentAnalysisResult fields.
+- "instruction" may be null or include "text" and "links".
+"""
 
 
 def _fetch_page_content(url: str) -> tuple[str | None, str | None]:
@@ -254,23 +289,58 @@ class ContentAnalyzer:
 
     def __init__(self) -> None:
         """Initialize the content analyzer."""
-        self._settings = get_settings()
-        self._agent: Agent[None, ContentAnalysisResult] | None = None
+        self._client: OpenAI | None = None
 
-    def _get_agent(self) -> Agent[None, ContentAnalysisResult]:
-        """Get or create the pydantic-ai Agent."""
-        if self._agent is None:
-            if not self._settings.openai_api_key:
-                raise ValueError("OPENAI_API_KEY not configured")
+    def _get_client(self) -> OpenAI:
+        """Get or create the OpenAI client."""
+        if self._client is None:
+            settings = get_settings()
+            if not settings.openai_api_key:
+                raise ValueError("OPENAI_API_KEY not configured in settings")
+            self._client = OpenAI(api_key=settings.openai_api_key)
+        return self._client
 
-            self._agent = Agent(
-                CONTENT_ANALYSIS_MODEL,
-                output_type=ContentAnalysisResult,
-                system_prompt=CONTENT_ANALYZER_SYSTEM_PROMPT,
-            )
-        return self._agent
+    @staticmethod
+    def _extract_output_text(response: object) -> str:
+        """Extract output text from a Responses API result."""
+        output_text = getattr(response, "output_text", None)
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text
 
-    def analyze_url(self, url: str) -> ContentAnalysisResult | AnalysisError:
+        output_items = getattr(response, "output", None)
+        if isinstance(output_items, list):
+            for item in output_items:
+                if getattr(item, "type", None) != "message":
+                    continue
+                contents = getattr(item, "content", []) or []
+                for content in contents:
+                    content_type = getattr(content, "type", None)
+                    if content_type not in {"output_text", "text"}:
+                        continue
+                    text_value = getattr(content, "text", None) or getattr(
+                        content, "value", None
+                    )
+                    if isinstance(text_value, str) and text_value.strip():
+                        return text_value
+        return ""
+
+    @staticmethod
+    def _parse_output(raw_output: str) -> ContentAnalysisOutput:
+        """Parse raw JSON into ContentAnalysisOutput."""
+        try:
+            return ContentAnalysisOutput.model_validate_json(raw_output)
+        except Exception:
+            raw_output = raw_output.strip()
+            start = raw_output.find("{")
+            end = raw_output.rfind("}")
+            if start == -1 or end == -1 or end <= start:
+                raise
+            candidate = raw_output[start : end + 1]
+            return ContentAnalysisOutput.model_validate_json(candidate)
+
+    def analyze_url(
+        self, url: str, instruction: str | None = None
+    ) -> ContentAnalysisOutput | AnalysisError:
         """Analyze a URL to determine content type and extract media URL.
 
         Fetches the page, scans for media links, then uses LLM to analyze.
@@ -279,7 +349,7 @@ class ContentAnalyzer:
             url: The URL to analyze.
 
         Returns:
-            ContentAnalysisResult on success, AnalysisError on failure.
+            ContentAnalysisOutput on success, AnalysisError on failure.
         """
         try:
             logger.info(
@@ -291,20 +361,36 @@ class ContentAnalyzer:
                 },
             )
 
-            # Step 1: Fetch the actual page content
+            # Step 1: Fetch the actual page content (best-effort)
             html, text = _fetch_page_content(url)
             if not html:
-                return AnalysisError("Failed to fetch page content", recoverable=True)
+                logger.warning(
+                    "Content analyzer fetch failed; continuing with web search only",
+                    extra={
+                        "component": "content_analyzer",
+                        "operation": "fetch_page_content",
+                        "context_data": {"url": url},
+                    },
+                )
+                html = ""
+                text = ""
 
             # Step 2: Scan HTML for podcast/video links and RSS feeds
-            detected = _detect_media_in_html(html, url)
+            detected = _detect_media_in_html(html or "", url) if html else {
+                "platforms": [],
+                "platform_urls": [],
+                "audio_urls": [],
+                "rss_feeds": [],
+                "rss_audio_url": None,
+            }
 
             # Step 3: Use LLM to analyze content with detected media info
-            agent = self._get_agent()
+            client = self._get_client()
 
             # Truncate text for LLM context and calculate word count
-            text_snippet = (text or "")[:6000]
-            word_count = len((text or "").split())
+            text_payload = text or ""
+            text_snippet = text_payload[:MAX_ANALYSIS_TEXT_CHARS]
+            word_count = len(text_payload.split()) if text_payload else 0
 
             # Build RSS audio info for prompt
             rss_audio_info = detected.get("rss_audio_url")
@@ -314,10 +400,14 @@ class ContentAnalyzer:
                 else "- RSS audio URL: None"
             )
 
-            prompt = f"""Analyze this page and classify its content type.
+            instruction_text = instruction.strip() if instruction else "None"
 
+            prompt = f"""{CONTENT_ANALYZER_SYSTEM_PROMPT}
+
+INPUT:
 URL: {url}
 WORD COUNT: {word_count} words
+INSTRUCTION: {instruction_text}
 
 DETECTED MEDIA LINKS (extracted from HTML):
 - Platforms found: {detected["platforms"] or "None"}
@@ -325,31 +415,61 @@ DETECTED MEDIA LINKS (extracted from HTML):
 - Direct audio files: {detected["audio_urls"][:2] or "None"}
 {rss_audio_line}
 
-PAGE CONTENT:
+PAGE CONTENT (truncated):
 {text_snippet}
+"""
 
-Return your classification. Remember:
-- If word count > 3000 with podcast embed, classify as "article" (text likely has transcript)
-- NEVER use Spotify/Apple Podcasts URLs as media_url
-- Use direct audio files or RSS audio URL as media_url if available"""
+            try:
+                response = client.responses.create(
+                    model=CONTENT_ANALYSIS_MODEL,
+                    input=prompt,
+                    tools=[{"type": "web_search_preview"}],
+                )
+            except (APIError, APIConnectionError, RateLimitError) as exc:
+                logger.error(
+                    "Content analysis request failed: %s",
+                    exc,
+                    extra={
+                        "component": "content_analyzer",
+                        "operation": "analyze_url",
+                        "context_data": {"url": url},
+                    },
+                )
+                return AnalysisError(str(exc), recoverable=True)
 
-            result = agent.run_sync(prompt)
+            raw_output = self._extract_output_text(response)
+            if not raw_output:
+                return AnalysisError("Empty response from content analysis", recoverable=True)
+
+            try:
+                parsed = self._parse_output(raw_output)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Content analysis output parse failed: %s",
+                    exc,
+                    extra={
+                        "component": "content_analyzer",
+                        "operation": "parse_output",
+                        "context_data": {"url": url},
+                    },
+                )
+                return AnalysisError("Invalid LLM output format", recoverable=True)
 
             logger.info(
                 "LLM analysis complete: type=%s, platform=%s",
-                result.output.content_type,
-                result.output.platform,
+                parsed.analysis.content_type,
+                parsed.analysis.platform,
                 extra={
                     "component": "content_analyzer",
                     "operation": "analyze_url",
                     "context_data": {
                         "url": url,
-                        "content_type": result.output.content_type,
-                        "platform": result.output.platform,
+                        "content_type": parsed.analysis.content_type,
+                        "platform": parsed.analysis.platform,
                     },
                 },
             )
-            return result.output
+            return parsed
 
         except Exception as e:
             logger.exception(

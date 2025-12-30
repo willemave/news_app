@@ -13,7 +13,8 @@ venv_path = project_root / ".venv"
 if venv_path.exists():
     activate_this = venv_path / "bin" / "activate_this.py"
     if activate_this.exists():
-        exec(open(activate_this).read(), {"__file__": str(activate_this)})
+        with open(activate_this) as handle:
+            exec(handle.read(), {"__file__": str(activate_this)})
 
 from datetime import datetime  # noqa: E402
 
@@ -61,7 +62,9 @@ def resummarize_podcasts(dry_run: bool = False, limit: int | None = None):
                 podcasts_with_transcripts.append(podcast)
 
         logger.info(
-            f"Found {len(podcasts_with_transcripts)} podcasts with transcripts out of {len(podcasts)} total podcasts"
+            "Found %d podcasts with transcripts out of %d total podcasts",
+            len(podcasts_with_transcripts),
+            len(podcasts),
         )
 
         podcasts = podcasts_with_transcripts

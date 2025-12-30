@@ -1,7 +1,7 @@
 """Authentication endpoints."""
 
-import logging
 import secrets
+from typing import Annotated
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import ADMIN_SESSION_COOKIE, get_current_user
+from app.core.logging import get_logger
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -30,7 +31,7 @@ from app.models.user import (
     UserResponse,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 settings = get_settings()
 
 router = APIRouter()
@@ -63,7 +64,7 @@ admin_sessions = set()
 
 @router.post("/apple", response_model=TokenResponse)
 def apple_signin(
-    request: AppleSignInRequest, db: Session = Depends(get_db_session)
+    request: AppleSignInRequest, db: Annotated[Session, Depends(get_db_session)]
 ) -> TokenResponse:
     """
     Authenticate with Apple Sign In.
@@ -184,7 +185,7 @@ def apple_signin(
 
 @router.post("/refresh", response_model=AccessTokenResponse)
 def refresh_token(
-    request: RefreshTokenRequest, db: Session = Depends(get_db_session)
+    request: RefreshTokenRequest, db: Annotated[Session, Depends(get_db_session)]
 ) -> AccessTokenResponse:
     """
     Refresh access token using refresh token.
@@ -249,7 +250,7 @@ def refresh_token(
 
 
 @router.get("/me", response_model=UserResponse)
-def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
+def get_current_user_info(current_user: Annotated[User, Depends(get_current_user)]) -> UserResponse:
     """
     Get current authenticated user information.
 

@@ -5,7 +5,10 @@
 //  Created by Willem Ave on 7/8/25.
 //
 
+import os.log
 import SwiftUI
+
+private let logger = Logger(subsystem: "com.newsly", category: "ContentView")
 
 struct ContentView: View {
     @StateObject private var unreadCountService = UnreadCountService.shared
@@ -15,6 +18,7 @@ struct ContentView: View {
     @ObservedObject private var settings = AppSettings.shared
 
     @State private var path = NavigationPath()
+    @State private var isRestoringPath = false
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -129,9 +133,10 @@ struct ContentView: View {
             tabCoordinator.ensureInitialLoads()
             restoreIfNeeded()
         }
-        .onChange(of: tabCoordinator.selectedTab) { _, newValue in
-            tabCoordinator.handleTabChange(to: newValue)
-        }
+    .onChange(of: tabCoordinator.selectedTab) { _, newValue in
+        logger.info("[TabChange] selectedTab=\(String(describing: newValue), privacy: .public)")
+        tabCoordinator.handleTabChange(to: newValue)
+    }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 restoreIfNeeded()
@@ -143,24 +148,43 @@ struct ContentView: View {
     }
 
     private func restoreIfNeeded() {
-        guard path.isEmpty, let state = readingStateStore.current else { return }
+        guard !isRestoringPath, path.isEmpty, let state = readingStateStore.current else { return }
 
-        tabCoordinator.selectedTab = state.contentType == .news ? .shortNews : .longContent
-        let currentIds: [Int]
-        if state.contentType == .news {
-            let ids = tabCoordinator.shortNewsVM.currentItems().map(\.id)
-            currentIds = ids.isEmpty ? [state.contentId] : ids
-        } else {
-            let ids = tabCoordinator.longContentVM.currentItems().map(\.id)
-            currentIds = ids.isEmpty ? [state.contentId] : ids
+        isRestoringPath = true
+        logger.info(
+            "[NavigationRestore] contentId=\(state.contentId, privacy: .public) contentType=\(state.contentType.rawValue, privacy: .public)"
+        )
+        let targetTab: RootTab = state.contentType == .news ? .shortNews : .longContent
+        if tabCoordinator.selectedTab != targetTab {
+            tabCoordinator.selectedTab = targetTab
         }
 
-        path.append(
-            ContentDetailRoute(
-                contentId: state.contentId,
-                contentType: state.contentType,
-                allContentIds: currentIds
-            )
-        )
+        Task { @MainActor in
+            await Task.yield()
+            defer { isRestoringPath = false }
+            guard path.isEmpty else { return }
+
+            let currentIds: [Int]
+            if state.contentType == .news {
+                let ids = tabCoordinator.shortNewsVM.currentItems().map(\.id)
+                currentIds = ids.isEmpty ? [state.contentId] : ids
+            } else {
+                let ids = tabCoordinator.longContentVM.currentItems().map(\.id)
+                currentIds = ids.isEmpty ? [state.contentId] : ids
+            }
+
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                path.append(
+                    ContentDetailRoute(
+                        contentId: state.contentId,
+                        contentType: state.contentType,
+                        allContentIds: currentIds
+                    )
+                )
+            }
+            logger.info("[NavigationRestore] pathRestored idsCount=\(currentIds.count, privacy: .public)")
+        }
     }
 }

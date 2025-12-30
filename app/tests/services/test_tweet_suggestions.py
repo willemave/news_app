@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.constants import TWEET_MODELS
+from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.services.llm_prompts import (
     creativity_to_style_hints,
@@ -13,14 +15,16 @@ from app.services.llm_prompts import (
 )
 from app.services.tweet_suggestions import (
     TWEET_MODEL,
+    TweetSuggestionService,
     TweetSuggestionLLM,
     TweetSuggestionsPayload,
     _extract_content_context,
     _parse_suggestions_response,
     _validate_and_truncate_tweets,
     creativity_to_temperature,
-    settings,
 )
+
+settings = get_settings()
 
 
 class TestCreativityMapping:
@@ -536,3 +540,18 @@ class TestTweetSuggestionService:
 
         assert result is not None
         assert len(result.suggestions) == 3
+
+
+class TestTweetModelSelection:
+    """Tests for tweet model resolution."""
+
+    def test_default_model_used(self) -> None:
+        """Default model spec is returned when provider is not set."""
+        service = TweetSuggestionService()
+        assert service._get_model_for_provider(None) == TWEET_MODEL
+
+    def test_provider_specific_model_used(self) -> None:
+        """Provider override uses the mapped model spec when available."""
+        service = TweetSuggestionService()
+        for provider, model_spec in TWEET_MODELS.items():
+            assert service._get_model_for_provider(provider) == model_spec

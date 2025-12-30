@@ -2,12 +2,13 @@
 
 import json
 import logging
-from unittest.mock import MagicMock, patch
 
 from app.core.logging import (
     _build_error_json_payload,
+    _build_structured_json_payload,
     _redact_value,
     _sanitize_filename,
+    _StructuredLogFilter,
 )
 
 
@@ -207,6 +208,25 @@ class TestBuildErrorJsonPayload:
         assert payload["context_data"] == {"url": "https://example.com"}
         assert payload["http_details"] == {"status_code": 500}
 
+    def test_payload_merges_unstructured_extras(self):
+        """Test payload merges extra fields into context_data."""
+        record = logging.LogRecord(
+            name="test.logger",
+            level=logging.ERROR,
+            pathname="test_file.py",
+            lineno=42,
+            msg="Processing error",
+            args=(),
+            exc_info=None,
+        )
+        record.user_id = 999
+        record.context_data = {"content_id": 123}
+
+        payload = _build_error_json_payload(record)
+
+        assert payload["context_data"]["content_id"] == 123
+        assert payload["context_data"]["user_id"] == 999
+
     def test_payload_redacts_sensitive_context(self):
         """Test that sensitive data in context is redacted."""
         record = logging.LogRecord(
@@ -279,6 +299,56 @@ class TestBuildErrorJsonPayload:
         assert "http_details" not in payload
         assert "item_id" not in payload
         assert "operation" not in payload
+
+
+class TestStructuredLogging:
+    """Tests for structured logging payloads and filters."""
+
+    def test_structured_payload_merges_extra_fields(self):
+        """Test structured payload merges extra fields into context_data."""
+        record = logging.LogRecord(
+            name="test.logger",
+            level=logging.INFO,
+            pathname="test_file.py",
+            lineno=10,
+            msg="Structured log",
+            args=(),
+            exc_info=None,
+        )
+        record.user_id = 555
+        record.context_data = {"content_id": 42}
+
+        payload = _build_structured_json_payload(record)
+
+        assert payload["context_data"]["content_id"] == 42
+        assert payload["context_data"]["user_id"] == 555
+
+    def test_structured_log_filter(self):
+        """Test structured log filter only allows records with structured data."""
+        filter_instance = _StructuredLogFilter()
+
+        record_without_extra = logging.LogRecord(
+            name="test.logger",
+            level=logging.INFO,
+            pathname="test_file.py",
+            lineno=10,
+            msg="Plain log",
+            args=(),
+            exc_info=None,
+        )
+        assert filter_instance.filter(record_without_extra) is False
+
+        record_with_extra = logging.LogRecord(
+            name="test.logger",
+            level=logging.INFO,
+            pathname="test_file.py",
+            lineno=10,
+            msg="Structured log",
+            args=(),
+            exc_info=None,
+        )
+        record_with_extra.context_data = {"content_id": 1}
+        assert filter_instance.filter(record_with_extra) is True
 
 
 class TestJsonLineErrorFormatter:

@@ -36,7 +36,17 @@ def log_event(
             db.refresh(event)
             return event.id
     except Exception as e:
-        logger.error(f"Failed to log event {event_type}/{event_name}: {e}")
+        logger.exception(
+            "Failed to log event %s/%s: %s",
+            event_type,
+            event_name,
+            e,
+            extra={
+                "component": "event_logger",
+                "operation": "log_event",
+                "context_data": {"event_type": event_type, "event_name": event_name},
+            },
+        )
         raise
 
 

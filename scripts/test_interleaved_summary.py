@@ -8,7 +8,6 @@ Compares Gemini Flash 3 vs Claude Haiku 4.5 on the last 10 articles.
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,12 +28,21 @@ from app.services.llm_models import resolve_model
 class InterleavedInsight(BaseModel):
     """A single insight that combines a topic with supporting quote."""
 
-    topic: str = Field(..., min_length=3, max_length=50, description="The key topic or theme (2-5 words)")
+    topic: str = Field(
+        ...,
+        min_length=3,
+        max_length=50,
+        description="The key topic or theme (2-5 words)",
+    )
     insight: str = Field(
-        ..., min_length=50, description="The key insight about this topic (2-3 sentences, be specific)"
+        ...,
+        min_length=50,
+        description="The key insight about this topic (2-3 sentences, be specific)",
     )
     supporting_quote: str | None = Field(
-        None, min_length=20, description="Full direct quote (20+ words) from the article that supports this insight"
+        None,
+        min_length=20,
+        description=("Full direct quote (20+ words) from the article that supports this insight"),
     )
     quote_attribution: str | None = Field(
         None, description="Who said the quote - author name, speaker, or publication"
@@ -46,7 +54,9 @@ class InterleavedSummary(BaseModel):
 
     title: str = Field(..., min_length=10, description="Descriptive title for the content")
     hook: str = Field(
-        ..., min_length=80, description="Opening hook that captures the main takeaway (2-3 sentences)"
+        ...,
+        min_length=80,
+        description="Opening hook that captures the main takeaway (2-3 sentences)",
     )
     insights: list[InterleavedInsight] = Field(
         ...,
@@ -55,16 +65,19 @@ class InterleavedSummary(BaseModel):
         description="5-6 key insights with supporting quotes",
     )
     takeaway: str = Field(
-        ..., min_length=80, description="Final takeaway or implication for the reader (2-3 sentences)"
+        ...,
+        min_length=80,
+        description="Final takeaway or implication for the reader (2-3 sentences)",
     )
     classification: str = Field(..., description="'to_read' or 'skip'")
 
 
-INTERLEAVED_SYSTEM_PROMPT = """You are an expert content analyst creating summaries that weave together
-key topics with supporting quotes for a cohesive reading experience.
+INTERLEAVED_SYSTEM_PROMPT = """You are an expert content analyst creating summaries
+that weave together key topics with supporting quotes for a cohesive reading experience.
 
-Your task is to create an "interleaved" summary where each insight is paired with a relevant quote from
-the content that supports or illustrates it. This creates a more engaging, evidence-based summary.
+Your task is to create an "interleaved" summary where each insight is paired with a relevant quote
+from the content that supports or illustrates it. This creates a more engaging,
+evidence-based summary.
 
 Guidelines:
 1. Start with a compelling hook that captures the main story (2-3 sentences)
@@ -206,7 +219,7 @@ async def run_test(
 
 def print_result(result: TestResult) -> None:
     """Pretty print a test result."""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Model: {result.model_name}")
     print(f"Article: [{result.article_id}] {result.article_title[:60]}...")
     print(f"Duration: {result.duration_ms}ms")
@@ -281,7 +294,7 @@ async def main():
 
         articles_processed += 1
         display_title = get_article_title(article)
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Processing: [{article.id}] {display_title[:60]}...")
         print(f"Content length: {len(content)} chars")
 
@@ -307,13 +320,11 @@ async def main():
     print("SUMMARY COMPARISON")
     print("=" * 80)
 
-    for model_name in models.keys():
+    for model_name in models:
         model_results = [r for r in all_results if r.model_name == model_name]
         successes = [r for r in model_results if r.summary]
         errors = [r for r in model_results if r.error]
-        avg_duration = (
-            sum(r.duration_ms for r in successes) / len(successes) if successes else 0
-        )
+        avg_duration = sum(r.duration_ms for r in successes) / len(successes) if successes else 0
 
         print(f"\n{model_name}:")
         print(f"  Success: {len(successes)}/{len(model_results)}")
@@ -321,14 +332,9 @@ async def main():
         print(f"  Avg duration: {avg_duration:.0f}ms")
 
         if successes:
-            avg_insights = sum(len(r.summary.insights) for r in successes) / len(
-                successes
-            )
+            avg_insights = sum(len(r.summary.insights) for r in successes) / len(successes)
             quotes_present = sum(
-                1
-                for r in successes
-                for i in r.summary.insights
-                if i.supporting_quote
+                1 for r in successes for i in r.summary.insights if i.supporting_quote
             )
             total_insights = sum(len(r.summary.insights) for r in successes)
             print(f"  Avg insights: {avg_insights:.1f}")

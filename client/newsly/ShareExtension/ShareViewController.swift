@@ -22,7 +22,7 @@ class ShareViewController: SLComposeServiceViewController {
         }
 
         // Customize UI
-        placeholder = "Add a note (optional)"
+        placeholder = "Add an instruction (optional)"
         navigationItem.rightBarButtonItem?.title = "Submit"
 
         extractSharedURL()
@@ -140,7 +140,7 @@ class ShareViewController: SLComposeServiceViewController {
 
         let body: [String: Any] = [
             "url": url.absoluteString,
-            "note": note ?? ""
+            "instruction": note ?? ""
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

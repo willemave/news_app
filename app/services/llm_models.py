@@ -42,7 +42,7 @@ PROVIDER_DEFAULTS: dict[str, str] = {
 # Deep research model constant for easy reference
 DEEP_RESEARCH_MODEL = "o4-mini-deep-research-2025-06-26"
 
-DEFAULT_PROVIDER = LLMProvider.GOOGLE.value
+DEFAULT_PROVIDER = LLMProvider.OPENAI.value
 DEFAULT_MODEL = PROVIDER_DEFAULTS[DEFAULT_PROVIDER]
 PREFIX_TO_PROVIDER: dict[str, str] = {
     prefix: provider for provider, prefix in PROVIDER_PREFIXES.items()

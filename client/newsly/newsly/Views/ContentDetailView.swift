@@ -791,7 +791,8 @@ struct ContentDetailView: View {
     private func heroHeader(content: ContentDetail) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // Hero image (optional, tappable) - extends to top of screen
-            if let imageUrlString = content.imageUrl,
+            if content.contentTypeEnum != .news,
+               let imageUrlString = content.imageUrl,
                let imageUrl = buildImageURL(from: imageUrlString) {
                 Button {
                     fullImageURL = imageUrl

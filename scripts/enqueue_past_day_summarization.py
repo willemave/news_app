@@ -14,7 +14,8 @@ venv_path = project_root / ".venv"
 if venv_path.exists():
     activate_this = venv_path / "bin" / "activate_this.py"
     if activate_this.exists():
-        exec(open(activate_this).read(), {"__file__": str(activate_this)})
+        with open(activate_this) as handle:
+            exec(handle.read(), {"__file__": str(activate_this)})
 
 from sqlalchemy import and_  # noqa: E402
 
@@ -84,8 +85,9 @@ def enqueue_past_day_for_summarization(
             print("DRY RUN - No tasks will be enqueued")
             print("\nContent to be enqueued:")
             for item in content_items:
+                title_preview = item.title[:60] if item.title else "No title"
                 print(
-                    f"  [{item.content_type}] ID={item.id} {item.title[:60] if item.title else 'No title'} "
+                    f"  [{item.content_type}] ID={item.id} {title_preview} "
                     f"(created: {item.created_at.isoformat()})"
                 )
             return
@@ -93,28 +95,33 @@ def enqueue_past_day_for_summarization(
         enqueued_count = 0
         skipped_count = 0
 
+        total_items = len(content_items)
         for i, content in enumerate(content_items, 1):
             try:
                 logger.info(
-                    f"[{i}/{len(content_items)}] Enqueueing {content.content_type} ID={content.id}: {content.title}"
+                    "[%d/%d] Enqueueing %s ID=%s: %s",
+                    i,
+                    total_items,
+                    content.content_type,
+                    content.id,
+                    content.title,
                 )
 
                 # Check if content has necessary data for summarization
                 skip_item = False
 
-                if content.content_type == "podcast":
-                    # For podcasts, need transcript
-                    if not content.content_metadata.get("transcript"):
-                        logger.warning(f"No transcript found for podcast {content.id}, skipping")
-                        skipped_count += 1
-                        skip_item = True
-
-                elif content.content_type == "article":
-                    # For articles, need content
-                    if not content.content_metadata.get("content"):
-                        logger.warning(f"No content found for article {content.id}, skipping")
-                        skipped_count += 1
-                        skip_item = True
+                if content.content_type == "podcast" and not content.content_metadata.get(
+                    "transcript"
+                ):
+                    logger.warning(f"No transcript found for podcast {content.id}, skipping")
+                    skipped_count += 1
+                    skip_item = True
+                elif content.content_type == "article" and not content.content_metadata.get(
+                    "content"
+                ):
+                    logger.warning(f"No content found for article {content.id}, skipping")
+                    skipped_count += 1
+                    skip_item = True
 
                 if skip_item:
                     continue

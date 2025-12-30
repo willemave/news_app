@@ -322,4 +322,12 @@ def run_atom_scraper():
 
 if __name__ == "__main__":
     count = run_atom_scraper()
-    print(f"Atom scraper processed {count} items")
+    logger.info(
+        "Atom scraper processed %s items",
+        count,
+        extra={
+            "component": "atom_scraper",
+            "operation": "run",
+            "context_data": {"processed_count": count},
+        },
+    )

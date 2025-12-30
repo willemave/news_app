@@ -6,7 +6,7 @@ import pytest
 
 from app.models.metadata import ContentType
 from app.services.content_analyzer import (
-    AnalysisError,
+    ContentAnalysisOutput,
     ContentAnalysisResult,
     ContentAnalyzer,
     get_content_analyzer,
@@ -137,7 +137,7 @@ class TestContentAnalysisResult:
 
 
 class TestContentAnalyzer:
-    """Tests for ContentAnalyzer class using pydantic-ai."""
+    """Tests for ContentAnalyzer class using Responses API."""
 
     @patch("app.services.content_analyzer.get_settings")
     def test_missing_api_key_raises_error(self, mock_settings):
@@ -146,43 +146,76 @@ class TestContentAnalyzer:
         analyzer = ContentAnalyzer()
 
         with pytest.raises(ValueError, match="OPENAI_API_KEY not configured"):
-            analyzer._get_agent()
+            analyzer._get_client()
 
     @patch("app.services.content_analyzer._fetch_page_content")
-    @patch("app.services.content_analyzer.get_settings")
-    def test_analyze_url_with_spotify_link(self, mock_settings, mock_fetch):
-        """URL with Spotify link is detected as podcast."""
-        mock_settings.return_value.openai_api_key = "test-key"
-
-        # Mock page fetch with Spotify link in HTML
+    def test_analyze_url_with_spotify_link(self, mock_fetch):
+        """URL with Spotify link is parsed as podcast from LLM output."""
         mock_fetch.return_value = (
             '<a href="https://open.spotify.com/episode/abc123">Listen</a>',
             "Test Episode Title\nSome content...",
         )
 
         analyzer = ContentAnalyzer()
+        mock_client = type("MockClient", (), {})()
+        mock_responses = type("MockResponses", (), {})()
+        mock_client.responses = mock_responses
+
+        def _mock_create(**_kwargs):
+            return type(
+                "MockResponse",
+                (),
+                {
+                    "output_text": (
+                        '{"analysis":{"content_type":"podcast","original_url":"https://example.com/pod",'
+                        '"media_url":null,"media_format":null,"title":"Test Episode",'
+                        '"description":null,"duration_seconds":1800,"platform":"spotify",'
+                        '"confidence":0.9},"instruction":null}'
+                    )
+                },
+            )()
+
+        mock_responses.create = _mock_create
+
+        analyzer._client = mock_client
         result = analyzer.analyze_url("https://example.com/pod")
 
-        assert isinstance(result, ContentAnalysisResult)
-        assert result.content_type == "podcast"
-        # media_url should be None for platform links (Spotify, Apple Podcasts, etc.)
-        # Only direct audio file URLs (.mp3, .m4a, etc.) should be in media_url
-        assert result.media_url is None
-        assert result.platform == "spotify"
-        assert result.confidence >= 0.8  # LLM returns variable confidence
+        assert isinstance(result, ContentAnalysisOutput)
+        assert result.analysis.content_type == "podcast"
+        assert result.analysis.media_url is None
+        assert result.analysis.platform == "spotify"
 
     @patch("app.services.content_analyzer._fetch_page_content")
-    @patch("app.services.content_analyzer.get_settings")
-    def test_analyze_url_fetch_failure_returns_error(self, mock_settings, mock_fetch):
-        """Failed page fetch returns AnalysisError."""
-        mock_settings.return_value.openai_api_key = "test-key"
+    def test_analyze_url_fetch_failure_still_uses_llm(self, mock_fetch):
+        """Failed page fetch still attempts LLM analysis."""
         mock_fetch.return_value = (None, None)
 
         analyzer = ContentAnalyzer()
+        mock_client = type("MockClient", (), {})()
+        mock_responses = type("MockResponses", (), {})()
+        mock_client.responses = mock_responses
+
+        def _mock_create(**_kwargs):
+            return type(
+                "MockResponse",
+                (),
+                {
+                    "output_text": (
+                        '{"analysis":{"content_type":"article","original_url":"https://example.com/article",'
+                        '"media_url":null,"media_format":null,"title":"Test Article",'
+                        '"description":null,"duration_seconds":null,"platform":null,'
+                        '"confidence":0.8},"instruction":null}'
+                    )
+                },
+            )()
+
+        mock_responses.create = _mock_create
+
+        analyzer._client = mock_client
         result = analyzer.analyze_url("https://example.com/article")
 
-        assert isinstance(result, AnalysisError)
-        assert result.recoverable is True
+        assert isinstance(result, ContentAnalysisOutput)
+        assert result.analysis.content_type == "article"
 
 
 class TestGetContentAnalyzer:
