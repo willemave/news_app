@@ -17,7 +17,7 @@ struct MoreView: View {
             NavigationLink {
                 FavoritesView()
             } label: {
-                Label("Favorites", systemImage: "star.fill")
+                Label("Favorites", systemImage: "brain.head.profile")
             }
 
             NavigationLink {

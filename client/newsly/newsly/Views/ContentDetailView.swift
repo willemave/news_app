@@ -157,13 +157,13 @@ struct ContentDetailView: View {
 
                         if content.contentTypeEnum == .news {
                             if let newsMetadata = content.newsMetadata {
-                                modernSectionCard {
+                                modernSectionPlain {
                                     NewsDigestDetailView(content: content, metadata: newsMetadata)
                                 }
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.sectionSpacing)
                             } else {
-                                modernSectionCard {
+                                modernSectionPlain {
                                     VStack(alignment: .leading, spacing: 16) {
                                         sectionHeader("News Updates", icon: "newspaper")
 
@@ -508,19 +508,8 @@ struct ContentDetailView: View {
         guard !isCheckingChatSession else { return }
         isCheckingChatSession = true
         defer { isCheckingChatSession = false }
-
-        do {
-            if let existing = try await ChatService.shared.getSessionForContent(contentId: content.id) {
-                deepDiveSession = existing
-                showDeepDiveSheet = true
-                showChatOptionsSheet = false
-                return
-            }
-            showChatOptionsSheet = true
-        } catch {
-            chatError = error.localizedDescription
-            showChatOptionsSheet = true
-        }
+        chatError = nil
+        showChatOptionsSheet = true
     }
 
     private func startChatWithPrompt(_ prompt: String, contentId: Int) async {
@@ -958,7 +947,7 @@ struct ContentDetailView: View {
                 }
             }) {
                 iconButton(
-                    icon: content.isFavorited ? "star.fill" : "star",
+                    icon: "brain.head.profile",
                     tint: content.isFavorited ? .yellow : nil
                 )
             }
@@ -1004,8 +993,20 @@ struct ContentDetailView: View {
     private func modernSectionCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(DetailDesign.cardPadding)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: DetailDesign.cardRadius))
+            .background(
+                RoundedRectangle(cornerRadius: DetailDesign.cardRadius)
+                    .fill(Color(.systemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DetailDesign.cardRadius)
+                    .stroke(Color(.separator).opacity(0.6), lineWidth: 1)
+            )
+    }
+
+    @ViewBuilder
+    private func modernSectionPlain<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(DetailDesign.cardPadding)
     }
 
     @ViewBuilder

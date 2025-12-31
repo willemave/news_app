@@ -13,9 +13,9 @@
   </div>
 
   <!-- Content Detail Card -->
-  <div class="bg-white rounded-lg shadow-sm">
+  <div class="bg-white border border-gray-200 rounded-2xl">
     <!-- Header Section -->
-    <div class="border-b border-gray-200 p-6">
+    <div class="border-b border-gray-100 p-6">
       <div class="flex items-start justify-between mb-2">
         <h1 class="text-2xl font-bold text-gray-900 flex-1">
           {{ content.display_title }}
@@ -46,7 +46,7 @@
       {% endif %}
       
       <!-- Metadata -->
-      <div class="flex flex-wrap gap-4 text-sm text-gray-600">
+      <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
         <div class="flex items-center">
           <span class="font-medium text-gray-700 mr-1">Type:</span>
           <span class="px-2 py-1 text-xs font-medium rounded-full 
@@ -151,7 +151,7 @@
     </div>
 
     <!-- Content Sections -->
-    <div class="p-6 space-y-6">
+    <div class="p-6 space-y-8">
       <!-- Structured Summary (if available) -->
       {% if content.structured_summary %}
       <section>
@@ -161,9 +161,9 @@
         <div class="space-y-2">
           <!-- Key Points Section (expanded by default) -->
           {% if content.bullet_points %}
-          <div class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="border border-gray-200 rounded-xl overflow-hidden">
             <button onclick="toggleAccordion('key-points')"
-                    class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    class="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors">
               <h3 class="text-md font-medium text-gray-800">Key Points</h3>
               <svg id="key-points-icon" class="w-5 h-5 transform transition-transform"
                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -197,9 +197,9 @@
           <!-- Questions Section -->
           {% set questions = content.structured_summary.get('questions', []) %}
           {% if questions %}
-          <div class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="border border-gray-200 rounded-xl overflow-hidden">
             <button onclick="toggleAccordion('questions')"
-                    class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    class="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors">
               <h3 class="text-md font-medium text-gray-800">Questions to Ask</h3>
               <svg id="questions-icon" class="w-5 h-5 transform transition-transform rotate-180"
                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -219,9 +219,9 @@
           <!-- Counter Arguments Section -->
           {% set counter_args = content.structured_summary.get('counter_arguments', []) %}
           {% if counter_args %}
-          <div class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="border border-gray-200 rounded-xl overflow-hidden">
             <button onclick="toggleAccordion('counter-args')"
-                    class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    class="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors">
               <h3 class="text-md font-medium text-gray-800">Counter Arguments</h3>
               <svg id="counter-args-icon" class="w-5 h-5 transform transition-transform rotate-180"
                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -248,7 +248,7 @@
           <h3 class="text-md font-medium text-gray-800 mb-2">Notable Quotes</h3>
           <div class="space-y-3">
             {% for quote in content.quotes %}
-            <blockquote class="border-l-4 border-blue-500 pl-4 py-2 bg-gray-50 rounded">
+            <blockquote class="border-l-4 border-blue-500 pl-4 py-2 rounded">
               <p class="text-gray-700 italic">"{{ quote.text }}"</p>
               {% if quote.context %}
               <cite class="text-sm text-gray-600 mt-1 block">— {{ quote.context }}</cite>
@@ -265,7 +265,7 @@
           <h3 class="text-md font-medium text-gray-800 mb-2">Topics</h3>
           <div class="flex flex-wrap gap-2">
             {% for topic in content.topics %}
-            <span class="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full">
+            <span class="px-3 py-1 border border-gray-200 text-gray-700 text-sm rounded-full bg-white">
               {{ topic }}
             </span>
             {% endfor %}
@@ -338,14 +338,14 @@
       {% if content.content_type == 'article' and content.full_markdown %}
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-2">Full Article</h2>
-        <div class="prose prose-sm max-w-none text-gray-700 bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
+        <div class="prose prose-sm max-w-none text-gray-700 border border-gray-200 p-4 rounded-xl max-h-96 overflow-y-auto bg-white">
           {{ content.full_markdown | markdown }}
         </div>
       </section>
       {% elif content.content_type == 'podcast' and content.transcript %}
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-2">Transcript</h2>
-        <div class="prose prose-sm max-w-none text-gray-700 bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
+        <div class="prose prose-sm max-w-none text-gray-700 border border-gray-200 p-4 rounded-xl max-h-96 overflow-y-auto bg-white">
           {{ content.transcript | markdown }}
         </div>
       </section>

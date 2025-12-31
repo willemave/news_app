@@ -79,9 +79,7 @@ def main(urls: Iterable[str], instruction: str, email: str) -> None:
             submitter_id = None
 
         submitted_contents = (
-            db.query(Content).filter(Content.id.in_(submitted_ids)).all()
-            if submitted_ids
-            else []
+            db.query(Content).filter(Content.id.in_(submitted_ids)).all() if submitted_ids else []
         )
         if submitted_contents:
             print("submitted content results:")

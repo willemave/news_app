@@ -65,7 +65,7 @@ struct FavoritesView: View {
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "star.slash")
+            Image(systemName: "brain.head.profile")
                 .font(.largeTitle)
                 .foregroundColor(.secondary)
             Text("No favorites yet.")
@@ -120,7 +120,7 @@ struct FavoritesView: View {
                             }
                         }
                     } label: {
-                        Label("Remove from Favorites", systemImage: "star.slash.fill")
+                        Label("Remove from Favorites", systemImage: "brain.head.profile")
                     }
                     .tint(.red)
                 }

@@ -77,7 +77,7 @@ class ChatService {
     func createSession(
         contentId: Int? = nil,
         topic: String? = nil,
-        provider: ChatModelProvider? = nil,
+        provider: ChatModelProvider? = .anthropic,
         modelHint: String? = nil,
         initialMessage: String? = nil
     ) async throws -> ChatSessionSummary {
@@ -221,7 +221,7 @@ class ChatService {
     /// Start a deep dive chat for an article
     func startArticleChat(
         contentId: Int,
-        provider: ChatModelProvider = .google
+        provider: ChatModelProvider = .anthropic
     ) async throws -> ChatSessionSummary {
         // Check for existing session
         if let existing = try await getSessionForContent(contentId: contentId) {
@@ -239,7 +239,7 @@ class ChatService {
     func startTopicChat(
         contentId: Int,
         topic: String,
-        provider: ChatModelProvider = .google
+        provider: ChatModelProvider = .anthropic
     ) async throws -> ChatSessionSummary {
         return try await createSession(
             contentId: contentId,
@@ -251,7 +251,7 @@ class ChatService {
     /// Start an ad-hoc chat without article context
     func startAdHocChat(
         initialMessage: String? = nil,
-        provider: ChatModelProvider = .google
+        provider: ChatModelProvider = .anthropic
     ) async throws -> ChatSessionSummary {
         return try await createSession(
             provider: provider,

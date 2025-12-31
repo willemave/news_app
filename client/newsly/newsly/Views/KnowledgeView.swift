@@ -13,7 +13,7 @@ struct KnowledgeView: View {
 
     @StateObject private var viewModel = ChatSessionsViewModel()
     @State private var showingNewChat = false
-    @State private var selectedProvider: ChatModelProvider = .google
+    @State private var selectedProvider: ChatModelProvider = .anthropic
     @State private var pendingNavigationRoute: ChatSessionRoute?
 
     /// Tracks the last time this tab was opened for badge calculation
@@ -122,7 +122,7 @@ struct KnowledgeView: View {
             Text("Your Knowledge Base")
                 .font(.headline)
                 .foregroundColor(.secondary)
-            Text("Save articles to build your knowledge base. Tap the star on any article to add it here and start exploring with AI.")
+            Text("Save articles to build your knowledge base. Tap the brain on any article to add it here and start exploring with AI.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -213,13 +213,6 @@ struct ChatSessionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                // Star icon for favorites
-                if session.isFavorited {
-                    Image(systemName: "star.fill")
-                        .font(.caption)
-                        .foregroundColor(.yellow)
-                }
-
                 Text(session.displayTitle)
                     .font(.headline)
                     .lineLimit(1)
@@ -291,14 +284,6 @@ struct ChatSessionRow: View {
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
-                } else {
-                    // Session type icon and label
-                    Image(systemName: session.sessionTypeIconName)
-                        .font(.caption)
-                        .foregroundColor(session.isDeepResearch ? .purple : .blue)
-                    Text(session.sessionTypeLabel)
-                        .font(.caption2)
-                        .foregroundColor(session.isDeepResearch ? .purple : .blue)
                 }
 
                 Spacer()

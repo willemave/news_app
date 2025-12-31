@@ -41,9 +41,7 @@ def normalize_url(raw_url: str) -> str:
     return str(URL_ADAPTER.validate_python(raw_url)).strip()
 
 
-def _ensure_analyze_url_task(
-    db: Session, content_id: int, instruction: str | None = None
-) -> int:
+def _ensure_analyze_url_task(db: Session, content_id: int, instruction: str | None = None) -> int:
     """Create an ANALYZE_URL task if one is not already pending/processing.
 
     Args:

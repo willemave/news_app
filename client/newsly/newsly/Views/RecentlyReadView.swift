@@ -79,7 +79,7 @@ struct RecentlyReadView: View {
                                         }
                                     } label: {
                                         Label(content.isFavorited ? "Remove from Favorites" : "Add to Favorites",
-                                              systemImage: content.isFavorited ? "star.slash.fill" : "star.fill")
+                                              systemImage: "brain.head.profile")
                                     }
                                     .tint(content.isFavorited ? .red : .yellow)
                                 }

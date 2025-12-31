@@ -77,7 +77,7 @@ struct ChatStatusBanner: View {
     private var statusTitle: String {
         switch session.status {
         case .processing:
-            return "Analyzing..."
+            return "gathering information and starting chat session"
         case .completed:
             return "Analysis ready"
         case .failed(let error):

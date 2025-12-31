@@ -24,6 +24,7 @@ struct ShortFormView: View {
 
     /// Track which items have already been marked as read to avoid duplicates
     @State private var markedAsReadIds: Set<Int> = []
+    @State private var showMarkAllConfirmation = false
 
     var body: some View {
         ScrollViewReader { _ in
@@ -73,6 +74,21 @@ struct ShortFormView: View {
                                 }
                         }
 
+                        if viewModel.currentItems().contains(where: { !$0.isRead }) {
+                            Button {
+                                showMarkAllConfirmation = true
+                            } label: {
+                                Text("Mark All as Read")
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.secondary.opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.vertical, 8)
+                        }
+
                         if viewModel.state == .loadingMore {
                             ProgressView()
                                 .padding(.vertical, 16)
@@ -105,6 +121,20 @@ struct ShortFormView: View {
                 if viewModel.currentItems().isEmpty {
                     viewModel.refreshTrigger.send(())
                 }
+            }
+            .confirmationDialog(
+                "Mark all news items as read?",
+                isPresented: $showMarkAllConfirmation
+            ) {
+                Button("Mark All as Read", role: .destructive) {
+                    showMarkAllConfirmation = false
+                    viewModel.markAllVisibleAsRead()
+                }
+                Button("Cancel", role: .cancel) {
+                    showMarkAllConfirmation = false
+                }
+            } message: {
+                Text("Marks every unread item currently loaded in the list.")
             }
         }
     }

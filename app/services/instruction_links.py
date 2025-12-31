@@ -18,9 +18,7 @@ from app.services.scraper_configs import ensure_inbox_status
 logger = get_logger(__name__)
 
 
-def _normalize_instruction_links(
-    links: list[InstructionLink], original_url: str
-) -> list[str]:
+def _normalize_instruction_links(links: list[InstructionLink], original_url: str) -> list[str]:
     """Normalize and dedupe instruction links.
 
     Args:
@@ -89,9 +87,7 @@ def create_contents_from_instruction_links(
     if not normalized_urls:
         return []
 
-    existing_contents = (
-        db.query(Content).filter(Content.url.in_(normalized_urls)).all()
-    )
+    existing_contents = db.query(Content).filter(Content.url.in_(normalized_urls)).all()
     existing_by_url = {content.url: content for content in existing_contents}
 
     created_ids: list[int] = []

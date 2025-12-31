@@ -225,6 +225,10 @@ struct ChatSessionView: View {
         _viewModel = StateObject(wrappedValue: ChatSessionViewModel(sessionId: sessionId))
     }
 
+    private var titleMaxWidth: CGFloat {
+        min(UIScreen.main.bounds.width * 0.6, 260)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Messages
@@ -252,24 +256,35 @@ struct ChatSessionView: View {
                                     Text(session.displayTitle)
                                         .font(.headline)
                                         .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .layoutPriority(1)
                                     Image(systemName: "arrow.up.right.square")
                                         .font(.caption2)
                                 }
+                                .frame(maxWidth: titleMaxWidth)
                                 .foregroundColor(.primary)
                             }
                         } else {
                             Text(session.displayTitle)
                                 .font(.headline)
                                 .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: titleMaxWidth)
                         }
 
-                        HStack(spacing: 4) {
-                            Image(systemName: session.sessionTypeIconName)
-                                .font(.caption2)
-                            Text(session.sessionTypeLabel)
-                                .font(.caption2)
+                        if session.sessionType != "article_brain" {
+                            HStack(spacing: 4) {
+                                Image(systemName: session.sessionTypeIconName)
+                                    .font(.caption2)
+                                Text(session.sessionTypeLabel)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .layoutPriority(1)
+                            }
+                            .frame(maxWidth: titleMaxWidth)
+                            .foregroundColor(session.isDeepResearch ? .purple : .secondary)
                         }
-                        .foregroundColor(session.isDeepResearch ? .purple : .secondary)
                     }
                 }
 
@@ -429,9 +444,32 @@ struct ChatSessionView: View {
             }
             .textSelection(.enabled)
             .onChange(of: viewModel.allMessages.count) { _, _ in
+                scrollToBottom(proxy, animated: true)
+            }
+            .onChange(of: viewModel.isSending) { _, isSending in
+                if isSending {
+                    scrollToBottom(proxy, animated: true)
+                }
+            }
+            .onChange(of: viewModel.isLoading) { _, isLoading in
+                if !isLoading {
+                    scrollToBottom(proxy, animated: false)
+                }
+            }
+            .onAppear {
+                scrollToBottom(proxy, animated: false)
+            }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
+        DispatchQueue.main.async {
+            if animated {
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
+            } else {
+                proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
     }

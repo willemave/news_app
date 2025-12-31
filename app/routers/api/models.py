@@ -34,7 +34,9 @@ class ChatSessionSummaryResponse(BaseModel):
     )
     topic: str | None = Field(None, description="Topic if session was started from a topic")
     llm_provider: str = Field(..., description="LLM provider (openai, anthropic, google)")
-    llm_model: str = Field(..., description="Full model specification (e.g., openai:gpt-5.1)")
+    llm_model: str = Field(
+        ..., description="Full model specification (e.g., anthropic:claude-sonnet-4-5-20250929)"
+    )
     created_at: datetime = Field(..., description="Session creation timestamp")
     updated_at: datetime | None = Field(None, description="Last update timestamp")
     last_message_at: datetime | None = Field(None, description="Timestamp of last message")
@@ -48,8 +50,8 @@ class ChatSessionSummaryResponse(BaseModel):
                 "title": "Understanding AI Agents",
                 "session_type": "article_brain",
                 "topic": None,
-                "llm_provider": "openai",
-                "llm_model": "openai:gpt-5.1",
+                "llm_provider": "anthropic",
+                "llm_model": "anthropic:claude-sonnet-4-5-20250929",
                 "created_at": "2025-11-28T10:00:00Z",
                 "updated_at": "2025-11-28T10:30:00Z",
                 "last_message_at": "2025-11-28T10:30:00Z",
@@ -91,8 +93,8 @@ class ChatSessionDetailResponse(BaseModel):
                     "content_id": 123,
                     "title": "Understanding AI Agents",
                     "session_type": "article_brain",
-                    "llm_provider": "openai",
-                    "llm_model": "openai:gpt-5.1",
+                    "llm_provider": "anthropic",
+                    "llm_model": "anthropic:claude-sonnet-4-5-20250929",
                     "created_at": "2025-11-28T10:00:00Z",
                     "updated_at": "2025-11-28T10:30:00Z",
                     "last_message_at": "2025-11-28T10:30:00Z",
@@ -122,7 +124,7 @@ class CreateChatSessionRequest(BaseModel):
     content_id: int | None = Field(None, description="Content ID to chat about")
     topic: str | None = Field(None, max_length=500, description="Specific topic to discuss")
     llm_provider: ChatModelProvider | None = Field(
-        None, description="LLM provider (defaults to openai)"
+        None, description="LLM provider (defaults to anthropic)"
     )
     llm_model_hint: str | None = Field(
         None, max_length=100, description="Optional specific model to use"
@@ -136,7 +138,7 @@ class CreateChatSessionRequest(BaseModel):
             "example": {
                 "content_id": 123,
                 "topic": None,
-                "llm_provider": "openai",
+                "llm_provider": "anthropic",
                 "llm_model_hint": None,
                 "initial_message": "What are the key insights from this article?",
             }
@@ -175,8 +177,8 @@ class CreateChatSessionResponse(BaseModel):
                     "content_id": 123,
                     "title": "How AI Agents Work",
                     "session_type": "article_brain",
-                    "llm_provider": "openai",
-                    "llm_model": "openai:gpt-5.1",
+                    "llm_provider": "anthropic",
+                    "llm_model": "anthropic:claude-sonnet-4-5-20250929",
                     "created_at": "2025-11-28T10:00:00Z",
                     "updated_at": None,
                     "last_message_at": None,

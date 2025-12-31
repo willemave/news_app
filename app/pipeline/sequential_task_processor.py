@@ -220,9 +220,7 @@ class SequentialTaskProcessor:
 
                 if instruction and task_id:
                     task = (
-                        db.query(ProcessingTask)
-                        .filter(ProcessingTask.id == int(task_id))
-                        .first()
+                        db.query(ProcessingTask).filter(ProcessingTask.id == int(task_id)).first()
                     )
                     if task and isinstance(task.payload, dict) and "instruction" in task.payload:
                         updated_payload = dict(task.payload)

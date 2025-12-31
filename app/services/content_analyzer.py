@@ -319,9 +319,7 @@ class ContentAnalyzer:
                     content_type = getattr(content, "type", None)
                     if content_type not in {"output_text", "text"}:
                         continue
-                    text_value = getattr(content, "text", None) or getattr(
-                        content, "value", None
-                    )
+                    text_value = getattr(content, "text", None) or getattr(content, "value", None)
                     if isinstance(text_value, str) and text_value.strip():
                         return text_value
         return ""
@@ -401,13 +399,17 @@ class ContentAnalyzer:
                 text = ""
 
             # Step 2: Scan HTML for podcast/video links and RSS feeds
-            detected = _detect_media_in_html(html or "", url) if html else {
-                "platforms": [],
-                "platform_urls": [],
-                "audio_urls": [],
-                "rss_feeds": [],
-                "rss_audio_url": None,
-            }
+            detected = (
+                _detect_media_in_html(html or "", url)
+                if html
+                else {
+                    "platforms": [],
+                    "platform_urls": [],
+                    "audio_urls": [],
+                    "rss_feeds": [],
+                    "rss_audio_url": None,
+                }
+            )
 
             # Step 3: Use LLM to analyze content with detected media info
             client = self._get_client()

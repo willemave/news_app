@@ -43,6 +43,17 @@ final class ShortNewsListViewModel: BaseContentListViewModel {
         itemsToMarkRead.send(ids)
     }
 
+    func markAllVisibleAsRead() {
+        let unreadIds = currentItems().filter { !$0.isRead }.map(\.id)
+        guard !unreadIds.isEmpty else {
+            logger.debug("[ShortNewsList] markAllVisibleAsRead: no unread items")
+            return
+        }
+
+        logger.info("[ShortNewsList] markAllVisibleAsRead | ids=\(unreadIds, privacy: .public) count=\(unreadIds.count)")
+        markBatchRead(ids: unreadIds)
+    }
+
     // MARK: - Private
 
     private func bindReadTracking() {

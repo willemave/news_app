@@ -58,26 +58,44 @@ struct NewsDigestDetailView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(10)
+            .background(Color(.systemBackground))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.orange.opacity(0.28), lineWidth: 1)
+            )
+            .cornerRadius(12)
         }
     }
 
     @ViewBuilder
     private func summarySection(summary: NewsSummaryMetadata) -> some View {
+        let hasOverview = summary.summary?.isEmpty == false
+        let hasKeyPoints = !summary.keyPoints.isEmpty
+
         VStack(alignment: .leading, spacing: 16) {
+            if hasOverview || hasKeyPoints {
+                Text("Summary")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+
             if let overview = summary.summary, !overview.isEmpty {
                 Text(overview)
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if !summary.keyPoints.isEmpty {
+            if hasKeyPoints {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text("Key Points")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+
                     ForEach(Array(summary.keyPoints.enumerated()), id: \.offset) { _, point in
                         HStack(alignment: .top, spacing: 12) {
                             Circle()
-                                .fill(Color.accentColor)
+                                .fill(Color.accentColor.opacity(0.85))
                                 .frame(width: 6, height: 6)
                                 .padding(.top, 7)
 

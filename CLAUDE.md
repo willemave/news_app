@@ -210,7 +210,6 @@ docker compose up -d --build         # Rebuild and start
 ## 8. Preferred Dev Tools
 
 * **LLM internet search**: Use the EXA MCP `web_search_exa` tool for any web/internet lookups (and `get_code_context_exa` for external API/library docs).
-* **LLM code search**: Use the Morph MCP `warp_grep` tool for repository code searches before opening files.
 
 | Tool | Purpose | Example |
 |------|---------|---------|

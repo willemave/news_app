@@ -87,9 +87,7 @@ def _capture_screenshot(request: ScreenshotRequest) -> ScreenshotResult:
 
             page.goto(request["url"], wait_until="domcontentloaded", timeout=request["timeout_ms"])
             try:
-                page.wait_for_load_state(
-                    "networkidle", timeout=request["network_idle_timeout_ms"]
-                )
+                page.wait_for_load_state("networkidle", timeout=request["network_idle_timeout_ms"])
             except PlaywrightTimeoutError:
                 print("[warn] networkidle timeout, continuing")
 

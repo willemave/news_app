@@ -75,7 +75,7 @@ struct LongFormView: View {
                                     } label: {
                                         Label(
                                             content.isFavorited ? "Unfavorite" : "Favorite",
-                                            systemImage: content.isFavorited ? "star.slash.fill" : "star.fill"
+                                            systemImage: "brain.head.profile"
                                         )
                                     }
                                     .tint(content.isFavorited ? .gray : .yellow)
