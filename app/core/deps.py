@@ -10,15 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session as get_db
 from app.core.security import verify_token
+from app.core.settings import get_settings
 from app.models.user import User
 
 # HTTP Bearer token scheme for JWT authentication
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 optional_security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
     """
@@ -35,6 +36,13 @@ def get_current_user(
         HTTPException: 401 if token is invalid or user not found
         HTTPException: 400 if user is inactive
     """
+    settings = get_settings()
+    if settings.debug:
+        return get_or_create_dev_user(db)
+
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -90,6 +98,8 @@ def get_optional_user(
 
 ADMIN_SESSION_COOKIE = "admin_session"
 ADMIN_EMAIL = "admin@system.local"
+DEV_USER_EMAIL = "dev@local"
+DEV_USER_APPLE_ID = "dev-user"
 
 
 class AdminAuthRequired(Exception):
@@ -122,6 +132,31 @@ def get_or_create_admin_user(db: Session) -> User:
         db.commit()
         db.refresh(admin)
     return admin
+
+
+def get_or_create_dev_user(db: Session) -> User:
+    """
+    Get or create the development user for local/testing bypass.
+
+    Args:
+        db: Database session
+
+    Returns:
+        Development user instance
+    """
+    user = db.query(User).filter(User.email == DEV_USER_EMAIL).first()
+    if user is None:
+        user = User(
+            apple_id=DEV_USER_APPLE_ID,
+            email=DEV_USER_EMAIL,
+            full_name="Development User",
+            is_admin=True,
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return user
 
 
 def require_admin(request: Request, db: Annotated[Session, Depends(get_db)]) -> User:

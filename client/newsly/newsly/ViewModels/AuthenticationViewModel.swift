@@ -25,6 +25,9 @@ final class AuthenticationViewModel: ObservableObject {
     private var lastKnownUser: User?
 
     init() {
+#if DEBUG
+        authState = .authenticated(Self.developmentUser())
+#else
         checkAuthStatus()
 
         // Listen for authentication required notifications
@@ -37,11 +40,16 @@ final class AuthenticationViewModel: ObservableObject {
                 self?.logout()
             }
         }
+#endif
     }
 
     /// Check if user is already authenticated on app launch
     func checkAuthStatus() {
         authState = .loading
+
+#if DEBUG
+        authState = .authenticated(Self.developmentUser())
+#else
 
         let hasRefreshToken = KeychainManager.shared.getToken(key: .refreshToken) != nil
         let hasAccessToken = KeychainManager.shared.getToken(key: .accessToken) != nil
@@ -63,6 +71,7 @@ final class AuthenticationViewModel: ObservableObject {
                 authState = .unauthenticated
             }
         }
+#endif
     }
 
     /// Sign in with Apple
@@ -84,10 +93,29 @@ final class AuthenticationViewModel: ObservableObject {
 
     /// Logout current user
     func logout() {
+#if DEBUG
+        authState = .authenticated(Self.developmentUser())
+#else
         authService.logout()
         lastKnownUser = nil
         authState = .unauthenticated
+#endif
     }
+
+#if DEBUG
+    private static func developmentUser() -> User {
+        User(
+            id: -1,
+            appleId: "dev",
+            email: "dev@local",
+            fullName: "Development User",
+            isAdmin: true,
+            isActive: true,
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+    }
+#endif
 
     // MARK: - Private
 

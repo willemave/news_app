@@ -72,10 +72,12 @@ class InterleavedInsight(BaseModel):
     )
     insight: str = Field(..., min_length=50, description="Substantive insight (2-3 sentences)")
     supporting_quote: str | None = Field(
-        None, min_length=20, description="Direct quote (20+ words) supporting the insight"
+        None,
+        min_length=10,
+        description="Short direct quote supporting the insight (optional)",
     )
     quote_attribution: str | None = Field(
-        None, description="Who said the quote - author, speaker, or publication"
+        None, description="Who said the quote - author, speaker, or publication (optional)"
     )
 
 
@@ -125,7 +127,7 @@ class InterleavedSummary(BaseModel):
         ..., min_length=80, description="Opening hook (2-3 sentences) capturing the main story"
     )
     insights: list[InterleavedInsight] = Field(
-        ..., min_length=3, max_length=8, description="Key insights with supporting quotes"
+        ..., min_length=3, description="Key insights with optional supporting quotes (soft cap ~30)"
     )
     takeaway: str = Field(
         ..., min_length=80, description="Final takeaway (2-3 sentences) for the reader"

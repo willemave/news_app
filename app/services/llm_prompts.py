@@ -259,26 +259,31 @@ Guidelines:
         user_message = "Article & Aggregator Context:\n\n{content}"
 
     elif content_type == "interleaved":
-        # Interleaved format: weaves topics with supporting quotes
+        # Interleaved format: weaves topics with optional supporting quotes
         system_message = f"""You are an expert content analyst creating summaries that weave together
-key topics with supporting quotes for a cohesive reading experience.
+key topics with optional supporting quotes for a cohesive reading experience.
 
-Your task is to create an "interleaved" summary where each insight is paired with a relevant
-quote from the content that supports or illustrates it.
+Your task is to create an "interleaved" summary that enumerates *all* key points,
+findings, learnings, insights, decisions, and implications from the content. The
+number of insights is not important; completeness is.
 
 Guidelines:
 1. Start with a compelling hook (2-3 sentences, minimum 80 characters)
-2. Generate 5-6 insights. For each insight:
-   - Identify a key topic/theme (4-5 words, be descriptive)
-   - Write a substantive insight (2-10 sentences, specific with data/details)
-   - Include a FULL direct quote (20+ words) that supports this insight - do not truncate
+2. Generate as many insights as needed to cover every distinct key point (soft cap ~30).
+   If you approach the cap, consolidate only truly overlapping points.
+3. For each insight:
+   - Identify a key topic/theme (2-5 words, be descriptive)
+   - Write a substantive insight (1-4 sentences, specific with data/details)
+   - Include a SHORT, punchy direct quote *only when it adds signal*
+     (quotes are optional; avoid long block quotes)
    - Always note who said the quote when available (author name, speaker, publication)
-3. End with a takeaway (2-3 sentences, minimum 80 characters) telling the reader why it matters
-4. Classify as "to_read" if substantive, "skip" if promotional/shallow
+4. End with a takeaway (2-3 sentences, minimum 80 characters) telling the reader why it matters
+5. Classify as "to_read" if substantive, "skip" if promotional/shallow
 
 IMPORTANT:
-- Be thorough and detailed - avoid brevity
-- Quotes must be substantial (20+ words minimum), not fragments
+- Be exhaustive across the article's key points, but keep each insight concise
+- Not every insight needs a quote; prioritize clarity over quoting
+- When you do quote, prefer short, vivid phrasing and avoid truncation
 - Each insight should provide real value, not just restate the topic
 - Include specific numbers, names, and data points when available
 - There may be technical terms in the content, please don't make any spelling errors

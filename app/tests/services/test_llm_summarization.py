@@ -76,12 +76,12 @@ class TestInterleavedInsightModel:
         assert "insight" in str(exc_info.value)
 
     def test_quote_too_short_fails(self):
-        """Quote shorter than 20 characters fails validation."""
+        """Quote shorter than 10 characters fails validation."""
         with pytest.raises(ValidationError) as exc_info:
             InterleavedInsight(
                 topic="Valid Topic",
                 insight="X" * 60,
-                supporting_quote="Short quote",  # Less than 20 chars
+                supporting_quote="tiny",  # Less than 10 chars
             )
         assert "supporting_quote" in str(exc_info.value)
 
@@ -149,6 +149,17 @@ class TestInterleavedSummaryModel:
             takeaway="X" * 80,  # Min 80 chars
         )
         assert summary.summary_type == "interleaved"
+
+    def test_many_insights_allowed(self):
+        """Summaries can include more than the old 8 insight cap."""
+        insights = [InterleavedInsight(topic=f"Topic {idx}", insight="X" * 60) for idx in range(12)]
+        summary = InterleavedSummary(
+            title="Test Title",
+            hook="X" * 80,
+            insights=insights,
+            takeaway="X" * 80,
+        )
+        assert len(summary.insights) == 12
 
     def test_hook_too_short_fails(self):
         """Hook shorter than 80 characters fails validation."""

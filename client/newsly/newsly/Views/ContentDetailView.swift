@@ -157,13 +157,13 @@ struct ContentDetailView: View {
 
                         if content.contentTypeEnum == .news {
                             if let newsMetadata = content.newsMetadata {
-                                modernSectionPlain {
+                                modernSectionPlain(isPadded: false) {
                                     NewsDigestDetailView(content: content, metadata: newsMetadata)
                                 }
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.sectionSpacing)
                             } else {
-                                modernSectionPlain {
+                                modernSectionPlain(isPadded: false) {
                                     VStack(alignment: .leading, spacing: 16) {
                                         sectionHeader("News Updates", icon: "newspaper")
 
@@ -1004,9 +1004,9 @@ struct ContentDetailView: View {
     }
 
     @ViewBuilder
-    private func modernSectionPlain<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func modernSectionPlain<Content: View>(isPadded: Bool = true, @ViewBuilder content: () -> Content) -> some View {
         content()
-            .padding(DetailDesign.cardPadding)
+            .padding(isPadded ? DetailDesign.cardPadding : 0)
     }
 
     @ViewBuilder
