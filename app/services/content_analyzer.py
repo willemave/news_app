@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+import json
 from typing import Literal
 
 import feedparser
@@ -151,6 +152,7 @@ OUTPUT:
 - Return ONLY valid JSON.
 - Top-level keys: "analysis" and "instruction".
 - "analysis" must match ContentAnalysisResult fields.
+- "analysis.original_url" MUST be the input URL.
 - "instruction" may be null or include "text" and "links".
 """
 
@@ -325,18 +327,41 @@ class ContentAnalyzer:
         return ""
 
     @staticmethod
-    def _parse_output(raw_output: str) -> ContentAnalysisOutput:
+    def _parse_output(raw_output: str, url: str) -> ContentAnalysisOutput:
         """Parse raw JSON into ContentAnalysisOutput."""
-        try:
-            return ContentAnalysisOutput.model_validate_json(raw_output)
-        except Exception:
-            raw_output = raw_output.strip()
-            start = raw_output.find("{")
-            end = raw_output.rfind("}")
-            if start == -1 or end == -1 or end <= start:
-                raise
-            candidate = raw_output[start : end + 1]
-            return ContentAnalysisOutput.model_validate_json(candidate)
+        raw_candidates = [raw_output]
+        raw_output = raw_output.strip()
+        start = raw_output.find("{")
+        end = raw_output.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            raw_candidates.append(raw_output[start : end + 1])
+
+        last_error: Exception | None = None
+        for candidate in raw_candidates:
+            try:
+                return ContentAnalysisOutput.model_validate_json(candidate)
+            except Exception as exc:
+                last_error = exc
+
+            try:
+                parsed = json.loads(candidate)
+            except Exception as exc:
+                last_error = exc
+                continue
+
+            if isinstance(parsed, dict):
+                analysis = parsed.get("analysis")
+                if isinstance(analysis, dict) and not analysis.get("original_url"):
+                    analysis["original_url"] = url
+                    parsed["analysis"] = analysis
+                try:
+                    return ContentAnalysisOutput.model_validate(parsed)
+                except Exception as exc:
+                    last_error = exc
+
+        if last_error:
+            raise last_error
+        raise ValueError("Unable to parse content analysis output")
 
     def analyze_url(
         self, url: str, instruction: str | None = None
@@ -442,7 +467,7 @@ PAGE CONTENT (truncated):
                 return AnalysisError("Empty response from content analysis", recoverable=True)
 
             try:
-                parsed = self._parse_output(raw_output)
+                parsed = self._parse_output(raw_output, url)
             except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "Content analysis output parse failed: %s",

@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.logging import get_logger
+from app.models.content_submission import ContentSubmissionResponse, SubmitContentRequest
 from app.models.metadata import ContentClassification, ContentStatus, ContentType
 from app.models.schema import Content, ProcessingTask
 from app.models.user import User
-from app.routers.api.models import ContentSubmissionResponse, SubmitContentRequest
 from app.services.queue import TaskStatus, TaskType
 from app.services.scraper_configs import ensure_inbox_status
 
