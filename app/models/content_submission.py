@@ -27,6 +27,13 @@ class SubmitContentRequest(BaseModel):
         validation_alias=AliasChoices("instruction", "note"),
         description="Optional instruction for analyzing the submitted URL",
     )
+    crawl_links: bool = Field(
+        False,
+        description=(
+            "Whether to create additional content items from relevant links "
+            "discovered on the submitted page."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
@@ -36,6 +43,7 @@ class SubmitContentRequest(BaseModel):
                 "title": "Great interview about AI",
                 "platform": "spotify",
                 "instruction": "Add all links mentioned in the episode page",
+                "crawl_links": True,
             }
         }
 

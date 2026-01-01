@@ -20,6 +20,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="",
         help="Instruction for the analyzer (optional)",
     )
+    parser.add_argument(
+        "--crawl-links",
+        action="store_true",
+        help="Enable link crawling for the submitted page",
+    )
     return parser
 
 
@@ -30,6 +35,8 @@ def main() -> int:
     payload = {"url": args.url}
     if args.instruction:
         payload["instruction"] = args.instruction
+    if args.crawl_links:
+        payload["crawl_links"] = True
 
     endpoint = args.base_url.rstrip("/") + "/api/content/submit"
     data = json.dumps(payload).encode("utf-8")

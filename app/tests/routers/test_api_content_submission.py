@@ -110,6 +110,24 @@ def test_submit_accepts_instruction_alias(client, db_session):
     assert task.payload.get("instruction") == "Add all links from the page"
 
 
+def test_submit_with_crawl_links_sets_payload_flag(client, db_session):
+    """Submitting with crawl_links should persist the flag in the ANALYZE_URL payload."""
+    response = client.post(
+        "/api/content/submit",
+        json={
+            "url": "https://example.com/article",
+            "crawl_links": True,
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+
+    task = db_session.query(ProcessingTask).filter_by(content_id=data["content_id"]).first()
+    assert task is not None
+    assert task.payload.get("crawl_links") is True
+
+
 def test_reject_invalid_scheme(client):
     """Non-http(s) schemes should fail validation."""
     response = client.post("/api/content/submit", json={"url": "ftp://example.com/file"})

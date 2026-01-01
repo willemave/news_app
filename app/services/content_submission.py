@@ -41,12 +41,20 @@ def normalize_url(raw_url: str) -> str:
     return str(URL_ADAPTER.validate_python(raw_url)).strip()
 
 
-def _ensure_analyze_url_task(db: Session, content_id: int, instruction: str | None = None) -> int:
+def _ensure_analyze_url_task(
+    db: Session,
+    content_id: int,
+    instruction: str | None = None,
+    *,
+    crawl_links: bool = False,
+) -> int:
     """Create an ANALYZE_URL task if one is not already pending/processing.
 
     Args:
         db: Active database session.
         content_id: Content identifier to analyze.
+        instruction: Optional instruction for analysis.
+        crawl_links: Whether to allow link crawling from the instruction analysis.
 
     Returns:
         ProcessingTask ID.
@@ -69,6 +77,8 @@ def _ensure_analyze_url_task(db: Session, content_id: int, instruction: str | No
     payload: dict[str, object] = {"content_id": content_id}
     if instruction and instruction.strip():
         payload["instruction"] = instruction.strip()
+    if crawl_links:
+        payload["crawl_links"] = True
 
     task = ProcessingTask(
         task_type=TaskType.ANALYZE_URL.value,
@@ -103,6 +113,7 @@ def submit_user_content(
 
     # Check if content already exists (by URL only, regardless of type)
     instruction = payload.instruction.strip() if payload.instruction else None
+    crawl_links = payload.crawl_links
 
     existing = db.query(Content).filter(Content.url == normalized_url).first()
     if existing:
@@ -111,7 +122,9 @@ def submit_user_content(
         )
         if status_created:
             db.commit()
-        task_id = _ensure_analyze_url_task(db, existing.id, instruction=instruction)
+        task_id = _ensure_analyze_url_task(
+            db, existing.id, instruction=instruction, crawl_links=crawl_links
+        )
         return ContentSubmissionResponse(
             content_id=existing.id,
             content_type=ContentType(existing.content_type),
@@ -153,7 +166,9 @@ def submit_user_content(
         existing = db.query(Content).filter(Content.url == normalized_url).first()
         if not existing:
             raise
-        task_id = _ensure_analyze_url_task(db, existing.id, instruction=instruction)
+        task_id = _ensure_analyze_url_task(
+            db, existing.id, instruction=instruction, crawl_links=crawl_links
+        )
         return ContentSubmissionResponse(
             content_id=existing.id,
             content_type=ContentType(existing.content_type),
@@ -171,7 +186,9 @@ def submit_user_content(
     )
     if status_created:
         db.commit()
-    task_id = _ensure_analyze_url_task(db, new_content.id, instruction=instruction)
+    task_id = _ensure_analyze_url_task(
+        db, new_content.id, instruction=instruction, crawl_links=crawl_links
+    )
 
     return ContentSubmissionResponse(
         content_id=new_content.id,

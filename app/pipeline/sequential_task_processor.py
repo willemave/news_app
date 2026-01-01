@@ -20,6 +20,27 @@ from app.services.queue import QueueService, TaskType
 logger = get_logger(__name__)
 
 
+def _build_analysis_instruction(
+    instruction: str | None,
+    crawl_links: bool,
+) -> str | None:
+    """Build the instruction string to send to the content analyzer.
+
+    Args:
+        instruction: Raw instruction provided by the client/share sheet.
+        crawl_links: Whether link crawling was explicitly requested.
+
+    Returns:
+        Cleaned instruction string or a default crawl prompt when enabled.
+    """
+    cleaned = instruction.strip() if instruction else None
+    if cleaned:
+        return cleaned
+    if not crawl_links:
+        return None
+    return "Extract relevant links from the submitted page."
+
+
 class SequentialTaskProcessor:
     """Sequential task processor - processes tasks one at a time."""
 
@@ -128,12 +149,15 @@ class SequentialTaskProcessor:
                 url = content.url
                 metadata = dict(content.content_metadata or {})
 
-                instruction = task_data.get("payload", {}).get("instruction")
+                payload = task_data.get("payload", {}) or {}
+                instruction = payload.get("instruction")
+                crawl_links = bool(payload.get("crawl_links"))
                 task_id = task_data.get("id")
                 analysis_result = None
+                analysis_instruction = _build_analysis_instruction(instruction, crawl_links)
 
                 # Check if this is a known platform (fast path)
-                use_llm = should_use_llm_analysis(url) or bool(instruction)
+                use_llm = should_use_llm_analysis(url) or bool(analysis_instruction)
                 if not use_llm:
                     # Use pattern-based detection
                     detected_type, platform = infer_content_type_and_platform(url, None, None)
@@ -153,7 +177,7 @@ class SequentialTaskProcessor:
                 else:
                     # Use LLM analysis with web search
                     analyzer = get_content_analyzer()
-                    result = analyzer.analyze_url(url, instruction=instruction)
+                    result = analyzer.analyze_url(url, instruction=analysis_instruction)
 
                     if isinstance(result, AnalysisError):
                         # Fall back to pattern detection on error
@@ -205,7 +229,7 @@ class SequentialTaskProcessor:
                     content.content_metadata = metadata
                     db.commit()
 
-                if instruction and analysis_result and analysis_result.instruction:
+                if crawl_links and analysis_result and analysis_result.instruction:
                     created_ids = create_contents_from_instruction_links(
                         db,
                         content,

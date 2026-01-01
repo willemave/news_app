@@ -1,13 +1,14 @@
 # Share Sheet LLM Instruction (gpt-5.2 + Web Search)
 
 ## Summary
-Add an optional instruction to `/api/content/submit` (repurposed from the share-sheet note field). When present, run a transient gpt-5.2 + web search call during `ANALYZE_URL` to generate context (text + links) that guides URL analysis and yields additional URLs + metadata to create new content records. The instruction text and raw results are not persisted or returned in API responses.
+Add an optional instruction to `/api/content/submit` (repurposed from the share-sheet note field). When present, run a transient gpt-5.2 + web search call during `ANALYZE_URL` to generate context (text + links) that guides URL analysis. Only create additional content records from discovered links when `crawl_links=true`. The instruction text and raw results are not persisted or returned in API responses.
 
 ## Goals
 - Accept an optional instruction on content submission (API + share extension).
+- Add an explicit crawl toggle so link creation is opt-in.
 - Use gpt-5.2 with web search to interpret the instruction and provide context about the submitted URL.
 - Support flexible outputs with text and 0+ links (plus metadata sufficient to create content records).
-- Create new content records from discovered links and enqueue them for normal processing.
+- Create new content records from discovered links and enqueue them for normal processing when crawl is enabled.
 - Do not persist or return the instruction text or raw LLM output; use them only during analysis.
 
 ## Non-Goals
@@ -29,11 +30,19 @@ Add an optional instruction to `/api/content/submit` (repurposed from the share-
 - No response changes.
 
 **Client UX**
-- Share sheet placeholder changes to reflect instruction usage, e.g.:
-  - "Add an instruction (optional)" or "What should we do with this link?"
+- Share sheet includes a "Fetch / Crawl" selector:
+  - **Fetch** (default): process only the submitted URL.
+  - **Crawl**: allow creating additional content from links on the page.
+- Placeholder can reflect the current mode, e.g.:
+  - "Add a note (optional)" vs "Add crawl instructions (optional)"
 - Send `instruction` field instead of `note` (keep backwards compatibility in API).
 
-### 2) Task Payload: Transient Instruction
+### 2) API: Accept Optional `crawl_links`
+- Add `crawl_links: bool = False` to `SubmitContentRequest`.
+- Include `crawl_links` in the `ANALYZE_URL` task payload when enabled.
+- No response changes.
+
+### 3) Task Payload: Transient Instruction
 - When enqueuing `ANALYZE_URL`, include the instruction in the task payload:
   - `payload = {"content_id": id, "instruction": "..."}`
 - Do not store the instruction in `content_metadata` or any other content table.
@@ -41,7 +50,7 @@ Add an optional instruction to `/api/content/submit` (repurposed from the share-
   - Update `ProcessingTask.payload` to remove the `instruction` field before calling `complete_task`.
 - Ensure the instruction text is included in the LLM prompt used during `ANALYZE_URL` (see section 4).
 
-### 3) Update ContentAnalyzer to gpt-5.2 + Web Search
+### 4) Update ContentAnalyzer to gpt-5.2 + Web Search
 Extend `ContentAnalyzer` to use gpt-5.2 with web search for URL analysis and instruction handling. The old `gpt-4o-mini` path is deprecated.
 
 **Models**
@@ -76,16 +85,16 @@ class InstructionResult(BaseModel):
 - If the LLM call fails or response is invalid, log and fall back to the existing pattern-based detection.
 - Never fail the `ANALYZE_URL` task solely due to instruction handling errors.
 
-### 4) Use Instruction Output During `ANALYZE_URL`
+### 5) Use Instruction Output During `ANALYZE_URL`
 - In `SequentialTaskProcessor._process_analyze_url_task`:
-  - If `instruction` is present, call the new `ContentAnalyzer` method and capture both outputs.
+  - If `instruction` is present or `crawl_links=true`, call the new `ContentAnalyzer` method and capture both outputs.
   - Build a temporary `analysis_context` string from `InstructionResult`:
     - `text` content + a compact list of link URLs (and optional titles).
   - Ensure the `instruction` text is passed into the LLM prompt for URL analysis.
 - `ContentAnalyzer` includes instruction context in its prompt but does not persist it.
 
-### 5) Create Content Records From Instruction Links
-- For each `InstructionLink` returned:
+### 6) Create Content Records From Instruction Links
+- For each `InstructionLink` returned (only when `crawl_links=true`):
   - Skip if `url` matches the original submission URL or is invalid.
   - Deduplicate against existing `Content` records by `url` (any type); if exists, ensure inbox status for the submitting user.
   - Create a new `Content` row with:
@@ -99,7 +108,7 @@ class InstructionResult(BaseModel):
   - Enqueue `ANALYZE_URL` for each newly created content item.
 - Ensure this does not fail the primary submission if link creation fails (log and continue).
 
-### 6) Flexible Architecture Notes
+### 7) Flexible Architecture Notes
 - The `InstructionResult` schema allows:
   - `text` only
   - `links` only

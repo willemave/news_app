@@ -9,9 +9,33 @@ import UIKit
 import Social
 import UniformTypeIdentifiers
 
+fileprivate enum LinkHandlingMode: String, CaseIterable {
+    case fetch
+    case crawl
+
+    var displayName: String {
+        switch self {
+        case .fetch:
+            return "Fetch this page"
+        case .crawl:
+            return "Crawl links on page"
+        }
+    }
+
+    var placeholderText: String {
+        switch self {
+        case .fetch:
+            return "Add a note (optional)"
+        case .crawl:
+            return "Add crawl instructions (optional)"
+        }
+    }
+}
+
 class ShareViewController: SLComposeServiceViewController {
 
     private var sharedURL: URL?
+    private var linkHandlingMode: LinkHandlingMode = .fetch
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -22,7 +46,7 @@ class ShareViewController: SLComposeServiceViewController {
         }
 
         // Customize UI
-        placeholder = "Add an instruction (optional)"
+        updatePlaceholder()
         navigationItem.rightBarButtonItem?.title = "Submit"
 
         extractSharedURL()
@@ -53,7 +77,13 @@ class ShareViewController: SLComposeServiceViewController {
     }
 
     override func configurationItems() -> [Any]! {
-        return []
+        let item = SLComposeSheetConfigurationItem()
+        item.title = "Link handling"
+        item.value = linkHandlingMode.displayName
+        item.tapHandler = { [weak self] in
+            self?.presentLinkModePicker()
+        }
+        return [item]
     }
 
     // MARK: - URL Extraction
@@ -138,10 +168,14 @@ class ShareViewController: SLComposeServiceViewController {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "url": url.absoluteString,
-            "instruction": note ?? ""
+            "crawl_links": linkHandlingMode == .crawl,
         ]
+        if let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !trimmed.isEmpty {
+            body["instruction"] = trimmed
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -171,6 +205,64 @@ class ShareViewController: SLComposeServiceViewController {
             self.extensionContext?.cancelRequest(withError: ShareError.userCancelled)
         })
         present(alert, animated: true)
+    }
+
+    // MARK: - Link Handling
+
+    private func updatePlaceholder() {
+        placeholder = linkHandlingMode.placeholderText
+    }
+
+    private func presentLinkModePicker() {
+        let controller = LinkHandlingViewController(selectedMode: linkHandlingMode) { [weak self] mode in
+            guard let self else { return }
+            self.linkHandlingMode = mode
+            self.updatePlaceholder()
+            self.reloadConfigurationItems()
+        }
+        pushConfigurationViewController(controller)
+    }
+}
+
+final class LinkHandlingViewController: UITableViewController {
+    private let modes = LinkHandlingMode.allCases
+    private var selectedMode: LinkHandlingMode
+    private let onSelect: (LinkHandlingMode) -> Void
+
+    init(
+        selectedMode: LinkHandlingMode,
+        onSelect: @escaping (LinkHandlingMode) -> Void
+    ) {
+        self.selectedMode = selectedMode
+        self.onSelect = onSelect
+        super.init(style: .insetGrouped)
+        title = "Link handling"
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        modes.count
+    }
+
+    override func tableView(
+        _ tableView: UITableView,
+        cellForRowAt indexPath: IndexPath
+    ) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        let mode = modes[indexPath.row]
+        cell.textLabel?.text = mode.displayName
+        cell.accessoryType = mode == selectedMode ? .checkmark : .none
+        return cell
+    }
+
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let mode = modes[indexPath.row]
+        selectedMode = mode
+        onSelect(mode)
+        navigationController?.popViewController(animated: true)
     }
 }
 
