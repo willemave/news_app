@@ -61,6 +61,9 @@ final class LongContentListViewModel: BaseContentListViewModel {
                 // Update local state
                 logger.info("[LongContentList] Updating local read state | contentId=\(contentId)")
                 markItemLocallyRead(id: contentId)
+                if currentReadFilter() == .unread {
+                    dropReadItems()
+                }
             }
             .store(in: &cancellables)
     }
@@ -86,6 +89,9 @@ final class LongContentListViewModel: BaseContentListViewModel {
         markItemLocallyRead(id: id)
         decrementCount(for: item)
         logger.debug("[LongContentList] Marked locally read | id=\(id) type=\(item.contentType, privacy: .public)")
+        if currentReadFilter() == .unread {
+            dropReadItems()
+        }
 
         readRepository
             .markRead(ids: [id])
@@ -130,6 +136,9 @@ final class LongContentListViewModel: BaseContentListViewModel {
             unreadCountService.decrementPodcastCount(by: reductions.podcasts)
         }
         logger.debug("[LongContentList] Decremented counts | articles=\(reductions.articles) podcasts=\(reductions.podcasts)")
+        if currentReadFilter() == .unread {
+            dropReadItems()
+        }
 
         await withCheckedContinuation { continuation in
             readRepository

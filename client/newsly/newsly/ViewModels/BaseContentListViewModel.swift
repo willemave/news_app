@@ -102,6 +102,10 @@ class BaseContentListViewModel: ObservableObject {
         items.removeAll { $0.isRead }
     }
 
+    func currentReadFilter() -> ReadFilter {
+        readFilter
+    }
+
     func currentItems() -> [ContentSummary] {
         items
     }
