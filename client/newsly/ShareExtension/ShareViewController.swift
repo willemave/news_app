@@ -82,7 +82,9 @@ class ShareViewController: SLComposeServiceViewController {
     }
 
     override func configurationItems() -> [Any]! {
-        let item = SLComposeSheetConfigurationItem()
+        guard let item = SLComposeSheetConfigurationItem() else {
+            return []
+        }
         item.title = "Link handling"
         item.value = linkHandlingMode.displayName
         item.tapHandler = { [weak self] in
@@ -238,7 +240,7 @@ final class LinkHandlingViewController: UITableViewController {
     private var selectedMode: LinkHandlingMode
     private let onSelect: (LinkHandlingMode) -> Void
 
-    init(
+    fileprivate init(
         selectedMode: LinkHandlingMode,
         onSelect: @escaping (LinkHandlingMode) -> Void
     ) {
