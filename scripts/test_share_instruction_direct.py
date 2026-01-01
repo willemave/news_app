@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Test share-sheet instruction flow without HTTP endpoints."""
 
+# ruff: noqa: E402
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import sys
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -16,10 +17,10 @@ if str(ROOT) not in sys.path:
 from app.core.db import get_db
 from app.models.schema import Content
 from app.models.user import User
+from app.pipeline.sequential_task_processor import SequentialTaskProcessor
 from app.routers.api.models import SubmitContentRequest
 from app.services.content_submission import submit_user_content
 from app.services.queue import QueueService, TaskType
-from app.pipeline.sequential_task_processor import SequentialTaskProcessor
 
 
 def _get_or_create_user(db, email: str) -> User:
@@ -56,7 +57,7 @@ def _process_analyze_tasks(queue: QueueService) -> list[int]:
 def main(urls: Iterable[str], instruction: str, email: str) -> None:
     queue = QueueService()
     submitted_ids: list[int] = []
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
 
     with get_db() as db:
         user = _get_or_create_user(db, email)

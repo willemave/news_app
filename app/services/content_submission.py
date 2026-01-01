@@ -47,6 +47,7 @@ def _ensure_analyze_url_task(
     instruction: str | None = None,
     *,
     crawl_links: bool = False,
+    subscribe_to_feed: bool = False,
 ) -> int:
     """Create an ANALYZE_URL task if one is not already pending/processing.
 
@@ -79,6 +80,8 @@ def _ensure_analyze_url_task(
         payload["instruction"] = instruction.strip()
     if crawl_links:
         payload["crawl_links"] = True
+    if subscribe_to_feed:
+        payload["subscribe_to_feed"] = True
 
     task = ProcessingTask(
         task_type=TaskType.ANALYZE_URL.value,
@@ -114,16 +117,29 @@ def submit_user_content(
     # Check if content already exists (by URL only, regardless of type)
     instruction = payload.instruction.strip() if payload.instruction else None
     crawl_links = payload.crawl_links
+    subscribe_to_feed = payload.subscribe_to_feed
 
     existing = db.query(Content).filter(Content.url == normalized_url).first()
     if existing:
-        status_created = ensure_inbox_status(
-            db, current_user.id, existing.id, content_type=existing.content_type
-        )
-        if status_created:
+        if subscribe_to_feed:
+            existing_metadata = dict(existing.content_metadata or {})
+            existing_metadata["subscribe_to_feed"] = True
+            existing_metadata.setdefault("submitted_by_user_id", current_user.id)
+            existing_metadata.setdefault("submitted_via", "share_sheet")
+            existing.content_metadata = existing_metadata
             db.commit()
+        else:
+            status_created = ensure_inbox_status(
+                db, current_user.id, existing.id, content_type=existing.content_type
+            )
+            if status_created:
+                db.commit()
         task_id = _ensure_analyze_url_task(
-            db, existing.id, instruction=instruction, crawl_links=crawl_links
+            db,
+            existing.id,
+            instruction=instruction,
+            crawl_links=crawl_links,
+            subscribe_to_feed=subscribe_to_feed,
         )
         return ContentSubmissionResponse(
             content_id=existing.id,
@@ -131,7 +147,11 @@ def submit_user_content(
             status=ContentStatus(existing.status),
             platform=existing.platform,
             already_exists=True,
-            message="Content already submitted; using existing record",
+            message=(
+                "Feed subscription queued"
+                if subscribe_to_feed
+                else "Content already submitted; using existing record"
+            ),
             task_id=task_id,
             source=existing.source or SELF_SUBMISSION_SOURCE,
         )
@@ -142,6 +162,8 @@ def submit_user_content(
         "submitted_by_user_id": current_user.id,
         "submitted_via": "share_sheet",
     }
+    if subscribe_to_feed:
+        metadata["subscribe_to_feed"] = True
 
     # Create content with UNKNOWN type - will be updated by ANALYZE_URL task
     new_content = Content(
@@ -181,13 +203,18 @@ def submit_user_content(
         )
 
     db.refresh(new_content)
-    status_created = ensure_inbox_status(
-        db, current_user.id, new_content.id, content_type=new_content.content_type
-    )
-    if status_created:
-        db.commit()
+    if not subscribe_to_feed:
+        status_created = ensure_inbox_status(
+            db, current_user.id, new_content.id, content_type=new_content.content_type
+        )
+        if status_created:
+            db.commit()
     task_id = _ensure_analyze_url_task(
-        db, new_content.id, instruction=instruction, crawl_links=crawl_links
+        db,
+        new_content.id,
+        instruction=instruction,
+        crawl_links=crawl_links,
+        subscribe_to_feed=subscribe_to_feed,
     )
 
     return ContentSubmissionResponse(
@@ -196,7 +223,7 @@ def submit_user_content(
         status=ContentStatus(new_content.status),
         platform=None,
         already_exists=False,
-        message="Content queued for analysis",
+        message="Feed subscription queued" if subscribe_to_feed else "Content queued for analysis",
         task_id=task_id,
         source=new_content.source or SELF_SUBMISSION_SOURCE,
     )

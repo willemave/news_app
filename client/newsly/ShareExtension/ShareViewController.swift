@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 fileprivate enum LinkHandlingMode: String, CaseIterable {
     case fetch
     case crawl
+    case subscribeToFeed
 
     var displayName: String {
         switch self {
@@ -19,6 +20,8 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
             return "Fetch this page"
         case .crawl:
             return "Crawl links on page"
+        case .subscribeToFeed:
+            return "Subscribe to feed"
         }
     }
 
@@ -28,6 +31,8 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
             return "Add a note (optional)"
         case .crawl:
             return "Add crawl instructions (optional)"
+        case .subscribeToFeed:
+            return "Add feed notes (optional)"
         }
     }
 }
@@ -171,6 +176,7 @@ class ShareViewController: SLComposeServiceViewController {
         var body: [String: Any] = [
             "url": url.absoluteString,
             "crawl_links": linkHandlingMode == .crawl,
+            "subscribe_to_feed": linkHandlingMode == .subscribeToFeed,
         ]
         if let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines),
            !trimmed.isEmpty {
@@ -211,6 +217,9 @@ class ShareViewController: SLComposeServiceViewController {
 
     private func updatePlaceholder() {
         placeholder = linkHandlingMode.placeholderText
+        navigationItem.rightBarButtonItem?.title = linkHandlingMode == .subscribeToFeed
+            ? "Subscribe"
+            : "Submit"
     }
 
     private func presentLinkModePicker() {

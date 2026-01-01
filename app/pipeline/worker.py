@@ -222,6 +222,7 @@ class ContentWorker:
             final_url = str(final_url)
 
             existing_metadata = content.metadata or {}
+            subscribe_to_feed = bool(existing_metadata.get("subscribe_to_feed"))
 
             metadata_update = {
                 "content": extracted_data.get("text_content", ""),
@@ -231,6 +232,8 @@ class ContentWorker:
                 "source": existing_metadata.get("source"),  # Never overwrite source from scraper
                 "final_url": final_url,
             }
+            if subscribe_to_feed:
+                metadata_update["subscribe_to_feed"] = True
 
             original_url = str(content.url)
             if content.content_type == ContentType.NEWS and original_url != final_url:
@@ -287,6 +290,41 @@ class ContentWorker:
                 )
 
             content.metadata.update(metadata_update)
+
+            if subscribe_to_feed:
+                from app.services.feed_subscription import subscribe_to_detected_feed
+
+                detected_feed = metadata_update.get("detected_feed") or existing_metadata.get(
+                    "detected_feed"
+                )
+                submitter_id = existing_metadata.get("submitted_by_user_id")
+                subscription_status = "no_feed_found"
+                if detected_feed:
+                    with get_db() as db:
+                        created, subscription_status = subscribe_to_detected_feed(
+                            db,
+                            submitter_id,
+                            detected_feed,
+                            display_name=detected_feed.get("title"),
+                        )
+                    metadata_update["feed_subscription"] = {
+                        "status": subscription_status,
+                        "feed_url": detected_feed.get("url"),
+                        "feed_type": detected_feed.get("type"),
+                        "created": created,
+                    }
+                else:
+                    metadata_update["feed_subscription"] = {"status": subscription_status}
+
+                content.metadata.update(metadata_update)
+                content.status = ContentStatus.SKIPPED
+                content.processed_at = datetime.now(UTC)
+                logger.info(
+                    "Feed subscription flow completed for content %s (status=%s)",
+                    content.id,
+                    metadata_update.get("feed_subscription", {}).get("status"),
+                )
+                return True
 
             extraction_error = extracted_data.get("extraction_error")
             llm_content = llm_data.get("content_to_summarize")

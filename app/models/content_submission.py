@@ -34,6 +34,13 @@ class SubmitContentRequest(BaseModel):
             "discovered on the submitted page."
         ),
     )
+    subscribe_to_feed: bool = Field(
+        False,
+        description=(
+            "When true, detect an RSS/Atom feed from the URL and subscribe to it "
+            "instead of processing the URL as content."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
@@ -44,6 +51,7 @@ class SubmitContentRequest(BaseModel):
                 "platform": "spotify",
                 "instruction": "Add all links mentioned in the episode page",
                 "crawl_links": True,
+                "subscribe_to_feed": False,
             }
         }
 

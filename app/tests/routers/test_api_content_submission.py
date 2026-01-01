@@ -2,7 +2,7 @@
 
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ProcessingTask
+from app.models.schema import Content, ContentStatusEntry, ProcessingTask
 from app.services.queue import TaskStatus, TaskType
 
 
@@ -126,6 +126,43 @@ def test_submit_with_crawl_links_sets_payload_flag(client, db_session):
     task = db_session.query(ProcessingTask).filter_by(content_id=data["content_id"]).first()
     assert task is not None
     assert task.payload.get("crawl_links") is True
+
+
+def test_submit_with_subscribe_to_feed_skips_inbox_and_sets_payload(
+    client,
+    db_session,
+    test_user,
+):
+    """Submitting with subscribe_to_feed should skip inbox and set payload flag."""
+    response = client.post(
+        "/api/content/submit",
+        json={
+            "url": "https://example.com/article",
+            "subscribe_to_feed": True,
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["message"] == "Feed subscription queued"
+
+    created = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+    assert created is not None
+    assert created.content_metadata.get("subscribe_to_feed") is True
+
+    status_entry = (
+        db_session.query(ContentStatusEntry)
+        .filter(
+            ContentStatusEntry.user_id == test_user.id,
+            ContentStatusEntry.content_id == created.id,
+        )
+        .first()
+    )
+    assert status_entry is None
+
+    task = db_session.query(ProcessingTask).filter_by(content_id=created.id).first()
+    assert task is not None
+    assert task.payload.get("subscribe_to_feed") is True
 
 
 def test_reject_invalid_scheme(client):
