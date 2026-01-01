@@ -262,7 +262,7 @@ async def main():
 
     # Define models to test
     models = {
-        "gemini-flash-3": "google-gla:gemini-2.0-flash",
+        "gemini-3-flash-preview": "google-gla:gemini-2.0-flash",
         "haiku-4.5": "anthropic:claude-haiku-4-5-20251001",
     }
 

@@ -48,7 +48,7 @@ class Settings(BaseSettings):
 
     # PDF extraction (Gemini)
     pdf_gemini_model: str = Field(
-        default="gemini-flash-3",
+        default="gemini-3-flash-preview",
         description="Gemini model name for PDF extraction",
     )
 

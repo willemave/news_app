@@ -23,7 +23,7 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
         if not google_api_key:
             raise ValueError("Google API key is required for PDF processing")
         self.client = genai.Client(api_key=google_api_key)
-        self.model_name = getattr(settings, "pdf_gemini_model", "gemini-flash-3")
+        self.model_name = getattr(settings, "pdf_gemini_model", "gemini-3-flash-preview")
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
         """Check if this strategy can handle the given URL."""

@@ -14,13 +14,13 @@ def _set_required_env(monkeypatch) -> None:
 
 
 def test_pdf_gemini_model_default(monkeypatch):
-    """Default model is gemini-flash-3."""
+    """Default model is gemini-3-flash-preview."""
     _set_required_env(monkeypatch)
     monkeypatch.delenv("PDF_GEMINI_MODEL", raising=False)
     get_settings.cache_clear()
 
     settings = Settings()
-    assert settings.pdf_gemini_model == "gemini-flash-3"
+    assert settings.pdf_gemini_model == "gemini-3-flash-preview"
 
 
 def test_pdf_gemini_model_invalid(monkeypatch):
@@ -37,7 +37,7 @@ def test_pdf_strategy_uses_settings_model(monkeypatch):
     """PdfProcessorStrategy picks up settings-based model."""
     _set_required_env(monkeypatch)
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setenv("PDF_GEMINI_MODEL", "gemini-flash-3")
+    monkeypatch.setenv("PDF_GEMINI_MODEL", "gemini-3-flash-preview")
     get_settings.cache_clear()
 
     from app.processing_strategies import pdf_strategy as pdf_module
@@ -54,4 +54,4 @@ def test_pdf_strategy_uses_settings_model(monkeypatch):
         pass
 
     strategy = pdf_module.PdfProcessorStrategy(http_client=DummyHttpClient())  # type: ignore[arg-type]
-    assert strategy.model_name == "gemini-flash-3"
+    assert strategy.model_name == "gemini-3-flash-preview"
