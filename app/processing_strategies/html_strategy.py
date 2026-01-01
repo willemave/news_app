@@ -156,6 +156,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "remove_overlay_elements": True,
             "page_timeout_ms": 90_000,
             "wait_for_timeout_ms": 90_000,
+            "wait_until": "domcontentloaded",
+            "wait_for": "body",
             "max_crawl_attempts": 1,
             "crawl_retry_delay_seconds": 1.5,
         }
@@ -189,6 +191,43 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             config["pdf"] = True
 
         return config
+
+    @staticmethod
+    def _get_domain_overrides(url: str) -> dict[str, Any]:
+        """Return per-domain crawl4ai overrides."""
+        try:
+            from urllib.parse import urlparse
+
+            host = (urlparse(url).netloc or "").lower()
+        except Exception:
+            host = ""
+
+        overrides: dict[str, Any] = {}
+        if host.endswith("screenrant.com"):
+            overrides.update(
+                {
+                    "page_timeout_ms": 45_000,
+                    "wait_for_timeout_ms": 30_000,
+                    "wait_for": None,
+                }
+            )
+        if host.endswith("redbook.io"):
+            overrides.update(
+                {
+                    "page_timeout_ms": 45_000,
+                    "wait_for_timeout_ms": 30_000,
+                    "wait_for": None,
+                }
+            )
+        if host.endswith("dashboard.congress.ccc.de"):
+            overrides.update(
+                {
+                    "page_timeout_ms": 30_000,
+                    "wait_for_timeout_ms": 20_000,
+                    "wait_for": None,
+                }
+            )
+        return overrides
 
     def _resolve_llm_api_token(self, provider: str) -> str | None:
         """Resolve the API token to use for the configured LLM provider."""
@@ -247,7 +286,6 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "wait condition failed",
             "selector 'body'",
             "net::err_connection_refused",
-            "net::err_http2_protocol_error",
             "net::err_cert_verifier_changed",
             "net::err_connection_reset",
             "net::err_failed",
@@ -265,6 +303,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "net::err_cert_verifier_changed",
             "wait condition failed",
             "timeout after",
+            "net::err_name_not_resolved",
         ]
         return any(token in message for token in fallback_tokens)
 
@@ -297,8 +336,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             )
         }
         try:
-            response = httpx.get(url, headers=headers, timeout=20.0, follow_redirects=True)
-            response.raise_for_status()
+            response = self.http_client.get(url, headers=headers, timeout=20.0)
         except Exception as exc:  # noqa: BLE001
             logger.error("HtmlStrategy fallback fetch failed for %s: %s", url, exc)
             return None
@@ -351,6 +389,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
             # Get source-specific configuration
             source_config = self._get_source_specific_config(source)
+            source_config.update(self._get_domain_overrides(url))
             page_timeout_ms = int(source_config.get("page_timeout_ms", 90_000))
             wait_for_timeout_ms = int(source_config.get("wait_for_timeout_ms", page_timeout_ms))
             max_crawl_attempts = max(1, int(source_config.get("max_crawl_attempts", 3)))
@@ -370,8 +409,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 remove_forms=True,
                 keep_data_attributes=False,
                 # Page handling
-                wait_until="domcontentloaded",
-                wait_for="body",
+                wait_until=source_config.get("wait_until", "domcontentloaded"),
+                wait_for=source_config.get("wait_for"),
                 delay_before_return_html=1.0,
                 page_timeout=page_timeout_ms,
                 wait_for_timeout=wait_for_timeout_ms,
@@ -665,6 +704,26 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                         "strategy": "html",
                         "source": source,
                         "method": "crawl4ai",
+                        "error_type": type(e).__name__,
+                        "crawl4ai_config": {
+                            "page_timeout_ms": int(source_config.get("page_timeout_ms", 90_000))
+                            if "source_config" in locals()
+                            else None,
+                            "wait_for_timeout_ms": int(
+                                source_config.get("wait_for_timeout_ms", 90_000)
+                            )
+                            if "source_config" in locals()
+                            else None,
+                            "wait_until": source_config.get("wait_until", "domcontentloaded")
+                            if "source_config" in locals()
+                            else None,
+                            "wait_for": source_config.get("wait_for")
+                            if "source_config" in locals()
+                            else None,
+                            "max_crawl_attempts": int(source_config.get("max_crawl_attempts", 1))
+                            if "source_config" in locals()
+                            else None,
+                        },
                         "traceback": traceback_str,
                     },
                 },

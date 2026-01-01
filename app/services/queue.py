@@ -130,9 +130,19 @@ class QueueService:
                 task.status = TaskStatus.COMPLETED.value
                 logger.info(f"Task {task_id} completed successfully")
             else:
+                if not error_message:
+                    error_message = "Task failed without error details"
                 task.status = TaskStatus.FAILED.value
                 task.error_message = error_message
-                logger.error(f"Task {task_id} failed: {error_message}")
+                logger.error(
+                    f"Task {task_id} failed: {error_message}",
+                    extra={
+                        "component": "app.services.queue",
+                        "operation": "complete_task",
+                        "item_id": task_id,
+                        "context_data": {"error_message": error_message},
+                    },
+                )
 
             db.commit()
 

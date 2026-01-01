@@ -56,10 +56,11 @@ class SequentialTaskProcessor:
         self.worker_id = "sequential-processor"
         logger.debug(f"SequentialTaskProcessor initialized with worker_id: {self.worker_id}")
 
-    def process_task(self, task_data: dict[str, Any]) -> bool:
+    def process_task(self, task_data: dict[str, Any]) -> tuple[bool, str | None]:
         """Process a single task."""
         task_id = task_data.get("id", "unknown")
         start_time = time.time()
+        task_error: str | None = None
 
         try:
             task_type = TaskType(task_data["task_type"])
@@ -87,16 +88,19 @@ class SequentialTaskProcessor:
                 logger.error(f"Unknown task type: {task_type}")
                 result = False
 
+            if not result:
+                task_error = task_data.get("error_message") or f"{task_type.value} returned False"
+
             elapsed = time.time() - start_time
             logger.info(f"Task {task_id} completed in {elapsed:.2f}s with result: {result}")
-            return result
+            return result, task_error
 
         except Exception as e:
             elapsed = time.time() - start_time
             logger.error(
                 f"Error processing task {task_id} after {elapsed:.2f}s: {e}", exc_info=True
             )
-            return False
+            return False, str(e)
 
     def _process_scrape_task(self, task_data: dict[str, Any]) -> bool:
         """Process a scrape task."""
@@ -915,10 +919,12 @@ class SequentialTaskProcessor:
                 retry_count = task_data["retry_count"]
 
                 # Process the task
-                success = self.process_task(task_data)
+                success, error_message = self.process_task(task_data)
 
                 # Update task status
-                self.queue_service.complete_task(task_id, success=success)
+                self.queue_service.complete_task(
+                    task_id, success=success, error_message=error_message
+                )
 
                 if success:
                     processed_count += 1
@@ -958,11 +964,11 @@ class SequentialTaskProcessor:
         setup_logging()
         logger.info(f"Processing single task: {task_data.get('id', 'unknown')}")
 
-        success = self.process_task(task_data)
+        success, error_message = self.process_task(task_data)
 
         # Handle completion and retry logic
         task_id = task_data["id"]
-        self.queue_service.complete_task(task_id, success=success)
+        self.queue_service.complete_task(task_id, success=success, error_message=error_message)
 
         if not success and task_data.get("retry_count", 0) < getattr(
             self.settings, "max_retries", 3

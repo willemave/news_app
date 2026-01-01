@@ -36,38 +36,6 @@
 
 Use `logger.error()` or `logger.exception()` directly with structured `extra` fields:
 
-```python
-from app.core.logging import get_logger
-logger = get_logger(__name__)
-
-# For errors with tracebacks (in except blocks):
-try:
-    process_item(item_id)
-except Exception as e:
-    logger.exception(
-        "Failed to process item %s: %s",
-        item_id,
-        e,
-        extra={
-            "component": "worker_name",
-            "operation": "process_item",
-            "item_id": item_id,
-            "context_data": {"url": url, "status": status},
-        },
-    )
-
-# For error conditions without tracebacks:
-logger.error(
-    "Invalid state for item %s",
-    item_id,
-    extra={
-        "component": "validator",
-        "operation": "validate",
-        "context_data": {"expected": "active", "actual": state},
-    },
-)
-```
-
 Standard `extra` fields:
 - `component`: Module/worker name (e.g., `"content_worker"`, `"http_service"`)
 - `operation`: Operation name (e.g., `"summarize"`, `"http_fetch"`)
@@ -199,10 +167,6 @@ alembic upgrade head
 scripts/start_server.sh              # API server
 scripts/start_workers.sh             # Task workers
 scripts/start_scrapers.sh            # Content scrapers
-
-# Docker
-docker compose up -d                 # Start all services
-docker compose up -d --build         # Rebuild and start
 ```
 
 ---
@@ -210,6 +174,7 @@ docker compose up -d --build         # Rebuild and start
 ## 8. Preferred Dev Tools
 
 * **LLM internet search**: Use the EXA MCP `web_search_exa` tool for any web/internet lookups (and `get_code_context_exa` for external API/library docs).
+* **Webpage fetching**: You can use your inbuilt webpage fetching tools to resolve web pages in the prompt. 
 
 | Tool | Purpose | Example |
 |------|---------|---------|
@@ -269,13 +234,6 @@ new → pending → processing → completed
 
 ---
 
-## 10. Security Warnings (MVP)
-
-- **Apple token verification DISABLED** — Must implement before production (see `app/core/security.py:106`)
-- **Admin sessions IN-MEMORY** — Must migrate to Redis/DB for production (see `app/routers/auth.py:31`)
-
----
-
 **Keep all replies short, technical, and complete.**
 
 **Always run `ruff check` on touched Python files (or the repo) after a set of changes, and fix violations before final handoff whenever possible.**
@@ -290,3 +248,5 @@ For detailed documentation on:
 - Authentication system
 
 See **[docs/architecture.md](docs/architecture.md)**.
+
+

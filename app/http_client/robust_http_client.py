@@ -2,6 +2,8 @@
 This module provides a robust synchronous HTTP client.
 """
 
+from urllib.parse import urlparse, urlunparse
+
 import httpx
 
 from app.core.logging import get_logger
@@ -54,6 +56,55 @@ class RobustHttpClient:
                 follow_redirects=True,  # Default to follow redirects
             )
         return self._client
+
+    def _build_host_variant(self, url: str, host: str) -> str:
+        parsed = urlparse(url)
+        return urlunparse(parsed._replace(netloc=host))
+
+    def _maybe_retry_hostname_mismatch(
+        self,
+        url: str,
+        error_message: str,
+        headers: dict[str, str],
+        timeout: float,
+        stream: bool,
+    ) -> httpx.Response | None:
+        message = error_message.lower()
+        if (
+            "certificate verify failed" not in message
+            and "certificate_verify_failed" not in message
+        ) or "hostname mismatch" not in message:
+            return None
+        parsed = urlparse(url)
+        host = parsed.netloc
+        if not host:
+            return None
+        variant = None
+        if host.startswith("www."):
+            variant = host[4:]
+        elif "." in host:
+            variant = f"www.{host}"
+        if not variant or variant == host:
+            return None
+        retry_url = self._build_host_variant(url, variant)
+        logger.warning(
+            "Retrying request with host variant due to SSL hostname mismatch: %s -> %s",
+            url,
+            retry_url,
+            extra={
+                "component": "robust_http_client",
+                "operation": "host_variant_retry",
+                "context_data": {"url": url, "retry_url": retry_url},
+            },
+        )
+        client = self._get_client()
+        if stream:
+            response = client.stream("GET", retry_url, headers=headers, timeout=timeout)
+            response.__enter__()
+        else:
+            response = client.get(retry_url, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        return response
 
     def get(
         self,
@@ -125,6 +176,28 @@ class RobustHttpClient:
             )
             raise
         except httpx.RequestError as e:
+            if "certificate verify failed" in str(e).lower():
+                try:
+                    retry_response = self._maybe_retry_hostname_mismatch(
+                        url=url,
+                        error_message=str(e),
+                        headers=request_headers,
+                        timeout=effective_timeout,
+                        stream=stream,
+                    )
+                    if retry_response is not None:
+                        return retry_response
+                except Exception as retry_exc:  # noqa: BLE001
+                    logger.exception(
+                        "Host variant retry failed for GET %s: %s",
+                        url,
+                        retry_exc,
+                        extra={
+                            "component": "robust_http_client",
+                            "operation": "http_get",
+                            "context_data": {"url": url, "retry_error": str(retry_exc)},
+                        },
+                    )
             logger.exception(
                 "Request error for GET %s: %s",
                 url,
@@ -193,6 +266,28 @@ class RobustHttpClient:
             )
             raise
         except httpx.RequestError as e:
+            if "certificate verify failed" in str(e).lower():
+                try:
+                    retry_response = self._maybe_retry_hostname_mismatch(
+                        url=url,
+                        error_message=str(e),
+                        headers=request_headers,
+                        timeout=effective_timeout,
+                        stream=False,
+                    )
+                    if retry_response is not None:
+                        return retry_response
+                except Exception as retry_exc:  # noqa: BLE001
+                    logger.exception(
+                        "Host variant retry failed for HEAD %s: %s",
+                        url,
+                        retry_exc,
+                        extra={
+                            "component": "robust_http_client",
+                            "operation": "http_head",
+                            "context_data": {"url": url, "retry_error": str(retry_exc)},
+                        },
+                    )
             logger.exception(
                 "Request error for HEAD %s: %s",
                 url,

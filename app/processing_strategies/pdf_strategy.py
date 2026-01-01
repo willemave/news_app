@@ -23,7 +23,7 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
         if not google_api_key:
             raise ValueError("Google API key is required for PDF processing")
         self.client = genai.Client(api_key=google_api_key)
-        self.model_name = "gemini-2.5-flash-lite-preview-06-17"
+        self.model_name = getattr(settings, "pdf_gemini_model", "gemini-flash-3")
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
         """Check if this strategy can handle the given URL."""
@@ -70,6 +70,8 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
         logger.info(f"PdfStrategy: Extracting text from PDF content for URL: {url}")
 
         try:
+            if not self.model_name:
+                raise NonRetryableError("PDF_GEMINI_MODEL is not configured")
             # Create a Part object from PDF bytes
             pdf_part = Part.from_bytes(data=content, mime_type="application/pdf")
 

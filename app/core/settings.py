@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -45,6 +46,12 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     exa_api_key: str | None = None
 
+    # PDF extraction (Gemini)
+    pdf_gemini_model: str = Field(
+        default="gemini-flash-3",
+        description="Gemini model name for PDF extraction",
+    )
+
     # Whisper transcription settings
     whisper_model_size: str = "base"  # tiny, base, small, medium, large
     whisper_device: str = "auto"  # auto, cpu, cuda, mps
@@ -89,6 +96,16 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.startswith("sqlite:"):
             return v
         return v
+
+    @field_validator("pdf_gemini_model")
+    @classmethod
+    def validate_pdf_gemini_model(cls, v: str) -> str:
+        value = v.strip()
+        if not value:
+            raise ValueError("PDF_GEMINI_MODEL must be set")
+        if not re.match(r"^gemini-[\w\.-]+$", value):
+            raise ValueError("PDF_GEMINI_MODEL must start with 'gemini-'")
+        return value
 
     @property
     def podcast_media_dir(self) -> Path:
