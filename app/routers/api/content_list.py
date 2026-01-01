@@ -74,6 +74,15 @@ def get_content_image_url(domain_content: ContentData) -> str | None:
     return None
 
 
+def _article_ready_for_list(domain_content: ContentData, image_url: str | None) -> bool:
+    """Check if an article has enough data to appear in list views."""
+    if domain_content.content_type != ContentType.ARTICLE:
+        return True
+    if not domain_content.bullet_points:
+        return False
+    return bool(image_url)
+
+
 router = APIRouter()
 
 
@@ -292,6 +301,10 @@ async def list_contents(
                 news_summary_text = summary_meta.get("overview") or domain_content.summary
                 is_aggregate = False
 
+            image_url = get_content_image_url(domain_content)
+            if not _article_ready_for_list(domain_content, image_url):
+                continue
+
             content_summaries.append(
                 ContentSummaryResponse(
                     id=domain_content.id,
@@ -323,7 +336,7 @@ async def list_contents(
                     user_status="inbox"
                     if domain_content.content_type in (ContentType.ARTICLE, ContentType.PODCAST)
                     else None,
-                    image_url=get_content_image_url(domain_content),
+                    image_url=image_url,
                     thumbnail_url=get_content_thumbnail_url(domain_content.id),
                 )
             )
@@ -347,7 +360,7 @@ async def list_contents(
 
     # Generate next cursor if there are more results
     next_cursor = None
-    if has_more and content_summaries:
+    if has_more and contents:
         last_item = contents[-1]  # Use original DB object, not domain object
         current_filters = {
             "content_type": content_type,
@@ -509,8 +522,6 @@ async def search_contents(
     if has_more:
         results = results[:limit]  # Trim to requested limit
 
-    total = len(results)  # Only count current page for performance
-
     content_summaries: list[ContentSummaryResponse] = []
     for c in results:
         try:
@@ -518,6 +529,10 @@ async def search_contents(
             classification = None
             if domain_content.structured_summary:
                 classification = domain_content.structured_summary.get("classification")
+
+            image_url = get_content_image_url(domain_content)
+            if not _article_ready_for_list(domain_content, image_url):
+                continue
 
             content_summaries.append(
                 ContentSummaryResponse(
@@ -548,7 +563,7 @@ async def search_contents(
                     user_status="inbox"
                     if domain_content.content_type in (ContentType.ARTICLE, ContentType.PODCAST)
                     else None,
-                    image_url=get_content_image_url(domain_content),
+                    image_url=image_url,
                     thumbnail_url=get_content_thumbnail_url(domain_content.id),
                 )
             )
@@ -566,9 +581,11 @@ async def search_contents(
             )
             continue
 
+    total = len(content_summaries)  # Only count current page for performance
+
     # Generate next cursor if there are more results
     next_cursor = None
-    if has_more and content_summaries:
+    if has_more and results:
         last_item = results[-1]  # Use original DB object
         current_filters = {
             "q": q,
