@@ -26,14 +26,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PIL import Image  # noqa: E402
 
 from app.core.logging import get_logger, setup_logging  # noqa: E402
+from app.utils.image_paths import (  # noqa: E402
+    get_content_images_dir,
+    get_news_thumbnails_dir,
+    get_thumbnails_dir,
+)
 
 setup_logging()
 logger = get_logger(__name__)
 
 # Image directories
-CONTENT_IMAGES_DIR = Path("static/images/content")
-NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
-THUMBNAILS_DIR = Path("static/images/thumbnails")
+CONTENT_IMAGES_DIR = get_content_images_dir()
+NEWS_THUMBNAILS_DIR = get_news_thumbnails_dir()
+THUMBNAILS_DIR = get_thumbnails_dir()
 
 # Thumbnail settings
 THUMBNAIL_SIZE = (200, 200)

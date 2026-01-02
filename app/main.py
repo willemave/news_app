@@ -141,7 +141,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
+# Mount static files (images first so they bypass repo static)
+app.mount("/static/images", StaticFiles(directory=settings.images_base_dir), name="static-images")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include routers

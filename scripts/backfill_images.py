@@ -12,7 +12,6 @@ import argparse
 import os
 import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,12 +23,13 @@ from app.core.logging import get_logger, setup_logging  # noqa: E402
 from app.models.metadata import ContentStatus  # noqa: E402
 from app.models.schema import Content, ContentStatusEntry  # noqa: E402
 from app.services.queue import QueueService, TaskType  # noqa: E402
+from app.utils.image_paths import get_content_images_dir  # noqa: E402
 
 setup_logging()
 logger = get_logger(__name__)
 
 # Image storage path
-IMAGES_DIR = Path("static/images/content")
+IMAGES_DIR = get_content_images_dir()
 
 
 def backfill_images(

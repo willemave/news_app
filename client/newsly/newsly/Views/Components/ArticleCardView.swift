@@ -277,7 +277,7 @@ struct ArticleCardView: View {
             Spacer()
 
             Button(action: onFavorite) {
-                Image(systemName: "brain.head.profile")
+                Image(systemName: content.isFavorited ? "star.fill" : "star")
                     .font(.title3)
                     .foregroundColor(content.isFavorited ? .yellow : .primary.opacity(0.7))
             }

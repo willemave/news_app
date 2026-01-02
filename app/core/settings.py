@@ -1,3 +1,4 @@
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -8,6 +9,17 @@ from pydantic_settings import BaseSettings
 
 # Load .env file into os.environ so libraries like openai/pydantic-ai can read it
 load_dotenv(override=True)
+
+
+def _default_images_base_dir() -> Path:
+    data_root = Path("/data")
+    images_root = data_root / "images"
+    if data_root.exists():
+        if images_root.exists() and os.access(images_root, os.W_OK):
+            return images_root
+        if os.access(data_root, os.W_OK):
+            return images_root
+    return Path.cwd() / "data" / "images"
 
 
 class Settings(BaseSettings):
@@ -71,6 +83,7 @@ class Settings(BaseSettings):
     # Storage paths
     media_base_dir: Path = Field(default_factory=lambda: Path.cwd() / "data" / "media")
     logs_base_dir: Path = Field(default_factory=lambda: Path.cwd() / "logs")
+    images_base_dir: Path = Field(default_factory=_default_images_base_dir)
 
     # crawl4ai table extraction
     crawl4ai_enable_table_extraction: bool = False

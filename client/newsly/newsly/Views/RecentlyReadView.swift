@@ -78,8 +78,10 @@ struct RecentlyReadView: View {
                                             await viewModel.toggleFavorite(content.id)
                                         }
                                     } label: {
-                                        Label(content.isFavorited ? "Remove from Favorites" : "Add to Favorites",
-                                              systemImage: "brain.head.profile")
+                                        Label(
+                                            content.isFavorited ? "Remove from Favorites" : "Add to Favorites",
+                                            systemImage: content.isFavorited ? "star.slash" : "star"
+                                        )
                                     }
                                     .tint(content.isFavorited ? .red : .yellow)
                                 }

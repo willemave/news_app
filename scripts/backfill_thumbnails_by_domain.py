@@ -11,7 +11,6 @@ import argparse
 import os
 import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,11 +22,12 @@ from app.core.logging import get_logger, setup_logging  # noqa: E402
 from app.models.metadata import ContentStatus  # noqa: E402
 from app.models.schema import Content  # noqa: E402
 from app.services.queue import QueueService, TaskType  # noqa: E402
+from app.utils.image_paths import get_news_thumbnails_dir  # noqa: E402
 
 setup_logging()
 logger = get_logger(__name__)
 
-NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
+NEWS_THUMBNAILS_DIR = get_news_thumbnails_dir()
 
 
 def _matches_domain(url: str | None, domain: str) -> bool:

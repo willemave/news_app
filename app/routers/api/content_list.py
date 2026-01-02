@@ -1,7 +1,6 @@
 """Content listing and search endpoints."""
 
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,14 +16,15 @@ from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
 from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse, UnreadCountsResponse
+from app.utils.image_paths import (
+    get_content_images_dir,
+    get_news_thumbnails_dir,
+    get_thumbnails_dir,
+)
 from app.utils.pagination import PaginationCursor
 
 logger = get_logger(__name__)
 
-# Image storage paths
-IMAGES_DIR = Path("static/images/content")
-NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
-THUMBNAILS_DIR = Path("static/images/thumbnails")
 AVAILABLE_DATES_LOOKBACK_DAYS = 120
 
 
@@ -67,7 +67,7 @@ def get_content_thumbnail_url(content_id: int | None) -> str | None:
     if not content_id:
         return None
 
-    thumbnail_path = THUMBNAILS_DIR / f"{content_id}.png"
+    thumbnail_path = get_thumbnails_dir() / f"{content_id}.png"
     if thumbnail_path.exists():
         return f"/static/images/thumbnails/{content_id}.png"
 
@@ -94,12 +94,12 @@ def get_content_image_url(domain_content: ContentData) -> str | None:
 
     # For news items, check news thumbnails directory first
     if domain_content.content_type == ContentType.NEWS:
-        news_image_path = NEWS_THUMBNAILS_DIR / f"{content_id}.png"
+        news_image_path = get_news_thumbnails_dir() / f"{content_id}.png"
         if news_image_path.exists():
             return f"/static/images/news_thumbnails/{content_id}.png"
 
     # Check for generated image in content directory
-    image_path = IMAGES_DIR / f"{content_id}.png"
+    image_path = get_content_images_dir() / f"{content_id}.png"
     if image_path.exists():
         return f"/static/images/content/{content_id}.png"
 

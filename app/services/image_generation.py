@@ -18,17 +18,17 @@ from PIL import Image
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentType
+from app.utils.image_paths import (
+    get_content_images_dir,
+    get_news_thumbnails_dir,
+    get_thumbnails_dir,
+)
 
 logger = get_logger(__name__)
 
 # Models for image generation
 NEWS_THUMBNAIL_MODEL = "gemini-2.5-flash-image"
 INFOGRAPHIC_MODEL = "gemini-3-pro-image-preview"
-
-# Image storage paths
-NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
-INFOGRAPHICS_DIR = Path("static/images/content")
-THUMBNAILS_DIR = Path("static/images/thumbnails")
 
 # Thumbnail settings
 THUMBNAIL_SIZE = (200, 200)  # Max dimensions for thumbnails
@@ -331,9 +331,9 @@ class ImageGenerationService:
     def __init__(self) -> None:
         self.client = genai.Client()
         # Ensure output directories exist
-        NEWS_THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
-        INFOGRAPHICS_DIR.mkdir(parents=True, exist_ok=True)
-        THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
+        get_news_thumbnails_dir().mkdir(parents=True, exist_ok=True)
+        get_content_images_dir().mkdir(parents=True, exist_ok=True)
+        get_thumbnails_dir().mkdir(parents=True, exist_ok=True)
 
         logger.info(
             "Initialized ImageGenerationService with models: news=%s, infographic=%s",
@@ -352,7 +352,7 @@ class ImageGenerationService:
             Path to the generated thumbnail, or None if generation failed.
         """
         try:
-            thumbnail_path = THUMBNAILS_DIR / f"{content_id}.png"
+            thumbnail_path = get_thumbnails_dir() / f"{content_id}.png"
 
             with Image.open(source_path) as img:
                 # Convert to RGB if necessary (for PNG with transparency)
@@ -388,18 +388,18 @@ class ImageGenerationService:
     def get_image_url(self, content_id: int, content_type: str = "article") -> str | None:
         """Get the URL for a content's image if it exists."""
         if content_type == "news":
-            path = NEWS_THUMBNAILS_DIR / f"{content_id}.png"
+            path = get_news_thumbnails_dir() / f"{content_id}.png"
             if path.exists():
                 return f"/static/images/news_thumbnails/{content_id}.png"
         else:
-            path = INFOGRAPHICS_DIR / f"{content_id}.png"
+            path = get_content_images_dir() / f"{content_id}.png"
             if path.exists():
                 return f"/static/images/content/{content_id}.png"
         return None
 
     def get_thumbnail_url(self, content_id: int) -> str | None:
         """Get the URL for a content's thumbnail if it exists."""
-        path = THUMBNAILS_DIR / f"{content_id}.png"
+        path = get_thumbnails_dir() / f"{content_id}.png"
         if path.exists():
             return f"/static/images/thumbnails/{content_id}.png"
         return None
@@ -440,7 +440,7 @@ class ImageGenerationService:
                 ),
             )
 
-            image_path = NEWS_THUMBNAILS_DIR / f"{content_id}.png"
+            image_path = get_news_thumbnails_dir() / f"{content_id}.png"
             image_saved = False
 
             if response.candidates and response.candidates[0].content:
@@ -507,7 +507,7 @@ class ImageGenerationService:
                 ),
             )
 
-            image_path = INFOGRAPHICS_DIR / f"{content_id}.png"
+            image_path = get_content_images_dir() / f"{content_id}.png"
             image_saved = False
 
             if response.candidates and response.candidates[0].content:

@@ -1,7 +1,6 @@
 """Tests for cursor-based pagination in API content endpoints."""
 
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 from sqlalchemy.orm import Session
@@ -9,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry
 from app.models.user import User
+from app.utils.image_paths import get_content_images_dir
 from app.utils.pagination import PaginationCursor
 
 
@@ -17,7 +17,7 @@ def sample_contents(db_session: Session, test_user: User):
     """Create sample content items for pagination testing."""
     contents = []
     base_time = datetime.utcnow()
-    images_dir = Path("static/images/content")
+    images_dir = get_content_images_dir()
     images_dir.mkdir(parents=True, exist_ok=True)
     image_paths: list[Path] = []
 

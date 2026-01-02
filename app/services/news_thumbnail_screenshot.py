@@ -14,7 +14,8 @@ from app.core.db import get_db
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.models.schema import Content
-from app.services.image_generation import NEWS_THUMBNAILS_DIR, get_image_generation_service
+from app.services.image_generation import get_image_generation_service
+from app.utils.image_paths import get_news_thumbnails_dir
 
 logger = get_logger(__name__)
 
@@ -126,9 +127,10 @@ def _capture_screenshot(request: NewsThumbnailRequest) -> NewsThumbnailResult:
     Returns:
         Screenshot result with paths populated on success.
     """
-    NEWS_THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
+    news_thumbnails_dir = get_news_thumbnails_dir()
+    news_thumbnails_dir.mkdir(parents=True, exist_ok=True)
 
-    image_path = NEWS_THUMBNAILS_DIR / f"{request.content_id}.png"
+    image_path = news_thumbnails_dir / f"{request.content_id}.png"
 
     try:
         with sync_playwright() as playwright:
@@ -191,9 +193,10 @@ def _generate_placeholder(content_id: int, reason: str) -> NewsThumbnailResult:
         Result of placeholder copy + thumbnail generation.
     """
     PLACEHOLDER_DIR.mkdir(parents=True, exist_ok=True)
-    NEWS_THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
+    news_thumbnails_dir = get_news_thumbnails_dir()
+    news_thumbnails_dir.mkdir(parents=True, exist_ok=True)
 
-    target_path = NEWS_THUMBNAILS_DIR / f"{content_id}.png"
+    target_path = news_thumbnails_dir / f"{content_id}.png"
 
     if not PLACEHOLDER_PATH.exists():
         _create_placeholder_image()

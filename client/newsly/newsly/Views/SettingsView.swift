@@ -57,7 +57,7 @@ struct SettingsView: View {
                         FavoritesView()
                     } label: {
                         HStack {
-                            Label("Favorites", systemImage: "brain.head.profile")
+                            Label("Favorites", systemImage: "star")
                             Spacer()
                             Image(systemName: "chevron.right")
                                 .foregroundColor(.secondary)

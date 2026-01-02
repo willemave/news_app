@@ -950,6 +950,16 @@ struct ContentDetailView: View {
                 .disabled(isConverting)
             }
 
+            // Favorite (simple add/remove)
+            Button(action: {
+                Task { await viewModel.toggleFavorite() }
+            }) {
+                iconButton(
+                    icon: content.isFavorited ? "star.fill" : "star",
+                    tint: content.isFavorited ? .yellow : nil
+                )
+            }
+
             // Favorite + Deep Dive (combined action)
             // Tapping favorites the article and shows chat options
             Button(action: {

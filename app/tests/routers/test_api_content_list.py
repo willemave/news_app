@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry
+from app.utils.image_paths import get_content_images_dir
 
 
 def _build_summary(title: str) -> dict[str, object]:
@@ -71,7 +70,7 @@ def test_list_filters_articles_without_keypoints_or_image(
     _add_inbox_status(db_session, test_user.id, missing_image.id)
     db_session.commit()
 
-    images_dir = Path("static/images/content")
+    images_dir = get_content_images_dir()
     images_dir.mkdir(parents=True, exist_ok=True)
     ready_image = images_dir / f"{ready_article.id}.png"
     missing_summary_image = images_dir / f"{missing_summary.id}.png"
