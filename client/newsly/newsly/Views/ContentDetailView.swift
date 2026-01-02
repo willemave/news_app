@@ -47,6 +47,7 @@ struct ContentDetailView: View {
     // Chat sheet state
     @State private var showDeepDiveSheet: Bool = false
     @State private var deepDiveSession: ChatSessionSummary?
+    @State private var deepDiveSessionId: Int?
     @State private var showChatOptionsSheet: Bool = false
     @State private var isCheckingChatSession: Bool = false
     @State private var isStartingChat: Bool = false
@@ -100,28 +101,7 @@ struct ContentDetailView: View {
                             ChatStatusBanner(
                                 session: activeSession,
                                 onTap: {
-                                    let session = ChatSessionSummary(
-                                        id: activeSession.id,
-                                        contentId: activeSession.contentId,
-                                        title: nil,
-                                        sessionType: "article_brain",
-                                        topic: nil,
-                                        llmProvider: "google",
-                                        llmModel: "gemini-2.0-flash",
-                                        createdAt: ISO8601DateFormatter().string(from: Date()),
-                                        updatedAt: nil,
-                                        lastMessageAt: nil,
-                                        articleTitle: activeSession.contentTitle,
-                                        articleUrl: nil,
-                                        articleSummary: nil,
-                                        articleSource: nil,
-                                        hasPendingMessage: false,
-                                        isFavorite: false,
-                                        hasMessages: true
-                                    )
-                                    deepDiveSession = session
-                                    showDeepDiveSheet = true
-                                    chatSessionManager.stopTracking(contentId: content.id)
+                                    Task { await openChatSession(sessionId: activeSession.id, contentId: content.id) }
                                 },
                                 onDismiss: {
                                     chatSessionManager.markAsViewed(contentId: content.id)
@@ -520,6 +500,10 @@ struct ContentDetailView: View {
                 NavigationStack {
                     ChatSessionView(session: session)
                 }
+            } else if let sessionId = deepDiveSessionId {
+                NavigationStack {
+                    ChatSessionView(sessionId: sessionId)
+                }
             }
         }
     }
@@ -555,6 +539,7 @@ struct ContentDetailView: View {
             )
 
             deepDiveSession = session
+            deepDiveSessionId = nil
             showChatOptionsSheet = false
             // Don't show sheet immediately - show banner instead
         } catch {
@@ -602,12 +587,21 @@ struct ContentDetailView: View {
             )
 
             deepDiveSession = session
+            deepDiveSessionId = nil
             showChatOptionsSheet = false
         } catch {
             chatError = error.localizedDescription
         }
 
         isStartingChat = false
+    }
+
+    @MainActor
+    private func openChatSession(sessionId: Int, contentId: Int) {
+        deepDiveSession = nil
+        deepDiveSessionId = sessionId
+        showDeepDiveSheet = true
+        chatSessionManager.stopTracking(contentId: contentId)
     }
 
     @ViewBuilder
@@ -960,6 +954,11 @@ struct ContentDetailView: View {
             // Tapping favorites the article and shows chat options
             Button(action: {
                 Task {
+                    if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
+                        await openChatSession(sessionId: activeSession.id, contentId: content.id)
+                        return
+                    }
+
                     // First, favorite if not already
                     if !content.isFavorited {
                         await viewModel.toggleFavorite()

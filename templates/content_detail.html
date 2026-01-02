@@ -173,20 +173,27 @@
             <div id="key-points-content" class="p-4 border-t border-gray-200">
               <ul class="space-y-2">
                 {% for bullet in content.bullet_points %}
-                <li class="flex items-start">
-                  <span class="text-blue-600 mr-2 mt-0.5">•</span>
-                  <div>
-                    <span class="text-gray-700">{{ bullet.text }}</span>
-                    {% if bullet.category %}
-                    <span class="ml-2 text-xs px-2 py-1 rounded-full
-                                {% if bullet.category == 'key_finding' %}bg-green-100 text-green-700
-                                {% elif bullet.category == 'warning' %}bg-red-100 text-red-700
-                                {% elif bullet.category == 'recommendation' %}bg-blue-100 text-blue-700
-                                {% else %}bg-gray-100 text-gray-700{% endif %}">
-                      {{ bullet.category.replace('_', ' ').title() }}
-                    </span>
-                    {% endif %}
+                <li class="flex items-start justify-between gap-3">
+                  <div class="flex items-start">
+                    <span class="text-blue-600 mr-2 mt-0.5">•</span>
+                    <div>
+                      <span class="text-gray-700">{{ bullet.text }}</span>
+                      {% if bullet.category %}
+                      <span class="ml-2 text-xs px-2 py-1 rounded-full
+                                  {% if bullet.category == 'key_finding' %}bg-green-100 text-green-700
+                                  {% elif bullet.category == 'warning' %}bg-red-100 text-red-700
+                                  {% elif bullet.category == 'recommendation' %}bg-blue-100 text-blue-700
+                                  {% else %}bg-gray-100 text-gray-700{% endif %}">
+                        {{ bullet.category.replace('_', ' ').title() }}
+                      </span>
+                      {% endif %}
+                    </div>
                   </div>
+                  <button type="button"
+                          class="shrink-0 text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                          onclick="digDeeper({{ bullet.text | tojson }}, 'key point')">
+                    Dig deeper
+                  </button>
                 </li>
                 {% endfor %}
               </ul>
@@ -209,7 +216,14 @@
             <div id="questions-content" class="hidden p-4 border-t border-gray-200">
               <ol class="space-y-2 list-decimal list-inside">
                 {% for question in questions %}
-                <li class="text-gray-700">{{ question }}</li>
+                <li class="flex items-start justify-between gap-3">
+                  <span class="text-gray-700">{{ question }}</span>
+                  <button type="button"
+                          class="shrink-0 text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                          onclick="digDeeper({{ question | tojson }}, 'question')">
+                    Dig deeper
+                  </button>
+                </li>
                 {% endfor %}
               </ol>
             </div>
@@ -231,9 +245,16 @@
             <div id="counter-args-content" class="hidden p-4 border-t border-gray-200">
               <ul class="space-y-2">
                 {% for arg in counter_args %}
-                <li class="flex items-start">
-                  <span class="text-orange-600 mr-2 mt-0.5">⚠</span>
-                  <span class="text-gray-700">{{ arg }}</span>
+                <li class="flex items-start justify-between gap-3">
+                  <div class="flex items-start">
+                    <span class="text-orange-600 mr-2 mt-0.5">⚠</span>
+                    <span class="text-gray-700">{{ arg }}</span>
+                  </div>
+                  <button type="button"
+                          class="shrink-0 text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                          onclick="digDeeper({{ arg | tojson }}, 'counter argument')">
+                    Dig deeper
+                  </button>
                 </li>
                 {% endfor %}
               </ul>
@@ -249,10 +270,19 @@
           <div class="space-y-3">
             {% for quote in content.quotes %}
             <blockquote class="border-l-4 border-blue-500 pl-4 py-2 rounded">
-              <p class="text-gray-700 italic">"{{ quote.text }}"</p>
-              {% if quote.context %}
-              <cite class="text-sm text-gray-600 mt-1 block">— {{ quote.context }}</cite>
-              {% endif %}
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-gray-700 italic">"{{ quote.text }}"</p>
+                  {% if quote.context %}
+                  <cite class="text-sm text-gray-600 mt-1 block">— {{ quote.context }}</cite>
+                  {% endif %}
+                </div>
+                <button type="button"
+                        class="shrink-0 text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                        onclick="digDeeper({{ quote.text | tojson }}, 'quote')">
+                  Dig deeper
+                </button>
+              </div>
             </blockquote>
             {% endfor %}
           </div>
@@ -265,9 +295,11 @@
           <h3 class="text-md font-medium text-gray-800 mb-2">Topics</h3>
           <div class="flex flex-wrap gap-2">
             {% for topic in content.topics %}
-            <span class="px-3 py-1 border border-gray-200 text-gray-700 text-sm rounded-full bg-white">
+            <button type="button"
+                    class="px-3 py-1 border border-gray-200 text-gray-700 text-sm rounded-full bg-white hover:bg-purple-50"
+                    onclick="digDeeper({{ topic | tojson }}, 'topic')">
               {{ topic }}
-            </span>
+            </button>
             {% endfor %}
           </div>
         </div>
@@ -279,6 +311,13 @@
       <section>
         <h2 class="text-lg font-semibold text-gray-900 mb-4">News Items</h2>
         {% if content.rendered_news_markdown %}
+        <div class="flex justify-end mb-2">
+          <button type="button"
+                  class="text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                  onclick="digDeeper({{ content.rendered_news_markdown | striptags | truncate(400, True, '...') | tojson }}, 'news digest')">
+            Dig deeper
+          </button>
+        </div>
         <div class="prose prose-sm max-w-none text-gray-700">
           {{ content.rendered_news_markdown | markdown }}
         </div>
@@ -286,6 +325,14 @@
         <ul class="list-disc pl-6 space-y-3 text-gray-700">
           {% for item in content.news_items %}
           <li>
+            {% set news_block_text = item.title or item.url or '' %}
+            {% if item.summary %}
+              {% if news_block_text %}
+                {% set news_block_text = news_block_text ~ " - " ~ item.summary %}
+              {% else %}
+                {% set news_block_text = item.summary %}
+              {% endif %}
+            {% endif %}
             <a href="{{ item.url }}" class="text-blue-600 hover:text-blue-800" target="_blank" rel="noopener">
               {{ item.title or item.url }}
             </a>
@@ -316,6 +363,13 @@
               <a href="{{ item.comments_url }}" class="text-blue-500 hover:text-blue-700" target="_blank" rel="noopener">Discussion</a>
             </div>
             {% endif %}
+            <div class="mt-2">
+              <button type="button"
+                      class="text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                      onclick="digDeeper({{ news_block_text | tojson }}, 'news item')">
+                Dig deeper
+              </button>
+            </div>
           </li>
           {% endfor %}
         </ul>
@@ -327,7 +381,14 @@
       <!-- Fallback to simple summary -->
       {% elif content.summary %}
       <section>
-        <h2 class="text-lg font-semibold text-gray-900 mb-2">Summary</h2>
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-lg font-semibold text-gray-900">Summary</h2>
+          <button type="button"
+                  class="text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                  onclick="digDeeper({{ content.summary | striptags | truncate(400, True, '...') | tojson }}, 'summary')">
+            Dig deeper
+          </button>
+        </div>
         <div class="prose prose-sm max-w-none text-gray-700">
           {{ content.summary | safe }}
         </div>
@@ -337,14 +398,28 @@
       <!-- Raw Content or Transcript -->
       {% if content.content_type == 'article' and content.full_markdown %}
       <section>
-        <h2 class="text-lg font-semibold text-gray-900 mb-2">Full Article</h2>
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-lg font-semibold text-gray-900">Full Article</h2>
+          <button type="button"
+                  class="text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                  onclick="digDeeper({{ content.full_markdown | striptags | truncate(400, True, '...') | tojson }}, 'full article')">
+            Dig deeper
+          </button>
+        </div>
         <div class="prose prose-sm max-w-none text-gray-700 border border-gray-200 p-4 rounded-xl max-h-96 overflow-y-auto bg-white">
           {{ content.full_markdown | markdown }}
         </div>
       </section>
       {% elif content.content_type == 'podcast' and content.transcript %}
       <section>
-        <h2 class="text-lg font-semibold text-gray-900 mb-2">Transcript</h2>
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-lg font-semibold text-gray-900">Transcript</h2>
+          <button type="button"
+                  class="text-xs font-medium text-purple-700 border border-purple-200 rounded-full px-2 py-1 hover:bg-purple-50"
+                  onclick="digDeeper({{ content.transcript | striptags | truncate(400, True, '...') | tojson }}, 'transcript')">
+            Dig deeper
+          </button>
+        </div>
         <div class="prose prose-sm max-w-none text-gray-700 border border-gray-200 p-4 rounded-xl max-h-96 overflow-y-auto bg-white">
           {{ content.transcript | markdown }}
         </div>
@@ -534,6 +609,32 @@ function updateAudioStatus(text) {
     if (statusEl) {
         statusEl.textContent = text;
     }
+}
+
+function truncateBlockText(text, maxChars) {
+    if (!text) {
+        return '';
+    }
+    if (text.length <= maxChars) {
+        return text;
+    }
+    return `${text.slice(0, maxChars)}...`;
+}
+
+function buildBlockPrompt(blockText, blockType) {
+    const label = blockType ? ` (${blockType})` : '';
+    return `Dig deeper on this${label}: "${blockText}". Provide background, implications, and key follow-ups. Keep the response concise and structured.`;
+}
+
+async function digDeeper(blockText, blockType) {
+    const trimmed = (blockText || '').trim();
+    if (!trimmed) {
+        openChatModal(currentContentId);
+        return;
+    }
+    const compactText = truncateBlockText(trimmed, 500);
+    const promptText = buildBlockPrompt(compactText, blockType);
+    await openInChatGPT(currentContentId, promptText);
 }
 
 async function launchAudioPrompt() {

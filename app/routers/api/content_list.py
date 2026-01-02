@@ -1,6 +1,6 @@
 """Content listing and search endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 from app.core.timing import timed
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentData, ContentStatus, ContentType
-from app.models.schema import Content, ContentReadStatus, ContentStatusEntry
+from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
 from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse, UnreadCountsResponse
 from app.utils.pagination import PaginationCursor
@@ -25,6 +25,38 @@ logger = get_logger(__name__)
 IMAGES_DIR = Path("static/images/content")
 NEWS_THUMBNAILS_DIR = Path("static/images/news_thumbnails")
 THUMBNAILS_DIR = Path("static/images/thumbnails")
+AVAILABLE_DATES_LOOKBACK_DAYS = 120
+
+
+def _build_inbox_exists(user_id: int):
+    """Build EXISTS clause for inbox membership."""
+    return exists(
+        select(ContentStatusEntry.id).where(
+            ContentStatusEntry.user_id == user_id,
+            ContentStatusEntry.status == "inbox",
+            ContentStatusEntry.content_id == Content.id,
+        )
+    )
+
+
+def _build_read_exists(user_id: int):
+    """Build EXISTS clause for read status."""
+    return exists(
+        select(ContentReadStatus.id).where(
+            ContentReadStatus.user_id == user_id,
+            ContentReadStatus.content_id == Content.id,
+        )
+    )
+
+
+def _build_favorite_exists(user_id: int):
+    """Build EXISTS clause for favorite status."""
+    return exists(
+        select(ContentFavorites.id).where(
+            ContentFavorites.user_id == user_id,
+            ContentFavorites.content_id == Content.id,
+        )
+    )
 
 
 def get_content_thumbnail_url(content_id: int | None) -> str | None:
@@ -97,7 +129,7 @@ router = APIRouter()
         "Supports cursor-based pagination for efficient loading."
     ),
 )
-async def list_contents(
+def list_contents(
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
     content_type: Annotated[
@@ -131,8 +163,6 @@ async def list_contents(
     ] = 25,
 ) -> ContentListResponse:
     """List content with optional filters and cursor-based pagination."""
-    from app.services import favorites, read_status
-
     # Decode cursor if provided
     last_id = None
     last_created_at = None
@@ -155,30 +185,20 @@ async def list_contents(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Get read content IDs first
-    with timed("get_read_content_ids"):
-        read_content_ids = read_status.get_read_content_ids(db, current_user.id)
-
-    # Get favorited content IDs
-    with timed("get_favorite_content_ids"):
-        favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
-
     # Build EXISTS subquery for inbox status - faster than IN with large lists
-    is_in_inbox_subquery = exists(
-        select(ContentStatusEntry.id).where(
-            ContentStatusEntry.user_id == current_user.id,
-            ContentStatusEntry.status == "inbox",
-            ContentStatusEntry.content_id == Content.id,
-        )
-    )
+    is_in_inbox_subquery = _build_inbox_exists(current_user.id)
+    is_read_subquery = _build_read_exists(current_user.id)
+    is_favorited_subquery = _build_favorite_exists(current_user.id)
 
     # Get available dates for the dropdown (only on first page)
     # Optimized: Skip expensive JSON extraction since inbox items are always summarized
     # and news items are always completed before becoming visible
     available_dates = []
     if not cursor:
+        lookback_start = datetime.utcnow() - timedelta(days=AVAILABLE_DATES_LOOKBACK_DAYS)
         available_dates_query = (
             db.query(func.date(Content.created_at).label("date"))
+            .filter(Content.created_at >= lookback_start)
             .filter((Content.classification != "skip") | (Content.classification.is_(None)))
             .filter(
                 or_(
@@ -207,7 +227,11 @@ async def list_contents(
     # Query content using EXISTS subquery for inbox check
     # Optimized: Skip JSON extraction since inbox items are always summarized
     # and news items are always completed before becoming visible
-    query = db.query(Content)
+    query = db.query(
+        Content,
+        is_read_subquery.label("is_read"),
+        is_favorited_subquery.label("is_favorited"),
+    )
     query = query.filter(
         or_(
             # News: only show completed (which means processed)
@@ -240,9 +264,9 @@ async def list_contents(
 
     # Apply read status filter in SQL query
     if read_filter == "unread":
-        query = query.filter(~Content.id.in_(read_content_ids))
+        query = query.filter(~is_read_subquery)
     elif read_filter == "read":
-        query = query.filter(Content.id.in_(read_content_ids))
+        query = query.filter(is_read_subquery)
     # If read_filter is "all", don't filter
 
     # Apply cursor pagination
@@ -260,18 +284,19 @@ async def list_contents(
 
     # Fetch limit + 1 to determine if there are more results
     with timed("query content_list"):
-        contents = query.limit(limit + 1).all()
+        content_rows = query.limit(limit + 1).all()
 
     # Check if there are more results
-    has_more = len(contents) > limit
+    has_more = len(content_rows) > limit
     if has_more:
-        contents = contents[:limit]  # Trim to requested limit
+        content_rows = content_rows[:limit]  # Trim to requested limit
 
     # Convert to domain objects and then to response format
     content_summaries = []
-    for c in contents:
+    for row in content_rows:
         try:
-            domain_content = content_to_domain(c)
+            content, is_read, is_favorited = row
+            domain_content = content_to_domain(content)
 
             # Get classification from metadata
             classification = None
@@ -318,7 +343,7 @@ async def list_contents(
                     url=str(domain_content.url),
                     title=domain_content.display_title,
                     source=domain_content.source,
-                    platform=domain_content.platform or c.platform,
+                    platform=domain_content.platform or content.platform,
                     status=domain_content.status.value,
                     short_summary=news_summary_text,
                     created_at=domain_content.created_at.isoformat()
@@ -331,8 +356,8 @@ async def list_contents(
                     publication_date=domain_content.publication_date.isoformat()
                     if domain_content.publication_date
                     else None,
-                    is_read=c.id in read_content_ids,
-                    is_favorited=c.id in favorite_content_ids,
+                    is_read=bool(is_read),
+                    is_favorited=bool(is_favorited),
                     is_aggregate=is_aggregate,
                     item_count=item_count,
                     news_article_url=news_article_url,
@@ -350,13 +375,13 @@ async def list_contents(
             # Skip content with invalid metadata
             logger.warning(
                 "Skipping content %s due to validation error: %s",
-                c.id,
+                content.id,
                 e,
                 extra={
                     "component": "content_list",
                     "operation": "build_content_list",
-                    "item_id": c.id,
-                    "context_data": {"content_id": c.id},
+                    "item_id": content.id,
+                    "context_data": {"content_id": content.id},
                 },
             )
             continue
@@ -366,8 +391,8 @@ async def list_contents(
 
     # Generate next cursor if there are more results
     next_cursor = None
-    if has_more and contents:
-        last_item = contents[-1]  # Use original DB object, not domain object
+    if has_more and content_rows:
+        last_item = content_rows[-1][0]  # Use original DB object, not domain object
         current_filters = {
             "content_type": content_type,
             "date": date,
@@ -400,7 +425,7 @@ async def list_contents(
         "Supports cursor-based pagination for efficient loading."
     ),
 )
-async def search_contents(
+def search_contents(
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
     q: str = Query(
@@ -427,8 +452,6 @@ async def search_contents(
     between SQLite and Postgres. As a fallback, the entire JSON is also matched
     as text to catch legacy structures.
     """
-    from app.services import favorites, read_status
-
     # Decode cursor if provided (takes precedence over offset)
     last_id = None
     last_created_at = None
@@ -450,25 +473,19 @@ async def search_contents(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Preload state flags
-    with timed("search: get_read_content_ids"):
-        read_content_ids = read_status.get_read_content_ids(db, current_user.id)
-    with timed("search: get_favorite_content_ids"):
-        favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
-
     # Build EXISTS subquery for inbox status - faster than IN with large lists
-    is_in_inbox_subquery = exists(
-        select(ContentStatusEntry.id).where(
-            ContentStatusEntry.user_id == current_user.id,
-            ContentStatusEntry.status == "inbox",
-            ContentStatusEntry.content_id == Content.id,
-        )
-    )
+    is_in_inbox_subquery = _build_inbox_exists(current_user.id)
+    is_read_subquery = _build_read_exists(current_user.id)
+    is_favorited_subquery = _build_favorite_exists(current_user.id)
 
     # Base query aligning with list endpoint visibility rules
     # Optimized: Skip JSON extraction since inbox items are always summarized
     # and news items are always completed before becoming visible
-    query = db.query(Content)
+    query = db.query(
+        Content,
+        is_read_subquery.label("is_read"),
+        is_favorited_subquery.label("is_favorited"),
+    )
     query = query.filter(
         or_(
             # News: only show completed (which means processed)
@@ -533,7 +550,8 @@ async def search_contents(
     content_summaries: list[ContentSummaryResponse] = []
     for c in results:
         try:
-            domain_content = content_to_domain(c)
+            content, is_read, is_favorited = c
+            domain_content = content_to_domain(content)
             classification = None
             if domain_content.structured_summary:
                 classification = domain_content.structured_summary.get("classification")
@@ -549,7 +567,7 @@ async def search_contents(
                     url=str(domain_content.url),
                     title=domain_content.display_title,
                     source=domain_content.source,
-                    platform=domain_content.platform or c.platform,
+                    platform=domain_content.platform or content.platform,
                     status=domain_content.status.value,
                     short_summary=domain_content.short_summary,
                     created_at=domain_content.created_at.isoformat()
@@ -562,8 +580,8 @@ async def search_contents(
                     publication_date=domain_content.publication_date.isoformat()
                     if domain_content.publication_date
                     else None,
-                    is_read=c.id in read_content_ids,
-                    is_favorited=c.id in favorite_content_ids,
+                    is_read=bool(is_read),
+                    is_favorited=bool(is_favorited),
                     is_aggregate=domain_content.is_aggregate,
                     item_count=len(domain_content.news_items)
                     if domain_content.content_type == ContentType.NEWS
@@ -578,13 +596,13 @@ async def search_contents(
         except Exception as e:
             logger.warning(
                 "Skipping content %s due to validation error: %s",
-                c.id,
+                content.id,
                 e,
                 extra={
                     "component": "content_list",
                     "operation": "search_content",
-                    "item_id": c.id,
-                    "context_data": {"content_id": c.id},
+                    "item_id": content.id,
+                    "context_data": {"content_id": content.id},
                 },
             )
             continue
@@ -594,7 +612,7 @@ async def search_contents(
     # Generate next cursor if there are more results
     next_cursor = None
     if has_more and results:
-        last_item = results[-1]  # Use original DB object
+        last_item = results[-1][0]  # Use original DB object
         current_filters = {
             "q": q,
             "type": type,

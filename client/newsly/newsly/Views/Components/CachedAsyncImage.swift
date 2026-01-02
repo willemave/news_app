@@ -19,7 +19,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     @State private var loadedImage: UIImage?
     @State private var thumbnailImage: UIImage?
     @State private var isLoading = false
-    @State private var loadingTask: Task<Void, Never>?
+    @State private var activeURLKey: String?
     
     init(
         url: URL?,
@@ -49,83 +49,99 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
                 placeholder()
             }
         }
-        .onAppear {
-            loadImage()
-        }
-        .onDisappear {
-            loadingTask?.cancel()
-        }
-        .onChange(of: url) { _, newUrl in
-            // Reset state when URL changes
-            loadedImage = nil
-            thumbnailImage = nil
-            loadingTask?.cancel()
-            loadImage()
+        .task(id: requestKey) {
+            await loadImage()
         }
     }
-    
-    private func loadImage() {
+
+    private var requestKey: String {
+        let urlKey = url?.absoluteString ?? "nil"
+        let thumbKey = thumbnailUrl?.absoluteString ?? "nil"
+        return "\(urlKey)|\(thumbKey)"
+    }
+
+    private func loadImage() async {
+        await MainActor.run {
+            let newKey = requestKey
+            if activeURLKey != newKey {
+                loadedImage = nil
+                thumbnailImage = nil
+                activeURLKey = newKey
+            }
+            isLoading = true
+        }
+
         guard let url = url else {
             print("CachedAsyncImage: No URL provided")
+            await MainActor.run {
+                isLoading = false
+            }
             return
         }
 
         print("CachedAsyncImage: Loading image from \(url)")
-        isLoading = true
 
-        loadingTask = Task {
-            // Try to load from cache first
-            if let cached = await ImageCacheService.shared.image(for: url) {
+        // Try to load from cache first
+        if let cached = await ImageCacheService.shared.image(for: url) {
+            if Task.isCancelled { return }
+            await MainActor.run {
+                withAnimation(.easeIn(duration: 0.15)) {
+                    loadedImage = cached
+                    isLoading = false
+                }
+            }
+            return
+        }
+
+        // If we have a thumbnail URL and no cached full image, try thumbnail first
+        if let thumbnailUrl = thumbnailUrl {
+            // Try cached thumbnail
+            if let cachedThumb = await ImageCacheService.shared.image(for: thumbnailUrl) {
+                if Task.isCancelled { return }
                 await MainActor.run {
-                    withAnimation(.easeIn(duration: 0.15)) {
-                        loadedImage = cached
+                    thumbnailImage = cachedThumb
+                }
+            } else {
+                // Download thumbnail
+                if let thumbData = try? await URLSession.shared.data(from: thumbnailUrl).0,
+                   let thumbImage = UIImage(data: thumbData) {
+                    if Task.isCancelled { return }
+                    await ImageCacheService.shared.cache(thumbImage, for: thumbnailUrl)
+                    await MainActor.run {
+                        thumbnailImage = thumbImage
+                    }
+                }
+            }
+        }
+
+        if Task.isCancelled { return }
+
+        // Download full image
+        do {
+            print("CachedAsyncImage: Downloading from \(url)")
+            let (data, response) = try await URLSession.shared.data(from: url)
+            print("CachedAsyncImage: Got \(data.count) bytes, status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+            if let image = UIImage(data: data) {
+                print("CachedAsyncImage: Successfully decoded image")
+                await ImageCacheService.shared.cache(image, for: url)
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    withAnimation(.easeIn(duration: 0.2)) {
+                        loadedImage = image
                         isLoading = false
                     }
                 }
-                return
-            }
-            
-            // If we have a thumbnail URL and no cached full image, try thumbnail first
-            if let thumbnailUrl = thumbnailUrl {
-                // Try cached thumbnail
-                if let cachedThumb = await ImageCacheService.shared.image(for: thumbnailUrl) {
-                    await MainActor.run {
-                        thumbnailImage = cachedThumb
-                    }
-                } else {
-                    // Download thumbnail
-                    if let thumbData = try? await URLSession.shared.data(from: thumbnailUrl).0,
-                       let thumbImage = UIImage(data: thumbData) {
-                        await ImageCacheService.shared.cache(thumbImage, for: thumbnailUrl)
-                        await MainActor.run {
-                            thumbnailImage = thumbImage
-                        }
-                    }
-                }
-            }
-            
-            // Download full image
-            do {
-                print("CachedAsyncImage: Downloading from \(url)")
-                let (data, response) = try await URLSession.shared.data(from: url)
-                print("CachedAsyncImage: Got \(data.count) bytes, status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-                if let image = UIImage(data: data) {
-                    print("CachedAsyncImage: Successfully decoded image")
-                    await ImageCacheService.shared.cache(image, for: url)
-                    await MainActor.run {
-                        withAnimation(.easeIn(duration: 0.2)) {
-                            loadedImage = image
-                            isLoading = false
-                        }
-                    }
-                } else {
-                    print("CachedAsyncImage: Failed to decode image data")
-                }
-            } catch {
-                print("CachedAsyncImage: Download error: \(error)")
+            } else {
+                print("CachedAsyncImage: Failed to decode image data")
                 await MainActor.run {
                     isLoading = false
                 }
+            }
+        } catch {
+            if Task.isCancelled { return }
+            print("CachedAsyncImage: Download error: \(error)")
+            await MainActor.run {
+                isLoading = false
             }
         }
     }

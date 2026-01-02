@@ -141,6 +141,8 @@ class Content(Base):
                     return hook
             if summary.get("summary_type") == "news_digest":
                 return summary.get("summary")
+            if "summary" in summary:
+                return summary.get("summary")
         if isinstance(summary, str):
             return summary
         return None

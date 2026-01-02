@@ -1,13 +1,13 @@
 """Tests for cursor-based pagination in API content endpoints."""
 
-import pytest
 from datetime import datetime, timedelta
-from fastapi.testclient import TestClient
+from pathlib import Path
+
+import pytest
 from sqlalchemy.orm import Session
 
-from app.main import app
-from app.models.schema import Content, ContentStatusEntry
 from app.models.metadata import ContentStatus, ContentType
+from app.models.schema import Content, ContentStatusEntry
 from app.models.user import User
 from app.utils.pagination import PaginationCursor
 
@@ -17,6 +17,9 @@ def sample_contents(db_session: Session, test_user: User):
     """Create sample content items for pagination testing."""
     contents = []
     base_time = datetime.utcnow()
+    images_dir = Path("static/images/content")
+    images_dir.mkdir(parents=True, exist_ok=True)
+    image_paths: list[Path] = []
 
     # Create 50 articles with different timestamps
     for i in range(50):
@@ -29,8 +32,15 @@ def sample_contents(db_session: Session, test_user: User):
             content_metadata={
                 "summary": {
                     "title": f"Test Article {i}",
-                    "overview": f"Overview for article {i}",
-                    "bullet_points": [],
+                    "overview": (
+                        "This overview is long enough to satisfy the minimum length "
+                        "requirement for structured summaries."
+                    ),
+                    "bullet_points": [
+                        {"text": "Key point one", "category": "key_finding"},
+                        {"text": "Key point two", "category": "methodology"},
+                        {"text": "Key point three", "category": "conclusion"},
+                    ],
                     "quotes": [],
                     "topics": ["test"],
                     "classification": "to_read",
@@ -43,7 +53,7 @@ def sample_contents(db_session: Session, test_user: User):
 
     db_session.commit()
 
-    # Create inbox status entries for the test user
+    # Create inbox status entries + images for the test user
     for content in contents:
         db_session.refresh(content)
         status_entry = ContentStatusEntry(
@@ -52,10 +62,18 @@ def sample_contents(db_session: Session, test_user: User):
             status="inbox",
         )
         db_session.add(status_entry)
+        image_path = images_dir / f"{content.id}.png"
+        image_path.write_bytes(b"fake-png")
+        image_paths.append(image_path)
 
     db_session.commit()
 
-    return contents
+    try:
+        yield contents
+    finally:
+        for image_path in image_paths:
+            if image_path.exists():
+                image_path.unlink()
 
 
 class TestCursorEncoding:
@@ -156,7 +174,10 @@ class TestListEndpointPagination:
             pytest.skip("Not enough data for multiple pages")
 
         # Fetch second page
-        response2 = client.get("/api/content/", params={"limit": 25, "cursor": data1["next_cursor"]})
+        response2 = client.get(
+            "/api/content/",
+            params={"limit": 25, "cursor": data1["next_cursor"]},
+        )
         data2 = response2.json()
 
         # Should successfully fetch second page
@@ -181,10 +202,7 @@ class TestListEndpointPagination:
     def test_cursor_with_filters(self, client, sample_contents):
         """Test cursor with content type filter."""
         # Get first page with filter
-        response1 = client.get(
-            "/api/content/",
-            params={"content_type": "article", "limit": 10}
-        )
+        response1 = client.get("/api/content/", params={"content_type": "article", "limit": 10})
         data1 = response1.json()
 
         # Skip if not enough data for pagination
@@ -195,15 +213,13 @@ class TestListEndpointPagination:
 
         # Second page with same filter should work
         response2 = client.get(
-            "/api/content/",
-            params={"content_type": "article", "limit": 10, "cursor": cursor}
+            "/api/content/", params={"content_type": "article", "limit": 10, "cursor": cursor}
         )
         assert response2.status_code == 200
 
         # Second page with different filter should fail
         response3 = client.get(
-            "/api/content/",
-            params={"content_type": "podcast", "limit": 10, "cursor": cursor}
+            "/api/content/", params={"content_type": "podcast", "limit": 10, "cursor": cursor}
         )
         assert response3.status_code == 400
         assert "filters" in response3.json()["detail"].lower()
@@ -241,7 +257,7 @@ class TestSearchEndpointPagination:
         # Second page
         response2 = client.get(
             "/api/content/search",
-            params={"q": "Article", "limit": 20, "cursor": data1["next_cursor"]}
+            params={"q": "Article", "limit": 20, "cursor": data1["next_cursor"]},
         )
         data2 = response2.json()
 
@@ -264,14 +280,16 @@ class TestSearchEndpointPagination:
 
         # Try to use cursor with different query
         response2 = client.get(
-            "/api/content/search",
-            params={"q": "Different", "limit": 10, "cursor": cursor}
+            "/api/content/search", params={"q": "Different", "limit": 10, "cursor": cursor}
         )
         assert response2.status_code == 400
 
     def test_search_backwards_compatible_offset(self, client, sample_contents):
         """Test search still supports deprecated offset parameter."""
-        response = client.get("/api/content/search", params={"q": "Test", "limit": 10, "offset": 10})
+        response = client.get(
+            "/api/content/search",
+            params={"q": "Test", "limit": 10, "offset": 10},
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -304,8 +322,7 @@ class TestFavoritesEndpointPagination:
         # If there's a next page, fetch it
         if data1["next_cursor"]:
             response2 = client.get(
-                "/api/content/favorites/list",
-                params={"limit": 10, "cursor": data1["next_cursor"]}
+                "/api/content/favorites/list", params={"limit": 10, "cursor": data1["next_cursor"]}
             )
             assert response2.status_code == 200
             data2 = response2.json()
@@ -325,7 +342,12 @@ class TestFavoritesEndpointPagination:
 class TestPaginationStability:
     """Test pagination stability and edge cases."""
 
-    def test_stable_pagination_with_same_timestamp(self, client, db_session: Session, test_user: User):
+    def test_stable_pagination_with_same_timestamp(
+        self,
+        client,
+        db_session: Session,
+        test_user: User,
+    ):
         """Test pagination handles items with identical timestamps."""
         # Create items with same timestamp
         same_time = datetime.utcnow()

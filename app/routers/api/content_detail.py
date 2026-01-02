@@ -4,6 +4,7 @@ from typing import Annotated
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.constants import SELF_SUBMISSION_SOURCE
@@ -12,7 +13,7 @@ from app.core.deps import get_current_user
 from app.core.timing import timed
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
-from app.models.schema import Content
+from app.models.schema import Content, ContentFavorites, ContentReadStatus
 from app.models.user import User
 from app.routers.api.content_list import get_content_image_url, get_content_thumbnail_url
 from app.routers.api.models import ChatGPTUrlResponse, ContentDetailResponse, DetectedFeed
@@ -32,27 +33,40 @@ router = APIRouter()
         }
     },
 )
-async def get_content_detail(
+def get_content_detail(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
-    from app.services import favorites, read_status
+    is_read_subquery = exists(
+        select(ContentReadStatus.id).where(
+            ContentReadStatus.user_id == current_user.id,
+            ContentReadStatus.content_id == Content.id,
+        )
+    )
+    is_favorited_subquery = exists(
+        select(ContentFavorites.id).where(
+            ContentFavorites.user_id == current_user.id,
+            ContentFavorites.content_id == Content.id,
+        )
+    )
 
-    with timed("query content_by_id"):
-        content = db.query(Content).filter(Content.id == content_id).first()
+    with timed("query content_detail"):
+        row = (
+            db.query(
+                Content,
+                is_read_subquery.label("is_read"),
+                is_favorited_subquery.label("is_favorited"),
+            )
+            .filter(Content.id == content_id)
+            .first()
+        )
 
-    if not content:
+    if not row:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    # Check if content is read
-    with timed("is_content_read"):
-        is_read = read_status.is_content_read(db, content_id, current_user.id)
-
-    # Check if content is favorited
-    with timed("is_content_favorited"):
-        is_favorited = favorites.is_content_favorited(db, content_id, current_user.id)
+    content, is_read, is_favorited = row
 
     # Convert to domain object to validate metadata
     try:
@@ -144,8 +158,8 @@ async def get_content_detail(
         publication_date=domain_content.publication_date.isoformat()
         if domain_content.publication_date
         else None,
-        is_read=is_read,
-        is_favorited=is_favorited,
+        is_read=bool(is_read),
+        is_favorited=bool(is_favorited),
         # Additional properties from ContentData
         summary=news_summary_text,
         short_summary=news_summary_text,
@@ -177,7 +191,7 @@ async def get_content_detail(
         404: {"description": "Content not found"},
     },
 )
-async def get_chatgpt_url(
+def get_chatgpt_url(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_db_session)],
     user_prompt: Annotated[

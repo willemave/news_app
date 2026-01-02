@@ -142,6 +142,9 @@ struct ContentView: View {
                 restoreIfNeeded()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openChatSession)) { notification in
+            handleOpenChatSession(notification)
+        }
         .task {
             await unreadCountService.refreshCounts()
         }
@@ -186,5 +189,24 @@ struct ContentView: View {
             }
             logger.info("[NavigationRestore] pathRestored idsCount=\(currentIds.count, privacy: .public)")
         }
+    }
+
+    private func handleOpenChatSession(_ notification: Notification) {
+        let sessionId: Int?
+        if let id = notification.userInfo?["session_id"] as? Int {
+            sessionId = id
+        } else if let id = notification.userInfo?["session_id"] as? NSNumber {
+            sessionId = id.intValue
+        } else {
+            sessionId = nil
+        }
+
+        guard let sessionId else {
+            logger.error("[Notification] openChatSession missing session_id")
+            return
+        }
+
+        logger.info("[Notification] openChatSession sessionId=\(sessionId, privacy: .public)")
+        path.append(ChatSessionRoute(sessionId: sessionId))
     }
 }
