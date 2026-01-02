@@ -33,7 +33,7 @@ def test_api_endpoints_require_authentication():
 
 def test_authenticated_requests_accepted(db_session: Session):
     """Test that authenticated requests are accepted."""
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
     from app.core.deps import get_current_user
 
     # Create test user
@@ -68,6 +68,7 @@ def test_authenticated_requests_accepted(db_session: Session):
         return user
 
     app.dependency_overrides[get_db_session] = override_get_db
+    app.dependency_overrides[get_readonly_db_session] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
 
     try:

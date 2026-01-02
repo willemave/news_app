@@ -21,6 +21,8 @@ from pydantic import (
     field_validator,
 )
 
+from app.utils.summary_utils import extract_short_summary, extract_summary_text
+
 
 # Enums from app/domain/content.py
 class ContentType(str, Enum):
@@ -593,19 +595,9 @@ class ContentData(BaseModel):
                     if isinstance(first, dict):
                         return first.get("summary") or first.get("title")
             return None
-        if isinstance(summary_data, str):
-            return summary_data
-        if isinstance(summary_data, dict):
-            if "overview" in summary_data:
-                return summary_data.get("overview", "")
-            if summary_data.get("summary_type") == "interleaved":
-                hook = summary_data.get("hook") or summary_data.get("takeaway")
-                if hook:
-                    return hook
-            if summary_data.get("summary_type") == "news_digest":
-                return summary_data.get("summary") or summary_data.get("overview")
-            if "summary" in summary_data:
-                return summary_data.get("summary")
+        summary_text = extract_summary_text(summary_data)
+        if summary_text:
+            return summary_text
         return None
 
     @property
@@ -619,21 +611,7 @@ class ContentData(BaseModel):
     @property
     def short_summary(self) -> str | None:
         """Get short version of summary for list view."""
-        summary = self.metadata.get("summary")
-        if isinstance(summary, dict):
-            if "overview" in summary:
-                return summary.get("overview")
-            if summary.get("summary_type") == "interleaved":
-                hook = summary.get("hook") or summary.get("takeaway")
-                if hook:
-                    return hook
-            if summary.get("summary_type") == "news_digest":
-                return summary.get("summary") or summary.get("overview")
-            if "summary" in summary:
-                return summary.get("summary")
-        if isinstance(summary, str):
-            return summary
-        return None
+        return extract_short_summary(self.metadata.get("summary"))
 
     @property
     def structured_summary(self) -> dict[str, Any] | None:

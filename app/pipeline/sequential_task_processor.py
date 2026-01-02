@@ -786,6 +786,7 @@ class SequentialTaskProcessor:
 
                 # Generate image
                 from app.services.image_generation import get_image_generation_service
+                from app.utils.image_urls import build_content_image_url, build_thumbnail_url
 
                 image_service = get_image_generation_service()
                 result = image_service.generate_image(domain_content)
@@ -794,6 +795,9 @@ class SequentialTaskProcessor:
                     # Update metadata to record generation
                     metadata = dict(content.content_metadata or {})
                     metadata["image_generated_at"] = datetime.now(UTC).isoformat()
+                    metadata["image_url"] = build_content_image_url(content_id)
+                    if result.thumbnail_path:
+                        metadata["thumbnail_url"] = build_thumbnail_url(content_id)
                     content.content_metadata = metadata
                     db.commit()
 
@@ -873,8 +877,16 @@ class SequentialTaskProcessor:
                             content_id,
                         )
                         return False
+                    from app.utils.image_urls import (
+                        build_news_thumbnail_url,
+                        build_thumbnail_url,
+                    )
+
                     metadata = dict(content.content_metadata or {})
                     metadata["image_generated_at"] = datetime.now(UTC).isoformat()
+                    metadata["image_url"] = build_news_thumbnail_url(content_id)
+                    if result.thumbnail_path:
+                        metadata["thumbnail_url"] = build_thumbnail_url(content_id)
                     content.content_metadata = metadata
                     db.commit()
 

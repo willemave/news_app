@@ -122,7 +122,7 @@ flowchart LR
   6) Persist extraction metadata, set `status=processing`, set `processed_at`; summarization task later writes summary + final status and enqueues image generation.
 - **Podcasts**: `PodcastDownloadWorker` saves audio under `settings.podcast_media_dir`, skips YouTube audio, enqueues transcribe; `PodcastTranscribeWorker` runs Whisper (`app/services/whisper_local.py`), updates metadata, sets status to `completed`.
 - **Summarization defaults**: per-type default models (news → `openai:gpt-5-mini`, articles/podcasts → interleaved with Anthropic Haiku), fallback Gemini Flash; truncates content above 220k chars and prunes empty quotes.
-- **Image generation**: post-summary tasks call Gemini for article/podcast infographics (`GENERATE_IMAGE`) or Playwright screenshots for news (`GENERATE_THUMBNAIL`); local 200px thumbnails saved under `static/images/`.
+- **Image generation**: post-summary tasks call Gemini for article/podcast infographics (`GENERATE_IMAGE`) or Playwright screenshots for news (`GENERATE_THUMBNAIL`); generated images are stored under `IMAGES_BASE_DIR` (default `/data/images`) and served at `/static/images/...`.
 
 ## Processing Strategies (`app/processing_strategies/`)
 - **HackerNewsProcessorStrategy**: handles HN item URLs, extracts linked article, metadata.

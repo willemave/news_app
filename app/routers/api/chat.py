@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db_session
+from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
@@ -181,7 +181,7 @@ def _extract_messages_for_display(
     description="List all chat sessions for the current user, ordered by most recent activity.",
 )
 async def list_sessions(
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
     content_id: Annotated[int | None, Query(description="Filter by content ID")] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Maximum sessions to return")] = 50,
@@ -430,7 +430,7 @@ async def update_session(
 )
 async def get_session(
     session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ChatSessionDetailDto:
     """Get chat session details with message history."""
@@ -549,7 +549,7 @@ async def send_message(
 )
 async def get_message_status(
     message_id: Annotated[int, Path(..., description="Message ID to poll", gt=0)],
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> MessageStatusResponse:
     """Poll for message completion status.

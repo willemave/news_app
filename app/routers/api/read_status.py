@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import and_, delete, or_
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db_session
+from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
@@ -202,7 +202,7 @@ async def bulk_mark_read(
     },
 )
 async def get_recently_read(
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
     cursor: str | None = Query(None, description="Pagination cursor for next page"),
     limit: int = Query(

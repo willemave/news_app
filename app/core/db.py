@@ -108,6 +108,21 @@ def get_db_session() -> Generator[Session]:
         db.close()
 
 
+def get_readonly_db_session() -> Generator[Session]:
+    """
+    Get a read-only database session for FastAPI dependency injection.
+
+    Yields:
+        Database session that will be closed without committing.
+    """
+    SessionLocal = get_session_factory()
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 def run_migrations():
     """Run Alembic migrations to ensure database schema is up to date."""
     try:

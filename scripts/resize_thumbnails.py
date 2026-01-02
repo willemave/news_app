@@ -3,11 +3,11 @@
 
 This script creates optimized thumbnails for fast loading in list views.
 Thumbnails are created from:
-- static/images/content/*.png (article/podcast infographics)
-- static/images/news_thumbnails/*.png (news AI thumbnails)
+- {IMAGES_BASE_DIR}/content/*.png (article/podcast infographics)
+- {IMAGES_BASE_DIR}/news_thumbnails/*.png (news AI thumbnails)
 
 Output:
-- static/images/thumbnails/*.png (200x200 max thumbnails)
+- {IMAGES_BASE_DIR}/thumbnails/*.png (200x200 max thumbnails)
 
 Usage:
     python scripts/resize_thumbnails.py --dry-run

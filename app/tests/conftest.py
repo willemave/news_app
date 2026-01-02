@@ -76,7 +76,7 @@ def test_user(db_session):
 @pytest.fixture
 def client(db_session, test_user):
     """Create a test client with database and auth overrides."""
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
     from app.core.deps import get_current_user
 
     def override_get_db():
@@ -89,6 +89,7 @@ def client(db_session, test_user):
         return test_user
 
     app.dependency_overrides[get_db_session] = override_get_db
+    app.dependency_overrides[get_readonly_db_session] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
 
     with TestClient(app) as test_client:
@@ -100,7 +101,7 @@ def client(db_session, test_user):
 @pytest.fixture
 def async_client(db_session, test_user):
     """Create an async test client with database and auth overrides."""
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
     from app.core.deps import get_current_user
 
     def override_get_db():
@@ -113,6 +114,7 @@ def async_client(db_session, test_user):
         return test_user
 
     app.dependency_overrides[get_db_session] = override_get_db
+    app.dependency_overrides[get_readonly_db_session] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
 
     ac = AsyncClient(app=app, base_url="http://test")

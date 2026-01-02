@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db_session
+from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import require_admin
 from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
@@ -105,7 +105,7 @@ SessionDep = Annotated[str, Depends(get_or_create_session_id)]
 @router.get("/", response_class=HTMLResponse)
 async def list_content(
     request: Request,
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     admin_user: Annotated[User, Depends(require_admin)],
     content_type: str | None = None,
     date: str | None = None,
@@ -301,7 +301,7 @@ async def content_detail(
 @router.get("/favorites", response_class=HTMLResponse)
 async def favorites_list(
     request: Request,
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     admin_user: Annotated[User, Depends(require_admin)],
     read_filter: str = "all",
 ):
@@ -371,7 +371,7 @@ async def favorites_list(
 @router.get("/content/{content_id}/json", response_class=JSONResponse)
 async def content_json(
     content_id: int,
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     admin_user: Annotated[User, Depends(require_admin)],  # noqa: ARG001
 ):
     """Get content item with metadata as JSON."""

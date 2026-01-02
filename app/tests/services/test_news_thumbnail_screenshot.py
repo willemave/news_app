@@ -17,29 +17,17 @@ def test_select_normalized_url_prefers_article_url() -> None:
     assert nts._select_normalized_url(content) == "https://article.example.com"
 
 
-def test_generate_placeholder_writes_file(tmp_path) -> None:
+def test_generate_placeholder_writes_file(tmp_path, monkeypatch) -> None:
     placeholder_path = tmp_path / "placeholder.png"
     placeholder_path.write_bytes(b"placeholder")
 
     news_dir = tmp_path / "news_thumbnails"
+    monkeypatch.setattr(nts, "PLACEHOLDER_PATH", placeholder_path)
+    monkeypatch.setattr(nts, "PLACEHOLDER_DIR", placeholder_path.parent)
+    monkeypatch.setattr(nts, "get_news_thumbnails_dir", lambda: news_dir)
+    monkeypatch.setattr(nts, "_generate_thumbnail", lambda source_path, content_id: None)
 
-    original_placeholder_path = nts.PLACEHOLDER_PATH
-    original_placeholder_dir = nts.PLACEHOLDER_DIR
-    original_news_dir = nts.NEWS_THUMBNAILS_DIR
-    original_generate_thumbnail = nts._generate_thumbnail
-
-    try:
-        nts.PLACEHOLDER_PATH = placeholder_path
-        nts.PLACEHOLDER_DIR = placeholder_path.parent
-        nts.NEWS_THUMBNAILS_DIR = news_dir
-        nts._generate_thumbnail = lambda source_path, content_id: None
-
-        result = nts._generate_placeholder(42, "fallback")
-    finally:
-        nts.PLACEHOLDER_PATH = original_placeholder_path
-        nts.PLACEHOLDER_DIR = original_placeholder_dir
-        nts.NEWS_THUMBNAILS_DIR = original_news_dir
-        nts._generate_thumbnail = original_generate_thumbnail
+    result = nts._generate_placeholder(42, "fallback")
 
     assert result.success is True
     assert (news_dir / "42.png").exists()

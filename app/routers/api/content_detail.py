@@ -4,19 +4,20 @@ from typing import Annotated
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from app.constants import SELF_SUBMISSION_SOURCE
-from app.core.db import get_db_session
+from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
-from app.domain.converters import content_to_domain
-from app.models.metadata import ContentType
-from app.models.schema import Content, ContentFavorites, ContentReadStatus
+from app.models.schema import Content
 from app.models.user import User
-from app.routers.api.content_list import get_content_image_url, get_content_thumbnail_url
-from app.routers.api.models import ChatGPTUrlResponse, ContentDetailResponse, DetectedFeed
+from app.presenters.content_presenter import (
+    build_content_detail_response,
+    build_domain_content,
+    can_subscribe_for_feed,
+)
+from app.repositories.content_repository import build_visibility_context
+from app.routers.api.models import ChatGPTUrlResponse, ContentDetailResponse
 
 router = APIRouter()
 
@@ -35,29 +36,18 @@ router = APIRouter()
 )
 def get_content_detail(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
-    is_read_subquery = exists(
-        select(ContentReadStatus.id).where(
-            ContentReadStatus.user_id == current_user.id,
-            ContentReadStatus.content_id == Content.id,
-        )
-    )
-    is_favorited_subquery = exists(
-        select(ContentFavorites.id).where(
-            ContentFavorites.user_id == current_user.id,
-            ContentFavorites.content_id == Content.id,
-        )
-    )
+    context = build_visibility_context(current_user.id)
 
     with timed("query content_detail"):
         row = (
             db.query(
                 Content,
-                is_read_subquery.label("is_read"),
-                is_favorited_subquery.label("is_favorited"),
+                context.is_read.label("is_read"),
+                context.is_favorited.label("is_favorited"),
             )
             .filter(Content.id == content_id)
             .first()
@@ -70,114 +60,25 @@ def get_content_detail(
 
     # Convert to domain object to validate metadata
     try:
-        domain_content = content_to_domain(content)
+        domain_content = build_domain_content(content)
     except Exception as e:
-        # If domain conversion fails, raise HTTP exception
         raise HTTPException(
             status_code=500, detail=f"Failed to process content metadata: {str(e)}"
         ) from e
 
-    structured_summary = domain_content.structured_summary
-    bullet_points = domain_content.bullet_points
-    quotes = domain_content.quotes
-    topics = domain_content.topics
-    full_markdown = domain_content.full_markdown
-    rendered_markdown = domain_content.rendered_news_markdown
-    news_items = domain_content.news_items
-    news_article_url = None
-    news_discussion_url = None
-    news_key_points = None
-    news_summary_text = domain_content.summary
-
-    if domain_content.content_type == ContentType.NEWS:
-        metadata = domain_content.metadata or {}
-        article_meta = metadata.get("article", {})
-        aggregator_meta = metadata.get("aggregator", {})
-        summary_meta = metadata.get("summary", {})
-
-        news_article_url = article_meta.get("url")
-        news_discussion_url = aggregator_meta.get("url")
-        key_points = summary_meta.get("bullet_points")
-        if key_points:
-            news_key_points = [
-                point["text"] if isinstance(point, dict) else point for point in key_points
-            ]
-        news_summary_text = (
-            summary_meta.get("overview")
-            or summary_meta.get("summary")
-            or summary_meta.get("hook")
-            or summary_meta.get("takeaway")
-            or domain_content.summary
-        )
-        structured_summary = None
-        bullet_points = []
-        quotes = []
-        topics = []
-        full_markdown = None
-        rendered_markdown = None
-        news_items = []
-
-    # Extract detected feed from metadata if present
-    detected_feed = None
     detected_feed_data = (domain_content.metadata or {}).get("detected_feed")
-    if detected_feed_data:
-        detected_feed = DetectedFeed(
-            url=detected_feed_data["url"],
-            type=detected_feed_data["type"],
-            title=detected_feed_data.get("title"),
-            format=detected_feed_data.get("format", "rss"),
-        )
     can_subscribe = False
-    if detected_feed_data and (
-        domain_content.content_type == ContentType.NEWS
-        or domain_content.source == SELF_SUBMISSION_SOURCE
-    ):
+    if can_subscribe_for_feed(domain_content, detected_feed_data):
         from app.services.feed_subscription import can_subscribe_to_feed
 
         can_subscribe = can_subscribe_to_feed(db, current_user.id, detected_feed_data)
 
-    # Return the validated content with all properties from ContentData
-    return ContentDetailResponse(
-        id=domain_content.id,
-        content_type=domain_content.content_type.value,
-        url=str(domain_content.url),
-        title=domain_content.title,
-        display_title=domain_content.display_title,
-        source=domain_content.source,
-        status=domain_content.status.value,
-        error_message=domain_content.error_message,
-        retry_count=domain_content.retry_count,
-        metadata=domain_content.metadata,
-        created_at=domain_content.created_at.isoformat() if domain_content.created_at else "",
-        updated_at=content.updated_at.isoformat() if content.updated_at else None,
-        processed_at=domain_content.processed_at.isoformat()
-        if domain_content.processed_at
-        else None,
-        checked_out_by=content.checked_out_by,
-        checked_out_at=content.checked_out_at.isoformat() if content.checked_out_at else None,
-        publication_date=domain_content.publication_date.isoformat()
-        if domain_content.publication_date
-        else None,
+    return build_content_detail_response(
+        content=content,
+        domain_content=domain_content,
         is_read=bool(is_read),
         is_favorited=bool(is_favorited),
-        # Additional properties from ContentData
-        summary=news_summary_text,
-        short_summary=news_summary_text,
-        structured_summary=structured_summary,
-        bullet_points=bullet_points,
-        quotes=quotes,
-        topics=topics,
-        full_markdown=full_markdown,
-        is_aggregate=domain_content.is_aggregate,
-        rendered_markdown=rendered_markdown,
-        news_items=news_items,
-        news_article_url=news_article_url,
-        news_discussion_url=news_discussion_url,
-        news_key_points=news_key_points,
-        news_summary=news_summary_text,
-        image_url=get_content_image_url(domain_content),
-        thumbnail_url=get_content_thumbnail_url(domain_content.id),
-        detected_feed=detected_feed,
+        detected_feed_data=detected_feed_data,
         can_subscribe=can_subscribe,
     )
 
@@ -193,7 +94,7 @@ def get_content_detail(
 )
 def get_chatgpt_url(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
-    db: Annotated[Session, Depends(get_db_session)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
     user_prompt: Annotated[
         str | None,
         Query(max_length=2000, description="Optional user prompt to prepend to chat"),
@@ -210,7 +111,7 @@ def get_chatgpt_url(
         raise HTTPException(status_code=404, detail="Content not found")
 
     try:
-        domain_content = content_to_domain(content)
+        domain_content = build_domain_content(content)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to process content metadata: {str(e)}"

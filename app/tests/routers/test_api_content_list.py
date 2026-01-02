@@ -44,13 +44,16 @@ def test_list_filters_articles_without_keypoints_or_image(
         url="https://example.com/ready",
         content_type=ContentType.ARTICLE.value,
         status=ContentStatus.COMPLETED.value,
-        content_metadata={"summary": _build_summary("Ready Article")},
+        content_metadata={
+            "summary": _build_summary("Ready Article"),
+            "image_generated_at": "2025-12-31T00:00:00Z",
+        },
     )
     missing_summary = Content(
         url="https://example.com/no-summary",
         content_type=ContentType.ARTICLE.value,
         status=ContentStatus.COMPLETED.value,
-        content_metadata={},
+        content_metadata={"image_generated_at": "2025-12-31T00:00:00Z"},
     )
     missing_image = Content(
         url="https://example.com/no-image",

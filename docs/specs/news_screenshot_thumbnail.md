@@ -18,8 +18,8 @@ Replace LLM-generated news thumbnails with Playwright screenshots of the normali
 ## Current Behavior (2025-12-29)
 - `SUMMARIZE` enqueues `GENERATE_IMAGE` for all content.
 - `ImageGenerationService` creates 1:1 news thumbnails via Gemini and writes to:
-  - `static/images/news_thumbnails/{content_id}.png`
-  - `static/images/thumbnails/{content_id}.png` (200px)
+  - `{IMAGES_BASE_DIR}/news_thumbnails/{content_id}.png` (served at `/static/images/news_thumbnails/...`)
+  - `{IMAGES_BASE_DIR}/thumbnails/{content_id}.png` (200px, served at `/static/images/thumbnails/...`)
 - API `thumbnail_url` and `image_url` are derived from file existence, not metadata.
 
 ## Proposed Changes
@@ -54,12 +54,12 @@ Use the most canonical article URL in order:
 - `page.screenshot(path=NEWS_THUMBNAILS_DIR / f"{content_id}.png", full_page=False, type="png")`
 
 **Output files:**
-- Full screenshot: `static/images/news_thumbnails/{content_id}.png`
-- 200px thumbnail: reuse `ImageGenerationService.generate_thumbnail` to create `static/images/thumbnails/{content_id}.png`
+- Full screenshot: `{IMAGES_BASE_DIR}/news_thumbnails/{content_id}.png`
+- 200px thumbnail: reuse `ImageGenerationService.generate_thumbnail` to create `{IMAGES_BASE_DIR}/thumbnails/{content_id}.png`
 
 ### 3) Generic Thumbnail Fallback
 If screenshot fails or URL is missing:
-- Copy a bundled placeholder image into `static/images/news_thumbnails/{content_id}.png`.
+- Copy a bundled placeholder image into `{IMAGES_BASE_DIR}/news_thumbnails/{content_id}.png`.
 - Run `generate_thumbnail` to create the 200px thumbnail.
 - Mark the task as **success** (avoid retries) but log the error with structured `extra` fields.
 
@@ -77,7 +77,7 @@ Create a backfill script to enqueue screenshot generation for existing news item
 
 Behavior:
 - Query completed `content_type=news` items.
-- Skip items that already have `static/images/news_thumbnails/{id}.png` (unless `--include-existing`).
+- Skip items that already have `{IMAGES_BASE_DIR}/news_thumbnails/{id}.png` (unless `--include-existing`).
 - Enqueue `TaskType.GENERATE_THUMBNAIL`.
 - Support `--days-back`, `--limit`, `--dry-run`.
 

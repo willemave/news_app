@@ -11,7 +11,7 @@ from app.core.security import create_access_token
 
 def test_users_see_only_their_own_favorites(db_session: Session):
     """Test that users only see their own favorites."""
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     # Create two users
     user1 = User(apple_id="user1", email="user1@example.com", is_active=True)
@@ -55,6 +55,7 @@ def test_users_see_only_their_own_favorites(db_session: Session):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db
+    app.dependency_overrides[get_readonly_db_session] = override_get_db
 
     try:
         client = TestClient(app)
@@ -100,7 +101,7 @@ def test_users_see_only_their_own_favorites(db_session: Session):
 
 def test_users_see_only_their_own_read_status(db_session: Session):
     """Test that users only see their own read status."""
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     # Create two users
     user1 = User(apple_id="user1_read", email="user1_read@example.com", is_active=True)
@@ -134,6 +135,7 @@ def test_users_see_only_their_own_read_status(db_session: Session):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db
+    app.dependency_overrides[get_readonly_db_session] = override_get_db
 
     try:
         client = TestClient(app)
@@ -171,7 +173,7 @@ def test_users_see_only_their_own_read_status(db_session: Session):
 
 def test_favorite_action_only_affects_current_user(db_session: Session):
     """Test that favoriting content only affects the current user."""
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
     from app.core.deps import get_current_user
 
     # Create two users
@@ -201,6 +203,7 @@ def test_favorite_action_only_affects_current_user(db_session: Session):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db
+    app.dependency_overrides[get_readonly_db_session] = override_get_db
 
     try:
         client = TestClient(app)

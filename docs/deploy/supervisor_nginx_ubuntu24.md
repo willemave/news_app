@@ -140,6 +140,14 @@ server {
 
     client_max_body_size 25m;
 
+    # Generated images served directly by Nginx (persisted across deploys)
+    location /static/images/ {
+        alias /data/images/;
+        expires 30d;
+        access_log off;
+        add_header Cache-Control "public, max-age=2592000";
+    }
+
     # Static files served directly by Nginx
     location /static/ {
         alias /opt/news_app/static/;
@@ -199,6 +207,7 @@ sudo certbot renew --dry-run
 - Change `SCRAPER_INTERVAL_SECONDS` in Supervisor to adjust scrape frequency.
 - Ensure `.env` has a valid `DATABASE_URL` (SQLite or Postgres).
 - Server binds to `127.0.0.1:8000` (from `scripts/start_server.sh`); Nginx handles public traffic.
+- Generated images are stored under `/data/images` by default; override with `IMAGES_BASE_DIR` if needed.
 - For one-off scrapes instead of the loop, disable `news_app_scrapers` and use cron, e.g.:
 
 ```bash

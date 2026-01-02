@@ -15,7 +15,7 @@ client = TestClient(app)
 def test_apple_signin_new_user(db: Session, monkeypatch):
     """Test Apple Sign In creates new user."""
     # Override get_db_session to use our test db
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     def override_get_db_session():
         try:
@@ -24,6 +24,7 @@ def test_apple_signin_new_user(db: Session, monkeypatch):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     # Mock Apple token verification
     def mock_verify_apple_token(id_token):
@@ -60,7 +61,7 @@ def test_apple_signin_new_user(db: Session, monkeypatch):
 def test_apple_signin_existing_user(db: Session, monkeypatch):
     """Test Apple Sign In with existing user."""
     # Override get_db_session to use our test db
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     def override_get_db_session():
         try:
@@ -69,6 +70,7 @@ def test_apple_signin_existing_user(db: Session, monkeypatch):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     # Create existing user
     existing_user = User(
@@ -130,7 +132,7 @@ def test_apple_signin_invalid_token(monkeypatch):
 def test_refresh_token_valid(db: Session):
     """Test token refresh with valid refresh token."""
     # Override get_db_session to use our test db
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     def override_get_db_session():
         try:
@@ -139,6 +141,7 @@ def test_refresh_token_valid(db: Session):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     try:
         # Create user
@@ -182,7 +185,7 @@ def test_refresh_token_invalid():
 def test_refresh_token_with_access_token(db: Session):
     """Test refresh endpoint rejects access tokens."""
     # Override get_db_session to use our test db
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     def override_get_db_session():
         try:
@@ -191,6 +194,7 @@ def test_refresh_token_with_access_token(db: Session):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     try:
         user = User(
@@ -229,7 +233,7 @@ def test_refresh_token_rotation(db: Session):
     endpoint returns a refresh token and it works for subsequent refreshes.
     """
     # Override get_db_session to use our test db
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     def override_get_db_session():
         try:
@@ -238,6 +242,7 @@ def test_refresh_token_rotation(db: Session):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     try:
         # Create user
@@ -352,7 +357,7 @@ def test_admin_logout(monkeypatch):
 def test_get_current_user_info(db: Session):
     """Test /auth/me endpoint."""
     # Override get_db_session to use our test db
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     def override_get_db_session():
         try:
@@ -361,6 +366,7 @@ def test_get_current_user_info(db: Session):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     # Create test user
     test_user = User(
@@ -419,7 +425,7 @@ def test_datetime_serialization_has_timezone(db: Session):
     "Expected date string to be ISO8601-formatted."
     """
     # Override get_db_session to use our test db
-    from app.core.db import get_db_session
+    from app.core.db import get_db_session, get_readonly_db_session
 
     def override_get_db_session():
         try:
@@ -428,6 +434,7 @@ def test_datetime_serialization_has_timezone(db: Session):
             pass
 
     app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     # Create test user
     test_user = User(

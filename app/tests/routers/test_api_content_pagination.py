@@ -1,8 +1,10 @@
 """Tests for cursor-based pagination in API content endpoints."""
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.metadata import ContentStatus, ContentType
@@ -44,7 +46,8 @@ def sample_contents(db_session: Session, test_user: User):
                     "quotes": [],
                     "topics": ["test"],
                     "classification": "to_read",
-                }
+                },
+                "image_generated_at": "2025-12-31T00:00:00Z",
             },
             created_at=base_time - timedelta(minutes=i),
         )
@@ -74,6 +77,43 @@ def sample_contents(db_session: Session, test_user: User):
         for image_path in image_paths:
             if image_path.exists():
                 image_path.unlink()
+
+
+def _enable_fts(db_session: Session, contents: list[Content]) -> None:
+    """Create and seed the FTS table for search tests."""
+    try:
+        db_session.execute(
+            text(
+                """
+                CREATE VIRTUAL TABLE content_fts USING fts5(
+                    title,
+                    source,
+                    summary,
+                    transcript
+                )
+                """
+            )
+        )
+    except Exception:
+        pytest.skip("SQLite FTS5 not available")
+
+    for content in contents:
+        db_session.execute(
+            text(
+                """
+                INSERT INTO content_fts(rowid, title, source, summary, transcript)
+                VALUES (:rowid, :title, :source, :summary, :transcript)
+                """
+            ),
+            {
+                "rowid": content.id,
+                "title": content.title or "",
+                "source": content.source or "",
+                "summary": content.title or "",
+                "transcript": "",
+            },
+        )
+    db_session.commit()
 
 
 class TestCursorEncoding:
@@ -243,6 +283,16 @@ class TestSearchEndpointPagination:
         assert len(data["contents"]) == 10
         assert data["has_more"] is True
         assert data["next_cursor"] is not None
+
+    def test_search_uses_fts_when_available(self, client, db_session, sample_contents):
+        """Use FTS when the table exists."""
+        _enable_fts(db_session, sample_contents)
+
+        response = client.get("/api/content/search", params={"q": "Article", "limit": 5})
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data["contents"]) > 0
 
     def test_search_with_cursor(self, client, sample_contents):
         """Test search pagination with cursor."""

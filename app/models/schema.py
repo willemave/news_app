@@ -18,12 +18,9 @@ from sqlalchemy.orm import validates
 
 from app.core.db import Base
 from app.core.logging import get_logger
-from app.models.metadata import (
-    ContentStatus,
-    StructuredSummary,
-    validate_content_metadata,
-)
+from app.models.metadata import ContentStatus, StructuredSummary, validate_content_metadata
 from app.models.user import User  # noqa: F401
+from app.utils.summary_utils import extract_short_summary
 
 logger = get_logger(__name__)
 
@@ -131,21 +128,7 @@ class Content(Base):
         """Return a short summary for list views if available."""
         if not self.content_metadata:
             return None
-        summary = self.content_metadata.get("summary")
-        if isinstance(summary, dict):
-            if "overview" in summary:
-                return summary.get("overview")
-            if summary.get("summary_type") == "interleaved":
-                hook = summary.get("hook") or summary.get("takeaway")
-                if hook:
-                    return hook
-            if summary.get("summary_type") == "news_digest":
-                return summary.get("summary")
-            if "summary" in summary:
-                return summary.get("summary")
-        if isinstance(summary, str):
-            return summary
-        return None
+        return extract_short_summary(self.content_metadata.get("summary"))
 
 
 class ProcessingTask(Base):
