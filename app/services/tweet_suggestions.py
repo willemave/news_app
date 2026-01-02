@@ -132,9 +132,11 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
 
     summary_data = content.metadata.get("summary")
     if isinstance(summary_data, dict):
-        # Check if it's a StructuredSummary or NewsSummary
+        # Check if it's a StructuredSummary, InterleavedSummary, or NewsSummary
         if "overview" in summary_data:
             summary = summary_data.get("overview", "")
+        elif summary_data.get("summary_type") == "interleaved":
+            summary = summary_data.get("hook") or summary_data.get("takeaway", "")
         elif "summary" in summary_data:
             summary = summary_data.get("summary", "")
 
@@ -147,6 +149,11 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
                     key_points.append(point.get("text", ""))
                 elif isinstance(point, str):
                     key_points.append(point)
+        else:
+            insights = summary_data.get("insights", [])
+            for insight in insights[:5]:
+                if isinstance(insight, dict):
+                    key_points.append(insight.get("insight", ""))
 
         # Get quotes (for articles with StructuredSummary)
         raw_quotes = summary_data.get("quotes", [])
@@ -158,6 +165,13 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
                         quotes.append(quote_text)
                 elif isinstance(quote, str):
                     quotes.append(quote)
+        else:
+            insights = summary_data.get("insights", [])
+            for insight in insights[:3]:
+                if isinstance(insight, dict):
+                    quote_text = insight.get("supporting_quote")
+                    if quote_text:
+                        quotes.append(quote_text)
 
         # Get questions
         raw_questions = summary_data.get("questions", [])

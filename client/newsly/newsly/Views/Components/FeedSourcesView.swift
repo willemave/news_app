@@ -8,7 +8,6 @@ import SwiftUI
 struct FeedSourcesView: View {
     @StateObject private var viewModel = ScraperSettingsViewModel(filterTypes: ["substack", "atom", "youtube"])
     @State private var selectedConfig: ScraperConfig?
-    @State private var showDetail = false
     @State private var showAddSheet = false
     @State private var newFeedURL: String = ""
     @State private var newFeedName: String = ""
@@ -27,7 +26,6 @@ struct FeedSourcesView: View {
             ForEach(viewModel.configs) { config in
                 Button {
                     selectedConfig = config
-                    showDetail = true
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
@@ -90,10 +88,8 @@ struct FeedSourcesView: View {
         .onAppear {
             Task { await viewModel.loadConfigs() }
         }
-        .sheet(isPresented: $showDetail) {
-            if let selectedConfig {
-                FeedDetailView(viewModel: viewModel, config: selectedConfig)
-            }
+        .sheet(item: $selectedConfig) { selectedConfig in
+            FeedDetailView(viewModel: viewModel, config: selectedConfig)
         }
         .sheet(isPresented: $showAddSheet) {
             NavigationView {

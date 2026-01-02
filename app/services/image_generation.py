@@ -191,13 +191,17 @@ def _build_news_thumbnail_prompt(content: ContentData) -> str:
     """Build prompt for subtle news thumbnail."""
     summary = content.metadata.get("summary", {})
     title = summary.get("title") or content.display_title
-    overview = summary.get("overview", "")
+    overview = summary.get("overview") or summary.get("hook") or summary.get("takeaway") or ""
 
     bullet_points = []
     for bp in summary.get("bullet_points", [])[:3]:
         text = bp.get("text") if isinstance(bp, dict) else bp
         if text:
             bullet_points.append(text)
+    if not bullet_points:
+        for insight in summary.get("insights", [])[:3]:
+            if isinstance(insight, dict) and insight.get("insight"):
+                bullet_points.append(insight["insight"])
 
     score = _analyze_content_interestingness(title, overview, bullet_points)
 
@@ -257,6 +261,10 @@ def _build_infographic_prompt(content: ContentData) -> str:
         text = bp.get("text") if isinstance(bp, dict) else bp
         if text:
             key_points.append(text)
+    if not key_points:
+        for insight in summary.get("insights", [])[:3]:
+            if isinstance(insight, dict) and insight.get("insight"):
+                key_points.append(insight["insight"])
 
     # Extract quotes (first 2)
     quotes = []
@@ -264,6 +272,10 @@ def _build_infographic_prompt(content: ContentData) -> str:
         text = q.get("text") if isinstance(q, dict) else q
         if text:
             quotes.append(text)
+    if not quotes:
+        for insight in summary.get("insights", [])[:2]:
+            if isinstance(insight, dict) and insight.get("supporting_quote"):
+                quotes.append(insight["supporting_quote"])
 
     parts = [f"Title: {title}"]
     if key_points:

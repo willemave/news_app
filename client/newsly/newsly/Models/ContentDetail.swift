@@ -39,6 +39,7 @@ struct ContentDetail: Codable, Identifiable {
     let imageUrl: String?
     let thumbnailUrl: String?
     let detectedFeed: DetectedFeed?
+    let canSubscribe: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -72,6 +73,7 @@ struct ContentDetail: Codable, Identifiable {
         case imageUrl = "image_url"
         case thumbnailUrl = "thumbnail_url"
         case detectedFeed = "detected_feed"
+        case canSubscribe = "can_subscribe"
     }
     
     var contentTypeEnum: ContentType? {

@@ -127,7 +127,7 @@ class InterleavedSummary(BaseModel):
         ..., min_length=80, description="Opening hook (2-3 sentences) capturing the main story"
     )
     insights: list[InterleavedInsight] = Field(
-        ..., min_length=3, description="Key insights with optional supporting quotes (soft cap ~30)"
+        ..., min_length=3, description="Key insights with optional supporting quotes (target <20)"
     )
     takeaway: str = Field(
         ..., min_length=80, description="Final takeaway (2-3 sentences) for the reader"
@@ -580,7 +580,7 @@ class ContentData(BaseModel):
 
     @property
     def summary(self) -> str | None:
-        """Get summary text (either simple or overview from structured)."""
+        """Get summary text (overview, hook, or plain summary)."""
         summary_data = self.metadata.get("summary")
         if not summary_data:
             if self.content_type == ContentType.NEWS:
@@ -598,6 +598,10 @@ class ContentData(BaseModel):
         if isinstance(summary_data, dict):
             if "overview" in summary_data:
                 return summary_data.get("overview", "")
+            if summary_data.get("summary_type") == "interleaved":
+                hook = summary_data.get("hook") or summary_data.get("takeaway")
+                if hook:
+                    return hook
             if summary_data.get("summary_type") == "news_digest":
                 return summary_data.get("summary")
         return None
@@ -617,6 +621,10 @@ class ContentData(BaseModel):
         if isinstance(summary, dict):
             if "overview" in summary:
                 return summary.get("overview")
+            if summary.get("summary_type") == "interleaved":
+                hook = summary.get("hook") or summary.get("takeaway")
+                if hook:
+                    return hook
             if summary.get("summary_type") == "news_digest":
                 return summary.get("summary")
         if isinstance(summary, str):

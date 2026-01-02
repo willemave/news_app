@@ -210,6 +210,100 @@ class HttpService:
                 )
                 raise
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=8),
+        retry=retry_if_not_exception_type((NonRetryableError, httpx.HTTPStatusError)),
+    )
+    def head(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        allow_statuses: set[int] | None = None,
+    ) -> httpx.Response:
+        """
+        Perform an HTTP HEAD request with intelligent retry logic.
+
+        Args:
+            url: URL to fetch
+            headers: Additional headers
+            allow_statuses: HTTP statuses that should not raise
+
+        Returns:
+            httpx.Response object
+        """
+        with self.get_client(url) as client:
+            logger.debug(f"Fetching HEAD: {url}")
+
+            request_headers = self.headers.copy()
+            if headers:
+                request_headers.update(headers)
+
+            try:
+                response = client.head(url, headers=request_headers)
+                if allow_statuses and response.status_code in allow_statuses:
+                    return response
+
+                response.raise_for_status()
+
+                logger.debug(f"Successfully fetched HEAD {url}: {response.status_code}")
+                return response
+
+            except httpx.HTTPStatusError as e:
+                categorized_error = categorize_http_error(e)
+
+                logger.error(
+                    "HTTP error %s for HEAD %s",
+                    e.response.status_code,
+                    url,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_head",
+                        "context_data": {"url": url, "status_code": e.response.status_code},
+                    },
+                )
+
+                raise categorized_error from e
+
+            except httpx.ConnectError as e:
+                if is_ssl_error(e):
+                    logger.warning(
+                        "SSL error for HEAD %s: %s",
+                        url,
+                        e,
+                        extra={
+                            "component": "http_service",
+                            "operation": "http_head",
+                            "context_data": {"url": url, "error_type": "ssl_error"},
+                        },
+                    )
+                    raise NonRetryableError(f"SSL error: {e}") from e
+
+                logger.exception(
+                    "Connection error for HEAD %s: %s",
+                    url,
+                    e,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_head",
+                        "context_data": {"url": url, "error_type": "connection_error"},
+                    },
+                )
+                raise
+
+            except Exception as e:
+                logger.exception(
+                    "HTTP HEAD error for %s: %s",
+                    url,
+                    e,
+                    extra={
+                        "component": "http_service",
+                        "operation": "http_head",
+                        "context_data": {"url": url},
+                    },
+                )
+                raise
+
     def fetch_content(
         self, url: str, headers: dict[str, str] | None = None
     ) -> tuple[str | bytes, dict[str, str]]:

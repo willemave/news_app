@@ -7,6 +7,7 @@ from app.models.schema import Content
     ("summary", "expected"),
     [
         ({"overview": "Short overview"}, "Short overview"),
+        ({"summary_type": "interleaved", "hook": "Interleaved hook"}, "Interleaved hook"),
         ({"summary_type": "news_digest", "summary": "Daily digest"}, "Daily digest"),
         ("Plain summary", "Plain summary"),
     ],

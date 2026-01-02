@@ -55,6 +55,15 @@ class ShareViewController: SLComposeServiceViewController {
         navigationItem.rightBarButtonItem?.title = "Submit"
 
         extractSharedURL()
+        print("🔗 [ShareExt] viewDidLoad sharedURL=\(sharedURL?.absoluteString ?? "nil")")
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        let minHeight: CGFloat = 520
+        let targetHeight = max(view.bounds.height, minHeight)
+        preferredContentSize = CGSize(width: view.bounds.width, height: targetHeight)
+        print("🔗 [ShareExt] preferredContentSize=\(preferredContentSize)")
     }
 
     override func isContentValid() -> Bool {
@@ -83,6 +92,7 @@ class ShareViewController: SLComposeServiceViewController {
 
     override func configurationItems() -> [Any]! {
         guard let item = SLComposeSheetConfigurationItem() else {
+            print("🔗 [ShareExt] configurationItems item=nil sharedURL=\(sharedURL?.absoluteString ?? "nil")")
             return []
         }
         item.title = "Link handling"
@@ -90,6 +100,7 @@ class ShareViewController: SLComposeServiceViewController {
         item.tapHandler = { [weak self] in
             self?.presentLinkModePicker()
         }
+        print("🔗 [ShareExt] configurationItems item=ok sharedURL=\(sharedURL?.absoluteString ?? "nil") mode=\(linkHandlingMode.rawValue)")
         return [item]
     }
 
@@ -111,6 +122,8 @@ class ShareViewController: SLComposeServiceViewController {
                             DispatchQueue.main.async {
                                 self?.sharedURL = url
                                 self?.validateContent()
+                                print("🔗 [ShareExt] extracted URL=\(url.absoluteString)")
+                                self?.reloadConfigurationItems()
                             }
                         }
                     }
@@ -124,6 +137,8 @@ class ShareViewController: SLComposeServiceViewController {
                             DispatchQueue.main.async {
                                 self?.sharedURL = url
                                 self?.validateContent()
+                                print("🔗 [ShareExt] extracted text URL=\(url.absoluteString)")
+                                self?.reloadConfigurationItems()
                             }
                         }
                     }

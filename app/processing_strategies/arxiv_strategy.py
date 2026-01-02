@@ -4,12 +4,16 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import httpx  # For type hinting httpx.Headers
+from google import genai
+from google.genai.types import Part
 
 from app.core.logging import get_logger
+from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 
 class ArxivProcessorStrategy(UrlProcessorStrategy):
@@ -117,6 +121,48 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
                 "pdf_bytes": None,
             }
 
+        google_api_key = getattr(settings, "google_api_key", None)
+        model_name = getattr(settings, "pdf_gemini_model", "gemini-3-flash-preview")
+        if google_api_key:
+            try:
+                client = genai.Client(api_key=google_api_key)
+                pdf_part = Part.from_bytes(data=content, mime_type="application/pdf")
+                extraction_prompt = """
+                Extract all text content from this PDF document.
+                Return the full text in a clean, readable format.
+                Preserve the document structure (headings, paragraphs, lists).
+                If you can identify the title, include it at the beginning.
+                """
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[pdf_part, extraction_prompt],
+                    config={"temperature": 0.3, "max_output_tokens": 50000},
+                )
+                text_content = response.text if hasattr(response, "text") else ""
+                if text_content:
+                    lines = text_content.strip().split("\n")
+                    title = lines[0][:200] if lines else "ArXiv PDF Document"
+                    logger.info(
+                        "ArxivStrategy: Extracted text via Gemini for %s. Title: %s...",
+                        url,
+                        title[:50],
+                    )
+                    return {
+                        "title": title,
+                        "author": None,
+                        "publication_date": None,
+                        "text_content": text_content,
+                        "content_type": "pdf",
+                        "final_url_after_redirects": url,
+                    }
+            except Exception as exc:  # noqa: BLE001
+                logger.error("ArxivStrategy: Gemini extraction failed for %s: %s", url, exc)
+        else:
+            logger.warning(
+                "ArxivStrategy: Google API key missing; cannot extract PDF text for %s",
+                url,
+            )
+
         # Use filename from URL as a fallback title - LLM will extract the real title
         parsed_url = urlparse(url)
         filename = parsed_url.path.split("/")[-1] or "ArXiv PDF Document"
@@ -132,7 +178,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
             "title": filename,  # Fallback title - LLM will extract the real title
             "author": None,
             "publication_date": None,
-            "text_content": None,  # No text extraction - LLM handles PDF bytes
+            "text_content": "",
             "content_type": "pdf",
             "final_url_after_redirects": url,
             "pdf_bytes": content,  # Store raw PDF bytes for LLM processing
@@ -145,6 +191,14 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
         """
         final_url = extracted_data.get("final_url_after_redirects", "Unknown URL")
         logger.info("ArxivStrategy: Preparing PDF data for LLM for URL: %s", final_url)
+        text_content = extracted_data.get("text_content") or ""
+        if isinstance(text_content, str) and text_content.strip():
+            return {
+                "content_to_filter": text_content,
+                "content_to_summarize": text_content,
+                "is_pdf": True,
+            }
+
         pdf_bytes = extracted_data.get("pdf_bytes")
 
         if pdf_bytes is None:

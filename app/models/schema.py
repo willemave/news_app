@@ -135,6 +135,10 @@ class Content(Base):
         if isinstance(summary, dict):
             if "overview" in summary:
                 return summary.get("overview")
+            if summary.get("summary_type") == "interleaved":
+                hook = summary.get("hook") or summary.get("takeaway")
+                if hook:
+                    return hook
             if summary.get("summary_type") == "news_digest":
                 return summary.get("summary")
         if isinstance(summary, str):

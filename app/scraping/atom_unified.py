@@ -13,6 +13,7 @@ from app.core.db import get_db
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
+from app.scraping.rss_helpers import resolve_feed_source
 from app.services.scraper_configs import build_feed_payloads, list_active_configs_by_type
 from app.utils.error_logger import log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
@@ -125,6 +126,7 @@ class AtomScraper(BaseScraper):
         for feed_info in feeds:
             feed_url = feed_info.get("url")
             source_name = feed_info.get("name", "Unknown Atom")
+            display_name = feed_info.get("display_name")
             limit = feed_info.get("limit", 10)
             user_id = feed_info.get("user_id")
 
@@ -189,7 +191,13 @@ class AtomScraper(BaseScraper):
                 processed_entries = 0
                 for entry in entries_to_process:
                     item = self._process_entry(
-                        entry, feed_name, feed_description, feed_url, source_name, user_id
+                        entry,
+                        feed_name,
+                        feed_description,
+                        feed_url,
+                        display_name,
+                        source_name,
+                        user_id,
                     )
                     if item:
                         items.append(item)
@@ -222,6 +230,7 @@ class AtomScraper(BaseScraper):
         feed_name: str,
         feed_description: str = "",
         feed_url: str = "",
+        display_name: str | None = None,
         source_name: str = "",
         user_id: int | None = None,
     ) -> dict[str, Any] | None:
@@ -283,6 +292,7 @@ class AtomScraper(BaseScraper):
         except Exception:
             host = ""
 
+        resolved_source = resolve_feed_source(display_name, feed_name, feed_url) or source_name
         item = {
             "url": self._normalize_url(link),
             "title": title,
@@ -290,7 +300,7 @@ class AtomScraper(BaseScraper):
             "user_id": user_id,
             "metadata": {
                 "platform": "atom",  # Scraper identifier
-                "source": source_name,  # Configured name from YAML
+                "source": resolved_source,
                 "source_domain": host,
                 "feed_name": feed_name,
                 "feed_description": feed_description,

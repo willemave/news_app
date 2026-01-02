@@ -6,6 +6,7 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
+from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
@@ -87,7 +88,13 @@ async def get_content_detail(
             news_key_points = [
                 point["text"] if isinstance(point, dict) else point for point in key_points
             ]
-        news_summary_text = summary_meta.get("overview") or domain_content.summary
+        news_summary_text = (
+            summary_meta.get("overview")
+            or summary_meta.get("summary")
+            or summary_meta.get("hook")
+            or summary_meta.get("takeaway")
+            or domain_content.summary
+        )
         structured_summary = None
         bullet_points = []
         quotes = []
@@ -106,6 +113,14 @@ async def get_content_detail(
             title=detected_feed_data.get("title"),
             format=detected_feed_data.get("format", "rss"),
         )
+    can_subscribe = False
+    if detected_feed_data and (
+        domain_content.content_type == ContentType.NEWS
+        or domain_content.source == SELF_SUBMISSION_SOURCE
+    ):
+        from app.services.feed_subscription import can_subscribe_to_feed
+
+        can_subscribe = can_subscribe_to_feed(db, current_user.id, detected_feed_data)
 
     # Return the validated content with all properties from ContentData
     return ContentDetailResponse(
@@ -149,6 +164,7 @@ async def get_content_detail(
         image_url=get_content_image_url(domain_content),
         thumbnail_url=get_content_thumbnail_url(domain_content.id),
         detected_feed=detected_feed,
+        can_subscribe=can_subscribe,
     )
 
 

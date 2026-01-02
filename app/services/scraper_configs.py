@@ -211,10 +211,14 @@ def build_feed_payloads(
             logger.warning("Skipping config without feed_url. id=%s", config.id)
             continue
         limit = _extract_limit(config.config, default_limit)
+        display_name = config.display_name
+        config_name = config.config.get("name")
         feeds.append(
             {
                 "url": feed_url,
-                "name": config.display_name or config.config.get("name") or "Custom feed",
+                "name": display_name or config_name or "Custom feed",
+                "display_name": display_name,
+                "config_name": config_name,
                 "limit": limit,
                 "user_id": config.user_id,
                 "config_id": config.id,

@@ -119,3 +119,63 @@ def test_analyze_url_creates_instruction_links_when_crawl_enabled(
         instruction="Extract relevant links from the submitted page.",
     )
     create_mock.assert_called_once()
+
+
+def test_analyze_url_subscribe_to_feed_short_circuits_processing(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    content = _create_content(db_session, test_user.id, "https://example.com/article")
+
+    @contextmanager
+    def _db_context():
+        yield db_session
+
+    monkeypatch.setattr(stp, "get_db", _db_context)
+
+    class DummyHttpService:
+        def fetch_content(self, url):  # noqa: ANN001
+            html = (
+                '<link rel="alternate" type="application/rss+xml" '
+                'href="https://example.com/feed" title="Example Feed" />'
+            )
+            return f"<html><head>{html}</head><body></body></html>", {}
+
+    monkeypatch.setattr(stp, "get_http_service", lambda: DummyHttpService())
+    monkeypatch.setattr(
+        stp,
+        "detect_feeds_from_html",
+        lambda html, page_url, page_title=None, source=None, content_type=None: {
+            "detected_feed": {
+                "url": "https://example.com/feed",
+                "type": "atom",
+                "title": "Example Feed",
+                "format": "rss",
+            }
+        },
+    )
+    subscribe_mock = Mock(return_value=(True, "created"))
+    monkeypatch.setattr(stp, "subscribe_to_detected_feed", subscribe_mock)
+    monkeypatch.setattr(stp, "get_content_analyzer", Mock())
+
+    processor = stp.SequentialTaskProcessor()
+    processor.queue_service.enqueue = Mock()
+
+    task_data = {
+        "task_type": stp.TaskType.ANALYZE_URL.value,
+        "payload": {"content_id": content.id, "subscribe_to_feed": True},
+    }
+
+    assert processor._process_analyze_url_task(task_data) is True
+    processor.queue_service.enqueue.assert_not_called()
+
+    updated = db_session.query(Content).filter(Content.id == content.id).first()
+    assert updated is not None
+    assert updated.status == ContentStatus.SKIPPED.value
+    assert updated.content_metadata.get("subscribe_to_feed") is True
+    assert updated.content_metadata.get("detected_feed", {}).get("url") == (
+        "https://example.com/feed"
+    )
+    assert updated.content_metadata.get("feed_subscription", {}).get("status") == "created"
+    subscribe_mock.assert_called_once()

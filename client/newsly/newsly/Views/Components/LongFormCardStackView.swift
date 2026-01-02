@@ -7,6 +7,9 @@
 
 import SwiftUI
 import UIKit
+import os.log
+
+private let cardStackLogger = Logger(subsystem: "com.newsly", category: "LongFormCardStackView")
 
 struct LongFormCardStackView: View {
     @ObservedObject var viewModel: LongContentListViewModel
@@ -53,9 +56,13 @@ struct LongFormCardStackView: View {
             if oldCount == 0 && newCount > 0 {
                 currentIndex = 0
             }
+            if oldCount == 0 && newCount > 0 {
+                cardStackLogger.info("[LongFormCardStackView] items loaded count=\(newCount)")
+                Task { await prefetchKeyPoints(reason: "items_loaded") }
+            }
         }
         .task(id: currentIndex) {
-            await prefetchKeyPoints()
+            await prefetchKeyPoints(reason: "index_change")
         }
     }
 
@@ -250,8 +257,11 @@ struct LongFormCardStackView: View {
         onSelect(route)
     }
 
-    private func prefetchKeyPoints() async {
+    private func prefetchKeyPoints(reason: String) async {
         let contentIds = items.map(\.id)
+        cardStackLogger.info(
+            "[LongFormCardStackView] prefetch (\(reason)) index=\(currentIndex) ids=\(contentIds.count)"
+        )
         await keyPointsLoader.prefetch(contentIds: contentIds, aroundIndex: currentIndex)
     }
 

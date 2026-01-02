@@ -298,7 +298,13 @@ async def list_contents(
                         point["text"] if isinstance(point, dict) else point for point in key_points
                     ]
                 classification = summary_meta.get("classification") or classification
-                news_summary_text = summary_meta.get("overview") or domain_content.summary
+                news_summary_text = (
+                    summary_meta.get("overview")
+                    or summary_meta.get("summary")
+                    or summary_meta.get("hook")
+                    or summary_meta.get("takeaway")
+                    or domain_content.summary
+                )
                 is_aggregate = False
 
             image_url = get_content_image_url(domain_content)
@@ -417,7 +423,7 @@ async def search_contents(
     """Search content with portable SQL patterns and cursor-based pagination.
 
     This uses case-insensitive LIKE over title/source and selected JSON fields
-    (summary.title/summary.overview) with a safe String cast for portability
+    (summary.title/summary.overview/summary.hook) with a safe String cast for portability
     between SQLite and Postgres. As a fallback, the entire JSON is also matched
     as text to catch legacy structures.
     """
@@ -490,6 +496,8 @@ async def search_contents(
         # Prefer targeted JSON fields when present
         func.lower(cast(Content.content_metadata["summary"]["title"], String)).like(search),
         func.lower(cast(Content.content_metadata["summary"]["overview"], String)).like(search),
+        func.lower(cast(Content.content_metadata["summary"]["hook"], String)).like(search),
+        func.lower(cast(Content.content_metadata["summary"]["takeaway"], String)).like(search),
         # Podcasts may have transcript text in metadata
         func.lower(cast(Content.content_metadata["transcript"], String)).like(search),
         # Fallback: scan entire JSON blob as text (portable, but slower)

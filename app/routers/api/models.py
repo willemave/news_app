@@ -405,7 +405,11 @@ class ContentDetailResponse(BaseModel):
         None, description="URL of 200px thumbnail image for fast loading"
     )
     detected_feed: DetectedFeed | None = Field(
-        None, description="Detected RSS/Atom feed for this content (only for user submissions)"
+        None, description="Detected RSS/Atom feed for this content"
+    )
+    can_subscribe: bool = Field(
+        False,
+        description="Whether the current user can subscribe to the detected feed",
     )
 
     class Config:
@@ -469,6 +473,7 @@ class ContentDetailResponse(BaseModel):
                 "news_items": [],
                 "image_url": "/static/images/content/123.png",
                 "thumbnail_url": "/static/images/thumbnails/123.png",
+                "can_subscribe": False,
             }
         }
 

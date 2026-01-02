@@ -63,6 +63,14 @@ def _normalize_content_type(content_type: str | ContentType) -> str:
     return content_type.value if isinstance(content_type, ContentType) else str(content_type)
 
 
+def _prompt_content_type(content_type: str) -> str:
+    if content_type in {"article", "podcast"}:
+        return "interleaved"
+    if content_type == "news":
+        return "news_digest"
+    return content_type
+
+
 def _is_context_length_error(error: Exception) -> bool:
     message = str(error).lower()
     return any(hint in message for hint in CONTEXT_LENGTH_ERROR_HINTS)
@@ -230,7 +238,7 @@ def summarize_content(
         ct = request.content_type
         content_type_value = ct.value if isinstance(ct, ContentType) else str(ct)
 
-        prompt_content_type = "news_digest" if content_type_value == "news" else content_type_value
+        prompt_content_type = _prompt_content_type(content_type_value)
 
         system_prompt, user_template = generate_summary_prompt(
             prompt_content_type, request.max_bullet_points, request.max_quotes

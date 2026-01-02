@@ -8,6 +8,7 @@
 import SwiftUI
 import MarkdownUI
 import UIKit
+import os.log
 
 // MARK: - Design Tokens
 private enum DetailDesign {
@@ -23,6 +24,8 @@ private enum DetailDesign {
     // Hero
     static let heroHeight: CGFloat = 220
 }
+
+private let detailLogger = Logger(subsystem: "com.newsly", category: "ContentDetailView")
 
 struct ContentDetailView: View {
     let initialContentId: Int
@@ -129,8 +132,8 @@ struct ContentDetailView: View {
                             .padding(.top, 12)
                         }
 
-                        // Detected feed subscription card (only for self-submitted content)
-                        if let feed = content.detectedFeed, content.source == "self submission" {
+                        // Detected feed subscription card (news/self-submission when available)
+                        if (content.canSubscribe ?? false), let feed = content.detectedFeed {
                             DetectedFeedCard(
                                 feed: feed,
                                 isSubscribing: viewModel.isSubscribingToFeed,
@@ -149,10 +152,26 @@ struct ContentDetailView: View {
                             InterleavedSummaryView(summary: interleavedSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.sectionSpacing)
+                                .onAppear {
+                                    logSummarySection(
+                                        content: content,
+                                        section: "interleaved",
+                                        bulletPointCount: 0,
+                                        insightCount: interleavedSummary.insights.count
+                                    )
+                                }
                         } else if let structuredSummary = content.structuredSummary {
                             StructuredSummaryView(summary: structuredSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.sectionSpacing)
+                                .onAppear {
+                                    logSummarySection(
+                                        content: content,
+                                        section: "structured",
+                                        bulletPointCount: structuredSummary.bulletPoints.count,
+                                        insightCount: 0
+                                    )
+                                }
                         }
 
                         if content.contentTypeEnum == .news {
@@ -345,8 +364,11 @@ struct ContentDetailView: View {
             await viewModel.loadContent()
         }
         .onChange(of: viewModel.content?.id) { _, newValue in
-            guard let id = newValue, let type = viewModel.content?.contentTypeEnum else { return }
-            readingStateStore.setCurrent(contentId: id, type: type)
+            guard let id = newValue, let content = viewModel.content else { return }
+            if let type = content.contentTypeEnum {
+                readingStateStore.setCurrent(contentId: id, type: type)
+            }
+            logSummarySnapshot(content: content, context: "content_change")
         }
         // If user is navigating (chevrons or swipe), skip items that were already read
         .onChange(of: viewModel.wasAlreadyReadWhenLoaded) { _, wasRead in
@@ -1207,6 +1229,25 @@ struct ContentDetailView: View {
         }
 
         return displayFormatter.string(from: validDate)
+    }
+
+    private func logSummarySnapshot(content: ContentDetail, context: String) {
+        let structuredCount = content.structuredSummary?.bulletPoints.count ?? 0
+        let interleavedCount = content.interleavedSummary?.insights.count ?? 0
+        detailLogger.info(
+            "[ContentDetailView] summary snapshot (\(context)) id=\(content.id) type=\(content.contentType, privacy: .public) structured=\(content.structuredSummary != nil) interleaved=\(content.interleavedSummary != nil) structured_points=\(structuredCount) interleaved_insights=\(interleavedCount) raw_bullets=\(content.bulletPoints.count)"
+        )
+    }
+
+    private func logSummarySection(
+        content: ContentDetail,
+        section: String,
+        bulletPointCount: Int,
+        insightCount: Int
+    ) {
+        detailLogger.info(
+            "[ContentDetailView] summary section (\(section)) id=\(content.id) type=\(content.contentType, privacy: .public) points=\(bulletPointCount) insights=\(insightCount)"
+        )
     }
     
     private func navigateToNext() {

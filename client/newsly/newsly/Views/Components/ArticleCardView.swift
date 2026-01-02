@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+import os.log
+
+private let cardLogger = Logger(subsystem: "com.newsly", category: "ArticleCardView")
 
 struct ArticleCardView: View {
     let content: ContentSummary
@@ -51,6 +54,9 @@ struct ArticleCardView: View {
         .background(Color(.systemGray6))
         .cornerRadius(cardCornerRadius)
         .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
+        .onAppear {
+            logPreviewState(context: "appear")
+        }
     }
 
     @ViewBuilder
@@ -300,5 +306,15 @@ struct ArticleCardView: View {
         let baseURL = AppSettings.shared.baseURL
         let fullURL = urlString.hasPrefix("/") ? baseURL + urlString : baseURL + "/" + urlString
         return URL(string: fullURL)
+    }
+
+    private func logPreviewState(context: String) {
+        let keyPointCount = keyPoints?.count ?? 0
+        let hookLength = hook?.count ?? 0
+        let topicsCount = topics?.count ?? 0
+        let shortSummaryLength = content.shortSummary?.count ?? 0
+        cardLogger.info(
+            "[ArticleCardView] preview (\(context)) id=\(content.id) type=\(content.contentType, privacy: .public) loading=\(isLoadingKeyPoints) keyPoints=\(keyPointCount) hookLen=\(hookLength) topics=\(topicsCount) shortSummaryLen=\(shortSummaryLength)"
+        )
     }
 }

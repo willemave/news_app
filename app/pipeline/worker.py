@@ -2,7 +2,6 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
-from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
@@ -266,28 +265,29 @@ class ContentWorker:
 
             # Detect feeds for user-submitted content
             feed_links = extracted_data.get("feed_links")
-            if feed_links and existing_metadata.get("source") == SELF_SUBMISSION_SOURCE:
-                from app.services.feed_detection import classify_feed_type_with_llm
+            if feed_links:
+                from app.services.feed_detection import FeedDetector
 
-                primary_feed = feed_links[0]
-                classification = classify_feed_type_with_llm(
-                    feed_url=primary_feed["feed_url"],
-                    page_url=final_url,
+                feed_detector = FeedDetector()
+                feed_data = feed_detector.detect_from_links(
+                    feed_links,
+                    final_url,
                     page_title=extracted_data.get("title"),
+                    source=existing_metadata.get("source"),
+                    content_type=content.content_type,
                 )
-                feed_type = classification.feed_type if classification else "atom"
-                metadata_update["detected_feed"] = {
-                    "url": primary_feed["feed_url"],
-                    "type": feed_type,
-                    "title": primary_feed.get("title"),
-                    "format": primary_feed.get("feed_format", "rss"),
-                }
-                logger.info(
-                    "Detected feed for content %s: %s (type=%s)",
-                    content.id,
-                    primary_feed["feed_url"],
-                    feed_type,
-                )
+                if feed_data:
+                    metadata_update["detected_feed"] = feed_data.get("detected_feed")
+                    if feed_data.get("all_detected_feeds"):
+                        metadata_update["all_detected_feeds"] = feed_data.get("all_detected_feeds")
+                    detected = metadata_update.get("detected_feed") or {}
+                    if detected.get("url") and detected.get("type"):
+                        logger.info(
+                            "Detected feed for content %s: %s (type=%s)",
+                            content.id,
+                            detected.get("url"),
+                            detected.get("type"),
+                        )
 
             content.metadata.update(metadata_update)
 

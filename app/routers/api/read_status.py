@@ -326,7 +326,13 @@ async def get_recently_read(
                         point["text"] if isinstance(point, dict) else point for point in key_points
                     ]
                 classification = summary_meta.get("classification") or classification
-                news_summary_text = summary_meta.get("overview") or domain_content.summary
+                news_summary_text = (
+                    summary_meta.get("overview")
+                    or summary_meta.get("summary")
+                    or summary_meta.get("hook")
+                    or summary_meta.get("takeaway")
+                    or domain_content.summary
+                )
                 is_aggregate = False
 
             content_summaries.append(

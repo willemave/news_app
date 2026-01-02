@@ -239,8 +239,8 @@ class TestGenerateSummaryPrompt:
         assert "takeaway" in system_prompt.lower()
         assert "to_read" in system_prompt.lower() or "skip" in system_prompt.lower()
 
-    def test_article_prompt_is_different(self):
-        """Article prompt differs from interleaved prompt."""
+    def test_article_prompt_matches_interleaved(self):
+        """Article prompt maps to interleaved prompt."""
         interleaved_system, _ = generate_summary_prompt(
             content_type="interleaved",
             max_bullet_points=6,
@@ -252,8 +252,8 @@ class TestGenerateSummaryPrompt:
             max_quotes=8,
         )
 
-        # They should be different prompts
-        assert interleaved_system != article_system
+        # Article now maps to interleaved prompt
+        assert interleaved_system == article_system
 
 
 class TestGetSummarizationAgent:

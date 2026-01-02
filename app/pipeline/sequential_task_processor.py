@@ -6,6 +6,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.db import get_db
 from app.core.logging import get_logger, setup_logging
 from app.core.settings import get_settings
@@ -14,6 +15,10 @@ from app.models.schema import Content, ProcessingTask
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker, get_llm_service
 from app.scraping.runner import ScraperRunner
+from app.services.content_analyzer import AnalysisError, get_content_analyzer
+from app.services.feed_detection import detect_feeds_from_html
+from app.services.feed_subscription import subscribe_to_detected_feed
+from app.services.http import get_http_service
 from app.services.instruction_links import create_contents_from_instruction_links
 from app.services.queue import QueueService, TaskType
 
@@ -127,7 +132,6 @@ class SequentialTaskProcessor:
         for unknown URLs to determine content type and extract metadata.
         """
         from app.models.metadata import ContentType
-        from app.services.content_analyzer import AnalysisError, get_content_analyzer
         from app.services.url_detection import (
             infer_content_type_and_platform,
             should_use_llm_analysis,
@@ -156,9 +160,78 @@ class SequentialTaskProcessor:
                 payload = task_data.get("payload", {}) or {}
                 instruction = payload.get("instruction")
                 crawl_links = bool(payload.get("crawl_links"))
+                subscribe_to_feed = bool(payload.get("subscribe_to_feed"))
                 task_id = task_data.get("id")
                 analysis_result = None
                 analysis_instruction = _build_analysis_instruction(instruction, crawl_links)
+
+                if subscribe_to_feed:
+                    html_content: str | None = None
+                    fetch_status = "no_feed_found"
+                    try:
+                        http_service = get_http_service()
+                        body, _headers = http_service.fetch_content(url)
+                        if isinstance(body, str):
+                            html_content = body
+                    except Exception as exc:  # noqa: BLE001
+                        fetch_status = "fetch_failed"
+                        logger.error(
+                            "Failed to fetch URL for feed detection: %s",
+                            exc,
+                            extra={
+                                "component": "sequential_task_processor",
+                                "operation": "feed_detect_fetch",
+                                "item_id": content_id,
+                                "context_data": {"url": url, "error": str(exc)},
+                            },
+                        )
+
+                    detected_feed = None
+                    all_detected_feeds = None
+                    if html_content:
+                        feed_data = detect_feeds_from_html(
+                            html_content,
+                            str(url),
+                            page_title=content.title,
+                            source=SELF_SUBMISSION_SOURCE,
+                            content_type=content.content_type,
+                        )
+                        if feed_data:
+                            detected_feed = feed_data.get("detected_feed")
+                            all_detected_feeds = feed_data.get("all_detected_feeds")
+
+                    metadata["subscribe_to_feed"] = True
+                    if detected_feed:
+                        metadata["detected_feed"] = detected_feed
+                        if all_detected_feeds:
+                            metadata["all_detected_feeds"] = all_detected_feeds
+
+                        created, fetch_status = subscribe_to_detected_feed(
+                            db,
+                            metadata.get("submitted_by_user_id"),
+                            detected_feed,
+                            display_name=detected_feed.get("title"),
+                        )
+                        metadata["feed_subscription"] = {
+                            "status": fetch_status,
+                            "feed_url": detected_feed.get("url"),
+                            "feed_type": detected_feed.get("type"),
+                            "created": created,
+                        }
+                    else:
+                        metadata["feed_subscription"] = {"status": fetch_status}
+
+                    content.content_metadata = metadata
+                    content.status = ContentStatus.SKIPPED.value
+                    content.processed_at = datetime.now(UTC)
+                    db.commit()
+
+                    logger.info(
+                        "Feed subscription flow completed for content %s (status=%s)",
+                        content_id,
+                        metadata.get("feed_subscription", {}).get("status"),
+                    )
+                    return True
 
                 # Check if this is a known platform (fast path)
                 use_llm = should_use_llm_analysis(url) or bool(analysis_instruction)
@@ -669,7 +742,12 @@ class SequentialTaskProcessor:
         summary_payload = metadata.get("summary") if isinstance(metadata, dict) else {}
         excerpt = metadata.get("excerpt")
         if not excerpt and isinstance(summary_payload, dict):
-            excerpt = summary_payload.get("overview") or summary_payload.get("summary")
+            excerpt = (
+                summary_payload.get("overview")
+                or summary_payload.get("summary")
+                or summary_payload.get("hook")
+                or summary_payload.get("takeaway")
+            )
         if excerpt:
             lines.append(f"Aggregator Summary: {excerpt}")
 
