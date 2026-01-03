@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import feedparser
 
@@ -184,7 +185,6 @@ class PodcastUnifiedScraper(BaseScraper):
     ) -> dict[str, Any]:
         """Process a single podcast entry."""
         title = entry.get("title", "No Title")
-        link = entry.get("link")
 
         # Find audio enclosure URL first (this is the most important for podcasts)
         enclosure_url = self._find_audio_enclosure(entry, title)
@@ -192,38 +192,19 @@ class PodcastUnifiedScraper(BaseScraper):
             logger.warning(f"No audio enclosure found for: {title}")
             return None
 
-        # Determine if link is usable or if we need a fallback
-        # A link is unusable if it's:
-        # 1. Missing/None
-        # 2. Just a base domain without a path (e.g., https://example.com or https://example.com/)
-        needs_fallback = False
-        if not link:
-            needs_fallback = True
-        else:
-            # Check if link is just a base domain
-            from urllib.parse import urlparse
-
-            parsed = urlparse(link)
-            # If path is empty or just "/", it's not a unique episode URL
-            if not parsed.path or parsed.path == "/":
-                needs_fallback = True
-                logger.debug(f"Link is just base domain for '{title}': {link}")
-
-        # If link is unusable, create a fallback using entry ID or audio URL
-        if needs_fallback:
-            # Try to use entry ID as fallback, but only if it looks like a URL
-            entry_id = entry.get("id")
-            entry_guid = entry.get("guid")
-
-            if entry_id and (entry_id.startswith("http") or entry_id.startswith("https")):
-                link = entry_id
-            elif entry_guid and (entry_guid.startswith("http") or entry_guid.startswith("https")):
-                link = entry_guid
-            else:
-                # Use the audio URL as fallback (this ensures we don't lose the episode)
-                link = enclosure_url
-
-            logger.info(f"Using fallback link for '{title}': {link}")
+        link, used_fallback, fallback_reason = self._select_entry_link(
+            entry,
+            title=title,
+            enclosure_url=enclosure_url,
+            feed_url=feed_url,
+        )
+        if used_fallback:
+            logger.info(
+                "Using fallback link for '%s' (%s): %s",
+                title,
+                fallback_reason,
+                link,
+            )
 
         # Extract publication date
         publication_date = None
@@ -282,9 +263,19 @@ class PodcastUnifiedScraper(BaseScraper):
         # Check enclosures first
         if hasattr(entry, "enclosures") and entry.enclosures:
             for enclosure in entry.enclosures:
-                if enclosure.type and "audio" in enclosure.type:
-                    logger.debug(f"Found audio enclosure for '{title}': {enclosure.href}")
-                    return enclosure.href
+                enclosure_type = getattr(enclosure, "type", None) or enclosure.get("type", "")
+                enclosure_href = getattr(enclosure, "href", None) or enclosure.get("href", "")
+                if not enclosure_href:
+                    continue
+                if enclosure_type and "audio" in enclosure_type:
+                    logger.debug(f"Found audio enclosure for '{title}': {enclosure_href}")
+                    return enclosure_href
+                if any(
+                    enclosure_href.lower().endswith(ext)
+                    for ext in (".mp3", ".m4a", ".wav", ".ogg")
+                ):
+                    logger.debug(f"Found audio enclosure by extension for '{title}': {enclosure_href}")
+                    return enclosure_href
 
         # Fallback: check links for audio content
         for link_item in getattr(entry, "links", []):
@@ -304,6 +295,74 @@ class PodcastUnifiedScraper(BaseScraper):
                 return link_href
 
         return None
+
+    def _select_entry_link(
+        self,
+        entry,
+        *,
+        title: str,
+        enclosure_url: str,
+        feed_url: str,
+    ) -> tuple[str, bool, str]:
+        """Select the best link for a podcast entry with robust fallbacks."""
+        link = entry.get("link")
+        if self._is_valid_entry_link(link):
+            return link, False, "link"
+
+        if link:
+            logger.debug("Entry link unusable for '%s': %s", title, link)
+
+        alternate_link = self._find_alternate_link(entry)
+        if self._is_valid_entry_link(alternate_link):
+            return alternate_link, True, "alternate_link"
+
+        entry_id = entry.get("id")
+        if self._is_url(entry_id):
+            return entry_id, True, "entry_id"
+
+        entry_guid = entry.get("guid")
+        if self._is_url(entry_guid):
+            return entry_guid, True, "entry_guid"
+
+        if not enclosure_url:
+            logger.warning("Missing enclosure URL for '%s' (%s)", title, feed_url)
+            return feed_url, True, "feed_url"
+
+        return enclosure_url, True, "enclosure_url"
+
+    def _find_alternate_link(self, entry) -> str | None:
+        """Find an alternate HTML link for a podcast entry if available."""
+        for link_item in entry.get("links", []):
+            href = link_item.get("href")
+            if not href:
+                continue
+            rel = link_item.get("rel")
+            link_type = link_item.get("type", "")
+            if rel not in (None, "", "alternate"):
+                continue
+            if link_type and "html" not in link_type:
+                continue
+            return href
+        return None
+
+    def _is_valid_entry_link(self, link: str | None) -> bool:
+        """Return True if link is a URL and not just a bare domain."""
+        if not self._is_url(link):
+            return False
+        parsed = urlparse(link)
+        if parsed.path not in ("", "/"):
+            return True
+        return bool(parsed.query or parsed.fragment)
+
+    def _is_url(self, value: str | None) -> bool:
+        """Return True if value is an http(s) URL."""
+        if not value:
+            return False
+        try:
+            parsed = urlparse(value)
+        except Exception:
+            return False
+        return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
     def _parse_duration(self, duration_str: str) -> int:
         """Parse duration string to seconds."""
