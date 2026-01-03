@@ -370,7 +370,7 @@ class ArticleMetadata(BaseContentMetadata):
 
     author: str | None = Field(None, max_length=200)
     publication_date: datetime | None = None
-    content_type: str = Field(default="html", pattern="^(pdf|html|text|markdown)$")
+    content_type: str = Field(default="html", pattern="^(pdf|html|text|markdown|image)$")
     final_url_after_redirects: str | None = Field(None, max_length=2000)
 
 

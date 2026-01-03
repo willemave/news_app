@@ -1,12 +1,47 @@
 """Converters between domain models and database models."""
 
 from datetime import datetime
+from typing import Any
+from urllib.parse import urlparse
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
 
 logger = get_logger(__name__)
+
+
+def _is_http_url(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        parsed = urlparse(value)
+    except Exception:
+        return False
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _select_http_url(raw_url: str, metadata: dict[str, Any], content_type: str) -> str:
+    candidates: list[str | None] = [raw_url]
+
+    if content_type == ContentType.NEWS.value:
+        article = metadata.get("article")
+        if isinstance(article, dict):
+            candidates.insert(0, article.get("url"))
+
+    candidates.extend(
+        [
+            metadata.get("final_url_after_redirects"),
+            metadata.get("final_url"),
+            metadata.get("url"),
+        ]
+    )
+
+    for candidate in candidates:
+        if isinstance(candidate, str) and _is_http_url(candidate):
+            return candidate
+
+    return raw_url
 
 
 def content_to_domain(db_content: DBContent) -> ContentData:
@@ -19,10 +54,16 @@ def content_to_domain(db_content: DBContent) -> ContentData:
         if db_content.source and metadata.get("source") is None:
             metadata["source"] = db_content.source
 
+        resolved_url = _select_http_url(
+            db_content.url,
+            metadata,
+            db_content.content_type,
+        )
+
         return ContentData(
             id=db_content.id,
             content_type=ContentType(db_content.content_type),
-            url=db_content.url,
+            url=resolved_url,
             title=db_content.title,
             status=ContentStatus(db_content.status),
             metadata=metadata,
