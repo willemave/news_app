@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 from PIL import Image, ImageDraw
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -95,6 +96,22 @@ def generate_news_thumbnail(job: NewsThumbnailJob) -> NewsThumbnailResult:
     url = _select_normalized_url(content)
     if not url:
         return _generate_placeholder(job.content_id, "Missing normalized URL")
+
+    if _is_pdf_content(content, url):
+        logger.info(
+            "Skipping screenshot for PDF content %s",
+            job.content_id,
+            extra={
+                "component": "thumbnail_generation",
+                "operation": "screenshot_skip",
+                "item_id": job.content_id,
+                "context_data": {"url": url, "reason": "pdf"},
+            },
+        )
+        placeholder_result = _generate_placeholder(job.content_id, "PDF screenshots not supported")
+        if placeholder_result.success:
+            placeholder_result.used_placeholder = True
+        return placeholder_result
 
     request = NewsThumbnailRequest(content_id=job.content_id, url=url)
     result = _capture_screenshot(request)
@@ -268,6 +285,27 @@ def _select_normalized_url(content: NewsContentSnapshot) -> str | None:
         return content.url.strip()
 
     return None
+
+
+def _is_pdf_url(url: str | None) -> bool:
+    if not isinstance(url, str) or not url.strip():
+        return False
+    parsed = urlparse(url.strip())
+    return parsed.path.lower().endswith(".pdf")
+
+
+def _is_pdf_content(content: NewsContentSnapshot, url: str | None) -> bool:
+    metadata = content.metadata or {}
+    if isinstance(metadata, dict):
+        content_type = metadata.get("content_type")
+        if isinstance(content_type, str) and content_type.lower() == "pdf":
+            return True
+        if metadata.get("is_pdf") is True:
+            return True
+        article_section = metadata.get("article")
+        if isinstance(article_section, dict) and _is_pdf_url(article_section.get("url")):
+            return True
+    return _is_pdf_url(url)
 
 
 def _create_placeholder_image() -> None:

@@ -68,3 +68,36 @@ def test_generate_news_thumbnail_uses_placeholder_on_failure(monkeypatch) -> Non
 
     assert result.success is True
     assert result.used_placeholder is True
+
+
+def test_generate_news_thumbnail_skips_pdf(monkeypatch) -> None:
+    content = nts.NewsContentSnapshot(
+        content_type="news",
+        url="https://example.com/paper.pdf",
+        metadata={},
+    )
+    called = {"capture": False}
+
+    monkeypatch.setattr(nts, "_load_news_snapshot", lambda content_id: content)
+    monkeypatch.setattr(
+        nts,
+        "_capture_screenshot",
+        lambda request: called.update({"capture": True})
+        or nts.NewsThumbnailResult(content_id=request.content_id, success=False),
+    )
+    monkeypatch.setattr(
+        nts,
+        "_generate_placeholder",
+        lambda content_id, reason: nts.NewsThumbnailResult(
+            content_id=content_id,
+            success=True,
+            image_path="/tmp/placeholder.png",
+            thumbnail_path=None,
+        ),
+    )
+
+    result = nts.generate_news_thumbnail(nts.NewsThumbnailJob(content_id=1))
+
+    assert result.success is True
+    assert result.used_placeholder is True
+    assert called["capture"] is False
