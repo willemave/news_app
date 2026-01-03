@@ -202,11 +202,19 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     return agent
 
 
-def build_article_context(content: Content) -> str | None:
+def _truncate_text(text: str, max_chars: int | None) -> str:
+    """Truncate text with ellipsis when a max length is set."""
+    if max_chars is None or len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "..."
+
+
+def build_article_context(content: Content, include_full_text: bool = False) -> str | None:
     """Build context string from article content and metadata.
 
     Args:
         content: Content database record.
+        include_full_text: Whether to include the entire transcript/content instead of truncating.
 
     Returns:
         Formatted context string or None if no content available.
@@ -215,7 +223,7 @@ def build_article_context(content: Content) -> str | None:
         return None
 
     metadata = content.content_metadata
-    parts = []
+    parts: list[str] = []
 
     # Add structured summary if available
     summary = metadata.get("summary", {})
@@ -242,12 +250,29 @@ def build_article_context(content: Content) -> str | None:
         if topics := summary.get("topics"):
             parts.append(f"Topics: {', '.join(topics[:10])}")
 
-    # Add full content if available (truncated)
-    if content_text := metadata.get("content"):
-        # Truncate to ~4000 chars to leave room for conversation
-        if len(content_text) > 4000:
-            content_text = content_text[:4000] + "..."
-        parts.append(f"\nFull Content:\n{content_text}")
+    transcript = metadata.get("transcript")
+    content_text = metadata.get("content")
+    full_markdown = None
+    if not content_text and isinstance(summary, dict):
+        full_markdown = summary.get("full_markdown")
+
+    full_text_label = None
+    full_text = None
+    if isinstance(transcript, str) and transcript.strip():
+        full_text_label = "Transcript"
+        full_text = transcript.strip()
+    elif isinstance(content_text, str) and content_text.strip():
+        full_text_label = "Full Content"
+        full_text = content_text.strip()
+    elif isinstance(full_markdown, str) and full_markdown.strip():
+        full_text_label = "Full Content"
+        full_text = full_markdown.strip()
+
+    # Add full content or transcript if available
+    if full_text:
+        max_chars = None if include_full_text else 4000
+        full_text = _truncate_text(full_text, max_chars)
+        parts.append(f"\n{full_text_label}:\n{full_text}")
 
     return "\n".join(parts) if parts else None
 
@@ -413,16 +438,54 @@ class ChatRunResult:
     tool_calls: list[object]
 
 
-def _build_chat_deps(db: Session, session: ChatSession) -> ChatDeps:
+def _build_chat_deps(
+    db: Session, session: ChatSession, include_full_text: bool = False
+) -> ChatDeps:
     """Construct chat dependencies (content + context) for a session."""
     content: Content | None = None
     article_context: str | None = None
 
     if session.content_id:
         content = db.query(Content).filter(Content.id == session.content_id).first()
-        article_context = build_article_context(content) if content else None
+        article_context = (
+            build_article_context(content, include_full_text=include_full_text) if content else None
+        )
 
     return ChatDeps(session=session, content=content, article_context=article_context)
+
+
+def _is_first_message(db: Session, session_id: int, current_message_id: int | None = None) -> bool:
+    """Check whether this is the first message for a chat session."""
+    query = db.query(ChatMessage).filter(ChatMessage.session_id == session_id)
+    if current_message_id is not None:
+        query = query.filter(ChatMessage.id != current_message_id)
+    return query.count() == 0
+
+
+def _log_chat_usage(
+    result: object,
+    session_id: int,
+    message_id: int | None,
+    context: str,
+) -> None:
+    """Log token usage for a chat request when available."""
+    try:
+        usage = result.usage()
+    except Exception:  # noqa: BLE001
+        return
+
+    if not usage:
+        return
+
+    logger.info(
+        "[ChatUsage] context=%s sid=%s mid=%s input_tokens=%s output_tokens=%s total_tokens=%s",
+        context,
+        session_id,
+        message_id,
+        getattr(usage, "input_tokens", None),
+        getattr(usage, "output_tokens", None),
+        getattr(usage, "total_tokens", None),
+    )
 
 
 def _run_agent_sync(
@@ -454,13 +517,14 @@ async def run_chat_turn(
         trimmed_prompt,
     )
 
-    deps_start = perf_counter()
-    deps = _build_chat_deps(db, session)
-    deps_ms = (perf_counter() - deps_start) * 1000
-
     history_start = perf_counter()
     history = load_message_history(db, session.id)
     history_ms = (perf_counter() - history_start) * 1000
+    include_full_text = len(history) == 0
+
+    deps_start = perf_counter()
+    deps = _build_chat_deps(db, session, include_full_text=include_full_text)
+    deps_ms = (perf_counter() - deps_start) * 1000
 
     try:
         agent_start = perf_counter()
@@ -468,6 +532,7 @@ async def run_chat_turn(
             _run_agent_sync, session.llm_model, user_prompt, deps, history
         )
         agent_ms = (perf_counter() - agent_start) * 1000
+        _log_chat_usage(result, session.id, None, "sync")
         new_messages = result.new_messages()
         save_messages(db, session.id, new_messages)
 
@@ -553,9 +618,11 @@ async def process_message_async(
             session.topic,
         )
 
+        include_full_text = _is_first_message(db, session_id, message_id)
+
         # Build dependencies
         deps_start = perf_counter()
-        deps = _build_chat_deps(db, session)
+        deps = _build_chat_deps(db, session, include_full_text=include_full_text)
         deps_ms = (perf_counter() - deps_start) * 1000
         context_len = len(deps.article_context) if deps.article_context else 0
         logger.info(
@@ -589,6 +656,7 @@ async def process_message_async(
             _run_agent_sync, session.llm_model, user_prompt, deps, history
         )
         agent_ms = (perf_counter() - agent_start) * 1000
+        _log_chat_usage(result, session_id, message_id, "async")
 
         # Extract tool calls info
         tool_calls = getattr(result, "tool_calls", []) or []
@@ -689,7 +757,8 @@ async def generate_initial_suggestions(
         logger.warning("[InitialSuggestions] No content_id | session_id=%s", session.id)
         return None
 
-    deps = _build_chat_deps(db, session)
+    include_full_text = _is_first_message(db, session.id)
+    deps = _build_chat_deps(db, session, include_full_text=include_full_text)
 
     try:
         agent_start = perf_counter()
@@ -701,6 +770,7 @@ async def generate_initial_suggestions(
             [],
         )
         agent_ms = (perf_counter() - agent_start) * 1000
+        _log_chat_usage(result, session.id, None, "initial_suggestions")
         new_messages = result.new_messages()
         save_start = perf_counter()
         save_messages(db, session.id, new_messages)

@@ -978,8 +978,7 @@ struct ContentDetailView: View {
                 }
             }) {
                 iconButton(
-                    icon: "brain.head.profile",
-                    tint: content.isFavorited ? .yellow : nil
+                    icon: "brain.head.profile"
                 )
             }
             .disabled(isCheckingChatSession)
