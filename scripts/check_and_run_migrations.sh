@@ -26,19 +26,15 @@ if [ ! -f "alembic.ini" ]; then
     exit 1
 fi
 
-# Validate required environment variables for settings
-missing_vars=()
-for var in DATABASE_URL JWT_SECRET_KEY ADMIN_PASSWORD; do
-    if [ -z "${!var:-}" ]; then
-        missing_vars+=("$var")
-    fi
-done
+# Validate required settings via Pydantic (loads .env via python-dotenv)
+python <<'PY'
+from app.core.settings import get_settings
 
-if [ ${#missing_vars[@]} -gt 0 ]; then
-    echo "ERROR: Missing required environment variables: ${missing_vars[*]}"
-    echo "Set them in your deployment environment (GitHub Actions secrets or .env)."
-    exit 1
-fi
+try:
+    get_settings()
+except Exception as exc:
+    raise SystemExit(f"ERROR: Invalid or missing settings for migrations: {exc}") from exc
+PY
 
 echo ""
 echo "Checking current Alembic revision..."
