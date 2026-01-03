@@ -13,6 +13,7 @@ client/newsly/newsly.xcodeproj/project.xcworkspace/xcuserdata/willem.xcuserdatad
 news_app.db
 logs/
 logs_from_server/
+.worktrees/
 
 static/*
 

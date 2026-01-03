@@ -13,6 +13,7 @@ fi
 
 PYTHON_VERSION="3.13"
 LOCK_STRATEGY="auto"  # auto = frozen if uv.lock exists
+FORCE_RECREATE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,9 +33,13 @@ while [[ $# -gt 0 ]]; do
       FORCE_RUN_OUTSIDE_USER="true"
       shift
       ;;
+    --recreate)
+      FORCE_RECREATE=true
+      shift
+      ;;
     -h|--help)
       cat <<'USAGE'
-Usage: scripts/setup_uv_env.sh [--python-version X.Y] [--sync-frozen|--sync-thawed]
+Usage: scripts/setup_uv_env.sh [--python-version X.Y] [--sync-frozen|--sync-thawed] [--recreate]
 
 Installs/updates uv via pipx, ensures the requested Python runtime is available,
 re-creates the .venv, and runs uv sync (frozen if uv.lock present by default).
@@ -104,6 +109,11 @@ PY
     echo "[setup] Existing virtualenv uses Python $CURRENT_VENV_VERSION; target is $PYTHON_VERSION. Recreating .venv"
     NEEDS_VENV_REBUILD=true
   fi
+fi
+
+if "$FORCE_RECREATE"; then
+  echo "[setup] Forcing virtual environment rebuild"
+  NEEDS_VENV_REBUILD=true
 fi
 
 if "$NEEDS_VENV_REBUILD"; then
