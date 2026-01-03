@@ -264,7 +264,7 @@ def test_tweet_suggestions_llm_failure(client: TestClient, db_session: Session) 
 def test_tweet_suggestions_news_content(client: TestClient, db_session: Session) -> None:
     """Test tweet generation works for news content type."""
     news = Content(
-        url="https://news.ycombinator.com/item?id=12345",
+        url="https://example.com/article",
         content_type=ContentType.NEWS.value,
         status=ContentStatus.COMPLETED.value,
         title="HN Discussion",
@@ -273,6 +273,7 @@ def test_tweet_suggestions_news_content(client: TestClient, db_session: Session)
                 "url": "https://example.com/article",
                 "title": "The Article",
             },
+            "discussion_url": "https://news.ycombinator.com/item?id=12345",
             "summary": {
                 "title": "News Summary",
                 "summary": "Overview of the news",

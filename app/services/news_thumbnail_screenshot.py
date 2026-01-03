@@ -17,6 +17,7 @@ from app.models.metadata import ContentType
 from app.models.schema import Content
 from app.services.image_generation import get_image_generation_service
 from app.utils.image_paths import get_news_thumbnails_dir
+from app.utils.url_utils import normalize_http_url
 
 logger = get_logger(__name__)
 
@@ -267,22 +268,24 @@ def _load_news_snapshot(content_id: int) -> NewsContentSnapshot | None:
 
 def _select_normalized_url(content: NewsContentSnapshot) -> str | None:
     """Select the best normalized URL for a news item."""
+    if isinstance(content.url, str):
+        normalized = normalize_http_url(content.url)
+        if normalized:
+            return normalized
+
     metadata = content.metadata or {}
     if isinstance(metadata, dict):
         article_section = metadata.get("article")
         if isinstance(article_section, dict):
-            article_url = article_section.get("url")
-            if isinstance(article_url, str) and article_url.strip():
-                return article_url.strip()
+            normalized = normalize_http_url(article_section.get("url"))
+            if normalized:
+                return normalized
 
         summary_section = metadata.get("summary")
         if isinstance(summary_section, dict):
-            final_url = summary_section.get("final_url_after_redirects")
-            if isinstance(final_url, str) and final_url.strip():
-                return final_url.strip()
-
-    if isinstance(content.url, str) and content.url.strip():
-        return content.url.strip()
+            normalized = normalize_http_url(summary_section.get("final_url_after_redirects"))
+            if normalized:
+                return normalized
 
     return None
 

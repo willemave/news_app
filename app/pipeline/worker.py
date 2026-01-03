@@ -15,6 +15,7 @@ from app.services.http import NonRetryableError, get_http_service
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 from app.services.queue import TaskType, get_queue_service
 from app.utils.dates import parse_date_with_tz
+from app.utils.url_utils import is_http_url, normalize_http_url
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -182,6 +183,8 @@ class ContentWorker:
             if delegated_url:
                 logger.info("Delegation detected. Processing next URL: %s", delegated_url)
                 # Update the URL and process recursively
+                if content.source_url is None:
+                    content.source_url = str(content.url)
                 content.url = delegated_url
                 return self._process_article(content)
 
@@ -223,24 +226,25 @@ class ContentWorker:
             existing_metadata = content.metadata or {}
             subscribe_to_feed = bool(existing_metadata.get("subscribe_to_feed"))
 
+            if content.source_url is None:
+                content.source_url = str(content.url)
+
+            canonical_url = normalize_http_url(final_url) or str(content.url)
+            self._update_canonical_url(content, canonical_url)
+
             metadata_update = {
                 "content": extracted_data.get("text_content", ""),
                 "author": extracted_data.get("author"),
                 "publication_date": extracted_data.get("publication_date"),
                 "content_type": extracted_data.get("content_type", "html"),
                 "source": existing_metadata.get("source"),  # Never overwrite source from scraper
-                "final_url": final_url,
             }
             if subscribe_to_feed:
                 metadata_update["subscribe_to_feed"] = True
 
-            original_url = str(content.url)
-            if content.content_type == ContentType.NEWS and original_url != final_url:
-                metadata_update.setdefault("news_original_url", original_url)
-
             if content.content_type == ContentType.NEWS:
                 article_info = existing_metadata.get("article", {}).copy()
-                article_info.setdefault("url", final_url)
+                article_info["url"] = str(content.url)
                 if extracted_data.get("title"):
                     article_info["title"] = extracted_data.get("title")
                 if metadata_update.get("source"):
@@ -430,6 +434,9 @@ class ContentWorker:
 
         candidate_urls: list[str | None] = []
 
+        if is_http_url(base_url):
+            return self._normalize_target_url(base_url)
+
         article_info = metadata.get("article", {})
         candidate_urls.append(article_info.get("url"))
 
@@ -446,8 +453,9 @@ class ContentWorker:
         )
 
         for candidate in candidate_urls:
-            if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
-                return self._normalize_target_url(candidate)
+            normalized = normalize_http_url(candidate) if isinstance(candidate, str) else None
+            if normalized:
+                return normalized
 
         return base_url
 
@@ -457,6 +465,36 @@ class ContentWorker:
         if normalized.startswith("http://"):
             normalized = "https://" + normalized[len("http://") :]
         return normalized
+
+    def _update_canonical_url(self, content: ContentData, canonical_url: str) -> None:
+        """Update content.url to canonical_url if safe and unique."""
+        if not is_http_url(canonical_url):
+            return
+
+        current_url = str(content.url)
+        if canonical_url == current_url:
+            return
+
+        with get_db() as db:
+            existing = (
+                db.query(Content)
+                .filter(Content.id != content.id)
+                .filter(Content.content_type == content.content_type.value)
+                .filter(Content.url == canonical_url)
+                .first()
+            )
+
+        if existing:
+            content.metadata["canonical_content_id"] = existing.id
+            logger.warning(
+                "Canonical URL already exists for content %s -> %s (existing=%s)",
+                content.id,
+                canonical_url,
+                existing.id,
+            )
+            return
+
+        content.url = canonical_url
 
     def _process_podcast(self, content: ContentData) -> bool:
         """Process podcast content."""

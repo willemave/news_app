@@ -74,14 +74,12 @@ struct NewsArticleMetadata: Codable {
 struct NewsAggregatorMetadata: Codable {
     let name: String?
     let title: String?
-    let url: String?
     let externalID: String?
     let metadata: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
         case name
         case title
-        case url
         case externalID = "external_id"
         case metadata
     }
@@ -119,6 +117,7 @@ struct NewsMetadata: Codable {
     let summary: NewsSummaryMetadata?
     let article: NewsArticleMetadata?
     let aggregator: NewsAggregatorMetadata?
+    let discussionURL: String?
     let discoveryTime: String?
 
     enum CodingKeys: String, CodingKey {
@@ -127,6 +126,7 @@ struct NewsMetadata: Codable {
         case summary
         case article
         case aggregator
+        case discussionURL = "discussion_url"
         case discoveryTime = "discovery_time"
     }
 }

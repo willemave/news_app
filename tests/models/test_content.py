@@ -71,9 +71,9 @@ class TestContentModel:
             "aggregator": {
                 "name": "Twitter",
                 "title": "@news_bot: Example Story",
-                "url": "https://twitter.com/news_bot/status/1",
                 "metadata": {"likes": 10},
             },
+            "discussion_url": "https://twitter.com/news_bot/status/1",
             "summary": {
                 "title": "Twitter: Example Story",
                 "article_url": "https://example.com/story",
@@ -85,7 +85,8 @@ class TestContentModel:
 
         content = Content(
             content_type=ContentType.NEWS.value,
-            url="twitter://list/example",
+            url="https://example.com/story",
+            source_url="https://example.com/story",
             title="Daily List",
             platform="twitter",
             source="example.com",

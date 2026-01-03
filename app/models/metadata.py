@@ -282,7 +282,6 @@ class NewsAggregatorMetadata(BaseModel):
 
     name: str | None = Field(None, max_length=120)
     title: str | None = Field(None, max_length=500)
-    url: HttpUrl | None = Field(None, description="Link back to the aggregator discussion/thread")
     external_id: str | None = Field(None, max_length=200)
     author: str | None = Field(None, max_length=200)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -433,10 +432,10 @@ class NewsMetadata(BaseContentMetadata):
                 },
                 "aggregator": {
                     "name": "Hacker News",
-                    "url": "https://news.ycombinator.com/item?id=123",
                     "external_id": "123",
                     "metadata": {"score": 420},
                 },
+                "discussion_url": "https://news.ycombinator.com/item?id=123",
                 "summary": {
                     "title": "Techmeme: OpenAI ships GPT-5 with native agents",
                     "article_url": "https://example.com/story",
@@ -459,6 +458,9 @@ class NewsMetadata(BaseContentMetadata):
     article: NewsArticleMetadata = Field(..., description="Primary article information")
     aggregator: NewsAggregatorMetadata | None = Field(
         None, description="Upstream aggregator context"
+    )
+    discussion_url: HttpUrl | None = Field(
+        None, description="Aggregator discussion link (HN thread, tweet, etc.)"
     )
     discovery_time: datetime | None = Field(
         default_factory=datetime.utcnow, description="When the item was discovered"
@@ -502,6 +504,7 @@ class ContentData(BaseModel):
     id: int | None = None
     content_type: ContentType
     url: HttpUrl
+    source_url: str | None = None
     title: str | None = None
     status: ContentStatus = ContentStatus.NEW
     metadata: dict[str, Any] = Field(default_factory=dict)

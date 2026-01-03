@@ -220,13 +220,13 @@ class TestContentWorker:
 
         news_content = ContentData(
             id=77,
-            url="https://www.techmeme.com/cluster",
+            url="https://example.com/story",
             content_type=ContentType.NEWS,
             status=ContentStatus.NEW,
             metadata={
                 "platform": "techmeme",
                 "article": {"url": "http://example.com/story"},
-                "aggregator": {"url": "https://www.techmeme.com/cluster"},
+                "discussion_url": "https://www.techmeme.com/cluster",
             },
             created_at=datetime.utcnow(),
         )
@@ -240,7 +240,7 @@ class TestContentWorker:
 
         mock_content = Mock()
         mock_content.id = 501
-        mock_content.url = "https://www.techmeme.com/cluster"
+        mock_content.url = "https://example.com/story"
         mock_content.content_type = ContentType.NEWS.value
 
         metadata = {
@@ -252,14 +252,14 @@ class TestContentWorker:
             },
             "aggregator": {
                 "name": "Techmeme",
-                "url": "https://www.techmeme.com/cluster",
                 "metadata": {"related_links": []},
             },
+            "discussion_url": "https://www.techmeme.com/cluster",
         }
 
         content_data = ContentData(
             id=501,
-            url="https://www.techmeme.com/cluster",
+            url="https://example.com/story",
             content_type=ContentType.NEWS,
             status=ContentStatus.NEW,
             metadata=metadata,

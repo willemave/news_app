@@ -18,7 +18,8 @@ class ContentSummaryResponse(BaseModel):
 
     id: int = Field(..., description="Unique identifier")
     content_type: str = Field(..., description="Type of content (article/podcast/news)")
-    url: str = Field(..., description="Original URL of the content")
+    url: str = Field(..., description="Canonical URL of the content")
+    source_url: str | None = Field(None, description="Original scraped/submitted URL")
     title: str | None = Field(None, description="Content title")
     source: str | None = Field(
         None, description="Content source (e.g., substack name, podcast name)"
@@ -147,7 +148,8 @@ class ContentDetailResponse(BaseModel):
 
     id: int = Field(..., description="Unique identifier")
     content_type: str = Field(..., description="Type of content (article/podcast/news)")
-    url: str = Field(..., description="Original URL of the content")
+    url: str = Field(..., description="Canonical URL of the content")
+    source_url: str | None = Field(None, description="Original scraped/submitted URL")
     title: str | None = Field(None, description="Content title")
     display_title: str = Field(
         ..., description="Display title (prefers summary title over content title)"

@@ -189,7 +189,6 @@ class RedditUnifiedScraper(BaseScraper):
                         "aggregator": {
                             "name": "Reddit",
                             "title": submission.title,
-                            "url": discussion_url,
                             "external_id": submission.id,
                             "author": getattr(submission, "author", None)
                             and submission.author.name,
@@ -219,7 +218,7 @@ class RedditUnifiedScraper(BaseScraper):
                                 },
                             }
                         ],
-                        "primary_url": discussion_url,
+                        "discussion_url": discussion_url,
                         "excerpt": submission.selftext or None,
                         "discovery_time": timestamp,
                         "scraped_at": timestamp,

@@ -51,5 +51,5 @@ def test_hackernews_scraper_creates_article(mock_httpx_client) -> None:
     assert article_info["source_domain"] == "example.com"
 
     aggregator = metadata.get("aggregator", {})
-    assert aggregator["url"].endswith("123456")
+    assert metadata["discussion_url"].endswith("123456")
     assert aggregator["metadata"]["score"] == 512

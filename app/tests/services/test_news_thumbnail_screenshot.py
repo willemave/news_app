@@ -4,17 +4,17 @@
 from app.services import news_thumbnail_screenshot as nts
 
 
-def test_select_normalized_url_prefers_article_url() -> None:
+def test_select_normalized_url_prefers_content_url() -> None:
     content = nts.NewsContentSnapshot(
         content_type="news",
-        url="https://fallback.example.com",
+        url="https://canonical.example.com",
         metadata={
             "article": {"url": "https://article.example.com"},
             "summary": {"final_url_after_redirects": "https://final.example.com"},
         },
     )
 
-    assert nts._select_normalized_url(content) == "https://article.example.com"
+    assert nts._select_normalized_url(content) == "https://canonical.example.com"
 
 
 def test_generate_placeholder_writes_file(tmp_path, monkeypatch) -> None:

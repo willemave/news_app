@@ -57,6 +57,7 @@ from app.models.metadata import (
     PodcastMetadata,
 )
 from app.models.schema import Content, ContentStatusEntry
+from app.models.user import User
 
 # Sample data pools
 ARTICLE_SOURCES = [
@@ -508,19 +509,31 @@ def generate_test_data(
     return data
 
 
-def insert_test_data(session: Session, data: list[dict[str, Any]], user_id: int = 1) -> list[int]:
+def _fetch_user_ids(session: Session) -> list[int]:
+    """Fetch all user IDs from the database."""
+    return [row[0] for row in session.query(User.id).all()]
+
+
+def insert_test_data(
+    session: Session,
+    data: list[dict[str, Any]],
+    user_ids: list[int] | None = None,
+) -> list[int]:
     """
     Insert test data into the database.
 
     Args:
         session: SQLAlchemy session
         data: List of content dictionaries
-        user_id: User ID to add articles/podcasts to inbox for
+        user_ids: User IDs to add articles/podcasts to inbox for. Defaults to all users.
 
     Returns:
         List of inserted content IDs
     """
     inserted_ids = []
+
+    if user_ids is None:
+        user_ids = _fetch_user_ids(session)
 
     for item in data:
         content = Content(**item)
@@ -528,14 +541,16 @@ def insert_test_data(session: Session, data: list[dict[str, Any]], user_id: int 
         session.flush()  # Get the ID
         inserted_ids.append(content.id)
 
-        # Add articles and podcasts to user's inbox so they're visible
-        if item["content_type"] in ("article", "podcast"):
-            status_entry = ContentStatusEntry(
-                user_id=user_id,
-                content_id=content.id,
-                status="inbox",
-            )
-            session.add(status_entry)
+        # Add articles and podcasts to all users' inboxes so they're visible
+        if item["content_type"] in ("article", "podcast") and user_ids:
+            for user_id in user_ids:
+                session.add(
+                    ContentStatusEntry(
+                        user_id=user_id,
+                        content_id=content.id,
+                        status="inbox",
+                    )
+                )
 
     session.commit()
     return inserted_ids

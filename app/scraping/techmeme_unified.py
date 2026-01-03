@@ -217,7 +217,6 @@ class TechmemeScraper(BaseScraper):
             "aggregator": {
                 "name": "Techmeme",
                 "title": entry.get("title"),
-                "url": normalized_permalink,
                 "external_id": cluster_token,
                 "metadata": {
                     "summary_text": summary_text,
@@ -226,6 +225,7 @@ class TechmemeScraper(BaseScraper):
                     "source_name": source_name,
                 },
             },
+            "discussion_url": normalized_permalink,
             "discovery_time": (
                 publication_date.isoformat() if publication_date else datetime.utcnow().isoformat()
             ),

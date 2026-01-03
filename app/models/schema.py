@@ -32,6 +32,7 @@ class Content(Base):
     id = Column(Integer, primary_key=True)
     content_type = Column(String(20), nullable=False, index=True)
     url = Column(String(2048), nullable=False)
+    source_url = Column(String(2048), nullable=True)
     title = Column(String(500), nullable=True)
     source = Column(String(100), nullable=True, index=True)
     platform = Column(String(50), nullable=True, index=True)

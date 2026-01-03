@@ -67,7 +67,6 @@ class HackerNewsUnifiedScraper(BaseScraper):
                             "aggregator": {
                                 "name": "Hacker News",
                                 "title": story.get("title"),
-                                "url": discussion_url,
                                 "external_id": str(story_id),
                                 "author": story.get("by"),
                                 "metadata": {
@@ -78,6 +77,7 @@ class HackerNewsUnifiedScraper(BaseScraper):
                                     "hn_linked_url": normalized_url,
                                 },
                             },
+                            "discussion_url": discussion_url,
                             "excerpt": story.get("text"),
                             "discovery_time": datetime.now(UTC).isoformat(),
                         },

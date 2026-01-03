@@ -349,7 +349,6 @@ class TwitterUnifiedScraper(BaseScraper):
                     "aggregator": {
                         "name": "Twitter",
                         "title": tweet.get("content", "").strip(),
-                        "url": tweet.get("url"),
                         "external_id": str(tweet.get("id")),
                         "author": tweet.get("display_name"),
                         "metadata": {
@@ -364,6 +363,7 @@ class TwitterUnifiedScraper(BaseScraper):
                             "hours_back": hours_back,
                         },
                     },
+                    "discussion_url": tweet.get("url"),
                     "discovery_time": datetime.now(UTC).isoformat(),
                 }
 

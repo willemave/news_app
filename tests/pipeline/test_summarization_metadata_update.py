@@ -187,9 +187,9 @@ def test_summarize_task_updates_news_metadata(db_session):
         "aggregator": {
             "name": "HackerNews",
             "title": "Show HN: New Product",
-            "url": "https://news.ycombinator.com/item?id=12345",
             "metadata": {"score": 150, "comments_count": 42},
         },
+        "discussion_url": "https://news.ycombinator.com/item?id=12345",
         "platform": "hackernews",
     }
 

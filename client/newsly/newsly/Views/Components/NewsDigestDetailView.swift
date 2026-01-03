@@ -14,10 +14,9 @@ struct NewsDigestDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             // Discussion link at the top for quick access
-            if let aggregator = metadata.aggregator,
-               let urlString = aggregator.url,
+            if let urlString = metadata.discussionURL,
                let url = URL(string: urlString) {
-                discussionLink(url: url, aggregatorName: aggregator.name)
+                discussionLink(url: url, aggregatorName: metadata.aggregator?.name)
             }
 
             if let summary = metadata.summary {

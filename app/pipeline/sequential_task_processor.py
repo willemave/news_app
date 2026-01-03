@@ -715,7 +715,7 @@ class SequentialTaskProcessor:
         if aggregator:
             name = aggregator.get("name") or metadata.get("platform")
             agg_title = aggregator.get("title")
-            agg_url = aggregator.get("url")
+            agg_url = metadata.get("discussion_url") or aggregator.get("url")
             author = aggregator.get("author")
 
             context_bits = []
@@ -728,7 +728,7 @@ class SequentialTaskProcessor:
             if context_bits:
                 lines.append("Aggregator Context: " + ", ".join(context_bits))
             if agg_url:
-                lines.append(f"Aggregator URL: {agg_url}")
+                lines.append(f"Discussion URL: {agg_url}")
 
             extra = aggregator.get("metadata") or {}
             highlights = []

@@ -107,6 +107,7 @@ def create_contents_from_instruction_links(
 
         new_content = Content(
             url=url,
+            source_url=url,
             content_type=ContentType.UNKNOWN.value,
             title=None,
             source=SELF_SUBMISSION_SOURCE,

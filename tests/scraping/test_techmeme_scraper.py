@@ -94,7 +94,7 @@ def test_scrape_returns_primary_and_related(scraper: TechmemeScraper) -> None:
     assert article_info["source_domain"] == "example.com"
 
     aggregator = metadata.get("aggregator", {})
-    assert aggregator["url"] == "https://www.techmeme.com/250921/p26#a250921p26"
+    assert metadata["discussion_url"] == "https://www.techmeme.com/250921/p26#a250921p26"
     assert aggregator["metadata"]["related_links"][0]["url"] == "https://related.com/story"
     assert aggregator["metadata"]["feed_name"] == "Techmeme"
 

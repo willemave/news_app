@@ -11,7 +11,7 @@ def test_full_convert_workflow(client: TestClient, db_session: Session) -> None:
     """Test complete workflow: create news → convert → verify article."""
     # 1. Create news item with article URL
     news = Content(
-        url="https://news.ycombinator.com/item?id=99999",
+        url="https://techblog.example/future-of-ai",
         content_type=ContentType.NEWS.value,
         status=ContentStatus.COMPLETED.value,
         content_metadata={
@@ -20,6 +20,7 @@ def test_full_convert_workflow(client: TestClient, db_session: Session) -> None:
                 "title": "The Future of AI",
                 "source_domain": "techblog.example"
             },
+            "discussion_url": "https://news.ycombinator.com/item?id=99999",
             "summary": {
                 "title": "AI Discussion on HN",
                 "summary": (
@@ -78,11 +79,12 @@ def test_convert_marks_news_as_favorite_interaction(
     """Test that favoriting news and converting preserves favorite status."""
     # Create news item
     news = Content(
-        url="https://news.ycombinator.com/item?id=88888",
+        url="https://example.com/article",
         content_type=ContentType.NEWS.value,
         status=ContentStatus.COMPLETED.value,
         content_metadata={
-            "article": {"url": "https://example.com/article"}
+            "article": {"url": "https://example.com/article"},
+            "discussion_url": "https://news.ycombinator.com/item?id=88888",
         },
     )
     db_session.add(news)

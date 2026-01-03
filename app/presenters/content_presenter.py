@@ -44,13 +44,15 @@ def _extract_news_summary(domain_content: ContentData) -> dict[str, Any]:
     article_meta = metadata.get("article", {})
     aggregator_meta = metadata.get("aggregator", {})
     summary_meta = metadata.get("summary", {})
+    discussion_url = metadata.get("discussion_url") or aggregator_meta.get("url")
+    news_article_url = str(domain_content.url) if domain_content.url else article_meta.get("url")
 
     key_points = summary_meta.get("key_points")
     news_key_points = key_points if isinstance(key_points, list) and key_points else None
 
     return {
-        "news_article_url": article_meta.get("url"),
-        "news_discussion_url": aggregator_meta.get("url"),
+        "news_article_url": news_article_url,
+        "news_discussion_url": discussion_url,
         "news_key_points": news_key_points,
         "news_summary_text": domain_content.summary,
         "classification": summary_meta.get("classification"),
@@ -99,6 +101,7 @@ def build_content_summary_response(
         id=domain_content.id,
         content_type=domain_content.content_type.value,
         url=str(domain_content.url),
+        source_url=domain_content.source_url,
         title=domain_content.display_title,
         source=domain_content.source,
         platform=domain_content.platform or content.platform,
@@ -172,6 +175,7 @@ def build_content_detail_response(
         id=domain_content.id,
         content_type=domain_content.content_type.value,
         url=str(domain_content.url),
+        source_url=domain_content.source_url,
         title=domain_content.title,
         display_title=domain_content.display_title,
         source=domain_content.source,

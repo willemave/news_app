@@ -21,6 +21,7 @@ from app.routers.api.models import (
 )
 from app.services.event_logger import log_event
 from app.services.tweet_suggestions import generate_tweet_suggestions
+from app.utils.url_utils import is_http_url, normalize_http_url
 
 router = APIRouter()
 
@@ -62,12 +63,13 @@ async def convert_news_to_article(
             status_code=400, detail="Only news content can be converted to articles"
         )
 
-    # Extract article URL from metadata
+    # Extract article URL from content (canonical) with legacy fallback
     metadata = content.content_metadata or {}
     article_meta = metadata.get("article", {})
-    article_url = article_meta.get("url")
-
+    article_url = normalize_http_url(str(content.url))
     if not article_url:
+        article_url = normalize_http_url(article_meta.get("url"))
+    if not is_http_url(article_url):
         raise HTTPException(status_code=400, detail="No article URL found in news metadata")
 
     # Check if article with this URL already exists (UNIQUE constraint on url + content_type)
@@ -93,6 +95,7 @@ async def convert_news_to_article(
 
     new_article = Content(
         url=article_url,
+        source_url=article_url,
         content_type=ContentType.ARTICLE.value,
         status=ContentStatus.PENDING.value,
         title=article_title,

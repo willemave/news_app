@@ -22,7 +22,7 @@ def test_api_excludes_unprocessed_news(client, db_session: Session):
     """Unprocessed news items should not appear in the API feed."""
     pending_news = Content(
         content_type="news",
-        url="https://www.techmeme.com/cluster/pending",
+        url="https://example.com/pending",
         title="Pending Cluster",
         status="new",
         content_metadata={
@@ -34,14 +34,14 @@ def test_api_excludes_unprocessed_news(client, db_session: Session):
             },
             "aggregator": {
                 "name": "Techmeme",
-                "url": "https://www.techmeme.com/cluster/pending",
             },
+            "discussion_url": "https://www.techmeme.com/cluster/pending",
         },
     )
 
     completed_news = Content(
         content_type="news",
-        url="https://www.techmeme.com/cluster/processed",
+        url="https://processed.com/story",
         title="Processed Cluster",
         status="completed",
         content_metadata={
@@ -53,8 +53,8 @@ def test_api_excludes_unprocessed_news(client, db_session: Session):
             },
             "aggregator": {
                 "name": "Techmeme",
-                "url": "https://www.techmeme.com/cluster/processed",
             },
+            "discussion_url": "https://www.techmeme.com/cluster/processed",
             "summary": _news_summary_payload("Processed Digest"),
         },
     )

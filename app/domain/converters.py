@@ -2,23 +2,13 @@
 
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlparse
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
+from app.utils.url_utils import is_http_url
 
 logger = get_logger(__name__)
-
-
-def _is_http_url(value: str | None) -> bool:
-    if not value:
-        return False
-    try:
-        parsed = urlparse(value)
-    except Exception:
-        return False
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _select_http_url(raw_url: str, metadata: dict[str, Any], content_type: str) -> str:
@@ -38,7 +28,7 @@ def _select_http_url(raw_url: str, metadata: dict[str, Any], content_type: str) 
     )
 
     for candidate in candidates:
-        if isinstance(candidate, str) and _is_http_url(candidate):
+        if isinstance(candidate, str) and is_http_url(candidate):
             return candidate
 
     return raw_url
@@ -64,6 +54,7 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             id=db_content.id,
             content_type=ContentType(db_content.content_type),
             url=resolved_url,
+            source_url=db_content.source_url or db_content.url,
             title=db_content.title,
             status=ContentStatus(db_content.status),
             metadata=metadata,
@@ -98,6 +89,13 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
         # Update existing
         existing.title = content_data.title
         existing.status = content_data.status.value
+        new_url = str(content_data.url)
+        if new_url and new_url != existing.url:
+            existing.url = new_url
+        if content_data.source_url:
+            existing.source_url = content_data.source_url
+        elif existing.source_url is None:
+            existing.source_url = new_url
         # Serialize metadata to ensure datetime objects are handled
         dumped_data = content_data.model_dump(mode="json")
         md = dumped_data["metadata"] or {}
@@ -132,6 +130,7 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
         return DBContent(
             content_type=content_data.content_type.value,
             url=str(content_data.url),
+            source_url=content_data.source_url or str(content_data.url),
             title=content_data.title,
             status=content_data.status.value,
             platform=(plat.strip().lower() if isinstance(plat, str) and plat.strip() else None),

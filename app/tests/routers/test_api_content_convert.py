@@ -11,7 +11,7 @@ def test_convert_news_link_to_article(client: TestClient, db_session: Session) -
     """Test converting a news link to a full article."""
     # Create a news item with article URL
     news = Content(
-        url="https://news.ycombinator.com/item?id=12345",
+        url="https://example.com/article",
         content_type=ContentType.NEWS.value,
         status=ContentStatus.COMPLETED.value,
         content_metadata={
@@ -20,6 +20,7 @@ def test_convert_news_link_to_article(client: TestClient, db_session: Session) -
                 "title": "Test Article",
                 "source_domain": "example.com"
             },
+            "discussion_url": "https://news.ycombinator.com/item?id=12345",
             "summary": {
                 "title": "News Summary",
                 "summary": "This is a news summary"
@@ -50,7 +51,7 @@ def test_convert_news_link_to_article(client: TestClient, db_session: Session) -
 def test_convert_news_link_no_article_url(client: TestClient, db_session: Session) -> None:
     """Test converting news link without article URL fails gracefully."""
     news = Content(
-        url="https://news.ycombinator.com/item?id=12345",
+        url="twitter://list/example",
         content_type=ContentType.NEWS.value,
         status=ContentStatus.COMPLETED.value,
         content_metadata={
@@ -100,11 +101,12 @@ def test_convert_already_exists(client: TestClient, db_session: Session) -> None
 
     # Create news item pointing to same URL
     news = Content(
-        url="https://news.ycombinator.com/item?id=12345",
+        url=article_url,
         content_type=ContentType.NEWS.value,
         status=ContentStatus.COMPLETED.value,
         content_metadata={
-            "article": {"url": article_url}
+            "article": {"url": article_url},
+            "discussion_url": "https://news.ycombinator.com/item?id=12345",
         },
     )
     db_session.add(news)

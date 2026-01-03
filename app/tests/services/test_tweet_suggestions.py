@@ -165,7 +165,7 @@ class TestContentContextExtraction:
         content = MagicMock()
         content.id = 1
         content.content_type = ContentType.ARTICLE
-        content.url = "https://example.com/article"
+        content.url = "https://example.com/final-article"
         content.display_title = "Great Article Title"
         content.source = "Tech Blog"
         content.platform = "substack"
@@ -201,7 +201,7 @@ class TestContentContextExtraction:
         content = MagicMock()
         content.id = 2
         content.content_type = ContentType.NEWS
-        content.url = "https://news.ycombinator.com/item?id=123"
+        content.url = "https://example.com/the-article"
         content.display_title = "News Title"
         content.source = "Hacker News"
         content.platform = "hackernews"

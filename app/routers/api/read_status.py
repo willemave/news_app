@@ -315,11 +315,16 @@ async def get_recently_read(
             if domain_content.content_type == ContentType.NEWS:
                 article_meta = (domain_content.metadata or {}).get("article", {})
                 aggregator_meta = (domain_content.metadata or {}).get("aggregator", {})
+                discussion_url = (domain_content.metadata or {}).get(
+                    "discussion_url"
+                ) or aggregator_meta.get("url")
                 summary_meta = (domain_content.metadata or {}).get("summary", {})
                 key_points = summary_meta.get("key_points")
 
-                news_article_url = article_meta.get("url")
-                news_discussion_url = aggregator_meta.get("url")
+                news_article_url = (
+                    str(domain_content.url) if domain_content.url else article_meta.get("url")
+                )
+                news_discussion_url = discussion_url
                 if isinstance(key_points, list) and key_points:
                     news_key_points = key_points
                 classification = summary_meta.get("classification") or classification
@@ -335,6 +340,7 @@ async def get_recently_read(
                     id=domain_content.id,
                     content_type=domain_content.content_type.value,
                     url=str(domain_content.url),
+                    source_url=domain_content.source_url,
                     title=domain_content.display_title,
                     source=domain_content.source,
                     platform=domain_content.platform or c.platform,

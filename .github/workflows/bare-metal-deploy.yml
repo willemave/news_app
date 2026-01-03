@@ -109,5 +109,8 @@ jobs:
           echo "→ Setting up Python environment on remote (uv venv, deps, playwright)"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -u $SERVICE_USER -H bash -lc 'cd $REMOTE_DIR && ./scripts/setup_uv_env.sh --python-version $PY_VERSION'"
 
+          echo "→ Running Alembic migrations"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -u $SERVICE_USER -H bash -lc 'cd $REMOTE_DIR && set -a && source .env && set +a && ./scripts/check_and_run_migrations.sh'"
+
           echo "→ Restarting supervisor programs: $PROGRAMS"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl restart $PROGRAMS && sudo supervisorctl status"

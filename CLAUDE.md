@@ -49,6 +49,7 @@ Errors at level ERROR+ are automatically written to JSONL files in `logs/errors/
 ## 4. Testing Requirements
 
 * **Write tests for all new functionality** in `app/tests/` using idiomatic pytest.
+* **Scripts in `scripts/` do not require tests** unless explicitly requested.
 * Test structure mirrors app structure: `tests/routers/`, `tests/services/`, etc.
 * Test file naming: `test_<module_name>.py`.
 * **Test categories**:
@@ -248,5 +249,4 @@ For detailed documentation on:
 - Authentication system
 
 See **[docs/architecture.md](docs/architecture.md)**.
-
 

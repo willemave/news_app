@@ -19,6 +19,7 @@ from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import resolve_model
 from app.services.llm_prompts import get_tweet_generation_prompt, length_to_char_range
 from app.utils.json_repair import try_repair_truncated_json
+from app.utils.url_utils import normalize_http_url
 
 logger = get_logger(__name__)
 
@@ -105,23 +106,25 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
     # Get URL
     url = str(content.url)
     if content.content_type == ContentType.ARTICLE:
-        # Prefer final URL after redirects for articles
-        final_url = content.metadata.get("final_url_after_redirects")
-        if final_url:
-            url = final_url
+        # Prefer canonical URL, fallback to legacy metadata
+        normalized = normalize_http_url(str(content.url))
+        if normalized:
+            url = normalized
+        else:
+            final_url = content.metadata.get("final_url_after_redirects")
+            if final_url:
+                url = final_url
     elif content.content_type == ContentType.NEWS:
-        # For news, prefer the article URL from summary or metadata
-        summary_data = content.metadata.get("summary")
-        if isinstance(summary_data, dict):
-            article_url = summary_data.get("article_url")
-            if article_url:
-                url = article_url
-        # Fallback to article metadata
-        article_meta = content.metadata.get("article")
-        if isinstance(article_meta, dict):
-            article_url = article_meta.get("url")
-            if article_url:
-                url = str(article_url)
+        normalized = normalize_http_url(str(content.url))
+        if normalized:
+            url = normalized
+        else:
+            # Fallback to legacy metadata
+            article_meta = content.metadata.get("article")
+            if isinstance(article_meta, dict):
+                article_url = article_meta.get("url")
+                if article_url:
+                    url = str(article_url)
 
     # Get summary text
     summary = ""

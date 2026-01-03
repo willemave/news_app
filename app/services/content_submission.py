@@ -112,7 +112,8 @@ def submit_user_content(
     Returns:
         Submission response describing the created or existing content.
     """
-    normalized_url = normalize_url(str(payload.url))
+    raw_url = str(payload.url)
+    normalized_url = normalize_url(raw_url)
 
     # Check if content already exists (by URL only, regardless of type)
     instruction = payload.instruction.strip() if payload.instruction else None
@@ -121,6 +122,10 @@ def submit_user_content(
 
     existing = db.query(Content).filter(Content.url == normalized_url).first()
     if existing:
+        source_url_updated = False
+        if not existing.source_url:
+            existing.source_url = raw_url
+            source_url_updated = True
         if subscribe_to_feed:
             existing_metadata = dict(existing.content_metadata or {})
             existing_metadata["subscribe_to_feed"] = True
@@ -132,7 +137,7 @@ def submit_user_content(
             status_created = ensure_inbox_status(
                 db, current_user.id, existing.id, content_type=existing.content_type
             )
-            if status_created:
+            if status_created or source_url_updated:
                 db.commit()
         task_id = _ensure_analyze_url_task(
             db,
@@ -168,6 +173,7 @@ def submit_user_content(
     # Create content with UNKNOWN type - will be updated by ANALYZE_URL task
     new_content = Content(
         url=normalized_url,
+        source_url=raw_url,
         content_type=ContentType.UNKNOWN.value,
         title=payload.title,
         source=SELF_SUBMISSION_SOURCE,

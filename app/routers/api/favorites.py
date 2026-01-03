@@ -175,6 +175,7 @@ async def get_favorites(
                     id=domain_content.id,
                     content_type=domain_content.content_type.value,
                     url=str(domain_content.url),
+                    source_url=domain_content.source_url,
                     title=domain_content.display_title,
                     source=domain_content.source,
                     status=domain_content.status.value,

@@ -80,7 +80,7 @@ flowchart LR
 | Table | Purpose | Key Columns/Constraints |
 |---|---|---|
 | `users` | Accounts from Apple Sign In + admin | `id`, `apple_id` UQ, `email` UQ, `full_name`, `is_admin`, `is_active`, timestamps |
-| `contents` | Core content records | `id`, `content_type` (`article/podcast/news/unknown`), `url` UQ per type, `title`, `source`, `platform`, `is_aggregate` (legacy, always false), `status`, `classification`, `error_message`, `retry_count`, checkout fields, `content_metadata` JSON (summary/interleaved, detected_feed, image_generated_at, thumbnail_url), timestamps, indexes on type/status/created_at |
+| `contents` | Core content records | `id`, `content_type` (`article/podcast/news/unknown`), `url` (canonical, UQ per type), `source_url` (original scraped/submitted URL), `title`, `source`, `platform`, `is_aggregate` (legacy, always false), `status`, `classification`, `error_message`, `retry_count`, checkout fields, `content_metadata` JSON (summary/interleaved, detected_feed, image_generated_at, thumbnail_url), timestamps, indexes on type/status/created_at |
 | `processing_tasks` | Task queue | `task_type` (`scrape/analyze_url/process_content/download_audio/transcribe/summarize/generate_image/generate_thumbnail`), `content_id`, `payload` JSON, `status`, retry counters, timestamps, idx on status+created_at |
 | `content_read_status` | User read marks | UQ `(user_id, content_id)`, `read_at` |
 | `content_favorites` | User favorites | UQ `(user_id, content_id)` |
@@ -93,9 +93,9 @@ flowchart LR
 
 ## Domain & Pydantic Types
 - **Enums (app/models/metadata.py)**: `ContentType` (`ARTICLE/PODCAST/NEWS/UNKNOWN`), `ContentStatus` (`new/pending/processing/completed/failed/skipped`), `ContentClassification` (`to_read/skip`).
-- **Metadata models**: `ArticleMetadata` (author, publication_date, content, word_count, summary), `PodcastMetadata` (audio_url, transcript, duration, episode_number, YouTube fields, thumbnail_url, summary), `NewsMetadata` (article: url/title/source_domain; aggregator info; discovery_time; summary `NewsSummary`).
+- **Metadata models**: `ArticleMetadata` (author, publication_date, content, word_count, summary), `PodcastMetadata` (audio_url, transcript, duration, episode_number, YouTube fields, thumbnail_url, summary), `NewsMetadata` (article: url/title/source_domain; aggregator info + `discussion_url`; discovery_time; summary `NewsSummary`).
 - **Summaries**: `InterleavedSummary` (summary_type, hook, insights w/ supporting quotes, takeaway), `StructuredSummary` (title, overview, bullet_points, quotes, topics, questions, counter_arguments, classification, full_markdown), `NewsSummary` (title, article_url, key_points, summary, classification, summarization_date).
-- **Domain wrapper**: `ContentData` (id, content_type, url, title, status, metadata dict + computed `display_title`, `short_summary`, `structured_summary`, `interleaved_summary`, `bullet_points`, `quotes`, `topics`, `transcript`; timestamps, retry/error fields). Interleaved summaries are normalized into bullets/quotes/topics for list views.
+- **Domain wrapper**: `ContentData` (id, content_type, url, source_url, title, status, metadata dict + computed `display_title`, `short_summary`, `structured_summary`, `interleaved_summary`, `bullet_points`, `quotes`, `topics`, `transcript`; timestamps, retry/error fields). Interleaved summaries are normalized into bullets/quotes/topics for list views.
 - **API schemas (app/routers/api/models.py)**: `ContentSummaryResponse`/`ContentDetailResponse` (includes `image_url`, `thumbnail_url`, `detected_feed`), `ContentListResponse`, `UnreadCountsResponse`, `SubmitContentRequest` + `ContentSubmissionResponse`, `ConvertNewsResponse`, `TweetSuggestionsRequest/Response`, chat DTOs (`ChatSessionSummaryResponse`, `ChatSessionDetailResponse`, `ChatMessageResponse`, `CreateChatSessionRequest/Response`, `SendChatMessageRequest`).
 
 ## API Surface (routers)

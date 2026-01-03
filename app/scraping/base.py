@@ -9,6 +9,7 @@ from app.models.schema import Content
 from app.models.scraper_runs import ScraperStats
 from app.services.queue import TaskType, get_queue_service
 from app.services.scraper_configs import ensure_inbox_status
+from app.utils.url_utils import is_http_url, normalize_http_url
 
 logger = get_logger(__name__)
 
@@ -108,11 +109,36 @@ class BaseScraper(ABC):
                 try:
                     user_id = item.get("user_id")
                     content_type_value = item["content_type"].value
+                    metadata = item.get("metadata", {})
+                    raw_url = item.get("source_url") or item["url"]
+                    canonical_url = normalize_http_url(item["url"]) or normalize_http_url(raw_url)
+
+                    if not canonical_url and content_type_value == ContentType.NEWS.value:
+                        article = metadata.get("article")
+                        if isinstance(article, dict):
+                            canonical_url = normalize_http_url(article.get("url"))
+
+                    if not is_http_url(canonical_url):
+                        logger.warning(
+                            "Skipping scraped item with invalid URL: %s",
+                            raw_url,
+                            extra={
+                                "component": "scraper_base",
+                                "operation": "save_item",
+                                "context_data": {
+                                    "raw_url": raw_url,
+                                    "content_type": content_type_value,
+                                },
+                            },
+                        )
+                        error_count += 1
+                        error_details.append(f"Invalid URL: {raw_url}")
+                        continue
                     # Check if already exists
                     existing = (
                         db.query(Content)
                         .filter(
-                            Content.url == item["url"],
+                            Content.url == canonical_url,
                             Content.content_type == content_type_value,
                         )
                         .first()
@@ -132,10 +158,10 @@ class BaseScraper(ABC):
                         continue
 
                     # Create new content
-                    metadata = item.get("metadata", {})
                     content = Content(
                         content_type=content_type_value,
-                        url=item["url"],
+                        url=canonical_url,
+                        source_url=raw_url,
                         title=item.get("title"),
                         source=metadata.get("source"),  # Extract source from metadata
                         platform=metadata.get("platform"),  # Extract platform from metadata
