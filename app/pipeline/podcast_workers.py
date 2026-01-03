@@ -12,8 +12,14 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
+from app.scraping.youtube_unified import YouTubeClientConfig, load_youtube_client_config
 from app.services.queue import TaskType, get_queue_service
 from app.services.whisper_local import get_whisper_local_service
+
+try:  # pragma: no cover - optional dependency in tests
+    import yt_dlp  # type: ignore
+except ImportError:  # pragma: no cover
+    yt_dlp = None  # type: ignore
 
 # Resolve project root (two levels up from this file: app/ → project root)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +45,20 @@ def get_file_extension_from_url(url: str) -> str:
     if "." in path:
         return os.path.splitext(path)[1]
     return ".mp3"  # Default to mp3
+
+
+class _YtDlpLogger:
+    def __init__(self, base_logger):
+        self._logger = base_logger
+
+    def debug(self, msg: str) -> None:
+        self._logger.debug(msg)
+
+    def warning(self, msg: str) -> None:
+        self._logger.warning(msg)
+
+    def error(self, msg: str) -> None:
+        self._logger.warning(msg)
 
 
 class PodcastDownloadWorker:
@@ -151,6 +171,97 @@ class PodcastDownloadWorker:
         ]
         return any(re.search(pattern, url) for pattern in youtube_patterns)
 
+    def _extract_youtube_id(self, url: str) -> str | None:
+        parsed = urlparse(url)
+        if parsed.netloc.endswith("youtu.be"):
+            return parsed.path.lstrip("/") or None
+        if "v=" in parsed.query:
+            for part in parsed.query.split("&"):
+                if part.startswith("v="):
+                    return part.split("=", 1)[1]
+        if "/shorts/" in parsed.path:
+            return parsed.path.split("/shorts/", 1)[1].split("/", 1)[0]
+        return None
+
+    def _build_youtube_extractor_args(
+        self, client_config: YouTubeClientConfig
+    ) -> dict[str, dict[str, list[str]]]:
+        extractor_args: dict[str, dict[str, list[str]]] = {
+            "youtube": {
+                "player_client": [client_config.player_client],
+                "player_skip": ["configs"],
+            }
+        }
+
+        provider = client_config.po_token_provider
+        if provider:
+            provider_key = f"youtubepot-{provider}"
+            provider_args: dict[str, list[str]] = {}
+            if client_config.po_token_base_url:
+                provider_args["base_url"] = [str(client_config.po_token_base_url)]
+            extractor_args[provider_key] = provider_args
+
+        return extractor_args
+
+    def _download_youtube_audio(self, url: str, title: str | None, content_id: int) -> Path:
+        if yt_dlp is None:  # pragma: no cover - runtime safeguard when dependency missing
+            raise RuntimeError("yt-dlp is required to download YouTube audio")
+
+        client_config = load_youtube_client_config()
+        youtube_dir = self.base_dir / "youtube"
+        youtube_dir.mkdir(parents=True, exist_ok=True)
+
+        video_id = self._extract_youtube_id(url)
+        sanitized_title = sanitize_filename(title or f"youtube_{content_id}")
+        stem = f"{sanitized_title}-{video_id}" if video_id else sanitized_title
+
+        existing = next(youtube_dir.glob(f"{stem}.*"), None)
+        if existing and existing.stat().st_size > 0:
+            return existing
+
+        outtmpl = str(youtube_dir / f"{stem}.%(ext)s")
+        ydl_opts: dict[str, object] = {
+            "quiet": True,
+            "no_warnings": True,
+            "format": "bestaudio/best",
+            "noplaylist": True,
+            "no_check_certificate": True,
+            "socket_timeout": 30,
+            "logger": _YtDlpLogger(logger),
+            "outtmpl": outtmpl,
+            "http_headers": {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/128.0.6613.120 Safari/537.36"
+                )
+            },
+        }
+
+        cookies_path = client_config.resolved_cookies_path()
+        if cookies_path and cookies_path.exists():
+            ydl_opts["cookiefile"] = str(cookies_path)
+        elif cookies_path:
+            logger.warning("YouTube cookies not found at %s", cookies_path)
+
+        extractor_args = self._build_youtube_extractor_args(client_config)
+        if extractor_args:
+            ydl_opts["extractor_args"] = extractor_args
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if info is None:
+                raise ValueError(f"Failed to download YouTube audio for {url}")
+            file_path = Path(ydl.prepare_filename(info))
+
+        if not file_path.exists():
+            match = next(youtube_dir.glob(f"{stem}.*"), None)
+            if match and match.exists():
+                return match
+            raise FileNotFoundError(f"Downloaded YouTube audio not found at {file_path}")
+
+        return file_path
+
     def process_download_task(self, content_id: int) -> bool:
         """
         Download a podcast audio file.
@@ -186,12 +297,18 @@ class PodcastDownloadWorker:
 
                 # Check if this is a YouTube URL
                 if self._is_youtube_url(audio_url):
-                    logger.info(f"Detected YouTube URL for content {content_id}, skipping download")
+                    logger.info(
+                        "Detected YouTube URL for content %s, downloading audio with yt-dlp",
+                        content_id,
+                    )
+                    file_path = self._download_youtube_audio(
+                        audio_url, content.title, content_id
+                    )
 
-                    # Update metadata to indicate no download needed
                     content.metadata["youtube_video"] = True
-                    content.metadata["download_skipped"] = True
-                    content.metadata["skip_reason"] = "YouTube videos processed without downloading"
+                    content.metadata["file_path"] = str(file_path)
+                    content.metadata["download_date"] = datetime.utcnow().isoformat()
+                    content.metadata["file_size"] = file_path.stat().st_size
 
                     # Update database
                     domain_to_content(content, db_content)

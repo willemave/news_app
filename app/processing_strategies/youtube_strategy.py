@@ -44,10 +44,6 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
             "ignoreerrors": False,  # Changed: Let exceptions bubble up for better error info
             "no_check_certificate": True,
             "logger": _YtDlpLogger(logger),
-            # Subtitle options
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-            "subtitleslangs": ["en"],
             "skip_download": True,  # Don't download video
             # Add user agent to avoid bot detection
             "user_agent": (
@@ -144,8 +140,7 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                 like_count = info.get("like_count", 0)
                 thumbnail = info.get("thumbnail")
 
-                # Get transcript
-                transcript = await self._extract_transcript(info)
+                transcript = None
 
                 # Parse upload date
                 if upload_date:
