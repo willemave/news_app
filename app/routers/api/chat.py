@@ -24,17 +24,15 @@ from app.routers.api.chat_models import (
     ChatMessageRole,
     ChatSessionDetailDto,
     ChatSessionSummaryDto,
+    CreateChatSessionRequest,
     CreateChatSessionResponse,
     MessageStatusResponse,
+    SendChatMessageRequest,
     SendMessageResponse,
+    UpdateChatSessionRequest,
 )
 from app.routers.api.chat_models import (
     MessageProcessingStatus as MessageProcessingStatusDto,
-)
-from app.routers.api.models import (
-    CreateChatSessionRequest,
-    SendChatMessageRequest,
-    UpdateChatSessionRequest,
 )
 from app.services.chat_agent import (
     create_processing_message,

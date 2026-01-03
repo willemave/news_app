@@ -11,6 +11,7 @@ from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentType
+from app.models.pagination import PaginationMetadata
 from app.models.schema import Content
 from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse
@@ -221,10 +222,12 @@ async def get_favorites(
 
     return ContentListResponse(
         contents=content_summaries,
-        total=len(content_summaries),
         available_dates=[],  # Not needed for favorites list
         content_types=content_types,
-        next_cursor=next_cursor,
-        has_more=has_more,
-        page_size=len(content_summaries),
+        meta=PaginationMetadata(
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=len(content_summaries),
+            total=len(content_summaries),
+        ),
     )

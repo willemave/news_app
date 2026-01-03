@@ -71,4 +71,4 @@ def test_api_excludes_unprocessed_news(client, db_session: Session):
 
     assert completed_news.id in ids
     assert pending_news.id not in ids
-    assert payload["total"] == len(payload["contents"]) == 1
+    assert payload["meta"]["total"] == len(payload["contents"]) == 1

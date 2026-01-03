@@ -12,6 +12,7 @@ from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
+from app.models.pagination import PaginationMetadata
 from app.models.schema import Content, ContentReadStatus
 from app.models.user import User
 from app.routers.api.models import BulkMarkReadRequest, ContentListResponse, ContentSummaryResponse
@@ -310,30 +311,24 @@ async def get_recently_read(
             news_discussion_url = None
             news_key_points = None
             news_summary_text = domain_content.short_summary
-            item_count = None
-            is_aggregate = domain_content.is_aggregate
 
             if domain_content.content_type == ContentType.NEWS:
                 article_meta = (domain_content.metadata or {}).get("article", {})
                 aggregator_meta = (domain_content.metadata or {}).get("aggregator", {})
                 summary_meta = (domain_content.metadata or {}).get("summary", {})
-                key_points = summary_meta.get("bullet_points")
+                key_points = summary_meta.get("key_points")
 
                 news_article_url = article_meta.get("url")
                 news_discussion_url = aggregator_meta.get("url")
-                if key_points:
-                    news_key_points = [
-                        point["text"] if isinstance(point, dict) else point for point in key_points
-                    ]
+                if isinstance(key_points, list) and key_points:
+                    news_key_points = key_points
                 classification = summary_meta.get("classification") or classification
                 news_summary_text = (
-                    summary_meta.get("overview")
-                    or summary_meta.get("summary")
+                    summary_meta.get("summary")
                     or summary_meta.get("hook")
                     or summary_meta.get("takeaway")
                     or domain_content.summary
                 )
-                is_aggregate = False
 
             content_summaries.append(
                 ContentSummaryResponse(
@@ -357,8 +352,6 @@ async def get_recently_read(
                     else None,
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
-                    is_aggregate=is_aggregate,
-                    item_count=item_count,
                     news_article_url=news_article_url,
                     news_discussion_url=news_discussion_url,
                     news_key_points=news_key_points,
@@ -402,10 +395,12 @@ async def get_recently_read(
 
     return ContentListResponse(
         contents=content_summaries,
-        total=len(content_summaries),
         available_dates=[],  # Not needed for recently read list
         content_types=content_types,
-        next_cursor=next_cursor,
-        has_more=has_more,
-        page_size=len(content_summaries),
+        meta=PaginationMetadata(
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=len(content_summaries),
+            total=len(content_summaries),
+        ),
     )

@@ -175,9 +175,9 @@ class TestListEndpointPagination:
 
         data = response.json()
         assert len(data["contents"]) <= 50  # At most our sample data
-        assert data["has_more"] in [True, False]
-        assert data["page_size"] >= 0
-        assert "next_cursor" in data
+        assert data["meta"]["has_more"] in [True, False]
+        assert data["meta"]["page_size"] >= 0
+        assert "next_cursor" in data["meta"]
         assert "contents" in data
 
     def test_second_page_with_cursor(self, client, sample_contents):
@@ -187,10 +187,10 @@ class TestListEndpointPagination:
         data1 = response1.json()
 
         # Only test pagination if there's a next cursor
-        if not data1["next_cursor"]:
+        if not data1["meta"]["next_cursor"]:
             pytest.skip("Not enough data for pagination test")
 
-        next_cursor = data1["next_cursor"]
+        next_cursor = data1["meta"]["next_cursor"]
 
         # Get second page using cursor
         response2 = client.get("/api/content/", params={"limit": 10, "cursor": next_cursor})
@@ -210,20 +210,20 @@ class TestListEndpointPagination:
         response1 = client.get("/api/content/", params={"limit": 25})
         data1 = response1.json()
 
-        if not data1["has_more"]:
+        if not data1["meta"]["has_more"]:
             pytest.skip("Not enough data for multiple pages")
 
         # Fetch second page
         response2 = client.get(
             "/api/content/",
-            params={"limit": 25, "cursor": data1["next_cursor"]},
+            params={"limit": 25, "cursor": data1["meta"]["next_cursor"]},
         )
         data2 = response2.json()
 
         # Should successfully fetch second page
         assert response2.status_code == 200
-        assert "has_more" in data2
-        assert "next_cursor" in data2
+        assert "has_more" in data2["meta"]
+        assert "next_cursor" in data2["meta"]
 
     def test_custom_limit(self, client, sample_contents):
         """Test custom page size limit."""
@@ -232,7 +232,7 @@ class TestListEndpointPagination:
 
         data = response.json()
         assert len(data["contents"]) == 5
-        assert data["page_size"] == 5
+        assert data["meta"]["page_size"] == 5
 
     def test_limit_too_large(self, client, sample_contents):
         """Test limit exceeds maximum allowed."""
@@ -246,10 +246,10 @@ class TestListEndpointPagination:
         data1 = response1.json()
 
         # Skip if not enough data for pagination
-        if not data1.get("next_cursor"):
+        if not data1["meta"].get("next_cursor"):
             pytest.skip("Not enough data to test cursor with filters")
 
-        cursor = data1["next_cursor"]
+        cursor = data1["meta"]["next_cursor"]
 
         # Second page with same filter should work
         response2 = client.get(
@@ -281,8 +281,8 @@ class TestSearchEndpointPagination:
 
         data = response.json()
         assert len(data["contents"]) == 10
-        assert data["has_more"] is True
-        assert data["next_cursor"] is not None
+        assert data["meta"]["has_more"] is True
+        assert data["meta"]["next_cursor"] is not None
 
     def test_search_uses_fts_when_available(self, client, db_session, sample_contents):
         """Use FTS when the table exists."""
@@ -301,13 +301,13 @@ class TestSearchEndpointPagination:
         data1 = response1.json()
 
         # Skip if not enough data
-        if not data1.get("next_cursor"):
+        if not data1["meta"].get("next_cursor"):
             pytest.skip("Not enough data for cursor test")
 
         # Second page
         response2 = client.get(
             "/api/content/search",
-            params={"q": "Article", "limit": 20, "cursor": data1["next_cursor"]},
+            params={"q": "Article", "limit": 20, "cursor": data1["meta"]["next_cursor"]},
         )
         data2 = response2.json()
 
@@ -323,10 +323,10 @@ class TestSearchEndpointPagination:
         data1 = response1.json()
 
         # Skip if not enough data
-        if not data1.get("next_cursor"):
+        if not data1["meta"].get("next_cursor"):
             pytest.skip("Not enough data for cursor validation test")
 
-        cursor = data1["next_cursor"]
+        cursor = data1["meta"]["next_cursor"]
 
         # Try to use cursor with different query
         response2 = client.get(
@@ -344,8 +344,8 @@ class TestSearchEndpointPagination:
 
         data = response.json()
         # Should get results but with cursor pagination fields
-        assert "next_cursor" in data
-        assert "has_more" in data
+        assert "next_cursor" in data["meta"]
+        assert "has_more" in data["meta"]
 
 
 class TestFavoritesEndpointPagination:
@@ -366,13 +366,13 @@ class TestFavoritesEndpointPagination:
         data1 = response1.json()
         # Should have some favorites (may be less than 10 due to DB state)
         assert len(data1["contents"]) >= 0
-        assert "has_more" in data1
-        assert "next_cursor" in data1
+        assert "has_more" in data1["meta"]
+        assert "next_cursor" in data1["meta"]
 
         # If there's a next page, fetch it
-        if data1["next_cursor"]:
+        if data1["meta"]["next_cursor"]:
             response2 = client.get(
-                "/api/content/favorites/list", params={"limit": 10, "cursor": data1["next_cursor"]}
+                "/api/content/favorites/list", params={"limit": 10, "cursor": data1["meta"]["next_cursor"]}
             )
             assert response2.status_code == 200
             data2 = response2.json()
@@ -385,8 +385,8 @@ class TestFavoritesEndpointPagination:
 
         data = response.json()
         assert len(data["contents"]) == 0
-        assert data["has_more"] is False
-        assert data["next_cursor"] is None
+        assert data["meta"]["has_more"] is False
+        assert data["meta"]["next_cursor"] is None
 
 
 class TestPaginationStability:
@@ -439,10 +439,10 @@ class TestPaginationStability:
         response1 = client.get("/api/content/", params={"limit": 5})
         data1 = response1.json()
 
-        if not data1.get("next_cursor"):
+        if not data1["meta"].get("next_cursor"):
             pytest.skip("Not enough data for pagination stability test")
 
-        response2 = client.get("/api/content/", params={"limit": 5, "cursor": data1["next_cursor"]})
+        response2 = client.get("/api/content/", params={"limit": 5, "cursor": data1["meta"]["next_cursor"]})
         data2 = response2.json()
 
         # No overlapping IDs (stable pagination using ID as tie-breaker)
@@ -457,4 +457,4 @@ class TestPaginationStability:
 
         data = response.json()
         assert len(data["contents"]) == 25  # Default limit
-        assert data["page_size"] == 25
+        assert data["meta"]["page_size"] == 25

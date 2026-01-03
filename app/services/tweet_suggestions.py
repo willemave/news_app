@@ -141,7 +141,7 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
             summary = summary_data.get("summary", "")
 
         # Get bullet points / key points
-        bullet_points = summary_data.get("bullet_points", [])
+        bullet_points = summary_data.get("key_points") or summary_data.get("bullet_points", [])
         if bullet_points:
             # Handle both dict and string formats
             for point in bullet_points[:5]:  # Limit to 5 points

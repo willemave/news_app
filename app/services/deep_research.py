@@ -521,20 +521,29 @@ def _build_research_context(content: Content) -> str | None:
         metadata = content.content_metadata
         summary = metadata.get("summary", {})
 
-        overview = summary.get("overview") or summary.get("hook") or summary.get("takeaway")
+        overview = (
+            summary.get("summary")
+            or summary.get("overview")
+            or summary.get("hook")
+            or summary.get("takeaway")
+        )
         if overview:
             parts.append(f"\nOverview: {overview}")
 
-        bullet_points = summary.get("bullet_points")
-        if not bullet_points:
+        bullet_points = summary.get("key_points") or summary.get("bullet_points")
+        if bullet_points:
+            points = [
+                bp.get("text", "") if isinstance(bp, dict) else str(bp)
+                for bp in bullet_points
+                if isinstance(bp, (dict, str))
+            ]
+        else:
             bullet_points = summary.get("insights", [])
             points = [
                 ins.get("insight", "")
                 for ins in bullet_points
                 if isinstance(ins, dict) and ins.get("insight")
             ]
-        else:
-            points = [bp.get("text", "") for bp in bullet_points if isinstance(bp, dict)]
         if points:
             parts.append("\nKey Points:")
             for point in points[:5]:

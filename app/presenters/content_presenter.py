@@ -45,20 +45,14 @@ def _extract_news_summary(domain_content: ContentData) -> dict[str, Any]:
     aggregator_meta = metadata.get("aggregator", {})
     summary_meta = metadata.get("summary", {})
 
-    key_points = summary_meta.get("bullet_points") or summary_meta.get("key_points")
-    news_key_points = None
-    if key_points:
-        news_key_points = [
-            point.get("text") if isinstance(point, dict) else point for point in key_points
-        ]
+    key_points = summary_meta.get("key_points")
+    news_key_points = key_points if isinstance(key_points, list) and key_points else None
 
     return {
         "news_article_url": article_meta.get("url"),
         "news_discussion_url": aggregator_meta.get("url"),
         "news_key_points": news_key_points,
         "news_summary_text": domain_content.summary,
-        "item_count": len(domain_content.news_items) if domain_content.news_items else None,
-        "is_aggregate": domain_content.is_aggregate,
         "classification": summary_meta.get("classification"),
     }
 
@@ -92,8 +86,6 @@ def build_content_summary_response(
     news_discussion_url = None
     news_key_points = None
     news_summary_text = domain_content.short_summary
-    item_count = None
-    is_aggregate = domain_content.is_aggregate
 
     if domain_content.content_type == ContentType.NEWS:
         news_fields = _extract_news_summary(domain_content)
@@ -101,8 +93,6 @@ def build_content_summary_response(
         news_discussion_url = news_fields["news_discussion_url"]
         news_key_points = news_fields["news_key_points"]
         news_summary_text = news_fields["news_summary_text"]
-        item_count = news_fields["item_count"]
-        is_aggregate = news_fields["is_aggregate"]
         classification = news_fields["classification"] or classification
 
     return ContentSummaryResponse(
@@ -124,8 +114,6 @@ def build_content_summary_response(
         else None,
         is_read=is_read,
         is_favorited=is_favorited,
-        is_aggregate=is_aggregate,
-        item_count=item_count,
         news_article_url=news_article_url,
         news_discussion_url=news_discussion_url,
         news_key_points=news_key_points,
@@ -154,8 +142,6 @@ def build_content_detail_response(
     quotes = domain_content.quotes
     topics = domain_content.topics
     full_markdown = domain_content.full_markdown
-    rendered_markdown = domain_content.rendered_news_markdown
-    news_items = domain_content.news_items
     news_article_url = None
     news_discussion_url = None
     news_key_points = None
@@ -172,8 +158,6 @@ def build_content_detail_response(
         quotes = []
         topics = []
         full_markdown = None
-        rendered_markdown = None
-        news_items = []
 
     detected_feed = None
     if detected_feed_data:
@@ -214,9 +198,6 @@ def build_content_detail_response(
         quotes=quotes,
         topics=topics,
         full_markdown=full_markdown,
-        is_aggregate=domain_content.is_aggregate,
-        rendered_markdown=rendered_markdown,
-        news_items=news_items,
         news_article_url=news_article_url,
         news_discussion_url=news_discussion_url,
         news_key_points=news_key_points,

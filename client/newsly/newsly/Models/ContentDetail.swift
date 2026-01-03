@@ -33,9 +33,6 @@ struct ContentDetail: Codable, Identifiable {
     let quotes: [Quote]
     let topics: [String]
     let fullMarkdown: String?
-    let isAggregate: Bool
-    let renderedMarkdown: String?
-    let newsItems: [NewsItem]?
     let imageUrl: String?
     let thumbnailUrl: String?
     let detectedFeed: DetectedFeed?
@@ -67,9 +64,6 @@ struct ContentDetail: Codable, Identifiable {
         case quotes
         case topics
         case fullMarkdown = "full_markdown"
-        case isAggregate = "is_aggregate"
-        case renderedMarkdown = "rendered_markdown"
-        case newsItems = "news_items"
         case imageUrl = "image_url"
         case thumbnailUrl = "thumbnail_url"
         case detectedFeed = "detected_feed"
@@ -154,28 +148,4 @@ struct ContentDetail: Codable, Identifiable {
         }
         return nil
     }
-}
-
-struct NewsItem: Codable, Identifiable {
-    let title: String?
-    let url: String
-    let summary: String?
-    let source: String?
-    let author: String?
-    let metadata: [String: AnyCodable]?
-    let commentsUrl: String?
-    let bulletPoints: [BulletPoint]?
-
-    enum CodingKeys: String, CodingKey {
-        case title
-        case url
-        case summary
-        case source
-        case author
-        case metadata
-        case commentsUrl = "comments_url"
-        case bulletPoints = "bullet_points"
-    }
-
-    var id: String { url }
 }

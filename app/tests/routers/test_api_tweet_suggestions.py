@@ -275,8 +275,8 @@ def test_tweet_suggestions_news_content(client: TestClient, db_session: Session)
             },
             "summary": {
                 "title": "News Summary",
-                "overview": "Overview of the news",
-                "bullet_points": ["Point 1"],
+                "summary": "Overview of the news",
+                "key_points": ["Point 1"],
             },
         },
     )

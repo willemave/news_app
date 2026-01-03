@@ -165,42 +165,9 @@ struct ContentDetailView: View {
                                 modernSectionPlain(isPadded: false) {
                                     VStack(alignment: .leading, spacing: 16) {
                                         sectionHeader("News Updates", icon: "newspaper")
-
-                                        if let markdown = content.renderedMarkdown, !markdown.isEmpty {
-                                            Markdown(markdown)
-                                                .markdownTheme(.gitHub)
-                                        } else if let items = content.newsItems, !items.isEmpty {
-                                            VStack(alignment: .leading, spacing: 16) {
-                                                ForEach(items) { item in
-                                                    VStack(alignment: .leading, spacing: 8) {
-                                                        if let url = URL(string: item.url) {
-                                                            Link(item.title ?? item.url, destination: url)
-                                                                .font(.subheadline)
-                                                                .fontWeight(.medium)
-                                                        } else {
-                                                            Text(item.title ?? item.url)
-                                                                .font(.subheadline)
-                                                                .fontWeight(.medium)
-                                                        }
-
-                                                        if let summary = item.summary, !summary.isEmpty {
-                                                            Text(summary)
-                                                                .font(.footnote)
-                                                                .foregroundColor(.secondary)
-                                                        }
-                                                    }
-
-                                                    if item.id != items.last?.id {
-                                                        Divider()
-                                                            .opacity(0.5)
-                                                    }
-                                                }
-                                            }
-                                        } else {
-                                            Text("No news metadata available.")
-                                                .font(.subheadline)
-                                                .foregroundColor(.secondary)
-                                        }
+                                        Text("No news metadata available.")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
                                     }
                                 }
                                 .padding(.horizontal, DetailDesign.horizontalPadding)

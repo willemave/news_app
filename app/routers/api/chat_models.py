@@ -7,6 +7,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.services.llm_models import LLMProvider as ChatModelProvider
+
 
 class ChatMessageRole(str, Enum):
     """Role of a chat message."""
@@ -14,6 +16,7 @@ class ChatMessageRole(str, Enum):
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
+    TOOL = "tool"
 
 
 class MessageProcessingStatus(str, Enum):
@@ -22,6 +25,61 @@ class MessageProcessingStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class CreateChatSessionRequest(BaseModel):
+    """Request to create a new chat session."""
+
+    content_id: int | None = Field(None, description="Content ID to chat about")
+    topic: str | None = Field(None, max_length=500, description="Specific topic to discuss")
+    llm_provider: ChatModelProvider | None = Field(
+        None, description="LLM provider (defaults to anthropic)"
+    )
+    llm_model_hint: str | None = Field(
+        None, max_length=100, description="Optional specific model to use"
+    )
+    initial_message: str | None = Field(
+        None, max_length=2000, description="Optional initial user message"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "content_id": 123,
+                "topic": None,
+                "llm_provider": "anthropic",
+                "llm_model_hint": None,
+                "initial_message": "What are the key insights from this article?",
+            }
+        }
+
+
+class UpdateChatSessionRequest(BaseModel):
+    """Request to update a chat session."""
+
+    llm_provider: ChatModelProvider | None = Field(
+        None, description="New LLM provider to use for this session"
+    )
+    llm_model_hint: str | None = Field(
+        None, max_length=100, description="Optional specific model to use"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "llm_provider": "anthropic",
+                "llm_model_hint": None,
+            }
+        }
+
+
+class SendChatMessageRequest(BaseModel):
+    """Request to send a message in a chat session."""
+
+    message: str = Field(..., min_length=1, max_length=10000, description="Message to send")
+
+    class Config:
+        json_schema_extra = {"example": {"message": "Can you explain that in more detail?"}}
 
 
 class ChatMessageDto(BaseModel):

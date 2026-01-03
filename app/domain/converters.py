@@ -1,91 +1,12 @@
 """Converters between domain models and database models."""
 
 from datetime import datetime
-from typing import Any
-from urllib.parse import urlparse
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
 
 logger = get_logger(__name__)
-
-
-def normalize_news_metadata(
-    metadata: dict[str, Any] | None,
-    fallback_url: str | None,
-    fallback_title: str | None,
-    fallback_source: str | None,
-) -> dict[str, Any]:
-    """Ensure news metadata includes the required ``article`` structure.
-
-    Older scraper payloads (notably Reddit) emitted aggregator-style metadata without
-    the mandatory ``article`` block expected by ``NewsMetadata``. This helper patches
-    the payload before validation so workers can continue processing legacy rows.
-    """
-
-    raw_metadata: dict[str, Any] = dict(metadata or {})
-
-    # Seed the article payload with any existing data without mutating the original.
-    existing_article = raw_metadata.get("article")
-    article: dict[str, Any] = dict(existing_article) if isinstance(existing_article, dict) else {}
-
-    def _first_item_value(items: Any, key: str) -> Any:
-        if isinstance(items, list) and items:
-            first = items[0]
-            if isinstance(first, dict):
-                return first.get(key)
-        return None
-
-    def _coerce_str(value: Any) -> str | None:
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        return None
-
-    # Determine canonical article URL. Prefer existing data, fall back to scraped URL.
-    candidate_urls: list[str | None] = [
-        _coerce_str(article.get("url")),
-        _coerce_str(_first_item_value(raw_metadata.get("items"), "url")),
-        _coerce_str(raw_metadata.get("article_url")),
-        _coerce_str(raw_metadata.get("canonical_url")),
-        _coerce_str(fallback_url),
-    ]
-    article_url = next((url for url in candidate_urls if url), None)
-    if article_url:
-        article["url"] = article_url
-
-    # Populate title using existing metadata, first aggregated item, or DB record.
-    candidate_titles: list[str | None] = [
-        _coerce_str(article.get("title")),
-        _coerce_str(raw_metadata.get("title")),
-        _coerce_str(raw_metadata.get("headline")),
-        _coerce_str(_first_item_value(raw_metadata.get("items"), "title")),
-        _coerce_str(fallback_title),
-    ]
-    article_title = next((title for title in candidate_titles if title), None)
-    if article_title:
-        # Truncate to 500 chars to match NewsArticleMetadata.title max_length
-        article["title"] = article_title[:500] if len(article_title) > 500 else article_title
-
-    # Infer source domain either from the URL or fallback source metadata.
-    if not _coerce_str(article.get("source_domain")) and article.get("url"):
-        try:
-            domain = urlparse(str(article["url"]))
-        except ValueError:
-            domain = None
-        else:
-            host = domain.netloc
-            if host:
-                article["source_domain"] = host
-
-    if not _coerce_str(article.get("source_domain")) and _coerce_str(fallback_source):
-        article["source_domain"] = _coerce_str(fallback_source)
-
-    # Strip empty values so downstream JSON dumps stay compact.
-    cleaned_article = {key: value for key, value in article.items() if value not in (None, "", {})}
-
-    raw_metadata["article"] = cleaned_article
-    return raw_metadata
 
 
 def content_to_domain(db_content: DBContent) -> ContentData:
@@ -98,14 +19,6 @@ def content_to_domain(db_content: DBContent) -> ContentData:
         if db_content.source and metadata.get("source") is None:
             metadata["source"] = db_content.source
 
-        if db_content.content_type == ContentType.NEWS.value:
-            metadata = normalize_news_metadata(
-                metadata,
-                fallback_url=db_content.url,
-                fallback_title=db_content.title,
-                fallback_source=metadata.get("source") or db_content.source,
-            )
-
         return ContentData(
             id=db_content.id,
             content_type=ContentType(db_content.content_type),
@@ -115,7 +28,6 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             metadata=metadata,
             platform=db_content.platform,
             source=db_content.source,
-            is_aggregate=bool(getattr(db_content, "is_aggregate", False)),
             error_message=db_content.error_message,
             retry_count=db_content.retry_count or 0,
             created_at=db_content.created_at,
@@ -164,8 +76,6 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
             if classification in ("to_read", "skip"):
                 existing.classification = classification
 
-        if hasattr(existing, "is_aggregate"):
-            existing.is_aggregate = content_data.is_aggregate
         existing.error_message = content_data.error_message
         existing.retry_count = content_data.retry_count
         if content_data.processed_at:
@@ -186,7 +96,6 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
             platform=(plat.strip().lower() if isinstance(plat, str) and plat.strip() else None),
             source=(src.strip() if isinstance(src, str) and src.strip() else None),
             content_metadata=md,
-            is_aggregate=content_data.is_aggregate,
             error_message=content_data.error_message,
             retry_count=content_data.retry_count,
             created_at=content_data.created_at or datetime.utcnow(),

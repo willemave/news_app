@@ -260,21 +260,28 @@ class PodcastUnifiedScraper(BaseScraper):
 
     def _find_audio_enclosure(self, entry, title: str) -> str:
         """Find the audio enclosure URL for a podcast entry."""
+        enclosures = entry.get("enclosures")
+        if not enclosures:
+            enclosures = dict(entry).get("enclosures")
+
         # Check enclosures first
-        if hasattr(entry, "enclosures") and entry.enclosures:
-            for enclosure in entry.enclosures:
+        if enclosures:
+            for enclosure in enclosures:
                 enclosure_type = getattr(enclosure, "type", None) or enclosure.get("type", "")
                 enclosure_href = getattr(enclosure, "href", None) or enclosure.get("href", "")
                 if not enclosure_href:
                     continue
                 if enclosure_type and "audio" in enclosure_type:
-                    logger.debug(f"Found audio enclosure for '{title}': {enclosure_href}")
+                    logger.debug("Found audio enclosure for '%s': %s", title, enclosure_href)
                     return enclosure_href
                 if any(
-                    enclosure_href.lower().endswith(ext)
-                    for ext in (".mp3", ".m4a", ".wav", ".ogg")
+                    enclosure_href.lower().endswith(ext) for ext in (".mp3", ".m4a", ".wav", ".ogg")
                 ):
-                    logger.debug(f"Found audio enclosure by extension for '{title}': {enclosure_href}")
+                    logger.debug(
+                        "Found audio enclosure by extension for '%s': %s",
+                        title,
+                        enclosure_href,
+                    )
                     return enclosure_href
 
         # Fallback: check links for audio content

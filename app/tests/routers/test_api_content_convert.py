@@ -1,6 +1,5 @@
 """Tests for news link to article conversion endpoint."""
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -23,7 +22,7 @@ def test_convert_news_link_to_article(client: TestClient, db_session: Session) -
             },
             "summary": {
                 "title": "News Summary",
-                "overview": "This is a news summary"
+                "summary": "This is a news summary"
             }
         },
     )

@@ -1,6 +1,5 @@
 """Integration tests for news-to-article conversion workflow."""
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -23,8 +22,10 @@ def test_full_convert_workflow(client: TestClient, db_session: Session) -> None:
             },
             "summary": {
                 "title": "AI Discussion on HN",
-                "overview": "Interesting discussion about AI trends that highlights recent advancements",
-                "bullet_points": [
+                "summary": (
+                    "Interesting discussion about AI trends that highlights recent advancements"
+                ),
+                "key_points": [
                     "AI is evolving rapidly",
                     "New models are more efficient"
                 ]
@@ -58,7 +59,9 @@ def test_full_convert_workflow(client: TestClient, db_session: Session) -> None:
         Content.content_type == ContentType.ARTICLE.value
     ).all()
     article_ids = [a.id for a in all_articles]
-    assert new_article_id in article_ids, f"New article {new_article_id} not found in articles {article_ids}"
+    assert new_article_id in article_ids, (
+        f"New article {new_article_id} not found in articles {article_ids}"
+    )
 
     # 5. Try converting same news again - should return existing article
     convert_again = client.post(f"/api/content/{news.id}/convert-to-article")

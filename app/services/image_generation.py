@@ -191,10 +191,16 @@ def _build_news_thumbnail_prompt(content: ContentData) -> str:
     """Build prompt for subtle news thumbnail."""
     summary = content.metadata.get("summary", {})
     title = summary.get("title") or content.display_title
-    overview = summary.get("overview") or summary.get("hook") or summary.get("takeaway") or ""
+    overview = (
+        summary.get("summary")
+        or summary.get("overview")
+        or summary.get("hook")
+        or summary.get("takeaway")
+        or ""
+    )
 
     bullet_points = []
-    for bp in summary.get("bullet_points", [])[:3]:
+    for bp in (summary.get("key_points") or summary.get("bullet_points", []))[:3]:
         text = bp.get("text") if isinstance(bp, dict) else bp
         if text:
             bullet_points.append(text)
@@ -257,7 +263,7 @@ def _build_infographic_prompt(content: ContentData) -> str:
 
     # Extract key points (first 3)
     key_points = []
-    for bp in summary.get("bullet_points", [])[:3]:
+    for bp in (summary.get("key_points") or summary.get("bullet_points", []))[:3]:
         text = bp.get("text") if isinstance(bp, dict) else bp
         if text:
             key_points.append(text)

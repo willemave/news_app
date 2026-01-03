@@ -12,6 +12,7 @@ from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.core.timing import timed
 from app.models.metadata import ContentType
+from app.models.pagination import PaginationMetadata
 from app.models.schema import Content
 from app.models.user import User
 from app.presenters.content_presenter import (
@@ -231,12 +232,14 @@ def list_contents(
 
     return ContentListResponse(
         contents=content_summaries,
-        total=len(content_summaries),
         available_dates=available_dates,
         content_types=content_types,
-        next_cursor=next_cursor,
-        has_more=has_more,
-        page_size=len(content_summaries),
+        meta=PaginationMetadata(
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=len(content_summaries),
+            total=len(content_summaries),
+        ),
     )
 
 
@@ -405,12 +408,14 @@ def search_contents(
 
     return ContentListResponse(
         contents=content_summaries,
-        total=total,
         available_dates=[],  # Not applicable for search
         content_types=[ct.value for ct in ContentType],
-        next_cursor=next_cursor,
-        has_more=has_more,
-        page_size=len(content_summaries),
+        meta=PaginationMetadata(
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=len(content_summaries),
+            total=total,
+        ),
     )
 
 

@@ -22,8 +22,6 @@ struct ContentSummary: Codable, Identifiable {
     let publicationDate: String?
     let isRead: Bool
     var isFavorited: Bool
-    let isAggregate: Bool
-    let itemCount: Int?
     let imageUrl: String?
     let thumbnailUrl: String?
 
@@ -42,8 +40,6 @@ struct ContentSummary: Codable, Identifiable {
         case publicationDate = "publication_date"
         case isRead = "is_read"
         case isFavorited = "is_favorited"
-        case isAggregate = "is_aggregate"
-        case itemCount = "item_count"
         case imageUrl = "image_url"
         case thumbnailUrl = "thumbnail_url"
     }
@@ -63,8 +59,6 @@ struct ContentSummary: Codable, Identifiable {
         publicationDate: String?,
         isRead: Bool,
         isFavorited: Bool,
-        isAggregate: Bool = false,
-        itemCount: Int? = nil,
         imageUrl: String? = nil,
         thumbnailUrl: String? = nil
     ) {
@@ -82,8 +76,6 @@ struct ContentSummary: Codable, Identifiable {
         self.publicationDate = publicationDate
         self.isRead = isRead
         self.isFavorited = isFavorited
-        self.isAggregate = isAggregate
-        self.itemCount = itemCount
         self.imageUrl = imageUrl
         self.thumbnailUrl = thumbnailUrl
     }
@@ -105,8 +97,6 @@ struct ContentSummary: Codable, Identifiable {
             publicationDate: try container.decodeIfPresent(String.self, forKey: .publicationDate),
             isRead: try container.decode(Bool.self, forKey: .isRead),
             isFavorited: try container.decodeIfPresent(Bool.self, forKey: .isFavorited) ?? false,
-            isAggregate: try container.decodeIfPresent(Bool.self, forKey: .isAggregate) ?? false,
-            itemCount: try container.decodeIfPresent(Int.self, forKey: .itemCount),
             imageUrl: try container.decodeIfPresent(String.self, forKey: .imageUrl),
             thumbnailUrl: try container.decodeIfPresent(String.self, forKey: .thumbnailUrl)
         )
@@ -128,8 +118,6 @@ struct ContentSummary: Codable, Identifiable {
         try container.encodeIfPresent(publicationDate, forKey: .publicationDate)
         try container.encode(isRead, forKey: .isRead)
         try container.encode(isFavorited, forKey: .isFavorited)
-        try container.encode(isAggregate, forKey: .isAggregate)
-        try container.encodeIfPresent(itemCount, forKey: .itemCount)
         try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try container.encodeIfPresent(thumbnailUrl, forKey: .thumbnailUrl)
     }
@@ -145,11 +133,6 @@ struct ContentSummary: Codable, Identifiable {
     var secondaryLine: String? {
         if let summary = shortSummary, !summary.isEmpty {
             return summary
-        }
-        if contentType == "news" {
-            if let count = itemCount, count > 0 {
-                return isAggregate ? "\(count) updates" : nil
-            }
         }
         return nil
     }
@@ -197,8 +180,6 @@ struct ContentSummary: Codable, Identifiable {
             publicationDate: publicationDate,
             isRead: isRead ?? self.isRead,
             isFavorited: isFavorited ?? self.isFavorited,
-            isAggregate: isAggregate,
-            itemCount: itemCount,
             imageUrl: imageUrl,
             thumbnailUrl: thumbnailUrl
         )

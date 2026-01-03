@@ -228,20 +228,29 @@ def build_article_context(content: Content, include_full_text: bool = False) -> 
     # Add structured summary if available
     summary = metadata.get("summary", {})
     if summary:
-        overview = summary.get("overview") or summary.get("hook") or summary.get("takeaway")
+        overview = (
+            summary.get("summary")
+            or summary.get("overview")
+            or summary.get("hook")
+            or summary.get("takeaway")
+        )
         if overview:
             parts.append(f"Overview: {overview}")
 
-        bullet_points = summary.get("bullet_points")
-        if not bullet_points:
+        bullet_points = summary.get("key_points") or summary.get("bullet_points")
+        if bullet_points:
+            points = [
+                bp.get("text", "") if isinstance(bp, dict) else str(bp)
+                for bp in bullet_points
+                if isinstance(bp, (dict, str))
+            ]
+        else:
             bullet_points = summary.get("insights", [])
             points = [
                 ins.get("insight", "")
                 for ins in bullet_points
                 if isinstance(ins, dict) and ins.get("insight")
             ]
-        else:
-            points = [bp.get("text", "") for bp in bullet_points if isinstance(bp, dict)]
         if points:
             parts.append("Key Points:")
             for point in points[:10]:  # Limit to 10 points

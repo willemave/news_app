@@ -99,8 +99,7 @@ class SearchViewModel: ObservableObject {
                     source: c.source, platform: c.platform, status: c.status,
                     shortSummary: c.shortSummary, createdAt: c.createdAt, processedAt: c.processedAt,
                     classification: c.classification, publicationDate: c.publicationDate,
-                    isRead: true, isFavorited: c.isFavorited,
-                    isAggregate: c.isAggregate, itemCount: c.itemCount
+                    isRead: true, isFavorited: c.isFavorited
                 )
             }
         } catch {

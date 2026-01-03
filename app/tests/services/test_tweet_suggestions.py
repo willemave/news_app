@@ -15,8 +15,8 @@ from app.services.llm_prompts import (
 )
 from app.services.tweet_suggestions import (
     TWEET_MODEL,
-    TweetSuggestionService,
     TweetSuggestionLLM,
+    TweetSuggestionService,
     TweetSuggestionsPayload,
     _extract_content_context,
     _parse_suggestions_response,
@@ -217,8 +217,8 @@ class TestContentContextExtraction:
             "summary": {
                 "title": "News Title",
                 "article_url": "https://example.com/the-article",
-                "overview": "News overview",
-                "bullet_points": ["Point 1", "Point 2"],
+                "summary": "News overview",
+                "key_points": ["Point 1", "Point 2"],
             },
         }
 

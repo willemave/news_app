@@ -5,7 +5,6 @@
 //  Created by Assistant on 9/23/25.
 //
 
-import MarkdownUI
 import SwiftUI
 
 struct NewsDigestDetailView: View {
@@ -36,8 +35,6 @@ struct NewsDigestDetailView: View {
                     .padding(.vertical, 4)
                 aggregatorSection(aggregator: aggregator)
             }
-
-            legacyFallbackSection
         }
     }
 
@@ -201,65 +198,6 @@ struct NewsDigestDetailView: View {
                                         .lineLimit(2)
                                 }
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var legacyFallbackSection: some View {
-        if let markdown = content.renderedMarkdown, !markdown.isEmpty {
-            Divider()
-                .padding(.vertical, 8)
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Full Digest")
-                    .font(.title2)
-                    .fontWeight(.bold)
-
-                Markdown(markdown)
-                    .markdownTheme(.gitHub)
-            }
-        } else if let items = content.newsItems, !items.isEmpty {
-            Divider()
-                .padding(.vertical, 8)
-
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Updates")
-                    .font(.title2)
-                    .fontWeight(.bold)
-
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(items) { item in
-                        VStack(alignment: .leading, spacing: 8) {
-                            if let url = URL(string: item.url) {
-                                Link(destination: url) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "arrow.up.right.square")
-                                            .font(.callout)
-                                        Text(item.title ?? item.url)
-                                            .font(.callout)
-                                            .fontWeight(.medium)
-                                    }
-                                }
-                            } else {
-                                Text(item.title ?? item.url)
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                            }
-
-                            if let summary = item.summary, !summary.isEmpty {
-                                Text(summary)
-                                    .font(.callout)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-
-                        if item.id != items.last?.id {
-                            Divider()
-                                .padding(.vertical, 4)
                         }
                     }
                 }

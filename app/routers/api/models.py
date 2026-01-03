@@ -1,6 +1,5 @@
 """Pydantic models for API endpoints."""
 
-from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -11,190 +10,7 @@ from app.models.content_submission import (  # noqa: F401
     ContentSubmissionResponse,
     SubmitContentRequest,
 )
-from app.services.llm_models import LLMProvider as ChatModelProvider
-
-
-class ChatMessageRole(str, Enum):
-    """Role of a chat message."""
-
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
-    TOOL = "tool"
-
-
-class ChatSessionSummaryResponse(BaseModel):
-    """Summary of a chat session for list view."""
-
-    id: int = Field(..., description="Unique session identifier")
-    content_id: int | None = Field(None, description="Associated content ID if any")
-    title: str | None = Field(None, description="Session title")
-    session_type: str | None = Field(
-        None, description="Session type (article_brain, topic, ad_hoc)"
-    )
-    topic: str | None = Field(None, description="Topic if session was started from a topic")
-    llm_provider: str = Field(..., description="LLM provider (openai, anthropic, google)")
-    llm_model: str = Field(
-        ..., description="Full model specification (e.g., anthropic:claude-sonnet-4-5-20250929)"
-    )
-    created_at: datetime = Field(..., description="Session creation timestamp")
-    updated_at: datetime | None = Field(None, description="Last update timestamp")
-    last_message_at: datetime | None = Field(None, description="Timestamp of last message")
-    article_title: str | None = Field(None, description="Title of associated article if any")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": 1,
-                "content_id": 123,
-                "title": "Understanding AI Agents",
-                "session_type": "article_brain",
-                "topic": None,
-                "llm_provider": "anthropic",
-                "llm_model": "anthropic:claude-sonnet-4-5-20250929",
-                "created_at": "2025-11-28T10:00:00Z",
-                "updated_at": "2025-11-28T10:30:00Z",
-                "last_message_at": "2025-11-28T10:30:00Z",
-                "article_title": "How AI Agents Work",
-            }
-        }
-
-
-class ChatMessageResponse(BaseModel):
-    """A single chat message for display."""
-
-    id: int = Field(..., description="Message ID")
-    role: ChatMessageRole = Field(..., description="Message role (user/assistant/system/tool)")
-    timestamp: datetime = Field(..., description="Message timestamp")
-    content: str = Field(..., description="Message content")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": 1,
-                "role": "user",
-                "timestamp": "2025-11-28T10:00:00Z",
-                "content": "What are the key takeaways from this article?",
-            }
-        }
-
-
-class ChatSessionDetailResponse(BaseModel):
-    """Detailed chat session with messages."""
-
-    session: ChatSessionSummaryResponse = Field(..., description="Session summary")
-    messages: list[ChatMessageResponse] = Field(..., description="Chat messages in order")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "session": {
-                    "id": 1,
-                    "content_id": 123,
-                    "title": "Understanding AI Agents",
-                    "session_type": "article_brain",
-                    "llm_provider": "anthropic",
-                    "llm_model": "anthropic:claude-sonnet-4-5-20250929",
-                    "created_at": "2025-11-28T10:00:00Z",
-                    "updated_at": "2025-11-28T10:30:00Z",
-                    "last_message_at": "2025-11-28T10:30:00Z",
-                    "article_title": "How AI Agents Work",
-                },
-                "messages": [
-                    {
-                        "id": 1,
-                        "role": "user",
-                        "timestamp": "2025-11-28T10:00:00Z",
-                        "content": "What are the key takeaways?",
-                    },
-                    {
-                        "id": 2,
-                        "role": "assistant",
-                        "timestamp": "2025-11-28T10:00:05Z",
-                        "content": "The key takeaways from this article are...",
-                    },
-                ],
-            }
-        }
-
-
-class CreateChatSessionRequest(BaseModel):
-    """Request to create a new chat session."""
-
-    content_id: int | None = Field(None, description="Content ID to chat about")
-    topic: str | None = Field(None, max_length=500, description="Specific topic to discuss")
-    llm_provider: ChatModelProvider | None = Field(
-        None, description="LLM provider (defaults to anthropic)"
-    )
-    llm_model_hint: str | None = Field(
-        None, max_length=100, description="Optional specific model to use"
-    )
-    initial_message: str | None = Field(
-        None, max_length=2000, description="Optional initial user message"
-    )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "content_id": 123,
-                "topic": None,
-                "llm_provider": "anthropic",
-                "llm_model_hint": None,
-                "initial_message": "What are the key insights from this article?",
-            }
-        }
-
-
-class UpdateChatSessionRequest(BaseModel):
-    """Request to update a chat session."""
-
-    llm_provider: ChatModelProvider | None = Field(
-        None, description="New LLM provider to use for this session"
-    )
-    llm_model_hint: str | None = Field(
-        None, max_length=100, description="Optional specific model to use"
-    )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "llm_provider": "anthropic",
-                "llm_model_hint": None,
-            }
-        }
-
-
-class CreateChatSessionResponse(BaseModel):
-    """Response after creating a chat session."""
-
-    session: ChatSessionSummaryResponse = Field(..., description="Created session")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "session": {
-                    "id": 1,
-                    "content_id": 123,
-                    "title": "How AI Agents Work",
-                    "session_type": "article_brain",
-                    "llm_provider": "anthropic",
-                    "llm_model": "anthropic:claude-sonnet-4-5-20250929",
-                    "created_at": "2025-11-28T10:00:00Z",
-                    "updated_at": None,
-                    "last_message_at": None,
-                    "article_title": "How AI Agents Work",
-                }
-            }
-        }
-
-
-class SendChatMessageRequest(BaseModel):
-    """Request to send a message in a chat session."""
-
-    message: str = Field(..., min_length=1, max_length=10000, description="Message to send")
-
-    class Config:
-        json_schema_extra = {"example": {"message": "Can you explain that in more detail?"}}
+from app.models.pagination import PaginationMetadata
 
 
 class ContentSummaryResponse(BaseModel):
@@ -225,12 +41,6 @@ class ContentSummaryResponse(BaseModel):
     )
     is_read: bool = Field(False, description="Whether the content has been marked as read")
     is_favorited: bool = Field(False, description="Whether the content has been favorited")
-    is_aggregate: bool = Field(
-        False, description="Whether this news item aggregates multiple links"
-    )
-    item_count: int | None = Field(
-        None, description="Number of child items when content_type is news"
-    )
     news_article_url: str | None = Field(
         None, description="Canonical article link for news content"
     )
@@ -269,8 +79,6 @@ class ContentSummaryResponse(BaseModel):
                 "classification": "to_read",
                 "publication_date": "2025-06-18T12:00:00Z",
                 "is_read": False,
-                "is_aggregate": False,
-                "item_count": None,
                 "image_url": "/static/images/content/123.png",
                 "thumbnail_url": "/static/images/thumbnails/123.png",
             }
@@ -281,14 +89,9 @@ class ContentListResponse(BaseModel):
     """Response for content list endpoint."""
 
     contents: list[ContentSummaryResponse] = Field(..., description="List of content items")
-    total: int = Field(..., description="Total number of items")
     available_dates: list[str] = Field(..., description="List of available dates (YYYY-MM-DD)")
     content_types: list[str] = Field(..., description="Available content types for filtering")
-    next_cursor: str | None = Field(
-        None, description="Opaque cursor token for next page (null if no more results)"
-    )
-    has_more: bool = Field(False, description="Whether more results are available")
-    page_size: int = Field(0, description="Number of items in current response")
+    meta: PaginationMetadata = Field(..., description="Pagination metadata for the response")
 
     class Config:
         json_schema_extra = {
@@ -308,12 +111,14 @@ class ContentListResponse(BaseModel):
                         "classification": "to_read",
                     }
                 ],
-                "total": 1,
                 "available_dates": ["2025-06-19", "2025-06-18"],
                 "content_types": ["article", "podcast", "news"],
-                "next_cursor": "eyJsYXN0X2lkIjoxMjN9",
-                "has_more": True,
-                "page_size": 25,
+                "meta": {
+                    "next_cursor": "eyJsYXN0X2lkIjoxMjN9",
+                    "has_more": True,
+                    "page_size": 25,
+                    "total": 1,
+                },
             }
         }
 
@@ -377,14 +182,6 @@ class ContentDetailResponse(BaseModel):
     topics: list[str] = Field(..., description="Topics from structured summary")
     full_markdown: str | None = Field(
         None, description="Full article content formatted as markdown"
-    )
-    is_aggregate: bool = Field(False, description="Whether this content aggregates multiple items")
-    rendered_markdown: str | None = Field(
-        None, description="Rendered markdown list for legacy news aggregates"
-    )
-    news_items: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Legacy structured child items for news content",
     )
     news_article_url: str | None = Field(
         None, description="Canonical article link for news content"
@@ -468,9 +265,6 @@ class ContentDetailResponse(BaseModel):
                 "quotes": [{"text": "The future is now", "context": "Jane Doe"}],
                 "topics": ["AI", "Technology", "Future"],
                 "full_markdown": "# Understanding AI in 2025\n\nFull article content...",
-                "is_aggregate": False,
-                "rendered_markdown": None,
-                "news_items": [],
                 "image_url": "/static/images/content/123.png",
                 "thumbnail_url": "/static/images/thumbnails/123.png",
                 "can_subscribe": False,
