@@ -17,9 +17,9 @@ def test_resolve_model_defaults() -> None:
 
 def test_resolve_model_prefixed_hint_overrides_provider() -> None:
     """Prefixed hints take precedence over the provider argument."""
-    provider, model_spec = resolve_model("openai", "anthropic:claude-sonnet-4-5-20250929")
+    provider, model_spec = resolve_model("openai", "anthropic:claude-opus-4-5-20251101")
     assert provider == "anthropic"
-    assert model_spec == "anthropic:claude-sonnet-4-5-20250929"
+    assert model_spec == "anthropic:claude-opus-4-5-20251101"
 
 
 def test_resolve_model_provider_prefix_normalization() -> None:

@@ -59,6 +59,12 @@ struct DebugMenuView: View {
                     }
 
                     HStack {
+                        Text("User ID")
+                        Spacer()
+                        userIdText
+                    }
+
+                    HStack {
                         Text("Access Token")
                         Spacer()
                         if KeychainManager.shared.getToken(key: .accessToken) != nil {
@@ -168,6 +174,17 @@ struct DebugMenuView: View {
             return Text("Unauthenticated").foregroundColor(.red)
         case .authenticated(let user):
             return Text("Authenticated: \(user.email)").foregroundColor(.green)
+        }
+    }
+
+    private var userIdText: some View {
+        switch authViewModel.authState {
+        case .authenticated(let user):
+            return Text("\(user.id)").foregroundColor(.primary)
+        case .loading:
+            return Text("—").foregroundColor(.secondary)
+        case .unauthenticated:
+            return Text("—").foregroundColor(.secondary)
         }
     }
 

@@ -1,6 +1,5 @@
 """Tests for chat session API endpoints."""
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -259,7 +258,7 @@ def test_different_llm_providers(
     """Test creating sessions with different LLM providers."""
     providers = [
         ("openai", "openai:gpt-5.1"),
-        ("anthropic", "anthropic:claude-sonnet-4-5-20250929"),
+        ("anthropic", "anthropic:claude-opus-4-5-20251101"),
         ("google", "google-gla:gemini-3-pro-preview"),
     ]
 

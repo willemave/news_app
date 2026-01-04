@@ -34,7 +34,7 @@ PROVIDER_PREFIXES: dict[str, str] = {
 
 PROVIDER_DEFAULTS: dict[str, str] = {
     LLMProvider.OPENAI.value: "openai:gpt-5.1",
-    LLMProvider.ANTHROPIC.value: "anthropic:claude-sonnet-4-5-20250929",
+    LLMProvider.ANTHROPIC.value: "anthropic:claude-opus-4-5-20251101",
     LLMProvider.GOOGLE.value: "google-gla:gemini-3-pro-preview",
     LLMProvider.DEEP_RESEARCH.value: "deep_research:o4-mini-deep-research-2025-06-26",
 }

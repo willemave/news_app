@@ -60,7 +60,7 @@ enum ChatModelProvider: String, Codable, CaseIterable {
         case .openai:
             return "gpt-5.1"
         case .anthropic:
-            return "claude-sonnet-4-5-20250929"
+            return "claude-opus-4-5-20251101"
         case .google:
             return "gemini-3-pro-preview"
         case .deep_research:
