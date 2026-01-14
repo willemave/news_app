@@ -6,21 +6,33 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
+
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.db import get_db
 from app.core.logging import get_logger, setup_logging
 from app.core.settings import get_settings
-from app.models.metadata import ContentStatus, ContentType, NewsSummary
+from app.models.metadata import ContentClassification, ContentStatus, ContentType, NewsSummary
 from app.models.schema import Content, ProcessingTask
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker, get_llm_service
 from app.scraping.runner import ScraperRunner
 from app.services.content_analyzer import AnalysisError, get_content_analyzer
+from app.services.content_submission import normalize_url
 from app.services.feed_detection import detect_feeds_from_html
+from app.services.feed_discovery import run_feed_discovery
 from app.services.feed_subscription import subscribe_to_detected_feed
 from app.services.http import get_http_service
 from app.services.instruction_links import create_contents_from_instruction_links
 from app.services.queue import QueueService, TaskType
+from app.services.scraper_configs import ensure_inbox_status
+from app.services.twitter_share import (
+    TweetFetchParams,
+    canonical_tweet_url,
+    extract_tweet_id,
+    fetch_tweet_detail,
+    resolve_twitter_credentials,
+)
 
 logger = get_logger(__name__)
 
@@ -44,6 +56,12 @@ def _build_analysis_instruction(
     if not crawl_links:
         return None
     return "Extract relevant links from the submitted page."
+
+
+def _build_thread_text(tweet_texts: list[str]) -> str:
+    """Join tweet/thread text into a single body."""
+    cleaned = [text.strip() for text in tweet_texts if isinstance(text, str) and text.strip()]
+    return "\n\n".join(cleaned)
 
 
 class SequentialTaskProcessor:
@@ -89,6 +107,8 @@ class SequentialTaskProcessor:
                 result = self._process_generate_image_task(task_data)
             elif task_type == TaskType.GENERATE_THUMBNAIL:
                 result = self._process_generate_thumbnail_task(task_data)
+            elif task_type == TaskType.DISCOVER_FEEDS:
+                result = self._process_discover_feeds_task(task_data)
             else:
                 logger.error(f"Unknown task type: {task_type}")
                 result = False
@@ -164,6 +184,7 @@ class SequentialTaskProcessor:
                 task_id = task_data.get("id")
                 analysis_result = None
                 analysis_instruction = _build_analysis_instruction(instruction, crawl_links)
+                tweet_handled = False
 
                 if subscribe_to_feed:
                     html_content: str | None = None
@@ -233,78 +254,262 @@ class SequentialTaskProcessor:
                     )
                     return True
 
-                # Check if this is a known platform (fast path)
-                use_llm = should_use_llm_analysis(url) or bool(analysis_instruction)
-                if not use_llm:
-                    # Use pattern-based detection
-                    detected_type, platform = infer_content_type_and_platform(url, None, None)
-                    logger.info(
-                        f"Pattern-based detection for {content_id}: type={detected_type.value}, "
-                        f"platform={platform}"
+                tweet_id = extract_tweet_id(str(url))
+                is_self_submission = content.source == SELF_SUBMISSION_SOURCE or bool(
+                    metadata.get("submitted_by_user_id")
+                )
+                if tweet_id and is_self_submission:
+                    tweet_handled = True
+                    credentials_result = resolve_twitter_credentials()
+                    if not credentials_result.success or not credentials_result.credentials:
+                        error_message = (
+                            credentials_result.error or "Twitter credentials unavailable"
+                        )
+                        logger.error(
+                            "Twitter share fetch failed: %s",
+                            error_message,
+                            extra={
+                                "component": "twitter_share",
+                                "operation": "resolve_credentials",
+                                "item_id": content_id,
+                            },
+                        )
+                        content.status = ContentStatus.FAILED.value
+                        content.error_message = error_message
+                        db.commit()
+                        return False
+
+                    tweet_url = canonical_tweet_url(tweet_id)
+                    fetch_result = fetch_tweet_detail(
+                        TweetFetchParams(
+                            tweet_id=tweet_id,
+                            credentials=credentials_result.credentials,
+                            include_thread=True,
+                        )
+                    )
+                    if not fetch_result.success or not fetch_result.tweet:
+                        error_message = fetch_result.error or "TweetDetail request failed"
+                        logger.error(
+                            "Twitter share fetch failed: %s",
+                            error_message,
+                            extra={
+                                "component": "twitter_share",
+                                "operation": "fetch_tweet",
+                                "item_id": content_id,
+                            },
+                        )
+                        content.status = ContentStatus.FAILED.value
+                        content.error_message = error_message
+                        db.commit()
+                        return False
+
+                    thread_tweets = fetch_result.thread or [fetch_result.tweet]
+                    thread_text = _build_thread_text([tweet.text for tweet in thread_tweets])
+                    external_urls: list[str] = []
+                    for raw_url in fetch_result.external_urls:
+                        try:
+                            external_urls.append(normalize_url(raw_url))
+                        except Exception:
+                            logger.warning(
+                                "Skipping invalid tweet external URL: %s",
+                                raw_url,
+                                extra={
+                                    "component": "twitter_share",
+                                    "operation": "normalize_external_url",
+                                    "item_id": content_id,
+                                },
+                            )
+
+                    metadata.update(
+                        {
+                            "platform": "twitter",
+                            "discussion_url": tweet_url,
+                            "tweet_id": tweet_id,
+                            "tweet_url": tweet_url,
+                            "tweet_author": fetch_result.tweet.author_name,
+                            "tweet_author_username": fetch_result.tweet.author_username,
+                            "tweet_created_at": fetch_result.tweet.created_at,
+                            "tweet_like_count": fetch_result.tweet.like_count,
+                            "tweet_retweet_count": fetch_result.tweet.retweet_count,
+                            "tweet_reply_count": fetch_result.tweet.reply_count,
+                            "tweet_text": fetch_result.tweet.text,
+                            "tweet_thread_text": thread_text,
+                            "tweet_external_urls": external_urls,
+                        }
                     )
 
-                    content.content_type = detected_type.value
-                    if platform:
-                        content.platform = platform
-                        metadata["platform"] = platform
+                    content.content_type = ContentType.ARTICLE.value
+                    content.platform = "twitter"
+                    if not content.source_url:
+                        content.source_url = tweet_url
+
+                    fanout_urls: list[str] = []
+                    if external_urls:
+                        content.url = external_urls[0]
+                        fanout_urls = external_urls[1:]
+                    else:
+                        content.url = tweet_url
+                        metadata["tweet_only"] = True
 
                     content.content_metadata = metadata
                     db.commit()
 
-                else:
-                    # Use LLM analysis with web search
-                    analyzer = get_content_analyzer()
-                    result = analyzer.analyze_url(url, instruction=analysis_instruction)
-
-                    if isinstance(result, AnalysisError):
-                        # Fall back to pattern detection on error
-                        logger.warning(
-                            f"LLM analysis failed for {content_id}, using pattern detection: "
-                            f"{result.message}"
+                    submitter_id = metadata.get("submitted_by_user_id")
+                    submitted_via = metadata.get("submitted_via") or "share_sheet"
+                    for normalized_url in fanout_urls:
+                        existing = (
+                            db.query(Content)
+                            .filter(
+                                Content.url == normalized_url,
+                                Content.content_type == ContentType.ARTICLE.value,
+                            )
+                            .first()
                         )
-                        detected_type, platform = infer_content_type_and_platform(url, None, None)
+                        if existing:
+                            if submitter_id:
+                                ensure_inbox_status(
+                                    db,
+                                    submitter_id,
+                                    existing.id,
+                                    content_type=existing.content_type,
+                                )
+                                db.commit()
+                            continue
+
+                        fanout_metadata = dict(metadata)
+                        fanout_metadata["source"] = SELF_SUBMISSION_SOURCE
+                        if submitter_id:
+                            fanout_metadata["submitted_by_user_id"] = submitter_id
+                        fanout_metadata["submitted_via"] = f"{submitted_via}_tweet_fanout"
+
+                        new_content = Content(
+                            url=normalized_url,
+                            source_url=tweet_url,
+                            content_type=ContentType.ARTICLE.value,
+                            title=None,
+                            source=SELF_SUBMISSION_SOURCE,
+                            platform="twitter",
+                            is_aggregate=False,
+                            status=ContentStatus.NEW.value,
+                            classification=ContentClassification.TO_READ.value,
+                            content_metadata=fanout_metadata,
+                        )
+                        db.add(new_content)
+                        try:
+                            db.commit()
+                        except IntegrityError:
+                            db.rollback()
+                            continue
+                        db.refresh(new_content)
+
+                        if submitter_id:
+                            ensure_inbox_status(
+                                db,
+                                submitter_id,
+                                new_content.id,
+                                content_type=new_content.content_type,
+                            )
+                            db.commit()
+
+                        self.queue_service.enqueue(TaskType.ANALYZE_URL, content_id=new_content.id)
+
+                    logger.info(
+                        "Twitter share processed for content %s (external_urls=%s)",
+                        content_id,
+                        len(external_urls),
+                        extra={
+                            "component": "twitter_share",
+                            "operation": "analyze_url",
+                            "item_id": content_id,
+                        },
+                    )
+
+                    # Skip standard LLM analysis for tweets.
+                    analysis_result = None
+                if not tweet_handled:
+                    # Check if this is a known platform (fast path)
+                    use_llm = should_use_llm_analysis(url) or bool(analysis_instruction)
+                    if not use_llm:
+                        # Use pattern-based detection
+                        detected_type, platform = infer_content_type_and_platform(
+                            url,
+                            None,
+                            None,
+                        )
+                        logger.info(
+                            "Pattern-based detection for %s: type=%s, platform=%s",
+                            content_id,
+                            detected_type.value,
+                            platform,
+                        )
+
                         content.content_type = detected_type.value
                         if platform:
                             content.platform = platform
                             metadata["platform"] = platform
+
+                        content.content_metadata = metadata
+                        db.commit()
+
                     else:
-                        analysis = result.analysis
-                        # Map LLM result to ContentType
-                        if analysis.content_type == "article":
-                            content.content_type = ContentType.ARTICLE.value
-                        elif analysis.content_type in ("podcast", "video"):
-                            content.content_type = ContentType.PODCAST.value
+                        # Use LLM analysis with web search
+                        analyzer = get_content_analyzer()
+                        result = analyzer.analyze_url(url, instruction=analysis_instruction)
+
+                        if isinstance(result, AnalysisError):
+                            # Fall back to pattern detection on error
+                            logger.warning(
+                                "LLM analysis failed for %s, using pattern detection: %s",
+                                content_id,
+                                result.message,
+                            )
+                            detected_type, platform = infer_content_type_and_platform(
+                                url,
+                                None,
+                                None,
+                            )
+                            content.content_type = detected_type.value
+                            if platform:
+                                content.platform = platform
+                                metadata["platform"] = platform
                         else:
-                            content.content_type = ContentType.ARTICLE.value
+                            analysis = result.analysis
+                            # Map LLM result to ContentType
+                            if analysis.content_type == "article":
+                                content.content_type = ContentType.ARTICLE.value
+                            elif analysis.content_type in ("podcast", "video"):
+                                content.content_type = ContentType.PODCAST.value
+                            else:
+                                content.content_type = ContentType.ARTICLE.value
 
-                        # Store extracted metadata
-                        if analysis.platform:
-                            content.platform = analysis.platform
-                            metadata["platform"] = analysis.platform
-                        if analysis.media_url:
-                            metadata["audio_url"] = analysis.media_url
-                        if analysis.media_format:
-                            metadata["media_format"] = analysis.media_format
-                        if analysis.title:
-                            metadata["extracted_title"] = analysis.title
-                            if not content.title:
-                                content.title = analysis.title
-                        if analysis.description:
-                            metadata["extracted_description"] = analysis.description
-                        if analysis.duration_seconds:
-                            metadata["duration"] = analysis.duration_seconds
-                        if analysis.content_type == "video":
-                            metadata["is_video"] = True
-                            metadata["video_url"] = url
+                            # Store extracted metadata
+                            if analysis.platform:
+                                content.platform = analysis.platform
+                                metadata["platform"] = analysis.platform
+                            if analysis.media_url:
+                                metadata["audio_url"] = analysis.media_url
+                            if analysis.media_format:
+                                metadata["media_format"] = analysis.media_format
+                            if analysis.title:
+                                metadata["extracted_title"] = analysis.title
+                                if not content.title:
+                                    content.title = analysis.title
+                            if analysis.description:
+                                metadata["extracted_description"] = analysis.description
+                            if analysis.duration_seconds:
+                                metadata["duration"] = analysis.duration_seconds
+                            if analysis.content_type == "video":
+                                metadata["is_video"] = True
+                                metadata["video_url"] = url
 
-                        logger.info(
-                            f"LLM analysis complete for {content_id}: "
-                            f"type={content.content_type}, platform={content.platform}"
-                        )
-                        analysis_result = result
+                            logger.info(
+                                f"LLM analysis complete for {content_id}: "
+                                f"type={content.content_type}, platform={content.platform}"
+                            )
+                            analysis_result = result
 
-                    content.content_metadata = metadata
-                    db.commit()
+                        content.content_metadata = metadata
+                        db.commit()
 
                 if crawl_links and analysis_result and analysis_result.instruction:
                     created_ids = create_contents_from_instruction_links(
@@ -908,16 +1113,48 @@ class SequentialTaskProcessor:
                 },
             )
             return False
-
-        except Exception as e:
+        except Exception as exc:  # noqa: BLE001
             logger.exception(
-                "Thumbnail generation error for content %s: %s",
-                content_id,
-                e,
+                "Thumbnail generation task failed",
                 extra={
                     "component": "thumbnail_generation",
                     "operation": "generate_thumbnail_task",
-                    "item_id": content_id,
+                    "item_id": str(
+                        task_data.get("content_id")
+                        or task_data.get("payload", {}).get("content_id")
+                        or "unknown"
+                    ),
+                    "context_data": {"error": str(exc)},
+                },
+            )
+            return False
+
+    def _process_discover_feeds_task(self, task_data: dict[str, Any]) -> bool:
+        """Run feed/podcast/YouTube discovery for a user."""
+        payload = task_data.get("payload") or {}
+        user_id = payload.get("user_id")
+        if not isinstance(user_id, int):
+            logger.error(
+                "Missing user_id in discover_feeds task",
+                extra={
+                    "component": "feed_discovery",
+                    "operation": "task_payload",
+                    "context_data": {"payload": payload},
+                },
+            )
+            return False
+
+        try:
+            run_feed_discovery(user_id=user_id, trigger=payload.get("trigger", "cron"))
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Feed discovery task failed",
+                extra={
+                    "component": "feed_discovery",
+                    "operation": "task_run",
+                    "item_id": str(user_id),
+                    "context_data": {"error": str(exc)},
                 },
             )
             return False

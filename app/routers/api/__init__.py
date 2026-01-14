@@ -7,6 +7,7 @@ organized into logical sub-routers:
 - content_detail: Individual content details and chat URLs
 - read_status: Read/unread status management
 - favorites: Favorites management
+- discovery: Feed/podcast discovery suggestions
 - content_actions: Content transformations (e.g., convert news to article)
 - scraper_configs: User scraper configuration management
 - submission: User content submissions

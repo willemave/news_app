@@ -311,6 +311,7 @@ async def get_recently_read(
             news_discussion_url = None
             news_key_points = None
             news_summary_text = domain_content.short_summary
+            discussion_url = (domain_content.metadata or {}).get("discussion_url")
 
             if domain_content.content_type == ContentType.NEWS:
                 article_meta = (domain_content.metadata or {}).get("article", {})
@@ -325,6 +326,7 @@ async def get_recently_read(
                     str(domain_content.url) if domain_content.url else article_meta.get("url")
                 )
                 news_discussion_url = discussion_url
+                discussion_url = news_discussion_url
                 if isinstance(key_points, list) and key_points:
                     news_key_points = key_points
                 classification = summary_meta.get("classification") or classification
@@ -358,6 +360,7 @@ async def get_recently_read(
                     else None,
                     is_read=c.id in read_content_ids,
                     is_favorited=c.id in favorite_content_ids,
+                    discussion_url=discussion_url,
                     news_article_url=news_article_url,
                     news_discussion_url=news_discussion_url,
                     news_key_points=news_key_points,

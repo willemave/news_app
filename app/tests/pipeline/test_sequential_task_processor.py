@@ -15,6 +15,12 @@ from app.services.content_analyzer import (
     InstructionLink,
     InstructionResult,
 )
+from app.services.twitter_share import (
+    TweetFetchResult,
+    TweetInfo,
+    TwitterCredentials,
+    TwitterCredentialsResult,
+)
 
 
 def _build_analysis_output(url: str) -> ContentAnalysisOutput:
@@ -59,6 +65,33 @@ def _patch_processor_dependencies(db_session, monkeypatch, analyzer_output: Cont
     monkeypatch.setattr(stp, "get_llm_service", lambda: None)
 
     return stub_analyzer
+
+
+def _build_tweet_fetch_result(external_urls: list[str]) -> TweetFetchResult:
+    tweet = TweetInfo(
+        id="123",
+        text="Main tweet",
+        author_username="alice",
+        author_name="Alice",
+        created_at="Wed Oct 05 20:17:27 +0000 2022",
+    )
+    thread = [
+        tweet,
+        TweetInfo(
+            id="124",
+            text="Thread follow-up",
+            author_username="alice",
+            author_name="Alice",
+            created_at="Wed Oct 05 20:18:27 +0000 2022",
+            conversation_id="conv1",
+        ),
+    ]
+    return TweetFetchResult(
+        success=True,
+        tweet=tweet,
+        thread=thread,
+        external_urls=external_urls,
+    )
 
 
 def test_analyze_url_skips_instruction_links_when_crawl_disabled(
@@ -179,3 +212,95 @@ def test_analyze_url_subscribe_to_feed_short_circuits_processing(
     )
     assert updated.content_metadata.get("feed_subscription", {}).get("status") == "created"
     subscribe_mock.assert_called_once()
+
+
+def test_analyze_url_tweet_fanout_creates_additional_content(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    content = _create_content(db_session, test_user.id, "https://x.com/user/status/123")
+
+    @contextmanager
+    def _db_context():
+        yield db_session
+
+    monkeypatch.setattr(stp, "get_db", _db_context)
+    monkeypatch.setattr(stp, "get_llm_service", lambda: None)
+
+    monkeypatch.setattr(
+        stp,
+        "resolve_twitter_credentials",
+        lambda: TwitterCredentialsResult(
+            success=True,
+            credentials=TwitterCredentials(auth_token="auth", ct0="ct0", user_agent="ua"),
+        ),
+    )
+    monkeypatch.setattr(
+        stp,
+        "fetch_tweet_detail",
+        lambda params: _build_tweet_fetch_result(
+            ["https://example.com/a", "https://example.com/b"]
+        ),
+    )
+
+    processor = stp.SequentialTaskProcessor()
+    processor.queue_service.enqueue = Mock()
+
+    task_data = {
+        "task_type": stp.TaskType.ANALYZE_URL.value,
+        "payload": {"content_id": content.id},
+    }
+
+    assert processor._process_analyze_url_task(task_data) is True
+
+    updated = db_session.query(Content).filter(Content.id == content.id).first()
+    assert updated is not None
+    assert updated.url == "https://example.com/a"
+    assert updated.source_url == "https://x.com/i/status/123"
+    assert updated.content_metadata.get("discussion_url") == "https://x.com/i/status/123"
+
+    fanout = db_session.query(Content).filter(Content.url == "https://example.com/b").first()
+    assert fanout is not None
+    assert fanout.source_url == "https://x.com/i/status/123"
+
+
+def test_analyze_url_tweet_only_uses_thread_text(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    content = _create_content(db_session, test_user.id, "https://twitter.com/user/status/123")
+
+    @contextmanager
+    def _db_context():
+        yield db_session
+
+    monkeypatch.setattr(stp, "get_db", _db_context)
+    monkeypatch.setattr(stp, "get_llm_service", lambda: None)
+
+    monkeypatch.setattr(
+        stp,
+        "resolve_twitter_credentials",
+        lambda: TwitterCredentialsResult(
+            success=True,
+            credentials=TwitterCredentials(auth_token="auth", ct0="ct0", user_agent="ua"),
+        ),
+    )
+    monkeypatch.setattr(stp, "fetch_tweet_detail", lambda params: _build_tweet_fetch_result([]))
+
+    processor = stp.SequentialTaskProcessor()
+    processor.queue_service.enqueue = Mock()
+
+    task_data = {
+        "task_type": stp.TaskType.ANALYZE_URL.value,
+        "payload": {"content_id": content.id},
+    }
+
+    assert processor._process_analyze_url_task(task_data) is True
+
+    updated = db_session.query(Content).filter(Content.id == content.id).first()
+    assert updated is not None
+    assert updated.url == "https://x.com/i/status/123"
+    assert updated.content_metadata.get("tweet_only") is True
+    assert updated.content_metadata.get("tweet_thread_text") == "Main tweet\n\nThread follow-up"

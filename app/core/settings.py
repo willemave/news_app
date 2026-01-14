@@ -58,6 +58,29 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     exa_api_key: str | None = None
 
+    # Feed discovery
+    discovery_model: str = Field(
+        default="anthropic:claude-opus-4-5-20251101",
+        description="LLM model spec for feed discovery planning",
+    )
+    discovery_candidate_model: str = Field(
+        default="anthropic:claude-haiku-4-5-20251001",
+        description="LLM model spec for discovery candidate extraction",
+    )
+    discovery_itunes_country: str | None = Field(
+        default="us",
+        description="Country code for iTunes lookup (e.g., us, au).",
+    )
+    discovery_min_favorites: int = Field(default=0, ge=0)
+    discovery_max_favorites: int = Field(default=20, ge=5, le=50)
+    discovery_exa_results: int = Field(default=8, ge=1, le=20)
+
+    # Twitter (tweet share scraping)
+    twitter_auth_token: str | None = None
+    twitter_ct0: str | None = None
+    twitter_user_agent: str | None = None
+    twitter_query_id_cache: Path | None = None
+
     # PDF extraction (Gemini)
     pdf_gemini_model: str = Field(
         default="gemini-3-flash-preview",

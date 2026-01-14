@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from app.services.twitter_share import is_tweet_url
+
 if TYPE_CHECKING:
     from app.models.metadata import ContentType
 
@@ -72,6 +74,9 @@ def infer_content_type_and_platform(
         platform = _normalize_platform(platform_hint)
         return provided_type, platform
 
+    if is_tweet_url(url):
+        return ContentType.ARTICLE, "twitter"
+
     parsed = urlparse(url)
     hostname = (parsed.hostname or "").lower()
     hostname = hostname[4:] if hostname.startswith("www.") else hostname
@@ -99,6 +104,9 @@ def should_use_llm_analysis(url: str) -> bool:
     Returns:
         True if LLM analysis should be used, False for pattern-based detection.
     """
+    if is_tweet_url(url):
+        return False
+
     parsed = urlparse(url)
     hostname = (parsed.hostname or "").lower()
 

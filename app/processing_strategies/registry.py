@@ -7,6 +7,7 @@ from app.processing_strategies.html_strategy import HtmlProcessorStrategy
 from app.processing_strategies.image_strategy import ImageProcessorStrategy
 from app.processing_strategies.pdf_strategy import PdfProcessorStrategy
 from app.processing_strategies.pubmed_strategy import PubMedProcessorStrategy
+from app.processing_strategies.twitter_share_strategy import TwitterShareProcessorStrategy
 from app.processing_strategies.youtube_strategy import YouTubeProcessorStrategy
 
 logger = get_logger(__name__)
@@ -29,11 +30,13 @@ class StrategyRegistry:
         # YouTubeStrategy for YouTube video URLs.
         # PdfProcessorStrategy for direct .pdf links or Content-Type PDF.
         # ImageProcessorStrategy for image files.
+        # TwitterShareProcessorStrategy for tweet-only share URLs.
         # HtmlProcessorStrategy should be checked before URL strategy fallback.
         self.register(HackerNewsProcessorStrategy(self.http_client))  # HackerNews discussions
         self.register(ArxivProcessorStrategy(self.http_client))  # Handles arxiv.org/abs/ links
         self.register(PubMedProcessorStrategy(self.http_client))  # Specific domain
         self.register(YouTubeProcessorStrategy(self.http_client))  # YouTube videos
+        self.register(TwitterShareProcessorStrategy(self.http_client))  # Tweet share URLs
         self.register(
             PdfProcessorStrategy(self.http_client)
         )  # Specific content type by extension/common URL pattern

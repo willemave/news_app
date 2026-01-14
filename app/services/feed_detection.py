@@ -18,6 +18,7 @@ from app.models.metadata import ContentType
 from app.services.exa_client import exa_search
 from app.services.http import HttpService
 from app.services.llm_agents import get_basic_agent
+from app.services.llm_usage import record_usage
 
 logger = get_logger(__name__)
 
@@ -326,10 +327,16 @@ def classify_feed_type_with_llm(
             output_type=FeedClassificationResult,
             system_prompt=FEED_CLASSIFICATION_SYSTEM_PROMPT,
         )
-        result = agent.run_sync(
+        run_result = agent.run_sync(
             prompt,
             model_settings={"timeout": FEED_CLASSIFICATION_TIMEOUT},
-        ).output
+        )
+        record_usage(
+            "feed_classification",
+            run_result,
+            model_spec=model_spec or FEED_CLASSIFICATION_MODEL,
+        )
+        result = run_result.output
 
         logger.info(
             "Feed classified: type=%s, confidence=%.2f",
@@ -503,7 +510,12 @@ class FeedDetector:
 
     def _validate_feed_candidate(self, feed_url: str) -> dict[str, str] | None:
         try:
-            head_response = self.http_service.head(feed_url, allow_statuses={405})
+            head_response = self.http_service.head(
+                feed_url,
+                allow_statuses={405},
+                log_client_errors=False,
+                log_exceptions=False,
+            )
         except Exception as e:  # noqa: BLE001
             logger.debug(
                 "Feed candidate HEAD failed: %s",
@@ -573,6 +585,10 @@ class FeedDetector:
             "feed_format": feed_format,
             "title": title,
         }
+
+    def validate_feed_url(self, feed_url: str) -> dict[str, str] | None:
+        """Validate a feed URL and return metadata if it looks like a real feed."""
+        return self._validate_feed_candidate(feed_url)
 
     def _validate_feed_candidates(self, feed_urls: list[str]) -> list[dict[str, str]]:
         validated: list[dict[str, str]] = []
@@ -646,8 +662,9 @@ class FeedDetector:
         source: str | None = None,
         content_type: ContentType | str | None = None,
         model_spec: str | None = None,
+        force_detect: bool = False,
     ) -> dict[str, Any] | None:
-        if not _should_detect_feed(source, content_type):
+        if not force_detect and not _should_detect_feed(source, content_type):
             return None
 
         feeds = extract_feed_links(html_content, page_url)
@@ -659,6 +676,7 @@ class FeedDetector:
             source=source,
             content_type=content_type,
             model_spec=model_spec,
+            force_detect=force_detect,
         )
 
     def detect_from_links(
@@ -671,8 +689,9 @@ class FeedDetector:
         source: str | None = None,
         content_type: ContentType | str | None = None,
         model_spec: str | None = None,
+        force_detect: bool = False,
     ) -> dict[str, Any] | None:
-        if not _should_detect_feed(source, content_type):
+        if not force_detect and not _should_detect_feed(source, content_type):
             return None
 
         if not feed_links:

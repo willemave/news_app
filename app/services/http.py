@@ -1,3 +1,4 @@
+import logging
 from urllib.parse import urlparse
 
 import httpx
@@ -220,6 +221,9 @@ class HttpService:
         url: str,
         headers: dict[str, str] | None = None,
         allow_statuses: set[int] | None = None,
+        *,
+        log_client_errors: bool = True,
+        log_exceptions: bool = True,
     ) -> httpx.Response:
         """
         Perform an HTTP HEAD request with intelligent retry logic.
@@ -228,6 +232,8 @@ class HttpService:
             url: URL to fetch
             headers: Additional headers
             allow_statuses: HTTP statuses that should not raise
+            log_client_errors: Whether to log 4xx responses as errors
+            log_exceptions: Whether to log exception stack traces
 
         Returns:
             httpx.Response object
@@ -251,17 +257,21 @@ class HttpService:
 
             except httpx.HTTPStatusError as e:
                 categorized_error = categorize_http_error(e)
+                status_code = e.response.status_code
+                if status_code >= 500 or log_client_errors:
+                    level = logging.ERROR if status_code >= 500 else logging.DEBUG
 
-                logger.error(
-                    "HTTP error %s for HEAD %s",
-                    e.response.status_code,
-                    url,
-                    extra={
-                        "component": "http_service",
-                        "operation": "http_head",
-                        "context_data": {"url": url, "status_code": e.response.status_code},
-                    },
-                )
+                    logger.log(
+                        level,
+                        "HTTP error %s for HEAD %s",
+                        status_code,
+                        url,
+                        extra={
+                            "component": "http_service",
+                            "operation": "http_head",
+                            "context_data": {"url": url, "status_code": status_code},
+                        },
+                    )
 
                 raise categorized_error from e
 
@@ -279,29 +289,53 @@ class HttpService:
                     )
                     raise NonRetryableError(f"SSL error: {e}") from e
 
-                logger.exception(
-                    "Connection error for HEAD %s: %s",
-                    url,
-                    e,
-                    extra={
-                        "component": "http_service",
-                        "operation": "http_head",
-                        "context_data": {"url": url, "error_type": "connection_error"},
-                    },
-                )
+                if log_exceptions:
+                    logger.exception(
+                        "Connection error for HEAD %s: %s",
+                        url,
+                        e,
+                        extra={
+                            "component": "http_service",
+                            "operation": "http_head",
+                            "context_data": {"url": url, "error_type": "connection_error"},
+                        },
+                    )
+                else:
+                    logger.debug(
+                        "Connection error for HEAD %s: %s",
+                        url,
+                        e,
+                        extra={
+                            "component": "http_service",
+                            "operation": "http_head",
+                            "context_data": {"url": url, "error_type": "connection_error"},
+                        },
+                    )
                 raise
 
             except Exception as e:
-                logger.exception(
-                    "HTTP HEAD error for %s: %s",
-                    url,
-                    e,
-                    extra={
-                        "component": "http_service",
-                        "operation": "http_head",
-                        "context_data": {"url": url},
-                    },
-                )
+                if log_exceptions:
+                    logger.exception(
+                        "HTTP HEAD error for %s: %s",
+                        url,
+                        e,
+                        extra={
+                            "component": "http_service",
+                            "operation": "http_head",
+                            "context_data": {"url": url},
+                        },
+                    )
+                else:
+                    logger.debug(
+                        "HTTP HEAD error for %s: %s",
+                        url,
+                        e,
+                        extra={
+                            "component": "http_service",
+                            "operation": "http_head",
+                            "context_data": {"url": url},
+                        },
+                    )
                 raise
 
     def fetch_content(

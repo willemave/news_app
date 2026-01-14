@@ -169,6 +169,7 @@ async def get_favorites(
             classification = None
             if domain_content.structured_summary:
                 classification = domain_content.structured_summary.get("classification")
+            discussion_url = (domain_content.metadata or {}).get("discussion_url")
 
             content_summaries.append(
                 ContentSummaryResponse(
@@ -179,6 +180,7 @@ async def get_favorites(
                     title=domain_content.display_title,
                     source=domain_content.source,
                     status=domain_content.status.value,
+                    discussion_url=discussion_url,
                     short_summary=domain_content.short_summary,
                     created_at=domain_content.created_at.isoformat()
                     if domain_content.created_at

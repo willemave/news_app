@@ -301,9 +301,7 @@ class PodcastDownloadWorker:
                         "Detected YouTube URL for content %s, downloading audio with yt-dlp",
                         content_id,
                     )
-                    file_path = self._download_youtube_audio(
-                        audio_url, content.title, content_id
-                    )
+                    file_path = self._download_youtube_audio(audio_url, content.title, content_id)
 
                     content.metadata["youtube_video"] = True
                     content.metadata["file_path"] = str(file_path)

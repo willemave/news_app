@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 import os.log
 
 private let logger = Logger(subsystem: "com.newsly", category: "ContentDetail")
@@ -296,10 +297,20 @@ class MarkdownItemProvider: NSObject, UIActivityItemSource {
     func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
         // For Mail, convert markdown to HTML to preserve line breaks
         if activityType == .mail {
-            return convertMarkdownToHTML(markdown)
+            return convertMarkdownToHTML(markdown).data(using: .utf8)
         }
         // For other activities, return plain markdown text
         return markdown
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        if activityType == .mail {
+            return UTType.html.identifier
+        }
+        return UTType.plainText.identifier
     }
 
     private func convertMarkdownToHTML(_ markdown: String) -> String {

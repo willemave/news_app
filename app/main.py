@@ -11,7 +11,7 @@ from app.core.deps import AdminAuthRequired
 from app.core.logging import setup_logging
 from app.core.settings import get_settings
 from app.routers import admin, api_content, auth, content, logs
-from app.routers.api import scraper_configs
+from app.routers.api import discovery, scraper_configs
 
 # Initialize
 settings = get_settings()
@@ -152,6 +152,7 @@ app.include_router(admin.router)
 app.include_router(logs.router)
 app.include_router(api_content.router, prefix="/api/content")
 app.include_router(scraper_configs.router, prefix="/api")
+app.include_router(discovery.router, prefix="/api")
 
 
 # Startup event

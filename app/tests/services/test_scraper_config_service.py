@@ -65,6 +65,18 @@ def test_list_filtered_by_type(db_session):
     assert payloads[0]["limit"] == 5
 
 
+def test_create_youtube_config_accepts_channel_id(db_session):
+    payload = CreateUserScraperConfig(
+        scraper_type="youtube",
+        display_name="YT Channel",
+        config={"channel_id": "UC1234567890"},
+        is_active=True,
+    )
+    created = create_user_scraper_config(db_session, user_id=1, data=payload)
+    assert created.feed_url == "https://www.youtube.com/channel/UC1234567890"
+    assert created.config.get("channel_id") == "UC1234567890"
+
+
 def test_build_feed_payloads_apply_default_limit(db_session):
     payload = CreateUserScraperConfig(
         scraper_type="podcast_rss",

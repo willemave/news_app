@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -26,18 +26,13 @@ class CreateUserScraperConfig(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
 
-    @field_validator("config")
-    @staticmethod
-    def validate_feed_url(config: dict[str, Any]) -> dict[str, Any]:
-        feed_url = config.get("feed_url")
-        if not isinstance(feed_url, str) or not feed_url.strip():
-            raise ValueError("config.feed_url is required")
-        config["feed_url"] = feed_url.strip()
-
-        limit = config.get("limit")
-        if limit is not None and (not isinstance(limit, int) or not 1 <= limit <= 100):
-            raise ValueError("config.limit must be an integer between 1 and 100")
-        return config
+    @model_validator(mode="after")
+    def validate_config(self) -> CreateUserScraperConfig:
+        if self.scraper_type == "youtube":
+            self.config = _normalize_youtube_config(self.config)
+        else:
+            self.config = _normalize_feed_config(self.config)
+        return self
 
 
 class UpdateUserScraperConfig(BaseModel):
@@ -47,20 +42,66 @@ class UpdateUserScraperConfig(BaseModel):
     config: dict[str, Any] | None = None
     is_active: bool | None = None
 
-    @field_validator("config")
-    @staticmethod
-    def validate_feed_url(config: dict[str, Any] | None) -> dict[str, Any] | None:
-        if config is None:
-            return config
-        feed_url = config.get("feed_url")
-        if not isinstance(feed_url, str) or not feed_url.strip():
-            raise ValueError("config.feed_url is required")
-        config["feed_url"] = feed_url.strip()
+    @model_validator(mode="after")
+    def validate_config(self) -> UpdateUserScraperConfig:
+        if self.config is None:
+            return self
+        self.config = _normalize_update_config(self.config)
+        return self
 
-        limit = config.get("limit")
-        if limit is not None and (not isinstance(limit, int) or not 1 <= limit <= 100):
-            raise ValueError("config.limit must be an integer between 1 and 100")
-        return config
+
+def _normalize_feed_config(config: dict[str, Any]) -> dict[str, Any]:
+    feed_url = config.get("feed_url")
+    if not isinstance(feed_url, str) or not feed_url.strip():
+        raise ValueError("config.feed_url is required")
+    config["feed_url"] = feed_url.strip()
+
+    limit = config.get("limit")
+    if limit is not None and (not isinstance(limit, int) or not 1 <= limit <= 100):
+        raise ValueError("config.limit must be an integer between 1 and 100")
+    return config
+
+
+def _normalize_youtube_config(config: dict[str, Any]) -> dict[str, Any]:
+    channel_id = config.get("channel_id")
+    playlist_id = config.get("playlist_id")
+    feed_url = config.get("feed_url") or config.get("url")
+
+    if isinstance(channel_id, str):
+        channel_id = channel_id.strip()
+    if isinstance(playlist_id, str):
+        playlist_id = playlist_id.strip()
+
+    if not feed_url:
+        if playlist_id:
+            feed_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+        elif channel_id:
+            feed_url = f"https://www.youtube.com/channel/{channel_id}"
+
+    if not isinstance(feed_url, str) or not feed_url.strip():
+        raise ValueError("youtube config requires feed_url, channel_id, or playlist_id")
+
+    config["feed_url"] = feed_url.strip()
+    if channel_id:
+        config["channel_id"] = channel_id
+    if playlist_id:
+        config["playlist_id"] = playlist_id
+
+    limit = config.get("limit")
+    if limit is not None and (not isinstance(limit, int) or not 1 <= limit <= 100):
+        raise ValueError("config.limit must be an integer between 1 and 100")
+    return config
+
+
+def _normalize_update_config(config: dict[str, Any]) -> dict[str, Any]:
+    feed_url = config.get("feed_url")
+    channel_id = config.get("channel_id")
+    playlist_id = config.get("playlist_id")
+
+    if not feed_url and (channel_id or playlist_id):
+        return _normalize_youtube_config(config)
+
+    return _normalize_feed_config(config)
 
 
 def _normalize_feed_url(config: dict[str, Any]) -> str:

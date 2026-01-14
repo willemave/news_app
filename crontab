@@ -1,2 +1,5 @@
 # Run scrapers every hour
 0 * * * * cd /app && /app/.venv/bin/python scripts/run_scrapers_unified.py >> /var/log/cron.log 2>&1
+
+# Run feed discovery weekly (Mondays at 03:00)
+0 3 * * 1 cd /app && /app/.venv/bin/python scripts/run_feed_discovery.py >> /var/log/cron.log 2>&1

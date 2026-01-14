@@ -12,15 +12,19 @@ struct KnowledgeView: View {
     let onSelectContent: ((ContentDetailRoute) -> Void)?
 
     @StateObject private var viewModel = ChatSessionsViewModel()
+    @StateObject private var discoveryViewModel = DiscoveryViewModel()
     @State private var showingNewChat = false
     @State private var selectedProvider: ChatModelProvider = .anthropic
     @State private var pendingNavigationRoute: ChatSessionRoute?
+    @State private var selectedTab: KnowledgeTab = .chats
 
     /// Tracks the last time this tab was opened for badge calculation
     @AppStorage("knowledgeTabLastOpenedAt") private var lastOpenedTimestamp: Double = 0
+    @AppStorage("discoveryTabLastOpenedAt") private var discoveryLastOpenedTimestamp: Double = 0
 
     /// Captured threshold for showing "new" items (frozen on appear)
     @State private var newItemThreshold: Date = .distantPast
+    @State private var discoveryNewThreshold: Date = .distantPast
 
     init(
         onSelectSession: ((ChatSessionRoute) -> Void)? = nil,
@@ -47,7 +51,10 @@ struct KnowledgeView: View {
 
     var body: some View {
         ZStack {
-            contentBody
+            VStack(spacing: 0) {
+                tabPicker
+                contentBody
+            }
         }
         .navigationTitle("Knowledge")
         .onAppear {
@@ -55,25 +62,58 @@ struct KnowledgeView: View {
             if lastOpenedTimestamp > 0 {
                 newItemThreshold = Date(timeIntervalSince1970: lastOpenedTimestamp)
             }
+            if discoveryLastOpenedTimestamp > 0 {
+                discoveryNewThreshold = Date(timeIntervalSince1970: discoveryLastOpenedTimestamp)
+            }
             // Mark tab as opened (for badge tracking)
             lastOpenedTimestamp = Date().timeIntervalSince1970
-            Task { await viewModel.loadSessions() }
+            Task { await loadForSelectedTab() }
+            Task { await discoveryViewModel.loadSuggestions() }
+        }
+        .onChange(of: selectedTab) { _, _ in
+            if selectedTab == .discover {
+                markDiscoverySeen()
+            }
+            Task { await loadForSelectedTab() }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    ForEach(ChatModelProvider.allCases, id: \.self) { provider in
-                        Button {
-                            selectedProvider = provider
-                            showingNewChat = true
-                        } label: {
-                            Label(provider.displayName, systemImage: provider.iconName)
+                if selectedTab == .chats {
+                    Menu {
+                        ForEach(ChatModelProvider.allCases, id: \.self) { provider in
+                            Button {
+                                selectedProvider = provider
+                                showingNewChat = true
+                            } label: {
+                                Label(provider.displayName, systemImage: provider.iconName)
+                            }
                         }
+                    } label: {
+                        Image(systemName: "plus.circle")
                     }
-                } label: {
-                    Image(systemName: "plus.circle")
+                    .accessibilityLabel("New Chat")
+                } else if selectedTab == .discover {
+                    Button {
+                        Task { await discoveryViewModel.refreshDiscovery() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh Discovery")
                 }
-                .accessibilityLabel("New Chat")
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if selectedTab == .discover {
+                    Menu {
+                        Button(role: .destructive) {
+                            Task { await discoveryViewModel.clearAll() }
+                        } label: {
+                            Label("Clear Suggestions", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Discovery Options")
+                }
             }
         }
         .sheet(isPresented: $showingNewChat, onDismiss: {
@@ -100,6 +140,19 @@ struct KnowledgeView: View {
 
     @ViewBuilder
     private var contentBody: some View {
+        switch selectedTab {
+        case .chats:
+            chatSessionsBody
+        case .discover:
+            KnowledgeDiscoveryView(
+                viewModel: discoveryViewModel,
+                hasNewSuggestions: hasNewDiscoverySuggestions
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var chatSessionsBody: some View {
         if viewModel.isLoading && viewModel.sessions.isEmpty {
             LoadingView()
         } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
@@ -111,6 +164,28 @@ struct KnowledgeView: View {
         } else {
             sessionListView
         }
+    }
+
+    private var tabPicker: some View {
+        Picker("Knowledge Tabs", selection: $selectedTab) {
+            ForEach(KnowledgeTab.allCases, id: \.self) { tab in
+                Text(tabTitle(for: tab)).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    private var hasNewDiscoverySuggestions: Bool {
+        if !discoveryViewModel.runs.isEmpty {
+            return discoveryViewModel.runs.contains { run in
+                parseDate(run.runCreatedAt) > discoveryNewThreshold
+            }
+        }
+        guard let runCreatedAt = discoveryViewModel.runCreatedAt else { return false }
+        return parseDate(runCreatedAt) > discoveryNewThreshold
     }
 
     private var emptyStateView: some View {
@@ -176,6 +251,43 @@ struct KnowledgeView: View {
         .listStyle(.plain)
         .refreshable {
             await viewModel.loadSessions()
+        }
+    }
+
+    private func loadForSelectedTab() async {
+        switch selectedTab {
+        case .chats:
+            await viewModel.loadSessions()
+        case .discover:
+            await discoveryViewModel.loadSuggestions()
+        }
+    }
+
+    private func markDiscoverySeen() {
+        if discoveryLastOpenedTimestamp > 0 {
+            discoveryNewThreshold = Date(timeIntervalSince1970: discoveryLastOpenedTimestamp)
+        }
+        discoveryLastOpenedTimestamp = Date().timeIntervalSince1970
+    }
+
+    private func tabTitle(for tab: KnowledgeTab) -> String {
+        if tab == .discover && hasNewDiscoverySuggestions {
+            return "Discover •"
+        }
+        return tab.title
+    }
+}
+
+private enum KnowledgeTab: String, CaseIterable {
+    case discover
+    case chats
+
+    var title: String {
+        switch self {
+        case .discover:
+            return "Discover"
+        case .chats:
+            return "Chats"
         }
     }
 }

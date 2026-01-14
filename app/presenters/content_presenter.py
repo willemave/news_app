@@ -88,6 +88,7 @@ def build_content_summary_response(
     news_discussion_url = None
     news_key_points = None
     news_summary_text = domain_content.short_summary
+    discussion_url = (domain_content.metadata or {}).get("discussion_url")
 
     if domain_content.content_type == ContentType.NEWS:
         news_fields = _extract_news_summary(domain_content)
@@ -96,6 +97,7 @@ def build_content_summary_response(
         news_key_points = news_fields["news_key_points"]
         news_summary_text = news_fields["news_summary_text"]
         classification = news_fields["classification"] or classification
+        discussion_url = news_discussion_url
 
     return ContentSummaryResponse(
         id=domain_content.id,
@@ -106,6 +108,7 @@ def build_content_summary_response(
         source=domain_content.source,
         platform=domain_content.platform or content.platform,
         status=domain_content.status.value,
+        discussion_url=discussion_url,
         short_summary=news_summary_text,
         created_at=domain_content.created_at.isoformat() if domain_content.created_at else "",
         processed_at=(
@@ -149,6 +152,7 @@ def build_content_detail_response(
     news_discussion_url = None
     news_key_points = None
     news_summary_text = domain_content.summary
+    discussion_url = (domain_content.metadata or {}).get("discussion_url")
 
     if domain_content.content_type == ContentType.NEWS:
         news_fields = _extract_news_summary(domain_content)
@@ -161,6 +165,7 @@ def build_content_detail_response(
         quotes = []
         topics = []
         full_markdown = None
+        discussion_url = news_discussion_url
 
     detected_feed = None
     if detected_feed_data:
@@ -180,6 +185,7 @@ def build_content_detail_response(
         display_title=domain_content.display_title,
         source=domain_content.source,
         status=domain_content.status.value,
+        discussion_url=discussion_url,
         error_message=domain_content.error_message,
         retry_count=domain_content.retry_count,
         metadata=domain_content.metadata,

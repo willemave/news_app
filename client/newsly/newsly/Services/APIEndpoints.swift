@@ -46,6 +46,15 @@ enum APIEndpoints {
         return "/api/content/\(id)/tweet-suggestions"
     }
 
+    // MARK: - Discovery Endpoints
+    static let discoverySuggestions = "/api/discovery/suggestions"
+    static let discoveryHistory = "/api/discovery/history"
+    static let discoveryRefresh = "/api/discovery/refresh"
+    static let discoverySubscribe = "/api/discovery/subscribe"
+    static let discoveryAddItem = "/api/discovery/add-item"
+    static let discoveryDismiss = "/api/discovery/dismiss"
+    static let discoveryClear = "/api/discovery/clear"
+
     // MARK: - Chat Endpoints
     static let chatSessions = "/api/content/chat/sessions"
     static func chatSession(id: Int) -> String {
