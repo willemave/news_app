@@ -105,3 +105,35 @@ def test_summarize_article_enqueues_image(db_session) -> None:
         task_type=TaskType.GENERATE_IMAGE,
         content_id=content.id,
     )
+
+
+def test_summarize_article_falls_back_to_content_to_summarize(db_session) -> None:
+    content = Content(
+        content_type="article",
+        url="https://example.com/fallback",
+        status="processing",
+        content_metadata={"content": "", "content_to_summarize": "Fallback content"},
+    )
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
+
+    queue_service = Mock()
+    llm_service = Mock()
+    llm_service.summarize_content.return_value = {
+        "title": "Article Title",
+        "overview": "Summary",
+        "bullet_points": [],
+    }
+    handler = SummarizeHandler()
+    context = _build_context(db_session, queue_service, llm_service)
+
+    task = TaskEnvelope(
+        id=3,
+        task_type=TaskType.SUMMARIZE,
+        content_id=content.id,
+    )
+
+    assert handler.handle(task, context).success is True
+    llm_service.summarize_content.assert_called_once()
+    assert llm_service.summarize_content.call_args[0][0] == "Fallback content"

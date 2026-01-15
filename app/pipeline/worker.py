@@ -107,8 +107,8 @@ class ContentWorker:
                 logger.error(f"Unknown content type: {content.content_type}")
                 success = False
 
-            # Update database
-            if success:
+            # Update database when processing succeeded or content was marked failed/skipped.
+            if success or content.status in {ContentStatus.FAILED, ContentStatus.SKIPPED}:
                 with get_db() as db:
                     db_content = db.query(Content).filter(Content.id == content_id).first()
                     if db_content:
@@ -335,24 +335,43 @@ class ContentWorker:
             llm_content_text = llm_content.strip() if isinstance(llm_content, str) else ""
             text_content = (extracted_data.get("text_content") or "").strip()
 
+            if llm_content_text:
+                content.metadata["content_to_summarize"] = llm_content_text
+
             failure_reason: str | None = None
             if extraction_error:
                 failure_reason = extraction_error
             elif not llm_content_text:
-                failure_reason = "extracted article contained no content to summarize"
+                failure_reason = "missing content_to_summarize"
             elif llm_content_text.lower().startswith("failed to extract content"):
                 failure_reason = llm_content_text
             elif text_content.lower().startswith("failed to extract content"):
                 failure_reason = text_content
 
             if failure_reason:
+                if failure_reason == "missing content_to_summarize":
+                    logger.error(
+                        "Missing content_to_summarize for content %s; extracted_text_len=%s",
+                        content.id,
+                        len(text_content),
+                        extra={
+                            "component": "content_worker",
+                            "operation": "process_article",
+                            "item_id": str(content.id),
+                            "context_data": {
+                                "content_type": content.content_type.value,
+                                "url": str(content.url),
+                                "extracted_text_len": len(text_content),
+                            },
+                        },
+                    )
                 self._mark_article_extraction_failure(
                     content,
                     extracted_data,
                     failure_reason,
                     llm_content_text or text_content,
                 )
-                return True
+                return failure_reason != "missing content_to_summarize"
 
             # Store content_to_summarize in metadata for the SUMMARIZE task
             if llm_data.get("content_to_summarize"):
@@ -369,6 +388,16 @@ class ContentWorker:
                     "No LLM payload generated for content %s; keys=%s",
                     content.id,
                     sorted(llm_data.keys()),
+                    extra={
+                        "component": "content_worker",
+                        "operation": "process_article",
+                        "item_id": str(content.id),
+                        "context_data": {
+                            "content_type": content.content_type.value,
+                            "url": str(content.url),
+                            "llm_keys": sorted(llm_data.keys()),
+                        },
+                    },
                 )
 
             # Extract internal URLs for potential future crawling

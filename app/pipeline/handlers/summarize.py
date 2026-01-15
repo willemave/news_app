@@ -104,8 +104,13 @@ class SummarizeHandler:
 
             if not content_id:
                 logger.error(
-                    "SUMMARIZE_TASK_ERROR: No content_id provided. Task data: %s",
-                    task.model_dump(),
+                    "SUMMARIZE_TASK_ERROR: No content_id provided.",
+                    extra={
+                        "component": "summarization",
+                        "operation": "summarize_task",
+                        "item_id": None,
+                        "context_data": {"task_data": task.model_dump()},
+                    },
                 )
                 return TaskResult.fail("No content_id provided")
 
@@ -117,6 +122,12 @@ class SummarizeHandler:
                     logger.error(
                         "SUMMARIZE_TASK_ERROR: Content %s not found in database",
                         content_id,
+                        extra={
+                            "component": "summarization",
+                            "operation": "load_content",
+                            "item_id": content_id,
+                            "context_data": {"content_id": content_id},
+                        },
                     )
                     return TaskResult.fail("Content not found")
 
@@ -156,9 +167,13 @@ class SummarizeHandler:
 
                 metadata = content.content_metadata or {}
                 if content.content_type == "article":
-                    text_to_summarize = metadata.get("content", "")
+                    text_to_summarize = metadata.get("content") or metadata.get(
+                        "content_to_summarize", ""
+                    )
                 elif content.content_type == "news":
-                    text_to_summarize = metadata.get("content", "")
+                    text_to_summarize = metadata.get("content") or metadata.get(
+                        "content_to_summarize", ""
+                    )
                     aggregator_context = _build_news_context(metadata)
                     if aggregator_context and text_to_summarize:
                         text_to_summarize = (
@@ -166,7 +181,9 @@ class SummarizeHandler:
                             f"Article Content:\n{text_to_summarize}"
                         )
                 elif content.content_type == "podcast":
-                    text_to_summarize = metadata.get("transcript", "")
+                    text_to_summarize = metadata.get("transcript") or metadata.get(
+                        "content_to_summarize", ""
+                    )
                 else:
                     reason = f"Unknown content type for summarization: {content.content_type}"
                     logger.error(
@@ -380,5 +397,13 @@ class SummarizeHandler:
                 return TaskResult.fail(reason)
 
         except Exception as exc:  # noqa: BLE001
-            logger.error("Summarization error: %s", exc, exc_info=True)
+            logger.exception(
+                "Summarization error",
+                extra={
+                    "component": "summarization",
+                    "operation": "summarize_task",
+                    "item_id": task.content_id if task else None,
+                    "context_data": {"task_data": task.model_dump() if task else None},
+                },
+            )
             return TaskResult.fail(str(exc))
