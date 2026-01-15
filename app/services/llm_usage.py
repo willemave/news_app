@@ -6,9 +6,7 @@ from contextvars import ContextVar, Token
 from copy import deepcopy
 from typing import Any
 
-_USAGE_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
-    "llm_usage_context", default=None
-)
+_USAGE_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("llm_usage_context", default=None)
 
 
 def start_usage_context() -> Token:

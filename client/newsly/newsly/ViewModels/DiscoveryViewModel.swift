@@ -29,6 +29,49 @@ class DiscoveryViewModel: ObservableObject {
         return !feeds.isEmpty || !podcasts.isEmpty || !youtube.isEmpty
     }
 
+    /// Whether a discovery job is currently running
+    var isJobRunning: Bool {
+        guard let status = runStatus else { return false }
+        let runningStatuses = ["queued", "pending", "processing", "running"]
+        return runningStatuses.contains(status.lowercased())
+    }
+
+    /// Human-readable description of the current job status
+    var runStatusDescription: String {
+        guard let status = runStatus else { return "Waiting to start" }
+        switch status.lowercased() {
+        case "queued":
+            return "Queued for processing"
+        case "pending":
+            return "Waiting in queue"
+        case "processing", "running":
+            return "Analyzing your interests"
+        case "completed":
+            return "Completed"
+        case "failed":
+            return "Failed"
+        default:
+            return status.capitalized
+        }
+    }
+
+    /// Current stage for the progress indicator (0-3)
+    var currentJobStage: Int {
+        guard let status = runStatus else { return 0 }
+        switch status.lowercased() {
+        case "queued":
+            return 0
+        case "pending":
+            return 1
+        case "processing", "running":
+            return 2
+        case "completed":
+            return 4
+        default:
+            return 1
+        }
+    }
+
     func loadSuggestions(force: Bool = false) async {
         if hasLoaded && !force {
             return
@@ -48,7 +91,9 @@ class DiscoveryViewModel: ObservableObject {
     func refreshDiscovery() async {
         do {
             let response = try await service.refresh()
-            ToastService.shared.showSuccess("Discovery queued (\(response.status))")
+            // Update local state to show running indicator immediately
+            runStatus = response.status
+            ToastService.shared.showSuccess("Discovery queued")
         } catch {
             ToastService.shared.showError("Failed to refresh discovery: \(error.localizedDescription)")
         }

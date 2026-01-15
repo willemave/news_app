@@ -97,6 +97,43 @@ def test_discovery_subscribe_creates_config(client, db_session, test_user):
     assert config.feed_url == "https://example.substack.com/feed"
 
 
+def test_discovery_subscribe_uses_feed_url_when_missing_in_config(
+    client,
+    db_session,
+    test_user,
+):
+    run = _create_run(db_session, test_user.id)
+    suggestion = FeedDiscoverySuggestion(
+        run_id=run.id,
+        user_id=test_user.id,
+        suggestion_type="podcast_rss",
+        site_url="https://podcasts.apple.com/us/podcast/example/id123",
+        feed_url="https://example.com/podcast/rss.xml",
+        title="Example Podcast",
+        status="new",
+        config={"source": "apple_podcasts", "podcast_id": "123"},
+    )
+    db_session.add(suggestion)
+    db_session.commit()
+    db_session.refresh(suggestion)
+
+    response = client.post(
+        "/api/discovery/subscribe",
+        json={"suggestion_ids": [suggestion.id]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert suggestion.id in data["subscribed"]
+
+    config = (
+        db_session.query(UserScraperConfig)
+        .filter(UserScraperConfig.user_id == test_user.id)
+        .first()
+    )
+    assert config is not None
+    assert config.feed_url == "https://example.com/podcast/rss.xml"
+
+
 def test_discovery_dismiss_marks_suggestion(client, db_session, test_user):
     run = _create_run(db_session, test_user.id)
     suggestion = FeedDiscoverySuggestion(

@@ -258,14 +258,7 @@ async def get_recently_read(
     )
 
     # Apply same visibility filters as other endpoints
-    summarized_clause = Content.content_metadata["summary"].is_not(None) & (
-        Content.content_metadata["summary"] != "null"
-    )
-    completed_news_clause = and_(
-        Content.content_type == ContentType.NEWS.value,
-        Content.status == ContentStatus.COMPLETED.value,
-    )
-    query = query.filter(or_(summarized_clause, completed_news_clause))
+    query = query.filter(Content.status == ContentStatus.COMPLETED.value)
 
     # Filter out "skip" classification articles
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))

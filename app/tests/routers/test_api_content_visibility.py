@@ -1,7 +1,8 @@
 """Tests for API content visibility rules."""
 from sqlalchemy.orm import Session
 
-from app.models.schema import Content
+from app.models.metadata import ContentStatus, ContentType
+from app.models.schema import Content, ContentStatusEntry
 
 
 def _news_summary_payload(title: str) -> dict[str, object]:
@@ -15,6 +16,24 @@ def _news_summary_payload(title: str) -> dict[str, object]:
         "summary": "Short overview of the processed item.",
         "classification": "to_read",
         "summarization_date": "2025-09-23T00:00:00Z",
+    }
+
+
+def _article_summary_payload(title: str) -> dict[str, object]:
+    return {
+        "title": title,
+        "overview": (
+            "This overview is long enough to satisfy the minimum length requirement "
+            "for structured summaries."
+        ),
+        "bullet_points": [
+            {"text": "Key point one", "category": "key_finding"},
+            {"text": "Key point two", "category": "methodology"},
+            {"text": "Key point three", "category": "conclusion"},
+        ],
+        "quotes": [],
+        "topics": ["Testing"],
+        "summarization_date": "2025-12-31T00:00:00Z",
     }
 
 
@@ -72,3 +91,55 @@ def test_api_excludes_unprocessed_news(client, db_session: Session):
     assert completed_news.id in ids
     assert pending_news.id not in ids
     assert payload["meta"]["total"] == len(payload["contents"]) == 1
+
+
+def test_api_excludes_inbox_content_not_completed(client, db_session: Session, test_user):
+    """Non-completed inbox items should not appear in content lists."""
+    processing_article = Content(
+        content_type=ContentType.ARTICLE.value,
+        url="https://example.com/processing-article",
+        title="Processing Article",
+        status=ContentStatus.PROCESSING.value,
+        content_metadata={
+            "summary": _article_summary_payload("Processing Article"),
+            "image_generated_at": "2025-12-31T00:00:00Z",
+        },
+    )
+    completed_article = Content(
+        content_type=ContentType.ARTICLE.value,
+        url="https://example.com/completed-article",
+        title="Completed Article",
+        status=ContentStatus.COMPLETED.value,
+        content_metadata={
+            "summary": _article_summary_payload("Completed Article"),
+            "image_generated_at": "2025-12-31T00:00:00Z",
+        },
+    )
+
+    db_session.add_all([processing_article, completed_article])
+    db_session.commit()
+    db_session.refresh(processing_article)
+    db_session.refresh(completed_article)
+
+    db_session.add_all(
+        [
+            ContentStatusEntry(
+                user_id=test_user.id,
+                content_id=processing_article.id,
+                status="inbox",
+            ),
+            ContentStatusEntry(
+                user_id=test_user.id,
+                content_id=completed_article.id,
+                status="inbox",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/api/content/", params={"content_type": "article"})
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()["contents"]}
+
+    assert completed_article.id in ids
+    assert processing_article.id not in ids

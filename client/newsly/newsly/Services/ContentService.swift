@@ -153,6 +153,21 @@ class ContentService {
         return try await client.request(APIEndpoints.contentList, queryItems: queryItems)
     }
 
+    func fetchSubmissionStatusList(
+        cursor: String? = nil,
+        limit: Int = 25
+    ) async throws -> SubmissionStatusListResponse {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+
+        return try await client.request(APIEndpoints.submissionStatusList, queryItems: queryItems)
+    }
+
     // Backward compatibility: single content type
     func fetchContentList(contentType: String? = nil,
                          date: String? = nil,

@@ -127,6 +127,33 @@ class ContentListResponse(BaseModel):
         }
 
 
+class SubmissionStatusResponse(BaseModel):
+    """Status information for a user-submitted content item."""
+
+    id: int = Field(..., description="Unique identifier")
+    content_type: str = Field(..., description="Type of content (article/podcast/news/unknown)")
+    url: str = Field(..., description="Canonical URL of the content")
+    source_url: str | None = Field(None, description="Original submitted URL")
+    title: str | None = Field(None, description="Content title (if detected)")
+    status: str = Field(..., description="Processing status")
+    error_message: str | None = Field(None, description="Failure reason when status=failed/skipped")
+    created_at: str = Field(..., description="ISO timestamp when content was created")
+    processed_at: str | None = Field(None, description="ISO timestamp when content was processed")
+    submitted_via: str | None = Field(None, description="Submission channel (share_sheet, etc.)")
+    is_self_submission: bool = Field(
+        True, description="Whether this content was submitted by the current user"
+    )
+
+
+class SubmissionStatusListResponse(BaseModel):
+    """Response for user submission status list."""
+
+    submissions: list[SubmissionStatusResponse] = Field(
+        ..., description="List of user-submitted items still processing or failed"
+    )
+    meta: PaginationMetadata = Field(..., description="Pagination metadata for the response")
+
+
 class DiscoverySuggestionResponse(BaseModel):
     """Suggested feed/podcast/YouTube subscription item."""
 

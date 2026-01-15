@@ -15,6 +15,7 @@ struct ContentView: View {
     @StateObject private var readingStateStore = ReadingStateStore()
     @StateObject private var tabCoordinator: TabCoordinatorViewModel
     @StateObject private var chatSessionManager = ActiveChatSessionManager.shared
+    @StateObject private var submissionStatusViewModel = SubmissionStatusViewModel()
     @ObservedObject private var settings = AppSettings.shared
 
     @State private var path = NavigationPath()
@@ -57,6 +58,11 @@ struct ContentView: View {
     private var knowledgeBadge: String? {
         // Show processing indicator if any sessions are being processed
         chatSessionManager.hasProcessingSessions ? "●" : nil
+    }
+
+    private var moreBadge: String? {
+        let count = submissionStatusViewModel.submissions.count
+        return count > 0 ? String(count) : nil
     }
 
     var body: some View {
@@ -111,10 +117,11 @@ struct ContentView: View {
                     .badge(knowledgeBadge)
                     .tag(RootTab.knowledge)
 
-                MoreView()
+                MoreView(submissionsViewModel: submissionStatusViewModel)
                     .tabItem {
                         Label("More", systemImage: "ellipsis.circle.fill")
                     }
+                    .badge(moreBadge)
                     .tag(RootTab.more)
             }
             .navigationDestination(for: ContentDetailRoute.self) { route in
@@ -147,6 +154,7 @@ struct ContentView: View {
         }
         .task {
             await unreadCountService.refreshCounts()
+            await submissionStatusViewModel.load()
         }
     }
 

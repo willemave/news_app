@@ -169,12 +169,6 @@ extension DiscoverySuggestion {
     }
 
     var subscribeLabel: String {
-        if suggestionType == "youtube" {
-            return "Subscribe Channel"
-        }
-        if suggestionType == "podcast_rss" {
-            return "Subscribe Podcast"
-        }
         return "Subscribe"
     }
 

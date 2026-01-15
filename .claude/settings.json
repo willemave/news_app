@@ -102,5 +102,8 @@
     "./tests/scraping",
     "./tests/services",
     "./tests/utils"
-  ]
+  ],
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
+  }
 }

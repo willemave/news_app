@@ -11,6 +11,7 @@ import Foundation
 enum APIEndpoints {
     static let contentList = "/api/content/"
     static let submitContent = "/api/content/submit"
+    static let submissionStatusList = "/api/content/submissions/list"
     static let searchContent = "/api/content/search"
     static func contentDetail(id: Int) -> String {
         return "/api/content/\(id)"

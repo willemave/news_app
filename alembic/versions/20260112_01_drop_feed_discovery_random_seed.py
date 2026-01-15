@@ -19,7 +19,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     with op.batch_alter_table("feed_discovery_runs") as batch_op:
-        batch_op.add_column(sa.Column("random_seed", sa.Integer(), nullable=False, server_default="0"))
+        batch_op.add_column(
+            sa.Column("random_seed", sa.Integer(), nullable=False, server_default="0")
+        )
     op.execute("UPDATE feed_discovery_runs SET random_seed = 0")
     with op.batch_alter_table("feed_discovery_runs") as batch_op:
         batch_op.alter_column("random_seed", server_default=None)

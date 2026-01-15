@@ -50,12 +50,12 @@ def build_visibility_context(user_id: int) -> VisibilityContext:
 def apply_visibility_filters(query, context: VisibilityContext):
     """Apply visibility filters for list/search queries."""
     return query.filter(
-        or_(
-            and_(
+        and_(
+            Content.status == ContentStatus.COMPLETED.value,
+            or_(
                 Content.content_type == ContentType.NEWS.value,
-                Content.status == ContentStatus.COMPLETED.value,
+                context.is_in_inbox,
             ),
-            context.is_in_inbox,
         )
     ).filter((Content.classification != "skip") | (Content.classification.is_(None)))
 

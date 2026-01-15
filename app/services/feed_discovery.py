@@ -503,9 +503,7 @@ def _get_direction_agent(model_spec: str) -> Agent[DiscoveryToolDeps, DiscoveryD
 
         lines = [f"total={total} offset={offset} limit={limit}"]
         for row in formatted_rows:
-            lines.append(
-                f"[{row['id']}] {row['title']} | {row['content_type']} | {row['source']}"
-            )
+            lines.append(f"[{row['id']}] {row['title']} | {row['content_type']} | {row['source']}")
             if row["url"]:
                 lines.append(f"URL: {row['url']}")
             if row["summary"]:
@@ -966,11 +964,7 @@ def _normalize_youtube_candidate(candidate: DiscoveryCandidate) -> DiscoveryCand
     candidate.suggestion_type = YOUTUBE_TYPE
     if _looks_like_watch_url(url) and not candidate.item_url:
         candidate.item_url = canonical
-    if (
-        candidate.site_url
-        and _looks_like_watch_url(candidate.site_url)
-        and not candidate.item_url
-    ):
+    if candidate.site_url and _looks_like_watch_url(candidate.site_url) and not candidate.item_url:
         candidate.item_url = normalize_url(candidate.site_url)
     candidate.channel_id = channel_id
     candidate.playlist_id = playlist_id

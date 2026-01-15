@@ -10,7 +10,7 @@ from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
-from app.models.metadata import ContentType
+from app.models.metadata import ContentStatus, ContentType
 from app.models.pagination import PaginationMetadata
 from app.models.schema import Content
 from app.models.user import User
@@ -130,6 +130,7 @@ async def get_favorites(
     # Query favorited content
     if favorite_content_ids:
         query = db.query(Content).filter(Content.id.in_(favorite_content_ids))
+        query = query.filter(Content.status == ContentStatus.COMPLETED.value)
 
         # Filter out "skip" classification articles
         query = query.filter(

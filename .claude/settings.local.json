@@ -143,7 +143,8 @@
       "Bash(timeout 900 python scripts/test_interleaved_summary.py:*)",
       "Bash(git -C /Users/willem/Development/news_app diff client/newsly/)",
       "Bash(git -C /Users/willem/Development/news_app diff app/models/metadata.py)",
-      "Bash(git -C /Users/willem/Development/news_app diff client/newsly/newsly/Views/Components/ArticleCardView.swift)"
+      "Bash(git -C /Users/willem/Development/news_app diff client/newsly/newsly/Views/Components/ArticleCardView.swift)",
+      "Skill(frontend-design)"
     ],
     "deny": []
   },

@@ -33,11 +33,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _stub_direction_selector(db_session, user_id: int) -> DiscoveryDirectionPlan:
-    rows = (
-        db_session.query(ContentFavorites)
-        .filter(ContentFavorites.user_id == user_id)
-        .all()
-    )
+    rows = db_session.query(ContentFavorites).filter(ContentFavorites.user_id == user_id).all()
     ids = [row.content_id for row in rows]
     midpoint = max(1, len(ids) // 2)
     return DiscoveryDirectionPlan(

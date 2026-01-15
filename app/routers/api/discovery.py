@@ -244,9 +244,7 @@ async def subscribe_discovery_suggestions(
         if suggestion.status == "subscribed":
             skipped.append(suggestion.id)
             continue
-        if suggestion.suggestion_type == "youtube" and _is_youtube_watch_url(
-            suggestion.feed_url
-        ):
+        if suggestion.suggestion_type == "youtube" and _is_youtube_watch_url(suggestion.feed_url):
             skipped.append(suggestion.id)
             errors.append(
                 {"id": str(suggestion.id), "error": "youtube_watch_url_requires_add_item"}
@@ -254,7 +252,9 @@ async def subscribe_discovery_suggestions(
             continue
 
         try:
-            config_payload = suggestion.config or {"feed_url": suggestion.feed_url}
+            config_payload = {**(suggestion.config or {})}
+            if suggestion.feed_url and not config_payload.get("feed_url"):
+                config_payload["feed_url"] = suggestion.feed_url
             create_user_scraper_config(
                 db,
                 user_id=current_user.id,
