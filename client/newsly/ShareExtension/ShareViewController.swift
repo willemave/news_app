@@ -6,7 +6,6 @@
 //
 
 import UIKit
-import Social
 import UniformTypeIdentifiers
 
 fileprivate enum LinkHandlingMode: String, CaseIterable {
@@ -14,7 +13,7 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
     case addLinks
     case shareAndChat
 
-    var displayName: String {
+    var title: String {
         switch self {
         case .addContent:
             return "Add content"
@@ -24,46 +23,139 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
             return "Add & chat"
         }
     }
+
+    var description: String {
+        switch self {
+        case .addContent:
+            return "Summarize the shared page in Newsly."
+        case .addLinks:
+            return "Also crawl important links found on the page."
+        case .shareAndChat:
+            return "Add the link and open a chat summary."
+        }
+    }
 }
 
-class ShareViewController: SLComposeServiceViewController {
+final class ShareViewController: UIViewController {
 
     private var sharedURL: URL?
     private var linkHandlingMode: LinkHandlingMode = .addContent
+    private var optionViews: [LinkHandlingMode: OptionRowView] = [:]
+
+    private let contentStack = UIStackView()
+    private let titleLabel = UILabel()
+    private let optionsStack = UIStackView()
+    private let submitButton = UIButton(type: .system)
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        // Configure keychain with shared access group (same as main app)
+        view.backgroundColor = .systemBackground
+
         if let accessGroup = SharedContainer.keychainAccessGroup {
             KeychainManager.shared.configure(accessGroup: accessGroup)
         }
 
-        // Customize UI
-        hideDescriptionField()
-        navigationItem.rightBarButtonItem?.title = "Submit"
+        configureLayout()
+        configureOptions()
+        configureSubmitButton()
 
         extractSharedURL()
-        print("🔗 [ShareExt] viewDidLoad sharedURL=\(sharedURL?.absoluteString ?? "nil")")
+        updateSubmitState()
+        updateSelectionUI()
+
+        let sharedURLString = sharedURL?.absoluteString ?? "nil"
+        print("🔗 [ShareExt] viewDidLoad sharedURL=\(sharedURLString)")
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        let minHeight: CGFloat = 520
-        let targetHeight = max(view.bounds.height, minHeight)
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        let targetSize = contentStack.systemLayoutSizeFitting(
+            CGSize(width: view.bounds.width - 32, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        let safeHeight = view.safeAreaInsets.top + view.safeAreaInsets.bottom
+        let targetHeight = targetSize.height + safeHeight + 16
         preferredContentSize = CGSize(width: view.bounds.width, height: targetHeight)
-        print("🔗 [ShareExt] preferredContentSize=\(preferredContentSize)")
     }
 
-    override func isContentValid() -> Bool {
-        return sharedURL != nil
+    // MARK: - Layout
+
+    private func configureLayout() {
+        contentStack.axis = .vertical
+        contentStack.spacing = 16
+        contentStack.alignment = .fill
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.setContentHuggingPriority(.required, for: .vertical)
+
+        titleLabel.text = "How should Newsly handle this link?"
+        titleLabel.font = .preferredFont(forTextStyle: .headline)
+        titleLabel.numberOfLines = 0
+
+        optionsStack.axis = .vertical
+        optionsStack.spacing = 12
+        optionsStack.alignment = .fill
+        optionsStack.setContentHuggingPriority(.required, for: .vertical)
+        optionsStack.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        submitButton.heightAnchor.constraint(equalToConstant: 44).isActive = true
+
+        contentStack.addArrangedSubview(titleLabel)
+        contentStack.addArrangedSubview(optionsStack)
+        contentStack.addArrangedSubview(submitButton)
+
+        view.addSubview(contentStack)
+
+        NSLayoutConstraint.activate([
+            contentStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            contentStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            contentStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            contentStack.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+        ])
     }
 
-    override func didSelectPost() {
+    private func configureOptions() {
+        LinkHandlingMode.allCases.forEach { mode in
+            let optionView = OptionRowView(title: mode.title, description: mode.description)
+            optionView.addTarget(self, action: #selector(handleOptionTapped(_:)), for: .touchUpInside)
+            optionsStack.addArrangedSubview(optionView)
+            optionViews[mode] = optionView
+        }
+    }
+
+    private func configureSubmitButton() {
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = "Submit"
+        configuration.cornerStyle = .medium
+        submitButton.configuration = configuration
+        submitButton.addTarget(self, action: #selector(handleSubmitTapped), for: .touchUpInside)
+    }
+
+    private func updateSelectionUI() {
+        optionViews.forEach { mode, view in
+            view.isSelected = (mode == linkHandlingMode)
+        }
+    }
+
+    private func updateSubmitState() {
+        submitButton.isEnabled = sharedURL != nil
+    }
+
+    @objc private func handleOptionTapped(_ sender: OptionRowView) {
+        guard let match = optionViews.first(where: { $0.value == sender })?.key else { return }
+        linkHandlingMode = match
+        updateSelectionUI()
+    }
+
+    @objc private func handleSubmitTapped() {
         guard let url = sharedURL else {
             showError("No URL found")
             return
         }
+
+        submitButton.isEnabled = false
 
         Task {
             do {
@@ -73,28 +165,11 @@ class ShareViewController: SLComposeServiceViewController {
                 }
             } catch {
                 await MainActor.run {
+                    self.updateSubmitState()
                     self.showError(error.localizedDescription)
                 }
             }
         }
-    }
-
-    override func configurationItems() -> [Any]! {
-        let items: [SLComposeSheetConfigurationItem] = LinkHandlingMode.allCases.compactMap {
-            mode -> SLComposeSheetConfigurationItem? in
-            guard let item = SLComposeSheetConfigurationItem() else { return nil }
-            item.title = mode.displayName
-            item.value = mode == linkHandlingMode ? "Selected" : nil
-            item.tapHandler = { [weak self] in
-                self?.linkHandlingMode = mode
-                self?.reloadConfigurationItems()
-            }
-            return item
-        }
-        print(
-            "🔗 [ShareExt] configurationItems count=\(items.count) sharedURL=\(sharedURL?.absoluteString ?? "nil") mode=\(linkHandlingMode.rawValue)"
-        )
-        return items
     }
 
     // MARK: - URL Extraction
@@ -108,7 +183,6 @@ class ShareViewController: SLComposeServiceViewController {
             guard let attachments = item.attachments else { continue }
 
             for attachment in attachments {
-                // Try URL type first
                 if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                     attachment.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { [weak self] item, _ in
                         if let url = item as? URL {
@@ -121,7 +195,6 @@ class ShareViewController: SLComposeServiceViewController {
                     }
                 }
 
-                // Try plain text (might be a URL string)
                 if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                     attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { [weak self] item, _ in
                         if let text = item as? String {
@@ -147,9 +220,8 @@ class ShareViewController: SLComposeServiceViewController {
             let best = self.preferredURL(current: self.sharedURL, candidate: candidate)
             guard best != self.sharedURL else { return }
             self.sharedURL = best
-            self.validateContent()
+            self.updateSubmitState()
             print("🔗 [ShareExt] extracted URL=\(best.absoluteString)")
-            self.reloadConfigurationItems()
         }
     }
 
@@ -197,25 +269,27 @@ class ShareViewController: SLComposeServiceViewController {
     // MARK: - API Submission
 
     private func submitURL(_ url: URL) async throws {
-        // Debug: Check what we can access
         let keychainToken = KeychainManager.shared.getToken(key: .accessToken)
         let sharedToken = SharedContainer.userDefaults.string(forKey: "accessToken")
 
-        // Extra debug: check if we can create the UserDefaults with the suite name
         if let groupId = SharedContainer.appGroupId {
             let directDefaults = UserDefaults(suiteName: groupId)
             let directToken = directDefaults?.string(forKey: "accessToken")
             let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
             print("🔐 [ShareExt] Direct UserDefaults(\(groupId)) exists: \(directDefaults != nil)")
-            print("🔐 [ShareExt] Direct token: \(directToken != nil ? "found" : "nil")")
-            print("🔐 [ShareExt] Container URL: \(containerURL?.path ?? "nil")")
+            let directTokenStatus = directToken != nil ? "found" : "nil"
+            let containerPath = containerURL?.path ?? "nil"
+            print("🔐 [ShareExt] Direct token: \(directTokenStatus)")
+            print("🔐 [ShareExt] Container URL: \(containerPath)")
         }
 
-        print("🔐 [ShareExt] Keychain token: \(keychainToken != nil ? "found" : "nil")")
-        print("🔐 [ShareExt] SharedDefaults token: \(sharedToken != nil ? "found (\(sharedToken!.prefix(20))...)" : "nil")")
-        print("🔐 [ShareExt] App group: \(SharedContainer.appGroupId ?? "nil")")
+        let keychainTokenStatus = keychainToken != nil ? "found" : "nil"
+        let sharedTokenStatus = sharedToken != nil ? "found (\(sharedToken!.prefix(20))...)" : "nil"
+        let appGroupId = SharedContainer.appGroupId ?? "nil"
+        print("🔐 [ShareExt] Keychain token: \(keychainTokenStatus)")
+        print("🔐 [ShareExt] SharedDefaults token: \(sharedTokenStatus)")
+        print("🔐 [ShareExt] App group: \(appGroupId)")
 
-        // Get auth token - try keychain first, then shared UserDefaults as fallback
         let token: String
         if let keychainToken = keychainToken {
             token = keychainToken
@@ -225,7 +299,6 @@ class ShareViewController: SLComposeServiceViewController {
             throw ShareError.notAuthenticated
         }
 
-        // Build request
         let baseURL = AppSettings.shared.baseURL
         guard let requestURL = URL(string: "\(baseURL)/api/content/submit") else {
             throw ShareError.invalidURL
@@ -271,15 +344,94 @@ class ShareViewController: SLComposeServiceViewController {
         })
         present(alert, animated: true)
     }
+}
 
-    // MARK: - Link Handling
+// MARK: - UI Components
 
-    private func hideDescriptionField() {
-        placeholder = ""
-        textView.text = ""
-        textView.isEditable = false
-        textView.isSelectable = false
-        textView.isHidden = true
+private final class OptionRowView: UIControl {
+
+    private let titleLabel = UILabel()
+    private let descriptionLabel = UILabel()
+    private let indicatorView = UIImageView()
+
+    init(title: String, description: String) {
+        super.init(frame: .zero)
+
+        layer.cornerRadius = 12
+        layer.borderWidth = 1
+        layer.borderColor = UIColor.separator.cgColor
+        backgroundColor = .secondarySystemBackground
+        isUserInteractionEnabled = true
+
+        titleLabel.text = title
+        titleLabel.font = UIFont.preferredFont(forTextStyle: .body)
+        titleLabel.textColor = .label
+
+        descriptionLabel.text = description
+        descriptionLabel.font = UIFont.preferredFont(forTextStyle: .footnote)
+        descriptionLabel.textColor = .secondaryLabel
+        descriptionLabel.numberOfLines = 0
+
+        indicatorView.tintColor = .systemBlue
+        indicatorView.setContentHuggingPriority(.required, for: .horizontal)
+        indicatorView.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let labelsStack = UIStackView(arrangedSubviews: [titleLabel, descriptionLabel])
+        labelsStack.axis = .vertical
+        labelsStack.spacing = 4
+        labelsStack.alignment = .fill
+
+        let rowStack = UIStackView(arrangedSubviews: [indicatorView, labelsStack])
+        rowStack.axis = .horizontal
+        rowStack.alignment = .center
+        rowStack.spacing = 12
+        rowStack.translatesAutoresizingMaskIntoConstraints = false
+        rowStack.isUserInteractionEnabled = false
+
+        addSubview(rowStack)
+
+        NSLayoutConstraint.activate([
+            rowStack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            rowStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            rowStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            rowStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            indicatorView.widthAnchor.constraint(equalToConstant: 22),
+            indicatorView.heightAnchor.constraint(equalToConstant: 22),
+        ])
+
+        updateSelectionState()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var isSelected: Bool {
+        didSet {
+            updateSelectionState()
+        }
+    }
+
+    override var isHighlighted: Bool {
+        didSet {
+            updateSelectionState()
+        }
+    }
+
+    private func updateSelectionState() {
+        if isSelected {
+            indicatorView.image = UIImage(systemName: "checkmark.circle.fill")
+            layer.borderColor = UIColor.systemBlue.cgColor
+        } else {
+            indicatorView.image = UIImage(systemName: "circle")
+            layer.borderColor = UIColor.separator.cgColor
+        }
+
+        if isHighlighted {
+            backgroundColor = UIColor.systemGray6
+        } else {
+            backgroundColor = isSelected ? UIColor.systemBackground : UIColor.secondarySystemBackground
+        }
     }
 }
 

@@ -1,26 +1,26 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import httpx
 import pytest
 
-from app.config import Settings  # To potentially override settings for testing
 from app.http_client.robust_http_client import RobustHttpClient
 
 
 @pytest.fixture
 def mock_settings(mocker):
     """Fixture to mock app.config.settings if needed for overriding client defaults."""
-    mock_settings_obj = Settings(
-        HTTP_CLIENT_TIMEOUT=5.0, # Custom test timeout
-        HTTP_CLIENT_USER_AGENT="TestApp/1.0"
+    mock_settings_obj = SimpleNamespace(
+        http_timeout_seconds=5.0,
+        HTTP_CLIENT_USER_AGENT="TestApp/1.0",
     )
-    mocker.patch('app.http_client.robust_http_client.settings', mock_settings_obj)
+    mocker.patch("app.http_client.robust_http_client.settings", mock_settings_obj)
     return mock_settings_obj
 
 @pytest.fixture
-def http_client(mock_settings): # Use mock_settings to ensure testable defaults
+def http_client(mock_settings):  # Use mock_settings to ensure testable defaults
     """Fixture to provide an instance of RobustHttpClient and ensure it's closed."""
-    client = RobustHttpClient(timeout=mock_settings.HTTP_CLIENT_TIMEOUT) # Use mocked timeout
+    client = RobustHttpClient(timeout=mock_settings.http_timeout_seconds)
     yield client
     client.close()
 
@@ -28,14 +28,14 @@ def http_client(mock_settings): # Use mock_settings to ensure testable defaults
 def mock_client(mocker):
     """Mocks the internal httpx.Client instance."""
     mock = MagicMock(spec=httpx.Client)
-    mock.is_closed = False # Simulate an open client initially
+    mock.is_closed = False  # Simulate an open client initially
     
     # Mock the close method
     def mock_close():
         mock.is_closed = True
     mock.close = MagicMock(side_effect=mock_close)
 
-    mocker.patch('httpx.Client', return_value=mock)
+    mocker.patch("httpx.Client", return_value=mock)
     return mock
 
 

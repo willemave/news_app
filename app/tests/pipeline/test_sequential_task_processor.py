@@ -1,4 +1,4 @@
-"""Tests for analyze_url task handling in the sequential task processor."""
+"""Tests for analyze_url and dig_deeper handlers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,10 @@ from unittest.mock import Mock
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
-from app.pipeline import sequential_task_processor as stp
+from app.pipeline.handlers.analyze_url import AnalyzeUrlHandler
+from app.pipeline.handlers.dig_deeper import DigDeeperHandler
+from app.pipeline.task_context import TaskContext
+from app.pipeline.task_models import TaskEnvelope
 from app.services.apple_podcasts import ApplePodcastResolution
 from app.services.content_analyzer import (
     ContentAnalysisOutput,
@@ -16,6 +19,7 @@ from app.services.content_analyzer import (
     InstructionLink,
     InstructionResult,
 )
+from app.services.queue import TaskType
 from app.services.twitter_share import (
     TweetFetchResult,
     TweetInfo,
@@ -53,18 +57,27 @@ def _create_content(db_session, user_id: int, url: str) -> Content:
     return content
 
 
-def _patch_processor_dependencies(db_session, monkeypatch, analyzer_output: ContentAnalysisOutput):
-    stub_analyzer = Mock()
-    stub_analyzer.analyze_url.return_value = analyzer_output
-
+def _build_context(db_session) -> TaskContext:
     @contextmanager
     def _db_context():
         yield db_session
 
-    monkeypatch.setattr(stp, "get_db", _db_context)
-    monkeypatch.setattr(stp, "get_content_analyzer", lambda: stub_analyzer)
-    monkeypatch.setattr(stp, "get_llm_service", lambda: None)
+    return TaskContext(
+        queue_service=Mock(),
+        settings=Mock(),
+        llm_service=Mock(),
+        worker_id="test-worker",
+        db_factory=_db_context,
+    )
 
+
+def _patch_analyze_dependencies(monkeypatch, analyzer_output: ContentAnalysisOutput):
+    from app.pipeline.handlers import analyze_url as analyze_module
+
+    stub_analyzer = Mock()
+    stub_analyzer.analyze_url.return_value = analyzer_output
+
+    monkeypatch.setattr(analyze_module, "get_content_analyzer", lambda: stub_analyzer)
     return stub_analyzer
 
 
@@ -103,23 +116,26 @@ def test_analyze_url_skips_instruction_links_when_crawl_disabled(
     content = _create_content(db_session, test_user.id, "https://example.com/article")
     analysis_output = _build_analysis_output(content.url)
 
-    stub_analyzer = _patch_processor_dependencies(db_session, monkeypatch, analysis_output)
+    stub_analyzer = _patch_analyze_dependencies(monkeypatch, analysis_output)
     create_mock = Mock(return_value=[])
-    monkeypatch.setattr(stp, "create_contents_from_instruction_links", create_mock)
+    from app.pipeline.handlers import analyze_url as analyze_module
 
-    processor = stp.SequentialTaskProcessor()
-    processor.queue_service.enqueue = Mock()
+    monkeypatch.setattr(analyze_module, "create_contents_from_instruction_links", create_mock)
 
-    task_data = {
-        "task_type": stp.TaskType.ANALYZE_URL.value,
-        "payload": {
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
+
+    task = TaskEnvelope(
+        id=1,
+        task_type=TaskType.ANALYZE_URL,
+        payload={
             "content_id": content.id,
             "instruction": "Find related links",
             "crawl_links": False,
         },
-    }
+    )
 
-    assert processor._process_analyze_url_task(task_data) is True
+    assert handler.handle(task, context).success is True
     stub_analyzer.analyze_url.assert_called_once()
     create_mock.assert_not_called()
 
@@ -132,22 +148,25 @@ def test_analyze_url_creates_instruction_links_when_crawl_enabled(
     content = _create_content(db_session, test_user.id, "https://example.com/article")
     analysis_output = _build_analysis_output(content.url)
 
-    stub_analyzer = _patch_processor_dependencies(db_session, monkeypatch, analysis_output)
+    stub_analyzer = _patch_analyze_dependencies(monkeypatch, analysis_output)
     create_mock = Mock(return_value=[])
-    monkeypatch.setattr(stp, "create_contents_from_instruction_links", create_mock)
+    from app.pipeline.handlers import analyze_url as analyze_module
 
-    processor = stp.SequentialTaskProcessor()
-    processor.queue_service.enqueue = Mock()
+    monkeypatch.setattr(analyze_module, "create_contents_from_instruction_links", create_mock)
 
-    task_data = {
-        "task_type": stp.TaskType.ANALYZE_URL.value,
-        "payload": {
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
+
+    task = TaskEnvelope(
+        id=2,
+        task_type=TaskType.ANALYZE_URL,
+        payload={
             "content_id": content.id,
             "crawl_links": True,
         },
-    }
+    )
 
-    assert processor._process_analyze_url_task(task_data) is True
+    assert handler.handle(task, context).success is True
     stub_analyzer.analyze_url.assert_called_once_with(
         content.url,
         instruction="Extract relevant links from the submitted page.",
@@ -163,14 +182,10 @@ def test_analyze_url_apple_podcasts_resolves_audio_url(
     url = "https://podcasts.apple.com/us/podcast/episode-title/id1592743188?i=1000745113618"
     content = _create_content(db_session, test_user.id, url)
 
-    @contextmanager
-    def _db_context():
-        yield db_session
+    from app.pipeline.handlers import analyze_url as analyze_module
 
-    monkeypatch.setattr(stp, "get_db", _db_context)
-    monkeypatch.setattr(stp, "get_llm_service", lambda: None)
     monkeypatch.setattr(
-        stp,
+        analyze_module,
         "resolve_apple_podcast_episode",
         lambda _: ApplePodcastResolution(
             feed_url="https://example.com/feed.xml",
@@ -178,17 +193,18 @@ def test_analyze_url_apple_podcasts_resolves_audio_url(
             audio_url="https://example.com/audio.mp3",
         ),
     )
-    monkeypatch.setattr(stp, "get_content_analyzer", Mock())
+    monkeypatch.setattr(analyze_module, "get_content_analyzer", Mock())
 
-    processor = stp.SequentialTaskProcessor()
-    processor.queue_service.enqueue = Mock()
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
 
-    task_data = {
-        "task_type": stp.TaskType.ANALYZE_URL.value,
-        "payload": {"content_id": content.id},
-    }
+    task = TaskEnvelope(
+        id=3,
+        task_type=TaskType.ANALYZE_URL,
+        payload={"content_id": content.id},
+    )
 
-    assert processor._process_analyze_url_task(task_data) is True
+    assert handler.handle(task, context).success is True
 
     updated = db_session.query(Content).filter(Content.id == content.id).first()
     assert updated is not None
@@ -201,24 +217,24 @@ def test_analyze_url_apple_podcasts_resolves_audio_url(
 def test_dig_deeper_task_runs_chat_flow(db_session, test_user, monkeypatch):
     content = _create_content(db_session, test_user.id, "https://example.com/article")
 
-    @contextmanager
-    def _db_context():
-        yield db_session
+    from app.pipeline.handlers import dig_deeper as dig_module
 
-    monkeypatch.setattr(stp, "get_db", _db_context)
     create_mock = Mock(return_value=(123, 456, "prompt"))
     run_mock = Mock()
-    monkeypatch.setattr(stp, "create_dig_deeper_message", create_mock)
-    monkeypatch.setattr(stp, "run_dig_deeper_message", run_mock)
+    monkeypatch.setattr(dig_module, "create_dig_deeper_message", create_mock)
+    monkeypatch.setattr(dig_module, "run_dig_deeper_message", run_mock)
 
-    processor = stp.SequentialTaskProcessor()
-    task_data = {
-        "task_type": stp.TaskType.DIG_DEEPER.value,
-        "content_id": content.id,
-        "payload": {"user_id": test_user.id},
-    }
+    handler = DigDeeperHandler()
+    context = _build_context(db_session)
 
-    assert processor._process_dig_deeper_task(task_data) is True
+    task = TaskEnvelope(
+        id=4,
+        task_type=TaskType.DIG_DEEPER,
+        content_id=content.id,
+        payload={"user_id": test_user.id},
+    )
+
+    assert handler.handle(task, context).success is True
     create_mock.assert_called_once_with(db_session, content, test_user.id)
     run_mock.assert_called_once_with(123, 456, "prompt")
 
@@ -230,11 +246,7 @@ def test_analyze_url_subscribe_to_feed_short_circuits_processing(
 ):
     content = _create_content(db_session, test_user.id, "https://example.com/article")
 
-    @contextmanager
-    def _db_context():
-        yield db_session
-
-    monkeypatch.setattr(stp, "get_db", _db_context)
+    from app.pipeline.handlers import analyze_url as analyze_module
 
     class DummyHttpService:
         def fetch_content(self, url):  # noqa: ANN001
@@ -244,9 +256,9 @@ def test_analyze_url_subscribe_to_feed_short_circuits_processing(
             )
             return f"<html><head>{html}</head><body></body></html>", {}
 
-    monkeypatch.setattr(stp, "get_http_service", lambda: DummyHttpService())
+    monkeypatch.setattr(analyze_module, "get_http_service", lambda: DummyHttpService())
     monkeypatch.setattr(
-        stp,
+        analyze_module,
         "detect_feeds_from_html",
         lambda html, page_url, page_title=None, source=None, content_type=None: {
             "detected_feed": {
@@ -258,19 +270,20 @@ def test_analyze_url_subscribe_to_feed_short_circuits_processing(
         },
     )
     subscribe_mock = Mock(return_value=(True, "created"))
-    monkeypatch.setattr(stp, "subscribe_to_detected_feed", subscribe_mock)
-    monkeypatch.setattr(stp, "get_content_analyzer", Mock())
+    monkeypatch.setattr(analyze_module, "subscribe_to_detected_feed", subscribe_mock)
+    monkeypatch.setattr(analyze_module, "get_content_analyzer", Mock())
 
-    processor = stp.SequentialTaskProcessor()
-    processor.queue_service.enqueue = Mock()
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
 
-    task_data = {
-        "task_type": stp.TaskType.ANALYZE_URL.value,
-        "payload": {"content_id": content.id, "subscribe_to_feed": True},
-    }
+    task = TaskEnvelope(
+        id=5,
+        task_type=TaskType.ANALYZE_URL,
+        payload={"content_id": content.id, "subscribe_to_feed": True},
+    )
 
-    assert processor._process_analyze_url_task(task_data) is True
-    processor.queue_service.enqueue.assert_not_called()
+    assert handler.handle(task, context).success is True
+    context.queue_service.enqueue.assert_not_called()
 
     updated = db_session.query(Content).filter(Content.id == content.id).first()
     assert updated is not None
@@ -290,15 +303,10 @@ def test_analyze_url_tweet_fanout_creates_additional_content(
 ):
     content = _create_content(db_session, test_user.id, "https://x.com/user/status/123")
 
-    @contextmanager
-    def _db_context():
-        yield db_session
-
-    monkeypatch.setattr(stp, "get_db", _db_context)
-    monkeypatch.setattr(stp, "get_llm_service", lambda: None)
+    from app.pipeline.handlers import analyze_url as analyze_module
 
     monkeypatch.setattr(
-        stp,
+        analyze_module,
         "resolve_twitter_credentials",
         lambda: TwitterCredentialsResult(
             success=True,
@@ -306,22 +314,23 @@ def test_analyze_url_tweet_fanout_creates_additional_content(
         ),
     )
     monkeypatch.setattr(
-        stp,
+        analyze_module,
         "fetch_tweet_detail",
         lambda params: _build_tweet_fetch_result(
             ["https://example.com/a", "https://example.com/b"]
         ),
     )
 
-    processor = stp.SequentialTaskProcessor()
-    processor.queue_service.enqueue = Mock()
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
 
-    task_data = {
-        "task_type": stp.TaskType.ANALYZE_URL.value,
-        "payload": {"content_id": content.id},
-    }
+    task = TaskEnvelope(
+        id=6,
+        task_type=TaskType.ANALYZE_URL,
+        payload={"content_id": content.id},
+    )
 
-    assert processor._process_analyze_url_task(task_data) is True
+    assert handler.handle(task, context).success is True
 
     updated = db_session.query(Content).filter(Content.id == content.id).first()
     assert updated is not None
@@ -341,32 +350,32 @@ def test_analyze_url_tweet_only_uses_thread_text(
 ):
     content = _create_content(db_session, test_user.id, "https://twitter.com/user/status/123")
 
-    @contextmanager
-    def _db_context():
-        yield db_session
-
-    monkeypatch.setattr(stp, "get_db", _db_context)
-    monkeypatch.setattr(stp, "get_llm_service", lambda: None)
+    from app.pipeline.handlers import analyze_url as analyze_module
 
     monkeypatch.setattr(
-        stp,
+        analyze_module,
         "resolve_twitter_credentials",
         lambda: TwitterCredentialsResult(
             success=True,
             credentials=TwitterCredentials(auth_token="auth", ct0="ct0", user_agent="ua"),
         ),
     )
-    monkeypatch.setattr(stp, "fetch_tweet_detail", lambda params: _build_tweet_fetch_result([]))
+    monkeypatch.setattr(
+        analyze_module,
+        "fetch_tweet_detail",
+        lambda params: _build_tweet_fetch_result([]),
+    )
 
-    processor = stp.SequentialTaskProcessor()
-    processor.queue_service.enqueue = Mock()
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
 
-    task_data = {
-        "task_type": stp.TaskType.ANALYZE_URL.value,
-        "payload": {"content_id": content.id},
-    }
+    task = TaskEnvelope(
+        id=7,
+        task_type=TaskType.ANALYZE_URL,
+        payload={"content_id": content.id},
+    )
 
-    assert processor._process_analyze_url_task(task_data) is True
+    assert handler.handle(task, context).success is True
 
     updated = db_session.query(Content).filter(Content.id == content.id).first()
     assert updated is not None

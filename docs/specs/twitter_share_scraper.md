@@ -55,7 +55,7 @@ Implement a minimal Python client patterned after `../bird`:
 Add a new `TwitterShareProcessorStrategy` in `app/processing_strategies/` that handles tweet URLs.
 
 **Selected URL handling (Option A): Resolve tweet during ANALYZE_URL**
-- In `SequentialTaskProcessor._process_analyze_url_task`, if tweet URL:
+- In `AnalyzeUrlHandler` (`app/pipeline/handlers/analyze_url.py`), if tweet URL:
   - Fetch tweet details via Twitter client (main tweet + thread).
   - Store tweet metadata (`tweet_*`, `discussion_url`, `tweet_url`, `author`, counts, created_at) in `content_metadata`.
   - If **external URLs exist**:

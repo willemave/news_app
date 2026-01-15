@@ -1,10 +1,13 @@
 """Tests for summarize task routing."""
 
 from contextlib import contextmanager
+from unittest.mock import Mock
 
 from app.models.metadata import NewsSummary
 from app.models.schema import Content
-from app.pipeline.sequential_task_processor import SequentialTaskProcessor
+from app.pipeline.handlers.summarize import SummarizeHandler
+from app.pipeline.task_context import TaskContext
+from app.pipeline.task_models import TaskEnvelope
 from app.services.queue import TaskType
 
 
@@ -56,35 +59,49 @@ def _create_content(db_session, content_type: str) -> Content:
     return content
 
 
-def test_summarize_news_enqueues_thumbnail(db_session, monkeypatch) -> None:
+def _build_context(db_session, queue_service, llm_service) -> TaskContext:
+    return TaskContext(
+        queue_service=queue_service,
+        settings=Mock(),
+        llm_service=llm_service,
+        worker_id="test-worker",
+        db_factory=_override_get_db(db_session),
+    )
+
+
+def test_summarize_news_enqueues_thumbnail(db_session) -> None:
     content = _create_content(db_session, "news")
-    processor = SequentialTaskProcessor()
-    processor.llm_service = DummySummarizer()
+    queue_service = Mock()
+    handler = SummarizeHandler()
+    context = _build_context(db_session, queue_service, DummySummarizer())
 
-    enqueued = []
-
-    monkeypatch.setattr(processor.queue_service, "enqueue", lambda task_type, **_: enqueued.append(task_type))
-    monkeypatch.setattr(
-        "app.pipeline.sequential_task_processor.get_db",
-        _override_get_db(db_session),
+    task = TaskEnvelope(
+        id=1,
+        task_type=TaskType.SUMMARIZE,
+        content_id=content.id,
     )
 
-    assert processor._process_summarize_task({"content_id": content.id}) is True
-    assert enqueued == [TaskType.GENERATE_THUMBNAIL]
+    assert handler.handle(task, context).success is True
+    queue_service.enqueue.assert_called_once_with(
+        task_type=TaskType.GENERATE_THUMBNAIL,
+        content_id=content.id,
+    )
 
 
-def test_summarize_article_enqueues_image(db_session, monkeypatch) -> None:
+def test_summarize_article_enqueues_image(db_session) -> None:
     content = _create_content(db_session, "article")
-    processor = SequentialTaskProcessor()
-    processor.llm_service = DummySummarizer()
+    queue_service = Mock()
+    handler = SummarizeHandler()
+    context = _build_context(db_session, queue_service, DummySummarizer())
 
-    enqueued = []
-
-    monkeypatch.setattr(processor.queue_service, "enqueue", lambda task_type, **_: enqueued.append(task_type))
-    monkeypatch.setattr(
-        "app.pipeline.sequential_task_processor.get_db",
-        _override_get_db(db_session),
+    task = TaskEnvelope(
+        id=2,
+        task_type=TaskType.SUMMARIZE,
+        content_id=content.id,
     )
 
-    assert processor._process_summarize_task({"content_id": content.id}) is True
-    assert enqueued == [TaskType.GENERATE_IMAGE]
+    assert handler.handle(task, context).success is True
+    queue_service.enqueue.assert_called_once_with(
+        task_type=TaskType.GENERATE_IMAGE,
+        content_id=content.id,
+    )

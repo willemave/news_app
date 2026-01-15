@@ -1,0 +1,71 @@
+"""Task models for the sequential pipeline processor."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.services.queue import TaskType
+
+
+class TaskEnvelope(BaseModel):
+    """Normalized task payload from the queue."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    task_type: TaskType
+    content_id: int | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    retry_count: int = 0
+    status: str | None = None
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def normalize_payload(cls, value: Any) -> dict[str, Any]:
+        """Normalize payload to a dictionary."""
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        return {}
+
+    @classmethod
+    def from_queue_data(cls, task_data: dict[str, Any]) -> TaskEnvelope:
+        """Build a TaskEnvelope from raw queue data."""
+        return cls.model_validate(task_data)
+
+    def to_legacy_task_data(self) -> dict[str, Any]:
+        """Return a task dict compatible with legacy handlers."""
+        return {
+            "id": self.id,
+            "task_type": self.task_type.value,
+            "content_id": self.content_id,
+            "payload": self.payload,
+            "retry_count": self.retry_count,
+            "status": self.status,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+        }
+
+
+class TaskResult(BaseModel):
+    """Outcome for task processing."""
+
+    success: bool
+    error_message: str | None = None
+    retry_delay_seconds: int | None = None
+
+    @classmethod
+    def ok(cls) -> TaskResult:
+        """Return a successful task result."""
+        return cls(success=True)
+
+    @classmethod
+    def fail(cls, error_message: str | None = None) -> TaskResult:
+        """Return a failed task result."""
+        return cls(success=False, error_message=error_message)

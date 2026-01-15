@@ -44,7 +44,7 @@ flowchart LR
 - `app/domain/` – converters between ORM and `ContentData` domain model.
 - `app/routers/` – auth, admin/content Jinja pages, logs, and API routers under `app/routers/api/`.
 - `app/services/` – queue, LLM models/agents/prompts, summarization, chat agent, event logging, HTTP client, scraper config management, content analyzer, feed detection, image generation, tweet suggestions, Exa client, content submission helpers.
-- `app/pipeline/` – checkout manager, sequential processor, content worker, podcast download/transcribe workers.
+- `app/pipeline/` – checkout manager, sequential processor, task dispatcher/handlers, content worker, podcast download/transcribe workers.
 - `app/processing_strategies/` – URL strategy implementations + registry.
 - `app/scraping/` – scrapers (HN, Reddit, Substack, Techmeme, podcasts, Atom), runner, base class.
 - `client/newsly/` – SwiftUI app + ShareExtension consuming the API.
@@ -110,7 +110,7 @@ flowchart LR
 
 ## Ingestion & Processing Pipeline
 - **Queueing**: Scrapers enqueue `PROCESS_CONTENT`; `/submit` enqueues `ANALYZE_URL` which then enqueues `PROCESS_CONTENT`. Tasks stored in `processing_tasks` with retry counts and `TaskStatus`.
-- **Processor (`app/pipeline/sequential_task_processor.py`)**: polls queue, dispatches by `TaskType` (SCRAPE/ANALYZE_URL/PROCESS_CONTENT/DOWNLOAD_AUDIO/TRANSCRIBE/SUMMARIZE/GENERATE_IMAGE/GENERATE_THUMBNAIL), exponential backoff retries, graceful signal handling.
+- **Processor (`app/pipeline/sequential_task_processor.py`)**: polls queue, dispatches by `TaskType` via `TaskDispatcher` and per-task handlers in `app/pipeline/handlers/`, exponential backoff retries, graceful signal handling.
 - **Analyze URL (`ANALYZE_URL`)**: `ContentAnalyzer` fetches page text (trafilatura), detects embedded media/RSS, and uses LLM classification; falls back to pattern-based detection for known platforms; writes platform/media metadata before `PROCESS_CONTENT`.
 - **Checkout (`app/pipeline/checkout.py`)**: optional row-level locks for multi-worker safety; releases stale checkouts back to `new`.
 - **ContentWorker flow (`app/pipeline/worker.py`)**:

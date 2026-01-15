@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app.models.schema import ContentStatus, ContentType
+from app.models.metadata import ContentStatus, ContentType
 from app.pipeline.podcast_workers import PodcastDownloadWorker
 from app.scraping.podcast_unified import PodcastUnifiedScraper
 

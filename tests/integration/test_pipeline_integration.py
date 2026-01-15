@@ -9,6 +9,7 @@ from app.core.db import get_db
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ProcessingTask
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
+from app.pipeline.task_models import TaskEnvelope
 from app.services.queue import QueueService, TaskType
 
 
@@ -124,8 +125,12 @@ class TestPipelineIntegration:
             # Process single task
             task = queue_service.dequeue(worker_id="test-worker")
             if task:
-                processor.process_task(task)
-                queue_service.complete_task(task["id"], success=True)
+                result = processor.process_task(TaskEnvelope.from_queue_data(task))
+                queue_service.complete_task(
+                    task["id"],
+                    success=result.success,
+                    error_message=result.error_message,
+                )
 
             # Verify content was processed
             with setup_test_db as db:
@@ -168,8 +173,8 @@ class TestPipelineIntegration:
             task = queue_service.dequeue(worker_id="test-worker")
             assert task is not None
 
-            result = processor.process_task(task)
-            assert result is False
+            result = processor.process_task(TaskEnvelope.from_queue_data(task))
+            assert result.success is False
 
             # Check task was marked for retry
             queue_service.complete_task(task["id"], success=False)
@@ -262,12 +267,20 @@ class TestPipelineIntegration:
             worker2_task = queue_service.dequeue(worker_id="worker-2")
 
             if worker1_task:
-                processor.process_task(worker1_task)
-                queue_service.complete_task(worker1_task["id"], success=True)
+                result = processor.process_task(TaskEnvelope.from_queue_data(worker1_task))
+                queue_service.complete_task(
+                    worker1_task["id"],
+                    success=result.success,
+                    error_message=result.error_message,
+                )
 
             if worker2_task:
-                processor.process_task(worker2_task)
-                queue_service.complete_task(worker2_task["id"], success=True)
+                result = processor.process_task(TaskEnvelope.from_queue_data(worker2_task))
+                queue_service.complete_task(
+                    worker2_task["id"],
+                    success=result.success,
+                    error_message=result.error_message,
+                )
 
             # Verify both tasks were processed
             with setup_test_db as db:
@@ -290,8 +303,8 @@ class TestPipelineIntegration:
         processor = SequentialTaskProcessor()
         task = queue_service.dequeue(worker_id="test-worker")
 
-        result = processor.process_task(task)
-        assert result is False
+        result = processor.process_task(TaskEnvelope.from_queue_data(task))
+        assert result.success is False
 
         # Test handling of invalid task type
         with setup_test_db as db:
@@ -312,8 +325,10 @@ class TestPipelineIntegration:
                 "retry_count": 0,
             }
 
-            result = processor.process_task(task_data)
-            assert result is False
+            from pydantic import ValidationError
+
+            with pytest.raises(ValidationError):
+                TaskEnvelope.from_queue_data(task_data)
 
     @pytest.mark.integration
     def test_end_to_end_scraping_and_processing(self, setup_test_db):
@@ -355,8 +370,8 @@ class TestPipelineIntegration:
 
             # Process scrape task
             scrape_task = queue_service.dequeue(worker_id="scraper")
-            result = processor.process_task(scrape_task)
-            assert result is True
+            result = processor.process_task(TaskEnvelope.from_queue_data(scrape_task))
+            assert result.success is True
 
             # Verify new content was created and task queued
             with setup_test_db as db:

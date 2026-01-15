@@ -140,7 +140,7 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                 like_count = info.get("like_count", 0)
                 thumbnail = info.get("thumbnail")
 
-                transcript = None
+                transcript = await self._extract_transcript(info)
 
                 # Parse upload date
                 if upload_date:
@@ -148,8 +148,21 @@ class YouTubeProcessorStrategy(UrlProcessorStrategy):
                 else:
                     publication_date = datetime.now()
 
+                text_content = transcript or description
+                if not text_content:
+                    text_content = f"YouTube Video: {title}"
+
                 return {
                     "title": title,
+                    "author": uploader,
+                    "publication_date": publication_date.isoformat(),
+                    "text_content": text_content,
+                    "content_type": "text",
+                    "final_url_after_redirects": url,
+                    "video_id": video_id,
+                    "thumbnail_url": thumbnail,
+                    "view_count": view_count,
+                    "like_count": like_count,
                     # Use transcript if available, else description
                     "text": transcript or description,
                     "metadata": {

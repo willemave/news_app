@@ -1,6 +1,7 @@
 """Test that summarization properly updates content metadata."""
 
-from unittest.mock import MagicMock, Mock, patch
+from contextlib import contextmanager
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -11,18 +12,33 @@ from app.models.metadata import (
     SummaryBulletPoint,
 )
 from app.models.schema import Content
-from app.pipeline.sequential_task_processor import SequentialTaskProcessor
+from app.pipeline.handlers.summarize import SummarizeHandler
+from app.pipeline.task_context import TaskContext
+from app.pipeline.task_models import TaskEnvelope
+from app.services.queue import TaskType
 
 
 @pytest.fixture
 def db_session():
     """Fixture for mocked database session."""
-    with patch("app.pipeline.sequential_task_processor.get_db") as mock_get_db:
-        mock_session = MagicMock()
-        mock_session.query.return_value = mock_session
-        mock_session.filter.return_value = mock_session
-        mock_get_db.return_value.__enter__.return_value = mock_session
-        yield mock_session
+    mock_session = MagicMock()
+    mock_session.query.return_value = mock_session
+    mock_session.filter.return_value = mock_session
+    return mock_session
+
+
+def _build_context(db_session, llm_service):
+    @contextmanager
+    def _db_context():
+        yield db_session
+
+    return TaskContext(
+        queue_service=Mock(),
+        settings=Mock(),
+        llm_service=llm_service,
+        worker_id="test-worker",
+        db_factory=_db_context,
+    )
 
 
 @pytest.fixture
@@ -52,7 +68,6 @@ def mock_structured_summary():
 
 def test_summarize_task_updates_podcast_metadata(db_session, mock_structured_summary):
     """Test that summarize task properly updates podcast metadata."""
-    # Create a test podcast with transcript
     content = Mock(spec=Content)
     content.id = 1
     content.content_type = "podcast"
@@ -63,60 +78,49 @@ def test_summarize_task_updates_podcast_metadata(db_session, mock_structured_sum
         "source": "Test Podcast Feed",
     }
 
-    # Mock the database query to return our content
     db_session.first.return_value = content
 
-    # Create processor and mock LLM service
-    processor = SequentialTaskProcessor()
+    llm_service = Mock()
+    llm_service.summarize_content.return_value = mock_structured_summary
 
-    with patch.object(processor.llm_service, "summarize_content") as mock_summarize:
-        mock_summarize.return_value = mock_structured_summary
+    handler = SummarizeHandler()
+    context = _build_context(db_session, llm_service)
 
-        # Process the summarize task
-        task_data = {
-            "id": 1,
-            "task_type": "summarize",
-            "content_id": 1,
-            "payload": {"content_id": 1},
-        }
+    task = TaskEnvelope(
+        id=1,
+        task_type=TaskType.SUMMARIZE,
+        content_id=1,
+        payload={"content_id": 1},
+    )
 
-        result = processor._process_summarize_task(task_data)
+    result = handler.handle(task, context)
 
-        # Verify the task succeeded
-        assert result is True
+    assert result.success is True
+    assert content.content_metadata != {
+        "audio_url": "https://example.com/podcast.mp3",
+        "transcript": "This is a test transcript of the podcast episode.",
+        "source": "Test Podcast Feed",
+    }
 
-        # Verify metadata was updated with a new dictionary
-        # The key assertion: content_metadata should be assigned a new dict
-        assert content.content_metadata != {
-            "audio_url": "https://example.com/podcast.mp3",
-            "transcript": "This is a test transcript of the podcast episode.",
-            "source": "Test Podcast Feed",
-        }
+    assert "summary" in content.content_metadata
+    assert "summarization_date" in content.content_metadata
+    expected_summary = mock_structured_summary.model_dump(mode="json")
 
-        # Verify summary was added
-        assert "summary" in content.content_metadata
-        assert "summarization_date" in content.content_metadata
-        expected_summary = mock_structured_summary.model_dump(mode="json")
+    summary = content.content_metadata["summary"]
+    assert summary == expected_summary
 
-        # Verify summary content matches structured payload
-        summary = content.content_metadata["summary"]
-        assert summary == expected_summary
+    assert content.content_metadata["audio_url"] == "https://example.com/podcast.mp3"
+    assert content.content_metadata["transcript"] == (
+        "This is a test transcript of the podcast episode."
+    )
+    assert content.content_metadata["source"] == "Test Podcast Feed"
 
-        # Verify original metadata is preserved
-        assert content.content_metadata["audio_url"] == "https://example.com/podcast.mp3"
-        assert content.content_metadata["transcript"] == (
-            "This is a test transcript of the podcast episode."
-        )
-        assert content.content_metadata["source"] == "Test Podcast Feed"
-
-        # Verify status was updated
-        assert content.status == "completed"
-        assert content.processed_at is not None
+    assert content.status == "completed"
+    assert content.processed_at is not None
 
 
 def test_summarize_task_updates_article_metadata(db_session, mock_structured_summary):
     """Test that summarize task properly updates article metadata."""
-    # Create a test article with content
     content = Mock(spec=Content)
     content.id = 1
     content.content_type = "article"
@@ -127,41 +131,34 @@ def test_summarize_task_updates_article_metadata(db_session, mock_structured_sum
         "source": "Test Blog",
     }
 
-    # Mock the database query to return our content
     db_session.first.return_value = content
 
-    # Create processor and mock LLM service
-    processor = SequentialTaskProcessor()
+    llm_service = Mock()
+    llm_service.summarize_content.return_value = mock_structured_summary
 
-    with patch.object(processor.llm_service, "summarize_content") as mock_summarize:
-        mock_summarize.return_value = mock_structured_summary
+    handler = SummarizeHandler()
+    context = _build_context(db_session, llm_service)
 
-        # Process the summarize task
-        task_data = {
-            "id": 1,
-            "task_type": "summarize",
-            "content_id": 1,
-            "payload": {"content_id": 1},
-        }
+    task = TaskEnvelope(
+        id=1,
+        task_type=TaskType.SUMMARIZE,
+        content_id=1,
+        payload={"content_id": 1},
+    )
 
-        result = processor._process_summarize_task(task_data)
+    result = handler.handle(task, context)
 
-        # Verify the task succeeded
-        assert result is True
+    assert result.success is True
+    assert "summary" in content.content_metadata
+    expected_summary = mock_structured_summary.model_dump(mode="json")
+    assert content.content_metadata["summary"] == expected_summary
 
-        # Verify metadata was updated with summary
-        assert "summary" in content.content_metadata
-        expected_summary = mock_structured_summary.model_dump(mode="json")
-        assert content.content_metadata["summary"] == expected_summary
-
-        # Verify original metadata is preserved
-        assert content.content_metadata["author"] == "Test Author"
-        assert content.content_metadata["source"] == "Test Blog"
+    assert content.content_metadata["author"] == "Test Author"
+    assert content.content_metadata["source"] == "Test Blog"
 
 
 def test_summarize_task_updates_news_metadata(db_session):
     """Test that summarize task properly updates news metadata with aggregator context."""
-    # Create a mock news summary (NewsSummary uses string bullet points, not SummaryBulletPoint)
     news_summary = NewsSummary(
         title="Breaking: Tech Company Announces New Product",
         overview="Major tech company revealed their latest innovation today.",
@@ -172,7 +169,6 @@ def test_summarize_task_updates_news_metadata(db_session):
         classification="to_read",
     )
 
-    # Create test news content with aggregator metadata
     content = Mock(spec=Content)
     content.id = 1
     content.title = None
@@ -193,97 +189,86 @@ def test_summarize_task_updates_news_metadata(db_session):
         "platform": "hackernews",
     }
 
-    # Mock the database query to return our content
     db_session.first.return_value = content
 
-    # Create processor and mock LLM service
-    processor = SequentialTaskProcessor()
+    llm_service = Mock()
+    llm_service.summarize_content.return_value = news_summary
 
-    with patch.object(processor.llm_service, "summarize_content") as mock_summarize:
-        mock_summarize.return_value = news_summary
+    handler = SummarizeHandler()
+    context = _build_context(db_session, llm_service)
 
-        # Process the summarize task
-        task_data = {
-            "id": 1,
-            "task_type": "summarize",
-            "content_id": 1,
-            "payload": {"content_id": 1},
-        }
+    task = TaskEnvelope(
+        id=1,
+        task_type=TaskType.SUMMARIZE,
+        content_id=1,
+        payload={"content_id": 1},
+    )
 
-        result = processor._process_summarize_task(task_data)
+    result = handler.handle(task, context)
 
-        # Verify the task succeeded
-        assert result is True
+    assert result.success is True
 
-        # Verify summarize_content was called with news_digest type and openai provider
-        mock_summarize.assert_called_once()
-        call_kwargs = mock_summarize.call_args.kwargs
-        assert call_kwargs["content_type"] == "news_digest"
-        assert call_kwargs["provider_override"] == "openai"
-        assert call_kwargs["max_bullet_points"] == 4
-        assert call_kwargs["max_quotes"] == 0
+    llm_service.summarize_content.assert_called_once()
+    call_kwargs = llm_service.summarize_content.call_args.kwargs
+    assert call_kwargs["content_type"] == "news_digest"
+    assert call_kwargs["provider_override"] == "openai"
+    assert call_kwargs["max_bullet_points"] == 4
+    assert call_kwargs["max_quotes"] == 0
 
-        # Verify the content passed includes aggregator context
-        call_args = mock_summarize.call_args.args
-        assert "Context:" in call_args[0]
-        assert "Article Title:" in call_args[0]
-        assert "Aggregator Context:" in call_args[0]
+    call_args = llm_service.summarize_content.call_args.args
+    assert "Context:" in call_args[0]
+    assert "Article Title:" in call_args[0]
+    assert "Aggregator Context:" in call_args[0]
 
-        # Verify summary was added to metadata
-        assert "summary" in content.content_metadata
-        assert content.content_metadata["summary"]["classification"] == "to_read"
-
-        # Verify title was updated from NewsSummary
-        assert content.title == "Breaking: Tech Company Announces New Product"
-
-        # Verify status was updated
-        assert content.status == "completed"
+    assert "summary" in content.content_metadata
+    assert content.content_metadata["summary"]["classification"] == "to_read"
+    assert content.title == "Breaking: Tech Company Announces New Product"
+    assert content.status == "completed"
 
 
 def test_summarize_task_handles_missing_content(db_session):
     """Test that summarize task handles missing content gracefully."""
-    # Mock the database query to return None (content not found)
     db_session.first.return_value = None
 
-    processor = SequentialTaskProcessor()
+    handler = SummarizeHandler()
+    context = _build_context(db_session, Mock())
 
-    # Process task for non-existent content
-    task_data = {
-        "id": 1,
-        "task_type": "summarize",
-        "content_id": 99999,
-        "payload": {"content_id": 99999},
-    }
+    task = TaskEnvelope(
+        id=1,
+        task_type=TaskType.SUMMARIZE,
+        content_id=99999,
+        payload={"content_id": 99999},
+    )
 
-    result = processor._process_summarize_task(task_data)
-
-    # Should return False for missing content
-    assert result is False
+    result = handler.handle(task, context)
+    assert result.success is False
 
 
 def test_summarize_task_handles_missing_text(db_session):
     """Test that summarize task handles content without text gracefully."""
-    # Create a podcast without transcript
     content = Mock(spec=Content)
     content.id = 1
     content.content_type = "podcast"
     content.status = "processing"
     content.content_metadata = {
         "audio_url": "https://example.com/podcast.mp3"
-        # No transcript
     }
 
-    # Mock the database query to return our content
     db_session.first.return_value = content
 
-    processor = SequentialTaskProcessor()
+    handler = SummarizeHandler()
+    context = _build_context(db_session, Mock())
 
-    task_data = {"id": 1, "task_type": "summarize", "content_id": 1, "payload": {"content_id": 1}}
+    task = TaskEnvelope(
+        id=1,
+        task_type=TaskType.SUMMARIZE,
+        content_id=1,
+        payload={"content_id": 1},
+    )
 
-    result = processor._process_summarize_task(task_data)
+    result = handler.handle(task, context)
 
-    # Should return False when no text to summarize
-    assert result is False
+    assert result.success is False
     assert content.status == "failed"
     assert "No text to summarize" in (content.error_message or "")
     assert isinstance(content.content_metadata, dict)

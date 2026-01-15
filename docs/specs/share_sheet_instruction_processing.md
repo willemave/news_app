@@ -86,7 +86,7 @@ class InstructionResult(BaseModel):
 - Never fail the `ANALYZE_URL` task solely due to instruction handling errors.
 
 ### 5) Use Instruction Output During `ANALYZE_URL`
-- In `SequentialTaskProcessor._process_analyze_url_task`:
+- In `AnalyzeUrlHandler` (`app/pipeline/handlers/analyze_url.py`):
   - If `instruction` is present or `crawl_links=true`, call the new `ContentAnalyzer` method and capture both outputs.
   - Build a temporary `analysis_context` string from `InstructionResult`:
     - `text` content + a compact list of link URLs (and optional titles).

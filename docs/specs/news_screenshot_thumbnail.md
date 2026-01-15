@@ -25,7 +25,7 @@ Replace LLM-generated news thumbnails with Playwright screenshots of the normali
 ## Proposed Changes
 ### 1) New Task Type: `GENERATE_THUMBNAIL`
 - Add `TaskType.GENERATE_THUMBNAIL = "generate_thumbnail"`.
-- Add `_process_generate_thumbnail_task` to `SequentialTaskProcessor` and dispatch it in `process_task`.
+- Add `GenerateThumbnailHandler` to `app/pipeline/handlers/` and dispatch via `TaskDispatcher`.
 - Summarization stage:
   - If `content_type == news`, enqueue `GENERATE_THUMBNAIL`.
   - Otherwise enqueue `GENERATE_IMAGE` (unchanged).
