@@ -112,32 +112,85 @@ class ShareViewController: SLComposeServiceViewController {
                 if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                     attachment.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { [weak self] item, _ in
                         if let url = item as? URL {
-                            DispatchQueue.main.async {
-                                self?.sharedURL = url
-                                self?.validateContent()
-                                print("🔗 [ShareExt] extracted URL=\(url.absoluteString)")
-                                self?.reloadConfigurationItems()
-                            }
+                            self?.updateSharedURL(url)
+                            return
+                        }
+                        if let text = item as? String, let url = URL(string: text), url.scheme != nil {
+                            self?.updateSharedURL(url)
                         }
                     }
-                    return
                 }
 
                 // Try plain text (might be a URL string)
                 if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                     attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { [weak self] item, _ in
-                        if let text = item as? String, let url = URL(string: text), url.scheme != nil {
-                            DispatchQueue.main.async {
-                                self?.sharedURL = url
-                                self?.validateContent()
-                                print("🔗 [ShareExt] extracted text URL=\(url.absoluteString)")
-                                self?.reloadConfigurationItems()
+                        if let text = item as? String {
+                            let urls = self?.extractURLs(from: text) ?? []
+                            if let firstURL = urls.first {
+                                self?.updateSharedURL(firstURL)
+                                for url in urls.dropFirst() {
+                                    self?.updateSharedURL(url)
+                                }
+                            } else if let url = URL(string: text), url.scheme != nil {
+                                self?.updateSharedURL(url)
                             }
                         }
                     }
-                    return
                 }
             }
+        }
+    }
+
+    private func updateSharedURL(_ candidate: URL) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let best = self.preferredURL(current: self.sharedURL, candidate: candidate)
+            guard best != self.sharedURL else { return }
+            self.sharedURL = best
+            self.validateContent()
+            print("🔗 [ShareExt] extracted URL=\(best.absoluteString)")
+            self.reloadConfigurationItems()
+        }
+    }
+
+    private func preferredURL(current: URL?, candidate: URL) -> URL {
+        guard let current else { return candidate }
+        let candidateScore = scoreURL(candidate)
+        let currentScore = scoreURL(current)
+        if candidateScore > currentScore {
+            return candidate
+        }
+        if candidateScore == currentScore,
+           candidate.absoluteString.count > current.absoluteString.count {
+            return candidate
+        }
+        return current
+    }
+
+    private func scoreURL(_ url: URL) -> Int {
+        var score = 0
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            score += 1
+        }
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            if let items = components.queryItems, !items.isEmpty {
+                score += 2
+                score += min(items.count, 3)
+            }
+            if let fragment = components.fragment, !fragment.isEmpty {
+                score += 1
+            }
+        }
+        return score
+    }
+
+    private func extractURLs(from text: String) -> [URL] {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return []
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return detector.matches(in: text, options: [], range: range).compactMap { match in
+            match.url
         }
     }
 

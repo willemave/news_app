@@ -13,6 +13,7 @@ from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
 from app.scraping.youtube_unified import YouTubeClientConfig, load_youtube_client_config
+from app.services.apple_podcasts import resolve_apple_podcast_episode
 from app.services.queue import TaskType, get_queue_service
 from app.services.whisper_local import get_whisper_local_service
 
@@ -88,6 +89,11 @@ class PodcastDownloadWorker:
         except Exception as e:
             logger.error(f"URL validation failed for {url}: {e}")
             return False
+
+    @staticmethod
+    def _is_apple_podcasts_url(url: str) -> bool:
+        host = urlparse(url).netloc.lower()
+        return host.endswith("podcasts.apple.com")
 
     def _extract_actual_audio_url(self, url: str) -> str:
         """
@@ -289,11 +295,32 @@ class PodcastDownloadWorker:
                 # Get audio URL from metadata
                 audio_url = content.metadata.get("audio_url")
                 if not audio_url:
-                    logger.error(f"No audio URL found for content {content_id}")
-                    db_content.status = ContentStatus.FAILED.value
-                    db_content.error_message = "No audio URL found"
-                    db.commit()
-                    return False
+                    platform = (
+                        content.metadata.get("platform") or db_content.platform or ""
+                    ).lower()
+                    if platform == "apple_podcasts" or self._is_apple_podcasts_url(
+                        str(content.url)
+                    ):
+                        resolution = resolve_apple_podcast_episode(str(content.url))
+                        if resolution.feed_url:
+                            content.metadata.setdefault("feed_url", resolution.feed_url)
+                        if resolution.episode_title:
+                            content.metadata.setdefault("episode_title", resolution.episode_title)
+                            if not content.title:
+                                content.title = resolution.episode_title
+                        if resolution.audio_url:
+                            content.metadata["audio_url"] = resolution.audio_url
+                            domain_to_content(content, db_content)
+                            db.commit()
+                            audio_url = resolution.audio_url
+
+                    if not audio_url:
+                        logger.error(f"No audio URL found for content {content_id}")
+                        db_content.status = ContentStatus.FAILED.value
+                        db_content.error_message = "No audio URL found"
+                        domain_to_content(content, db_content)
+                        db.commit()
+                        return False
 
                 # Check if this is a YouTube URL
                 if self._is_youtube_url(audio_url):
