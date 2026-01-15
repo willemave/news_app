@@ -161,6 +161,35 @@ struct ContentSummary: Codable, Identifiable {
         return displayFormatter.string(from: date)
     }
 
+    /// Relative time display for news items (e.g., "2h ago", "3d ago")
+    var relativeTimeDisplay: String? {
+        let dateString = publicationDate ?? processedAt ?? createdAt
+        guard let date = parseDate(from: dateString) else {
+            return nil
+        }
+
+        let now = Date()
+        let interval = now.timeIntervalSince(date)
+
+        if interval < 60 {
+            return "now"
+        } else if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return "\(minutes)m ago"
+        } else if interval < 86400 {
+            let hours = Int(interval / 3600)
+            return "\(hours)h ago"
+        } else if interval < 604800 {
+            let days = Int(interval / 86400)
+            return "\(days)d ago"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            formatter.timeZone = TimeZone.current
+            return formatter.string(from: date)
+        }
+    }
+
     func updating(
         isRead: Bool? = nil,
         isFavorited: Bool? = nil

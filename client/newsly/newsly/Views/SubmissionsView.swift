@@ -34,24 +34,40 @@ struct SubmissionsView: View {
     private var listView: some View {
         List {
             ForEach(viewModel.submissions) { submission in
-                SubmissionStatusRow(submission: submission)
-                    .onAppear {
-                        if submission.id == viewModel.submissions.last?.id {
-                            Task { await viewModel.loadMore() }
-                        }
+                ZStack {
+                    NavigationLink {
+                        SubmissionDetailView(submission: submission)
+                    } label: {
+                        EmptyView()
                     }
+                    .opacity(0)
+                    .buttonStyle(PlainButtonStyle())
+
+                    SubmissionStatusRow(submission: submission)
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .onAppear {
+                    if submission.id == viewModel.submissions.last?.id {
+                        Task { await viewModel.loadMore() }
+                    }
+                }
             }
 
             if viewModel.isLoadingMore {
                 HStack {
                     Spacer()
                     ProgressView()
+                        .padding()
                     Spacer()
                 }
                 .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .refreshable {
             await viewModel.load()
         }

@@ -2,7 +2,7 @@
 
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ContentStatusEntry, ProcessingTask
+from app.models.schema import Content, ContentReadStatus, ContentStatusEntry, ProcessingTask
 from app.services.queue import TaskStatus, TaskType
 
 
@@ -170,3 +170,55 @@ def test_reject_invalid_scheme(client):
     response = client.post("/api/content/submit", json={"url": "ftp://example.com/file"})
 
     assert response.status_code == 422
+
+
+def test_submit_share_and_chat_marks_read_and_tracks_user(client, db_session, test_user):
+    """Submitting with share_and_chat should mark content as read and track the user."""
+    response = client.post(
+        "/api/content/submit",
+        json={"url": "https://example.com/article", "share_and_chat": True},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+
+    created = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+    assert created is not None
+    assert created.content_metadata.get("share_and_chat_user_ids") == [test_user.id]
+
+    read_status_row = (
+        db_session.query(ContentReadStatus)
+        .filter(
+            ContentReadStatus.user_id == test_user.id,
+            ContentReadStatus.content_id == created.id,
+        )
+        .first()
+    )
+    assert read_status_row is not None
+
+
+def test_share_and_chat_existing_completed_enqueues_dig_deeper_task(client, db_session, test_user):
+    """Completed content should enqueue dig-deeper immediately for share_and_chat."""
+    existing = Content(
+        url="https://example.com/article",
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.COMPLETED.value,
+        source=SELF_SUBMISSION_SOURCE,
+        content_metadata={},
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    response = client.post(
+        "/api/content/submit",
+        json={"url": existing.url, "share_and_chat": True},
+    )
+
+    assert response.status_code == 200
+
+    task = (
+        db_session.query(ProcessingTask)
+        .filter_by(content_id=existing.id, task_type=TaskType.DIG_DEEPER.value)
+        .first()
+    )
+    assert task is not None

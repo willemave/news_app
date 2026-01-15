@@ -10,47 +10,77 @@ struct MoreView: View {
 
     var body: some View {
         List {
-            NavigationLink {
-                SearchView()
-            } label: {
-                Label("Search", systemImage: "magnifyingglass")
-            }
+            Section {
+                menuRow(
+                    destination: SearchView(),
+                    icon: "magnifyingglass",
+                    iconColor: .blue,
+                    title: "Search"
+                )
 
-            NavigationLink {
-                FavoritesView()
-            } label: {
-                Label("Favorites", systemImage: "star")
-            }
+                menuRow(
+                    destination: FavoritesView(),
+                    icon: "star.fill",
+                    iconColor: .yellow,
+                    title: "Favorites"
+                )
 
-            NavigationLink {
-                RecentlyReadView()
-            } label: {
-                Label("Recently Read", systemImage: "clock.fill")
-            }
+                menuRow(
+                    destination: RecentlyReadView(),
+                    icon: "clock.fill",
+                    iconColor: .orange,
+                    title: "Recently Read"
+                )
 
-            NavigationLink {
-                SubmissionsView(viewModel: submissionsViewModel)
-            } label: {
-                HStack {
-                    Label("Submissions", systemImage: "tray.and.arrow.up")
-                    Spacer()
-                    if submissionsViewModel.submissions.count > 0 {
-                        submissionsBadge(count: submissionsViewModel.submissions.count)
+                NavigationLink {
+                    SubmissionsView(viewModel: submissionsViewModel)
+                } label: {
+                    HStack(spacing: 12) {
+                        iconView(icon: "tray.and.arrow.up.fill", color: .purple)
+                        Text("Submissions")
+                        Spacer()
+                        if submissionsViewModel.submissions.count > 0 {
+                            submissionsBadge(count: submissionsViewModel.submissions.count)
+                        }
                     }
                 }
             }
 
-            NavigationLink {
-                SettingsView()
-            } label: {
-                Label("Settings", systemImage: "gear")
+            Section {
+                menuRow(
+                    destination: SettingsView(),
+                    icon: "gear",
+                    iconColor: .gray,
+                    title: "Settings"
+                )
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.large)
         .task {
             await submissionsViewModel.load()
         }
+    }
+
+    private func menuRow<D: View>(destination: D, icon: String, iconColor: Color, title: String) -> some View {
+        NavigationLink {
+            destination
+        } label: {
+            HStack(spacing: 12) {
+                iconView(icon: icon, color: iconColor)
+                Text(title)
+            }
+        }
+    }
+
+    private func iconView(icon: String, color: Color) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 28, height: 28)
+            .background(color.gradient)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private func submissionsBadge(count: Int) -> some View {

@@ -9,6 +9,7 @@ from app.constants import SELF_SUBMISSION_SOURCE
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.pipeline import sequential_task_processor as stp
+from app.services.apple_podcasts import ApplePodcastResolution
 from app.services.content_analyzer import (
     ContentAnalysisOutput,
     ContentAnalysisResult,
@@ -152,6 +153,74 @@ def test_analyze_url_creates_instruction_links_when_crawl_enabled(
         instruction="Extract relevant links from the submitted page.",
     )
     create_mock.assert_called_once()
+
+
+def test_analyze_url_apple_podcasts_resolves_audio_url(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    url = "https://podcasts.apple.com/us/podcast/episode-title/id1592743188?i=1000745113618"
+    content = _create_content(db_session, test_user.id, url)
+
+    @contextmanager
+    def _db_context():
+        yield db_session
+
+    monkeypatch.setattr(stp, "get_db", _db_context)
+    monkeypatch.setattr(stp, "get_llm_service", lambda: None)
+    monkeypatch.setattr(
+        stp,
+        "resolve_apple_podcast_episode",
+        lambda _: ApplePodcastResolution(
+            feed_url="https://example.com/feed.xml",
+            episode_title="Example Episode",
+            audio_url="https://example.com/audio.mp3",
+        ),
+    )
+    monkeypatch.setattr(stp, "get_content_analyzer", Mock())
+
+    processor = stp.SequentialTaskProcessor()
+    processor.queue_service.enqueue = Mock()
+
+    task_data = {
+        "task_type": stp.TaskType.ANALYZE_URL.value,
+        "payload": {"content_id": content.id},
+    }
+
+    assert processor._process_analyze_url_task(task_data) is True
+
+    updated = db_session.query(Content).filter(Content.id == content.id).first()
+    assert updated is not None
+    assert updated.content_metadata.get("audio_url") == "https://example.com/audio.mp3"
+    assert updated.content_metadata.get("feed_url") == "https://example.com/feed.xml"
+    assert updated.content_metadata.get("episode_title") == "Example Episode"
+    assert updated.title == "Example Episode"
+
+
+def test_dig_deeper_task_runs_chat_flow(db_session, test_user, monkeypatch):
+    content = _create_content(db_session, test_user.id, "https://example.com/article")
+
+    @contextmanager
+    def _db_context():
+        yield db_session
+
+    monkeypatch.setattr(stp, "get_db", _db_context)
+    create_mock = Mock(return_value=(123, 456, "prompt"))
+    run_mock = Mock()
+    monkeypatch.setattr(stp, "create_dig_deeper_message", create_mock)
+    monkeypatch.setattr(stp, "run_dig_deeper_message", run_mock)
+
+    processor = stp.SequentialTaskProcessor()
+    task_data = {
+        "task_type": stp.TaskType.DIG_DEEPER.value,
+        "content_id": content.id,
+        "payload": {"user_id": test_user.id},
+    }
+
+    assert processor._process_dig_deeper_task(task_data) is True
+    create_mock.assert_called_once_with(db_session, content, test_user.id)
+    run_mock.assert_called_once_with(123, 456, "prompt")
 
 
 def test_analyze_url_subscribe_to_feed_short_circuits_processing(

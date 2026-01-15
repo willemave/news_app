@@ -12,6 +12,8 @@ from app.models.content_submission import ContentSubmissionResponse, SubmitConte
 from app.models.metadata import ContentClassification, ContentStatus, ContentType
 from app.models.schema import Content, ProcessingTask
 from app.models.user import User
+from app.services import read_status
+from app.services.dig_deeper import enqueue_dig_deeper_task
 from app.services.queue import TaskStatus, TaskType
 from app.services.scraper_configs import ensure_inbox_status
 
@@ -95,6 +97,42 @@ def _ensure_analyze_url_task(
     return task.id
 
 
+def _append_share_and_chat_user(
+    metadata: dict[str, object] | None,
+    user_id: int,
+) -> dict[str, object]:
+    """Append the user to pending share-and-chat metadata.
+
+    Args:
+        metadata: Existing content metadata.
+        user_id: User requesting share-and-chat.
+
+    Returns:
+        Updated metadata dictionary.
+    """
+    updated = dict(metadata or {})
+    raw_users = updated.get("share_and_chat_user_ids")
+    user_ids: list[int] = []
+
+    if isinstance(raw_users, list):
+        for value in raw_users:
+            try:
+                user_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+    elif raw_users is not None:
+        try:
+            user_ids.append(int(raw_users))
+        except (TypeError, ValueError):
+            user_ids = []
+
+    if user_id not in user_ids:
+        user_ids.append(user_id)
+
+    updated["share_and_chat_user_ids"] = user_ids
+    return updated
+
+
 def submit_user_content(
     db: Session, payload: SubmitContentRequest, current_user: User
 ) -> ContentSubmissionResponse:
@@ -119,10 +157,12 @@ def submit_user_content(
     instruction = payload.instruction.strip() if payload.instruction else None
     crawl_links = payload.crawl_links
     subscribe_to_feed = payload.subscribe_to_feed
+    share_and_chat = payload.share_and_chat and not subscribe_to_feed
 
     existing = db.query(Content).filter(Content.url == normalized_url).first()
     if existing:
         source_url_updated = False
+        metadata_updated = False
         if not existing.source_url:
             existing.source_url = raw_url
             source_url_updated = True
@@ -134,11 +174,20 @@ def submit_user_content(
             existing.content_metadata = existing_metadata
             db.commit()
         else:
+            if share_and_chat and existing.status != ContentStatus.COMPLETED.value:
+                existing.content_metadata = _append_share_and_chat_user(
+                    existing.content_metadata, current_user.id
+                )
+                metadata_updated = True
             status_created = ensure_inbox_status(
                 db, current_user.id, existing.id, content_type=existing.content_type
             )
-            if status_created or source_url_updated:
+            if status_created or source_url_updated or metadata_updated:
                 db.commit()
+            if share_and_chat:
+                read_status.mark_content_as_read(db, existing.id, current_user.id)
+                if existing.status == ContentStatus.COMPLETED.value:
+                    enqueue_dig_deeper_task(db, existing.id, current_user.id)
         task_id = _ensure_analyze_url_task(
             db,
             existing.id,
@@ -169,6 +218,8 @@ def submit_user_content(
     }
     if subscribe_to_feed:
         metadata["subscribe_to_feed"] = True
+    if share_and_chat:
+        metadata = _append_share_and_chat_user(metadata, current_user.id)
 
     # Create content with UNKNOWN type - will be updated by ANALYZE_URL task
     new_content = Content(
@@ -215,6 +266,8 @@ def submit_user_content(
         )
         if status_created:
             db.commit()
+        if share_and_chat:
+            read_status.mark_content_as_read(db, new_content.id, current_user.id)
     task_id = _ensure_analyze_url_task(
         db,
         new_content.id,

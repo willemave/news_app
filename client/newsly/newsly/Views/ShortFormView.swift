@@ -170,11 +170,31 @@ private struct ShortNewsRow: View {
         item.isRead ? 0.5 : 1.0
     }
 
+    /// Platform-specific accent color for badges
+    private var platformColor: Color {
+        guard let platform = item.platform?.lowercased() else {
+            return .gray
+        }
+        switch platform {
+        case "hacker news", "hackernews", "hn":
+            return .orange
+        case "reddit":
+            return Color(red: 1.0, green: 0.45, blue: 0.0) // Reddit orange-red
+        case "twitter", "x":
+            return .blue
+        case "lobsters":
+            return .red
+        default:
+            return .gray
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
-                // Thumbnail on left
+                // Thumbnail on left with subtle shadow
                 thumbnailView
+                    .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
 
                 // Text content
                 VStack(alignment: .leading, spacing: 4) {
@@ -182,6 +202,7 @@ private struct ShortNewsRow: View {
                         .font(.headline)
                         .foregroundColor(.primary.opacity(textOpacity))
                         .lineLimit(3)
+                        .lineSpacing(-2) // Tighter line height
                         .multilineTextAlignment(.leading)
 
                     if let summary = item.shortSummary, !summary.isEmpty {
@@ -197,13 +218,22 @@ private struct ShortNewsRow: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary.opacity(textOpacity))
                         }
+                        if let time = item.relativeTimeDisplay {
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(.secondary.opacity(textOpacity * 0.6))
+                            Text(time)
+                                .font(.caption)
+                                .foregroundColor(.secondary.opacity(textOpacity))
+                        }
+                        Spacer()
                         if let platform = item.platform {
                             Text(platform)
                                 .font(.caption2)
-                                .foregroundColor(.secondary.opacity(textOpacity))
+                                .foregroundColor(platformColor.opacity(item.isRead ? 0.6 : 0.9))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color.gray.opacity(item.isRead ? 0.05 : 0.1))
+                                .background(platformColor.opacity(item.isRead ? 0.08 : 0.15))
                                 .clipShape(Capsule())
                         }
                     }
@@ -211,6 +241,7 @@ private struct ShortNewsRow: View {
             }
 
             Divider()
+                .padding(.leading, 72) // Inset to align with text (thumbnail 60 + spacing 12)
         }
         .padding(.vertical, 8)
     }

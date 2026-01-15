@@ -17,8 +17,14 @@ from app.models.schema import Content, ProcessingTask
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.worker import ContentWorker, get_llm_service
 from app.scraping.runner import ScraperRunner
+from app.services.apple_podcasts import resolve_apple_podcast_episode
 from app.services.content_analyzer import AnalysisError, get_content_analyzer
 from app.services.content_submission import normalize_url
+from app.services.dig_deeper import (
+    create_dig_deeper_message,
+    enqueue_dig_deeper_task,
+    run_dig_deeper_message,
+)
 from app.services.feed_detection import detect_feeds_from_html
 from app.services.feed_discovery import run_feed_discovery
 from app.services.feed_subscription import subscribe_to_detected_feed
@@ -109,6 +115,8 @@ class SequentialTaskProcessor:
                 result = self._process_generate_thumbnail_task(task_data)
             elif task_type == TaskType.DISCOVER_FEEDS:
                 result = self._process_discover_feeds_task(task_data)
+            elif task_type == TaskType.DIG_DEEPER:
+                result = self._process_dig_deeper_task(task_data)
             else:
                 logger.error(f"Unknown task type: {task_type}")
                 result = False
@@ -447,6 +455,16 @@ class SequentialTaskProcessor:
                         if platform:
                             content.platform = platform
                             metadata["platform"] = platform
+                        if platform == "apple_podcasts":
+                            resolution = resolve_apple_podcast_episode(url)
+                            if resolution.feed_url:
+                                metadata.setdefault("feed_url", resolution.feed_url)
+                            if resolution.episode_title:
+                                metadata.setdefault("episode_title", resolution.episode_title)
+                                if not content.title:
+                                    content.title = resolution.episode_title
+                            if resolution.audio_url:
+                                metadata.setdefault("audio_url", resolution.audio_url)
 
                         content.content_metadata = metadata
                         db.commit()
@@ -813,6 +831,7 @@ class SequentialTaskProcessor:
                     # Update content with summary
                     # Create a new dictionary to ensure SQLAlchemy detects the change
                     metadata = dict(content.content_metadata or {})
+                    share_and_chat_user_ids = self._extract_share_and_chat_user_ids(metadata)
                     summary_dict = (
                         summary.model_dump(mode="json", by_alias=True)
                         if hasattr(summary, "model_dump")
@@ -848,12 +867,23 @@ class SequentialTaskProcessor:
                         logger.info("Generated summary for content %s", content_id)
 
                     metadata["summarization_date"] = datetime.utcnow().isoformat()
+                    if share_and_chat_user_ids:
+                        metadata.pop("share_and_chat_user_ids", None)
 
                     # Assign new dictionary to trigger SQLAlchemy change detection
                     content.content_metadata = metadata
                     content.status = ContentStatus.COMPLETED.value
                     content.processed_at = datetime.utcnow()
                     db.commit()
+
+                    if share_and_chat_user_ids:
+                        for user_id in share_and_chat_user_ids:
+                            enqueue_dig_deeper_task(db, content_id, user_id)
+                        logger.info(
+                            "Enqueued dig-deeper tasks for content %s (users=%s)",
+                            content_id,
+                            share_and_chat_user_ids,
+                        )
 
                     if content.content_type == ContentType.NEWS.value:
                         self.queue_service.enqueue(
@@ -902,6 +932,82 @@ class SequentialTaskProcessor:
         except Exception as e:
             logger.error(f"Summarization error: {e}", exc_info=True)
             return False
+
+    @staticmethod
+    def _extract_share_and_chat_user_ids(metadata: dict[str, Any]) -> list[int]:
+        """Extract share-and-chat user IDs from metadata if present."""
+        raw_users = metadata.get("share_and_chat_user_ids")
+        user_ids: list[int] = []
+
+        if isinstance(raw_users, list):
+            for value in raw_users:
+                try:
+                    user_ids.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+        elif raw_users is not None:
+            try:
+                user_ids.append(int(raw_users))
+            except (TypeError, ValueError):
+                user_ids = []
+
+        return [user_id for user_id in user_ids if user_id > 0]
+
+    def _process_dig_deeper_task(self, task_data: dict[str, Any]) -> bool:
+        """Start a dig-deeper chat for processed content."""
+        content_id = task_data.get("content_id") or task_data.get("payload", {}).get("content_id")
+        payload = task_data.get("payload", {}) if isinstance(task_data.get("payload"), dict) else {}
+        user_id = payload.get("user_id")
+
+        if not content_id or not user_id:
+            logger.error(
+                "DIG_DEEPER_TASK_ERROR: Missing content_id or user_id (content_id=%s, user_id=%s)",
+                content_id,
+                user_id,
+                extra={
+                    "component": "dig_deeper",
+                    "operation": "process_task",
+                    "context_data": {"content_id": content_id, "user_id": user_id},
+                },
+            )
+            return False
+
+        with get_db() as db:
+            content = db.query(Content).filter(Content.id == int(content_id)).first()
+            if not content:
+                logger.error(
+                    "DIG_DEEPER_TASK_ERROR: Content %s not found",
+                    content_id,
+                    extra={
+                        "component": "dig_deeper",
+                        "operation": "load_content",
+                        "item_id": content_id,
+                    },
+                )
+                return False
+
+            session_id, message_id, prompt = create_dig_deeper_message(db, content, int(user_id))
+
+        try:
+            run_dig_deeper_message(session_id, message_id, prompt)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "DIG_DEEPER_TASK_ERROR: Failed to process message for content %s",
+                content_id,
+                extra={
+                    "component": "dig_deeper",
+                    "operation": "process_message",
+                    "item_id": content_id,
+                    "context_data": {
+                        "session_id": session_id,
+                        "message_id": message_id,
+                        "error": str(exc),
+                    },
+                },
+            )
+            return False
+
+        return True
 
     def _build_news_context(self, metadata: dict[str, Any]) -> str:
         """Build aggregator context string for news items."""

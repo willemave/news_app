@@ -41,6 +41,13 @@ class SubmitContentRequest(BaseModel):
             "instead of processing the URL as content."
         ),
     )
+    share_and_chat: bool = Field(
+        False,
+        description=(
+            "When true, mark the submitted content as read and start a dig-deeper chat "
+            "after processing completes."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
@@ -52,6 +59,7 @@ class SubmitContentRequest(BaseModel):
                 "instruction": "Add all links mentioned in the episode page",
                 "crawl_links": True,
                 "subscribe_to_feed": False,
+                "share_and_chat": False,
             }
         }
 
