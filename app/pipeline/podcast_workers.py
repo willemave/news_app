@@ -318,6 +318,8 @@ class PodcastDownloadWorker:
                         logger.error(f"No audio URL found for content {content_id}")
                         db_content.status = ContentStatus.FAILED.value
                         db_content.error_message = "No audio URL found"
+                        content.status = ContentStatus.FAILED
+                        content.error_message = "No audio URL found"
                         domain_to_content(content, db_content)
                         db.commit()
                         return False

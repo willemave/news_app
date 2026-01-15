@@ -90,13 +90,12 @@ class TestImageProcessorStrategy:
         result = image_strategy.download_content(url)
         assert result == url
 
-    @pytest.mark.asyncio
-    async def test_extract_data_marks_for_skipping(self, image_strategy):
+    def test_extract_data_marks_for_skipping(self, image_strategy):
         """Test that extract_data returns proper structure for skipping."""
         url = "https://example.com/photo.jpg"
         content = url  # From download_content
         
-        result = await image_strategy.extract_data(content, url)
+        result = image_strategy.extract_data(content, url)
         
         assert result["content_type"] == "image"
         assert result["skip_processing"] is True
@@ -105,13 +104,12 @@ class TestImageProcessorStrategy:
         assert result["text_content"] == ""
         assert result["title"] == "photo.jpg"
 
-    @pytest.mark.asyncio
-    async def test_extract_data_handles_complex_urls(self, image_strategy):
+    def test_extract_data_handles_complex_urls(self, image_strategy):
         """Test that extract_data handles URLs with query parameters."""
         url = "https://example.com/images/photo.jpg?size=large&quality=high"
         content = url
         
-        result = await image_strategy.extract_data(content, url)
+        result = image_strategy.extract_data(content, url)
         
         assert result["title"] == "photo.jpg"
         assert result["image_url"] == url

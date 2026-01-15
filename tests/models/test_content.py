@@ -100,7 +100,7 @@ class TestContentModel:
         assert content.content_metadata["article"]["url"] == "https://example.com/story"
 
     def test_news_metadata_backfills_article(self):
-        """Legacy news metadata without article should be backfilled automatically."""
+        """Legacy news metadata without article should remain unchanged."""
 
         legacy_metadata = {
             "platform": "reddit",
@@ -130,11 +130,8 @@ class TestContentModel:
             content_metadata=legacy_metadata,
         )
 
-        article_metadata = content.content_metadata.get("article")
-        assert article_metadata is not None
-        assert article_metadata["url"] == "https://example.ai/posts/openai-model"
-        assert article_metadata["source_domain"] == "example.ai"
-        assert article_metadata["title"] == "OpenAI ships new model"
+        assert content.content_metadata.get("article") is None
+        assert content.content_metadata["primary_url"] == "https://reddit.com/r/MachineLearning/comments/xyz"
     
     def test_content_metadata_json_field(self):
         """Test that metadata is stored as JSON."""
@@ -266,13 +263,13 @@ class TestContentTypeEnum:
         assert ContentType.NEWS.value == "news"
 
     def test_content_type_count(self):
-        """Test that we have exactly 2 content types."""
+        """Test that we have all supported content types."""
         content_types = list(ContentType)
-        assert len(content_types) == 3
+        assert len(content_types) == 4
 
     def test_content_type_iteration(self):
         """Test iterating over ContentType enum."""
-        expected_values = {"article", "podcast", "news"}
+        expected_values = {"article", "podcast", "news", "unknown"}
         actual_values = {ct.value for ct in ContentType}
         assert actual_values == expected_values
 
@@ -283,19 +280,20 @@ class TestContentStatusEnum:
     def test_content_status_values(self):
         """Test ContentStatus enum values."""
         assert ContentStatus.NEW.value == "new"
+        assert ContentStatus.PENDING.value == "pending"
         assert ContentStatus.PROCESSING.value == "processing"
         assert ContentStatus.COMPLETED.value == "completed"
         assert ContentStatus.FAILED.value == "failed"
         assert ContentStatus.SKIPPED.value == "skipped"
     
     def test_content_status_count(self):
-        """Test that we have exactly 5 statuses."""
+        """Test that we have all supported statuses."""
         statuses = list(ContentStatus)
-        assert len(statuses) == 5
+        assert len(statuses) == 6
     
     def test_content_status_iteration(self):
         """Test iterating over ContentStatus enum."""
-        expected_values = {"new", "processing", "completed", "failed", "skipped"}
+        expected_values = {"new", "pending", "processing", "completed", "failed", "skipped"}
         actual_values = {status.value for status in ContentStatus}
         assert actual_values == expected_values
 

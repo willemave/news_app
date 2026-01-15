@@ -52,8 +52,8 @@ class TestPodcastTranscribeWorker:
     @patch("app.pipeline.podcast_workers.get_db")
     @patch("app.pipeline.podcast_workers.content_to_domain")
     @patch("app.pipeline.podcast_workers.domain_to_content")
-    @patch("app.pipeline.podcast_workers.get_openai_transcription_service")
-    @patch("app.pipeline.podcast_workers.os.path.exists")
+    @patch("app.pipeline.podcast_workers.get_whisper_local_service")
+    @patch("app.pipeline.podcast_workers.Path.exists")
     @patch("app.pipeline.podcast_workers.open", create=True)
     def test_process_transcribe_task_success(
         self, mock_open, mock_exists, mock_get_service, mock_domain_to_content,
@@ -67,7 +67,7 @@ class TestPodcastTranscribeWorker:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_db_content
         mock_content_to_domain.return_value = mock_domain_content
         
-        # Mock OpenAI service
+        # Mock whisper-local service
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
         mock_service.transcribe_audio.return_value = (
@@ -98,7 +98,7 @@ class TestPodcastTranscribeWorker:
         # Verify metadata was updated on the domain content
         assert mock_domain_content.metadata["transcript"] == "This is the transcribed text from the podcast."
         assert mock_domain_content.metadata["detected_language"] == "en"
-        assert mock_domain_content.metadata["transcription_service"] == "openai"
+        assert mock_domain_content.metadata["transcription_service"] == "whisper_local"
 
     @patch("app.pipeline.podcast_workers.get_db")
     def test_process_transcribe_task_content_not_found(self, mock_get_db, worker):
@@ -116,7 +116,7 @@ class TestPodcastTranscribeWorker:
 
     @patch("app.pipeline.podcast_workers.get_db")
     @patch("app.pipeline.podcast_workers.content_to_domain")
-    @patch("app.pipeline.podcast_workers.os.path.exists")
+    @patch("app.pipeline.podcast_workers.Path.exists")
     def test_process_transcribe_task_file_not_found(
         self, mock_exists, mock_content_to_domain, mock_get_db, worker, 
         mock_db_content, mock_domain_content
@@ -139,13 +139,13 @@ class TestPodcastTranscribeWorker:
 
     @patch("app.pipeline.podcast_workers.get_db")
     @patch("app.pipeline.podcast_workers.content_to_domain")
-    @patch("app.pipeline.podcast_workers.get_openai_transcription_service")
-    @patch("app.pipeline.podcast_workers.os.path.exists")
+    @patch("app.pipeline.podcast_workers.get_whisper_local_service")
+    @patch("app.pipeline.podcast_workers.Path.exists")
     def test_process_transcribe_task_openai_error(
         self, mock_exists, mock_get_service, mock_content_to_domain, mock_get_db, 
         worker, mock_db_content, mock_domain_content
     ):
-        """Test transcription when OpenAI service fails."""
+        """Test transcription when local service fails."""
         # Setup mocks
         mock_exists.return_value = True
         mock_db = MagicMock()
@@ -153,10 +153,10 @@ class TestPodcastTranscribeWorker:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_db_content
         mock_content_to_domain.return_value = mock_domain_content
         
-        # Mock OpenAI service error
+        # Mock local service error
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.transcribe_audio.side_effect = Exception("OpenAI API error")
+        mock_service.transcribe_audio.side_effect = Exception("Transcription error")
         worker.transcription_service = mock_service
         
         # Execute
@@ -165,14 +165,14 @@ class TestPodcastTranscribeWorker:
         # Assertions
         assert result is False
         assert mock_db_content.status == ContentStatus.FAILED.value
-        assert "OpenAI API error" in mock_db_content.error_message
+        assert "Transcription error" in mock_db_content.error_message
         assert mock_db_content.retry_count == 1
 
     def test_get_transcription_service_initialization(self, worker):
         """Test lazy initialization of transcription service."""
         assert worker.transcription_service is None
         
-        with patch("app.pipeline.podcast_workers.get_openai_transcription_service") as mock_get_service:
+        with patch("app.pipeline.podcast_workers.get_whisper_local_service") as mock_get_service:
             mock_service = MagicMock()
             mock_get_service.return_value = mock_service
             
@@ -183,7 +183,7 @@ class TestPodcastTranscribeWorker:
 
     def test_get_transcription_service_initialization_error(self, worker):
         """Test transcription service initialization error."""
-        with patch("app.pipeline.podcast_workers.get_openai_transcription_service") as mock_get_service:
+        with patch("app.pipeline.podcast_workers.get_whisper_local_service") as mock_get_service:
             mock_get_service.side_effect = ValueError("No API key")
             
             with pytest.raises(ValueError, match="No API key"):
@@ -192,8 +192,8 @@ class TestPodcastTranscribeWorker:
     @patch("app.pipeline.podcast_workers.get_db")
     @patch("app.pipeline.podcast_workers.content_to_domain")
     @patch("app.pipeline.podcast_workers.domain_to_content")
-    @patch("app.pipeline.podcast_workers.get_openai_transcription_service")
-    @patch("app.pipeline.podcast_workers.os.path.exists")
+    @patch("app.pipeline.podcast_workers.get_whisper_local_service")
+    @patch("app.pipeline.podcast_workers.Path.exists")
     @patch("app.pipeline.podcast_workers.open", create=True)
     def test_process_transcribe_task_no_language_detected(
         self, mock_open, mock_exists, mock_get_service, mock_domain_to_content,
@@ -207,7 +207,7 @@ class TestPodcastTranscribeWorker:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_db_content
         mock_content_to_domain.return_value = mock_domain_content
         
-        # Mock OpenAI service returning no language
+        # Mock local service returning no language
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
         mock_service.transcribe_audio.return_value = (
@@ -229,7 +229,7 @@ class TestPodcastTranscribeWorker:
         # Assertions
         assert result is True
         assert "detected_language" not in mock_domain_content.metadata
-        assert mock_domain_content.metadata["transcription_service"] == "openai"
+        assert mock_domain_content.metadata["transcription_service"] == "whisper_local"
 
     def test_cleanup_service(self, worker):
         """Test cleanup of transcription service."""
@@ -239,138 +239,3 @@ class TestPodcastTranscribeWorker:
         
         assert worker.transcription_service is None
 
-
-class TestOpenAITranscriptionService:
-    """Test cases for OpenAITranscriptionService."""
-    
-    @patch("app.services.openai_llm.logger")
-    @patch("app.services.openai_llm.get_settings")
-    def test_init_no_api_key(self, mock_get_settings, mock_logger):
-        """Test initialization without API key."""
-        from app.services.openai_llm import OpenAITranscriptionService
-        
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = None
-        mock_get_settings.return_value = mock_settings
-        
-        with pytest.raises(ValueError, match="OpenAI API key is required"):
-            OpenAITranscriptionService()
-    
-    @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
-    def test_get_audio_format(self, mock_get_settings, mock_openai):
-        """Test audio format detection."""
-        from app.services.openai_llm import OpenAITranscriptionService
-        
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
-        
-        service = OpenAITranscriptionService()
-        
-        assert service._get_audio_format(Path("test.mp3")) == "mp3"
-        assert service._get_audio_format(Path("test.m4a")) == "mp4"
-        assert service._get_audio_format(Path("test.wav")) == "wav"
-        assert service._get_audio_format(Path("test.unknown")) == "mp3"  # default
-    
-    @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
-    def test_get_transcription_prompt(self, mock_get_settings, mock_openai):
-        """Test prompt generation based on filename."""
-        from app.services.openai_llm import OpenAITranscriptionService
-        
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
-        
-        service = OpenAITranscriptionService()
-        
-        # Test different filename patterns
-        prompt = service._get_transcription_prompt(Path("interview-with-expert.mp3"))
-        assert "interview" in prompt.lower()
-        
-        prompt = service._get_transcription_prompt(Path("tech-news-ai.mp3"))
-        assert "technology" in prompt.lower()
-        
-        prompt = service._get_transcription_prompt(Path("bg2-episode-123.mp3"))
-        assert "Bill Gurley" in prompt
-        assert "Brad Gerstner" in prompt
-        
-        prompt = service._get_transcription_prompt(Path("random-podcast.mp3"))
-        assert "podcast episode" in prompt
-    
-    @patch("app.services.openai_llm.os.path.getsize")
-    @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
-    def test_check_file_size(self, mock_get_settings, mock_openai, mock_getsize):
-        """Test file size checking."""
-        from app.services.openai_llm import MAX_FILE_SIZE_BYTES, OpenAITranscriptionService
-        
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
-        
-        service = OpenAITranscriptionService()
-        
-        # Test file under limit
-        mock_getsize.return_value = MAX_FILE_SIZE_BYTES - 1
-        assert service._check_file_size(Path("test.mp3")) is True
-        
-        # Test file at limit
-        mock_getsize.return_value = MAX_FILE_SIZE_BYTES
-        assert service._check_file_size(Path("test.mp3")) is True
-        
-        # Test file over limit
-        mock_getsize.return_value = MAX_FILE_SIZE_BYTES + 1
-        assert service._check_file_size(Path("test.mp3")) is False
-    
-    @patch("app.services.openai_llm.PYDUB_AVAILABLE", True)
-    @patch("app.services.openai_llm.AudioSegment")
-    @patch("app.services.openai_llm.tempfile.mkdtemp")
-    @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
-    def test_split_audio_file(self, mock_get_settings, mock_openai, mock_mkdtemp, mock_audio_segment):
-        """Test audio file splitting."""
-        from app.services.openai_llm import OpenAITranscriptionService
-        
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
-        
-        service = OpenAITranscriptionService()
-        
-        # Mock audio segment with 25 minutes duration
-        mock_audio = MagicMock()
-        mock_audio.__len__.return_value = 25 * 60 * 1000  # 25 minutes in ms
-        mock_audio.__getitem__.return_value = mock_audio  # For slicing
-        mock_audio.export = MagicMock()
-        
-        mock_audio_segment.from_file.return_value = mock_audio
-        mock_mkdtemp.return_value = "/tmp/audio_chunks_123"
-        
-        # Execute
-        chunks = service._split_audio_file(Path("test.mp3"))
-        
-        # Should create 3 chunks (10 min, 10 min, 5 min)
-        assert len(chunks) == 3
-        assert all(chunk.parent.name == "audio_chunks_123" for chunk in chunks)
-        
-        # Verify exports were called
-        assert mock_audio.export.call_count == 3
-    
-    @patch("app.services.openai_llm.PYDUB_AVAILABLE", False)
-    @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
-    def test_split_audio_file_no_pydub(self, mock_get_settings, mock_openai):
-        """Test audio file splitting when pydub is not available."""
-        from app.services.openai_llm import OpenAITranscriptionService
-        
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
-        
-        service = OpenAITranscriptionService()
-        
-        # Should raise RuntimeError
-        with pytest.raises(RuntimeError, match="pydub is not available"):
-            service._split_audio_file(Path("test.mp3"))

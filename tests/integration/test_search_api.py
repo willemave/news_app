@@ -8,8 +8,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.db import get_db_session
-from app.models.schema import Base, Content
+from app.core.db import get_readonly_db_session
+from app.core.deps import get_current_user
+from app.models.schema import Base, Content, ContentStatusEntry
+from app.models.user import User
 
 # Import router and models without importing app.main (avoids env/settings side effects)
 from app.routers import api_content
@@ -43,17 +45,36 @@ def db_session() -> Generator[Session]:
 
 
 @pytest.fixture(scope="module")
-def client(test_app: FastAPI, db_session: Session) -> Generator[TestClient]:
+def test_user(db_session: Session) -> User:
+    user = User(
+        apple_id="test-user-1",
+        email="test-user@example.com",
+        full_name="Test User",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    seed_content(db_session, user)
+    return user
+
+
+@pytest.fixture(scope="module")
+def client(test_app: FastAPI, db_session: Session, test_user: User) -> Generator[TestClient]:
     # Override DB dependency for router endpoints
     def _get_db_session_override() -> Session:
         return db_session
 
-    test_app.dependency_overrides[get_db_session] = _get_db_session_override
+    def _get_current_user_override() -> User:
+        return test_user
+
+    test_app.dependency_overrides[get_readonly_db_session] = _get_db_session_override
+    test_app.dependency_overrides[get_current_user] = _get_current_user_override
     with TestClient(test_app) as c:
         yield c
 
 
-def seed_content(db: Session):
+def seed_content(db: Session, user: User):
     items = [
         Content(
             content_type="article",
@@ -61,11 +82,22 @@ def seed_content(db: Session):
             title="Understanding AI in 2025",
             source="Tech Blog",
             platform="substack",
+            status="completed",
             content_metadata={
                 "summary": {
                     "title": "Understanding AI in 2025",
-                    "overview": "Deep dive into artificial intelligence",
-                }
+                    "overview": (
+                        "Deep dive into artificial intelligence and its evolution across "
+                        "research, product, and policy landscapes in 2025."
+                    ),
+                    "bullet_points": [
+                        {"text": "AI systems are improving across multi-modal tasks.", "category": "key_finding"},
+                        {"text": "Deployment practices emphasize safety and monitoring.", "category": "methodology"},
+                        {"text": "Regulators are aligning on AI risk frameworks.", "category": "context"},
+                    ],
+                    "topics": ["AI", "Policy", "Product"],
+                },
+                "image_generated_at": "2025-01-01T00:00:00Z",
             },
         ),
         Content(
@@ -74,6 +106,7 @@ def seed_content(db: Session):
             title="Tech Talk Episode 1",
             source="Tech Podcast",
             platform="youtube",
+            status="completed",
             content_metadata={
                 "transcript": "Today we discuss machine learning and AI systems",
                 "summary": {
@@ -89,6 +122,7 @@ def seed_content(db: Session):
             title="Skip This",
             source="Misc",
             classification="skip",
+            status="completed",
             content_metadata={
                 "summary": {"title": "Skip This", "overview": "Not relevant"}
             },
@@ -97,15 +131,23 @@ def seed_content(db: Session):
     for it in items:
         db.add(it)
     db.commit()
+    for it in items:
+        db.add(
+            ContentStatusEntry(
+                user_id=user.id,
+                content_id=it.id,
+                status="inbox",
+            )
+        )
+    db.commit()
 
 
 class TestSearchAPI:
     def test_search_basic(self, client: TestClient, db_session: Session):
-        seed_content(db_session)
         r = client.get("/api/content/search", params={"q": "AI"})
         assert r.status_code == 200
         data = r.json()
-        assert data["total"] >= 1
+        assert data["meta"]["total"] >= 1
         # Ensure 'skip' item isn't present
         for c in data["contents"]:
             assert c["title"] != "Skip This"

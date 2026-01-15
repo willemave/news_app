@@ -1,12 +1,11 @@
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import feedparser
 import pytest
 
 from app.models.metadata import ContentType
 from app.models.schema import Content, ContentStatus
-from app.scraping import substack_unified
 from app.scraping.substack_unified import SubstackScraper, load_substack_feeds
 
 # Sample YAML content
@@ -62,28 +61,28 @@ def mock_queue_service():
         yield mock_service
 
 
-def test_load_substack_feeds():
+def test_load_substack_feeds(tmp_path: Path):
     """Test loading feeds from a YAML file."""
-    with patch('builtins.open', mock_open(read_data=SAMPLE_YAML)) as mock_file:
-        feeds = load_substack_feeds('dummy/path.yml')
-        assert len(feeds) == 1
-        assert feeds[0]['url'] == 'http://test.com/feed'
-        assert feeds[0]['name'] == 'Unknown Substack'  # Default name when not specified
-        assert feeds[0]['limit'] == 10  # Default limit when not specified
-        expected_path = substack_unified.PROJECT_ROOT / Path('dummy/path.yml')
-        mock_file.assert_called_once_with(expected_path)
+    config_path = tmp_path / "substack.yml"
+    config_path.write_text(SAMPLE_YAML, encoding="utf-8")
+
+    feeds = load_substack_feeds(config_path)
+    assert len(feeds) == 1
+    assert feeds[0]['url'] == 'http://test.com/feed'
+    assert feeds[0]['name'] == 'Unknown Substack'  # Default name when not specified
+    assert feeds[0]['limit'] == 10  # Default limit when not specified
 
 
-def test_load_substack_feeds_with_limit():
+def test_load_substack_feeds_with_limit(tmp_path: Path):
     """Test loading feeds with limit from a YAML file."""
-    with patch('builtins.open', mock_open(read_data=SAMPLE_YAML_WITH_LIMIT)) as mock_file:
-        feeds = load_substack_feeds('dummy/path.yml')
-        assert len(feeds) == 1
-        assert feeds[0]['url'] == 'http://test.com/feed'
-        assert feeds[0]['name'] == 'Test Feed'
-        assert feeds[0]['limit'] == 2  # Specific limit from config
-        expected_path = substack_unified.PROJECT_ROOT / Path('dummy/path.yml')
-        mock_file.assert_called_once_with(expected_path)
+    config_path = tmp_path / "substack.yml"
+    config_path.write_text(SAMPLE_YAML_WITH_LIMIT, encoding="utf-8")
+
+    feeds = load_substack_feeds(config_path)
+    assert len(feeds) == 1
+    assert feeds[0]['url'] == 'http://test.com/feed'
+    assert feeds[0]['name'] == 'Test Feed'
+    assert feeds[0]['limit'] == 2  # Specific limit from config
 
 
 @patch('app.scraping.substack_unified.feedparser.parse')
@@ -101,9 +100,11 @@ def test_scrape_process_and_filter(mock_feedparser_parse, mock_db_session, mock_
     mock_feedparser_parse.return_value = mock_feed_result
 
     # Create scraper with mocked feeds
-    with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
-        
+    with patch.object(
+        SubstackScraper,
+        "_load_feeds",
+        return_value=[{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}],
+    ):
         scraper = SubstackScraper()
         items = scraper.scrape()
 
@@ -114,7 +115,8 @@ def test_scrape_process_and_filter(mock_feedparser_parse, mock_db_session, mock_
         assert item['url'] == 'https://test.com/article'  # Note: normalized to https
         assert item['title'] == 'Test Article'
         assert item['content_type'] == ContentType.ARTICLE
-        assert item['metadata']['source'] == 'test.com'
+        assert item['metadata']['source'] == 'Test Feed'
+        assert item['metadata']['source_domain'] == 'test.com'
         assert item['metadata']['feed_name'] == 'Test Feed'
         assert item['metadata']['author'] == 'Test Author'
 
@@ -133,9 +135,11 @@ def test_scrape_filters_podcasts(mock_feedparser_parse, mock_db_session, mock_qu
     mock_feedparser_parse.return_value = mock_feed_result
 
     # Create scraper with mocked feeds
-    with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
-        
+    with patch.object(
+        SubstackScraper,
+        "_load_feeds",
+        return_value=[{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}],
+    ):
         scraper = SubstackScraper()
         items = scraper.scrape()
 
@@ -160,9 +164,11 @@ def test_scrape_skips_logging_for_encoding_override(
     }
     mock_feedparser_parse.return_value = mock_feed_result
 
-    with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Encoding Feed', 'limit': 10}]
-
+    with patch.object(
+        SubstackScraper,
+        "_load_feeds",
+        return_value=[{'url': 'http://test.com/feed', 'name': 'Encoding Feed', 'limit': 10}],
+    ):
         scraper = SubstackScraper()
         scraper.error_logger = MagicMock()
 
@@ -192,9 +198,11 @@ def test_scrape_handles_missing_link(mock_feedparser_parse, mock_db_session, moc
     mock_feedparser_parse.return_value = mock_feed_result
 
     # Create scraper with mocked feeds
-    with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
-        
+    with patch.object(
+        SubstackScraper,
+        "_load_feeds",
+        return_value=[{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}],
+    ):
         scraper = SubstackScraper()
         items = scraper.scrape()
 
@@ -216,9 +224,11 @@ def test_run_saves_to_database(mock_db_session, mock_queue_service):
         mock_feedparser_parse.return_value = mock_feed_result
 
         # Create scraper with mocked feeds
-        with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-            mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
-            
+        with patch.object(
+            SubstackScraper,
+            "_load_feeds",
+            return_value=[{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}],
+        ):
             scraper = SubstackScraper()
             saved_count = scraper.run()
 
@@ -236,7 +246,7 @@ def test_run_saves_to_database(mock_db_session, mock_queue_service):
             assert created_content.content_type == ContentType.ARTICLE.value
             assert created_content.url == 'https://test.com/article'
             assert created_content.title == 'Test Article'
-            assert created_content.source == 'test.com'  # Verify source field is set
+            assert created_content.source == 'Test Feed'  # Verify source field is set
             assert created_content.status == ContentStatus.NEW.value
             
             # Verify task was queued
@@ -262,9 +272,11 @@ def test_run_skips_existing_urls(mock_db_session, mock_queue_service):
         mock_db_session.query.return_value.filter.return_value.first.return_value = existing_content
 
         # Create scraper with mocked feeds
-        with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-            mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}]
-            
+        with patch.object(
+            SubstackScraper,
+            "_load_feeds",
+            return_value=[{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 10}],
+        ):
             scraper = SubstackScraper()
             saved_count = scraper.run()
 
@@ -314,9 +326,11 @@ def test_scrape_respects_limit(mock_feedparser_parse, mock_db_session, mock_queu
     mock_feedparser_parse.return_value = mock_feed_result
 
     # Create scraper with limit of 2
-    with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = [{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 2}]
-        
+    with patch.object(
+        SubstackScraper,
+        "_load_feeds",
+        return_value=[{'url': 'http://test.com/feed', 'name': 'Test Feed', 'limit': 2}],
+    ):
         scraper = SubstackScraper()
         items = scraper.scrape()
 
@@ -328,9 +342,7 @@ def test_scrape_respects_limit(mock_feedparser_parse, mock_db_session, mock_queu
 
 def test_no_feeds_configured():
     """Test behavior when no feeds are configured."""
-    with patch('app.scraping.substack_unified.load_substack_feeds') as mock_load_feeds:
-        mock_load_feeds.return_value = []
-        
+    with patch.object(SubstackScraper, "_load_feeds", return_value=[]):
         scraper = SubstackScraper()
         items = scraper.scrape()
         

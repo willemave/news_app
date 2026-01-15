@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -200,14 +200,23 @@ class TestQueueService:
 
     def test_get_queue_stats(self, mock_db_session):
         """Test getting queue statistics."""
-        # Mock status counts
-        mock_db_session.query.return_value.group_by.return_value.all.side_effect = [
-            [('pending', 5), ('processing', 2), ('completed', 10)],  # status counts
-            [('process_content', 3), ('download_audio', 2)]  # pending by type
+        status_query = Mock()
+        status_query.group_by.return_value.all.return_value = [
+            ("pending", 5),
+            ("processing", 2),
+            ("completed", 10),
         ]
 
-        # Mock recent failures count
-        mock_db_session.query.return_value.filter.return_value.scalar.return_value = 1
+        type_query = Mock()
+        type_query.filter.return_value.group_by.return_value.all.return_value = [
+            ("process_content", 3),
+            ("download_audio", 2),
+        ]
+
+        failure_query = Mock()
+        failure_query.filter.return_value.scalar.return_value = 1
+
+        mock_db_session.query.side_effect = [status_query, type_query, failure_query]
 
         service = QueueService()
         stats = service.get_queue_stats()
@@ -238,10 +247,15 @@ class TestTaskEnums:
     def test_task_type_values(self):
         """Test TaskType enum values."""
         assert TaskType.SCRAPE.value == "scrape"
+        assert TaskType.ANALYZE_URL.value == "analyze_url"
         assert TaskType.PROCESS_CONTENT.value == "process_content"
         assert TaskType.DOWNLOAD_AUDIO.value == "download_audio"
         assert TaskType.TRANSCRIBE.value == "transcribe"
         assert TaskType.SUMMARIZE.value == "summarize"
+        assert TaskType.GENERATE_IMAGE.value == "generate_image"
+        assert TaskType.GENERATE_THUMBNAIL.value == "generate_thumbnail"
+        assert TaskType.DISCOVER_FEEDS.value == "discover_feeds"
+        assert TaskType.DIG_DEEPER.value == "dig_deeper"
 
     def test_task_status_values(self):
         """Test TaskStatus enum values."""
@@ -252,7 +266,7 @@ class TestTaskEnums:
 
     def test_enum_counts(self):
         """Test that enums have expected number of values."""
-        assert len(list(TaskType)) == 5
+        assert len(list(TaskType)) == 10
         assert len(list(TaskStatus)) == 4
 
 

@@ -35,7 +35,7 @@ Contains sample content in various states:
 5. **podcast_raw_transcript**: Podcast with transcript only
    - Transcript available
    - No summary yet
-   - Status: transcribed
+   - Status: processing
    - Useful for testing summarization step
 
 ## Usage in Tests
@@ -107,7 +107,7 @@ All fixtures follow the database schema structure:
   "url": "https://...",
   "title": "...",
   "source": "...",
-  "status": "new|scraped|transcribed|completed|error",
+  "status": "new|pending|processing|completed|failed|skipped",
   "platform": "web|podcast",
   "classification": "to_read|...",
   "publication_date": "ISO 8601 date",

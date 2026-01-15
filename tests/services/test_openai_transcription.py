@@ -12,21 +12,18 @@ class TestOpenAITranscriptionService:
     
     def test_init_no_api_key(self):
         """Test initialization without API key."""
-        with patch("app.services.openai_llm.get_settings") as mock_get_settings:
+        with patch("app.services.openai_llm.settings") as mock_settings:
             with patch("app.services.openai_llm.logger"):
-                mock_settings = MagicMock(spec=["database_url"])  # No openai_api_key attribute
-                mock_get_settings.return_value = mock_settings
+                mock_settings.openai_api_key = None
                 
                 with pytest.raises(ValueError, match="OpenAI API key is required"):
                     OpenAITranscriptionService()
     
     @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
+    @patch("app.services.openai_llm.settings")
     def test_get_audio_format(self, mock_get_settings, mock_openai):
         """Test audio format detection."""
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
+        mock_get_settings.openai_api_key = "test-key"
         
         service = OpenAITranscriptionService()
         
@@ -36,12 +33,10 @@ class TestOpenAITranscriptionService:
         assert service._get_audio_format(Path("test.unknown")) == "mp3"  # default
     
     @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
+    @patch("app.services.openai_llm.settings")
     def test_get_transcription_prompt(self, mock_get_settings, mock_openai):
         """Test prompt generation based on filename."""
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
+        mock_get_settings.openai_api_key = "test-key"
         
         service = OpenAITranscriptionService()
         
@@ -61,12 +56,10 @@ class TestOpenAITranscriptionService:
     
     @patch("app.services.openai_llm.os.path.getsize")
     @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
+    @patch("app.services.openai_llm.settings")
     def test_check_file_size(self, mock_get_settings, mock_openai, mock_getsize):
         """Test file size checking."""
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
+        mock_get_settings.openai_api_key = "test-key"
         
         service = OpenAITranscriptionService()
         
@@ -84,12 +77,10 @@ class TestOpenAITranscriptionService:
     
     @patch("app.services.openai_llm.subprocess.run")
     @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
+    @patch("app.services.openai_llm.settings")
     def test_check_ffmpeg_available(self, mock_get_settings, mock_openai, mock_subprocess):
         """Test ffmpeg availability check."""
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
+        mock_get_settings.openai_api_key = "test-key"
         
         service = OpenAITranscriptionService()
         
@@ -108,12 +99,10 @@ class TestOpenAITranscriptionService:
     @patch("app.services.openai_llm.subprocess.run")
     @patch("app.services.openai_llm.os.path.getsize")
     @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
+    @patch("app.services.openai_llm.settings")
     def test_get_audio_duration(self, mock_get_settings, mock_openai, mock_getsize, mock_subprocess):
         """Test audio duration detection."""
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
+        mock_get_settings.openai_api_key = "test-key"
         
         service = OpenAITranscriptionService()
         
@@ -137,13 +126,11 @@ class TestOpenAITranscriptionService:
     @patch("app.services.openai_llm.subprocess.run")
     @patch("app.services.openai_llm.tempfile.mkdtemp")
     @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
+    @patch("app.services.openai_llm.settings")
     def test_split_audio_file_ffmpeg(self, mock_get_settings, mock_openai, mock_mkdtemp, 
                                      mock_subprocess, mock_exists, mock_getsize):
         """Test audio file splitting with ffmpeg."""
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
+        mock_get_settings.openai_api_key = "test-key"
         
         service = OpenAITranscriptionService()
         
@@ -179,12 +166,10 @@ class TestOpenAITranscriptionService:
     
     @patch("app.services.openai_llm.os.path.getsize")
     @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
+    @patch("app.services.openai_llm.settings")
     def test_transcribe_audio_small_file(self, mock_get_settings, mock_openai, mock_getsize):
         """Test transcription of small file (no splitting needed)."""
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
+        mock_get_settings.openai_api_key = "test-key"
         
         # Mock OpenAI client
         mock_client = MagicMock()
@@ -214,13 +199,11 @@ class TestOpenAITranscriptionService:
     @patch("app.services.openai_llm.subprocess.run")
     @patch("app.services.openai_llm.os.path.getsize")
     @patch("app.services.openai_llm.OpenAI")
-    @patch("app.services.openai_llm.get_settings")
+    @patch("app.services.openai_llm.settings")
     def test_transcribe_audio_large_file_no_ffmpeg(self, mock_get_settings, mock_openai, 
                                                    mock_getsize, mock_subprocess):
         """Test transcription of large file when ffmpeg is not available."""
-        mock_settings = MagicMock()
-        mock_settings.openai_api_key = "test-key"
-        mock_get_settings.return_value = mock_settings
+        mock_get_settings.openai_api_key = "test-key"
         
         service = OpenAITranscriptionService()
         

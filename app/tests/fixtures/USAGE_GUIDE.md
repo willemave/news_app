@@ -44,7 +44,7 @@ def test_something(sample_article_long):
 
 **`sample_unprocessed_podcast`** - Podcast with transcript
 - Has transcript already
-- Status: `transcribed`
+- Status: `processing`
 - No summary yet
 - Use for: Testing transcript → summarization step
 

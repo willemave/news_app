@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from app.core.db import get_db
-from app.models.metadata import ContentStatus, ContentType, StructuredSummary, SummaryBulletPoint, ContentQuote
+from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.pipeline.worker import ContentWorker
 from app.services.queue import QueueService, TaskType
@@ -55,11 +55,9 @@ class TestPipelineWithRealData:
         # Mock external dependencies
         with (
             patch("app.pipeline.worker.get_http_service") as mock_http,
-            patch("app.pipeline.worker.get_llm_service") as mock_llm,
             patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
             patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
             patch("app.pipeline.worker.get_queue_service") as mock_queue,
-            patch("app.pipeline.worker.create_error_logger") as mock_error_logger,
         ):
             # Setup strategy mock
             mock_strategy = Mock()
@@ -82,34 +80,6 @@ class TestPipelineWithRealData:
             mock_registry_instance.get_strategy.return_value = mock_strategy
             mock_registry.return_value = mock_registry_instance
 
-            # Mock LLM to return a realistic summary
-            structured_summary = StructuredSummary(
-                title="Test Article Summary",
-                overview="This is a comprehensive overview of the test article content.",
-                bullet_points=[
-                    SummaryBulletPoint(
-                        text="Software development requires systematic approaches",
-                        category="key_finding"
-                    ),
-                    SummaryBulletPoint(
-                        text="Testing and deployment are crucial for reliability",
-                        category="methodology"
-                    ),
-                ],
-                quotes=[
-                    ContentQuote(
-                        text="Write clean, maintainable code",
-                        context="Best practices section"
-                    )
-                ],
-                topics=["software engineering", "testing", "deployment"],
-                classification="to_read",
-            )
-
-            mock_llm_service = Mock()
-            mock_llm_service.summarize_content.return_value = structured_summary
-            mock_llm.return_value = mock_llm_service
-
             # Process the content
             worker = ContentWorker()
             result = worker.process_content(content.id, "test-worker")
@@ -118,10 +88,11 @@ class TestPipelineWithRealData:
 
             # Verify content was updated
             db_session.refresh(content)
-            assert content.status == ContentStatus.COMPLETED.value
-            assert "summary" in content.content_metadata
-            assert content.content_metadata["summary"]["title"] == "Test Article Summary"
-            assert len(content.content_metadata["summary"]["bullet_points"]) == 2
+            assert content.status == ContentStatus.PROCESSING.value
+            assert content.content_metadata.get("content") == sample_unprocessed_article["content_metadata"]["content"]
+            mock_queue.return_value.enqueue.assert_called_with(
+                TaskType.SUMMARIZE, content_id=content.id
+            )
 
     @pytest.mark.integration
     def test_process_podcast_with_real_structure(
@@ -130,46 +101,16 @@ class TestPipelineWithRealData:
         """Test processing a podcast using real transcript structure."""
         # Create content from fixture
         content = create_content_in_db(db_session, sample_unprocessed_podcast)
-        assert content.status == ContentStatus.TRANSCRIBED.value
+        assert content.status == sample_unprocessed_podcast["status"]
         assert "transcript" in content.content_metadata
 
         # Mock dependencies
         with (
-            patch("app.pipeline.worker.get_llm_service") as mock_llm,
             patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
             patch("app.pipeline.worker.get_queue_service") as mock_queue,
-            patch("app.pipeline.worker.create_error_logger") as mock_error_logger,
             patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
             patch("app.pipeline.worker.PodcastTranscribeWorker") as mock_transcribe,
         ):
-            # Mock LLM to return a podcast summary
-            structured_summary = StructuredSummary(
-                title="Test Podcast: Software Testing Insights",
-                overview="Discussion of software testing best practices including unit, integration, and end-to-end testing strategies.",
-                bullet_points=[
-                    SummaryBulletPoint(
-                        text="Comprehensive test suites provide confidence in code quality",
-                        category="key_finding"
-                    ),
-                    SummaryBulletPoint(
-                        text="Balance between test coverage and maintenance is crucial",
-                        category="methodology"
-                    ),
-                ],
-                quotes=[
-                    ContentQuote(
-                        text="Tests give you confidence that your code works as expected",
-                        context="Speaker discussing testing benefits"
-                    )
-                ],
-                topics=["software testing", "quality assurance", "development"],
-                classification="to_read",
-            )
-
-            mock_llm_service = Mock()
-            mock_llm_service.summarize_content.return_value = structured_summary
-            mock_llm.return_value = mock_llm_service
-
             # Process the content
             worker = ContentWorker()
             result = worker.process_content(content.id, "test-worker")
@@ -177,10 +118,9 @@ class TestPipelineWithRealData:
             # For podcasts with transcript, we should summarize it
             db_session.refresh(content)
 
-            # Verify the LLM was called with the transcript
-            mock_llm_service.summarize_content.assert_called_once()
-            call_args = mock_llm_service.summarize_content.call_args
-            assert "podcast" in call_args.kwargs.get("content_type", "")
+            mock_queue.return_value.enqueue.assert_called_with(
+                TaskType.DOWNLOAD_AUDIO, content_id=content.id
+            )
 
     @pytest.mark.integration
     def test_completed_article_structure_matches_fixture(
@@ -262,7 +202,7 @@ class TestPipelineWithRealData:
         # Dequeue the task
         task = queue_service.dequeue(worker_id="test-worker")
         assert task is not None
-        assert task["payload"]["content_id"] == content.id
+        assert task["content_id"] == content.id
 
         # Mark task complete
         queue_service.complete_task(task["id"], success=True)

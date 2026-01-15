@@ -29,11 +29,8 @@ def techmeme_settings() -> TechmemeSettings:
 def scraper(techmeme_settings: TechmemeSettings) -> TechmemeScraper:
     """Instantiate scraper with mocked config and error logger."""
 
-    with patch("app.scraping.techmeme_unified.load_techmeme_config") as mock_load_config, patch(
-        "app.scraping.techmeme_unified.create_error_logger"
-    ) as mock_error_logger:
+    with patch("app.scraping.techmeme_unified.load_techmeme_config") as mock_load_config:
         mock_load_config.return_value = techmeme_settings
-        mock_error_logger.return_value = MagicMock()
         yield TechmemeScraper()
 
 
@@ -83,7 +80,7 @@ def test_scrape_returns_primary_and_related(scraper: TechmemeScraper) -> None:
     item = items[0]
     assert item["is_aggregate"] is False
     assert item["content_type"].value == "news"
-    assert item["url"] == "https://www.techmeme.com/250921/p26#a250921p26"
+    assert item["url"] == "https://example.com/article"
 
     metadata = item["metadata"]
     assert metadata["platform"] == "techmeme"

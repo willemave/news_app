@@ -25,7 +25,6 @@ def mock_dependencies():
         patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
         patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
         patch("app.pipeline.worker.PodcastTranscribeWorker") as mock_transcribe,
-        patch("app.pipeline.worker.create_error_logger") as mock_error_logger,
         patch("app.pipeline.worker.get_db") as mock_get_db,
     ):
         yield {
@@ -35,7 +34,6 @@ def mock_dependencies():
             "registry": mock_registry,
             "download": mock_download,
             "transcribe": mock_transcribe,
-            "error_logger": mock_error_logger,
             "get_db": mock_get_db,
         }
 
@@ -53,7 +51,6 @@ class TestContentWorker:
         assert worker.strategy_registry is not None
         assert worker.podcast_download_worker is not None
         assert worker.podcast_transcribe_worker is not None
-        assert worker.error_logger is not None
 
     def test_process_content_not_found(self, mock_dependencies):
         """Test processing when content not found."""
@@ -149,7 +146,6 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            source_feed="test",
             created_at=datetime.utcnow(),
             processed_at=None,
             retry_count=0,
@@ -188,7 +184,6 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            source_feed="test",
             created_at=datetime.utcnow(),
             processed_at=None,
             retry_count=0,
@@ -314,7 +309,6 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            source_feed="test",
             created_at=datetime.utcnow(),
             processed_at=None,
             retry_count=0,
@@ -338,7 +332,6 @@ class TestContentWorker:
             result = worker.process_content(123, "test-worker")
 
         assert result is False
-        worker.error_logger.log_processing_error.assert_called()
 
     def test_process_article_marks_failed_on_crawl_fallback(self, mock_dependencies):
         """Ensure crawl fallback metadata marks the item as failed instead of completed."""
@@ -423,7 +416,7 @@ class TestContentWorker:
         mock_content.id = 456
         mock_content.url = "https://example.com/podcast.mp3"
         mock_content.content_type = ContentType.PODCAST.value
-        mock_content.metadata = {"audio_url": "https://example.com/podcast.mp3"}
+        mock_content.content_metadata = {"audio_url": "https://example.com/podcast.mp3"}
 
         content_data = ContentData(
             id=456,
@@ -432,7 +425,6 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={"audio_url": "https://example.com/podcast.mp3"},
             title="Test Podcast",
-            source_feed="test",
             created_at=datetime.utcnow(),
             processed_at=None,
             retry_count=0,
@@ -481,7 +473,6 @@ class TestContentWorker:
             result = worker.process_content(789, "test-worker")
 
         assert result is False
-        worker.error_logger.log_processing_error.assert_called()
 
     def test_process_content_article_sync(self, mock_dependencies):
         """Test content processing path for article content."""
@@ -492,7 +483,7 @@ class TestContentWorker:
         mock_content.id = 123
         mock_content.url = "https://example.com/article"
         mock_content.content_type = ContentType.ARTICLE.value
-        mock_content.metadata = {}
+        mock_content.content_metadata = {}
 
         content_data = ContentData(
             id=123,
@@ -501,7 +492,6 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            source_feed="test",
             created_at=datetime.utcnow(),
             processed_at=None,
             retry_count=0,

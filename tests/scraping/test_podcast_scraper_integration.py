@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+import feedparser
 
 from app.models.metadata import ContentType
 from app.models.schema import Content, ContentStatus
@@ -11,40 +12,43 @@ from app.services.queue import TaskType
 @pytest.fixture
 def mock_podcast_feed():
     """Create a mock podcast RSS feed response."""
-    return {
-        'feed': {
-            'title': 'Test Podcast',
-            'description': 'A test podcast',
-            'author': 'Test Author'
-        },
-        'entries': [
-            {
-                'title': 'Episode 1: Introduction',
-                'link': 'https://example.com/episodes/1',
-                'published_parsed': (2023, 1, 1, 0, 0, 0, 0, 0, 0),
-                'author': 'Host Name',
-                'description': 'This is the first episode',
-                'itunes_episode': '1',
-                'itunes_duration': '30:45',
-                'enclosures': [{
-                    'href': 'https://example.com/audio/episode1.mp3',
-                    'type': 'audio/mpeg'
-                }]
-            },
-            {
-                'title': 'Episode 2: Deep Dive',
-                'link': 'https://example.com/episodes/2',
-                'published_parsed': (2023, 1, 8, 0, 0, 0, 0, 0, 0),
-                'description': 'This is the second episode',
-                'itunes_episode': '2',
-                'itunes_duration': '1:15:30',
-                'links': [{
-                    'href': 'https://example.com/audio/episode2.m4a',
-                    'type': 'audio/x-m4a'
-                }]
-            }
-        ]
+    feed = Mock()
+    feed.bozo = 0
+    feed.feed = {
+        'title': 'Test Podcast',
+        'description': 'A test podcast',
+        'author': 'Test Author'
     }
+    feed.entries = [
+        feedparser.FeedParserDict(
+            {
+                "title": "Episode 1: Introduction",
+                "link": "https://example.com/episodes/1",
+                "published_parsed": (2023, 1, 1, 0, 0, 0, 0, 0, 0),
+                "author": "Host Name",
+                "description": "This is the first episode",
+                "itunes_episode": "1",
+                "itunes_duration": "30:45",
+                "enclosures": [
+                    {"href": "https://example.com/audio/episode1.mp3", "type": "audio/mpeg"}
+                ],
+            }
+        ),
+        feedparser.FeedParserDict(
+            {
+                "title": "Episode 2: Deep Dive",
+                "link": "https://example.com/episodes/2",
+                "published_parsed": (2023, 1, 8, 0, 0, 0, 0, 0, 0),
+                "description": "This is the second episode",
+                "itunes_episode": "2",
+                "itunes_duration": "1:15:30",
+                "links": [
+                    {"href": "https://example.com/audio/episode2.m4a", "type": "audio/x-m4a"}
+                ],
+            }
+        ),
+    ]
+    return feed
 
 
 @pytest.fixture
@@ -64,25 +68,19 @@ def mock_podcast_config():
 class TestPodcastScraperIntegration:
     """Test integration between podcast scraper and unified system."""
     
-    @pytest.mark.asyncio
     @patch('app.scraping.podcast_unified.feedparser.parse')
-    @patch('app.scraping.podcast_unified.yaml.safe_load')
-    @patch('builtins.open', create=True)
     @patch('app.scraping.base.get_db')
     @patch('app.scraping.base.get_queue_service')
-    async def test_podcast_scraper_creates_correct_content(
+    def test_podcast_scraper_creates_correct_content(
         self,
         mock_queue_service,
         mock_get_db,
-        mock_open,
-        mock_yaml,
         mock_feedparser,
         mock_podcast_feed,
         mock_podcast_config
     ):
         """Test that podcast scraper creates correct Content entries."""
         # Setup mocks
-        mock_yaml.return_value = mock_podcast_config
         mock_feedparser.return_value = mock_podcast_feed
         
         # Mock database
@@ -104,8 +102,13 @@ class TestPodcastScraperIntegration:
         mock_db.refresh.side_effect = lambda x: x
         
         # Run scraper
-        scraper = PodcastUnifiedScraper()
-        saved_count = await scraper.run()
+        with patch.object(
+            PodcastUnifiedScraper,
+            "_load_podcast_feeds",
+            return_value=mock_podcast_config["feeds"],
+        ):
+            scraper = PodcastUnifiedScraper()
+            saved_count = scraper.run()
         
         # Verify correct number of items saved
         assert saved_count == 2
@@ -119,21 +122,21 @@ class TestPodcastScraperIntegration:
         assert episode1.status == ContentStatus.NEW.value
         
         # Verify metadata
-        metadata1 = episode1.metadata
+        metadata1 = episode1.content_metadata
         assert metadata1['audio_url'] == "https://example.com/audio/episode1.mp3"
         assert metadata1['episode_number'] == 1
         assert metadata1['duration_seconds'] == 1845  # 30:45 = 1845 seconds
         assert metadata1['feed_name'] == "Test Podcast"
         assert metadata1['author'] == "Host Name"
-        assert metadata1['source'] == 'podcast_rss'
+        assert metadata1['source'] == 'Test Podcast'
         
         # Verify second episode
         episode2 = created_contents[1]
         assert episode2.content_type == ContentType.PODCAST.value
         assert episode2.url == "https://example.com/episodes/2"
         assert episode2.title == "Episode 2: Deep Dive"
-        assert episode2.metadata['audio_url'] == "https://example.com/audio/episode2.m4a"
-        assert episode2.metadata['duration_seconds'] == 4530  # 1:15:30 = 4530 seconds
+        assert episode2.content_metadata['audio_url'] == "https://example.com/audio/episode2.m4a"
+        assert episode2.content_metadata['duration_seconds'] == 4530  # 1:15:30 = 4530 seconds
         
         # Verify tasks were queued
         assert queue_service.enqueue.call_count == 2
@@ -146,23 +149,17 @@ class TestPodcastScraperIntegration:
             content_id=2
         )
     
-    @pytest.mark.asyncio
     @patch('app.scraping.podcast_unified.feedparser.parse')
-    @patch('app.scraping.podcast_unified.yaml.safe_load')
-    @patch('builtins.open', create=True)
     @patch('app.scraping.base.get_db')
-    async def test_podcast_scraper_skips_existing_urls(
+    def test_podcast_scraper_skips_existing_urls(
         self,
         mock_get_db,
-        mock_open,
-        mock_yaml,
         mock_feedparser,
         mock_podcast_feed,
         mock_podcast_config
     ):
         """Test that scraper skips URLs that already exist in database."""
         # Setup mocks
-        mock_yaml.return_value = mock_podcast_config
         mock_feedparser.return_value = mock_podcast_feed
         
         # Mock database - first URL exists, second doesn't
@@ -188,8 +185,13 @@ class TestPodcastScraperIntegration:
         mock_db.add.side_effect = lambda x: added_contents.append(x)
         
         # Run scraper
-        scraper = PodcastUnifiedScraper()
-        saved_count = await scraper.run()
+        with patch.object(
+            PodcastUnifiedScraper,
+            "_load_podcast_feeds",
+            return_value=mock_podcast_config["feeds"],
+        ):
+            scraper = PodcastUnifiedScraper()
+            saved_count = scraper.run()
         
         # Verify only one new item was saved
         assert saved_count == 1
@@ -207,22 +209,26 @@ class TestPodcastScraperIntegration:
         assert scraper._parse_duration("invalid") is None
         
         # Test finding audio enclosure with no enclosures
-        entry_no_audio = {
-            'title': 'No Audio Episode',
-            'link': 'https://example.com/episodes/3',
-            'description': 'An episode with no audio'
-        }
+        entry_no_audio = feedparser.FeedParserDict(
+            {
+                "title": "No Audio Episode",
+                "link": "https://example.com/episodes/3",
+                "description": "An episode with no audio",
+            }
+        )
         assert scraper._find_audio_enclosure(entry_no_audio, 'No Audio') is None
         
         # Test finding audio by file extension in links
-        entry_with_link = {
-            'title': 'Link Audio Episode',
-            'link': 'https://example.com/episodes/4',
-            'links': [
-                {'href': 'https://example.com/page.html', 'type': 'text/html'},
-                {'href': 'https://example.com/audio/episode4.mp3', 'type': ''}
-            ]
-        }
+        entry_with_link = feedparser.FeedParserDict(
+            {
+                "title": "Link Audio Episode",
+                "link": "https://example.com/episodes/4",
+                "links": [
+                    {"href": "https://example.com/page.html", "type": "text/html"},
+                    {"href": "https://example.com/audio/episode4.mp3", "type": ""},
+                ],
+            }
+        )
         audio_url = scraper._find_audio_enclosure(entry_with_link, 'Link Audio')
         assert audio_url == 'https://example.com/audio/episode4.mp3'
 
@@ -230,10 +236,9 @@ class TestPodcastScraperIntegration:
 class TestPodcastProcessingFlow:
     """Test the complete flow from scraping to processing."""
     
-    @pytest.mark.asyncio
     @patch('app.pipeline.worker.get_db')
     @patch('app.pipeline.worker.get_queue_service')
-    async def test_process_content_queues_download_audio(
+    def test_process_content_queues_download_audio(
         self,
         mock_queue_service,
         mock_get_db
@@ -244,9 +249,10 @@ class TestPodcastProcessingFlow:
         mock_content.id = 100
         mock_content.content_type = ContentType.PODCAST.value
         mock_content.url = "https://example.com/episodes/1"
-        mock_content.metadata = {
+        mock_content.content_metadata = {
             'audio_url': 'https://example.com/audio/episode1.mp3'
         }
+        mock_content.status = ContentStatus.NEW.value
         
         # Mock database
         mock_db = Mock()
@@ -262,7 +268,7 @@ class TestPodcastProcessingFlow:
         worker = ContentWorker()
         
         # Process content
-        success = await worker.process_content(100, "test-worker")
+        success = worker.process_content(100, "test-worker")
         
         # Verify success
         assert success is True

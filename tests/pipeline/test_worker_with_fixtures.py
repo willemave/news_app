@@ -60,7 +60,7 @@ def test_extract_podcast_metadata_from_fixture(sample_podcast: Dict[str, Any]):
         ("sample_article_short", "article", "completed"),
         ("sample_podcast", "podcast", "completed"),
         ("sample_unprocessed_article", "article", "new"),
-        ("sample_unprocessed_podcast", "podcast", "transcribed"),
+        ("sample_unprocessed_podcast", "podcast", "processing"),
     ],
 )
 def test_fixture_content_types_and_statuses(
@@ -98,7 +98,7 @@ def test_worker_processing_with_podcast_fixture(sample_unprocessed_podcast: Dict
     """Test that unprocessed podcast fixture has expected structure for processing."""
     # Verify fixture has transcript for processing
     assert "transcript" in sample_unprocessed_podcast["content_metadata"]
-    assert sample_unprocessed_podcast["status"] == "transcribed"
+    assert sample_unprocessed_podcast["status"] == "processing"
     assert sample_unprocessed_podcast["content_type"] == "podcast"
 
     # Verify transcript is meaningful text for LLM processing
@@ -113,7 +113,7 @@ def test_worker_processing_with_podcast_fixture(sample_unprocessed_podcast: Dict
     assert isinstance(metadata["duration_seconds"], int)
 
     # This fixture can be used with ContentWorker by:
-    # 1. Creating content in DB from fixture (status='transcribed')
+    # 1. Creating content in DB from fixture (status='processing')
     # 2. Worker will detect transcript and proceed to summarization
     # 3. Processing with worker.process_content(content_id)
 

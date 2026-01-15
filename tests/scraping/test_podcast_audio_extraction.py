@@ -3,9 +3,9 @@ Tests for podcast audio URL extraction and download functionality.
 """
 from unittest.mock import Mock, patch
 
-import pytest
+import feedparser
 
-from app.models.metadata import ContentStatus, ContentType
+from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.pipeline.podcast_workers import PodcastDownloadWorker
 from app.scraping.podcast_unified import PodcastUnifiedScraper
 
@@ -18,10 +18,15 @@ class TestPodcastAudioExtraction:
         scraper = PodcastUnifiedScraper()
         
         # Mock entry with audio enclosure
-        entry = Mock()
-        entry.enclosures = [
-            Mock(href="https://example.com/episode.mp3", type="audio/mpeg")
-        ]
+        entry = feedparser.FeedParserDict(
+            {
+                "enclosures": [
+                    feedparser.FeedParserDict(
+                        {"href": "https://example.com/episode.mp3", "type": "audio/mpeg"}
+                    )
+                ]
+            }
+        )
         
         audio_url = scraper._find_audio_enclosure(entry, "Test Episode")
         assert audio_url == "https://example.com/episode.mp3"
@@ -31,12 +36,15 @@ class TestPodcastAudioExtraction:
         scraper = PodcastUnifiedScraper()
         
         # Mock entry with no enclosures but audio in links
-        entry = Mock()
-        entry.enclosures = []
-        entry.links = [
-            {"href": "https://example.com/page", "type": "text/html"},
-            {"href": "https://example.com/episode.mp3", "type": "audio/mpeg"}
-        ]
+        entry = feedparser.FeedParserDict(
+            {
+                "enclosures": [],
+                "links": [
+                    {"href": "https://example.com/page", "type": "text/html"},
+                    {"href": "https://example.com/episode.mp3", "type": "audio/mpeg"},
+                ],
+            }
+        )
         
         audio_url = scraper._find_audio_enclosure(entry, "Test Episode")
         assert audio_url == "https://example.com/episode.mp3"
@@ -46,12 +54,15 @@ class TestPodcastAudioExtraction:
         scraper = PodcastUnifiedScraper()
         
         # Mock entry with audio URL identified by extension
-        entry = Mock()
-        entry.enclosures = []
-        entry.links = [
-            {"href": "https://example.com/page", "type": ""},
-            {"href": "https://example.com/episode.m4a", "type": ""}
-        ]
+        entry = feedparser.FeedParserDict(
+            {
+                "enclosures": [],
+                "links": [
+                    {"href": "https://example.com/page", "type": ""},
+                    {"href": "https://example.com/episode.m4a", "type": ""},
+                ],
+            }
+        )
         
         audio_url = scraper._find_audio_enclosure(entry, "Test Episode")
         assert audio_url == "https://example.com/episode.m4a"
@@ -61,11 +72,9 @@ class TestPodcastAudioExtraction:
         scraper = PodcastUnifiedScraper()
         
         # Mock entry with no audio
-        entry = Mock()
-        entry.enclosures = []
-        entry.links = [
-            {"href": "https://example.com/page", "type": "text/html"}
-        ]
+        entry = feedparser.FeedParserDict(
+            {"enclosures": [], "links": [{"href": "https://example.com/page", "type": "text/html"}]}
+        )
         
         audio_url = scraper._find_audio_enclosure(entry, "Test Episode")
         assert audio_url is None
@@ -75,22 +84,30 @@ class TestPodcastAudioExtraction:
         scraper = PodcastUnifiedScraper()
         
         # Create a proper mock entry that behaves like feedparser entry
-        entry_mock = Mock()
-        entry_mock.get.side_effect = lambda key, default=None: {
-            'title': 'Test Podcast Episode',
-            'link': 'https://example.com/episode',
-            'description': 'Test description',
-            'author': 'Test Author'
-        }.get(key, default)
-        
-        entry_mock.published_parsed = (2025, 6, 14, 12, 0, 0, 0, 0, 0)
-        entry_mock.enclosures = [
-            Mock(href="https://example.com/episode.mp3", type="audio/mpeg")
-        ]
+        entry_mock = feedparser.FeedParserDict(
+            {
+                "title": "Test Podcast Episode",
+                "link": "https://example.com/episode",
+                "description": "Test description",
+                "author": "Test Author",
+                "published_parsed": (2025, 6, 14, 12, 0, 0, 0, 0, 0),
+                "enclosures": [
+                    feedparser.FeedParserDict(
+                        {"href": "https://example.com/episode.mp3", "type": "audio/mpeg"}
+                    )
+                ],
+            }
+        )
         
         feed_info = {'title': 'Test Podcast'}
         
-        result = scraper._process_entry(entry_mock, 'Test Feed', feed_info, 'https://example.com/rss')
+        result = scraper._process_entry(
+            entry_mock,
+            "Test Feed",
+            feed_info,
+            "https://example.com/rss",
+            None,
+        )
         
         assert result is not None
         assert result['title'] == 'Test Podcast Episode'
@@ -103,44 +120,77 @@ class TestPodcastAudioExtraction:
         scraper = PodcastUnifiedScraper()
         
         # Mock entry without audio
-        entry = {
-            'title': 'Test Podcast Episode',
-            'link': 'https://example.com/episode',
-        }
-        entry_mock = Mock(**entry)
-        entry_mock.enclosures = []
-        entry_mock.links = []
+        entry_mock = feedparser.FeedParserDict(
+            {
+                "title": "Test Podcast Episode",
+                "link": "https://example.com/episode",
+                "enclosures": [],
+                "links": [],
+            }
+        )
         
         feed_info = {'title': 'Test Podcast'}
         
-        result = scraper._process_entry(entry_mock, 'Test Feed', feed_info, 'https://example.com/rss')
+        result = scraper._process_entry(
+            entry_mock,
+            "Test Feed",
+            feed_info,
+            "https://example.com/rss",
+            None,
+        )
         
         assert result is None  # Should return None when no audio found
 
-    @pytest.mark.asyncio
-    async def test_scrape_real_feed(self):
-        """Test scraping a real podcast feed (Lenny's Podcast)."""
+    def test_scrape_real_feed(self):
+        """Test scraping a podcast feed with mocked parser output."""
         scraper = PodcastUnifiedScraper()
-        scraper.feeds = [
-            {
-                'name': "Lenny's Podcast",
-                'url': "https://api.substack.com/feed/podcast/10845.rss",
-                'limit': 2
-            }
+        mock_feed = Mock()
+        mock_feed.bozo = 0
+        mock_feed.entries = [
+            feedparser.FeedParserDict(
+                {
+                    "title": "Episode One",
+                    "link": "https://example.com/ep1",
+                    "published_parsed": (2025, 6, 14, 12, 0, 0, 0, 0, 0),
+                    "enclosures": [
+                        feedparser.FeedParserDict(
+                            {"href": "https://example.com/ep1.mp3", "type": "audio/mpeg"}
+                        )
+                    ],
+                }
+            ),
+            feedparser.FeedParserDict(
+                {
+                    "title": "Episode Two",
+                    "link": "https://example.com/ep2",
+                    "published_parsed": (2025, 6, 15, 12, 0, 0, 0, 0, 0),
+                    "enclosures": [
+                        feedparser.FeedParserDict(
+                            {"href": "https://example.com/ep2.mp3", "type": "audio/mpeg"}
+                        )
+                    ],
+                }
+            ),
         ]
-        
-        items = await scraper.scrape()
-        
-        # Should have scraped 2 items
+        mock_feed.feed = {"title": "Lenny's Podcast"}
+
+        with (
+            patch("app.scraping.podcast_unified.feedparser.parse", return_value=mock_feed),
+            patch.object(
+                PodcastUnifiedScraper,
+                "_load_podcast_feeds",
+                return_value=[{"name": "Lenny's Podcast", "url": "https://example.com/rss", "limit": 2}],
+            ),
+        ):
+            items = scraper.scrape()
+
         assert len(items) == 2
-        
-        # Each item should have required fields
         for item in items:
-            assert item['title']
-            assert item['url']
-            assert item['content_type'] == ContentType.PODCAST
-            assert item['metadata']['audio_url']
-            assert item['metadata']['feed_name'] == "Lenny's Podcast"
+            assert item["title"]
+            assert item["url"]
+            assert item["content_type"] == ContentType.PODCAST
+            assert item["metadata"]["audio_url"]
+            assert item["metadata"]["feed_name"] == "Lenny's Podcast"
 
 
 class TestPodcastDownloadWorker:
@@ -182,8 +232,7 @@ class TestPodcastDownloadWorker:
         assert worker._validate_url("https://example.com/episode with spaces.mp3") is False
         assert worker._validate_url("example.com/episode.mp3") is False  # No scheme
     
-    @pytest.mark.asyncio
-    async def test_process_download_no_audio_url(self):
+    def test_process_download_no_audio_url(self):
         """Test download fails gracefully when no audio URL in metadata."""
         worker = PodcastDownloadWorker()
         
@@ -200,30 +249,30 @@ class TestPodcastDownloadWorker:
                 title="Test Podcast",
                 url="https://example.com/episode",
                 content_type=ContentType.PODCAST.value,
-                content_metadata={
-                    'feed_name': 'Test Feed'
-                    # No audio_url!
-                },
+                content_metadata={"feed_name": "Test Feed"},
                 status=ContentStatus.NEW.value,
-                error_message=None
+                error_message=None,
             )
-            
-            # Mock the domain object returned by content_to_domain
-            mock_domain_content = Mock()
-            mock_domain_content.metadata = {'feed_name': 'Test Feed'}  # No audio_url
+
+            mock_domain_content = ContentData(
+                id=1,
+                content_type=ContentType.PODCAST,
+                url="https://example.com/episode",
+                status=ContentStatus.NEW,
+                metadata={"feed_name": "Test Feed"},
+            )
             mock_content_to_domain.return_value = mock_domain_content
             
             mock_db.query.return_value.filter.return_value.first.return_value = mock_content
             
-            result = await worker.process_download_task(1)
+            result = worker.process_download_task(1)
             
             assert result is False
             assert mock_content.status == ContentStatus.FAILED.value
             assert mock_content.error_message == "No audio URL found"
             mock_db.commit.assert_called()
     
-    @pytest.mark.asyncio
-    async def test_process_download_invalid_url(self):
+    def test_process_download_invalid_url(self):
         """Test download fails gracefully with invalid audio URL."""
         worker = PodcastDownloadWorker()
         
@@ -239,25 +288,23 @@ class TestPodcastDownloadWorker:
                 title="Test Podcast",
                 url="https://example.com/episode",
                 content_type=ContentType.PODCAST.value,
-                content_metadata={
-                    'feed_name': 'Test Feed',
-                    'audio_url': 'not a valid url'
-                },
+                content_metadata={"feed_name": "Test Feed", "audio_url": "not a valid url"},
                 status=ContentStatus.NEW.value,
-                error_message=None
+                error_message=None,
             )
-            
-            # Mock the domain object
-            mock_domain_content = Mock()
-            mock_domain_content.metadata = {
-                'feed_name': 'Test Feed',
-                'audio_url': 'not a valid url'
-            }
+
+            mock_domain_content = ContentData(
+                id=1,
+                content_type=ContentType.PODCAST,
+                url="https://example.com/episode",
+                status=ContentStatus.NEW,
+                metadata={"feed_name": "Test Feed", "audio_url": "not a valid url"},
+            )
             mock_content_to_domain.return_value = mock_domain_content
             
             mock_db.query.return_value.filter.return_value.first.return_value = mock_content
             
-            result = await worker.process_download_task(1)
+            result = worker.process_download_task(1)
             
             assert result is False
             assert mock_content.status == ContentStatus.FAILED.value
@@ -268,21 +315,30 @@ class TestPodcastDownloadWorker:
 class TestPodcastIntegration:
     """Integration tests for the complete podcast pipeline."""
     
-    @pytest.mark.asyncio
-    async def test_scrape_and_store_podcast(self):
+    def test_scrape_and_store_podcast(self):
         """Test that scraped podcasts have audio URLs in metadata."""
         scraper = PodcastUnifiedScraper()
-        
-        # Use a test feed configuration
-        scraper.feeds = [
+        mock_feed = Mock()
+        mock_feed.bozo = 0
+        mock_feed.entries = [
             {
-                'name': "Test Feed",
-                'url': "https://api.substack.com/feed/podcast/10845.rss",
-                'limit': 1
+                "title": "Test Episode",
+                "link": "https://example.com/episode",
+                "published_parsed": (2025, 6, 14, 12, 0, 0, 0, 0, 0),
+                "enclosures": [Mock(href="https://example.com/audio/test.mp3", type="audio/mpeg")],
             }
         ]
-        
-        items = await scraper.scrape()
+        mock_feed.feed = {"title": "Test Feed"}
+
+        with (
+            patch("app.scraping.podcast_unified.feedparser.parse", return_value=mock_feed),
+            patch.object(
+                PodcastUnifiedScraper,
+                "_load_podcast_feeds",
+                return_value=[{"name": "Test Feed", "url": "https://example.com/rss", "limit": 1}],
+            ),
+        ):
+            items = scraper.scrape()
         
         # Verify we got items with audio URLs
         assert len(items) > 0

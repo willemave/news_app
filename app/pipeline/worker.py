@@ -167,7 +167,7 @@ class ContentWorker:
                         )
                         metadata["error"] = str(e)
                         metadata["error_type"] = "non_retryable"
-                        db_content.metadata = metadata
+                        db_content.content_metadata = metadata
                         db.commit()
                 return False
 

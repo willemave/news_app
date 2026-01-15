@@ -21,10 +21,10 @@ def _build_item(url: str, user_id: int | None = None) -> dict:
     "status",
     [
         ContentStatus.NEW.value,
-        "downloaded",
-        "transcribed",
-        "summarized",
+        ContentStatus.PENDING.value,
+        ContentStatus.PROCESSING.value,
         ContentStatus.FAILED.value,
+        ContentStatus.SKIPPED.value,
     ],
 )
 def test_existing_podcast_entries_are_skipped(status):

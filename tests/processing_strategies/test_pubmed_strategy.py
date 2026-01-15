@@ -1,6 +1,5 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx  # For creating mock Headers
 import pytest
 
 from app.http_client.robust_http_client import RobustHttpClient
@@ -65,62 +64,91 @@ def test_can_handle_url(pubmed_strategy: PubMedProcessorStrategy, url: str, expe
     assert pubmed_strategy.can_handle_url(url, None) is expected
 
 def test_download_content(pubmed_strategy: PubMedProcessorStrategy, mock_http_client: MagicMock):
-    """Test download of PubMed page HTML."""
+    """Test download_content returns the URL placeholder."""
     url = "https://pubmed.ncbi.nlm.nih.gov/1234567/"
-    mock_response = MagicMock(spec=httpx.Response)
-    mock_response.text = SAMPLE_PUBMED_PAGE_HTML_PMC_LINK
-    mock_response.url = url # Simulate final URL
 
-    def mock_get_op(*args, **kwargs):
-        return mock_response
-    mock_http_client.get = MagicMock(side_effect=mock_get_op)
-    
     content = pubmed_strategy.download_content(url)
 
-    mock_http_client.get.assert_called_once_with(url)
-    assert content == SAMPLE_PUBMED_PAGE_HTML_PMC_LINK
+    assert content == url
+    assert not mock_http_client.get.called
 
-@pytest.mark.asyncio
-async def test_extract_data_pmc_link_found(pubmed_strategy: PubMedProcessorStrategy):
+def test_extract_data_pmc_link_found(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when a PMC full-text link is found."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/1234567/"
     expected_full_text_url = "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12345/"
     
-    extracted_data = await pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_PMC_LINK, pubmed_url)
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.html = SAMPLE_PUBMED_PAGE_HTML_PMC_LINK
+
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__.return_value = mock_crawler
+    mock_crawler.__aexit__.return_value = None
+
+    with patch("app.processing_strategies.pubmed_strategy.AsyncWebCrawler", return_value=mock_crawler):
+        extracted_data = pubmed_strategy.extract_data("ignored", pubmed_url)
 
     assert extracted_data["content_type"] == "pubmed_delegation"
     assert extracted_data["next_url_to_process"] == expected_full_text_url
     assert extracted_data["original_pubmed_url"] == pubmed_url
     assert extracted_data["final_url_after_redirects"] == pubmed_url
 
-@pytest.mark.asyncio
-async def test_extract_data_first_link_used(pubmed_strategy: PubMedProcessorStrategy):
+def test_extract_data_first_link_used(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when no PMC link is found, and the first available link is used."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/2345678/"
     expected_full_text_url = "https://example.com/first_full_text.pdf"
     
-    extracted_data = await pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_FIRST_LINK, pubmed_url)
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.html = SAMPLE_PUBMED_PAGE_HTML_FIRST_LINK
+
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__.return_value = mock_crawler
+    mock_crawler.__aexit__.return_value = None
+
+    with patch("app.processing_strategies.pubmed_strategy.AsyncWebCrawler", return_value=mock_crawler):
+        extracted_data = pubmed_strategy.extract_data("ignored", pubmed_url)
 
     assert extracted_data["content_type"] == "pubmed_delegation"
     assert extracted_data["next_url_to_process"] == expected_full_text_url
     assert extracted_data["original_pubmed_url"] == pubmed_url
 
-@pytest.mark.asyncio
-async def test_extract_data_no_links_found(pubmed_strategy: PubMedProcessorStrategy):
+def test_extract_data_no_links_found(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when no full-text links are found on the PubMed page."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/3456789/"
-    extracted_data = await pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_NO_LINKS, pubmed_url)
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.html = SAMPLE_PUBMED_PAGE_HTML_NO_LINKS
+
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__.return_value = mock_crawler
+    mock_crawler.__aexit__.return_value = None
+
+    with patch("app.processing_strategies.pubmed_strategy.AsyncWebCrawler", return_value=mock_crawler):
+        extracted_data = pubmed_strategy.extract_data("ignored", pubmed_url)
 
     assert extracted_data["content_type"] == "error_pubmed_extraction"
     assert "next_url_to_process" not in extracted_data
     assert extracted_data["title"] == f"PubMed Full-Text Link Extraction Failed for {pubmed_url.split('/')[-1]}"
     assert "Could not find a usable full-text link" in extracted_data["text_content"]
 
-@pytest.mark.asyncio
-async def test_extract_data_malformed_html(pubmed_strategy: PubMedProcessorStrategy):
+def test_extract_data_malformed_html(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data with malformed HTML where link sections might be missing."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/4567890/"
-    extracted_data = await pubmed_strategy.extract_data(SAMPLE_PUBMED_PAGE_HTML_MALFORMED, pubmed_url)
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.html = SAMPLE_PUBMED_PAGE_HTML_MALFORMED
+
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__.return_value = mock_crawler
+    mock_crawler.__aexit__.return_value = None
+
+    with patch("app.processing_strategies.pubmed_strategy.AsyncWebCrawler", return_value=mock_crawler):
+        extracted_data = pubmed_strategy.extract_data("ignored", pubmed_url)
 
     assert extracted_data["content_type"] == "error_pubmed_extraction"
     assert "next_url_to_process" not in extracted_data

@@ -138,8 +138,6 @@ def test_extract_data_successful(html_strategy: HtmlProcessorStrategy):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
         extracted_data = html_strategy.extract_data(SAMPLE_HTML_CONTENT, url)
 
@@ -182,8 +180,6 @@ This is the article content.
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
         extracted_data = html_strategy.extract_data("", url)
 
@@ -217,8 +213,6 @@ def test_extract_data_pubmed_source(html_strategy: HtmlProcessorStrategy):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
         extracted_data = html_strategy.extract_data("", url)
 
@@ -248,8 +242,6 @@ def test_extract_data_arxiv_source(html_strategy: HtmlProcessorStrategy):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
         extracted_data = html_strategy.extract_data("", url)
 
@@ -272,8 +264,6 @@ def test_extract_data_failure(html_strategy: HtmlProcessorStrategy):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
         extracted_data = html_strategy.extract_data("", url)
 
@@ -304,8 +294,6 @@ def test_extract_data_failure_includes_error_message_details(
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
         extracted_data = html_strategy.extract_data("", url)
 
@@ -342,8 +330,6 @@ def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrat
     
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ):
         # Should not raise an exception despite browser close error
         extracted_data = html_strategy.extract_data("", url)
@@ -453,8 +439,6 @@ def test_extract_data_includes_table_strategy(monkeypatch, mock_http_client):
 
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.asyncio.run", return_value=mock_result
     ), patch(
         "app.processing_strategies.html_strategy.LLMConfig", return_value=MagicMock()
     ) as llm_config_cls, patch(
