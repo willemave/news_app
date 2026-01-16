@@ -2,10 +2,10 @@ import pytest
 
 from app.services.scraper_configs import (
     CreateUserScraperConfig,
+    build_feed_payloads,
     create_user_scraper_config,
     list_active_configs_by_type,
     list_user_scraper_configs,
-    build_feed_payloads,
 )
 
 
@@ -81,7 +81,7 @@ def test_build_feed_payloads_apply_default_limit(db_session):
     payload = CreateUserScraperConfig(
         scraper_type="podcast_rss",
         display_name="No Limit",
-        config={"feed_url": "https://pod.example.com/rss"},
+        config={"feed_url": "https://pod.example.com/rss", "limit": None},
         is_active=True,
     )
     create_user_scraper_config(db_session, user_id=2, data=payload)

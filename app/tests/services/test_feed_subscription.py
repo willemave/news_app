@@ -1,6 +1,6 @@
 """Tests for detected feed subscription helper."""
 
-from app.constants import DEFAULT_SUBSCRIBED_FEED_LIMIT
+from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.models.schema import UserScraperConfig
 from app.services.feed_subscription import subscribe_to_detected_feed
 
@@ -29,4 +29,4 @@ def test_subscribe_to_detected_feed_creates_config(db_session, test_user):
     assert record is not None
     assert record.scraper_type == "atom"
     assert record.display_name == "Example Feed"
-    assert record.config.get("limit") == DEFAULT_SUBSCRIBED_FEED_LIMIT
+    assert record.config.get("limit") == DEFAULT_NEW_FEED_LIMIT

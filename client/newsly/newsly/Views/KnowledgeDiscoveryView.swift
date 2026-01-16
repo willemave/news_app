@@ -150,7 +150,7 @@ struct KnowledgeDiscoveryView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(.primary)
 
-                    Text("AI-powered suggestions from your reading history")
+                    Text("AI-powered suggestions based on your reading history and interests")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -314,6 +314,8 @@ struct KnowledgeDiscoveryView: View {
                     Text(summary)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
                         .padding(.top, 2)
                 }
             }

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.constants import DEFAULT_SUBSCRIBED_FEED_LIMIT
+from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
@@ -257,7 +257,7 @@ async def subscribe_discovery_suggestions(
             if suggestion.feed_url and not config_payload.get("feed_url"):
                 config_payload["feed_url"] = suggestion.feed_url
             if "limit" not in config_payload:
-                config_payload["limit"] = DEFAULT_SUBSCRIBED_FEED_LIMIT
+                config_payload["limit"] = DEFAULT_NEW_FEED_LIMIT
             create_user_scraper_config(
                 db,
                 user_id=current_user.id,

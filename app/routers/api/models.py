@@ -154,6 +154,30 @@ class SubmissionStatusListResponse(BaseModel):
     meta: PaginationMetadata = Field(..., description="Pagination metadata for the response")
 
 
+class DownloadMoreRequest(BaseModel):
+    """Request to download older items from the same feed series."""
+
+    count: int = Field(
+        ...,
+        ge=1,
+        le=50,
+        description="Number of additional older items to attempt to fetch",
+    )
+
+
+class DownloadMoreResponse(BaseModel):
+    """Response for the download-more action."""
+
+    status: str = Field(..., description="Completion status")
+    requested_count: int = Field(..., ge=1, le=50)
+    base_limit: int = Field(..., ge=1)
+    target_limit: int = Field(..., ge=1)
+    scraped: int = Field(..., ge=0)
+    saved: int = Field(..., ge=0)
+    duplicates: int = Field(..., ge=0)
+    errors: int = Field(..., ge=0)
+
+
 class DiscoverySuggestionResponse(BaseModel):
     """Suggested feed/podcast/YouTube subscription item."""
 
@@ -442,6 +466,18 @@ class ProcessingCountResponse(BaseModel):
     processing_count: int = Field(
         ...,
         description="Number of long-form items pending or processing for the user",
+    )
+
+
+class LongFormStatsResponse(BaseModel):
+    """Response containing long-form content stats for a user."""
+
+    total_count: int = Field(..., description="Total long-form items in the inbox")
+    unread_count: int = Field(..., description="Unread long-form items")
+    read_count: int = Field(..., description="Read long-form items")
+    favorited_count: int = Field(..., description="Favorited long-form items")
+    processing_count: int = Field(
+        ..., description="Long-form items pending or processing for the user"
     )
 
 

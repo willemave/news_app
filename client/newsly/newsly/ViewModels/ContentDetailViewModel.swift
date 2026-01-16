@@ -157,6 +157,25 @@ class ContentDetailViewModel: ObservableObject {
         isSubscribingToFeed = false
     }
 
+    func downloadMoreFromSeries(count: Int) async {
+        guard let contentId = content?.id else { return }
+
+        do {
+            let response = try await contentService.downloadMoreFromSeries(
+                contentId: contentId,
+                count: count
+            )
+            let savedCount = response.saved
+            if savedCount > 0 {
+                ToastService.shared.showSuccess("Added \(savedCount) new items")
+            } else {
+                ToastService.shared.show("Download started", type: .info)
+            }
+        } catch {
+            ToastService.shared.showError("Failed to download more: \(error.localizedDescription)")
+        }
+    }
+
     private func buildFullMarkdown() -> String? {
         guard let content = content else { return nil }
 

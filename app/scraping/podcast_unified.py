@@ -76,6 +76,7 @@ class PodcastUnifiedScraper(BaseScraper):
             feed_url = feed_config.get("url")
             limit = feed_config.get("limit", 10)
             user_id = feed_config.get("user_id")
+            config_id = feed_config.get("config_id")
 
             if not feed_url:
                 logger.warning(f"No URL found for feed: {feed_name}")
@@ -157,7 +158,14 @@ class PodcastUnifiedScraper(BaseScraper):
 
                 processed_entries = 0
                 for entry in entries_to_process:
-                    item = self._process_entry(entry, feed_name, feed_info, feed_url, user_id)
+                    item = self._process_entry(
+                        entry,
+                        feed_name,
+                        feed_info,
+                        feed_url,
+                        user_id,
+                        config_id,
+                    )
                     if item:
                         items.append(item)
                         processed_entries += 1
@@ -181,7 +189,13 @@ class PodcastUnifiedScraper(BaseScraper):
         return items
 
     def _process_entry(
-        self, entry, feed_name: str, feed_info: dict, feed_url: str, user_id: int | None
+        self,
+        entry,
+        feed_name: str,
+        feed_info: dict,
+        feed_url: str,
+        user_id: int | None,
+        config_id: int | None = None,
     ) -> dict[str, Any]:
         """Process a single podcast entry."""
         title = entry.get("title", "No Title")
@@ -239,6 +253,8 @@ class PodcastUnifiedScraper(BaseScraper):
             "platform": "podcast",  # Scraper identifier
             "source": feed_name,  # Configured name from YAML (never overwritten)
             "source_domain": host,  # Store domain separately for reference
+            "feed_url": feed_url,
+            "feed_config_id": config_id,
             "audio_url": enclosure_url,
             "publication_date": publication_date.isoformat() if publication_date else None,
             "episode_number": episode_number,

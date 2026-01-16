@@ -7,7 +7,7 @@ from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy.orm import Session
 
-from app.constants import DEFAULT_SUBSCRIBED_FEED_LIMIT
+from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.core.logging import get_logger
 from app.models.schema import UserScraperConfig
 from app.services.scraper_configs import (
@@ -120,7 +120,7 @@ def subscribe_to_detected_feed(
         display_name=display_name,
         config={
             "feed_url": feed_url.strip(),
-            "limit": DEFAULT_SUBSCRIBED_FEED_LIMIT,
+            "limit": DEFAULT_NEW_FEED_LIMIT,
         },
         is_active=True,
     )

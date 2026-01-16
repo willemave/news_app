@@ -46,16 +46,20 @@ struct MoreView: View {
                     }
                 }
 
-                HStack(spacing: 12) {
-                    iconView(icon: "clock.arrow.circlepath", color: .teal)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Processing")
-                        Text("Long-form")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                NavigationLink {
+                    ProcessingStatsView()
+                } label: {
+                    HStack(spacing: 12) {
+                        iconView(icon: "clock.arrow.circlepath", color: .teal)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Processing")
+                            Text("Long-form")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        processingCountBadge(count: processingCountService.processingCount)
                     }
-                    Spacer()
-                    processingCountBadge(count: processingCountService.processingCount)
                 }
             }
 

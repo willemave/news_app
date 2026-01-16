@@ -129,6 +129,7 @@ class AtomScraper(BaseScraper):
             display_name = feed_info.get("display_name")
             limit = feed_info.get("limit", 10)
             user_id = feed_info.get("user_id")
+            config_id = feed_info.get("config_id")
 
             if not feed_url:
                 logger.warning("Skipping empty feed URL.")
@@ -198,6 +199,7 @@ class AtomScraper(BaseScraper):
                         display_name,
                         source_name,
                         user_id,
+                        config_id,
                     )
                     if item:
                         items.append(item)
@@ -233,6 +235,7 @@ class AtomScraper(BaseScraper):
         display_name: str | None = None,
         source_name: str = "",
         user_id: int | None = None,
+        config_id: int | None = None,
     ) -> dict[str, Any] | None:
         """Process a single entry from an Atom feed."""
         title = entry.get("title", "No Title")
@@ -302,6 +305,8 @@ class AtomScraper(BaseScraper):
                 "platform": "atom",  # Scraper identifier
                 "source": resolved_source,
                 "source_domain": host,
+                "feed_url": feed_url,
+                "feed_config_id": config_id,
                 "feed_name": feed_name,
                 "feed_description": feed_description,
                 "author": entry.get("author"),

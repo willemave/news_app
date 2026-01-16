@@ -40,6 +40,28 @@ struct ConvertNewsResponse: Codable {
     }
 }
 
+struct DownloadMoreResponse: Codable {
+    let status: String
+    let requestedCount: Int
+    let baseLimit: Int
+    let targetLimit: Int
+    let scraped: Int
+    let saved: Int
+    let duplicates: Int
+    let errors: Int
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case requestedCount = "requested_count"
+        case baseLimit = "base_limit"
+        case targetLimit = "target_limit"
+        case scraped
+        case saved
+        case duplicates
+        case errors
+    }
+}
+
 struct SubmitContentResponse: Codable {
     let contentId: Int
     let contentType: String
@@ -180,6 +202,19 @@ class ContentService {
     
     func fetchContentDetail(id: Int) async throws -> ContentDetail {
         return try await client.request(APIEndpoints.contentDetail(id: id))
+    }
+
+    func downloadMoreFromSeries(contentId: Int, count: Int) async throws -> DownloadMoreResponse {
+        struct DownloadMoreRequest: Codable {
+            let count: Int
+        }
+
+        let body = try JSONEncoder().encode(DownloadMoreRequest(count: count))
+        return try await client.request(
+            APIEndpoints.downloadMoreFromSeries(id: contentId),
+            method: "POST",
+            body: body
+        )
     }
     
     func markContentAsRead(id: Int) async throws {

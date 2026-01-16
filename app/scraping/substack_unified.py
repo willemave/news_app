@@ -129,6 +129,7 @@ class SubstackScraper(BaseScraper):
             display_name = feed_info.get("display_name")
             limit = feed_info.get("limit", 10)
             user_id = feed_info.get("user_id")
+            config_id = feed_info.get("config_id")
 
             if not feed_url:
                 logger.warning("Skipping empty feed URL.")
@@ -195,6 +196,7 @@ class SubstackScraper(BaseScraper):
                         display_name,
                         source_name,
                         user_id,
+                        config_id,
                     )
                     if item:
                         items.append(item)
@@ -230,6 +232,7 @@ class SubstackScraper(BaseScraper):
         display_name: str | None = None,
         source_name: str = "",
         user_id: int | None = None,
+        config_id: int | None = None,
     ) -> dict[str, Any]:
         """Process a single entry from an RSS feed."""
         title = entry.get("title", "No Title")
@@ -303,6 +306,8 @@ class SubstackScraper(BaseScraper):
                 "platform": "substack",  # Scraper identifier
                 "source": resolved_source,
                 "source_domain": host,  # Store domain separately for reference
+                "feed_url": feed_url,
+                "feed_config_id": config_id,
                 "feed_name": feed_name,
                 "feed_description": feed_description,
                 "author": entry.get("author"),

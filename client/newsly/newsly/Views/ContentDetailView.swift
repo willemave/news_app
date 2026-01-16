@@ -200,6 +200,12 @@ struct ContentDetailView: View {
                             .padding(.top, DetailDesign.sectionSpacing)
                         }
 
+                        if content.contentTypeEnum == .article || content.contentTypeEnum == .podcast {
+                            downloadMoreSection(content: content)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.sectionSpacing)
+                        }
+
                         // Bottom spacing
                         Spacer()
                             .frame(height: 40)
@@ -973,6 +979,21 @@ struct ContentDetailView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func downloadMoreSection(content: ContentDetail) -> some View {
+        HStack {
+            DownloadMoreMenu(title: "Download more") { count in
+                Task { await viewModel.downloadMoreFromSeries(count: count) }
+            }
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.secondarySystemBackground))
+        )
     }
 
     @ViewBuilder

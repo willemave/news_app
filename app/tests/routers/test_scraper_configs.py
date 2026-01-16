@@ -1,4 +1,4 @@
-from app.constants import DEFAULT_SUBSCRIBED_FEED_LIMIT
+from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.models.schema import UserScraperConfig
 
 
@@ -15,7 +15,7 @@ def test_scraper_configs_crud(client, db_session, test_user):
     config_id = created["id"]
     assert created["scraper_type"] == "substack"
     assert created["feed_url"] == "https://example.com/feed"
-    assert created["limit"] is None
+    assert created["limit"] == DEFAULT_NEW_FEED_LIMIT
 
     list_resp = client.get("/api/scrapers")
     assert list_resp.status_code == 200
@@ -117,4 +117,4 @@ def test_subscribe_feed_defaults_limit(client, test_user):
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["limit"] == DEFAULT_SUBSCRIBED_FEED_LIMIT
+    assert data["limit"] == DEFAULT_NEW_FEED_LIMIT

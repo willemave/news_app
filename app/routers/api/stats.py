@@ -3,17 +3,21 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ContentStatusEntry
+from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
 from app.models.user import User
 from app.repositories.content_repository import apply_visibility_filters, build_visibility_context
-from app.routers.api.models import ProcessingCountResponse, UnreadCountsResponse
+from app.routers.api.models import (
+    LongFormStatsResponse,
+    ProcessingCountResponse,
+    UnreadCountsResponse,
+)
 
 router = APIRouter(prefix="/stats")
 
@@ -88,3 +92,101 @@ def get_processing_count(
         processing_count = count_query.scalar() or 0
 
     return ProcessingCountResponse(processing_count=processing_count)
+
+
+@router.get(
+    "/long-form",
+    response_model=LongFormStatsResponse,
+    summary="Get long-form content stats",
+    description=(
+        "Return long-form stats for the authenticated user, including totals, read/unread, "
+        "favorites, and processing counts."
+    ),
+)
+def get_long_form_stats(
+    db: Annotated[Session, Depends(get_readonly_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> LongFormStatsResponse:
+    """Return long-form content stats for the authenticated user."""
+    long_form_types = {ContentType.ARTICLE.value, ContentType.PODCAST.value}
+    inbox_filter = (
+        ContentStatusEntry.user_id == current_user.id,
+        ContentStatusEntry.status == "inbox",
+        or_(
+            Content.content_type.in_(long_form_types),
+            and_(Content.platform == "youtube", Content.content_type != ContentType.NEWS.value),
+        ),
+    )
+    completed_filter = (
+        Content.status == ContentStatus.COMPLETED.value,
+        (Content.classification != "skip") | (Content.classification.is_(None)),
+    )
+
+    read_exists = exists(
+        select(ContentReadStatus.id).where(
+            ContentReadStatus.user_id == current_user.id,
+            ContentReadStatus.content_id == Content.id,
+        )
+    )
+    favorite_exists = exists(
+        select(ContentFavorites.id).where(
+            ContentFavorites.user_id == current_user.id,
+            ContentFavorites.content_id == Content.id,
+        )
+    )
+
+    processing_statuses = [ContentStatus.PENDING.value, ContentStatus.PROCESSING.value]
+
+    with timed("query long_form_stats"):
+        total_count = (
+            db.query(func.count(Content.id))
+            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
+            .filter(*inbox_filter)
+            .filter(*completed_filter)
+            .scalar()
+            or 0
+        )
+        read_count = (
+            db.query(func.count(Content.id))
+            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
+            .filter(*inbox_filter)
+            .filter(*completed_filter)
+            .filter(read_exists)
+            .scalar()
+            or 0
+        )
+        unread_count = (
+            db.query(func.count(Content.id))
+            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
+            .filter(*inbox_filter)
+            .filter(*completed_filter)
+            .filter(~read_exists)
+            .scalar()
+            or 0
+        )
+        favorited_count = (
+            db.query(func.count(Content.id))
+            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
+            .filter(*inbox_filter)
+            .filter(*completed_filter)
+            .filter(favorite_exists)
+            .scalar()
+            or 0
+        )
+
+        processing_count = (
+            db.query(func.count(Content.id))
+            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
+            .filter(*inbox_filter)
+            .filter(Content.status.in_(processing_statuses))
+            .scalar()
+            or 0
+        )
+
+    return LongFormStatsResponse(
+        total_count=total_count,
+        unread_count=unread_count,
+        read_count=read_count,
+        favorited_count=favorited_count,
+        processing_count=processing_count,
+    )

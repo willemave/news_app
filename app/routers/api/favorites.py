@@ -12,7 +12,7 @@ from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.pagination import PaginationMetadata
-from app.models.schema import Content
+from app.models.schema import Content, ContentFavorites, ContentReadStatus
 from app.models.user import User
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse
 from app.utils.pagination import PaginationCursor
@@ -107,8 +107,6 @@ async def get_favorites(
     ),
 ) -> ContentListResponse:
     """Get all favorited content with cursor-based pagination."""
-    from app.services import favorites, read_status
-
     # Decode cursor if provided
     last_id = None
     last_created_at = None
@@ -121,48 +119,50 @@ async def get_favorites(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Get favorited content IDs
-    favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
+    # Query favorited content with user-scoped joins
+    query = (
+        db.query(Content, ContentReadStatus.id)
+        .join(
+            ContentFavorites,
+            and_(
+                ContentFavorites.content_id == Content.id,
+                ContentFavorites.user_id == current_user.id,
+            ),
+        )
+        .outerjoin(
+            ContentReadStatus,
+            and_(
+                ContentReadStatus.content_id == Content.id,
+                ContentReadStatus.user_id == current_user.id,
+            ),
+        )
+        .filter(Content.status == ContentStatus.COMPLETED.value)
+        .filter((Content.classification != "skip") | (Content.classification.is_(None)))
+    )
 
-    # Get read content IDs
-    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
-
-    # Query favorited content
-    if favorite_content_ids:
-        query = db.query(Content).filter(Content.id.in_(favorite_content_ids))
-        query = query.filter(Content.status == ContentStatus.COMPLETED.value)
-
-        # Filter out "skip" classification articles
+    # Apply cursor pagination
+    if last_id and last_created_at:
         query = query.filter(
-            (Content.classification != "skip") | (Content.classification.is_(None))
+            or_(
+                Content.created_at < last_created_at,
+                and_(Content.created_at == last_created_at, Content.id < last_id),
+            )
         )
 
-        # Apply cursor pagination
-        if last_id and last_created_at:
-            query = query.filter(
-                or_(
-                    Content.created_at < last_created_at,
-                    and_(Content.created_at == last_created_at, Content.id < last_id),
-                )
-            )
+    # Order by created_at DESC, id DESC for stable pagination
+    query = query.order_by(Content.created_at.desc(), Content.id.desc())
 
-        # Order by created_at DESC, id DESC for stable pagination
-        query = query.order_by(Content.created_at.desc(), Content.id.desc())
+    # Fetch limit + 1 to determine if there are more results
+    contents = query.limit(limit + 1).all()
 
-        # Fetch limit + 1 to determine if there are more results
-        contents = query.limit(limit + 1).all()
-
-        # Check if there are more results
-        has_more = len(contents) > limit
-        if has_more:
-            contents = contents[:limit]  # Trim to requested limit
-    else:
-        contents = []
-        has_more = False
+    # Check if there are more results
+    has_more = len(contents) > limit
+    if has_more:
+        contents = contents[:limit]  # Trim to requested limit
 
     # Convert to response format
     content_summaries = []
-    for c in contents:
+    for c, read_id in contents:
         try:
             domain_content = content_to_domain(c)
 
@@ -193,7 +193,7 @@ async def get_favorites(
                     publication_date=domain_content.publication_date.isoformat()
                     if domain_content.publication_date
                     else None,
-                    is_read=c.id in read_content_ids,
+                    is_read=read_id is not None,
                     is_favorited=True,  # All items in this list are favorited
                 )
             )
@@ -217,7 +217,7 @@ async def get_favorites(
     # Generate next cursor if there are more results
     next_cursor = None
     if has_more and content_summaries:
-        last_item = contents[-1]  # Use original DB object
+        last_item = contents[-1][0]  # Use original DB object
         next_cursor = PaginationCursor.encode_cursor(
             last_id=last_item.id,
             last_created_at=last_item.created_at,

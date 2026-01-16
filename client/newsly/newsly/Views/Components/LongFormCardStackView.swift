@@ -109,6 +109,9 @@ struct LongFormCardStackView: View {
                         onFavorite: { Task { await viewModel.toggleFavorite(content.id) } },
                         onMarkRead: { viewModel.markAsRead(content.id) },
                         onTap: { navigateToDetail(content) },
+                        onDownloadMore: { count in
+                            Task { await viewModel.downloadMoreFromSeries(contentId: content.id, count: count) }
+                        },
                         scale: scaleForOffset(relativeOffset),
                         yOffset: yOffsetForOffset(relativeOffset),
                         cardOpacity: opacityForOffset(relativeOffset)

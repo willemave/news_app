@@ -35,8 +35,8 @@ DEFAULT_SUMMARIZER_CONCURRENCY = 2
 # Aggregate content platforms that should skip LLM summaries
 AGGREGATE_PLATFORMS = {"twitter", "techmeme"}
 
-# Default item limit for newly subscribed feeds
-DEFAULT_SUBSCRIBED_FEED_LIMIT = 3
+# Default item limit for newly created feeds
+DEFAULT_NEW_FEED_LIMIT = 1
 
 
 # Worker ID format: {worker_type}_{instance_id}_{pid}

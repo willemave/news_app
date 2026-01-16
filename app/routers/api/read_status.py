@@ -13,7 +13,7 @@ from app.core.logging import get_logger
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.pagination import PaginationMetadata
-from app.models.schema import Content, ContentReadStatus
+from app.models.schema import Content, ContentFavorites, ContentReadStatus
 from app.models.user import User
 from app.routers.api.models import BulkMarkReadRequest, ContentListResponse, ContentSummaryResponse
 from app.utils.pagination import PaginationCursor
@@ -214,8 +214,6 @@ async def get_recently_read(
     ),
 ) -> ContentListResponse:
     """Get all recently read content with cursor-based pagination, sorted by read time."""
-    from app.services import favorites, read_status
-
     logger.info(
         "[API] GET /recently-read/list called | user_id=%s cursor=%s limit=%s",
         current_user.id,
@@ -246,15 +244,23 @@ async def get_recently_read(
             )
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Get read content IDs for status checks
-    read_content_ids = read_status.get_read_content_ids(db, current_user.id)
-
-    # Get favorited content IDs
-    favorite_content_ids = favorites.get_favorite_content_ids(db, current_user.id)
-
     # Query content joined with read status, ordered by read time
-    query = db.query(Content, ContentReadStatus.read_at).join(
-        ContentReadStatus, Content.id == ContentReadStatus.content_id
+    query = (
+        db.query(Content, ContentReadStatus.read_at, ContentFavorites.id)
+        .join(
+            ContentReadStatus,
+            and_(
+                Content.id == ContentReadStatus.content_id,
+                ContentReadStatus.user_id == current_user.id,
+            ),
+        )
+        .outerjoin(
+            ContentFavorites,
+            and_(
+                Content.id == ContentFavorites.content_id,
+                ContentFavorites.user_id == current_user.id,
+            ),
+        )
     )
 
     # Apply same visibility filters as other endpoints
@@ -286,12 +292,12 @@ async def get_recently_read(
 
     # Extract content and read_at from results
     contents = []
-    for c, read_at in results:
-        contents.append((c, read_at))
+    for c, read_at, favorite_id in results:
+        contents.append((c, read_at, favorite_id))
 
     # Convert to response format
     content_summaries = []
-    for c, _read_at in contents:
+    for c, _read_at, favorite_id in contents:
         try:
             domain_content = content_to_domain(c)
 
@@ -351,8 +357,8 @@ async def get_recently_read(
                     publication_date=domain_content.publication_date.isoformat()
                     if domain_content.publication_date
                     else None,
-                    is_read=c.id in read_content_ids,
-                    is_favorited=c.id in favorite_content_ids,
+                    is_read=True,
+                    is_favorited=bool(favorite_id),
                     discussion_url=discussion_url,
                     news_article_url=news_article_url,
                     news_discussion_url=news_discussion_url,
@@ -381,7 +387,7 @@ async def get_recently_read(
     # Generate next cursor if there are more results
     next_cursor = None
     if has_more and content_summaries:
-        last_item_content, last_item_read_at = contents[-1]
+        last_item_content, last_item_read_at, _favorite_id = contents[-1]
         next_cursor = PaginationCursor.encode_cursor(
             last_id=last_item_content.id,
             last_created_at=last_item_content.created_at,

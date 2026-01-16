@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.constants import DEFAULT_SUBSCRIBED_FEED_LIMIT
+from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.models.schema import Content, FeedDiscoveryRun, FeedDiscoverySuggestion, UserScraperConfig
 
 
@@ -96,7 +96,7 @@ def test_discovery_subscribe_creates_config(client, db_session, test_user):
     )
     assert config is not None
     assert config.feed_url == "https://example.substack.com/feed"
-    assert config.config.get("limit") == DEFAULT_SUBSCRIBED_FEED_LIMIT
+    assert config.config.get("limit") == DEFAULT_NEW_FEED_LIMIT
 
 
 def test_discovery_subscribe_uses_feed_url_when_missing_in_config(
@@ -134,7 +134,7 @@ def test_discovery_subscribe_uses_feed_url_when_missing_in_config(
     )
     assert config is not None
     assert config.feed_url == "https://example.com/podcast/rss.xml"
-    assert config.config.get("limit") == DEFAULT_SUBSCRIBED_FEED_LIMIT
+    assert config.config.get("limit") == DEFAULT_NEW_FEED_LIMIT
 
 
 def test_discovery_dismiss_marks_suggestion(client, db_session, test_user):

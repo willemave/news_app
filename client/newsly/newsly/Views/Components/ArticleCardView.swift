@@ -19,6 +19,7 @@ struct ArticleCardView: View {
     let onFavorite: () -> Void
     let onMarkRead: () -> Void
     let onTap: () -> Void
+    let onDownloadMore: (Int) -> Void
 
     var scale: CGFloat = 1.0
     var yOffset: CGFloat = 0
@@ -272,6 +273,10 @@ struct ArticleCardView: View {
                         .fontWeight(.medium)
                 }
                 .foregroundColor(content.isRead ? .green : .primary)
+            }
+
+            DownloadMoreMenu { count in
+                onDownloadMore(count)
             }
 
             Spacer()

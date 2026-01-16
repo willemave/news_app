@@ -147,7 +147,9 @@ def list_contents(
     if date:
         try:
             filter_date = datetime.strptime(date, "%Y-%m-%d").date()
-            query = query.filter(func.date(Content.created_at) == filter_date)
+            start_dt = datetime.combine(filter_date, datetime.min.time())
+            end_dt = start_dt + timedelta(days=1)
+            query = query.filter(Content.created_at >= start_dt, Content.created_at < end_dt)
         except ValueError as e:
             raise HTTPException(status_code=400, detail="Invalid date format") from e
 

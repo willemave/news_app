@@ -12,14 +12,22 @@ from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.models.user import User
+from app.repositories.content_repository import build_visibility_context
 from app.routers.api.models import (
     ConvertNewsResponse,
+    DownloadMoreRequest,
+    DownloadMoreResponse,
     TweetLength,
     TweetSuggestion,
     TweetSuggestionsRequest,
     TweetSuggestionsResponse,
 )
 from app.services.event_logger import log_event
+from app.services.feed_backfill import (
+    FeedBackfillRequest,
+    backfill_feed_for_config,
+    resolve_feed_config_for_content,
+)
 from app.services.tweet_suggestions import generate_tweet_suggestions
 from app.utils.url_utils import is_http_url, normalize_http_url
 
@@ -141,6 +149,76 @@ async def convert_news_to_article(
         original_content_id=content_id,
         already_exists=False,
         message="Article created and queued for processing",
+    )
+
+
+@router.post(
+    "/{content_id}/download-more",
+    response_model=DownloadMoreResponse,
+    summary="Download more items from the same feed series",
+    description=(
+        "Trigger a one-off backfill for the feed that produced this content, "
+        "attempting to fetch additional older items without changing the feed's "
+        "ongoing limit."
+    ),
+    responses={
+        200: {"description": "Backfill completed"},
+        400: {"description": "Feed could not be resolved or is unsupported"},
+        403: {"description": "Content not accessible by the current user"},
+        404: {"description": "Content not found"},
+    },
+)
+async def download_more_from_series(
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    request: DownloadMoreRequest,
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> DownloadMoreResponse:
+    """Download older items from the same feed series as this content."""
+    context = build_visibility_context(current_user.id)
+    row = (
+        db.query(Content, context.is_in_inbox.label("is_in_inbox"))
+        .filter(Content.id == content_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    content, is_in_inbox = row
+    if content.content_type not in (
+        ContentType.ARTICLE.value,
+        ContentType.PODCAST.value,
+    ):
+        raise HTTPException(status_code=400, detail="Content is not long-form")
+
+    if not is_in_inbox:
+        raise HTTPException(status_code=403, detail="Content not accessible")
+
+    config = resolve_feed_config_for_content(db, current_user.id, content)
+    if not config:
+        raise HTTPException(status_code=400, detail="Feed config not found for content")
+
+    try:
+        result = await run_in_threadpool(
+            backfill_feed_for_config,
+            FeedBackfillRequest(
+                user_id=current_user.id,
+                config_id=config.id,
+                count=request.count,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return DownloadMoreResponse(
+        status="completed",
+        requested_count=request.count,
+        base_limit=result.base_limit,
+        target_limit=result.target_limit,
+        scraped=result.scraped,
+        saved=result.saved,
+        duplicates=result.duplicates,
+        errors=result.errors,
     )
 
 

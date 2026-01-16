@@ -153,8 +153,8 @@ Examples:
     parser.add_argument(
         "--limit",
         type=int,
-        default=10,
-        help="Maximum items to fetch per scrape (default: 10)",
+        default=1,
+        help="Maximum items to fetch per scrape (default: 1)",
     )
     parser.add_argument(
         "--debug",

@@ -49,6 +49,8 @@ struct LongFormView: View {
                                         ContentCard(content: content)
                                     }
 
+                                    downloadMoreRow(for: content)
+
                                     if content.id != viewModel.currentItems().last?.id {
                                         Divider()
                                             .padding(.horizontal, 24)
@@ -149,6 +151,20 @@ struct LongFormView: View {
                     .background(Color(.systemBackground))
                     .cornerRadius(12)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func downloadMoreRow(for content: ContentSummary) -> some View {
+        if content.contentTypeEnum == .article || content.contentTypeEnum == .podcast {
+            HStack {
+                DownloadMoreMenu(title: "Download more") { count in
+                    Task { await viewModel.downloadMoreFromSeries(contentId: content.id, count: count) }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
         }
     }
 }

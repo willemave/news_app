@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
@@ -154,7 +154,9 @@ async def list_content(
     if date:
         try:
             filter_date = datetime.strptime(date, "%Y-%m-%d").date()
-            query = query.filter(func.date(Content.created_at) == filter_date)
+            start_dt = datetime.combine(filter_date, datetime.min.time())
+            end_dt = start_dt + timedelta(days=1)
+            query = query.filter(Content.created_at >= start_dt, Content.created_at < end_dt)
         except ValueError:
             pass
 

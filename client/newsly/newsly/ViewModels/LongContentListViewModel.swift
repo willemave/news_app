@@ -177,6 +177,22 @@ final class LongContentListViewModel: BaseContentListViewModel {
         }
     }
 
+    func downloadMoreFromSeries(contentId: Int, count: Int) async {
+        logger.info("[LongContentList] downloadMoreFromSeries | contentId=\(contentId) count=\(count)")
+        do {
+            let response = try await contentService.downloadMoreFromSeries(contentId: contentId, count: count)
+            let savedCount = response.saved
+            if savedCount > 0 {
+                ToastService.shared.showSuccess("Added \(savedCount) new items")
+            } else {
+                ToastService.shared.show("Download started", type: .info)
+            }
+        } catch {
+            logger.error("[LongContentList] downloadMoreFromSeries failed | contentId=\(contentId) error=\(error.localizedDescription)")
+            ToastService.shared.showError("Failed to download more: \(error.localizedDescription)")
+        }
+    }
+
     private func decrementCount(for item: ContentSummary) {
         switch item.contentTypeEnum {
         case .article:

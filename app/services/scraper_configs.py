@@ -10,6 +10,7 @@ from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.core.logging import get_logger
 from app.models.schema import ContentStatusEntry, UserScraperConfig
 
@@ -32,6 +33,8 @@ class CreateUserScraperConfig(BaseModel):
             self.config = _normalize_youtube_config(self.config)
         else:
             self.config = _normalize_feed_config(self.config)
+        if "limit" not in self.config:
+            self.config["limit"] = DEFAULT_NEW_FEED_LIMIT
         return self
 
 
