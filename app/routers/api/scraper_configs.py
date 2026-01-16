@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.constants import DEFAULT_SUBSCRIBED_FEED_LIMIT
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.models.user import User
@@ -199,7 +200,10 @@ async def subscribe_to_feed(
     create_payload = CreateUserScraperConfig(
         scraper_type=payload.feed_type,
         display_name=payload.display_name,
-        config={"feed_url": payload.feed_url},
+        config={
+            "feed_url": payload.feed_url,
+            "limit": DEFAULT_SUBSCRIBED_FEED_LIMIT,
+        },
         is_active=True,
     )
 

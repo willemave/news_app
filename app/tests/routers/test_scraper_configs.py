@@ -1,3 +1,4 @@
+from app.constants import DEFAULT_SUBSCRIBED_FEED_LIMIT
 from app.models.schema import UserScraperConfig
 
 
@@ -103,3 +104,17 @@ def test_scraper_config_limit_validation(client, test_user):
     )
     assert ok_resp.status_code == 201
     assert ok_resp.json()["limit"] == 25
+
+
+def test_subscribe_feed_defaults_limit(client, test_user):
+    resp = client.post(
+        "/api/scrapers/subscribe",
+        json={
+            "feed_url": "https://example.com/feed.xml",
+            "feed_type": "atom",
+            "display_name": "Example Feed",
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["limit"] == DEFAULT_SUBSCRIBED_FEED_LIMIT

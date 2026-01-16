@@ -7,6 +7,7 @@ from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy.orm import Session
 
+from app.constants import DEFAULT_SUBSCRIBED_FEED_LIMIT
 from app.core.logging import get_logger
 from app.models.schema import UserScraperConfig
 from app.services.scraper_configs import (
@@ -117,7 +118,10 @@ def subscribe_to_detected_feed(
     payload = CreateUserScraperConfig(
         scraper_type=feed_type,
         display_name=display_name,
-        config={"feed_url": feed_url.strip()},
+        config={
+            "feed_url": feed_url.strip(),
+            "limit": DEFAULT_SUBSCRIBED_FEED_LIMIT,
+        },
         is_active=True,
     )
 

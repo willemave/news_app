@@ -35,6 +35,9 @@ DEFAULT_SUMMARIZER_CONCURRENCY = 2
 # Aggregate content platforms that should skip LLM summaries
 AGGREGATE_PLATFORMS = {"twitter", "techmeme"}
 
+# Default item limit for newly subscribed feeds
+DEFAULT_SUBSCRIBED_FEED_LIMIT = 3
+
 
 # Worker ID format: {worker_type}_{instance_id}_{pid}
 def generate_worker_id(worker_type: str, instance_id: str = "1") -> str:
