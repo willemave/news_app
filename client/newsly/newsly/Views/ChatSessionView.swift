@@ -555,64 +555,56 @@ struct ChatSessionView: View {
             }
 
             HStack(alignment: .bottom, spacing: 12) {
-                Menu {
-                    Button {
-                        Task { await viewModel.sendCounterArgumentsPrompt() }
-                    } label: {
-                        Label("Find counterbalancing arguments online", systemImage: "globe")
-                    }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(.blue)
-                }
-                .disabled(viewModel.isSending || viewModel.isRecording || viewModel.isTranscribing)
-                .accessibilityLabel("Chat actions")
+                // Clean input field with subtle border
+                HStack(spacing: 8) {
+                    TextField("Message", text: $viewModel.inputText, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(1...5)
+                        .focused($isInputFocused)
 
-                TextField("Message", text: $viewModel.inputText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...5)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(20)
-                    .focused($isInputFocused)
-
-                // Microphone button
-                if viewModel.voiceDictationAvailable {
-                    Button {
-                        Task {
-                            if viewModel.isRecording {
-                                await viewModel.stopVoiceRecording()
-                            } else {
-                                await viewModel.startVoiceRecording()
+                    // Microphone inside input field
+                    if viewModel.voiceDictationAvailable {
+                        Button {
+                            Task {
+                                if viewModel.isRecording {
+                                    await viewModel.stopVoiceRecording()
+                                } else {
+                                    await viewModel.startVoiceRecording()
+                                }
                             }
+                        } label: {
+                            Image(systemName: viewModel.isRecording ? "stop.fill" : "mic")
+                                .font(.system(size: 16, weight: .regular))
+                                .foregroundColor(viewModel.isRecording ? .red : .secondary)
+                                .symbolEffect(.pulse, isActive: viewModel.isRecording)
                         }
-                    } label: {
-                        Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(viewModel.isRecording ? .red : .blue)
-                            .symbolEffect(.pulse, isActive: viewModel.isRecording)
+                        .disabled(viewModel.isTranscribing || viewModel.isSending)
                     }
-                    .disabled(viewModel.isTranscribing || viewModel.isSending)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color(.systemBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color(.separator), lineWidth: 1)
+                )
+                .cornerRadius(20)
 
+                // Clean send button
                 Button {
                     Task { await viewModel.sendMessage() }
                 } label: {
                     Group {
                         if viewModel.isSending {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .progressViewStyle(CircularProgressViewStyle(tint: sendButtonDisabled ? .secondary : .accentColor))
                         } else {
                             Image(systemName: "arrow.up")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 18, weight: .medium))
                         }
                     }
+                    .foregroundColor(sendButtonDisabled ? .secondary : .accentColor)
                     .frame(width: 36, height: 36)
-                    .background(sendButtonDisabled ? Color.gray : Color.blue)
-                    .foregroundColor(.white)
-                    .clipShape(Circle())
                 }
                 .disabled(sendButtonDisabled)
             }
@@ -622,7 +614,7 @@ struct ChatSessionView: View {
         .background(Color(.systemBackground))
         .overlay(
             Rectangle()
-                .frame(height: 0.5)
+                .frame(height: 0.33)
                 .foregroundColor(Color(.separator)),
             alignment: .top
         )
@@ -657,34 +649,45 @@ struct MessageBubble: View {
                     .frame(height: max(calculatedHeight, 0))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(message.isUser ? Color.blue : Color(.systemGray5))
-                    .cornerRadius(18)
+                    .background(bubbleBackground)
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(message.isUser ? Color.clear : Color(.separator), lineWidth: 0.5)
+                    )
 
-                HStack(spacing: 8) {
-                    if !message.formattedTime.isEmpty {
-                        Text(message.formattedTime)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-
-                    // Share button for assistant messages
-                    if message.isAssistant {
-                        Button {
-                            onShare?(message.content)
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+                // Minimal timestamp only
+                if !message.formattedTime.isEmpty {
+                    Text(message.formattedTime)
+                        .font(.caption2)
+                        .foregroundColor(Color(.tertiaryLabel))
+                        .padding(.horizontal, 4)
+                }
+            }
+            .contextMenu {
+                if message.isAssistant {
+                    Button {
+                        onShare?(message.content)
+                    } label: {
+                        Label("Share", systemImage: "square.and.arrow.up")
                     }
                 }
-                .padding(.horizontal, 4)
+
+                Button {
+                    UIPasteboard.general.string = message.content
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
             }
 
             if !message.isUser {
                 Spacer(minLength: 60)
             }
         }
+    }
+
+    private var bubbleBackground: Color {
+        message.isUser ? Color.accentColor : Color(.systemBackground)
     }
 
     private var textColor: UIColor {
@@ -771,34 +774,34 @@ struct ThinkingBubbleView: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
                     ForEach(0..<3) { index in
                         Circle()
-                            .fill(Color.blue.opacity(0.75 - Double(index) * 0.12))
-                            .frame(width: 10, height: 10)
-                            .offset(y: isAnimating ? -4 : 4)
+                            .fill(Color(.tertiaryLabel))
+                            .frame(width: 6, height: 6)
+                            .offset(y: isAnimating ? -2 : 2)
                             .animation(
-                                .easeInOut(duration: 0.45)
+                                .easeInOut(duration: 0.4)
                                     .repeatForever(autoreverses: true)
-                                    .delay(Double(index) * 0.12),
+                                    .delay(Double(index) * 0.1),
                                 value: isAnimating
                             )
                     }
-
-                    Text("Thinking...")
-                        .font(.callout)
-                        .foregroundColor(.primary)
-                        .opacity(0.85)
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color(.systemGray5))
-                .cornerRadius(18)
+                .padding(.vertical, 12)
+                .background(Color(.systemBackground))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color(.separator), lineWidth: 0.5)
+                )
 
-                Label(formattedDuration, systemImage: "timer")
+                Text(formattedDuration)
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color(.tertiaryLabel))
+                    .monospacedDigit()
                     .padding(.horizontal, 4)
             }
 

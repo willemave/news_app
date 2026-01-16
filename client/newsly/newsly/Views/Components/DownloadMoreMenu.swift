@@ -11,7 +11,7 @@ struct DownloadMoreMenu: View {
     let onSelect: (Int) -> Void
 
     init(
-        title: String = "Download more",
+        title: String = "Load more",
         counts: [Int] = [3, 5, 10, 20],
         onSelect: @escaping (Int) -> Void
     ) {
@@ -23,14 +23,18 @@ struct DownloadMoreMenu: View {
     var body: some View {
         Menu {
             ForEach(counts, id: \.self) { count in
-                Button("Download \(count) more") {
+                Button("\(count) items") {
                     onSelect(count)
                 }
             }
         } label: {
-            Label(title, systemImage: "arrow.down.circle")
-                .font(.subheadline)
-                .fontWeight(.medium)
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 14, weight: .regular))
+                Text(title)
+                    .font(.subheadline)
+            }
+            .foregroundColor(.secondary)
         }
         .buttonStyle(.plain)
     }

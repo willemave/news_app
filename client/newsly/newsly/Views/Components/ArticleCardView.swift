@@ -263,31 +263,32 @@ struct ArticleCardView: View {
     }
 
     private var actionButtonsRow: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 0) {
+            // Mark as read
             Button(action: onMarkRead) {
-                HStack(spacing: 6) {
-                    Image(systemName: content.isRead ? "checkmark.circle.fill" : "circle")
-                        .font(.body)
-                    Text(content.isRead ? "Read" : "Mark as Read")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                }
-                .foregroundColor(content.isRead ? .green : .primary)
+                Image(systemName: content.isRead ? "checkmark.circle.fill" : "checkmark.circle")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundColor(content.isRead ? .green : .secondary)
             }
+            .frame(width: 44, height: 44)
 
-            DownloadMoreMenu { count in
+            Spacer()
+
+            // Download more
+            DownloadMoreMenu(title: "More") { count in
                 onDownloadMore(count)
             }
 
             Spacer()
 
+            // Favorite
             Button(action: onFavorite) {
                 Image(systemName: content.isFavorited ? "star.fill" : "star")
-                    .font(.title3)
-                    .foregroundColor(content.isFavorited ? .yellow : .primary.opacity(0.7))
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundColor(content.isFavorited ? .yellow : .secondary)
             }
+            .frame(width: 44, height: 44)
         }
-        .padding(.top, 4)
     }
 
     private var contentTypeIcon: String {

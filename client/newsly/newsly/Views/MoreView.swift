@@ -15,59 +15,56 @@ struct MoreView: View {
                 menuRow(
                     destination: SearchView(),
                     icon: "magnifyingglass",
-                    iconColor: .blue,
                     title: "Search"
                 )
 
                 menuRow(
                     destination: FavoritesView(),
-                    icon: "star.fill",
-                    iconColor: .yellow,
+                    icon: "star",
                     title: "Favorites"
                 )
 
                 menuRow(
                     destination: RecentlyReadView(),
-                    icon: "clock.fill",
-                    iconColor: .orange,
+                    icon: "clock",
                     title: "Recently Read"
                 )
 
                 NavigationLink {
                     SubmissionsView(viewModel: submissionsViewModel)
                 } label: {
-                    HStack(spacing: 12) {
-                        iconView(icon: "tray.and.arrow.up.fill", color: .purple)
+                    HStack(spacing: 16) {
+                        minimalIcon("tray.and.arrow.up")
                         Text("Submissions")
+                            .foregroundStyle(.primary)
                         Spacer()
                         if submissionsViewModel.submissions.count > 0 {
-                            submissionsBadge(count: submissionsViewModel.submissions.count)
+                            minimalBadge(count: submissionsViewModel.submissions.count, color: .red)
                         }
                     }
+                    .frame(minHeight: 44)
                 }
 
                 NavigationLink {
                     ProcessingStatsView()
                 } label: {
-                    HStack(spacing: 12) {
-                        iconView(icon: "clock.arrow.circlepath", color: .teal)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Processing")
-                            Text("Long-form")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    HStack(spacing: 16) {
+                        minimalIcon("clock.arrow.circlepath")
+                        Text("Processing")
+                            .foregroundStyle(.primary)
                         Spacer()
-                        processingCountBadge(count: processingCountService.processingCount)
+                        if processingCountService.processingCount > 0 {
+                            minimalBadge(count: processingCountService.processingCount, color: .teal)
+                        }
                     }
+                    .frame(minHeight: 44)
                 }
             }
 
             Section {
                 menuRow(
                     destination: SettingsView(),
-                    icon: "gear",
-                    iconColor: .gray,
+                    icon: "gearshape",
                     title: "Settings"
                 )
             }
@@ -81,46 +78,31 @@ struct MoreView: View {
         }
     }
 
-    private func menuRow<D: View>(destination: D, icon: String, iconColor: Color, title: String) -> some View {
+    private func menuRow<D: View>(destination: D, icon: String, title: String) -> some View {
         NavigationLink {
             destination
         } label: {
-            HStack(spacing: 12) {
-                iconView(icon: icon, color: iconColor)
+            HStack(spacing: 16) {
+                minimalIcon(icon)
                 Text(title)
+                    .foregroundStyle(.primary)
             }
+            .frame(minHeight: 44)
         }
     }
 
-    private func iconView(icon: String, color: Color) -> some View {
-        Image(systemName: icon)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: 28, height: 28)
-            .background(color.gradient)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+    private func minimalIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 20, weight: .regular))
+            .foregroundStyle(.secondary)
+            .frame(width: 24, height: 24)
     }
 
-    private func submissionsBadge(count: Int) -> some View {
+    private func minimalBadge(count: Int, color: Color) -> some View {
         Text("\(count)")
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.red)
-            .clipShape(Capsule())
-    }
-
-    private func processingCountBadge(count: Int) -> some View {
-        Text("\(count)")
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(count > 0 ? Color.teal : Color.gray.opacity(0.6))
-            .clipShape(Capsule())
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(color)
+            .monospacedDigit()
     }
 }
 

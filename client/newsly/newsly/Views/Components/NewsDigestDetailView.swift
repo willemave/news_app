@@ -13,14 +13,14 @@ struct NewsDigestDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            // Discussion link at the top for quick access
+            if let summary = metadata.summary {
+                summarySection(summary: summary)
+            }
+
+            // Discussion link below summary
             if let urlString = metadata.discussionURL,
                let url = URL(string: urlString) {
                 discussionLink(url: url, aggregatorName: metadata.aggregator?.name)
-            }
-
-            if let summary = metadata.summary {
-                summarySection(summary: summary)
             }
 
             if let article = metadata.article {

@@ -880,26 +880,32 @@ struct ContentDetailView: View {
         }
     }
 
-    // MARK: - Modern Action Bar (Icon-only, compact)
+    // MARK: - Modern Action Bar (Minimal, Twitter-inspired)
     @ViewBuilder
     private func actionBar(content: ContentDetail) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 0) {
             // Primary action - Open in browser
             if let url = URL(string: content.url) {
                 Link(destination: url) {
-                    iconButton(icon: "safari", isPrimary: true)
+                    minimalActionIcon("safari", color: .accentColor)
                 }
             }
 
+            Spacer()
+
             // Share
             Button(action: { showShareOptions = true }) {
-                iconButton(icon: "square.and.arrow.up")
+                minimalActionIcon("square.and.arrow.up")
             }
+
+            Spacer()
 
             // Tweet
             Button(action: { showTweetSheet = true }) {
-                iconButton(icon: "text.bubble")
+                minimalActionIcon("text.bubble")
             }
+
+            Spacer()
 
             // Convert (news only)
             if content.contentTypeEnum == .news, let onConvert = onConvert {
@@ -912,98 +918,82 @@ struct ContentDetailView: View {
                 }) {
                     if isConverting {
                         ProgressView()
-                            .scaleEffect(0.7)
-                            .frame(width: 36, height: 36)
-                            .background(Color(.tertiarySystemFill))
-                            .clipShape(Circle())
+                            .scaleEffect(0.8)
+                            .frame(width: 44, height: 44)
                     } else {
-                        iconButton(icon: "arrow.right.circle")
+                        minimalActionIcon("arrow.right.circle")
                     }
                 }
                 .disabled(isConverting)
+
+                Spacer()
             }
 
-            // Favorite (simple add/remove)
+            // Favorite
             Button(action: {
                 Task { await viewModel.toggleFavorite() }
             }) {
-                iconButton(
-                    icon: content.isFavorited ? "star.fill" : "star",
-                    tint: content.isFavorited ? .yellow : nil
+                minimalActionIcon(
+                    content.isFavorited ? "star.fill" : "star",
+                    color: content.isFavorited ? .yellow : .secondary
                 )
             }
 
-            // Favorite + Deep Dive (combined action)
-            // Tapping favorites the article and shows chat options
+            Spacer()
+
+            // Deep Dive chat
             Button(action: {
                 Task {
                     if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
                         await openChatSession(sessionId: activeSession.id, contentId: content.id)
                         return
                     }
-
-                    // First, favorite if not already
                     if !content.isFavorited {
                         await viewModel.toggleFavorite()
                     }
-                    // Then show chat options
                     await handleChatButtonTapped(content)
                 }
             }) {
-                iconButton(
-                    icon: "brain.head.profile"
-                )
+                minimalActionIcon("brain.head.profile")
             }
             .disabled(isCheckingChatSession)
 
-            Spacer()
-
-            // Navigation - Next
+            // Navigation - Next (only if there's more)
             if currentIndex < allContentIds.count - 1 {
+                Spacer()
+
                 Button(action: {
                     withAnimation(.easeInOut) { navigateToNext() }
                 }) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 2) {
                         Text("Next")
-                            .font(.footnote)
-                            .fontWeight(.semibold)
+                            .font(.subheadline)
                         Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .fontWeight(.bold)
+                            .font(.caption)
+                            .fontWeight(.semibold)
                     }
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.tertiarySystemFill))
-                    .clipShape(Capsule())
+                    .foregroundColor(.secondary)
                 }
             }
         }
+        .frame(height: 44)
     }
 
     @ViewBuilder
     private func downloadMoreSection(content: ContentDetail) -> some View {
-        HStack {
-            DownloadMoreMenu(title: "Download more") { count in
-                Task { await viewModel.downloadMoreFromSeries(count: count) }
-            }
-            Spacer()
+        DownloadMoreMenu(title: "Load more") { count in
+            Task { await viewModel.downloadMoreFromSeries(count: count) }
         }
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.secondarySystemBackground))
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
-    private func iconButton(icon: String, isPrimary: Bool = false, tint: Color? = nil) -> some View {
+    private func minimalActionIcon(_ icon: String, color: Color = .secondary) -> some View {
         Image(systemName: icon)
-            .font(.system(size: 16, weight: .medium))
-            .foregroundColor(tint ?? (isPrimary ? .white : .primary))
-            .frame(width: 36, height: 36)
-            .background(isPrimary ? Color.accentColor : Color(.tertiarySystemFill))
-            .clipShape(Circle())
+            .font(.system(size: 20, weight: .regular))
+            .foregroundColor(color)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
     }
 
     // MARK: - Modern Section Components (Flat, no borders)

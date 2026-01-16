@@ -237,19 +237,59 @@ struct LongFormCardStackView: View {
     }
 
     private var paginationIndicator: some View {
-        HStack(spacing: 4) {
-            Text("\(currentIndex + 1)")
-                .fontWeight(.semibold)
-            Text("/")
-                .foregroundColor(.secondary)
-            Text("\(items.count)")
-                .foregroundColor(.secondary)
+        HStack(spacing: 6) {
+            // Show dots for small counts, otherwise show numeric
+            if items.count <= 7 {
+                ForEach(0..<items.count, id: \.self) { index in
+                    Circle()
+                        .fill(index == currentIndex ? Color.primary : Color(.tertiaryLabel))
+                        .frame(width: index == currentIndex ? 8 : 6, height: index == currentIndex ? 8 : 6)
+                        .animation(.easeInOut(duration: 0.2), value: currentIndex)
+                }
+            } else {
+                // For larger counts, show compact dot cluster with number
+                HStack(spacing: 4) {
+                    ForEach(0..<min(5, items.count), id: \.self) { i in
+                        let dotIndex = paginationDotIndex(at: i)
+                        Circle()
+                            .fill(dotIndex == currentIndex ? Color.primary : Color(.tertiaryLabel))
+                            .frame(width: dotIndex == currentIndex ? 8 : 6, height: dotIndex == currentIndex ? 8 : 6)
+                            .animation(.easeInOut(duration: 0.2), value: currentIndex)
+                    }
+                }
+
+                Text("\(currentIndex + 1)/\(items.count)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
+            }
         }
-        .font(.caption)
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
-        .cornerRadius(12)
+        .padding(.vertical, 8)
+    }
+
+    /// Calculate which index a dot at position i should represent
+    private func paginationDotIndex(at position: Int) -> Int {
+        let total = items.count
+        let visibleDots = 5
+
+        if total <= visibleDots {
+            return position
+        }
+
+        // Keep current index centered when possible
+        let halfVisible = visibleDots / 2
+        let start: Int
+
+        if currentIndex <= halfVisible {
+            start = 0
+        } else if currentIndex >= total - halfVisible - 1 {
+            start = total - visibleDots
+        } else {
+            start = currentIndex - halfVisible
+        }
+
+        return start + position
     }
 
     private func navigateToDetail(_ content: ContentSummary) {
