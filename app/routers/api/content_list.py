@@ -11,9 +11,9 @@ from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.core.timing import timed
-from app.models.metadata import ContentType
+from app.models.metadata import ContentStatus, ContentType
 from app.models.pagination import PaginationMetadata
-from app.models.schema import Content
+from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
 from app.models.user import User
 from app.presenters.content_presenter import (
     build_content_summary_response,
@@ -22,12 +22,10 @@ from app.presenters.content_presenter import (
     resolve_image_urls,
 )
 from app.repositories.content_repository import (
-    apply_read_filter,
     apply_sqlite_fts_filter,
     apply_visibility_filters,
     build_fts_match_query,
     build_visibility_context,
-    get_visible_content_query,
     sqlite_fts_available,
 )
 from app.routers.api.models import ContentListResponse, ContentSummaryResponse
@@ -133,8 +131,44 @@ def list_contents(
                     else:
                         available_dates.append(row.date.strftime("%Y-%m-%d"))
 
-    # Base visible content query with correlated flags
-    query = get_visible_content_query(db, context, include_flags=True)
+    # Base visible content query with user-scoped flags
+    query = (
+        db.query(
+            Content,
+            ContentReadStatus.id.label("is_read"),
+            ContentFavorites.id.label("is_favorited"),
+        )
+        .outerjoin(
+            ContentReadStatus,
+            and_(
+                ContentReadStatus.content_id == Content.id,
+                ContentReadStatus.user_id == current_user.id,
+            ),
+        )
+        .outerjoin(
+            ContentFavorites,
+            and_(
+                ContentFavorites.content_id == Content.id,
+                ContentFavorites.user_id == current_user.id,
+            ),
+        )
+        .outerjoin(
+            ContentStatusEntry,
+            and_(
+                ContentStatusEntry.content_id == Content.id,
+                ContentStatusEntry.user_id == current_user.id,
+                ContentStatusEntry.status == "inbox",
+            ),
+        )
+    )
+    query = query.filter(Content.status == ContentStatus.COMPLETED.value)
+    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
+    query = query.filter(
+        or_(
+            Content.content_type == ContentType.NEWS.value,
+            ContentStatusEntry.id.is_not(None),
+        )
+    )
 
     # Apply content type filter - support multiple types
     if content_type:
@@ -154,7 +188,10 @@ def list_contents(
             raise HTTPException(status_code=400, detail="Invalid date format") from e
 
     # Apply read status filter in SQL query
-    query = apply_read_filter(query, read_filter, context)
+    if read_filter == "unread":
+        query = query.filter(ContentReadStatus.id.is_(None))
+    elif read_filter == "read":
+        query = query.filter(ContentReadStatus.id.is_not(None))
 
     # Apply cursor pagination
     if last_id and last_created_at:
@@ -304,10 +341,44 @@ def search_contents(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    context = build_visibility_context(current_user.id)
-
     # Base query aligning with list endpoint visibility rules
-    query = get_visible_content_query(db, context, include_flags=True)
+    query = (
+        db.query(
+            Content,
+            ContentReadStatus.id.label("is_read"),
+            ContentFavorites.id.label("is_favorited"),
+        )
+        .outerjoin(
+            ContentReadStatus,
+            and_(
+                ContentReadStatus.content_id == Content.id,
+                ContentReadStatus.user_id == current_user.id,
+            ),
+        )
+        .outerjoin(
+            ContentFavorites,
+            and_(
+                ContentFavorites.content_id == Content.id,
+                ContentFavorites.user_id == current_user.id,
+            ),
+        )
+        .outerjoin(
+            ContentStatusEntry,
+            and_(
+                ContentStatusEntry.content_id == Content.id,
+                ContentStatusEntry.user_id == current_user.id,
+                ContentStatusEntry.status == "inbox",
+            ),
+        )
+    )
+    query = query.filter(Content.status == ContentStatus.COMPLETED.value)
+    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
+    query = query.filter(
+        or_(
+            Content.content_type == ContentType.NEWS.value,
+            ContentStatusEntry.id.is_not(None),
+        )
+    )
 
     if type and type != "all":
         query = query.filter(Content.content_type == type)
