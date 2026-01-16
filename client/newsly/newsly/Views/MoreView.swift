@@ -7,6 +7,7 @@ import SwiftUI
 
 struct MoreView: View {
     @ObservedObject var submissionsViewModel: SubmissionStatusViewModel
+    @StateObject private var processingCountService = ProcessingCountService.shared
 
     var body: some View {
         List {
@@ -44,6 +45,18 @@ struct MoreView: View {
                         }
                     }
                 }
+
+                HStack(spacing: 12) {
+                    iconView(icon: "clock.arrow.circlepath", color: .teal)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Processing")
+                        Text("Long-form")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    processingCountBadge(count: processingCountService.processingCount)
+                }
             }
 
             Section {
@@ -60,6 +73,7 @@ struct MoreView: View {
         .navigationBarTitleDisplayMode(.large)
         .task {
             await submissionsViewModel.load()
+            await processingCountService.refreshCount()
         }
     }
 
@@ -91,6 +105,17 @@ struct MoreView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Color.red)
+            .clipShape(Capsule())
+    }
+
+    private func processingCountBadge(count: Int) -> some View {
+        Text("\(count)")
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(count > 0 ? Color.teal : Color.gray.opacity(0.6))
             .clipShape(Capsule())
     }
 }

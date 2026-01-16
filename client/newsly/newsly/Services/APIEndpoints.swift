@@ -34,7 +34,8 @@ enum APIEndpoints {
     static func chatGPTUrl(id: Int) -> String {
         return "/api/content/\(id)/chat-url"
     }
-    static let unreadCounts = "/api/content/unread-counts"
+    static let unreadCounts = "/api/content/stats/unread-counts"
+    static let processingCount = "/api/content/stats/processing-count"
     static func convertNewsToArticle(id: Int) -> String {
         return "/api/content/\(id)/convert-to-article"
     }

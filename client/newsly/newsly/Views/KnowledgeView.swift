@@ -17,6 +17,7 @@ struct KnowledgeView: View {
     @State private var selectedProvider: ChatModelProvider = .anthropic
     @State private var pendingNavigationRoute: ChatSessionRoute?
     @State private var selectedTab: KnowledgeTab = .chats
+    @State private var chatSearchText = ""
 
     /// Tracks the last time this tab was opened for badge calculation
     @AppStorage("knowledgeTabLastOpenedAt") private var lastOpenedTimestamp: Double = 0
@@ -237,7 +238,9 @@ struct KnowledgeView: View {
 
     private var sessionListView: some View {
         List {
-            ForEach(viewModel.sessions) { session in
+            chatSearchBarRow
+
+            ForEach(filteredSessions) { session in
                 Button {
                     onSelectSession?(ChatSessionRoute(sessionId: session.id))
                 } label: {
@@ -246,12 +249,91 @@ struct KnowledgeView: View {
                 .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             }
-            .onDelete(perform: viewModel.deleteSession)
+            .onDelete { offsets in
+                deleteSessions(at: offsets, from: filteredSessions)
+            }
+
+            if shouldShowNoResults {
+                noResultsRow
+            }
         }
         .listStyle(.plain)
         .refreshable {
             await viewModel.loadSessions()
         }
+    }
+
+    private var filteredSessions: [ChatSessionSummary] {
+        let trimmedQuery = chatSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return viewModel.sessions }
+        return viewModel.sessions.filter { session in
+            sessionMatchesSearch(session, query: trimmedQuery)
+        }
+    }
+
+    private var shouldShowNoResults: Bool {
+        let trimmedQuery = chatSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmedQuery.isEmpty && filteredSessions.isEmpty
+    }
+
+    private func sessionMatchesSearch(_ session: ChatSessionSummary, query: String) -> Bool {
+        let haystacks = [
+            session.displayTitle,
+            session.displaySubtitle ?? "",
+            session.articleTitle ?? "",
+            session.articleSource ?? "",
+            session.topic ?? ""
+        ]
+        return haystacks.contains { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    private func deleteSessions(at offsets: IndexSet, from sessions: [ChatSessionSummary]) {
+        let idsToDelete = offsets.map { sessions[$0].id }
+        viewModel.sessions.removeAll { idsToDelete.contains($0.id) }
+    }
+
+    private var chatSearchBarRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary)
+            TextField("Search chats", text: $chatSearchText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            if !chatSearchText.isEmpty {
+                Button {
+                    chatSearchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(10)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowSeparator(.hidden)
+    }
+
+    private var noResultsRow: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 28))
+                .foregroundColor(.secondary)
+            Text("No matching chats")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text("Try a different keyword.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowSeparator(.hidden)
     }
 
     private func loadForSelectedTab() async {

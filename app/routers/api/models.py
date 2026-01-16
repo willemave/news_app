@@ -436,6 +436,15 @@ class UnreadCountsResponse(BaseModel):
     news: int = Field(..., description="Number of unread news items")
 
 
+class ProcessingCountResponse(BaseModel):
+    """Response containing the long-form processing count."""
+
+    processing_count: int = Field(
+        ...,
+        description="Number of long-form items pending or processing for the user",
+    )
+
+
 class ConvertNewsResponse(BaseModel):
     """Response for converting news link to article."""
 

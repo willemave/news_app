@@ -30,7 +30,7 @@ from app.repositories.content_repository import (
     get_visible_content_query,
     sqlite_fts_available,
 )
-from app.routers.api.models import ContentListResponse, ContentSummaryResponse, UnreadCountsResponse
+from app.routers.api.models import ContentListResponse, ContentSummaryResponse
 from app.utils.pagination import PaginationCursor
 
 logger = get_logger(__name__)
@@ -416,39 +416,4 @@ def search_contents(
             page_size=len(content_summaries),
             total=total,
         ),
-    )
-
-
-@router.get(
-    "/unread-counts",
-    response_model=UnreadCountsResponse,
-    summary="Get unread content counts by type",
-    description="Get the total count of unread items for each content type.",
-)
-def get_unread_counts(
-    db: Annotated[Session, Depends(get_readonly_db_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> UnreadCountsResponse:
-    """Get unread counts for each content type.
-
-    Optimized to use NOT EXISTS instead of NOT IN for much better performance
-    with large read lists (30x faster: ~20ms vs ~650ms).
-    """
-    context = build_visibility_context(current_user.id)
-
-    # Optimized query using EXISTS/NOT EXISTS instead of IN/NOT IN
-    with timed("query unread_counts"):
-        count_query = db.query(Content.content_type, func.count(Content.id))
-        count_query = apply_visibility_filters(count_query, context)
-        count_query = count_query.filter(~context.is_read).group_by(Content.content_type)
-        results = count_query.all()
-
-    # Build counts from results
-    counts = {"article": 0, "podcast": 0, "news": 0}
-    for content_type, count in results:
-        if content_type in counts:
-            counts[content_type] = count
-
-    return UnreadCountsResponse(
-        article=counts["article"], podcast=counts["podcast"], news=counts["news"]
     )

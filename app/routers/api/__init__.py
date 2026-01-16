@@ -3,7 +3,7 @@
 This module exports a combined router that includes all API content endpoints,
 organized into logical sub-routers:
 
-- content_list: List, search, and unread counts
+- content_list: List and search endpoints
 - content_detail: Individual content details and chat URLs
 - read_status: Read/unread status management
 - favorites: Favorites management
@@ -12,6 +12,7 @@ organized into logical sub-routers:
 - scraper_configs: User scraper configuration management
 - submission: User content submissions
 - chat: Deep-dive chat sessions with articles
+- stats: User stats (unread and processing counts)
 """
 
 from fastapi import APIRouter
@@ -24,6 +25,7 @@ from app.routers.api import (
     favorites,
     read_status,
     scraper_configs,
+    stats,
     submission,
 )
 
@@ -36,6 +38,9 @@ router = APIRouter(
 # Include all sub-routers
 # Content listing and discovery
 router.include_router(content_list.router)
+
+# User stats
+router.include_router(stats.router)
 
 # Content detail and actions on individual items
 router.include_router(content_detail.router)
