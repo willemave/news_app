@@ -21,14 +21,9 @@ struct newslyApp: App {
         WindowGroup {
             Group {
                 switch authViewModel.authState {
-                case .authenticated:
-                    ContentView()
+                case .authenticated(let user):
+                    AuthenticatedRootView(user: user)
                         .environmentObject(authViewModel)
-                        .withToast()
-                        .task {
-                            // Request notification permissions for chat completion alerts
-                            await LocalNotificationService.shared.requestAuthorization()
-                        }
                 case .unauthenticated:
                     AuthenticationView()
                         .environmentObject(authViewModel)

@@ -61,6 +61,12 @@ enum APIEndpoints {
     static let discoveryDismiss = "/api/discovery/dismiss"
     static let discoveryClear = "/api/discovery/clear"
 
+    // MARK: - Onboarding Endpoints
+    static let onboardingProfile = "/api/onboarding/profile"
+    static let onboardingFastDiscover = "/api/onboarding/fast-discover"
+    static let onboardingComplete = "/api/onboarding/complete"
+    static let onboardingTutorialComplete = "/api/onboarding/tutorial-complete"
+
     // MARK: - Chat Endpoints
     static let chatSessions = "/api/content/chat/sessions"
     static func chatSession(id: Int) -> String {

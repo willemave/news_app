@@ -15,6 +15,7 @@ struct User: Codable, Identifiable, Equatable {
     let fullName: String?
     let isAdmin: Bool
     let isActive: Bool
+    let hasCompletedNewUserTutorial: Bool
     let createdAt: Date
     let updatedAt: Date
 
@@ -25,6 +26,7 @@ struct User: Codable, Identifiable, Equatable {
         case fullName = "full_name"
         case isAdmin = "is_admin"
         case isActive = "is_active"
+        case hasCompletedNewUserTutorial = "has_completed_new_user_tutorial"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -36,6 +38,7 @@ struct TokenResponse: Codable {
     let refreshToken: String
     let tokenType: String
     let user: User
+    let isNewUser: Bool
     let openaiApiKey: String?
 
     enum CodingKeys: String, CodingKey {
@@ -43,8 +46,14 @@ struct TokenResponse: Codable {
         case refreshToken = "refresh_token"
         case tokenType = "token_type"
         case user
+        case isNewUser = "is_new_user"
         case openaiApiKey = "openai_api_key"
     }
+}
+
+struct AuthSession: Equatable {
+    let user: User
+    let isNewUser: Bool
 }
 
 /// Request for token refresh

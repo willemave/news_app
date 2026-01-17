@@ -21,7 +21,7 @@ final class AuthenticationService: NSObject {
 
     /// Sign in with Apple
     @MainActor
-    func signInWithApple() async throws -> User {
+    func signInWithApple() async throws -> AuthSession {
         let nonce = randomNonceString()
         currentNonce = nonce
 
@@ -258,10 +258,10 @@ enum AuthError: Error, LocalizedError {
 
 @MainActor
 private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
-    let continuation: CheckedContinuation<User, Error>
+    let continuation: CheckedContinuation<AuthSession, Error>
     let nonce: String
 
-    init(continuation: CheckedContinuation<User, Error>, nonce: String) {
+    init(continuation: CheckedContinuation<AuthSession, Error>, nonce: String) {
         self.continuation = continuation
         self.nonce = nonce
     }
@@ -281,12 +281,12 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
         // Send to backend
         Task {
             do {
-                let user = try await self.sendToBackend(
+                let session = try await self.sendToBackend(
                     identityToken: identityToken,
                     email: appleIDCredential.email,
                     fullName: appleIDCredential.fullName
                 )
-                continuation.resume(returning: user)
+                continuation.resume(returning: session)
             } catch {
                 continuation.resume(throwing: error)
             }
@@ -305,7 +305,7 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
         return window
     }
 
-    private func sendToBackend(identityToken: String, email: String?, fullName: PersonNameComponents?) async throws -> User {
+    private func sendToBackend(identityToken: String, email: String?, fullName: PersonNameComponents?) async throws -> AuthSession {
         let url = URL(string: "\(AppSettings.shared.baseURL)/auth/apple")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -381,6 +381,6 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
             print("⚠️ [Auth] No OpenAI API key in token response from server")
         }
 
-        return tokenResponse.user
+        return AuthSession(user: tokenResponse.user, isNewUser: tokenResponse.isNewUser)
     }
 }

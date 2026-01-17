@@ -20,8 +20,10 @@ enum AuthState: Equatable {
 final class AuthenticationViewModel: ObservableObject {
     @Published var authState: AuthState = .loading
     @Published var errorMessage: String?
+    @Published var lastSignInWasNewUser = false
 
     private let authService = AuthenticationService.shared
+    private let onboardingStateStore = OnboardingStateStore.shared
     private var lastKnownUser: User?
 
     init() {
@@ -46,6 +48,7 @@ final class AuthenticationViewModel: ObservableObject {
     /// Check if user is already authenticated on app launch
     func checkAuthStatus() {
         authState = .loading
+        lastSignInWasNewUser = false
 
 #if DEBUG
         authState = .authenticated(Self.developmentUser())
@@ -81,9 +84,13 @@ final class AuthenticationViewModel: ObservableObject {
 
         Task {
             do {
-                let user = try await authService.signInWithApple()
-                lastKnownUser = user
-                authState = .authenticated(user)
+                let session = try await authService.signInWithApple()
+                lastKnownUser = session.user
+                lastSignInWasNewUser = session.isNewUser
+                if session.isNewUser {
+                    onboardingStateStore.setPending(userId: session.user.id)
+                }
+                authState = .authenticated(session.user)
             } catch {
                 errorMessage = error.localizedDescription
                 authState = .unauthenticated
@@ -98,6 +105,7 @@ final class AuthenticationViewModel: ObservableObject {
 #else
         authService.logout()
         lastKnownUser = nil
+        lastSignInWasNewUser = false
         authState = .unauthenticated
 #endif
     }
@@ -111,11 +119,17 @@ final class AuthenticationViewModel: ObservableObject {
             fullName: "Development User",
             isAdmin: true,
             isActive: true,
+            hasCompletedNewUserTutorial: true,
             createdAt: Date(timeIntervalSince1970: 0),
             updatedAt: Date(timeIntervalSince1970: 0)
         )
     }
 #endif
+
+    func updateUser(_ user: User) {
+        lastKnownUser = user
+        authState = .authenticated(user)
+    }
 
     // MARK: - Private
 
