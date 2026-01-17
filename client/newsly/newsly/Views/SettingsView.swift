@@ -15,118 +15,29 @@ struct SettingsView: View {
     @State private var showMarkAllDialog = false
     @State private var isProcessingMarkAll = false
     @State private var showingDebugMenu = false
-    
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                // User section
-                Section(header: Text("Account")) {
-                    if case .authenticated(let user) = authViewModel.authState {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(user.email)
-                                .font(.headline)
-                            if let fullName = user.fullName {
-                                Text(fullName)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-
-                        Button(role: .destructive) {
-                            authViewModel.logout()
-                        } label: {
-                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                    }
-                }
-
-                Section(header: Text("Display Preferences")) {
-                    Toggle("Show Read Articles", isOn: $settings.showReadContent)
-                    Text("When enabled, both read and unread articles will be displayed")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Toggle("Use Card Stack", isOn: $settings.useLongFormCardStack)
-                    Text("When off, displays articles and podcasts as a scrollable list")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Section(header: Text("Library")) {
-                    NavigationLink {
-                        FavoritesView()
-                    } label: {
-                        HStack {
-                            Label("Favorites", systemImage: "star")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
-                        }
-                    }
-                }
-
-                Section(header: Text("Sources")) {
-                    NavigationLink {
-                        FeedSourcesView()
-                    } label: {
-                        HStack {
-                            Label("Feed Sources", systemImage: "list.bullet.rectangle")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
-                        }
-                    }
-
-                    NavigationLink {
-                        PodcastSourcesView()
-                    } label: {
-                        HStack {
-                            Label("Podcast Sources", systemImage: "dot.radiowaves.left.and.right")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
-                        }
-                    }
-                }
-
-                Section(header: Text("Read Status")) {
-                    Button {
-                        showMarkAllDialog = true
-                    } label: {
-                        Label("Mark All As Read", systemImage: "checkmark.circle")
-                    }
-                    .disabled(isProcessingMarkAll)
-
-                    if isProcessingMarkAll {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
-                    }
-
-                    Text("Choose a content type to mark all unread items as read.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Section(header: Text("🐛 Debug Tools")) {
-                    Button {
-                        showingDebugMenu = true
-                    } label: {
-                        Label("Debug Menu", systemImage: "ladybug")
-                    }
-
-                    Text("Test authentication without Apple Sign In (Simulator only)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                accountSection
+                displayPreferencesSection
+                librarySection
+                sourcesSection
+                readStatusSection
+                debugSection
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: SettingsDestination.self) { destination in
+                switch destination {
+                case .favorites:
+                    FavoritesView()
+                case .feedSources:
+                    FeedSourcesView()
+                case .podcastSources:
+                    PodcastSourcesView()
+                }
+            }
             .alert("Settings", isPresented: $showingAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -148,6 +59,100 @@ struct SettingsView: View {
                 DebugMenuView()
                     .environmentObject(authViewModel)
             }
+        }
+    }
+
+    // MARK: - Sections
+
+    private var accountSection: some View {
+        Section("Account") {
+            if case .authenticated(let user) = authViewModel.authState {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(user.email)
+                        .font(.headline)
+                    if let fullName = user.fullName {
+                        Text(fullName)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Button(role: .destructive) {
+                    authViewModel.logout()
+                } label: {
+                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            }
+        }
+    }
+
+    private var displayPreferencesSection: some View {
+        Section("Display Preferences") {
+            Toggle("Show Read Articles", isOn: $settings.showReadContent)
+            Text("When enabled, both read and unread articles will be displayed")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Toggle("Use Card Stack", isOn: $settings.useLongFormCardStack)
+            Text("When off, displays articles and podcasts as a scrollable list")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var librarySection: some View {
+        Section("Library") {
+            NavigationLink(value: SettingsDestination.favorites) {
+                Label("Favorites", systemImage: "star")
+            }
+        }
+    }
+
+    private var sourcesSection: some View {
+        Section("Sources") {
+            NavigationLink(value: SettingsDestination.feedSources) {
+                Label("Feed Sources", systemImage: "list.bullet.rectangle")
+            }
+            NavigationLink(value: SettingsDestination.podcastSources) {
+                Label("Podcast Sources", systemImage: "dot.radiowaves.left.and.right")
+            }
+        }
+    }
+
+    private var readStatusSection: some View {
+        Section("Read Status") {
+            Button {
+                showMarkAllDialog = true
+            } label: {
+                Label("Mark All As Read", systemImage: "checkmark.circle")
+            }
+            .disabled(isProcessingMarkAll)
+
+            if isProcessingMarkAll {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+            }
+
+            Text("Choose a content type to mark all unread items as read.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var debugSection: some View {
+        Section("🐛 Debug Tools") {
+            Button {
+                showingDebugMenu = true
+            } label: {
+                Label("Debug Menu", systemImage: "ladybug")
+            }
+
+            Text("Test authentication without Apple Sign In (Simulator only)")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
 
@@ -177,6 +182,12 @@ struct SettingsView: View {
 
         showingAlert = true
     }
+}
+
+private enum SettingsDestination: Hashable {
+    case favorites
+    case feedSources
+    case podcastSources
 }
 
 private enum MarkAllTarget: String, CaseIterable {

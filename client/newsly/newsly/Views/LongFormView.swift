@@ -50,15 +50,9 @@ struct LongFormView: View {
                                     }
 
                                     downloadMoreRow(for: content)
-
-                                    if content.id != viewModel.currentItems().last?.id {
-                                        Divider()
-                                            .padding(.horizontal, 24)
-                                    }
                                 }
                                 .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
                                 .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                     if !content.isRead {
                                         Button {

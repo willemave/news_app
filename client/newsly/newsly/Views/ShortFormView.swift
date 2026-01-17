@@ -10,14 +10,6 @@ import SwiftUI
 
 private let logger = Logger(subsystem: "com.newsly", category: "ShortFormView")
 
-/// Preference key to collect items that have scrolled past the top
-private struct ScrolledPastTopPreferenceKey: PreferenceKey {
-    static var defaultValue: [Int] = []
-    static func reduce(value: inout [Int], nextValue: () -> [Int]) {
-        value.append(contentsOf: nextValue())
-    }
-}
-
 struct ShortFormView: View {
     @ObservedObject var viewModel: ShortNewsListViewModel
     let onSelect: (ContentDetailRoute) -> Void
@@ -25,139 +17,118 @@ struct ShortFormView: View {
     /// Track which items have already been marked as read to avoid duplicates
     @State private var markedAsReadIds: Set<Int> = []
     @State private var showMarkAllConfirmation = false
+    @State private var topVisibleItemId: Int?
 
     var body: some View {
-        ScrollViewReader { _ in
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    if case .error(let error) = viewModel.state, viewModel.currentItems().isEmpty {
-                        ErrorView(message: error.localizedDescription) {
-                            viewModel.refreshTrigger.send(())
-                        }
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if case .error(let error) = viewModel.state, viewModel.currentItems().isEmpty {
+                    ErrorView(message: error.localizedDescription) {
+                        viewModel.refreshTrigger.send(())
+                    }
+                    .padding(.top, 48)
+                } else if viewModel.state == .initialLoading, viewModel.currentItems().isEmpty {
+                    ProgressView("Loading")
                         .padding(.top, 48)
-                    } else if viewModel.state == .initialLoading, viewModel.currentItems().isEmpty {
-                        ProgressView("Loading")
-                            .padding(.top, 48)
-                    } else if viewModel.currentItems().isEmpty {
-                        VStack(spacing: 16) {
-                            Spacer()
-                            Image(systemName: "bolt.fill")
-                                .font(.largeTitle)
-                                .foregroundColor(.secondary)
-                            Text("No short-form content found.")
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        ForEach(viewModel.currentItems(), id: \.id) { item in
-                            ShortNewsRow(item: item)
-                                .background(
-                                    ScrollPositionDetector(
-                                        itemId: item.id,
-                                        isAlreadyMarked: markedAsReadIds.contains(item.id) || item.isRead
-                                    )
+                } else if viewModel.currentItems().isEmpty {
+                    VStack(spacing: 16) {
+                        Spacer()
+                        Image(systemName: "bolt.fill")
+                            .font(.largeTitle)
+                            .foregroundColor(.secondary)
+                        Text("No short-form content found.")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    ForEach(viewModel.currentItems(), id: \.id) { item in
+                        ShortNewsRow(item: item)
+                            .id(item.id)
+                            .onTapGesture {
+                                let ids = viewModel.currentItems().map(\.id)
+                                let route = ContentDetailRoute(
+                                    contentId: item.id,
+                                    contentType: item.contentTypeEnum ?? .news,
+                                    allContentIds: ids
                                 )
-                                .onTapGesture {
-                                    let ids = viewModel.currentItems().map(\.id)
-                                    let route = ContentDetailRoute(
-                                        contentId: item.id,
-                                        contentType: item.contentTypeEnum ?? .news,
-                                        allContentIds: ids
-                                    )
-                                    onSelect(route)
-                                }
-                                .onAppear {
-                                    if item.id == viewModel.currentItems().last?.id {
-                                        viewModel.loadMoreTrigger.send(())
-                                    }
-                                }
-                        }
-
-                        if viewModel.currentItems().contains(where: { !$0.isRead }) {
-                            Button {
-                                showMarkAllConfirmation = true
-                            } label: {
-                                Text("Mark All as Read")
-                                    .font(.subheadline.weight(.semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.secondary.opacity(0.12))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                onSelect(route)
                             }
-                            .buttonStyle(.plain)
-                            .padding(.vertical, 8)
-                        }
+                            .onAppear {
+                                if item.id == viewModel.currentItems().last?.id {
+                                    viewModel.loadMoreTrigger.send(())
+                                }
+                            }
+                    }
 
-                        if viewModel.state == .loadingMore {
-                            ProgressView()
-                                .padding(.vertical, 16)
+                    if viewModel.currentItems().contains(where: { !$0.isRead }) {
+                        Button {
+                            showMarkAllConfirmation = true
+                        } label: {
+                            Text("Mark All as Read")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.secondary.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 8)
+                    }
+
+                    if viewModel.state == .loadingMore {
+                        ProgressView()
+                            .padding(.vertical, 16)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
             }
-            .coordinateSpace(name: "scrollView")
-            .onPreferenceChange(ScrolledPastTopPreferenceKey.self) { ids in
-                // Filter out items we've already processed
-                let newIds = ids.filter { !markedAsReadIds.contains($0) }
-                guard !newIds.isEmpty else { return }
-
-                logger.info("[ShortFormView] Items scrolled past top | ids=\(newIds, privacy: .public)")
-
-                // Add to our tracking set
-                for id in newIds {
-                    markedAsReadIds.insert(id)
-                }
-
-                // Notify view model
-                viewModel.itemsScrolledPastTop(ids: newIds)
-            }
-            .refreshable {
+            .scrollTargetLayout()
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
+        .scrollPosition(id: $topVisibleItemId, anchor: .top)
+        .onScrollPhaseChange { _, newPhase in
+            guard newPhase == .idle else { return }
+            markItemsAboveAsRead()
+        }
+        .refreshable {
+            viewModel.refreshTrigger.send(())
+        }
+        .onAppear {
+            if viewModel.currentItems().isEmpty {
                 viewModel.refreshTrigger.send(())
             }
-            .onAppear {
-                if viewModel.currentItems().isEmpty {
-                    viewModel.refreshTrigger.send(())
-                }
+        }
+        .confirmationDialog(
+            "Mark all news items as read?",
+            isPresented: $showMarkAllConfirmation
+        ) {
+            Button("Mark All as Read", role: .destructive) {
+                showMarkAllConfirmation = false
+                viewModel.markAllVisibleAsRead()
             }
-            .confirmationDialog(
-                "Mark all news items as read?",
-                isPresented: $showMarkAllConfirmation
-            ) {
-                Button("Mark All as Read", role: .destructive) {
-                    showMarkAllConfirmation = false
-                    viewModel.markAllVisibleAsRead()
-                }
-                Button("Cancel", role: .cancel) {
-                    showMarkAllConfirmation = false
-                }
-            } message: {
-                Text("Marks every unread item currently loaded in the list.")
+            Button("Cancel", role: .cancel) {
+                showMarkAllConfirmation = false
             }
+        } message: {
+            Text("Marks every unread item currently loaded in the list.")
         }
     }
-}
 
-/// Detects when an item's bottom edge scrolls past the top of the screen
-private struct ScrollPositionDetector: View {
-    let itemId: Int
-    let isAlreadyMarked: Bool
+    private func markItemsAboveAsRead() {
+        guard let topVisibleItemId else { return }
+        let items = viewModel.currentItems()
+        guard let index = items.firstIndex(where: { $0.id == topVisibleItemId }) else { return }
 
-    var body: some View {
-        GeometryReader { geo in
-            let frame = geo.frame(in: .named("scrollView"))
-            // Item has scrolled past top when its bottom edge is above the top of the scroll view
-            // We use a small threshold (50pt) to ensure the item has clearly scrolled off
-            let hasScrolledPastTop = frame.maxY < 50
+        let idsToMark = items.prefix(index)
+            .filter { !$0.isRead && !markedAsReadIds.contains($0.id) }
+            .map(\.id)
 
-            Color.clear
-                .preference(
-                    key: ScrolledPastTopPreferenceKey.self,
-                    value: (hasScrolledPastTop && !isAlreadyMarked) ? [itemId] : []
-                )
-        }
+        guard !idsToMark.isEmpty else { return }
+
+        logger.info("[ShortFormView] Items scrolled past top | ids=\(idsToMark, privacy: .public)")
+        idsToMark.forEach { markedAsReadIds.insert($0) }
+        viewModel.itemsScrolledPastTop(ids: idsToMark)
     }
 }
 
