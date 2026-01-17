@@ -8,6 +8,22 @@
 import SwiftUI
 import UIKit
 
+private struct ChatScrollViewHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct ChatBottomAnchorPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = .greatestFiniteMagnitude
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 // MARK: - Share Content
 
 struct ShareContent: Identifiable {
@@ -216,6 +232,12 @@ struct ChatSessionView: View {
     @State private var showingModelPicker = false
     @State private var navigateToNewSessionId: Int?
     @State private var shareContent: ShareContent?
+    @State private var scrollPosition: Int?
+    @State private var storedScrollState: ChatScrollState?
+    @State private var hasRestoredScroll = false
+    @State private var scrollViewHeight: CGFloat = 0
+    @State private var bottomAnchorMaxY: CGFloat = .greatestFiniteMagnitude
+    @State private var isAtBottom = false
 
     init(session: ChatSessionSummary) {
         _viewModel = StateObject(wrappedValue: ChatSessionViewModel(session: session))
@@ -360,6 +382,10 @@ struct ChatSessionView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
+                    Color.clear
+                        .frame(height: 1)
+                        .id("top")
+
                     if viewModel.isLoading {
                         ChatLoadingView()
                             .frame(maxWidth: .infinity)
@@ -439,25 +465,61 @@ struct ChatSessionView: View {
                     Color.clear
                         .frame(height: 1)
                         .id("bottom")
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: ChatBottomAnchorPreferenceKey.self,
+                                    value: geo.frame(in: .named("chatScrollView")).maxY
+                                )
+                            }
+                        )
                 }
                 .padding()
             }
+            .coordinateSpace(name: "chatScrollView")
+            .scrollPosition(id: $scrollPosition, anchor: .top)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: ChatScrollViewHeightPreferenceKey.self,
+                        value: geo.size.height
+                    )
+                }
+            )
+            .onPreferenceChange(ChatScrollViewHeightPreferenceKey.self) { height in
+                scrollViewHeight = height
+                updateIsAtBottom()
+            }
+            .onPreferenceChange(ChatBottomAnchorPreferenceKey.self) { maxY in
+                bottomAnchorMaxY = maxY
+                updateIsAtBottom()
+            }
             .textSelection(.enabled)
             .onChange(of: viewModel.allMessages.count) { _, _ in
-                scrollToBottom(proxy, animated: true)
+                if hasRestoredScroll {
+                    if isAtBottom {
+                        scrollToBottom(proxy, animated: true)
+                    }
+                } else {
+                    restoreScrollPositionIfNeeded(proxy)
+                }
             }
             .onChange(of: viewModel.isSending) { _, isSending in
-                if isSending {
+                if isSending, isAtBottom {
                     scrollToBottom(proxy, animated: true)
                 }
             }
             .onChange(of: viewModel.isLoading) { _, isLoading in
                 if !isLoading {
-                    scrollToBottom(proxy, animated: false)
+                    restoreScrollPositionIfNeeded(proxy)
                 }
             }
             .onAppear {
-                scrollToBottom(proxy, animated: false)
+                storedScrollState = ChatScrollStateStore.load(sessionId: viewModel.sessionId)
+                restoreScrollPositionIfNeeded(proxy)
+            }
+            .onDisappear {
+                persistScrollPosition()
             }
         }
     }
@@ -472,6 +534,43 @@ struct ChatSessionView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
+    }
+
+    private func updateIsAtBottom() {
+        guard scrollViewHeight > 0 else { return }
+        let threshold: CGFloat = 24
+        isAtBottom = bottomAnchorMaxY <= scrollViewHeight + threshold
+    }
+
+    private func restoreScrollPositionIfNeeded(_ proxy: ScrollViewProxy) {
+        guard !hasRestoredScroll else { return }
+        guard !viewModel.allMessages.isEmpty else { return }
+
+        hasRestoredScroll = true
+        guard let storedScrollState else { return }
+
+        if storedScrollState.wasAtBottom {
+            scrollToBottom(proxy, animated: false)
+            return
+        }
+
+        let messageIds = Set(viewModel.allMessages.map(\.id))
+        guard messageIds.contains(storedScrollState.anchorMessageId) else { return }
+
+        DispatchQueue.main.async {
+            proxy.scrollTo(storedScrollState.anchorMessageId, anchor: .top)
+        }
+    }
+
+    private func persistScrollPosition() {
+        guard !viewModel.allMessages.isEmpty else { return }
+        guard let anchorId = scrollPosition ?? viewModel.allMessages.first?.id else { return }
+
+        ChatScrollStateStore.save(
+            sessionId: viewModel.sessionId,
+            anchorMessageId: anchorId,
+            wasAtBottom: isAtBottom
+        )
     }
 
     // MARK: - Article Preview Card (for empty favorites)
