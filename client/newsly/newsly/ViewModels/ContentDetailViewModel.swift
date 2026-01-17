@@ -314,22 +314,48 @@ class MarkdownItemProvider: NSObject, UIActivityItemSource {
     }
 
     func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
-        // For Mail, convert markdown to HTML to preserve line breaks
-        if activityType == .mail {
+        switch shareActivityKind(activityType) {
+        case .mail:
             return convertMarkdownToHTML(markdown).data(using: .utf8)
+        case .gmail:
+            return gmailFriendlyText(markdown)
+        case .other:
+            return markdown
         }
-        // For other activities, return plain markdown text
-        return markdown
     }
 
     func activityViewController(
         _ activityViewController: UIActivityViewController,
         dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
     ) -> String {
-        if activityType == .mail {
+        switch shareActivityKind(activityType) {
+        case .mail:
             return UTType.html.identifier
+        case .gmail, .other:
+            return UTType.plainText.identifier
         }
-        return UTType.plainText.identifier
+    }
+
+    private enum ShareActivityKind {
+        case mail
+        case gmail
+        case other
+    }
+
+    private func shareActivityKind(_ activityType: UIActivity.ActivityType?) -> ShareActivityKind {
+        if activityType == .mail {
+            return .mail
+        }
+
+        guard let rawValue = activityType?.rawValue.lowercased() else {
+            return .other
+        }
+
+        if rawValue.contains("gmail") {
+            return .gmail
+        }
+
+        return .other
     }
 
     private func convertMarkdownToHTML(_ markdown: String) -> String {
@@ -370,5 +396,49 @@ class MarkdownItemProvider: NSObject, UIActivityItemSource {
 
         html += "</body></html>"
         return html
+    }
+
+    private func gmailFriendlyText(_ markdown: String) -> String {
+        let normalized = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+        let lines = normalized.components(separatedBy: "\n")
+        var tokens: [String] = []
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+
+            if trimmed == "---" {
+                continue
+            }
+
+            if trimmed.hasPrefix("### ") {
+                tokens.append(String(trimmed.dropFirst(4)) + ":")
+                continue
+            }
+
+            if trimmed.hasPrefix("## ") {
+                tokens.append(String(trimmed.dropFirst(3)) + ":")
+                continue
+            }
+
+            if trimmed.hasPrefix("# ") {
+                tokens.append(String(trimmed.dropFirst(2)) + ":")
+                continue
+            }
+
+            if trimmed.hasPrefix("- ") {
+                tokens.append(String(trimmed.dropFirst(2)))
+                continue
+            }
+
+            if trimmed.hasPrefix("> ") {
+                tokens.append("\"" + String(trimmed.dropFirst(2)) + "\"")
+                continue
+            }
+
+            tokens.append(trimmed)
+        }
+
+        return tokens.joined(separator: " | ")
     }
 }
