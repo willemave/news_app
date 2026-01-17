@@ -15,6 +15,7 @@ from app.pipeline.handlers.discover_feeds import DiscoverFeedsHandler
 from app.pipeline.handlers.download_audio import DownloadAudioHandler
 from app.pipeline.handlers.generate_image import GenerateImageHandler
 from app.pipeline.handlers.generate_thumbnail import GenerateThumbnailHandler
+from app.pipeline.handlers.onboarding_discover import OnboardingDiscoverHandler
 from app.pipeline.handlers.process_content import ProcessContentHandler
 from app.pipeline.handlers.scrape import ScrapeHandler
 from app.pipeline.handlers.summarize import SummarizeHandler
@@ -62,6 +63,7 @@ class SequentialTaskProcessor:
             GenerateImageHandler(),
             GenerateThumbnailHandler(),
             DiscoverFeedsHandler(),
+            OnboardingDiscoverHandler(),
             DigDeeperHandler(),
         ]
 

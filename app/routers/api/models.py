@@ -1,9 +1,9 @@
 """Pydantic models for API endpoints."""
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.constants import TWEET_SUGGESTION_MODEL
 from app.models.content_submission import (  # noqa: F401
@@ -617,3 +617,87 @@ class TweetSuggestionsResponse(BaseModel):
                 ],
             }
         }
+
+
+class OnboardingProfileRequest(BaseModel):
+    """Request to build a profile for onboarding personalization."""
+
+    first_name: str = Field(..., min_length=1, max_length=120)
+    twitter_handle: str | None = Field(None, max_length=64)
+    linkedin_handle: str | None = Field(None, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_handles(self) -> "OnboardingProfileRequest":
+        if not (self.twitter_handle or self.linkedin_handle):
+            raise ValueError("twitter_handle or linkedin_handle is required")
+        return self
+
+
+class OnboardingProfileResponse(BaseModel):
+    """Profile summary for onboarding personalization."""
+
+    profile_summary: str
+    inferred_topics: list[str] = Field(default_factory=list)
+    candidate_sources: list[str] = Field(default_factory=list)
+
+
+class OnboardingSuggestion(BaseModel):
+    """Single onboarding recommendation item."""
+
+    suggestion_type: Literal["substack", "atom", "podcast_rss", "reddit"]
+    title: str | None = None
+    site_url: str | None = None
+    feed_url: str | None = None
+    subreddit: str | None = None
+    rationale: str | None = None
+    score: float | None = None
+    is_default: bool = False
+
+
+class OnboardingFastDiscoverRequest(BaseModel):
+    """Request for fast onboarding discovery."""
+
+    profile_summary: str = Field(..., min_length=3)
+    inferred_topics: list[str] = Field(default_factory=list, max_length=12)
+
+
+class OnboardingFastDiscoverResponse(BaseModel):
+    """Response for fast onboarding discovery."""
+
+    recommended_pods: list[OnboardingSuggestion] = Field(default_factory=list)
+    recommended_substacks: list[OnboardingSuggestion] = Field(default_factory=list)
+    recommended_subreddits: list[OnboardingSuggestion] = Field(default_factory=list)
+
+
+class OnboardingSelectedSource(BaseModel):
+    """Selected source for onboarding completion."""
+
+    suggestion_type: Literal["substack", "atom", "podcast_rss"]
+    title: str | None = None
+    feed_url: str = Field(..., min_length=5, max_length=2048)
+    config: dict[str, Any] | None = None
+
+
+class OnboardingCompleteRequest(BaseModel):
+    """Request to finalize onboarding selections."""
+
+    selected_sources: list[OnboardingSelectedSource] = Field(default_factory=list)
+    selected_subreddits: list[str] = Field(default_factory=list)
+    profile_summary: str | None = None
+    inferred_topics: list[str] | None = None
+
+
+class OnboardingCompleteResponse(BaseModel):
+    """Response for onboarding completion."""
+
+    status: str
+    task_id: int | None = None
+    inbox_count_estimate: int
+    longform_status: str
+    has_completed_new_user_tutorial: bool
+
+
+class OnboardingTutorialResponse(BaseModel):
+    """Response for tutorial completion."""
+
+    has_completed_new_user_tutorial: bool

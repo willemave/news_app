@@ -20,6 +20,7 @@ class User(Base):
     full_name = Column(String(255), nullable=True)
     is_admin = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    has_completed_new_user_tutorial = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -47,6 +48,7 @@ class UserResponse(UserBase):
     apple_id: str
     is_admin: bool
     is_active: bool
+    has_completed_new_user_tutorial: bool
     created_at: datetime
     updated_at: datetime
 
@@ -88,6 +90,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user: UserResponse
+    is_new_user: bool = False
     openai_api_key: str | None = None
 
 

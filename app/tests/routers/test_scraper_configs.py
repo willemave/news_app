@@ -118,3 +118,20 @@ def test_subscribe_feed_defaults_limit(client, test_user):
     assert resp.status_code == 201
     data = resp.json()
     assert data["limit"] == DEFAULT_NEW_FEED_LIMIT
+
+
+def test_scraper_config_reddit(client, test_user):
+    resp = client.post(
+        "/api/scrapers",
+        json={
+            "scraper_type": "reddit",
+            "display_name": "Machine Learning",
+            "config": {"subreddit": "MachineLearning", "limit": 5},
+            "is_active": True,
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["scraper_type"] == "reddit"
+    assert data["feed_url"] == "https://www.reddit.com/r/MachineLearning/"
+    assert data["config"]["subreddit"] == "MachineLearning"

@@ -16,13 +16,13 @@ from app.models.schema import ContentStatusEntry, UserScraperConfig
 
 logger = get_logger(__name__)
 
-ALLOWED_SCRAPER_TYPES = {"substack", "atom", "podcast_rss", "youtube"}
+ALLOWED_SCRAPER_TYPES = {"substack", "atom", "podcast_rss", "youtube", "reddit"}
 
 
 class CreateUserScraperConfig(BaseModel):
     """Payload for creating a scraper config."""
 
-    scraper_type: Literal["substack", "atom", "podcast_rss", "youtube"]
+    scraper_type: Literal["substack", "atom", "podcast_rss", "youtube", "reddit"]
     display_name: str | None = Field(None, max_length=255)
     config: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
@@ -31,6 +31,8 @@ class CreateUserScraperConfig(BaseModel):
     def validate_config(self) -> CreateUserScraperConfig:
         if self.scraper_type == "youtube":
             self.config = _normalize_youtube_config(self.config)
+        elif self.scraper_type == "reddit":
+            self.config = _normalize_reddit_config(self.config)
         else:
             self.config = _normalize_feed_config(self.config)
         if "limit" not in self.config:
@@ -96,13 +98,31 @@ def _normalize_youtube_config(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
+def _normalize_reddit_config(config: dict[str, Any]) -> dict[str, Any]:
+    subreddit = (config.get("subreddit") or config.get("name") or "").strip()
+    subreddit = subreddit.removeprefix("r/").strip("/")
+    if not subreddit:
+        raise ValueError("config.subreddit is required")
+
+    config["subreddit"] = subreddit
+    config["feed_url"] = f"https://www.reddit.com/r/{subreddit}/"
+
+    limit = config.get("limit")
+    if limit is not None and (not isinstance(limit, int) or not 1 <= limit <= 100):
+        raise ValueError("config.limit must be an integer between 1 and 100")
+    return config
+
+
 def _normalize_update_config(config: dict[str, Any]) -> dict[str, Any]:
     feed_url = config.get("feed_url")
     channel_id = config.get("channel_id")
     playlist_id = config.get("playlist_id")
+    subreddit = config.get("subreddit") or config.get("name")
 
     if not feed_url and (channel_id or playlist_id):
         return _normalize_youtube_config(config)
+    if subreddit and not feed_url:
+        return _normalize_reddit_config(config)
 
     return _normalize_feed_config(config)
 

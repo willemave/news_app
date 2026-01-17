@@ -143,6 +143,7 @@ def apple_signin(
     logger.info(f"Checking if user exists with apple_id: {apple_id}")
     user = db.query(User).filter(User.apple_id == apple_id).first()
 
+    is_new_user = False
     if user is None:
         logger.info(f"User not found. Creating new user with email: {email}")
         # Create new user
@@ -155,6 +156,7 @@ def apple_signin(
         db.add(user)
         db.commit()
         db.refresh(user)
+        is_new_user = True
         logger.info(f"New user created with ID: {user.id}")
     else:
         logger.info(f"Existing user found with ID: {user.id}")
@@ -179,6 +181,7 @@ def apple_signin(
         access_token=access_token,
         refresh_token=refresh_token,
         user=UserResponse.from_orm(user),
+        is_new_user=is_new_user,
         openai_api_key=settings.openai_api_key,
     )
 

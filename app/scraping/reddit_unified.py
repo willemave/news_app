@@ -9,10 +9,12 @@ import praw
 import prawcore
 import yaml
 
+from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
+from app.services.scraper_configs import list_active_configs_by_type
 from app.utils.error_logger import log_scraper_event
 from app.utils.paths import resolve_config_directory, resolve_config_path
 
@@ -58,9 +60,45 @@ class RedditUnifiedScraper(BaseScraper):
         self._reddit_client: praw.Reddit | None = None
 
     def _load_subreddit_config(self) -> dict[str, int]:
+        """Load subreddit configuration from user configs and YAML defaults."""
+        subreddits = self._load_subreddits_from_db()
+        file_subreddits = self._load_subreddits_from_file()
+
+        merged = {**file_subreddits, **subreddits}
+        logger.info(
+            "Loaded %s subreddits (db=%s, file=%s)",
+            len(merged),
+            len(subreddits),
+            len(file_subreddits),
+        )
+        return merged
+
+    def _load_subreddits_from_db(self) -> dict[str, int]:
+        """Load subreddit configuration from user scraper configs."""
+        subreddits: dict[str, int] = {}
+        with get_db() as db:
+            configs = list_active_configs_by_type(db, "reddit")
+
+        for config in configs:
+            payload = config.config or {}
+            name = payload.get("subreddit")
+            limit = payload.get("limit", 10)
+            if not isinstance(name, str) or not name.strip():
+                continue
+            cleaned = name.strip().lstrip("r/").strip("/")
+            if cleaned.lower() == "front":
+                logger.info("Skipping 'front' subreddit; front page scraping disabled")
+                continue
+            if not isinstance(limit, int) or limit <= 0:
+                logger.warning("Invalid limit for subreddit %s: %s", cleaned, limit)
+                limit = 10
+            subreddits[cleaned] = limit
+
+        return subreddits
+
+    def _load_subreddits_from_file(self) -> dict[str, int]:
         """Load subreddit configuration from YAML file."""
         config_path = self.config_path
-
         if not config_path.exists():
             _emit_missing_config_warning(config_path)
             return {}
@@ -70,7 +108,7 @@ class RedditUnifiedScraper(BaseScraper):
                 config = yaml.safe_load(f) or {}
 
             subreddits_list = config.get("subreddits", [])
-            subreddits = {}
+            subreddits: dict[str, int] = {}
 
             # Convert list format to dict
             for sub in subreddits_list:
@@ -86,7 +124,6 @@ class RedditUnifiedScraper(BaseScraper):
                         logger.warning(f"Invalid limit for subreddit {name}: {limit}")
                         subreddits[name] = 10  # Default to 10 if invalid
 
-            logger.info(f"Loaded {len(subreddits)} subreddits from config")
             return subreddits
 
         except Exception as e:

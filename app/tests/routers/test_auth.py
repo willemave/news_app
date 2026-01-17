@@ -54,6 +54,7 @@ def test_apple_signin_new_user(db: Session, monkeypatch):
         assert data["token_type"] == "bearer"
         assert data["user"]["email"] == "newuser@icloud.com"
         assert data["user"]["full_name"] == "New User"
+        assert data["is_new_user"] is True
     finally:
         app.dependency_overrides.clear()
 
@@ -105,6 +106,7 @@ def test_apple_signin_existing_user(db: Session, monkeypatch):
 
         assert data["user"]["id"] == existing_user.id
         assert data["user"]["email"] == "existing@icloud.com"
+        assert data["is_new_user"] is False
     finally:
         app.dependency_overrides.clear()
 

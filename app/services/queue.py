@@ -26,6 +26,7 @@ class TaskType(str, Enum):
     GENERATE_IMAGE = "generate_image"
     GENERATE_THUMBNAIL = "generate_thumbnail"
     DISCOVER_FEEDS = "discover_feeds"
+    ONBOARDING_DISCOVER = "onboarding_discover"
     DIG_DEEPER = "dig_deeper"
 
 
