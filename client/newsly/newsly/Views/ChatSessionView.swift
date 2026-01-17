@@ -6,23 +6,8 @@
 //
 
 import SwiftUI
+import MarkdownUI
 import UIKit
-
-private struct ChatScrollViewHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct ChatBottomAnchorPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = .greatestFiniteMagnitude
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
 
 // MARK: - Share Content
 
@@ -232,11 +217,9 @@ struct ChatSessionView: View {
     @State private var showingModelPicker = false
     @State private var navigateToNewSessionId: Int?
     @State private var shareContent: ShareContent?
-    @State private var scrollPosition: Int?
+    @State private var scrolledMessageId: Int?
     @State private var storedScrollState: ChatScrollState?
     @State private var hasRestoredScroll = false
-    @State private var scrollViewHeight: CGFloat = 0
-    @State private var bottomAnchorMaxY: CGFloat = .greatestFiniteMagnitude
     @State private var isAtBottom = false
 
     init(session: ChatSessionSummary) {
@@ -252,13 +235,11 @@ struct ChatSessionView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Messages
-            messageListView
-
-            // Input area
-            inputBar
-        }
+        messageListView
+            .safeAreaInset(edge: .bottom) {
+                inputBar
+            }
+            .scrollDismissesKeyboard(.interactively)
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadSession()
@@ -382,10 +363,6 @@ struct ChatSessionView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    Color.clear
-                        .frame(height: 1)
-                        .id("top")
-
                     if viewModel.isLoading {
                         ChatLoadingView()
                             .frame(maxWidth: .infinity)
@@ -460,112 +437,92 @@ struct ChatSessionView: View {
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                         }
                     }
-
-                    // Anchor for scrolling
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom")
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear.preference(
-                                    key: ChatBottomAnchorPreferenceKey.self,
-                                    value: geo.frame(in: .named("chatScrollView")).maxY
-                                )
-                            }
-                        )
                 }
+                .scrollTargetLayout()
                 .padding()
             }
-            .coordinateSpace(name: "chatScrollView")
-            .scrollPosition(id: $scrollPosition, anchor: .top)
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: ChatScrollViewHeightPreferenceKey.self,
-                        value: geo.size.height
-                    )
-                }
-            )
-            .onPreferenceChange(ChatScrollViewHeightPreferenceKey.self) { height in
-                scrollViewHeight = height
-                updateIsAtBottom()
+            .defaultScrollAnchor(.bottom)
+            .scrollPosition(id: $scrolledMessageId, anchor: .bottom)
+            .onChange(of: scrolledMessageId) { _, newId in
+                updateIsAtBottom(anchorId: newId)
+                persistScrollPosition(anchorId: newId)
             }
-            .onPreferenceChange(ChatBottomAnchorPreferenceKey.self) { maxY in
-                bottomAnchorMaxY = maxY
-                updateIsAtBottom()
-            }
-            .textSelection(.enabled)
             .onChange(of: viewModel.allMessages.count) { _, _ in
-                if hasRestoredScroll {
-                    if isAtBottom {
-                        scrollToBottom(proxy, animated: true)
-                    }
-                } else {
-                    restoreScrollPositionIfNeeded(proxy)
+                restoreScrollPositionIfNeeded(proxy: proxy)
+                if isAtBottom {
+                    scrollToBottom(proxy: proxy, animated: true)
                 }
             }
             .onChange(of: viewModel.isSending) { _, isSending in
                 if isSending, isAtBottom {
-                    scrollToBottom(proxy, animated: true)
+                    scrollToBottom(proxy: proxy, animated: true)
                 }
             }
             .onChange(of: viewModel.isLoading) { _, isLoading in
                 if !isLoading {
-                    restoreScrollPositionIfNeeded(proxy)
+                    restoreScrollPositionIfNeeded(proxy: proxy)
                 }
             }
             .onAppear {
                 storedScrollState = ChatScrollStateStore.load(sessionId: viewModel.sessionId)
-                restoreScrollPositionIfNeeded(proxy)
+                restoreScrollPositionIfNeeded(proxy: proxy)
             }
             .onDisappear {
-                persistScrollPosition()
+                persistScrollPosition(anchorId: scrolledMessageId)
             }
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
-        DispatchQueue.main.async {
-            if animated {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                }
-            } else {
-                proxy.scrollTo("bottom", anchor: .bottom)
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {
+        guard let lastId = viewModel.allMessages.last?.id else { return }
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(lastId, anchor: .bottom)
             }
+        } else {
+            proxy.scrollTo(lastId, anchor: .bottom)
         }
     }
 
-    private func updateIsAtBottom() {
-        guard scrollViewHeight > 0 else { return }
-        let threshold: CGFloat = 24
-        isAtBottom = bottomAnchorMaxY <= scrollViewHeight + threshold
+    private func updateIsAtBottom(anchorId: Int?) {
+        guard let lastId = viewModel.allMessages.last?.id else {
+            isAtBottom = false
+            return
+        }
+        isAtBottom = anchorId == lastId
     }
 
-    private func restoreScrollPositionIfNeeded(_ proxy: ScrollViewProxy) {
+    private func restoreScrollPositionIfNeeded(proxy: ScrollViewProxy) {
         guard !hasRestoredScroll else { return }
         guard !viewModel.allMessages.isEmpty else { return }
 
         hasRestoredScroll = true
-        guard let storedScrollState else { return }
-
-        if storedScrollState.wasAtBottom {
-            scrollToBottom(proxy, animated: false)
+        guard let storedScrollState else {
+            if let firstId = viewModel.allMessages.first?.id {
+                proxy.scrollTo(firstId, anchor: .top)
+            }
             return
         }
 
-        let messageIds = Set(viewModel.allMessages.map(\.id))
-        guard messageIds.contains(storedScrollState.anchorMessageId) else { return }
+        if storedScrollState.wasAtBottom {
+            scrollToBottom(proxy: proxy, animated: false)
+            return
+        }
 
-        DispatchQueue.main.async {
-            proxy.scrollTo(storedScrollState.anchorMessageId, anchor: .top)
+        if let anchorId = storedScrollState.anchorMessageId,
+           viewModel.allMessages.contains(where: { $0.id == anchorId }) {
+            proxy.scrollTo(anchorId, anchor: .bottom)
+            return
+        }
+
+        if let firstId = viewModel.allMessages.first?.id {
+            proxy.scrollTo(firstId, anchor: .top)
         }
     }
 
-    private func persistScrollPosition() {
+    private func persistScrollPosition(anchorId: Int?) {
+        guard hasRestoredScroll else { return }
         guard !viewModel.allMessages.isEmpty else { return }
-        guard let anchorId = scrollPosition ?? viewModel.allMessages.first?.id else { return }
-
         ChatScrollStateStore.save(
             sessionId: viewModel.sessionId,
             anchorMessageId: anchorId,
@@ -735,7 +692,6 @@ struct MessageBubble: View {
     let articleUrl: String?
     var onDigDeeper: ((String) -> Void)?
     var onShare: ((String) -> Void)?
-    @State private var calculatedHeight: CGFloat = .zero
 
     var body: some View {
         HStack {
@@ -745,7 +701,6 @@ struct MessageBubble: View {
 
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
                 messageContent
-                    .frame(height: max(calculatedHeight, 0))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(bubbleBackground)
@@ -793,71 +748,21 @@ struct MessageBubble: View {
         message.isUser ? .white : .label
     }
 
-    private var textFont: UIFont {
-        .preferredFont(forTextStyle: .callout)
-    }
-
     private var messageContent: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
-            ZStack(alignment: message.isUser ? .trailing : .leading) {
-                sizingText
-                selectableView(maxWidth: width)
+        Group {
+            if message.isUser {
+                Text(message.content)
+                    .font(.callout)
+                    .foregroundColor(Color(textColor))
+            } else {
+                Markdown(message.content)
+                    .markdownTheme(.gitHub)
+                    .font(.callout)
             }
         }
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
-    }
-
-    @ViewBuilder
-    private var sizingText: some View {
-        // Invisible Text used only for SwiftUI layout to compute height/width
-        let displayText: String = {
-            if let attr = formattedMarkdown {
-                return attr.string
-            }
-            return message.content
-        }()
-
-        Text(displayText)
-            .font(.callout)
-            .foregroundColor(.clear)
-            .padding(.vertical, 2)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private func selectableView(maxWidth: CGFloat) -> some View {
-        if let attr = formattedMarkdown {
-            SelectableAttributedText(
-                attributedText: attr,
-                textColor: textColor,
-                maxWidth: maxWidth,
-                calculatedHeight: $calculatedHeight,
-                onDigDeeper: onDigDeeper
-            )
-        } else {
-            SelectableText(
-                message.content,
-                textColor: textColor,
-                font: textFont,
-                maxWidth: maxWidth,
-                calculatedHeight: $calculatedHeight,
-                onDigDeeper: onDigDeeper
-            )
-        }
-    }
-
-    private var formattedMarkdown: NSAttributedString? {
-        guard let attributedString = try? NSAttributedString(
-            markdown: message.content,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) else {
-            return nil
-        }
-        let mutableAttr = NSMutableAttributedString(attributedString: attributedString)
-        mutableAttr.addAttribute(.font, value: textFont, range: NSRange(location: 0, length: mutableAttr.length))
-        return mutableAttr
     }
 }
 

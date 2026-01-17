@@ -12,7 +12,7 @@ private let logger = Logger(subsystem: "com.newsly", category: "ChatScrollState"
 
 struct ChatScrollState: Codable, Equatable {
     let sessionId: Int
-    let anchorMessageId: Int
+    let anchorMessageId: Int?
     let wasAtBottom: Bool
     let updatedAt: Date
 }
@@ -32,7 +32,7 @@ enum ChatScrollStateStore {
         }
     }
 
-    static func save(sessionId: Int, anchorMessageId: Int, wasAtBottom: Bool) {
+    static func save(sessionId: Int, anchorMessageId: Int?, wasAtBottom: Bool) {
         let state = ChatScrollState(
             sessionId: sessionId,
             anchorMessageId: anchorMessageId,
