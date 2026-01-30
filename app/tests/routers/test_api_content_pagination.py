@@ -47,6 +47,8 @@ def sample_contents(db_session: Session, test_user: User):
                     "topics": ["test"],
                     "classification": "to_read",
                 },
+                "summary_kind": "long_structured",
+                "summary_version": 1,
                 "image_generated_at": "2025-12-31T00:00:00Z",
             },
             created_at=base_time - timedelta(minutes=i),
@@ -411,12 +413,21 @@ class TestPaginationStability:
                 content_metadata={
                     "summary": {
                         "title": f"Same Time Article {i}",
-                        "overview": f"Overview {i}",
-                        "bullet_points": [],
+                        "overview": (
+                            "This overview is long enough to satisfy the minimum length requirement "
+                            "for structured summaries."
+                        ),
+                        "bullet_points": [
+                            {"text": "Key point one", "category": "key_finding"},
+                            {"text": "Key point two", "category": "methodology"},
+                            {"text": "Key point three", "category": "conclusion"},
+                        ],
                         "quotes": [],
                         "topics": ["test"],
                         "classification": "to_read",
-                    }
+                    },
+                    "summary_kind": "long_structured",
+                    "summary_version": 1,
                 },
                 created_at=same_time,
             )

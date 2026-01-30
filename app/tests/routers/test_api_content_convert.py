@@ -24,7 +24,9 @@ def test_convert_news_link_to_article(client: TestClient, db_session: Session) -
             "summary": {
                 "title": "News Summary",
                 "summary": "This is a news summary"
-            }
+            },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
         },
     )
     db_session.add(news)
@@ -57,7 +59,9 @@ def test_convert_news_link_no_article_url(client: TestClient, db_session: Sessio
         content_metadata={
             "summary": {
                 "title": "News Summary"
-            }
+            },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
         },
     )
     db_session.add(news)

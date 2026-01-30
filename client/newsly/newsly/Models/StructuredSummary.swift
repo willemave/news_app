@@ -39,6 +39,13 @@ struct BulletPoint: Codable {
 struct Quote: Codable {
     let text: String
     let context: String?
+    let attribution: String?
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case context
+        case attribution
+    }
 }
 
 // MARK: - Interleaved Summary Format
@@ -73,6 +80,37 @@ struct InterleavedSummary: Codable {
         case title
         case hook
         case insights
+        case takeaway
+        case classification
+        case summarizationDate = "summarization_date"
+    }
+}
+
+// MARK: - Interleaved Summary v2
+
+struct InterleavedTopic: Codable, Identifiable {
+    let topic: String
+    let bullets: [BulletPoint]
+
+    var id: String { topic }
+}
+
+struct InterleavedSummaryV2: Codable {
+    let title: String?
+    let hook: String
+    let keyPoints: [BulletPoint]
+    let topics: [InterleavedTopic]
+    let quotes: [Quote]
+    let takeaway: String
+    let classification: String?
+    let summarizationDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case hook
+        case keyPoints = "key_points"
+        case topics
+        case quotes
         case takeaway
         case classification
         case summarizationDate = "summarization_date"

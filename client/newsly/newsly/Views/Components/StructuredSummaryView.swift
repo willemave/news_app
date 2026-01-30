@@ -500,7 +500,7 @@ struct FlowLayout: Layout {
             BulletPoint(text: "Point 2", category: nil)
         ],
         quotes: [
-            Quote(text: "Sample quote", context: "John Doe")
+            Quote(text: "Sample quote", context: "John Doe", attribution: nil)
         ],
         topics: ["Topic 1", "Topic 2"],
         questions: [

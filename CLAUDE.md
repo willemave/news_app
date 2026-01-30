@@ -233,6 +233,14 @@ new → pending → processing → completed
                  skipped
 ```
 
+### iOS Debugger Agent Usage
+When asked to build, run, or debug the iOS app, use the `$ios-debugger-agent` skill and follow its MCP workflow:
+1) `mcp__XcodeBuildMCP__list_sims` → pick a **Booted** simulator (ask the user to boot one if none).
+2) `mcp__XcodeBuildMCP__session-set-defaults` with `projectPath` (or `workspacePath`), `scheme`, and `simulatorId` (optionally `configuration: "Debug"`, `useLatestOS: true`).
+3) Build/run with `mcp__XcodeBuildMCP__build_run_sim` (or `launch_app_sim` if already built).
+4) For UI checks: `describe_ui` before `tap`/`gesture`; use `screenshot` for visual confirmation.
+5) For logs: `start_sim_log_cap` (use `captureConsole: true` if needed) and `stop_sim_log_cap` to summarize.
+
 ---
 
 **Keep all replies short, technical, and complete.**
@@ -249,4 +257,3 @@ For detailed documentation on:
 - Authentication system
 
 See **[docs/architecture.md](docs/architecture.md)**.
-

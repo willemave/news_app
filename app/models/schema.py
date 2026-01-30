@@ -113,11 +113,14 @@ class Content(Base):
             return None
 
         summary = self.content_metadata.get("summary")
+        summary_kind = self.content_metadata.get("summary_kind")
         if not summary:
             return None
 
         # Check if it's already a structured summary
-        if isinstance(summary, dict) and "bullet_points" in summary:
+        if isinstance(summary, dict) and (
+            summary_kind == "long_structured" or "bullet_points" in summary
+        ):
             try:
                 return StructuredSummary(**summary)
             except Exception as e:

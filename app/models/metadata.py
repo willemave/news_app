@@ -18,6 +18,13 @@ from pydantic import (
     field_validator,
 )
 
+from app.constants import (
+    SUMMARY_KIND_LONG_INTERLEAVED,
+    SUMMARY_KIND_LONG_STRUCTURED,
+    SUMMARY_KIND_SHORT_NEWS_DIGEST,
+    SUMMARY_VERSION_V1,
+    SUMMARY_VERSION_V2,
+)
 from app.utils.summary_utils import extract_short_summary, extract_summary_text
 
 
@@ -56,11 +63,20 @@ class SummaryBulletPoint(BaseModel):
     )
 
 
+class SummaryTextBullet(BaseModel):
+    """Simple bullet point with just text."""
+
+    text: str = Field(..., min_length=10, max_length=500)
+
+
 class ContentQuote(BaseModel):
     """Notable quote extracted from content."""
 
     text: str = Field(..., min_length=10, max_length=5000)
     context: str | None = Field(None, description="Context or attribution for the quote")
+    attribution: str | None = Field(
+        None, description="Who said the quote - author, speaker, or publication (optional)"
+    )
 
 
 class InterleavedInsight(BaseModel):
@@ -81,7 +97,7 @@ class InterleavedInsight(BaseModel):
 
 
 class InterleavedSummary(BaseModel):
-    """Interleaved summary format that weaves topics with supporting quotes."""
+    """Interleaved summary v1 format that weaves topics with supporting quotes."""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -127,6 +143,88 @@ class InterleavedSummary(BaseModel):
     )
     insights: list[InterleavedInsight] = Field(
         ..., min_length=3, description="Key insights with optional supporting quotes (target <20)"
+    )
+    takeaway: str = Field(
+        ..., min_length=80, description="Final takeaway (2-3 sentences) for the reader"
+    )
+    classification: str = Field(
+        default="to_read",
+        pattern="^(to_read|skip)$",
+        description="Content classification: 'to_read' or 'skip'",
+    )
+    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InterleavedTopic(BaseModel):
+    """Topic section with focused bullet points."""
+
+    topic: str = Field(
+        ..., min_length=2, max_length=80, description="Key topic or theme (2-5 words)"
+    )
+    bullets: list[SummaryTextBullet] = Field(
+        ..., min_items=2, max_items=3, description="2-3 bullet points for the topic"
+    )
+
+
+class InterleavedSummaryV2(BaseModel):
+    """Interleaved summary v2 format with key points, quotes, and topic bullets."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "AI Advances in Natural Language Processing",
+                "hook": (
+                    "This article explores groundbreaking developments in NLP "
+                    "that could reshape how we interact with technology."
+                ),
+                "key_points": [
+                    {"text": "Model accuracy improved ~40% on standard benchmarks."},
+                    {"text": "Training cost dropped by roughly half."},
+                    {"text": "Implications include faster deployment in production NLP."},
+                ],
+                "topics": [
+                    {
+                        "topic": "Performance Gains",
+                        "bullets": [
+                            {"text": "Benchmark improvements are consistent across tasks."},
+                            {"text": "Compute efficiency allows broader deployment."},
+                        ],
+                    }
+                ],
+                "quotes": [
+                    {
+                        "text": (
+                            "We were surprised by the magnitude of the improvements, "
+                            "which exceeded our initial expectations significantly."
+                        ),
+                        "attribution": "Lead Researcher",
+                        "context": "Interview with the lab",
+                    }
+                ],
+                "takeaway": (
+                    "These developments signal a fundamental shift in how AI systems "
+                    "process and understand human language."
+                ),
+                "classification": "to_read",
+                "summarization_date": "2025-06-14T10:30:00Z",
+            }
+        }
+    )
+
+    title: str = Field(
+        ..., min_length=5, max_length=1000, description="Descriptive title for the content"
+    )
+    hook: str = Field(
+        ..., min_length=80, description="Opening hook (2-3 sentences) capturing the main story"
+    )
+    key_points: list[SummaryTextBullet] = Field(
+        ..., min_items=3, max_items=5, description="3-5 key bullet points"
+    )
+    topics: list[InterleavedTopic] = Field(
+        ..., min_items=2, description="Topic sections with 2-3 bullets each"
+    )
+    quotes: list[ContentQuote] = Field(
+        default_factory=list, max_items=20, description="Notable longer quotes"
     )
     takeaway: str = Field(
         ..., min_length=80, description="Final takeaway (2-3 sentences) for the reader"
@@ -287,6 +385,27 @@ class NewsAggregatorMetadata(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+SummaryPayload = StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary
+
+
+def _parse_summary_payload(
+    summary_kind: str | None,
+    summary_version: int | None,
+    value: dict[str, Any],
+) -> SummaryPayload:
+    if summary_kind == SUMMARY_KIND_LONG_INTERLEAVED:
+        if summary_version == SUMMARY_VERSION_V1:
+            return InterleavedSummary.model_validate(value)
+        if summary_version == SUMMARY_VERSION_V2:
+            return InterleavedSummaryV2.model_validate(value)
+        raise ValueError(f"Unsupported summary version: {summary_version}")
+    if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
+        return StructuredSummary.model_validate(value)
+    if summary_kind == SUMMARY_KIND_SHORT_NEWS_DIGEST:
+        return NewsSummary.model_validate(value)
+    raise ValueError(f"Unsupported summary kind: {summary_kind}")
+
+
 # Base metadata with source field added
 class BaseContentMetadata(BaseModel):
     """Base metadata fields common to all content types."""
@@ -298,31 +417,37 @@ class BaseContentMetadata(BaseModel):
         None, description="Source of content (e.g., substack name, podcast name, subreddit name)"
     )
 
-    summary: StructuredSummary | InterleavedSummary | NewsSummary | None = Field(
-        None, description="AI-generated structured summary"
+    summary_kind: str | None = Field(
+        None,
+        description=(
+            "Summary discriminator (e.g., long_interleaved, long_structured, short_news_digest)"
+        ),
     )
+    summary_version: int | None = Field(
+        None, ge=1, description="Summary schema version for the current summary_kind"
+    )
+    summary: SummaryPayload | None = Field(None, description="AI-generated summary payload")
     word_count: int | None = Field(None, ge=0)
 
     @field_validator("summary", mode="before")
     @classmethod
-    def validate_summary(
-        cls, value: StructuredSummary | InterleavedSummary | NewsSummary | dict[str, Any] | None
-    ):
+    def validate_summary(cls, value: SummaryPayload | dict[str, Any] | None, info):
         """Normalize summary payloads into structured models."""
-        if value is None or isinstance(value, (StructuredSummary, InterleavedSummary, NewsSummary)):
+        if value is None or isinstance(
+            value, (StructuredSummary, InterleavedSummary, InterleavedSummaryV2, NewsSummary)
+        ):
             return value
         if isinstance(value, dict):
-            summary_type = value.get("summary_type")
-            if summary_type == "interleaved":
-                return InterleavedSummary.model_validate(value)
-            if summary_type == "news_digest":
-                return NewsSummary.model_validate(value)
-            try:
-                return StructuredSummary.model_validate(value)
-            except Exception:
-                return NewsSummary.model_validate(value)
+            summary_kind = info.data.get("summary_kind")
+            summary_version = info.data.get("summary_version")
+            if summary_kind and summary_version:
+                return _parse_summary_payload(summary_kind, summary_version, value)
+            raise ValueError(
+                "summary_kind and summary_version are required when summary is present"
+            )
         raise ValueError(
-            "Summary must be StructuredSummary, InterleavedSummary, NewsSummary, or dict"
+            "Summary must be StructuredSummary, InterleavedSummary, InterleavedSummaryV2, "
+            "NewsSummary, or dict"
         )
 
 
@@ -340,6 +465,8 @@ class ArticleMetadata(BaseContentMetadata):
                 "content_type": "html",
                 "final_url_after_redirects": "https://example.com/article",
                 "word_count": 1500,
+                "summary_kind": "long_structured",
+                "summary_version": 1,
                 "summary": {
                     "overview": "Brief overview of the article content",
                     "bullet_points": [
@@ -385,6 +512,8 @@ class PodcastMetadata(BaseContentMetadata):
                 "transcript": "Full transcript text...",
                 "duration": 3600,
                 "episode_number": 42,
+                "summary_kind": "long_structured",
+                "summary_version": 1,
                 "summary": {
                     "overview": "Brief overview of the podcast episode",
                     "bullet_points": [
@@ -436,6 +565,8 @@ class NewsMetadata(BaseContentMetadata):
                     "metadata": {"score": 420},
                 },
                 "discussion_url": "https://news.ycombinator.com/item?id=123",
+                "summary_kind": "short_news_digest",
+                "summary_version": 1,
                 "summary": {
                     "title": "Techmeme: OpenAI ships GPT-5 with native agents",
                     "article_url": "https://example.com/story",
@@ -607,8 +738,13 @@ class ContentData(BaseModel):
     def structured_summary(self) -> dict[str, Any] | None:
         """Get structured or interleaved summary if available."""
         summary_data = self.metadata.get("summary")
-        # Return if it's a structured summary (has bullet_points)
-        # or an interleaved summary (has insights)
+        summary_kind = self.metadata.get("summary_kind")
+        if isinstance(summary_data, dict) and summary_kind in {
+            SUMMARY_KIND_LONG_STRUCTURED,
+            SUMMARY_KIND_LONG_INTERLEAVED,
+        }:
+            return summary_data
+        # Legacy fallback: infer by payload shape
         if isinstance(summary_data, dict) and (
             "bullet_points" in summary_data or "insights" in summary_data
         ):
@@ -624,18 +760,24 @@ class ContentData(BaseModel):
         if not self.structured_summary:
             return []
 
+        summary_kind = self.metadata.get("summary_kind")
+        summary_version = self.metadata.get("summary_version")
+
         # Standard structured summary with bullet_points
-        if "bullet_points" in self.structured_summary:
+        if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
             return self.structured_summary.get("bullet_points", [])
 
-        # Interleaved summary - convert insights to bullet point format
-        insights = self.structured_summary.get("insights", [])
-        if insights:
-            return [
-                {"text": ins.get("insight", ""), "category": ins.get("topic", "")}
-                for ins in insights
-                if ins.get("insight")
-            ]
+        if summary_kind == SUMMARY_KIND_LONG_INTERLEAVED:
+            if summary_version == SUMMARY_VERSION_V2:
+                return self.structured_summary.get("key_points", [])
+            # Interleaved v1 - convert insights to bullet point format
+            insights = self.structured_summary.get("insights", [])
+            if insights:
+                return [
+                    {"text": ins.get("insight", ""), "category": ins.get("topic", "")}
+                    for ins in insights
+                    if ins.get("insight")
+                ]
 
         return []
 
@@ -648,23 +790,31 @@ class ContentData(BaseModel):
         if not self.structured_summary:
             return []
 
+        summary_kind = self.metadata.get("summary_kind")
+        summary_version = self.metadata.get("summary_version")
+
         # Standard structured summary with quotes
-        if "quotes" in self.structured_summary:
+        if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
             return self.structured_summary.get("quotes", [])
 
-        # Interleaved summary - extract supporting quotes from insights
-        insights = self.structured_summary.get("insights", [])
-        quotes = []
-        for ins in insights:
-            quote_text = ins.get("supporting_quote")
-            if quote_text:
-                quotes.append(
-                    {
-                        "text": quote_text,
-                        "context": ins.get("quote_attribution", ins.get("topic", "")),
-                    }
-                )
-        return quotes
+        if summary_kind == SUMMARY_KIND_LONG_INTERLEAVED:
+            if summary_version == SUMMARY_VERSION_V2:
+                return self.structured_summary.get("quotes", [])
+            # Interleaved v1 - extract supporting quotes from insights
+            insights = self.structured_summary.get("insights", [])
+            quotes = []
+            for ins in insights:
+                quote_text = ins.get("supporting_quote")
+                if quote_text:
+                    quotes.append(
+                        {
+                            "text": quote_text,
+                            "context": ins.get("quote_attribution", ins.get("topic", "")),
+                        }
+                    )
+            return quotes
+
+        return []
 
     @property
     def topics(self) -> list[str]:
@@ -673,21 +823,33 @@ class ContentData(BaseModel):
         For interleaved summaries, extracts unique topic names from insights.
         """
         if self.structured_summary:
+            summary_kind = self.metadata.get("summary_kind")
+            summary_version = self.metadata.get("summary_version")
+
             # Standard topics array
-            if "topics" in self.structured_summary:
+            if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
                 return self.structured_summary.get("topics", [])
 
-            # Interleaved summary - extract unique topics from insights
-            insights = self.structured_summary.get("insights", [])
-            if insights:
-                seen = set()
-                topics = []
-                for ins in insights:
-                    topic = ins.get("topic")
-                    if topic and topic not in seen:
-                        seen.add(topic)
-                        topics.append(topic)
-                return topics
+            if summary_kind == SUMMARY_KIND_LONG_INTERLEAVED:
+                if summary_version == SUMMARY_VERSION_V2:
+                    topics = self.structured_summary.get("topics", [])
+                    if isinstance(topics, list):
+                        return [
+                            topic.get("topic")
+                            for topic in topics
+                            if isinstance(topic, dict) and topic.get("topic")
+                        ]
+                # Interleaved v1 - extract unique topics from insights
+                insights = self.structured_summary.get("insights", [])
+                if insights:
+                    seen = set()
+                    topics = []
+                    for ins in insights:
+                        topic = ins.get("topic")
+                        if topic and topic not in seen:
+                            seen.add(topic)
+                            topics.append(topic)
+                    return topics
 
         return self.metadata.get("topics", [])
 

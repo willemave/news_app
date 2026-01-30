@@ -30,7 +30,9 @@ def test_full_convert_workflow(client: TestClient, db_session: Session) -> None:
                     "AI is evolving rapidly",
                     "New models are more efficient"
                 ]
-            }
+            },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
         },
     )
     db_session.add(news)

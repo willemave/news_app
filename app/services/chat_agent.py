@@ -1,5 +1,6 @@
 """Chat agent service using pydantic-ai for deep-dive conversations."""
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
@@ -21,6 +22,169 @@ from app.services.llm_models import (
 
 logger = get_logger(__name__)
 
+CONTEXT_WINDOW_TOKENS = 200_000
+SYSTEM_AND_ARTICLE_BUDGET_RATIO = 0.75
+TOKEN_CHARS_PER_TOKEN = 4
+
+SYSTEM_PROMPT_TEXT = (
+    "You are a deep-dive assistant helping users explore articles, news, and topics. "
+    "Be concise but thorough. Help users understand, critique, and apply what they read."
+    "\n\n"
+    "**CRITICAL - How to Use Web Search:**\n"
+    "- Use exa_web_search to research topics, verify claims, and find context\n"
+    "- AFTER searching, you MUST synthesize the results into your response:\n"
+    "  1. Summarize key findings from the search results\n"
+    "  2. Quote or paraphrase specific insights from the sources\n"
+    "  3. Include clickable markdown links: [Source Title](url)\n"
+    "  4. Compare/contrast what different sources say\n"
+    "- If search returns relevant content, NEVER give a generic response - use the content!\n"
+    "- Search multiple times if exploring different angles"
+    "\n\n"
+    "**Response Format:**\n"
+    "- Use markdown: **bold** for emphasis, bullet points for lists\n"
+    "- Always cite sources with markdown links when referencing search results\n"
+    "- Structure responses: brief intro → key findings → sources section\n"
+    "- Keep responses focused and scannable"
+)
+
+
+def _estimate_tokens(text: str | None) -> int:
+    """Approximate token count using character length."""
+    if not text:
+        return 0
+    return max(1, math.ceil(len(text) / TOKEN_CHARS_PER_TOKEN))
+
+
+def _truncate_to_token_budget(text: str, max_tokens: int) -> str:
+    """Truncate text to an approximate token budget."""
+    if max_tokens <= 0:
+        return ""
+    max_chars = max_tokens * TOKEN_CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "..."
+
+
+def _extract_summary_insights(summary: dict[str, object]) -> list[dict[str, str]]:
+    insights = summary.get("insights", [])
+    if not isinstance(insights, list):
+        return []
+    extracted: list[dict[str, str]] = []
+    for item in insights:
+        if not isinstance(item, dict):
+            continue
+        insight = str(item.get("insight", "")).strip()
+        topic = str(item.get("topic", "")).strip()
+        quote = str(item.get("supporting_quote", "")).strip()
+        attribution = str(item.get("quote_attribution", "")).strip()
+        extracted.append(
+            {
+                "insight": insight,
+                "topic": topic,
+                "quote": quote,
+                "attribution": attribution,
+            }
+        )
+    return extracted
+
+
+def _build_summary_lines(summary: dict[str, object]) -> list[str]:
+    lines: list[str] = []
+    title = summary.get("title")
+    if isinstance(title, str) and title.strip():
+        lines.append(f"Summary Title: {title.strip()}")
+
+    overview = (
+        summary.get("summary")
+        or summary.get("overview")
+        or summary.get("hook")
+        or summary.get("takeaway")
+    )
+    if isinstance(overview, str) and overview.strip():
+        lines.append(f"Overview: {overview.strip()}")
+
+    insights = _extract_summary_insights(summary)
+
+    bullet_points = summary.get("key_points") or summary.get("bullet_points")
+    if isinstance(bullet_points, list) and bullet_points:
+        points = [
+            bp.get("text", "") if isinstance(bp, dict) else str(bp)
+            for bp in bullet_points
+            if isinstance(bp, (dict, str))
+        ]
+        cleaned = [point.strip() for point in points if point and str(point).strip()]
+        if cleaned:
+            lines.append("Key Points:")
+            for point in cleaned:
+                lines.append(f"  - {point}")
+    elif insights:
+        lines.append("Insights:")
+        for ins in insights:
+            if not ins["insight"]:
+                continue
+            if ins["topic"]:
+                entry = f"  - {ins['topic']}: {ins['insight']}"
+            else:
+                entry = f"  - {ins['insight']}"
+            if ins["quote"]:
+                attribution = f" — {ins['attribution']}" if ins["attribution"] else ""
+                entry = f'{entry} (Quote: "{ins["quote"]}"{attribution})'
+            lines.append(entry)
+
+    quotes = summary.get("quotes")
+    if isinstance(quotes, list) and quotes:
+        rendered_quotes = []
+        for quote in quotes:
+            if not isinstance(quote, dict):
+                continue
+            quote_text = str(quote.get("text", "")).strip()
+            if not quote_text:
+                continue
+            context = str(quote.get("context", "")).strip()
+            rendered_quotes.append((quote_text, context))
+        if rendered_quotes:
+            lines.append("Quotes:")
+            for quote_text, context in rendered_quotes:
+                lines.append(f'  - "{quote_text}"')
+                if context:
+                    lines.append(f"    — {context}")
+
+    topics = summary.get("topics")
+    cleaned_topics: list[str] = []
+    if isinstance(topics, list) and topics:
+        cleaned_topics = [str(topic).strip() for topic in topics if str(topic).strip()]
+    elif insights:
+        seen: set[str] = set()
+        for ins in insights:
+            topic = ins["topic"]
+            if topic and topic not in seen:
+                seen.add(topic)
+                cleaned_topics.append(topic)
+    if cleaned_topics:
+        lines.append(f"Topics: {', '.join(cleaned_topics)}")
+
+    questions = summary.get("questions")
+    if isinstance(questions, list) and questions:
+        cleaned_questions = [str(q).strip() for q in questions if str(q).strip()]
+        if cleaned_questions:
+            lines.append("Questions:")
+            for question in cleaned_questions:
+                lines.append(f"  - {question}")
+
+    counter_arguments = summary.get("counter_arguments")
+    if isinstance(counter_arguments, list) and counter_arguments:
+        cleaned_counters = [str(c).strip() for c in counter_arguments if str(c).strip()]
+        if cleaned_counters:
+            lines.append("Counter-Arguments:")
+            for counter in cleaned_counters:
+                lines.append(f"  - {counter}")
+
+    classification = summary.get("classification")
+    if isinstance(classification, str) and classification.strip():
+        lines.append(f"Classification: {classification.strip()}")
+
+    return lines
+
 
 @dataclass
 class ChatDeps:
@@ -35,6 +199,17 @@ class ChatDeps:
 _agents: dict[str, Agent[ChatDeps, str]] = {}
 
 
+def _build_article_header(content: Content | None, session: ChatSession) -> list[str]:
+    parts: list[str] = []
+    if content:
+        parts.append(f"Article Title: {content.title or 'Untitled'}")
+        parts.append(f"Source: {content.source or 'Unknown'}")
+        parts.append(f"URL: {content.url}")
+    if session.topic:
+        parts.append(f"\nFocus Topic: {session.topic}")
+    return parts
+
+
 def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     """Get or create a chat agent for the given model spec.
 
@@ -47,27 +222,6 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     if model_spec in _agents:
         return _agents[model_spec]
 
-    system_prompt_text = (
-        "You are a deep-dive assistant helping users explore articles, news, and topics. "
-        "Be concise but thorough. Help users understand, critique, and apply what they read."
-        "\n\n"
-        "**CRITICAL - How to Use Web Search:**\n"
-        "- Use exa_web_search to research topics, verify claims, and find context\n"
-        "- AFTER searching, you MUST synthesize the results into your response:\n"
-        "  1. Summarize key findings from the search results\n"
-        "  2. Quote or paraphrase specific insights from the sources\n"
-        "  3. Include clickable markdown links: [Source Title](url)\n"
-        "  4. Compare/contrast what different sources say\n"
-        "- If search returns relevant content, NEVER give a generic response - use the content!\n"
-        "- Search multiple times if exploring different angles"
-        "\n\n"
-        "**Response Format:**\n"
-        "- Use markdown: **bold** for emphasis, bullet points for lists\n"
-        "- Always cite sources with markdown links when referencing search results\n"
-        "- Structure responses: brief intro → key findings → sources section\n"
-        "- Keep responses focused and scannable"
-    )
-
     # Build model with explicit API key if needed
     model, model_settings = build_pydantic_model(model_spec)
 
@@ -75,22 +229,14 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
         model,
         deps_type=ChatDeps,
         output_type=str,
-        system_prompt=system_prompt_text,
+        system_prompt=SYSTEM_PROMPT_TEXT,
         model_settings=model_settings,
     )
 
     @agent.system_prompt
     def add_article_context(ctx: RunContext[ChatDeps]) -> str:
         """Add article context to the system prompt."""
-        parts = []
-
-        if ctx.deps.content:
-            parts.append(f"Article Title: {ctx.deps.content.title or 'Untitled'}")
-            parts.append(f"Source: {ctx.deps.content.source or 'Unknown'}")
-            parts.append(f"URL: {ctx.deps.content.url}")
-
-        if ctx.deps.session.topic:
-            parts.append(f"\nFocus Topic: {ctx.deps.session.topic}")
+        parts = _build_article_header(ctx.deps.content, ctx.deps.session)
 
         if ctx.deps.article_context:
             parts.append(f"\nArticle Context:\n{ctx.deps.article_context}")
@@ -202,19 +348,17 @@ def get_chat_agent(model_spec: str) -> Agent[ChatDeps, str]:
     return agent
 
 
-def _truncate_text(text: str, max_chars: int | None) -> str:
-    """Truncate text with ellipsis when a max length is set."""
-    if max_chars is None or len(text) <= max_chars:
-        return text
-    return text[:max_chars] + "..."
-
-
-def build_article_context(content: Content, include_full_text: bool = False) -> str | None:
+def build_article_context(
+    content: Content,
+    include_full_text: bool = False,
+    max_tokens: int | None = None,
+) -> str | None:
     """Build context string from article content and metadata.
 
     Args:
         content: Content database record.
-        include_full_text: Whether to include the entire transcript/content instead of truncating.
+        include_full_text: Whether to include full transcript/content when it fits the budget.
+        max_tokens: Optional token budget for the article context string.
 
     Returns:
         Formatted context string or None if no content available.
@@ -223,41 +367,10 @@ def build_article_context(content: Content, include_full_text: bool = False) -> 
         return None
 
     metadata = content.content_metadata
-    parts: list[str] = []
-
-    # Add structured summary if available
     summary = metadata.get("summary", {})
-    if summary:
-        overview = (
-            summary.get("summary")
-            or summary.get("overview")
-            or summary.get("hook")
-            or summary.get("takeaway")
-        )
-        if overview:
-            parts.append(f"Overview: {overview}")
-
-        bullet_points = summary.get("key_points") or summary.get("bullet_points")
-        if bullet_points:
-            points = [
-                bp.get("text", "") if isinstance(bp, dict) else str(bp)
-                for bp in bullet_points
-                if isinstance(bp, (dict, str))
-            ]
-        else:
-            bullet_points = summary.get("insights", [])
-            points = [
-                ins.get("insight", "")
-                for ins in bullet_points
-                if isinstance(ins, dict) and ins.get("insight")
-            ]
-        if points:
-            parts.append("Key Points:")
-            for point in points[:10]:  # Limit to 10 points
-                parts.append(f"  - {point}")
-
-        if topics := summary.get("topics"):
-            parts.append(f"Topics: {', '.join(topics[:10])}")
+    summary_lines: list[str] = []
+    if isinstance(summary, dict) and summary:
+        summary_lines = _build_summary_lines(summary)
 
     transcript = metadata.get("transcript")
     content_text = metadata.get("content")
@@ -277,13 +390,34 @@ def build_article_context(content: Content, include_full_text: bool = False) -> 
         full_text_label = "Full Content"
         full_text = full_markdown.strip()
 
-    # Add full content or transcript if available
-    if full_text:
-        max_chars = None if include_full_text else 4000
-        full_text = _truncate_text(full_text, max_chars)
-        parts.append(f"\n{full_text_label}:\n{full_text}")
+    summary_context = "\n".join(summary_lines).strip() if summary_lines else ""
+    full_context_parts = summary_lines.copy()
+    if full_text and include_full_text:
+        full_context_parts.append(f"\n{full_text_label}:\n{full_text}")
+    full_context = "\n".join(full_context_parts).strip() if full_context_parts else ""
 
-    return "\n".join(parts) if parts else None
+    if max_tokens is None:
+        if full_context:
+            return full_context
+        if summary_context:
+            return summary_context
+        if full_text:
+            return f"{full_text_label}:\n{full_text}"
+        return None
+
+    if include_full_text and full_context and _estimate_tokens(full_context) <= max_tokens:
+        return full_context
+
+    if summary_context:
+        if _estimate_tokens(summary_context) <= max_tokens:
+            return summary_context
+        return _truncate_to_token_budget(summary_context, max_tokens)
+
+    if full_text:
+        truncated_text = _truncate_to_token_budget(full_text, max_tokens)
+        return f"{full_text_label}:\n{truncated_text}"
+
+    return None
 
 
 def load_message_history(db: Session, session_id: int) -> list[ModelMessage]:
@@ -456,19 +590,19 @@ def _build_chat_deps(
 
     if session.content_id:
         content = db.query(Content).filter(Content.id == session.content_id).first()
-        article_context = (
-            build_article_context(content, include_full_text=include_full_text) if content else None
-        )
+        if content:
+            max_system_article_tokens = int(CONTEXT_WINDOW_TOKENS * SYSTEM_AND_ARTICLE_BUDGET_RATIO)
+            system_tokens = _estimate_tokens(SYSTEM_PROMPT_TEXT)
+            header_text = "\n".join(_build_article_header(content, session))
+            header_tokens = _estimate_tokens(header_text)
+            available_tokens = max(max_system_article_tokens - system_tokens - header_tokens, 0)
+            article_context = build_article_context(
+                content,
+                include_full_text=include_full_text,
+                max_tokens=available_tokens,
+            )
 
     return ChatDeps(session=session, content=content, article_context=article_context)
-
-
-def _is_first_message(db: Session, session_id: int, current_message_id: int | None = None) -> bool:
-    """Check whether this is the first message for a chat session."""
-    query = db.query(ChatMessage).filter(ChatMessage.session_id == session_id)
-    if current_message_id is not None:
-        query = query.filter(ChatMessage.id != current_message_id)
-    return query.count() == 0
 
 
 def _log_chat_usage(
@@ -529,7 +663,7 @@ async def run_chat_turn(
     history_start = perf_counter()
     history = load_message_history(db, session.id)
     history_ms = (perf_counter() - history_start) * 1000
-    include_full_text = len(history) == 0
+    include_full_text = True
 
     deps_start = perf_counter()
     deps = _build_chat_deps(db, session, include_full_text=include_full_text)
@@ -627,7 +761,7 @@ async def process_message_async(
             session.topic,
         )
 
-        include_full_text = _is_first_message(db, session_id, message_id)
+        include_full_text = True
 
         # Build dependencies
         deps_start = perf_counter()
@@ -766,7 +900,7 @@ async def generate_initial_suggestions(
         logger.warning("[InitialSuggestions] No content_id | session_id=%s", session.id)
         return None
 
-    include_full_text = _is_first_message(db, session.id)
+    include_full_text = True
     deps = _build_chat_deps(db, session, include_full_text=include_full_text)
 
     try:

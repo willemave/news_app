@@ -28,6 +28,8 @@ struct ContentDetail: Codable, Identifiable {
     var isFavorited: Bool
     let summary: String?
     let shortSummary: String?
+    let summaryKind: String?
+    let summaryVersion: Int?
     let structuredSummaryRaw: [String: AnyCodable]?
     let bulletPoints: [BulletPoint]
     let quotes: [Quote]
@@ -59,6 +61,8 @@ struct ContentDetail: Codable, Identifiable {
         case isFavorited = "is_favorited"
         case summary
         case shortSummary = "short_summary"
+        case summaryKind = "summary_kind"
+        case summaryVersion = "summary_version"
         case structuredSummaryRaw = "structured_summary"
         case bulletPoints = "bullet_points"
         case quotes
@@ -112,18 +116,31 @@ struct ContentDetail: Codable, Identifiable {
 
     // MARK: - Summary Type Detection
 
+    private var resolvedSummaryKind: String? {
+        if let summaryKind { return summaryKind }
+        return metadata["summary_kind"]?.value as? String
+    }
+
+    private var resolvedSummaryVersion: Int? {
+        if let summaryVersion { return summaryVersion }
+        if let version = metadata["summary_version"]?.value as? Int {
+            return version
+        }
+        if let version = metadata["summary_version"]?.value as? Double {
+            return Int(version)
+        }
+        return nil
+    }
+
     /// Check if this content has an interleaved summary format
     var hasInterleavedSummary: Bool {
-        guard let raw = structuredSummaryRaw,
-              let summaryType = raw["summary_type"]?.value as? String else {
-            return false
-        }
-        return summaryType == "interleaved"
+        resolvedSummaryKind == "long_interleaved"
     }
 
     /// Parse the raw summary as InterleavedSummary (returns nil if not interleaved format)
     var interleavedSummary: InterleavedSummary? {
         guard hasInterleavedSummary,
+              resolvedSummaryVersion == 1,
               let raw = structuredSummaryRaw else {
             return nil
         }
@@ -135,9 +152,24 @@ struct ContentDetail: Codable, Identifiable {
         return nil
     }
 
+    /// Parse the raw summary as InterleavedSummaryV2 (returns nil if not v2 format)
+    var interleavedSummaryV2: InterleavedSummaryV2? {
+        guard hasInterleavedSummary,
+              resolvedSummaryVersion == 2,
+              let raw = structuredSummaryRaw else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        if let jsonData = try? JSONSerialization.data(withJSONObject: raw.mapValues { $0.value }) {
+            return try? decoder.decode(InterleavedSummaryV2.self, from: jsonData)
+        }
+        return nil
+    }
+
     /// Parse the raw summary as StructuredSummary (returns nil if interleaved format)
     var structuredSummary: StructuredSummary? {
-        guard !hasInterleavedSummary,
+        guard resolvedSummaryKind == "long_structured",
               let raw = structuredSummaryRaw else {
             return nil
         }

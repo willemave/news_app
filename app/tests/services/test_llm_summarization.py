@@ -8,6 +8,8 @@ from pydantic import ValidationError
 from app.models.metadata import (
     InterleavedInsight,
     InterleavedSummary,
+    InterleavedSummaryV2,
+    SummaryTextBullet,
 )
 from app.services.llm_agents import get_summarization_agent
 from app.services.llm_prompts import generate_summary_prompt
@@ -222,6 +224,74 @@ class TestInterleavedSummaryModel:
         assert "classification" in str(exc_info.value)
 
 
+class TestInterleavedSummaryV2Model:
+    """Tests for InterleavedSummaryV2 Pydantic model validation."""
+
+    def test_valid_summary(self):
+        summary = InterleavedSummaryV2(
+            title="The Future of AI Development",
+            hook="X" * 90,
+            key_points=[
+                SummaryTextBullet(text="Key point 1 with enough detail."),
+                SummaryTextBullet(text="Key point 2 with enough detail."),
+                SummaryTextBullet(text="Key point 3 with enough detail."),
+            ],
+            topics=[
+                {
+                    "topic": "Performance Gains",
+                    "bullets": [
+                        {"text": "Benchmark improvements are consistent across tasks."},
+                        {"text": "Compute efficiency allows broader deployment."},
+                    ],
+                },
+                {
+                    "topic": "Operational Impact",
+                    "bullets": [
+                        {"text": "Teams can iterate on product flows much faster."},
+                        {"text": "Quality gates shift toward data pipelines."},
+                    ],
+                },
+            ],
+            quotes=[
+                {
+                    "text": "We were surprised by the magnitude of the improvements.",
+                    "attribution": "Lead Researcher",
+                }
+            ],
+            takeaway="X" * 90,
+            classification="to_read",
+        )
+        assert len(summary.key_points) == 3
+        assert len(summary.topics) == 2
+        assert summary.classification == "to_read"
+
+    def test_key_points_too_few_fails(self):
+        with pytest.raises(ValidationError):
+            InterleavedSummaryV2(
+                title="Test Title",
+                hook="X" * 90,
+                key_points=[SummaryTextBullet(text="Only one point")],
+                topics=[
+                    {
+                        "topic": "Topic",
+                        "bullets": [
+                            {"text": "Bullet one"},
+                            {"text": "Bullet two"},
+                        ],
+                    },
+                    {
+                        "topic": "Topic Two",
+                        "bullets": [
+                            {"text": "Bullet one"},
+                            {"text": "Bullet two"},
+                        ],
+                    },
+                ],
+                quotes=[],
+                takeaway="X" * 90,
+            )
+
+
 class TestGenerateSummaryPrompt:
     """Tests for generate_summary_prompt function."""
 
@@ -235,7 +305,8 @@ class TestGenerateSummaryPrompt:
 
         # Should contain interleaved-specific instructions
         assert "hook" in system_prompt.lower()
-        assert "insight" in system_prompt.lower()
+        assert "key_points" in system_prompt.lower()
+        assert "topics" in system_prompt.lower()
         assert "takeaway" in system_prompt.lower()
         assert "to_read" in system_prompt.lower() or "skip" in system_prompt.lower()
 

@@ -100,35 +100,48 @@ Guidelines:
         user_message = "Article & Aggregator Context:\n\n{content}"
 
     else:
-        # Interleaved format: weaves topics with optional supporting quotes
-        system_message = """You are an expert content analyst creating summaries that weave together
-key topics with optional supporting quotes for a cohesive reading experience.
+        # Interleaved format v2: key points, quotes list, topic bullets
+        system_message = f"""You are an expert content analyst creating interleaved summaries that
+surface top key points first, then expand each topic with focused bullets, and
+separate longer quotes into their own list.
 
-Your task is to create an "interleaved" summary that enumerates *all* key points,
-findings, learnings, insights, decisions, and implications from the content. The
-number of insights is not important; completeness is.
+Return a JSON object with exactly these fields:
+{{
+  "title": "Descriptive title (max 110 characters)",
+  "hook": "2-3 sentence hook (min 80 chars)",
+  "key_points": [
+    {{"text": "Key point 1"}},
+    {{"text": "Key point 2"}},
+    {{"text": "Key point 3"}}
+  ],
+  "topics": [
+    {{
+      "topic": "Topic name",
+      "bullets": [
+        {{"text": "Bullet 1"}},
+        {{"text": "Bullet 2"}}
+      ]
+    }}
+  ],
+  "quotes": [
+    {{
+      "text": "Longer direct quote (min 20 chars)",
+      "attribution": "Who said it (optional)",
+      "context": "Context if needed (optional)"
+    }}
+  ],
+  "takeaway": "2-3 sentence takeaway (min 80 chars)",
+  "classification": "to_read" | "skip",
+  "summarization_date": "ISO 8601 timestamp"
+}}
 
 Guidelines:
-1. Start with a compelling hook (2-3 sentences, minimum 80 characters)
-2. Aim for 8-15 insights that cover every distinct key point.
-   Consolidate overlapping points to stay under 20 insights.
-3. For each insight:
-   - Identify a key topic/theme (2-5 words, be descriptive)
-   - Write a substantive insight (1-4 sentences, specific with data/details)
-   - Include a SHORT, punchy direct quote *only when it adds signal*
-     (quotes are optional; avoid long block quotes)
-   - Always note who said the quote when available (author name, speaker, publication)
-4. End with a takeaway (2-3 sentences, minimum 80 characters) telling the reader why it matters
-5. Classify as "to_read" if substantive, "skip" if promotional/shallow
-
-IMPORTANT:
-- Be exhaustive across the article's key points, but keep each insight concise
-- Not every insight needs a quote; prioritize clarity over quoting
-- When you do quote, prefer short, vivid phrasing and avoid truncation
-- Each insight should provide real value, not just restate the topic
-- Include specific numbers, names, and data points when available
-- There may be technical terms in the content, please don't make any spelling errors
-
+- key_points: 3-5 total, highest signal items only. No quotes inside key_points.
+- topics: cover all major themes; each topic must have 2-3 bullets.
+- quotes: include up to {max_quotes} longer quotes that add signal; avoid duplication.
+- Use concrete numbers, names, and data points when available.
+- There may be technical terms in the content, please don't make any spelling errors.
+- Never include markdown or extra fields.
 
 Classification Guidelines:
 - Set classification to "skip" if the content:

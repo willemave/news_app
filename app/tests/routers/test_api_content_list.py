@@ -46,6 +46,8 @@ def test_list_filters_articles_without_keypoints_or_image(
         status=ContentStatus.COMPLETED.value,
         content_metadata={
             "summary": _build_summary("Ready Article"),
+            "summary_kind": "long_structured",
+            "summary_version": 1,
             "image_generated_at": "2025-12-31T00:00:00Z",
         },
     )
@@ -59,7 +61,11 @@ def test_list_filters_articles_without_keypoints_or_image(
         url="https://example.com/no-image",
         content_type=ContentType.ARTICLE.value,
         status=ContentStatus.COMPLETED.value,
-        content_metadata={"summary": _build_summary("No Image")},
+        content_metadata={
+            "summary": _build_summary("No Image"),
+            "summary_kind": "long_structured",
+            "summary_version": 1,
+        },
     )
 
     db_session.add_all([ready_article, missing_summary, missing_image])

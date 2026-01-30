@@ -326,6 +326,12 @@ class ContentDetailResponse(BaseModel):
     # Additional useful properties from ContentData
     summary: str | None = Field(None, description="Summary text")
     short_summary: str | None = Field(None, description="Short version of summary for list view")
+    summary_kind: str | None = Field(
+        None, description="Summary kind discriminator (e.g., long_interleaved)"
+    )
+    summary_version: int | None = Field(
+        None, description="Summary schema version for the current summary kind"
+    )
     structured_summary: dict[str, Any] | None = Field(
         None, description="Structured summary with bullet points and quotes"
     )

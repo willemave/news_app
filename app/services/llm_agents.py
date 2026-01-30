@@ -10,6 +10,7 @@ from pydantic_ai import Agent
 from app.models.metadata import (
     ContentType,
     InterleavedSummary,
+    InterleavedSummaryV2,
     NewsSummary,
     StructuredSummary,
 )
@@ -43,18 +44,21 @@ def get_summarization_agent(
     model_spec: str,
     content_type: ContentType | str,
     system_prompt: str,
-) -> Agent[None, StructuredSummary | InterleavedSummary | NewsSummary]:
+) -> Agent[None, StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary]:
     """Return a summarization agent for the requested content type."""
     ct = content_type
     content_kind = ct.value if isinstance(ct, ContentType) else str(ct)
 
-    summary_type: type[StructuredSummary | InterleavedSummary | NewsSummary]
+    summary_type: type[StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary]
     if content_kind in {"news", "news_digest"}:
         summary_type = NewsSummary
     elif content_kind == "interleaved":
-        summary_type = InterleavedSummary
+        summary_type = InterleavedSummaryV2
     else:
         summary_type = StructuredSummary
 
     agent = _cached_agent(model_spec, summary_type, system_prompt)
-    return cast(Agent[None, StructuredSummary | InterleavedSummary | NewsSummary], agent)
+    return cast(
+        Agent[None, StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary],
+        agent,
+    )

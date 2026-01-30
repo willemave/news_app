@@ -127,15 +127,27 @@ struct ContentDetailView: View {
                             .padding(.top, 12)
                         }
 
-                        // Summary Section (interleaved or structured)
-                        if let interleavedSummary = content.interleavedSummary {
+                        // Summary Section (interleaved v2, interleaved v1, or structured)
+                        if let interleavedSummary = content.interleavedSummaryV2 {
+                            InterleavedSummaryV2View(summary: interleavedSummary, contentId: content.id)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.sectionSpacing)
+                                .onAppear {
+                                    logSummarySection(
+                                        content: content,
+                                        section: "interleaved_v2",
+                                        bulletPointCount: interleavedSummary.keyPoints.count,
+                                        insightCount: 0
+                                    )
+                                }
+                        } else if let interleavedSummary = content.interleavedSummary {
                             InterleavedSummaryView(summary: interleavedSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.sectionSpacing)
                                 .onAppear {
                                     logSummarySection(
                                         content: content,
-                                        section: "interleaved",
+                                        section: "interleaved_v1",
                                         bulletPointCount: 0,
                                         insightCount: interleavedSummary.insights.count
                                     )
@@ -1219,9 +1231,10 @@ struct ContentDetailView: View {
 
     private func logSummarySnapshot(content: ContentDetail, context: String) {
         let structuredCount = content.structuredSummary?.bulletPoints.count ?? 0
-        let interleavedCount = content.interleavedSummary?.insights.count ?? 0
+        let interleavedV1Count = content.interleavedSummary?.insights.count ?? 0
+        let interleavedV2Count = content.interleavedSummaryV2?.keyPoints.count ?? 0
         detailLogger.info(
-            "[ContentDetailView] summary snapshot (\(context)) id=\(content.id) type=\(content.contentType, privacy: .public) structured=\(content.structuredSummary != nil) interleaved=\(content.interleavedSummary != nil) structured_points=\(structuredCount) interleaved_insights=\(interleavedCount) raw_bullets=\(content.bulletPoints.count)"
+            "[ContentDetailView] summary snapshot (\(context)) id=\(content.id) type=\(content.contentType, privacy: .public) structured=\(content.structuredSummary != nil) interleaved_v1=\(content.interleavedSummary != nil) interleaved_v2=\(content.interleavedSummaryV2 != nil) structured_points=\(structuredCount) interleaved_insights=\(interleavedV1Count) interleaved_key_points=\(interleavedV2Count) raw_bullets=\(content.bulletPoints.count)"
         )
     }
 

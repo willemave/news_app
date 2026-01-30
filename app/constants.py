@@ -38,6 +38,13 @@ AGGREGATE_PLATFORMS = {"twitter", "techmeme"}
 # Default item limit for newly created feeds
 DEFAULT_NEW_FEED_LIMIT = 1
 
+# Summary kind/version constants
+SUMMARY_KIND_LONG_INTERLEAVED = "long_interleaved"
+SUMMARY_KIND_LONG_STRUCTURED = "long_structured"
+SUMMARY_KIND_SHORT_NEWS_DIGEST = "short_news_digest"
+SUMMARY_VERSION_V1 = 1
+SUMMARY_VERSION_V2 = 2
+
 
 # Worker ID format: {worker_type}_{instance_id}_{pid}
 def generate_worker_id(worker_type: str, instance_id: str = "1") -> str:

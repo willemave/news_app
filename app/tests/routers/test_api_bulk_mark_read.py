@@ -14,7 +14,22 @@ def _create_content(db_session: Session, index: int) -> Content:
         url=f"https://example.com/api-bulk-{index}",
         title=f"API Bulk Article {index}",
         status="completed",
-        content_metadata={"summary": f"Summary {index}"},
+        content_metadata={
+            "summary": {
+                "title": f"API Bulk Article {index}",
+                "overview": "This overview is long enough to satisfy structured summary validation.",
+                "bullet_points": [
+                    {"text": "Key point one", "category": "key_finding"},
+                    {"text": "Key point two", "category": "methodology"},
+                    {"text": "Key point three", "category": "conclusion"},
+                ],
+                "quotes": [],
+                "topics": ["Testing"],
+                "summarization_date": "2025-12-31T00:00:00Z",
+            },
+            "summary_kind": "long_structured",
+            "summary_version": 1,
+        },
     )
     db_session.add(content)
     db_session.commit()

@@ -134,17 +134,22 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
     counter_arguments: list[str] = []
 
     summary_data = content.metadata.get("summary")
+    summary_kind = content.metadata.get("summary_kind")
+    summary_version = content.metadata.get("summary_version")
     if isinstance(summary_data, dict):
         # Check if it's a StructuredSummary, InterleavedSummary, or NewsSummary
-        if "overview" in summary_data:
+        if summary_kind == "long_structured" or "overview" in summary_data:
             summary = summary_data.get("overview", "")
-        elif summary_data.get("summary_type") == "interleaved":
+        elif summary_kind == "long_interleaved":
             summary = summary_data.get("hook") or summary_data.get("takeaway", "")
-        elif "summary" in summary_data:
+        elif summary_kind == "short_news_digest" or "summary" in summary_data:
             summary = summary_data.get("summary", "")
 
         # Get bullet points / key points
-        bullet_points = summary_data.get("key_points") or summary_data.get("bullet_points", [])
+        if summary_kind == "long_interleaved" and summary_version == 2:
+            bullet_points = summary_data.get("key_points", [])
+        else:
+            bullet_points = summary_data.get("key_points") or summary_data.get("bullet_points", [])
         if bullet_points:
             # Handle both dict and string formats
             for point in bullet_points[:5]:  # Limit to 5 points
@@ -153,10 +158,11 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
                 elif isinstance(point, str):
                     key_points.append(point)
         else:
-            insights = summary_data.get("insights", [])
-            for insight in insights[:5]:
-                if isinstance(insight, dict):
-                    key_points.append(insight.get("insight", ""))
+            if summary_kind == "long_interleaved":
+                insights = summary_data.get("insights", [])
+                for insight in insights[:5]:
+                    if isinstance(insight, dict):
+                        key_points.append(insight.get("insight", ""))
 
         # Get quotes (for articles with StructuredSummary)
         raw_quotes = summary_data.get("quotes", [])
@@ -168,7 +174,7 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
                         quotes.append(quote_text)
                 elif isinstance(quote, str):
                     quotes.append(quote)
-        else:
+        elif summary_kind == "long_interleaved":
             insights = summary_data.get("insights", [])
             for insight in insights[:3]:
                 if isinstance(insight, dict):

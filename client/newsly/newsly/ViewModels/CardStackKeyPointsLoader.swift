@@ -68,7 +68,7 @@ class CardStackKeyPointsLoader: ObservableObject {
                 let points = detail.bulletPoints.map { $0.text }
 
                 // Extract hook from interleaved summary if available
-                let hook = detail.interleavedSummary?.hook
+                let hook = detail.interleavedSummaryV2?.hook ?? detail.interleavedSummary?.hook
 
                 // Get topics from content detail
                 let topics = detail.topics

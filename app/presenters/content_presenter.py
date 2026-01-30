@@ -148,6 +148,8 @@ def build_content_detail_response(
     quotes = domain_content.quotes
     topics = domain_content.topics
     full_markdown = domain_content.full_markdown
+    summary_kind = (domain_content.metadata or {}).get("summary_kind")
+    summary_version = (domain_content.metadata or {}).get("summary_version")
     news_article_url = None
     news_discussion_url = None
     news_key_points = None
@@ -203,6 +205,8 @@ def build_content_detail_response(
         is_favorited=is_favorited,
         summary=news_summary_text,
         short_summary=news_summary_text,
+        summary_kind=summary_kind,
+        summary_version=summary_version,
         structured_summary=structured_summary,
         bullet_points=bullet_points,
         quotes=quotes,

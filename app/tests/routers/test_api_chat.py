@@ -21,10 +21,17 @@ def test_create_chat_session_with_content(
         content_metadata={
             "summary": {
                 "title": "Test Article",
-                "overview": "This is a test article overview",
-                "bullet_points": [{"text": "Key point 1"}, {"text": "Key point 2"}],
+                "overview": "This is a test article overview that is long enough for validation.",
+                "bullet_points": [
+                    {"text": "Key point 1", "category": "key_finding"},
+                    {"text": "Key point 2", "category": "methodology"},
+                    {"text": "Key point 3", "category": "conclusion"},
+                ],
+                "quotes": [],
                 "topics": ["AI", "Technology"],
-            }
+            },
+            "summary_kind": "long_structured",
+            "summary_version": 1,
         },
     )
     db_session.add(content)

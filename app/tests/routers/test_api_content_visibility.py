@@ -75,6 +75,8 @@ def test_api_excludes_unprocessed_news(client, db_session: Session):
             },
             "discussion_url": "https://www.techmeme.com/cluster/processed",
             "summary": _news_summary_payload("Processed Digest"),
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
         },
     )
 
@@ -102,6 +104,8 @@ def test_api_excludes_inbox_content_not_completed(client, db_session: Session, t
         status=ContentStatus.PROCESSING.value,
         content_metadata={
             "summary": _article_summary_payload("Processing Article"),
+            "summary_kind": "long_structured",
+            "summary_version": 1,
             "image_generated_at": "2025-12-31T00:00:00Z",
         },
     )
@@ -112,6 +116,8 @@ def test_api_excludes_inbox_content_not_completed(client, db_session: Session, t
         status=ContentStatus.COMPLETED.value,
         content_metadata={
             "summary": _article_summary_payload("Completed Article"),
+            "summary_kind": "long_structured",
+            "summary_version": 1,
             "image_generated_at": "2025-12-31T00:00:00Z",
         },
     )

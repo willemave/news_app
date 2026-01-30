@@ -11,6 +11,7 @@ from app.models.metadata import (
     ContentQuote,
     ContentType,
     InterleavedSummary,
+    InterleavedSummaryV2,
     NewsSummary,
     StructuredSummary,
 )
@@ -46,15 +47,20 @@ class SummarizationRequest:
 
 
 def _finalize_summary(
-    summary: StructuredSummary | InterleavedSummary | NewsSummary,
+    summary: StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary,
     content_type: str | ContentType,
-) -> StructuredSummary | InterleavedSummary | NewsSummary:
+) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary:
     """Apply lightweight cleanup to keep summaries consistent."""
     if isinstance(summary, StructuredSummary) and summary.quotes:
         filtered: list[ContentQuote] = [
             quote for quote in summary.quotes if len((quote.text or "").strip()) >= 10
         ]
         summary.quotes = filtered
+    if isinstance(summary, InterleavedSummaryV2) and summary.quotes:
+        filtered_quotes: list[ContentQuote] = [
+            quote for quote in summary.quotes if len((quote.text or "").strip()) >= 10
+        ]
+        summary.quotes = filtered_quotes
 
     return summary
 
@@ -145,7 +151,7 @@ class ContentSummarizer:
         content_id: str | int | None = None,
         provider_override: str | None = None,
         model_hint: str | None = None,
-    ) -> StructuredSummary | InterleavedSummary | NewsSummary | None:
+    ) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary | None:
         """Summarize arbitrary content with sensible defaults per content type."""
         normalized_type = _normalize_content_type(content_type)
         default_model_spec = self.default_models.get(
@@ -180,7 +186,7 @@ class ContentSummarizer:
         content_id: str | int | None = None,
         provider_override: str | None = None,
         model_hint: str | None = None,
-    ) -> StructuredSummary | InterleavedSummary | NewsSummary | None:
+    ) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary | None:
         """Compatibility wrapper mirroring legacy service API."""
         return self.summarize(
             content=content,
@@ -207,7 +213,7 @@ def get_content_summarizer() -> ContentSummarizer:
 
 def summarize_content(
     request: SummarizationRequest,
-) -> StructuredSummary | InterleavedSummary | NewsSummary | None:
+) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary | None:
     """Generate a structured summary via pydantic-ai.
 
     Args:

@@ -7,8 +7,8 @@ from app.models.schema import Content
     ("summary", "expected"),
     [
         ({"overview": "Short overview"}, "Short overview"),
-        ({"summary_type": "interleaved", "hook": "Interleaved hook"}, "Interleaved hook"),
-        ({"summary_type": "news_digest", "summary": "Daily digest"}, "Daily digest"),
+        ({"hook": "Interleaved hook"}, "Interleaved hook"),
+        ({"summary": "Daily digest"}, "Daily digest"),
         ("Plain summary", "Plain summary"),
     ],
 )
@@ -16,7 +16,11 @@ def test_content_short_summary(summary, expected):
     content = Content(
         content_type="article",
         url="https://example.com",
-        content_metadata={"summary": summary},
+        content_metadata={
+            "summary": summary,
+            "summary_kind": "long_interleaved",
+            "summary_version": 2,
+        },
     )
 
     assert content.short_summary == expected

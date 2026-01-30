@@ -32,8 +32,16 @@ def test_tweet_suggestions_success(client: TestClient, db_session: Session) -> N
                     "This is an overview that is long enough to pass validation "
                     "requirements for the structured summary."
                 ),
-                "bullet_points": [],
+                "bullet_points": [
+                    {"text": "Key point one", "category": "key_finding"},
+                    {"text": "Key point two", "category": "methodology"},
+                    {"text": "Key point three", "category": "conclusion"},
+                ],
+                "quotes": [],
+                "topics": ["Testing"],
             },
+            "summary_kind": "long_structured",
+            "summary_version": 1,
         },
     )
     db_session.add(article)
@@ -82,9 +90,17 @@ def test_tweet_suggestions_with_message(client: TestClient, db_session: Session)
         content_metadata={
             "summary": {
                 "title": "Article Title",
-                "overview": "Overview",
-                "bullet_points": [],
+                "overview": "This is an overview that is long enough for validation.",
+                "bullet_points": [
+                    {"text": "Key point one", "category": "key_finding"},
+                    {"text": "Key point two", "category": "methodology"},
+                    {"text": "Key point three", "category": "conclusion"},
+                ],
+                "quotes": [],
+                "topics": ["Testing"],
             },
+            "summary_kind": "long_structured",
+            "summary_version": 1,
         },
     )
     db_session.add(article)
@@ -166,9 +182,17 @@ def test_tweet_suggestions_podcast_supported(client: TestClient, db_session: Ses
         content_metadata={
             "summary": {
                 "title": "Podcast Episode",
-                "overview": "Summary of the podcast episode.",
-                "bullet_points": [],
-            }
+                "overview": "Summary of the podcast episode that is long enough for validation.",
+                "bullet_points": [
+                    {"text": "Key point one", "category": "key_finding"},
+                    {"text": "Key point two", "category": "methodology"},
+                    {"text": "Key point three", "category": "conclusion"},
+                ],
+                "quotes": [],
+                "topics": ["Testing"],
+            },
+            "summary_kind": "long_structured",
+            "summary_version": 1,
         },
     )
     db_session.add(podcast)
@@ -238,9 +262,17 @@ def test_tweet_suggestions_llm_failure(client: TestClient, db_session: Session) 
         content_metadata={
             "summary": {
                 "title": "Article Title",
-                "overview": "Overview",
-                "bullet_points": [],
+                "overview": "Overview that is long enough for validation.",
+                "bullet_points": [
+                    {"text": "Key point one", "category": "key_finding"},
+                    {"text": "Key point two", "category": "methodology"},
+                    {"text": "Key point three", "category": "conclusion"},
+                ],
+                "quotes": [],
+                "topics": ["Testing"],
             },
+            "summary_kind": "long_structured",
+            "summary_version": 1,
         },
     )
     db_session.add(article)
@@ -279,6 +311,8 @@ def test_tweet_suggestions_news_content(client: TestClient, db_session: Session)
                 "summary": "Overview of the news",
                 "key_points": ["Point 1"],
             },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
         },
     )
     db_session.add(news)
@@ -321,9 +355,17 @@ def test_tweet_suggestions_default_creativity(client: TestClient, db_session: Se
         content_metadata={
             "summary": {
                 "title": "Article Title",
-                "overview": "Overview",
-                "bullet_points": [],
+                "overview": "Overview that is long enough for validation.",
+                "bullet_points": [
+                    {"text": "Key point one", "category": "key_finding"},
+                    {"text": "Key point two", "category": "methodology"},
+                    {"text": "Key point three", "category": "conclusion"},
+                ],
+                "quotes": [],
+                "topics": ["Testing"],
             },
+            "summary_kind": "long_structured",
+            "summary_version": 1,
         },
     )
     db_session.add(article)

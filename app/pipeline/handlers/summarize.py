@@ -5,8 +5,21 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from app.constants import (
+    SUMMARY_KIND_LONG_INTERLEAVED,
+    SUMMARY_KIND_LONG_STRUCTURED,
+    SUMMARY_KIND_SHORT_NEWS_DIGEST,
+    SUMMARY_VERSION_V1,
+    SUMMARY_VERSION_V2,
+)
 from app.core.logging import get_logger
-from app.models.metadata import ContentStatus, ContentType, NewsSummary
+from app.models.metadata import (
+    ContentStatus,
+    ContentType,
+    InterleavedSummary,
+    InterleavedSummaryV2,
+    NewsSummary,
+)
 from app.models.schema import Content
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
@@ -252,6 +265,7 @@ class SummarizeHandler:
                     max_quotes = 0
                 elif content.content_type in ("article", "podcast"):
                     summarization_type = "interleaved"
+                    max_bullet_points = 5
 
                 logger.info(
                     "Calling LLM for content %s: provider=%s, type=%s, "
@@ -306,6 +320,22 @@ class SummarizeHandler:
                         if hasattr(summary, "model_dump")
                         else summary
                     )
+
+                    if isinstance(summary, NewsSummary):
+                        summary_kind = SUMMARY_KIND_SHORT_NEWS_DIGEST
+                        summary_version = SUMMARY_VERSION_V1
+                    elif isinstance(summary, InterleavedSummaryV2):
+                        summary_kind = SUMMARY_KIND_LONG_INTERLEAVED
+                        summary_version = SUMMARY_VERSION_V2
+                    elif isinstance(summary, InterleavedSummary):
+                        summary_kind = SUMMARY_KIND_LONG_INTERLEAVED
+                        summary_version = SUMMARY_VERSION_V1
+                    else:
+                        summary_kind = SUMMARY_KIND_LONG_STRUCTURED
+                        summary_version = SUMMARY_VERSION_V1
+
+                    metadata["summary_kind"] = summary_kind
+                    metadata["summary_version"] = summary_version
 
                     if isinstance(summary, NewsSummary):
                         summary_dict.setdefault("classification", summary.classification)
