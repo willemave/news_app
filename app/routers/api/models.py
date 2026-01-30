@@ -629,13 +629,26 @@ class OnboardingProfileRequest(BaseModel):
     """Request to build a profile for onboarding personalization."""
 
     first_name: str = Field(..., min_length=1, max_length=120)
-    twitter_handle: str | None = Field(None, max_length=64)
-    linkedin_handle: str | None = Field(None, max_length=120)
+    interest_topics: list[str] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="after")
-    def validate_handles(self) -> "OnboardingProfileRequest":
-        if not (self.twitter_handle or self.linkedin_handle):
-            raise ValueError("twitter_handle or linkedin_handle is required")
+    def validate_interest_topics(self) -> "OnboardingProfileRequest":
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for topic in self.interest_topics:
+            if not isinstance(topic, str):
+                continue
+            normalized = topic.strip().strip(".,;:")
+            if not normalized:
+                continue
+            key = normalized.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(normalized)
+        if not cleaned:
+            raise ValueError("interest_topics is required")
+        self.interest_topics = cleaned
         return self
 
 
@@ -645,6 +658,30 @@ class OnboardingProfileResponse(BaseModel):
     profile_summary: str
     inferred_topics: list[str] = Field(default_factory=list)
     candidate_sources: list[str] = Field(default_factory=list)
+
+
+class OnboardingVoiceParseRequest(BaseModel):
+    """Request to parse onboarding voice transcript into fields."""
+
+    transcript: str = Field(..., min_length=3, max_length=6000)
+    locale: str | None = Field(None, max_length=20)
+
+
+class OnboardingVoiceParseResponse(BaseModel):
+    """Parsed onboarding voice fields."""
+
+    first_name: str | None = None
+    interest_topics: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    missing_fields: list[str] = Field(default_factory=list)
+
+
+class RealtimeTokenResponse(BaseModel):
+    """Ephemeral token for OpenAI Realtime sessions."""
+
+    token: str
+    expires_at: int | None = None
+    model: str | None = None
 
 
 class OnboardingSuggestion(BaseModel):

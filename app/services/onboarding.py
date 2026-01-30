@@ -22,6 +22,8 @@ from app.routers.api.models import (
     OnboardingProfileResponse,
     OnboardingSelectedSource,
     OnboardingSuggestion,
+    OnboardingVoiceParseRequest,
+    OnboardingVoiceParseResponse,
 )
 from app.scraping.atom_unified import load_atom_feeds
 from app.scraping.substack_unified import load_substack_feeds
@@ -35,9 +37,11 @@ logger = get_logger(__name__)
 
 PROFILE_MODEL = "anthropic:claude-haiku-4-5-20251001"
 FAST_DISCOVER_MODEL = "anthropic:claude-haiku-4-5-20251001"
+VOICE_PARSE_MODEL = "anthropic:claude-haiku-4-5-20251001"
 
 PROFILE_TIMEOUT_SECONDS = 8
 FAST_DISCOVER_TIMEOUT_SECONDS = 12
+VOICE_PARSE_TIMEOUT_SECONDS = 6
 ENRICH_TIMEOUT_SECONDS = 25
 
 FAST_DISCOVER_MAX_QUERIES = 6
@@ -61,7 +65,9 @@ SCRAPER_SOURCE_BY_TYPE = {
 
 PROFILE_SYSTEM_PROMPT = (
     "You are building a short onboarding profile for a user. "
-    "Use the provided web snippets to infer a concise profile summary and 3-6 topical interests. "
+    "Use the provided interests and web snippets to infer a concise profile summary "
+    "and 3-6 topical interests. "
+    "Do not invent interests that contradict the user-provided topics. "
     "Return structured output only."
 )
 
@@ -69,6 +75,13 @@ FAST_DISCOVER_SYSTEM_PROMPT = (
     "You are selecting high-quality sources for a new user. "
     "Use the profile summary, topics, and search snippets to suggest Substack feeds, "
     "podcast RSS feeds, and relevant subreddits. Prefer sources with clear RSS URLs when possible. "
+    "Return structured output only."
+)
+
+VOICE_PARSE_SYSTEM_PROMPT = (
+    "You extract onboarding fields from a transcript. "
+    "Return a first name if explicitly stated and a concise list of interest topics. "
+    "Do not guess missing information. "
     "Return structured output only."
 )
 
@@ -100,8 +113,16 @@ class _DiscoverOutput(BaseModel):
     subreddits: list[_DiscoverSuggestion] = Field(default_factory=list)
 
 
+class _VoiceParseOutput(BaseModel):
+    """LLM output for onboarding voice parsing."""
+
+    first_name: str | None = None
+    interest_topics: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
 def build_onboarding_profile(request: OnboardingProfileRequest) -> OnboardingProfileResponse:
-    """Build a quick profile from name + social handle using Exa + LLM.
+    """Build a quick profile from name + interest topics using Exa + LLM.
 
     Args:
         request: OnboardingProfileRequest payload.
@@ -110,13 +131,15 @@ def build_onboarding_profile(request: OnboardingProfileRequest) -> OnboardingPro
         OnboardingProfileResponse with summary and inferred topics.
     """
     queries = _build_profile_queries(request)
-    results = _run_exa_queries(queries, num_results=FAST_DISCOVER_EXA_RESULTS, include_social=True)
+    results = _run_exa_queries(queries, num_results=FAST_DISCOVER_EXA_RESULTS, include_social=False)
 
     if not results:
-        fallback_summary = f"{request.first_name}"
+        fallback_summary = _build_profile_fallback_summary(
+            request.first_name, request.interest_topics
+        )
         return OnboardingProfileResponse(
             profile_summary=fallback_summary,
-            inferred_topics=[],
+            inferred_topics=_merge_topics(request.interest_topics),
             candidate_sources=[],
         )
 
@@ -125,9 +148,10 @@ def build_onboarding_profile(request: OnboardingProfileRequest) -> OnboardingPro
         agent = get_basic_agent(PROFILE_MODEL, _ProfileOutput, PROFILE_SYSTEM_PROMPT)
         result = agent.run_sync(prompt, model_settings={"timeout": PROFILE_TIMEOUT_SECONDS})
         output = result.data
+        merged_topics = _merge_topics(output.inferred_topics, request.interest_topics)
         return OnboardingProfileResponse(
             profile_summary=output.profile_summary,
-            inferred_topics=output.inferred_topics,
+            inferred_topics=merged_topics,
             candidate_sources=output.candidate_sources,
         )
     except Exception as exc:  # noqa: BLE001
@@ -139,12 +163,69 @@ def build_onboarding_profile(request: OnboardingProfileRequest) -> OnboardingPro
                 "context_data": {"error": str(exc)},
             },
         )
-        fallback_summary = f"{request.first_name}"
+        fallback_summary = _build_profile_fallback_summary(
+            request.first_name, request.interest_topics
+        )
         return OnboardingProfileResponse(
             profile_summary=fallback_summary,
-            inferred_topics=[],
+            inferred_topics=_merge_topics(request.interest_topics),
             candidate_sources=[],
         )
+
+
+def parse_onboarding_voice(request: OnboardingVoiceParseRequest) -> OnboardingVoiceParseResponse:
+    """Parse a voice transcript into onboarding fields.
+
+    Args:
+        request: OnboardingVoiceParseRequest payload.
+
+    Returns:
+        OnboardingVoiceParseResponse with extracted fields.
+    """
+    transcript = request.transcript.strip()
+    if not transcript:
+        return OnboardingVoiceParseResponse(
+            first_name=None,
+            interest_topics=[],
+            confidence=0,
+            missing_fields=["first_name", "interest_topics"],
+        )
+
+    try:
+        prompt = _format_voice_parse_prompt(transcript, request.locale)
+        agent = get_basic_agent(VOICE_PARSE_MODEL, _VoiceParseOutput, VOICE_PARSE_SYSTEM_PROMPT)
+        result = agent.run_sync(prompt, model_settings={"timeout": VOICE_PARSE_TIMEOUT_SECONDS})
+        output = result.data
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Onboarding voice parse failed",
+            extra={
+                "component": "onboarding",
+                "operation": "voice_parse",
+                "context_data": {"error": str(exc)},
+            },
+        )
+        return OnboardingVoiceParseResponse(
+            first_name=None,
+            interest_topics=[],
+            confidence=0,
+            missing_fields=["first_name", "interest_topics"],
+        )
+
+    first_name = (output.first_name or "").strip() or None
+    topics = _merge_topics(output.interest_topics)
+    missing_fields: list[str] = []
+    if not first_name:
+        missing_fields.append("first_name")
+    if not topics:
+        missing_fields.append("interest_topics")
+
+    return OnboardingVoiceParseResponse(
+        first_name=first_name,
+        interest_topics=topics,
+        confidence=output.confidence,
+        missing_fields=missing_fields,
+    )
 
 
 def fast_discover(request: OnboardingFastDiscoverRequest) -> OnboardingFastDiscoverResponse:
@@ -353,16 +434,17 @@ def mark_tutorial_complete(db: Session, user_id: int) -> bool:
 
 
 def _build_profile_queries(request: OnboardingProfileRequest) -> list[str]:
-    name = request.first_name.strip()
-    handle = (request.twitter_handle or request.linkedin_handle or "").strip()
-    handle = handle.lstrip("@")
-
-    queries = []
-    if handle:
-        queries.append(f"{name} {handle} bio")
-        queries.append(f"{handle} newsletter podcast")
-    queries.append(f"{name} writer newsletter")
-    return queries[:3]
+    topics = _merge_topics(request.interest_topics)
+    queries: list[str] = []
+    for topic in topics:
+        queries.append(f"{topic} newsletter")
+        queries.append(f"{topic} podcast")
+        queries.append(f"{topic} substack")
+        if len(queries) >= 4:
+            break
+    if not queries:
+        queries.append(f"{request.first_name} newsletter")
+    return queries[:4]
 
 
 def _build_discovery_queries(
@@ -410,14 +492,50 @@ def _format_profile_prompt(
 ) -> str:
     lines = [
         f"first_name: {request.first_name}",
-        f"twitter_handle: {request.twitter_handle or ''}",
-        f"linkedin_handle: {request.linkedin_handle or ''}",
+        f"interest_topics: {', '.join(request.interest_topics)}",
         "",
         "web_results:",
     ]
     for idx, item in enumerate(results[:10], start=1):
         lines.append(f"{idx}. {item.title}\nurl: {item.url}\nsummary: {item.snippet or ''}")
     return "\n".join(lines)
+
+
+def _format_voice_parse_prompt(transcript: str, locale: str | None) -> str:
+    locale_value = locale or "unknown"
+    return (
+        "Extract the user's first name (if stated) and the topics of news they want to read. "
+        "Return concise topic phrases (2-5 words) and avoid guessing. "
+        f"locale: {locale_value}\n"
+        f"transcript: {transcript}"
+    )
+
+
+def _merge_topics(*topic_lists: Iterable[str], max_topics: int = 8) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for topics in topic_lists:
+        for topic in topics:
+            if not isinstance(topic, str):
+                continue
+            normalized = topic.strip().strip(".,;:")
+            if not normalized:
+                continue
+            key = normalized.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(normalized)
+            if len(merged) >= max_topics:
+                return merged
+    return merged
+
+
+def _build_profile_fallback_summary(first_name: str, topics: list[str]) -> str:
+    cleaned_topics = _merge_topics(topics, max_topics=3)
+    if cleaned_topics:
+        return f"{first_name} interested in {', '.join(cleaned_topics)}"
+    return first_name
 
 
 def _format_discovery_prompt(

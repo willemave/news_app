@@ -16,12 +16,15 @@ from app.routers.api.models import (
     OnboardingProfileRequest,
     OnboardingProfileResponse,
     OnboardingTutorialResponse,
+    OnboardingVoiceParseRequest,
+    OnboardingVoiceParseResponse,
 )
 from app.services.onboarding import (
     build_onboarding_profile,
     complete_onboarding,
     fast_discover,
     mark_tutorial_complete,
+    parse_onboarding_voice,
 )
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
@@ -39,6 +42,20 @@ async def build_profile(
     """Build onboarding profile summary."""
     _ = current_user
     return build_onboarding_profile(payload)
+
+
+@router.post(
+    "/parse-voice",
+    response_model=OnboardingVoiceParseResponse,
+    summary="Parse onboarding voice transcript",
+)
+async def parse_voice(
+    payload: OnboardingVoiceParseRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> OnboardingVoiceParseResponse:
+    """Parse onboarding transcript into profile fields."""
+    _ = current_user
+    return parse_onboarding_voice(payload)
 
 
 @router.post(

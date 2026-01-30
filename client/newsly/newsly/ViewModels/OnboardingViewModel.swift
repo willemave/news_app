@@ -16,12 +16,19 @@ enum OnboardingStep: Int {
     case done
 }
 
+enum OnboardingSpeechState: Equatable {
+    case idle
+    case recording
+    case processing
+    case review
+    case error
+}
+
 @MainActor
 final class OnboardingViewModel: ObservableObject {
     @Published var step: OnboardingStep = .intro
     @Published var firstName: String = ""
-    @Published var twitterHandle: String = ""
-    @Published var linkedinHandle: String = ""
+    @Published var interestTopicsText: String = ""
     @Published var profileSummary: String?
     @Published var inferredTopics: [String] = []
     @Published var suggestions: OnboardingFastDiscoverResponse?
@@ -34,22 +41,27 @@ final class OnboardingViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var completionResponse: OnboardingCompleteResponse?
     @Published var isPersonalized = false
+    @Published var speechState: OnboardingSpeechState = .idle
+    @Published var speechTranscript: String = ""
+    @Published var speechDurationSeconds: Int = 0
+    @Published var isUsingTextFallback = false
 
     private let service = OnboardingService.shared
+    private let transcriptionService = RealtimeTranscriptionService()
     private let user: User
+    private var speechTimer: Timer?
 
     init(user: User) {
         self.user = user
         if let fullName = user.fullName?.split(separator: " ").first {
             firstName = String(fullName)
         }
+        configureTranscriptionCallbacks()
     }
 
     var canSubmitProfile: Bool {
         guard !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        let twitter = twitterHandle.trimmingCharacters(in: .whitespacesAndNewlines)
-        let linkedin = linkedinHandle.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !twitter.isEmpty || !linkedin.isEmpty
+        return !normalizedInterestTopics.isEmpty
     }
 
     var substackSuggestions: [OnboardingSuggestion] {
@@ -76,11 +88,12 @@ final class OnboardingViewModel: ObservableObject {
     func startPersonalized() {
         isPersonalized = true
         step = .profile
+        resetSpeechCapture()
     }
 
     func buildProfileAndDiscover() async {
         guard canSubmitProfile else {
-            errorMessage = "Add a first name and at least one handle."
+            errorMessage = "Add a first name and at least one topic."
             return
         }
 
@@ -92,8 +105,7 @@ final class OnboardingViewModel: ObservableObject {
         do {
             let request = OnboardingProfileRequest(
                 firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                twitterHandle: normalizedHandle(twitterHandle),
-                linkedinHandle: normalizedHandle(linkedinHandle)
+                interestTopics: normalizedInterestTopics
             )
             let profile = try await service.buildProfile(request: request)
             profileSummary = profile.profileSummary
@@ -199,12 +211,126 @@ final class OnboardingViewModel: ObservableObject {
         selectedSubreddits = Set(subredditKeys)
     }
 
-    private func normalizedHandle(_ input: String) -> String? {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        if trimmed.hasPrefix("@") {
-            return String(trimmed.dropFirst())
+    private var normalizedInterestTopics: [String] {
+        let rawPieces = interestTopicsText
+            .split(whereSeparator: { $0 == "," || $0 == "\n" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        var seen: Set<String> = []
+        var cleaned: [String] = []
+        for topic in rawPieces {
+            let normalized = topic.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty else { continue }
+            let key = normalized.lowercased()
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            cleaned.append(normalized)
         }
-        return trimmed
+        return cleaned
     }
+
+    func startSpeechCapture() async {
+        errorMessage = nil
+        speechTranscript = ""
+        speechState = .recording
+        isUsingTextFallback = false
+        startSpeechTimer()
+
+        do {
+            try await transcriptionService.start()
+        } catch {
+            handleSpeechError(error)
+        }
+    }
+
+    func stopSpeechCaptureAndParse() async {
+        speechState = .processing
+        stopSpeechTimer()
+        let transcript = await transcriptionService.stop()
+        await parseTranscript(transcript)
+    }
+
+    func useTextFallback() {
+        isUsingTextFallback = true
+        speechState = .review
+        stopSpeechTimer()
+    }
+
+    func resetSpeechCapture() {
+        transcriptionService.reset()
+        speechTranscript = ""
+        speechState = .idle
+        speechDurationSeconds = 0
+        isUsingTextFallback = false
+    }
+
+    private func parseTranscript(_ transcript: String) async {
+        let cleanedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedTranscript.isEmpty else {
+            errorMessage = "We didn’t catch that. Try again or use text input."
+            speechState = .review
+            return
+        }
+
+        do {
+            let request = OnboardingVoiceParseRequest(
+                transcript: cleanedTranscript,
+                locale: Locale.current.identifier
+            )
+            let response = try await service.parseVoice(request: request)
+            if let parsedName = response.firstName, !parsedName.isEmpty {
+                firstName = parsedName
+            }
+            if !response.interestTopics.isEmpty {
+                interestTopicsText = response.interestTopics.joined(separator: ", ")
+            }
+            if !response.missingFields.isEmpty {
+                errorMessage = "Add your name and at least one topic."
+            }
+            speechState = .review
+        } catch {
+            errorMessage = error.localizedDescription
+            speechState = .review
+        }
+    }
+
+    private func configureTranscriptionCallbacks() {
+        transcriptionService.onTranscriptDelta = { [weak self] delta in
+            Task { @MainActor in
+                self?.speechTranscript.append(delta)
+            }
+        }
+        transcriptionService.onTranscriptFinal = { [weak self] transcript in
+            Task { @MainActor in
+                self?.speechTranscript = transcript
+            }
+        }
+        transcriptionService.onError = { [weak self] message in
+            Task { @MainActor in
+                self?.errorMessage = message
+                self?.speechState = .error
+                self?.stopSpeechTimer()
+            }
+        }
+    }
+
+    private func handleSpeechError(_ error: Error) {
+        errorMessage = error.localizedDescription
+        speechState = .review
+        isUsingTextFallback = true
+        stopSpeechTimer()
+    }
+
+    private func startSpeechTimer() {
+        speechTimer?.invalidate()
+        speechDurationSeconds = 0
+        speechTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.speechDurationSeconds += 1
+        }
+    }
+
+    private func stopSpeechTimer() {
+        speechTimer?.invalidate()
+        speechTimer = nil
+    }
+}
 }

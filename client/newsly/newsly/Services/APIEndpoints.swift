@@ -66,6 +66,10 @@ enum APIEndpoints {
     static let onboardingFastDiscover = "/api/onboarding/fast-discover"
     static let onboardingComplete = "/api/onboarding/complete"
     static let onboardingTutorialComplete = "/api/onboarding/tutorial-complete"
+    static let onboardingParseVoice = "/api/onboarding/parse-voice"
+
+    // MARK: - OpenAI Endpoints
+    static let openaiRealtimeToken = "/api/openai/realtime/token"
 
     // MARK: - Chat Endpoints
     static let chatSessions = "/api/content/chat/sessions"

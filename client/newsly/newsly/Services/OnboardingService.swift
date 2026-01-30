@@ -40,6 +40,15 @@ final class OnboardingService {
         )
     }
 
+    func parseVoice(request: OnboardingVoiceParseRequest) async throws -> OnboardingVoiceParseResponse {
+        let body = try JSONEncoder().encode(request)
+        return try await client.request(
+            APIEndpoints.onboardingParseVoice,
+            method: "POST",
+            body: body
+        )
+    }
+
     func markTutorialComplete() async throws -> OnboardingTutorialResponse {
         try await client.request(
             APIEndpoints.onboardingTutorialComplete,

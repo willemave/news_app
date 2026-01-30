@@ -98,38 +98,25 @@ struct OnboardingFlowView: View {
     private var profileView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Build your profile")
+                Text("Tell us what you read")
                     .font(.title.bold())
-                Text("We’ll search the web using your name and a Twitter or LinkedIn handle to find great sources.")
+                Text("Speak your name and the kinds of news you want. We’ll build your feed from that.")
                     .foregroundColor(.secondary)
 
-                TextField("First name", text: $viewModel.firstName)
-                    .textFieldStyle(.roundedBorder)
-
-                TextField("Twitter handle (optional)", text: $viewModel.twitterHandle)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-
-                TextField("LinkedIn handle (optional)", text: $viewModel.linkedinHandle)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-
-                Text("Provide at least one handle to personalize.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-
-                Button("Find sources") {
-                    Task { await viewModel.buildProfileAndDiscover() }
+                if viewModel.isUsingTextFallback {
+                    profileFieldsView
+                } else {
+                    switch viewModel.speechState {
+                    case .idle:
+                        speechIntroCard
+                    case .recording:
+                        speechRecordingView
+                    case .processing:
+                        speechProcessingView
+                    case .review, .error:
+                        profileFieldsView
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.canSubmitProfile || viewModel.isLoading)
-
-                Button("Use defaults instead") {
-                    viewModel.chooseDefaults()
-                }
-                .buttonStyle(.bordered)
 
                 if let error = viewModel.errorMessage {
                     Text(error)
@@ -139,6 +126,120 @@ struct OnboardingFlowView: View {
             }
             .padding(32)
         }
+    }
+
+    private var profileFieldsView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("First name", text: $viewModel.firstName)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Interest topics (comma-separated)", text: $viewModel.interestTopicsText, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+
+            Text("Add at least one topic to personalize.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+
+            Button("Find sources") {
+                Task { await viewModel.buildProfileAndDiscover() }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canSubmitProfile || viewModel.isLoading)
+
+            HStack(spacing: 12) {
+                Button("Record again") {
+                    viewModel.resetSpeechCapture()
+                    Task { await viewModel.startSpeechCapture() }
+                }
+                .buttonStyle(.bordered)
+
+                Button("Use defaults instead") {
+                    viewModel.chooseDefaults()
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private var speechIntroCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Tell us about yourself")
+                        .font(.headline)
+                    Text("Say your name and what kinds of news you want.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+
+            Button("Start recording") {
+                Task { await viewModel.startSpeechCapture() }
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button("Use text input") {
+                viewModel.useTextFallback()
+            }
+            .buttonStyle(.bordered)
+
+            Button("Use defaults instead") {
+                viewModel.chooseDefaults()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(16)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var speechRecordingView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "waveform")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.red)
+                Text("Listening • \(formattedSpeechDuration)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+
+            TextEditor(text: $viewModel.speechTranscript)
+                .frame(minHeight: 120)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.secondary.opacity(0.4)))
+
+            Text("You can edit the transcript while you speak.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+
+            Button("Stop and use this") {
+                Task { await viewModel.stopSpeechCaptureAndParse() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var speechProcessingView: some View {
+        HStack(spacing: 12) {
+            ProgressView()
+            Text("Turning that into your profile...")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var formattedSpeechDuration: String {
+        let minutes = viewModel.speechDurationSeconds / 60
+        let seconds = viewModel.speechDurationSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 
     private var suggestionsView: some View {

@@ -33,7 +33,8 @@ Single explainer screen post‑login.
 - Options: **Personalize my feed** / **Use defaults**
 
 ### Screen 2 — Profile Inputs (personalized path)
-- Fields: `first_name` + `twitter_handle` OR `linkedin_handle` (one required)
+- Speech-first capture with live transcript.
+- Extracted fields: `first_name` + `interest_topics` (at least one topic required).
 - CTA: Build my profile
 - Interstitial: “Building your profile…”
 
@@ -108,8 +109,7 @@ Request:
 ```json
 {
   "first_name": "Ada",
-  "twitter_handle": "@ada",
-  "linkedin_handle": null
+  "interest_topics": ["AI policy", "climate tech"]
 }
 ```
 

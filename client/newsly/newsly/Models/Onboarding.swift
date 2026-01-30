@@ -9,13 +9,11 @@ import Foundation
 
 struct OnboardingProfileRequest: Codable {
     let firstName: String
-    let twitterHandle: String?
-    let linkedinHandle: String?
+    let interestTopics: [String]
 
     enum CodingKeys: String, CodingKey {
         case firstName = "first_name"
-        case twitterHandle = "twitter_handle"
-        case linkedinHandle = "linkedin_handle"
+        case interestTopics = "interest_topics"
     }
 }
 
@@ -28,6 +26,25 @@ struct OnboardingProfileResponse: Codable {
         case profileSummary = "profile_summary"
         case inferredTopics = "inferred_topics"
         case candidateSources = "candidate_sources"
+    }
+}
+
+struct OnboardingVoiceParseRequest: Codable {
+    let transcript: String
+    let locale: String?
+}
+
+struct OnboardingVoiceParseResponse: Codable {
+    let firstName: String?
+    let interestTopics: [String]
+    let confidence: Double?
+    let missingFields: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case firstName = "first_name"
+        case interestTopics = "interest_topics"
+        case confidence
+        case missingFields = "missing_fields"
     }
 }
 

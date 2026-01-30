@@ -72,3 +72,49 @@ def test_onboarding_fast_discover_defaults(client):
     assert "recommended_substacks" in data
     assert "recommended_pods" in data
     assert "recommended_subreddits" in data
+
+
+def test_onboarding_profile_requires_interests(client, monkeypatch):
+    def fake_build_profile(_payload):
+        return {
+            "profile_summary": "Summary",
+            "inferred_topics": ["AI"],
+            "candidate_sources": [],
+        }
+
+    monkeypatch.setattr("app.routers.api.onboarding.build_onboarding_profile", fake_build_profile)
+
+    response = client.post(
+        "/api/onboarding/profile",
+        json={"first_name": "Ada", "interest_topics": []},
+    )
+    assert response.status_code == 422
+
+
+def test_onboarding_parse_voice(client, monkeypatch):
+    from types import SimpleNamespace
+
+    def fake_get_basic_agent(_model, output_cls, _system_prompt):
+        class FakeAgent:
+            def run_sync(self, _prompt, model_settings=None):
+                return SimpleNamespace(
+                    data=output_cls(
+                        first_name="Ada",
+                        interest_topics=["AI", "AI", " climate tech "],
+                        confidence=0.92,
+                    )
+                )
+
+        return FakeAgent()
+
+    monkeypatch.setattr("app.services.onboarding.get_basic_agent", fake_get_basic_agent)
+
+    response = client.post(
+        "/api/onboarding/parse-voice",
+        json={"transcript": "I'm Ada and I like AI and climate tech."},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["first_name"] == "Ada"
+    assert data["interest_topics"] == ["AI", "climate tech"]
+    assert data["missing_fields"] == []
