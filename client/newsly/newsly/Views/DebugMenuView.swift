@@ -11,6 +11,7 @@ struct DebugMenuView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authViewModel: AuthenticationViewModel
     @ObservedObject private var appSettings = AppSettings.shared
+    private let onboardingStateStore = OnboardingStateStore.shared
     @State private var showingTokenInput = false
     @State private var accessToken = ""
     @State private var refreshToken = ""
@@ -98,6 +99,11 @@ struct DebugMenuView: View {
                     Button("Use Backend Test Token") {
                         useBackendTestToken()
                     }
+
+                    Button("Force Onboarding") {
+                        forceOnboarding()
+                    }
+                    .disabled(currentUser == nil)
 
                     Button("Clear All Tokens") {
                         clearTokens()
@@ -188,6 +194,13 @@ struct DebugMenuView: View {
         }
     }
 
+    private var currentUser: User? {
+        if case .authenticated(let user) = authViewModel.authState {
+            return user
+        }
+        return nil
+    }
+
     private func signInWithStoredToken() {
         guard KeychainManager.shared.getToken(key: .accessToken) != nil else {
             alertMessage = "No access token found in keychain"
@@ -270,6 +283,19 @@ struct DebugMenuView: View {
 
         Then use "Manually Set Tokens" to paste the token.
         """
+        showingAlert = true
+    }
+
+    private func forceOnboarding() {
+        guard let user = currentUser else {
+            alertMessage = "Sign in before forcing onboarding"
+            showingAlert = true
+            return
+        }
+
+        onboardingStateStore.setPending(userId: user.id)
+        authViewModel.lastSignInWasNewUser = true
+        alertMessage = "Onboarding will start on next screen"
         showingAlert = true
     }
 
