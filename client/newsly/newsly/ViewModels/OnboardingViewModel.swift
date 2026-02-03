@@ -10,58 +10,59 @@ import Foundation
 enum OnboardingStep: Int {
     case intro
     case choice
-    case profile
+    case audio
+    case loading
     case suggestions
-    case subreddits
     case done
 }
 
-enum OnboardingSpeechState: Equatable {
+enum OnboardingAudioState: Equatable {
     case idle
     case recording
-    case processing
-    case review
+    case transcribing
     case error
 }
 
 @MainActor
 final class OnboardingViewModel: ObservableObject {
     @Published var step: OnboardingStep = .intro
-    @Published var firstName: String = ""
-    @Published var interestTopicsText: String = ""
-    @Published var profileSummary: String?
-    @Published var inferredTopics: [String] = []
     @Published var suggestions: OnboardingFastDiscoverResponse?
     @Published var selectedSourceKeys: Set<String> = []
     @Published var selectedSubreddits: Set<String> = []
-    @Published var manualSubreddits: [String] = []
-    @Published var customSubredditInput: String = ""
     @Published var isLoading = false
     @Published var loadingMessage = ""
     @Published var errorMessage: String?
     @Published var completionResponse: OnboardingCompleteResponse?
     @Published var isPersonalized = false
-    @Published var speechState: OnboardingSpeechState = .idle
-    @Published var speechTranscript: String = ""
-    @Published var speechDurationSeconds: Int = 0
-    @Published var isUsingTextFallback = false
+
+    @Published var audioState: OnboardingAudioState = .idle
+    @Published var audioDurationSeconds: Int = 0
+    @Published var hasMicPermissionDenied = false
+    @Published var hasDictationError = false
+
+    @Published var discoveryLanes: [OnboardingDiscoveryLaneStatus] = []
+    @Published var discoveryRunId: Int?
+    @Published var discoveryRunStatus: String?
+    @Published var discoveryErrorMessage: String?
+    @Published var topicSummary: String?
+    @Published var inferredTopics: [String] = []
 
     private let service = OnboardingService.shared
-    private let transcriptionService = RealtimeTranscriptionService()
+    private let dictationService = VoiceDictationService.shared
+    private let onboardingStateStore = OnboardingStateStore.shared
     private let user: User
-    private var speechTimer: Timer?
+    private var audioTimer: Timer?
+    private var pollingTask: Task<Void, Never>?
+    private var didAutoStartRecording = false
+    private var didAttemptResume = false
 
     init(user: User) {
         self.user = user
-        if let fullName = user.fullName?.split(separator: " ").first {
-            firstName = String(fullName)
-        }
-        configureTranscriptionCallbacks()
     }
 
-    var canSubmitProfile: Bool {
-        guard !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return !normalizedInterestTopics.isEmpty
+    deinit {
+        pollingTask?.cancel()
+        audioTimer?.invalidate()
     }
 
     var substackSuggestions: [OnboardingSuggestion] {
@@ -82,50 +83,68 @@ final class OnboardingViewModel: ObservableObject {
 
     func chooseDefaults() {
         isPersonalized = false
-        step = .subreddits
+        stopAudioCapture()
+        clearDiscoveryState()
+        Task { await completeOnboarding() }
     }
 
     func startPersonalized() {
         isPersonalized = true
-        step = .profile
-        resetSpeechCapture()
+        step = .audio
+        resetAudioState()
     }
 
-    func buildProfileAndDiscover() async {
-        guard canSubmitProfile else {
-            errorMessage = "Add a first name and at least one topic."
-            return
-        }
+    func resumeDiscoveryIfNeeded() async {
+        guard !didAttemptResume else { return }
+        didAttemptResume = true
 
+        guard let runId = onboardingStateStore.discoveryRunId(userId: user.id) else { return }
+        discoveryRunId = runId
+        step = .loading
+        await refreshDiscoveryStatus(runId: runId)
+        startPolling(runId: runId)
+    }
+
+    func startAudioCaptureIfNeeded() async {
+        guard !didAutoStartRecording else { return }
+        didAutoStartRecording = true
+        await startAudioCapture()
+    }
+
+    func startAudioCapture() async {
         errorMessage = nil
-        isLoading = true
-        loadingMessage = "Building your profile"
-        defer { isLoading = false }
+        hasMicPermissionDenied = false
+        hasDictationError = false
+        audioState = .recording
+        startAudioTimer()
 
         do {
-            let request = OnboardingProfileRequest(
-                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                interestTopics: normalizedInterestTopics
-            )
-            let profile = try await service.buildProfile(request: request)
-            profileSummary = profile.profileSummary
-            inferredTopics = profile.inferredTopics
-
-            loadingMessage = "Finding podcasts and newsletters"
-            let discoverRequest = OnboardingFastDiscoverRequest(
-                profileSummary: profile.profileSummary,
-                inferredTopics: profile.inferredTopics
-            )
-            let response = try await service.fastDiscover(request: discoverRequest)
-            applySuggestions(response)
-            step = .suggestions
+            try await dictationService.start()
         } catch {
-            errorMessage = error.localizedDescription
+            handleAudioError(error)
         }
     }
 
-    func proceedToSubreddits() {
-        step = .subreddits
+    func stopAudioCaptureAndDiscover() async {
+        audioState = .transcribing
+        stopAudioTimer()
+        do {
+            let transcript = try await dictationService.stop()
+            await beginDiscovery(transcript: transcript)
+        } catch {
+            handleAudioError(error)
+        }
+    }
+
+    func resetAudioState() {
+        dictationService.cancel()
+        audioState = .idle
+        audioDurationSeconds = 0
+        hasMicPermissionDenied = false
+        hasDictationError = false
+        errorMessage = nil
+        didAutoStartRecording = false
+        stopAudioTimer()
     }
 
     func toggleSource(_ suggestion: OnboardingSuggestion) {
@@ -146,26 +165,6 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
-    func addCustomSubreddit() {
-        let cleaned = customSubredditInput
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "r/", with: "", options: .caseInsensitive)
-            .replacingOccurrences(of: "/r/", with: "", options: .caseInsensitive)
-            .replacingOccurrences(of: "/", with: "")
-
-        guard !cleaned.isEmpty else { return }
-        if !manualSubreddits.contains(cleaned) {
-            manualSubreddits.append(cleaned)
-        }
-        selectedSubreddits.insert(cleaned)
-        customSubredditInput = ""
-    }
-
-    func removeManualSubreddit(_ name: String) {
-        manualSubreddits.removeAll { $0 == name }
-        selectedSubreddits.remove(name)
-    }
-
     func completeOnboarding() async {
         errorMessage = nil
         isLoading = true
@@ -178,15 +177,99 @@ final class OnboardingViewModel: ObservableObject {
             let request = OnboardingCompleteRequest(
                 selectedSources: selectedSources,
                 selectedSubreddits: selectedSubreddits,
-                profileSummary: isPersonalized ? profileSummary : nil,
+                profileSummary: isPersonalized ? topicSummary : nil,
                 inferredTopics: isPersonalized ? inferredTopics : nil
             )
             let response = try await service.complete(request: request)
             completionResponse = response
+            onboardingStateStore.clearDiscoveryRun(userId: user.id)
             step = .done
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func beginDiscovery(transcript: String) async {
+        do {
+            let request = OnboardingAudioDiscoverRequest(
+                transcript: transcript,
+                locale: Locale.current.identifier
+            )
+            let response = try await service.audioDiscover(request: request)
+            discoveryRunId = response.runId
+            discoveryRunStatus = response.runStatus
+            topicSummary = response.topicSummary
+            inferredTopics = response.inferredTopics
+            discoveryLanes = response.lanes
+            onboardingStateStore.setDiscoveryRun(userId: user.id, runId: response.runId)
+            step = .loading
+            startPolling(runId: response.runId)
+        } catch {
+            errorMessage = error.localizedDescription
+            audioState = .error
+            hasDictationError = true
+        }
+    }
+
+    private func refreshDiscoveryStatus(runId: Int) async {
+        do {
+            let status = try await service.discoveryStatus(runId: runId)
+            applyDiscoveryStatus(status)
+        } catch {
+            discoveryErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func startPolling(runId: Int) {
+        pollingTask?.cancel()
+        pollingTask = Task { @MainActor in
+            let deadline = Date().addingTimeInterval(60)
+            while !Task.isCancelled {
+                await refreshDiscoveryStatus(runId: runId)
+
+                if let status = discoveryRunStatus, status == "completed" || status == "failed" {
+                    break
+                }
+
+                if Date() >= deadline {
+                    handleDiscoveryTimeout()
+                    break
+                }
+
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
+    private func applyDiscoveryStatus(_ status: OnboardingDiscoveryStatusResponse) {
+        discoveryRunId = status.runId
+        discoveryRunStatus = status.runStatus
+        discoveryLanes = status.lanes
+        topicSummary = status.topicSummary
+        inferredTopics = status.inferredTopics
+        discoveryErrorMessage = status.errorMessage
+
+        if status.runStatus == "completed" {
+            if let suggestions = status.suggestions {
+                applySuggestions(suggestions)
+            }
+            errorMessage = nil
+            step = .suggestions
+        } else if status.runStatus == "failed" {
+            suggestions = nil
+            errorMessage = status.errorMessage ?? "Discovery failed. We'll start you with defaults."
+            step = .suggestions
+            onboardingStateStore.clearDiscoveryRun(userId: user.id)
+        }
+    }
+
+    private func applySuggestions(_ response: OnboardingFastDiscoverResponse) {
+        suggestions = response
+        let sourceKeys = (response.recommendedSubstacks + response.recommendedPods)
+            .compactMap { $0.feedURL }
+        selectedSourceKeys = Set(sourceKeys)
+        let subredditKeys = response.recommendedSubreddits.compactMap { $0.subreddit }
+        selectedSubreddits = Set(subredditKeys)
     }
 
     private func buildSelectedSources() -> [OnboardingSelectedSource] {
@@ -202,134 +285,66 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
-    private func applySuggestions(_ response: OnboardingFastDiscoverResponse) {
-        suggestions = response
-        let sourceKeys = (response.recommendedSubstacks + response.recommendedPods)
-            .compactMap { $0.feedURL }
-        selectedSourceKeys = Set(sourceKeys)
-        let subredditKeys = response.recommendedSubreddits.compactMap { $0.subreddit }
-        selectedSubreddits = Set(subredditKeys)
-    }
-
-    private var normalizedInterestTopics: [String] {
-        let rawPieces = interestTopicsText
-            .split(whereSeparator: { $0 == "," || $0 == "\n" })
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        var seen: Set<String> = []
-        var cleaned: [String] = []
-        for topic in rawPieces {
-            let normalized = topic.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !normalized.isEmpty else { continue }
-            let key = normalized.lowercased()
-            guard !seen.contains(key) else { continue }
-            seen.insert(key)
-            cleaned.append(normalized)
-        }
-        return cleaned
-    }
-
-    func startSpeechCapture() async {
-        errorMessage = nil
-        speechTranscript = ""
-        speechState = .recording
-        isUsingTextFallback = false
-        startSpeechTimer()
-
-        do {
-            try await transcriptionService.start()
-        } catch {
-            handleSpeechError(error)
-        }
-    }
-
-    func stopSpeechCaptureAndParse() async {
-        speechState = .processing
-        stopSpeechTimer()
-        let transcript = await transcriptionService.stop()
-        await parseTranscript(transcript)
-    }
-
-    func useTextFallback() {
-        isUsingTextFallback = true
-        speechState = .review
-        stopSpeechTimer()
-    }
-
-    func resetSpeechCapture() {
-        transcriptionService.reset()
-        speechTranscript = ""
-        speechState = .idle
-        speechDurationSeconds = 0
-        isUsingTextFallback = false
-    }
-
-    private func parseTranscript(_ transcript: String) async {
-        let cleanedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanedTranscript.isEmpty else {
-            errorMessage = "We didn’t catch that. Try again or use text input."
-            speechState = .review
-            return
-        }
-
-        do {
-            let request = OnboardingVoiceParseRequest(
-                transcript: cleanedTranscript,
-                locale: Locale.current.identifier
-            )
-            let response = try await service.parseVoice(request: request)
-            if let parsedName = response.firstName, !parsedName.isEmpty {
-                firstName = parsedName
-            }
-            if !response.interestTopics.isEmpty {
-                interestTopicsText = response.interestTopics.joined(separator: ", ")
-            }
-            if !response.missingFields.isEmpty {
-                errorMessage = "Add your name and at least one topic."
-            }
-            speechState = .review
-        } catch {
-            errorMessage = error.localizedDescription
-            speechState = .review
-        }
-    }
-
-    private func configureTranscriptionCallbacks() {
-        transcriptionService.onTranscriptDelta = { [weak self] delta in
-            Task { @MainActor in
-                self?.speechTranscript.append(delta)
-            }
-        }
-        transcriptionService.onTranscriptFinal = { [weak self] transcript in
-            Task { @MainActor in
-                self?.speechTranscript = transcript
-            }
-        }
-        transcriptionService.onError = { [weak self] message in
-            Task { @MainActor in
-                self?.errorMessage = message
-                self?.speechState = .error
-                self?.stopSpeechTimer()
-            }
-        }
-    }
-
-    private func handleSpeechError(_ error: Error) {
+    private func handleAudioError(_ error: Error) {
         errorMessage = error.localizedDescription
-        speechState = .review
-        isUsingTextFallback = true
-        stopSpeechTimer()
+        if let dictationError = error as? VoiceDictationError {
+            switch dictationError {
+            case .noMicrophoneAccess:
+                hasMicPermissionDenied = true
+                audioState = .error
+            default:
+                hasDictationError = true
+                audioState = .error
+            }
+        } else {
+            hasDictationError = true
+            audioState = .error
+        }
+        stopAudioTimer()
     }
 
-    private func startSpeechTimer() {
-        speechTimer?.invalidate()
-        speechDurationSeconds = 0
-        speechTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.speechDurationSeconds += 1
+    private func handleDiscoveryTimeout() {
+        discoveryErrorMessage = "Discovery is taking longer than expected."
+        suggestions = nil
+        errorMessage = "Discovery is taking longer than expected. We'll start you with defaults."
+        onboardingStateStore.clearDiscoveryRun(userId: user.id)
+        step = .suggestions
+    }
+
+    private func clearDiscoveryState() {
+        pollingTask?.cancel()
+        discoveryRunId = nil
+        discoveryRunStatus = nil
+        discoveryLanes = []
+        discoveryErrorMessage = nil
+        topicSummary = nil
+        inferredTopics = []
+        suggestions = nil
+        selectedSourceKeys = []
+        selectedSubreddits = []
+        onboardingStateStore.clearDiscoveryRun(userId: user.id)
+    }
+
+    private func stopAudioCapture() {
+        dictationService.cancel()
+        stopAudioTimer()
+        audioState = .idle
+    }
+
+    private func startAudioTimer() {
+        audioTimer?.invalidate()
+        audioDurationSeconds = 0
+        audioTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.audioDurationSeconds += 1
+            if self.audioDurationSeconds >= 30 && self.audioState == .recording {
+                Task { await self.stopAudioCaptureAndDiscover() }
+            }
         }
     }
 
-    private func stopSpeechTimer() {
-        speechTimer?.invalidate()
-        speechTimer = nil
+    private func stopAudioTimer() {
+        audioTimer?.invalidate()
+        audioTimer = nil
     }
 }

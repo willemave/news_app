@@ -48,6 +48,43 @@ struct OnboardingVoiceParseResponse: Codable {
     }
 }
 
+struct OnboardingAudioDiscoverRequest: Codable {
+    let transcript: String
+    let locale: String?
+}
+
+struct OnboardingDiscoveryLaneStatus: Codable, Hashable, Identifiable {
+    let name: String
+    let status: String
+    let completedQueries: Int
+    let queryCount: Int
+
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case status
+        case completedQueries = "completed_queries"
+        case queryCount = "query_count"
+    }
+}
+
+struct OnboardingAudioDiscoverResponse: Codable {
+    let runId: Int
+    let runStatus: String
+    let topicSummary: String?
+    let inferredTopics: [String]
+    let lanes: [OnboardingDiscoveryLaneStatus]
+
+    enum CodingKeys: String, CodingKey {
+        case runId = "run_id"
+        case runStatus = "run_status"
+        case topicSummary = "topic_summary"
+        case inferredTopics = "inferred_topics"
+        case lanes
+    }
+}
+
 struct OnboardingSuggestion: Codable, Hashable {
     let suggestionType: String
     let title: String?
@@ -103,6 +140,26 @@ struct OnboardingFastDiscoverResponse: Codable {
         case recommendedPods = "recommended_pods"
         case recommendedSubstacks = "recommended_substacks"
         case recommendedSubreddits = "recommended_subreddits"
+    }
+}
+
+struct OnboardingDiscoveryStatusResponse: Codable {
+    let runId: Int
+    let runStatus: String
+    let topicSummary: String?
+    let inferredTopics: [String]
+    let lanes: [OnboardingDiscoveryLaneStatus]
+    let suggestions: OnboardingFastDiscoverResponse?
+    let errorMessage: String?
+
+    enum CodingKeys: String, CodingKey {
+        case runId = "run_id"
+        case runStatus = "run_status"
+        case topicSummary = "topic_summary"
+        case inferredTopics = "inferred_topics"
+        case lanes
+        case suggestions
+        case errorMessage = "error_message"
     }
 }
 

@@ -52,6 +52,9 @@ enum APIEndpoints {
         return "/api/content/\(id)/tweet-suggestions"
     }
 
+    // MARK: - Auth Endpoints
+    static let authDebugNewUser = "/auth/debug/new-user"
+
     // MARK: - Discovery Endpoints
     static let discoverySuggestions = "/api/discovery/suggestions"
     static let discoveryHistory = "/api/discovery/history"
@@ -67,6 +70,8 @@ enum APIEndpoints {
     static let onboardingComplete = "/api/onboarding/complete"
     static let onboardingTutorialComplete = "/api/onboarding/tutorial-complete"
     static let onboardingParseVoice = "/api/onboarding/parse-voice"
+    static let onboardingAudioDiscover = "/api/onboarding/audio-discover"
+    static let onboardingDiscoveryStatus = "/api/onboarding/discovery-status"
 
     // MARK: - OpenAI Endpoints
     static let openaiRealtimeToken = "/api/openai/realtime/token"

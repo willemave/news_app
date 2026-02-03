@@ -31,6 +31,24 @@ final class OnboardingService {
         )
     }
 
+    func audioDiscover(request: OnboardingAudioDiscoverRequest) async throws -> OnboardingAudioDiscoverResponse {
+        let body = try JSONEncoder().encode(request)
+        return try await client.request(
+            APIEndpoints.onboardingAudioDiscover,
+            method: "POST",
+            body: body
+        )
+    }
+
+    func discoveryStatus(runId: Int) async throws -> OnboardingDiscoveryStatusResponse {
+        let queryItems = [URLQueryItem(name: "run_id", value: String(runId))]
+        return try await client.request(
+            APIEndpoints.onboardingDiscoveryStatus,
+            method: "GET",
+            queryItems: queryItems
+        )
+    }
+
     func complete(request: OnboardingCompleteRequest) async throws -> OnboardingCompleteResponse {
         let body = try JSONEncoder().encode(request)
         return try await client.request(
