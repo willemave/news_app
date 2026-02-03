@@ -78,21 +78,20 @@ class RedditUnifiedScraper(BaseScraper):
         subreddits: dict[str, int] = {}
         with get_db() as db:
             configs = list_active_configs_by_type(db, "reddit")
-
-        for config in configs:
-            payload = config.config or {}
-            name = payload.get("subreddit")
-            limit = payload.get("limit", 10)
-            if not isinstance(name, str) or not name.strip():
-                continue
-            cleaned = name.strip().lstrip("r/").strip("/")
-            if cleaned.lower() == "front":
-                logger.info("Skipping 'front' subreddit; front page scraping disabled")
-                continue
-            if not isinstance(limit, int) or limit <= 0:
-                logger.warning("Invalid limit for subreddit %s: %s", cleaned, limit)
-                limit = 10
-            subreddits[cleaned] = limit
+            for config in configs:
+                payload = config.config or {}
+                name = payload.get("subreddit")
+                limit = payload.get("limit", 10)
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                cleaned = name.strip().lstrip("r/").strip("/")
+                if cleaned.lower() == "front":
+                    logger.info("Skipping 'front' subreddit; front page scraping disabled")
+                    continue
+                if not isinstance(limit, int) or limit <= 0:
+                    logger.warning("Invalid limit for subreddit %s: %s", cleaned, limit)
+                    limit = 10
+                subreddits[cleaned] = limit
 
         return subreddits
 
