@@ -186,6 +186,38 @@ def apple_signin(
     )
 
 
+@router.post("/debug/new-user", response_model=TokenResponse)
+def debug_create_user(
+    db: Annotated[Session, Depends(get_db_session)],
+) -> TokenResponse:
+    """Create a debug user session (debug mode only)."""
+    if not settings.debug:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    apple_id = f"debug_{secrets.token_urlsafe(16)}"
+    email = f"debug+{secrets.token_urlsafe(8)}@example.com"
+    user = User(
+        apple_id=apple_id,
+        email=email,
+        full_name="Debug User",
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.from_orm(user),
+        is_new_user=True,
+        openai_api_key=settings.openai_api_key,
+    )
+
+
 @router.post("/refresh", response_model=AccessTokenResponse)
 def refresh_token(
     request: RefreshTokenRequest, db: Annotated[Session, Depends(get_db_session)]

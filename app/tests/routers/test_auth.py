@@ -1,13 +1,13 @@
 """Tests for authentication endpoints."""
+
 import re
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core.security import create_access_token, create_refresh_token
 from app.main import app
 from app.models.user import User
-from app.core.security import create_access_token, create_refresh_token
 
 client = TestClient(app)
 
@@ -28,11 +28,7 @@ def test_apple_signin_new_user(db: Session, monkeypatch):
 
     # Mock Apple token verification
     def mock_verify_apple_token(id_token):
-        return {
-            "sub": "001234.abcd1234",
-            "email": "newuser@icloud.com",
-            "email_verified": True
-        }
+        return {"sub": "001234.abcd1234", "email": "newuser@icloud.com", "email_verified": True}
 
     monkeypatch.setattr("app.routers.auth.verify_apple_token", mock_verify_apple_token)
 
@@ -42,8 +38,8 @@ def test_apple_signin_new_user(db: Session, monkeypatch):
             json={
                 "id_token": "mock.apple.token",
                 "email": "newuser@icloud.com",
-                "full_name": "New User"
-            }
+                "full_name": "New User",
+            },
         )
 
         assert response.status_code == 200
@@ -75,9 +71,7 @@ def test_apple_signin_existing_user(db: Session, monkeypatch):
 
     # Create existing user
     existing_user = User(
-        apple_id="001234.existing",
-        email="existing@icloud.com",
-        full_name="Existing User"
+        apple_id="001234.existing", email="existing@icloud.com", full_name="Existing User"
     )
     db.add(existing_user)
     db.commit()
@@ -85,20 +79,13 @@ def test_apple_signin_existing_user(db: Session, monkeypatch):
 
     # Mock Apple token verification
     def mock_verify_apple_token(id_token):
-        return {
-            "sub": "001234.existing",
-            "email": "existing@icloud.com"
-        }
+        return {"sub": "001234.existing", "email": "existing@icloud.com"}
 
     monkeypatch.setattr("app.routers.auth.verify_apple_token", mock_verify_apple_token)
 
     try:
         response = client.post(
-            "/auth/apple",
-            json={
-                "id_token": "mock.apple.token",
-                "email": "existing@icloud.com"
-            }
+            "/auth/apple", json={"id_token": "mock.apple.token", "email": "existing@icloud.com"}
         )
 
         assert response.status_code == 200
@@ -113,6 +100,7 @@ def test_apple_signin_existing_user(db: Session, monkeypatch):
 
 def test_apple_signin_invalid_token(monkeypatch):
     """Test Apple Sign In with invalid token."""
+
     # Mock Apple token verification to raise error
     def mock_verify_apple_token(id_token):
         raise ValueError("Invalid token")
@@ -120,11 +108,7 @@ def test_apple_signin_invalid_token(monkeypatch):
     monkeypatch.setattr("app.routers.auth.verify_apple_token", mock_verify_apple_token)
 
     response = client.post(
-        "/auth/apple",
-        json={
-            "id_token": "invalid.token",
-            "email": "test@icloud.com"
-        }
+        "/auth/apple", json={"id_token": "invalid.token", "email": "test@icloud.com"}
     )
 
     assert response.status_code == 401
@@ -147,11 +131,7 @@ def test_refresh_token_valid(db: Session):
 
     try:
         # Create user
-        user = User(
-            apple_id="001234.refresh",
-            email="refresh@icloud.com",
-            is_active=True
-        )
+        user = User(apple_id="001234.refresh", email="refresh@icloud.com", is_active=True)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -159,10 +139,7 @@ def test_refresh_token_valid(db: Session):
         # Create refresh token
         refresh_token = create_refresh_token(user.id)
 
-        response = client.post(
-            "/auth/refresh",
-            json={"refresh_token": refresh_token}
-        )
+        response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
         assert response.status_code == 200
         data = response.json()
@@ -176,10 +153,7 @@ def test_refresh_token_valid(db: Session):
 
 def test_refresh_token_invalid():
     """Test token refresh with invalid token."""
-    response = client.post(
-        "/auth/refresh",
-        json={"refresh_token": "invalid.token"}
-    )
+    response = client.post("/auth/refresh", json={"refresh_token": "invalid.token"})
 
     assert response.status_code == 401
 
@@ -199,11 +173,7 @@ def test_refresh_token_with_access_token(db: Session):
     app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     try:
-        user = User(
-            apple_id="001234.wrongtype",
-            email="wrongtype@icloud.com",
-            is_active=True
-        )
+        user = User(apple_id="001234.wrongtype", email="wrongtype@icloud.com", is_active=True)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -211,10 +181,7 @@ def test_refresh_token_with_access_token(db: Session):
         # Try with access token (should fail)
         access_token = create_access_token(user.id)
 
-        response = client.post(
-            "/auth/refresh",
-            json={"refresh_token": access_token}
-        )
+        response = client.post("/auth/refresh", json={"refresh_token": access_token})
 
         assert response.status_code == 401
     finally:
@@ -248,11 +215,7 @@ def test_refresh_token_rotation(db: Session):
 
     try:
         # Create user
-        user = User(
-            apple_id="001234.rotation",
-            email="rotation@icloud.com",
-            is_active=True
-        )
+        user = User(apple_id="001234.rotation", email="rotation@icloud.com", is_active=True)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -261,10 +224,7 @@ def test_refresh_token_rotation(db: Session):
         initial_refresh_token = create_refresh_token(user.id)
 
         # First refresh - should get new access token AND new refresh token
-        response = client.post(
-            "/auth/refresh",
-            json={"refresh_token": initial_refresh_token}
-        )
+        response = client.post("/auth/refresh", json={"refresh_token": initial_refresh_token})
 
         assert response.status_code == 200
         data = response.json()
@@ -280,10 +240,7 @@ def test_refresh_token_rotation(db: Session):
         assert len(new_refresh_token) > 0
 
         # Most important: verify new refresh token works for subsequent refresh
-        response2 = client.post(
-            "/auth/refresh",
-            json={"refresh_token": new_refresh_token}
-        )
+        response2 = client.post("/auth/refresh", json={"refresh_token": new_refresh_token})
 
         assert response2.status_code == 200
         data2 = response2.json()
@@ -295,7 +252,7 @@ def test_refresh_token_rotation(db: Session):
         print("✅ Refresh token rotation working correctly")
         print(f"   - Initial refresh succeeded: {response.status_code}")
         print(f"   - Second refresh succeeded:  {response2.status_code}")
-        print(f"   - Both refreshes returned new refresh tokens")
+        print("   - Both refreshes returned new refresh tokens")
 
     finally:
         app.dependency_overrides.clear()
@@ -303,16 +260,14 @@ def test_refresh_token_rotation(db: Session):
 
 def test_admin_login_valid(monkeypatch):
     """Test admin login with correct password."""
+
     # Mock verify_admin_password to accept our test password
     def mock_verify_admin_password(password: str) -> bool:
         return password == "test_admin_pass"
 
     monkeypatch.setattr("app.routers.auth.verify_admin_password", mock_verify_admin_password)
 
-    response = client.post(
-        "/auth/admin/login",
-        json={"password": "test_admin_pass"}
-    )
+    response = client.post("/auth/admin/login", json={"password": "test_admin_pass"})
 
     assert response.status_code == 200
     data = response.json()
@@ -324,10 +279,7 @@ def test_admin_login_valid(monkeypatch):
 
 def test_admin_login_invalid():
     """Test admin login with wrong password."""
-    response = client.post(
-        "/auth/admin/login",
-        json={"password": "wrong_password"}
-    )
+    response = client.post("/auth/admin/login", json={"password": "wrong_password"})
 
     assert response.status_code == 401
     assert "admin_session" not in response.cookies
@@ -335,6 +287,7 @@ def test_admin_login_invalid():
 
 def test_admin_logout(monkeypatch):
     """Test admin logout."""
+
     # Mock verify_admin_password to accept our test password
     def mock_verify_admin_password(password: str) -> bool:
         return password == "test_admin_pass"
@@ -342,10 +295,7 @@ def test_admin_logout(monkeypatch):
     monkeypatch.setattr("app.routers.auth.verify_admin_password", mock_verify_admin_password)
 
     # First login
-    response = client.post(
-        "/auth/admin/login",
-        json={"password": "test_admin_pass"}
-    )
+    response = client.post("/auth/admin/login", json={"password": "test_admin_pass"})
 
     # Then logout
     cookies = {"admin_session": response.cookies["admin_session"]}
@@ -371,24 +321,18 @@ def test_get_current_user_info(db: Session):
     app.dependency_overrides[get_readonly_db_session] = override_get_db_session
 
     # Create test user
-    test_user = User(
-        apple_id="001234.test.me",
-        email="testme@icloud.com",
-        full_name="Test Me User"
-    )
+    test_user = User(apple_id="001234.test.me", email="testme@icloud.com", full_name="Test Me User")
     db.add(test_user)
     db.commit()
     db.refresh(test_user)
 
     # Generate token for user
     from app.core.security import create_access_token
+
     access_token = create_access_token(test_user.id)
 
     try:
-        response = client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
+        response = client.get("/auth/me", headers={"Authorization": f"Bearer {access_token}"})
 
         assert response.status_code == 200
         data = response.json()
@@ -401,10 +345,7 @@ def test_get_current_user_info(db: Session):
 
 def test_get_current_user_info_invalid_token():
     """Test /auth/me with invalid token."""
-    response = client.get(
-        "/auth/me",
-        headers={"Authorization": "Bearer invalid.token.here"}
-    )
+    response = client.get("/auth/me", headers={"Authorization": "Bearer invalid.token.here"})
 
     assert response.status_code == 401
 
@@ -442,7 +383,7 @@ def test_datetime_serialization_has_timezone(db: Session):
     test_user = User(
         apple_id="001234.datetime.test",
         email="datetimetest@icloud.com",
-        full_name="Datetime Test User"
+        full_name="Datetime Test User",
     )
     db.add(test_user)
     db.commit()
@@ -452,10 +393,7 @@ def test_datetime_serialization_has_timezone(db: Session):
     access_token = create_access_token(test_user.id)
 
     try:
-        response = client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
+        response = client.get("/auth/me", headers={"Authorization": f"Bearer {access_token}"})
 
         assert response.status_code == 200
         data = response.json()
@@ -465,17 +403,63 @@ def test_datetime_serialization_has_timezone(db: Session):
         assert "updated_at" in data
 
         # ISO8601 with timezone pattern: YYYY-MM-DDTHH:MM:SSZ or YYYY-MM-DDTHH:MM:SS.fffffZ
-        iso8601_tz_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$'
+        iso8601_tz_pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$"
 
         # Verify created_at has timezone indicator
-        assert re.match(iso8601_tz_pattern, data["created_at"]), \
-            f"created_at '{data['created_at']}' does not match ISO8601 with timezone (must end with 'Z')"
+        assert re.match(
+            iso8601_tz_pattern,
+            data["created_at"],
+        ), (
+            "created_at "
+            f"'{data['created_at']}' "
+            "does not match ISO8601 with timezone (must end with 'Z')"
+        )
 
         # Verify updated_at has timezone indicator
-        assert re.match(iso8601_tz_pattern, data["updated_at"]), \
-            f"updated_at '{data['updated_at']}' does not match ISO8601 with timezone (must end with 'Z')"
+        assert re.match(
+            iso8601_tz_pattern,
+            data["updated_at"],
+        ), (
+            "updated_at "
+            f"'{data['updated_at']}' "
+            "does not match ISO8601 with timezone (must end with 'Z')"
+        )
 
-        print(f"✅ Datetime serialization correct: created_at={data['created_at']}, updated_at={data['updated_at']}")
+        print(
+            "✅ Datetime serialization correct: "
+            f"created_at={data['created_at']}, "
+            f"updated_at={data['updated_at']}"
+        )
 
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_debug_new_user_disabled():
+    response = client.post("/auth/debug/new-user")
+    assert response.status_code == 404
+
+
+def test_debug_new_user_enabled(db: Session, monkeypatch):
+    from app.core.db import get_db_session, get_readonly_db_session
+
+    def override_get_db_session():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
+    monkeypatch.setattr("app.routers.auth.settings.debug", True)
+
+    try:
+        response = client.post("/auth/debug/new-user")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_new_user"] is True
+        assert data["user"]["email"].startswith("debug+")
+        assert data["access_token"]
+        assert data["refresh_token"]
     finally:
         app.dependency_overrides.clear()
