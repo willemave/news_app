@@ -23,8 +23,13 @@ async def create_realtime_token(
     """Create a short-lived token for OpenAI Realtime sessions."""
     _ = current_user
     try:
-        token, expires_at, model = openai_realtime.create_realtime_client_secret()
+        token, expires_at, model = openai_realtime.create_transcription_session_token()
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    return RealtimeTokenResponse(token=token, expires_at=expires_at, model=model)
+    return RealtimeTokenResponse(
+        token=token,
+        expires_at=expires_at,
+        model=model,
+        session_type="transcription",
+    )
