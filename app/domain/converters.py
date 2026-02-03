@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any
 
+from app.constants import SUMMARY_KIND_SHORT_NEWS_DIGEST, SUMMARY_VERSION_V1
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
@@ -43,6 +44,7 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             metadata["platform"] = db_content.platform
         if db_content.source and metadata.get("source") is None:
             metadata["source"] = db_content.source
+        _normalize_summary_metadata(metadata, db_content.content_type)
 
         resolved_url = _select_http_url(
             db_content.url,
@@ -81,6 +83,23 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             },
         )
         raise
+
+
+def _normalize_summary_metadata(metadata: dict[str, Any], content_type: str) -> None:
+    summary = metadata.get("summary")
+    if not isinstance(summary, dict):
+        return
+
+    summary_kind = metadata.get("summary_kind")
+    summary_version = metadata.get("summary_version")
+    if summary_kind and summary_version:
+        return
+
+    if content_type == ContentType.NEWS.value:
+        if not summary_kind:
+            metadata["summary_kind"] = SUMMARY_KIND_SHORT_NEWS_DIGEST
+        if not summary_version:
+            metadata["summary_version"] = SUMMARY_VERSION_V1
 
 
 def domain_to_content(content_data: ContentData, existing: DBContent | None = None) -> DBContent:
