@@ -84,60 +84,7 @@ Errors at level ERROR+ are automatically written to JSONL files in `logs/errors/
 
 ---
 
-## 6. Beads Workflow (Issue Tracking)
-
-Track work using beads (`.beads/` directory). TodoWrite tool is fine for in-session task tracking.
-
-### LLM Task Planning Workflow
-1. **Start session**: Run `bd ready` to see available work
-2. **Plan complex tasks**: After planning, **always** use `bd create` to break work into beads issues with dependencies. This is required for any multi-step implementation.
-3. **Claim work**: `bd update <id> --status=in_progress` before starting each task
-4. **Complete work**: `bd close <id>` immediately when done
-5. **Iterate**: Check `bd ready` for next available task
-
-### Essential Commands
-```bash
-bd ready                              # Show issues ready to work (no blockers)
-bd list --status=open                 # All open issues
-bd list --status=in_progress          # Active work
-bd show <id>                          # Detailed issue view
-bd create --title="..." --type=task   # New issue (task|bug|feature)
-bd update <id> --status=in_progress   # Claim work
-bd close <id>                         # Mark complete
-```
-
-### Dependencies (for multi-step plans)
-```bash
-bd dep <from> <to>                    # Add blocker (from blocks to)
-bd blocked                            # Show blocked issues
-```
-
-Example: Create dependent tasks for a feature:
-```bash
-bd create --title="Design API schema" --type=task        # → beads-001
-bd create --title="Implement endpoints" --type=task      # → beads-002
-bd create --title="Write tests" --type=task              # → beads-003
-bd dep beads-001 beads-002            # Schema blocks implementation
-bd dep beads-002 beads-003            # Implementation blocks tests
-```
-
-### Session Close Protocol
-Before completing work, **always run**:
-```bash
-ruff check . && ruff format .         # Lint and format Python changes
-git status                            # Check changes
-git diff                              # Review all changes before committing
-git add <files>                       # Stage code
-git commit -m "..."                   # Commit code
-```
-
-**Important**: After closing beads tasks and before committing, always show `git diff` of all changed files to the user for review. This ensures visibility into what was implemented.
-
-Only push if explicitly requested by the user.
-
----
-
-## 7. Package & Dev Tools
+## 6. Package & Dev Tools
 
 ### Package Management (uv)
 ```bash
@@ -172,7 +119,7 @@ scripts/start_scrapers.sh            # Content scrapers
 
 ---
 
-## 8. Preferred Dev Tools
+## 7. Preferred Dev Tools
 
 * **LLM internet search**: Use the EXA MCP `web_search_exa` tool for any web/internet lookups (and `get_code_context_exa` for external API/library docs).
 * **Webpage fetching**: You can use your inbuilt webpage fetching tools to resolve web pages in the prompt. 
@@ -191,7 +138,7 @@ scripts/start_scrapers.sh            # Content scrapers
 
 ---
 
-## 9. Quick Reference
+## 8. Quick Reference
 
 ### Key Entry Points
 | File | Purpose |
