@@ -9,8 +9,11 @@ from app.core.db import get_db_session
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.routers.api.models import (
+    OnboardingAudioDiscoverRequest,
+    OnboardingAudioDiscoverResponse,
     OnboardingCompleteRequest,
     OnboardingCompleteResponse,
+    OnboardingDiscoveryStatusResponse,
     OnboardingFastDiscoverRequest,
     OnboardingFastDiscoverResponse,
     OnboardingProfileRequest,
@@ -23,8 +26,10 @@ from app.services.onboarding import (
     build_onboarding_profile,
     complete_onboarding,
     fast_discover,
+    get_onboarding_discovery_status,
     mark_tutorial_complete,
     parse_onboarding_voice,
+    start_audio_discovery,
 )
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
@@ -70,6 +75,40 @@ async def run_fast_discover(
     """Return fast discovery suggestions for onboarding."""
     _ = current_user
     return fast_discover(payload)
+
+
+@router.post(
+    "/audio-discover",
+    response_model=OnboardingAudioDiscoverResponse,
+    summary="Start onboarding audio discovery",
+)
+async def start_audio_discovery_flow(
+    payload: OnboardingAudioDiscoverRequest,
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> OnboardingAudioDiscoverResponse:
+    """Start onboarding discovery from an audio transcript."""
+    try:
+        return await start_audio_discovery(db, current_user.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/discovery-status",
+    response_model=OnboardingDiscoveryStatusResponse,
+    summary="Get onboarding audio discovery status",
+)
+async def onboarding_discovery_status(
+    run_id: int,
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> OnboardingDiscoveryStatusResponse:
+    """Poll onboarding discovery status for a run."""
+    try:
+        return get_onboarding_discovery_status(db, current_user.id, run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post(

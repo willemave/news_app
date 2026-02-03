@@ -6,7 +6,7 @@ from app.core.db import get_db
 from app.core.logging import get_logger
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
-from app.services.onboarding import run_discover_enrich
+from app.services.onboarding import run_audio_discovery, run_discover_enrich
 from app.services.queue import TaskType
 
 logger = get_logger(__name__)
@@ -23,6 +23,7 @@ class OnboardingDiscoverHandler:
         user_id = payload.get("user_id")
         profile_summary = payload.get("profile_summary")
         inferred_topics = payload.get("inferred_topics")
+        run_id = payload.get("run_id")
 
         if not isinstance(user_id, int):
             logger.error(
@@ -37,12 +38,17 @@ class OnboardingDiscoverHandler:
 
         try:
             with get_db() as db:
-                run_discover_enrich(
-                    db,
-                    user_id=user_id,
-                    profile_summary=str(profile_summary or ""),
-                    inferred_topics=inferred_topics if isinstance(inferred_topics, list) else [],
-                )
+                if isinstance(run_id, int):
+                    run_audio_discovery(db, run_id)
+                else:
+                    run_discover_enrich(
+                        db,
+                        user_id=user_id,
+                        profile_summary=str(profile_summary or ""),
+                        inferred_topics=(
+                            inferred_topics if isinstance(inferred_topics, list) else []
+                        ),
+                    )
             return TaskResult.ok()
         except Exception as exc:  # noqa: BLE001
             logger.exception(

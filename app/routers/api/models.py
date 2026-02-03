@@ -676,12 +676,39 @@ class OnboardingVoiceParseResponse(BaseModel):
     missing_fields: list[str] = Field(default_factory=list)
 
 
+class OnboardingAudioDiscoverRequest(BaseModel):
+    """Request to start onboarding audio discovery."""
+
+    transcript: str = Field(..., min_length=3, max_length=8000)
+    locale: str | None = Field(None, max_length=20)
+
+
+class OnboardingDiscoveryLaneStatus(BaseModel):
+    """Status for a single onboarding discovery lane."""
+
+    name: str
+    status: str
+    completed_queries: int = 0
+    query_count: int = 0
+
+
+class OnboardingAudioDiscoverResponse(BaseModel):
+    """Response for onboarding audio discovery start."""
+
+    run_id: int
+    run_status: str
+    topic_summary: str | None = None
+    inferred_topics: list[str] = Field(default_factory=list)
+    lanes: list[OnboardingDiscoveryLaneStatus] = Field(default_factory=list)
+
+
 class RealtimeTokenResponse(BaseModel):
     """Ephemeral token for OpenAI Realtime sessions."""
 
     token: str
     expires_at: int | None = None
     model: str | None = None
+    session_type: Literal["realtime", "transcription"] | None = None
 
 
 class OnboardingSuggestion(BaseModel):
@@ -710,6 +737,18 @@ class OnboardingFastDiscoverResponse(BaseModel):
     recommended_pods: list[OnboardingSuggestion] = Field(default_factory=list)
     recommended_substacks: list[OnboardingSuggestion] = Field(default_factory=list)
     recommended_subreddits: list[OnboardingSuggestion] = Field(default_factory=list)
+
+
+class OnboardingDiscoveryStatusResponse(BaseModel):
+    """Status response for onboarding audio discovery polling."""
+
+    run_id: int
+    run_status: str
+    topic_summary: str | None = None
+    inferred_topics: list[str] = Field(default_factory=list)
+    lanes: list[OnboardingDiscoveryLaneStatus] = Field(default_factory=list)
+    suggestions: OnboardingFastDiscoverResponse | None = None
+    error_message: str | None = None
 
 
 class OnboardingSelectedSource(BaseModel):
