@@ -44,6 +44,9 @@ struct AuthenticatedRootView: View {
             .onChange(of: authViewModel.lastSignInWasNewUser) { _, _ in
                 updatePresentation()
             }
+            .onChange(of: user.id) { _, _ in
+                updatePresentation()
+            }
             .onChange(of: user.hasCompletedNewUserTutorial) { _, _ in
                 updatePresentation()
             }

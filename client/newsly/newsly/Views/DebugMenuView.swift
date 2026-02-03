@@ -13,6 +13,7 @@ struct DebugMenuView: View {
     @ObservedObject private var appSettings = AppSettings.shared
     private let onboardingStateStore = OnboardingStateStore.shared
     @State private var showingTokenInput = false
+    @State private var forceOnboardingAfterTokenSave = false
     @State private var accessToken = ""
     @State private var refreshToken = ""
     @State private var showingAlert = false
@@ -52,7 +53,7 @@ struct DebugMenuView: View {
                     Toggle("Use HTTPS", isOn: $appSettings.useHTTPS)
                 }
 
-                Section(header: Text("Current Status")) {
+                Section(header: Text("Auth Status")) {
                     HStack {
                         Text("Auth State")
                         Spacer()
@@ -86,58 +87,25 @@ struct DebugMenuView: View {
                     }
                 }
 
-                Section(header: Text("Test Actions")) {
+                Section(header: Text("Actions")) {
                     Button("Sign In with Stored Token") {
                         signInWithStoredToken()
                     }
                     .disabled(KeychainManager.shared.getToken(key: .accessToken) == nil)
 
-                    Button("Manually Set Tokens") {
+                    Button("Set Tokens") {
+                        forceOnboardingAfterTokenSave = false
                         showingTokenInput = true
                     }
 
-                    Button("Use Backend Test Token") {
-                        useBackendTestToken()
-                    }
-
-                    Button("Force Onboarding") {
+                    Button("Force Onboarding (New User)") {
                         forceOnboarding()
                     }
-                    .disabled(currentUser == nil)
 
-                    Button("Clear All Tokens") {
-                        clearTokens()
+                    Button("Reset Auth (Clear Tokens)") {
+                        resetAuth()
                     }
                     .foregroundColor(.red)
-
-                    Button("Force Logout") {
-                        authViewModel.logout()
-                        alertMessage = "Logged out and cleared tokens"
-                        showingAlert = true
-                    }
-                    .foregroundColor(.orange)
-                }
-
-                Section(header: Text("Instructions")) {
-                    Text("""
-                    **Testing Without Apple Sign In:**
-
-                    1. Ensure backend is running (localhost:8000)
-                    2. Generate FRESH token: ./scripts/test_auth_flow.sh
-                    3. Copy the access token from output
-                    4. Tap "Manually Set Tokens" immediately
-                    5. Paste and save (tokens expire in 30 min)
-
-                    **Note:** If you get "invalid or expired", generate a new token. The app validates tokens with the backend.
-                    """)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                }
-
-                Section(header: Text("Keychain Debug")) {
-                    Button("View Stored Tokens") {
-                        viewStoredTokens()
-                    }
                 }
             }
             .navigationTitle("🐛 Debug Menu")
@@ -156,10 +124,13 @@ struct DebugMenuView: View {
                 dismiss()
             }
         }
-        .sheet(isPresented: $showingTokenInput) {
+        .sheet(isPresented: $showingTokenInput, onDismiss: {
+            forceOnboardingAfterTokenSave = false
+        }) {
             TokenInputView(
                 accessToken: $accessToken,
                 refreshToken: $refreshToken,
+                forceOnboardingAfterSave: $forceOnboardingAfterTokenSave,
                 onSave: {
                     saveTokensManually()
                 }
@@ -259,6 +230,11 @@ struct DebugMenuView: View {
                 let user = try await AuthenticationService.shared.getCurrentUser()
                 await MainActor.run {
                     authViewModel.authState = .authenticated(user)
+                    if forceOnboardingAfterTokenSave {
+                        onboardingStateStore.setPending(userId: user.id)
+                        authViewModel.lastSignInWasNewUser = true
+                    }
+                    forceOnboardingAfterTokenSave = false
                 }
             } catch {
                 await MainActor.run {
@@ -267,61 +243,52 @@ struct DebugMenuView: View {
                     authViewModel.authState = .unauthenticated
                     alertMessage = "Token is invalid or expired. Please generate a new one."
                     showingAlert = true
+                    forceOnboardingAfterTokenSave = false
                 }
             }
         }
     }
 
-    private func useBackendTestToken() {
-        // This would make an API call to a debug endpoint that returns a test token
-        // For now, show instructions
-        alertMessage = """
-        Run this in terminal:
-
-        cd /path/to/news_app
-        ./scripts/test_auth_flow.sh
-
-        Then use "Manually Set Tokens" to paste the token.
-        """
-        showingAlert = true
-    }
-
     private func forceOnboarding() {
-        guard let user = currentUser else {
-            alertMessage = "Sign in before forcing onboarding"
-            showingAlert = true
-            return
-        }
+        let previousUserId = currentUser?.id
+        let previousUser = currentUser
 
-        onboardingStateStore.setPending(userId: user.id)
-        authViewModel.lastSignInWasNewUser = true
-        alertMessage = "Onboarding will start on next screen"
-        showingAlert = true
+        Task {
+            do {
+                authViewModel.authState = .loading
+                let session = try await AuthenticationService.shared.createDebugUser()
+                if let previousUserId {
+                    onboardingStateStore.clearPending(userId: previousUserId)
+                    onboardingStateStore.clearDiscoveryRun(userId: previousUserId)
+                }
+                await MainActor.run {
+                    authViewModel.authState = .authenticated(session.user)
+                    onboardingStateStore.setPending(userId: session.user.id)
+                    authViewModel.lastSignInWasNewUser = true
+                    alertMessage = "Created debug user \(session.user.id). Onboarding will start."
+                    showingAlert = true
+                }
+            } catch {
+                await MainActor.run {
+                    if let previousUser {
+                        authViewModel.authState = .authenticated(previousUser)
+                    } else {
+                        authViewModel.authState = .unauthenticated
+                    }
+                    alertMessage = "Failed to create debug user: \(error.localizedDescription)"
+                    showingAlert = true
+                }
+            }
+        }
     }
 
-    private func clearTokens() {
+    private func resetAuth() {
         KeychainManager.shared.clearAll()
+        SharedContainer.userDefaults.removeObject(forKey: "accessToken")
+        SharedContainer.userDefaults.removeObject(forKey: "refreshToken")
+        authViewModel.logout()
         authViewModel.authState = .unauthenticated
-        alertMessage = "All tokens cleared"
-        showingAlert = true
-    }
-
-    private func viewStoredTokens() {
-        var message = "Stored Tokens:\n\n"
-
-        if let accessToken = KeychainManager.shared.getToken(key: .accessToken) {
-            message += "Access: \(accessToken.prefix(50))...\n\n"
-        } else {
-            message += "Access: None\n\n"
-        }
-
-        if let refreshToken = KeychainManager.shared.getToken(key: .refreshToken) {
-            message += "Refresh: \(refreshToken.prefix(50))..."
-        } else {
-            message += "Refresh: None"
-        }
-
-        alertMessage = message
+        alertMessage = "Cleared tokens and signed out"
         showingAlert = true
     }
 }
@@ -330,6 +297,7 @@ struct TokenInputView: View {
     @Environment(\.dismiss) var dismiss
     @Binding var accessToken: String
     @Binding var refreshToken: String
+    @Binding var forceOnboardingAfterSave: Bool
     let onSave: () -> Void
 
     var body: some View {
@@ -345,6 +313,10 @@ struct TokenInputView: View {
                     TextEditor(text: $refreshToken)
                         .frame(height: 100)
                         .font(.system(.caption, design: .monospaced))
+                }
+
+                Section {
+                    Toggle("Force onboarding after sign-in", isOn: $forceOnboardingAfterSave)
                 }
 
                 Section {

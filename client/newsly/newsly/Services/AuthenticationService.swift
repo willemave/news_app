@@ -18,6 +18,10 @@ final class AuthenticationService: NSObject {
     }
 
     private var currentNonce: String?
+    private var refreshTask: Task<String, Error>?
+    private var lastRefreshAttempt: Date?
+    private let refreshCooldownSeconds: TimeInterval = 10
+    private let refreshLock = NSLock()
 
     /// Sign in with Apple
     @MainActor
@@ -52,6 +56,38 @@ final class AuthenticationService: NSObject {
     /// - Saves both tokens (replaces old refresh token)
     /// - This allows active users to stay logged in indefinitely
     func refreshAccessToken() async throws -> String {
+        refreshLock.lock()
+        if let task = refreshTask {
+            refreshLock.unlock()
+            return try await task.value
+        }
+
+        if let lastAttempt = lastRefreshAttempt,
+           Date().timeIntervalSince(lastAttempt) < refreshCooldownSeconds,
+           let token = KeychainManager.shared.getToken(key: .accessToken),
+           !token.isEmpty {
+            refreshLock.unlock()
+            return token
+        }
+
+        lastRefreshAttempt = Date()
+        let task = Task { [weak self] () throws -> String in
+            defer { self?.clearRefreshTask() }
+            return try await self?.performRefreshAccessToken() ?? { throw AuthError.refreshFailed }()
+        }
+        refreshTask = task
+        refreshLock.unlock()
+
+        return try await task.value
+    }
+
+    private func clearRefreshTask() {
+        refreshLock.lock()
+        refreshTask = nil
+        refreshLock.unlock()
+    }
+
+    private func performRefreshAccessToken() async throws -> String {
         print("🔄 Starting token refresh...")
 
         guard let refreshToken = KeychainManager.shared.getToken(key: .refreshToken) else {
@@ -170,6 +206,37 @@ final class AuthenticationService: NSObject {
                 // Access token expired/invalid; clear it but keep refresh token for rotation
                 KeychainManager.shared.deleteToken(key: .accessToken)
                 throw AuthError.notAuthenticated
+            default:
+                let body = String(data: data, encoding: .utf8)
+                throw AuthError.serverError(statusCode: httpResponse.statusCode, message: body)
+            }
+        } catch let urlError as URLError {
+            throw AuthError.networkError(urlError)
+        }
+    }
+
+    /// Create a fresh debug user (debug servers only).
+    @MainActor
+    func createDebugUser() async throws -> AuthSession {
+        let url = URL(string: "\(AppSettings.shared.baseURL)\(APIEndpoints.authDebugNewUser)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AuthError.serverError(statusCode: -1, message: "Invalid HTTP response")
+            }
+
+            switch httpResponse.statusCode {
+            case 200:
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
+                persistSessionTokens(tokenResponse)
+                return AuthSession(user: tokenResponse.user, isNewUser: tokenResponse.isNewUser)
+            case 404:
+                throw AuthError.serverError(statusCode: 404, message: "Debug endpoint unavailable")
             default:
                 let body = String(data: data, encoding: .utf8)
                 throw AuthError.serverError(statusCode: httpResponse.statusCode, message: body)
@@ -360,27 +427,28 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
 
         let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
 
-        // Save tokens
-        KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
-        KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
-        KeychainManager.shared.saveToken(String(tokenResponse.user.id), key: .userId)
-        // Also save to shared UserDefaults for extension access
-        SharedContainer.userDefaults.set(tokenResponse.accessToken, forKey: "accessToken")
-
-        // Save OpenAI API key if provided
-        if let openaiApiKey = tokenResponse.openaiApiKey {
-            print("🔑 [Auth] OpenAI API key received from server (length: \(openaiApiKey.count))")
-            KeychainManager.shared.saveToken(openaiApiKey, key: .openaiApiKey)
-            // Verify the save
-            if let verified = KeychainManager.shared.getToken(key: .openaiApiKey) {
-                print("🔑 [Auth] OpenAI API key verified in keychain (length: \(verified.count))")
-            } else {
-                print("❌ [Auth] OpenAI API key FAILED to save to keychain!")
-            }
-        } else {
-            print("⚠️ [Auth] No OpenAI API key in token response from server")
-        }
+        persistSessionTokens(tokenResponse)
 
         return AuthSession(user: tokenResponse.user, isNewUser: tokenResponse.isNewUser)
+    }
+}
+
+private func persistSessionTokens(_ tokenResponse: TokenResponse) {
+    KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
+    KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
+    KeychainManager.shared.saveToken(String(tokenResponse.user.id), key: .userId)
+    // Also save to shared UserDefaults for extension access
+    SharedContainer.userDefaults.set(tokenResponse.accessToken, forKey: "accessToken")
+
+    if let openaiApiKey = tokenResponse.openaiApiKey {
+        print("🔑 [Auth] OpenAI API key received from server (length: \(openaiApiKey.count))")
+        KeychainManager.shared.saveToken(openaiApiKey, key: .openaiApiKey)
+        if let verified = KeychainManager.shared.getToken(key: .openaiApiKey) {
+            print("🔑 [Auth] OpenAI API key verified in keychain (length: \(verified.count))")
+        } else {
+            print("❌ [Auth] OpenAI API key FAILED to save to keychain!")
+        }
+    } else {
+        print("⚠️ [Auth] No OpenAI API key in token response from server")
     }
 }

@@ -53,7 +53,8 @@ class APIClient {
     func request<T: Decodable>(_ endpoint: String,
                                method: String = "GET",
                                body: Data? = nil,
-                               queryItems: [URLQueryItem]? = nil) async throws -> T {
+                               queryItems: [URLQueryItem]? = nil,
+                               allowRefresh: Bool = true) async throws -> T {
         guard var components = URLComponents(string: AppSettings.shared.baseURL + endpoint) else {
             throw APIError.invalidURL
         }
@@ -88,10 +89,20 @@ class APIClient {
 
             // Handle 401/403 (missing or expired token) - try refresh once
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                guard allowRefresh else {
+                    NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                    throw APIError.unauthorized
+                }
                 do {
                     _ = try await AuthenticationService.shared.refreshAccessToken()
                     // Retry request with new token
-                    return try await self.request(endpoint, method: method, body: body, queryItems: queryItems)
+                    return try await self.request(
+                        endpoint,
+                        method: method,
+                        body: body,
+                        queryItems: queryItems,
+                        allowRefresh: false
+                    )
                 } catch let authError as AuthError {
                     switch authError {
                     case .refreshTokenExpired, .noRefreshToken:
@@ -123,7 +134,8 @@ class APIClient {
     
     func requestVoid(_ endpoint: String,
                      method: String = "POST",
-                     body: Data? = nil) async throws {
+                     body: Data? = nil,
+                     allowRefresh: Bool = true) async throws {
         guard let url = URL(string: AppSettings.shared.baseURL + endpoint) else {
             throw APIError.invalidURL
         }
@@ -150,9 +162,13 @@ class APIClient {
 
             // Handle 401/403 (missing or expired token) - try refresh once
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                guard allowRefresh else {
+                    NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                    throw APIError.unauthorized
+                }
                 do {
                     _ = try await AuthenticationService.shared.refreshAccessToken()
-                    return try await self.requestVoid(endpoint, method: method, body: body)
+                    return try await self.requestVoid(endpoint, method: method, body: body, allowRefresh: false)
                 } catch let authError as AuthError {
                     switch authError {
                     case .refreshTokenExpired, .noRefreshToken:
@@ -181,7 +197,8 @@ class APIClient {
     func requestRaw(_ endpoint: String,
                     method: String = "GET",
                     body: Data? = nil,
-                    queryItems: [URLQueryItem]? = nil) async throws -> [String: Any] {
+                    queryItems: [URLQueryItem]? = nil,
+                    allowRefresh: Bool = true) async throws -> [String: Any] {
         guard var components = URLComponents(string: AppSettings.shared.baseURL + endpoint) else {
             throw APIError.invalidURL
         }
@@ -216,10 +233,20 @@ class APIClient {
 
             // Handle 401/403 (missing or expired token) - try refresh once
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                guard allowRefresh else {
+                    NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                    throw APIError.unauthorized
+                }
                 do {
                     _ = try await AuthenticationService.shared.refreshAccessToken()
                     // Retry request with new token
-                    return try await self.requestRaw(endpoint, method: method, body: body, queryItems: queryItems)
+                    return try await self.requestRaw(
+                        endpoint,
+                        method: method,
+                        body: body,
+                        queryItems: queryItems,
+                        allowRefresh: false
+                    )
                 } catch let authError as AuthError {
                     switch authError {
                     case .refreshTokenExpired, .noRefreshToken:
