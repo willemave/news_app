@@ -33,12 +33,16 @@ final class TweetSuggestionsViewModel: ObservableObject {
 
     private let contentService = ContentService.shared
     private let twitterService = TwitterShareService.shared
-    private let dictationService = VoiceDictationService.shared
+    private let transcriptionService: any SpeechTranscribing
     private var contentId: Int?
     private var creativityDebounceTask: Task<Void, Never>?
     private var lastCreativity: Int = 5
 
     // MARK: - Public Methods
+
+    init(transcriptionService: any SpeechTranscribing = VoiceDictationService.shared) {
+        self.transcriptionService = transcriptionService
+    }
 
     /// Initialize with content ID and generate suggestions.
     func initialize(contentId: Int) async {
@@ -183,7 +187,7 @@ final class TweetSuggestionsViewModel: ObservableObject {
     /// Start voice recording for tweak message.
     func startVoiceRecording() async {
         do {
-            try await dictationService.startRecording()
+            try await transcriptionService.start()
             isRecording = true
         } catch {
             logger.error("Failed to start recording: \(error.localizedDescription)")
@@ -199,7 +203,7 @@ final class TweetSuggestionsViewModel: ObservableObject {
         isTranscribing = true
 
         do {
-            let transcription = try await dictationService.stopRecordingAndTranscribe()
+            let transcription = try await transcriptionService.stop()
             // Append to existing tweak message
             if tweakMessage.isEmpty {
                 tweakMessage = transcription
@@ -219,7 +223,7 @@ final class TweetSuggestionsViewModel: ObservableObject {
 
     /// Cancel voice recording.
     func cancelVoiceRecording() {
-        dictationService.cancelRecording()
+        transcriptionService.cancel()
         isRecording = false
     }
 

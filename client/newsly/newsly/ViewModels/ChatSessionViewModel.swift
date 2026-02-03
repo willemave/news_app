@@ -27,17 +27,24 @@ class ChatSessionViewModel: ObservableObject {
     @Published private(set) var voiceDictationAvailable = false
 
     private let chatService = ChatService.shared
-    private let dictationService = VoiceDictationService.shared
+    private let transcriptionService: any SpeechTranscribing
+    private let isLiveTranscriber: Bool
     private var thinkingTimer: Timer?
     let sessionId: Int
 
-    init(sessionId: Int) {
+    init(sessionId: Int, transcriptionService: any SpeechTranscribing = VoiceDictationService.shared) {
         self.sessionId = sessionId
+        self.transcriptionService = transcriptionService
+        self.isLiveTranscriber = transcriptionService is RealtimeTranscriptionService
+        configureTranscriptionCallbacks()
     }
 
-    init(session: ChatSessionSummary) {
+    init(session: ChatSessionSummary, transcriptionService: any SpeechTranscribing = VoiceDictationService.shared) {
         self.sessionId = session.id
         self.session = session
+        self.transcriptionService = transcriptionService
+        self.isLiveTranscriber = transcriptionService is RealtimeTranscriptionService
+        configureTranscriptionCallbacks()
     }
 
     deinit {
@@ -274,7 +281,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     /// Start voice recording for chat message.
     func startVoiceRecording() async {
         do {
-            try await dictationService.startRecording()
+            try await transcriptionService.start()
             isRecording = true
         } catch {
             errorMessage = error.localizedDescription
@@ -290,14 +297,13 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         logger.info("[ViewModel] Stopping voice recording")
 
         do {
-            let transcription = try await dictationService.stopRecordingAndTranscribe()
+            let transcription = try await transcriptionService.stop()
             logger.info("[ViewModel] Transcription complete | length=\(transcription.count)")
             isTranscribing = false
 
-            // Set input text and auto-send
-            inputText = transcription
-            logger.info("[ViewModel] Calling sendMessage with transcription")
-            await sendMessage()
+            if !isLiveTranscriber {
+                appendLiveChunk(transcription)
+            }
         } catch {
             logger.error("[ViewModel] Voice transcription error: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -307,30 +313,86 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     /// Cancel voice recording.
     func cancelVoiceRecording() {
-        dictationService.cancelRecording()
+        transcriptionService.cancel()
         isRecording = false
     }
 
     /// Check if voice dictation is available.
     private var isVoiceDictationAvailable: Bool {
-        // Check Keychain (received from server during auth)
+        let accessToken = KeychainManager.shared.getToken(key: .accessToken)
+        if let token = accessToken, !token.isEmpty {
+            return true
+        }
         if let key = KeychainManager.shared.getToken(key: .openaiApiKey),
            !key.isEmpty {
             return true
         }
-
-        // Check Info.plist (fallback for development)
         if let key = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
            !key.isEmpty, !key.hasPrefix("$(") {
             return true
         }
-
-        // Check environment variable (fallback for development)
         if let key = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
            !key.isEmpty {
             return true
         }
-
         return false
+    }
+
+    private func configureTranscriptionCallbacks() {
+        transcriptionService.onTranscriptDelta = { [weak self] delta in
+            Task { @MainActor in
+                guard let self else { return }
+                guard self.isLiveTranscriber else { return }
+                self.appendLiveChunk(delta)
+            }
+        }
+        transcriptionService.onTranscriptFinal = { [weak self] transcript in
+            Task { @MainActor in
+                guard let self else { return }
+                guard self.isLiveTranscriber else { return }
+                self.appendLiveChunk(transcript)
+            }
+        }
+        transcriptionService.onError = { [weak self] message in
+            Task { @MainActor in
+                self?.errorMessage = message
+                self?.isRecording = false
+                self?.isTranscribing = false
+            }
+        }
+        transcriptionService.onStateChange = { [weak self] state in
+            Task { @MainActor in
+                guard let self else { return }
+                switch state {
+                case .idle:
+                    self.isRecording = false
+                    self.isTranscribing = false
+                case .recording:
+                    self.isRecording = true
+                    self.isTranscribing = false
+                case .transcribing:
+                    self.isRecording = false
+                    self.isTranscribing = true
+                }
+            }
+        }
+    }
+
+    private func appendLiveChunk(_ text: String) {
+        let cleaned = text
+            .replacingOccurrences(of: "...", with: "")
+            .replacingOccurrences(of: "\u{2026}", with: "")
+        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        if inputText.isEmpty {
+            inputText = trimmed
+            return
+        }
+
+        let needsSpace =
+            inputText.last?.isWhitespace == false
+            && trimmed.first?.isWhitespace == false
+        inputText += (needsSpace ? " " : "") + trimmed
     }
 }

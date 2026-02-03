@@ -38,11 +38,20 @@ enum VoiceDictationError: LocalizedError {
 
 /// Service for voice dictation using OpenAI's gpt-4o-transcribe.
 @MainActor
-final class VoiceDictationService: NSObject, ObservableObject {
+final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribing {
     static let shared = VoiceDictationService()
 
-    @Published private(set) var isRecording = false
-    @Published private(set) var isTranscribing = false
+    @Published private(set) var isRecording = false {
+        didSet { notifyStateChange() }
+    }
+    @Published private(set) var isTranscribing = false {
+        didSet { notifyStateChange() }
+    }
+
+    var onTranscriptDelta: ((String) -> Void)?
+    var onTranscriptFinal: ((String) -> Void)?
+    var onError: ((String) -> Void)?
+    var onStateChange: ((SpeechTranscriptionState) -> Void)?
 
     private var audioRecorder: AVAudioRecorder?
     private var recordingURL: URL?
@@ -78,6 +87,32 @@ final class VoiceDictationService: NSObject, ObservableObject {
                 continuation.resume(returning: granted)
             }
         }
+    }
+
+    func start() async throws {
+        do {
+            try await startRecording()
+        } catch {
+            onError?(error.localizedDescription)
+            throw error
+        }
+    }
+
+    func stop() async throws -> String {
+        do {
+            return try await stopRecordingAndTranscribe()
+        } catch {
+            onError?(error.localizedDescription)
+            throw error
+        }
+    }
+
+    func cancel() {
+        cancelRecording()
+    }
+
+    func reset() {
+        cancelRecording()
     }
 
     /// Start recording audio.
@@ -142,7 +177,9 @@ final class VoiceDictationService: NSObject, ObservableObject {
         isTranscribing = true
         defer { isTranscribing = false }
 
-        return try await transcribeAudio(fileURL: url)
+        let transcript = try await transcribeAudio(fileURL: url)
+        onTranscriptFinal?(transcript)
+        return transcript
     }
 
     /// Cancel recording without transcribing.
@@ -150,6 +187,7 @@ final class VoiceDictationService: NSObject, ObservableObject {
         audioRecorder?.stop()
         audioRecorder = nil
         isRecording = false
+        isTranscribing = false
 
         // Clean up recording file
         if let url = recordingURL {
@@ -159,6 +197,16 @@ final class VoiceDictationService: NSObject, ObservableObject {
     }
 
     // MARK: - Private
+
+    private func notifyStateChange() {
+        if isRecording {
+            onStateChange?(.recording)
+        } else if isTranscribing {
+            onStateChange?(.transcribing)
+        } else {
+            onStateChange?(.idle)
+        }
+    }
 
     private func transcribeAudio(fileURL: URL) async throws -> String {
         guard let apiKey = openAIAPIKey else {

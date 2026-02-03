@@ -382,7 +382,7 @@ struct ContentDetailView: View {
             }
         }
         .sheet(isPresented: $showChatOptionsSheet, onDismiss: {
-            dictationService.cancelRecording()
+            dictationService.cancel()
             audioTranscript = ""
             chatError = nil
         }) {
@@ -766,10 +766,10 @@ struct ContentDetailView: View {
     private func toggleRecording() async {
         do {
             if dictationService.isRecording {
-                let transcript = try await dictationService.stopRecordingAndTranscribe()
+                let transcript = try await dictationService.stop()
                 audioTranscript = transcript
             } else {
-                try await dictationService.startRecording()
+                try await dictationService.start()
             }
         } catch {
             chatError = error.localizedDescription

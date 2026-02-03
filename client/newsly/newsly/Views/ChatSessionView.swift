@@ -223,11 +223,21 @@ struct ChatSessionView: View {
     @State private var isAtBottom = false
 
     init(session: ChatSessionSummary) {
-        _viewModel = StateObject(wrappedValue: ChatSessionViewModel(session: session))
+        _viewModel = StateObject(
+            wrappedValue: ChatSessionViewModel(
+                session: session,
+                transcriptionService: RealtimeTranscriptionService()
+            )
+        )
     }
 
     init(sessionId: Int) {
-        _viewModel = StateObject(wrappedValue: ChatSessionViewModel(sessionId: sessionId))
+        _viewModel = StateObject(
+            wrappedValue: ChatSessionViewModel(
+                sessionId: sessionId,
+                transcriptionService: RealtimeTranscriptionService()
+            )
+        )
     }
 
     private var titleMaxWidth: CGFloat {
@@ -599,17 +609,6 @@ struct ChatSessionView: View {
 
     private var inputBar: some View {
         VStack(spacing: 8) {
-            // Transcribing status
-            if viewModel.isTranscribing {
-                HStack(spacing: 4) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text("Transcribing...")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
             HStack(alignment: .bottom, spacing: 12) {
                 // Clean input field with subtle border
                 HStack(spacing: 8) {
@@ -642,7 +641,7 @@ struct ChatSessionView: View {
                 .background(Color(.systemBackground))
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color(.separator), lineWidth: 1)
+                        .stroke(viewModel.isRecording ? Color.red.opacity(0.6) : Color(.separator), lineWidth: 1)
                 )
                 .cornerRadius(20)
 
@@ -664,6 +663,29 @@ struct ChatSessionView: View {
                 }
                 .disabled(sendButtonDisabled)
             }
+
+            // Status area (fixed height to avoid scroll jumps)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Transcribing...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .opacity(viewModel.isTranscribing ? 1 : 0)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                    Text("Listening — text will appear in the message box")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .opacity(viewModel.isRecording ? 1 : 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
