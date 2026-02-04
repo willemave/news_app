@@ -476,3 +476,46 @@ def test_debug_new_user_enabled(db: Session, monkeypatch):
         assert data["refresh_token"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_auth_me_repairs_invalid_email(db: Session, monkeypatch):
+    from app.core.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "debug", False)
+    from app.core.db import get_db_session, get_readonly_db_session
+
+    def override_get_db_session():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
+
+    user = User(
+        apple_id="001234.invalid",
+        email="dev@local",
+        full_name="Invalid Email",
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    access_token = create_access_token(user.id)
+
+    try:
+        response = client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"].endswith("@example.com")
+
+        db.refresh(user)
+        assert user.email.endswith("@example.com")
+    finally:
+        app.dependency_overrides.clear()

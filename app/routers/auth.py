@@ -7,6 +7,7 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -285,7 +286,10 @@ def refresh_token(
 
 
 @router.get("/me", response_model=UserResponse)
-def get_current_user_info(current_user: Annotated[User, Depends(get_current_user)]) -> UserResponse:
+def get_current_user_info(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> UserResponse:
     """
     Get current authenticated user information.
 
@@ -298,7 +302,50 @@ def get_current_user_info(current_user: Annotated[User, Depends(get_current_user
     Raises:
         HTTPException: 401 if token is invalid
     """
-    return UserResponse.from_orm(current_user)
+    try:
+        return UserResponse.from_orm(current_user)
+    except ValidationError as exc:
+        if not _is_email_validation_error(exc):
+            raise
+        user = _repair_invalid_email(db, current_user, exc.errors())
+        return UserResponse.from_orm(user)
+
+
+def _is_email_validation_error(exc: ValidationError) -> bool:
+    return any(error.get("loc") == ("email",) for error in exc.errors())
+
+
+def _repair_invalid_email(
+    db: Session,
+    current_user: User,
+    errors: list[dict[str, object]],
+) -> User:
+    local_part = f"user{current_user.id}"
+    email = (current_user.email or "").strip()
+    original_email = email
+    if email:
+        local = email.split("@", 1)[0].strip()
+        if local:
+            local_part = f"{local}+{current_user.id}"
+
+    current_user.email = f"{local_part}@example.com"
+    db.commit()
+    db.refresh(current_user)
+
+    logger.error(
+        "Repaired invalid user email",
+        extra={
+            "component": "auth",
+            "operation": "repair_email",
+            "item_id": str(current_user.id),
+            "context_data": {
+                "errors": errors,
+                "email": current_user.email,
+                "original_email": original_email,
+            },
+        },
+    )
+    return current_user
 
 
 @router.get("/admin/login", response_class=HTMLResponse)
