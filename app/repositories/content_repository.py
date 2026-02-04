@@ -3,10 +3,10 @@
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import and_, column, exists, or_, select, table, text
+from sqlalchemy import and_, column, exists, select, table, text
 from sqlalchemy.orm import Session
 
-from app.models.metadata import ContentStatus, ContentType
+from app.models.metadata import ContentStatus
 from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
 
 
@@ -52,10 +52,7 @@ def apply_visibility_filters(query, context: VisibilityContext):
     return query.filter(
         and_(
             Content.status == ContentStatus.COMPLETED.value,
-            or_(
-                Content.content_type == ContentType.NEWS.value,
-                context.is_in_inbox,
-            ),
+            context.is_in_inbox,
         )
     ).filter((Content.classification != "skip") | (Content.classification.is_(None)))
 

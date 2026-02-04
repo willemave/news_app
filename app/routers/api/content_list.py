@@ -163,12 +163,7 @@ def list_contents(
     )
     query = query.filter(Content.status == ContentStatus.COMPLETED.value)
     query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
-    query = query.filter(
-        or_(
-            Content.content_type == ContentType.NEWS.value,
-            ContentStatusEntry.id.is_not(None),
-        )
-    )
+    query = query.filter(ContentStatusEntry.id.is_not(None))
 
     # Apply content type filter - support multiple types
     if content_type:

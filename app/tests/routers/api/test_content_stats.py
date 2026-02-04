@@ -231,3 +231,28 @@ def test_long_form_stats_counts(client, db_session, test_user) -> None:
     assert payload["unread_count"] == 3
     assert payload["favorited_count"] == 1
     assert payload["processing_count"] == 2
+
+
+def test_unread_counts_require_inbox_for_news(client, db_session, test_user) -> None:
+    news_item = Content(
+        url="https://example.com/news-unread",
+        content_type=ContentType.NEWS.value,
+        status=ContentStatus.COMPLETED.value,
+        content_metadata={},
+    )
+    db_session.add(news_item)
+    db_session.commit()
+    db_session.refresh(news_item)
+
+    response = client.get("/api/content/stats/unread-counts")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["news"] == 0
+
+    _add_inbox_status(db_session, test_user.id, news_item.id)
+    db_session.commit()
+
+    response = client.get("/api/content/stats/unread-counts")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["news"] == 1

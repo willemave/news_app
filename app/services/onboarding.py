@@ -8,13 +8,15 @@ from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.core.logging import get_logger
+from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import (
     Content,
+    ContentStatusEntry,
     FeedDiscoveryRun,
     FeedDiscoverySuggestion,
     OnboardingDiscoveryLane,
@@ -70,6 +72,7 @@ DEFAULT_SOURCE_LIMITS = {
     "atom": 6,
     "reddit": 8,
 }
+NEWS_SEED_LIMIT = 100
 
 SCRAPER_SOURCE_BY_TYPE = {
     "substack": "Substack",
@@ -485,6 +488,19 @@ def complete_onboarding(
                 "user_id": user_id,
                 "profile_summary": request.profile_summary,
                 "inferred_topics": request.inferred_topics or [],
+            },
+        )
+
+    try:
+        _seed_recent_news_for_user(db, user_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Failed to seed onboarding news",
+            extra={
+                "component": "onboarding",
+                "operation": "seed_news",
+                "item_id": str(user_id),
+                "context_data": {"error": str(exc)},
             },
         )
 
@@ -1288,6 +1304,42 @@ def _estimate_inbox_count(db: Session, user_id: int) -> int:
     count_query = apply_visibility_filters(count_query, context)
     count_query = count_query.filter(~context.is_read)
     return count_query.scalar() or 0
+
+
+def _seed_recent_news_for_user(db: Session, user_id: int, limit: int = NEWS_SEED_LIMIT) -> int:
+    """Seed recent news items into a user's inbox."""
+    if user_id <= 0 or limit <= 0:
+        return 0
+
+    existing = select(ContentStatusEntry.content_id).where(ContentStatusEntry.user_id == user_id)
+    news_ids = (
+        db.query(Content.id)
+        .filter(
+            Content.content_type == ContentType.NEWS.value,
+            Content.status == ContentStatus.COMPLETED.value,
+            (Content.classification != "skip") | (Content.classification.is_(None)),
+        )
+        .filter(~Content.id.in_(existing))
+        .order_by(Content.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    if not news_ids:
+        return 0
+
+    db.bulk_save_objects(
+        [
+            ContentStatusEntry(
+                user_id=user_id,
+                content_id=content_id,
+                status="inbox",
+            )
+            for (content_id,) in news_ids
+        ]
+    )
+    db.commit()
+    return len(news_ids)
 
 
 def _get_tutorial_flag(db: Session, user_id: int) -> bool:

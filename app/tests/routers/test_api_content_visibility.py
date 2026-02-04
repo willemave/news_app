@@ -37,7 +37,7 @@ def _article_summary_payload(title: str) -> dict[str, object]:
     }
 
 
-def test_api_excludes_unprocessed_news(client, db_session: Session):
+def test_api_excludes_unprocessed_news(client, db_session: Session, test_user):
     """Unprocessed news items should not appear in the API feed."""
     pending_news = Content(
         content_type="news",
@@ -82,7 +82,23 @@ def test_api_excludes_unprocessed_news(client, db_session: Session):
 
     db_session.add_all([pending_news, completed_news])
     db_session.commit()
+    db_session.refresh(pending_news)
     db_session.refresh(completed_news)
+    db_session.add_all(
+        [
+            ContentStatusEntry(
+                user_id=test_user.id,
+                content_id=pending_news.id,
+                status="inbox",
+            ),
+            ContentStatusEntry(
+                user_id=test_user.id,
+                content_id=completed_news.id,
+                status="inbox",
+            ),
+        ]
+    )
+    db_session.commit()
 
     response = client.get("/api/content/?content_type=news&read_filter=unread")
     assert response.status_code == 200

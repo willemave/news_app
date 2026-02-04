@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import (
+    Content,
+    ContentStatusEntry,
     OnboardingDiscoveryLane,
     OnboardingDiscoveryRun,
     OnboardingDiscoverySuggestion,
@@ -246,3 +249,30 @@ def test_onboarding_discovery_status_returns_suggestions(client, db_session, tes
     assert data["run_status"] == "completed"
     assert data["suggestions"]["recommended_pods"][0]["feed_url"] == "https://example.com/rss.xml"
     assert data["suggestions"]["recommended_subreddits"][0]["subreddit"] == "MachineLearning"
+
+
+def test_onboarding_complete_seeds_news(client, db_session, monkeypatch, test_user):
+    monkeypatch.setattr("app.services.onboarding._load_curated_defaults", lambda: {})
+
+    news_items = [
+        Content(
+            url=f"https://example.com/news-{idx}",
+            content_type=ContentType.NEWS.value,
+            status=ContentStatus.COMPLETED.value,
+            content_metadata={},
+        )
+        for idx in range(3)
+    ]
+    db_session.add_all(news_items)
+    db_session.commit()
+
+    response = client.post("/api/onboarding/complete", json={})
+    assert response.status_code == 200
+
+    seeded = (
+        db_session.query(ContentStatusEntry)
+        .filter(ContentStatusEntry.user_id == test_user.id)
+        .filter(ContentStatusEntry.status == "inbox")
+        .all()
+    )
+    assert {entry.content_id for entry in seeded} >= {item.id for item in news_items}
