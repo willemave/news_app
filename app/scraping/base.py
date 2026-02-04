@@ -8,7 +8,7 @@ from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.models.scraper_runs import ScraperStats
 from app.services.queue import TaskType, get_queue_service
-from app.services.scraper_configs import ensure_inbox_status
+from app.services.scraper_configs import ensure_inbox_status, list_active_user_ids, should_add_to_inbox
 from app.utils.url_utils import is_http_url, normalize_http_url
 
 logger = get_logger(__name__)
@@ -105,6 +105,7 @@ class BaseScraper(ABC):
         error_details = []
 
         with get_db() as db:
+            active_user_ids: list[int] | None = None
             for item in items:
                 try:
                     user_id = item.get("user_id")
@@ -145,13 +146,27 @@ class BaseScraper(ABC):
                     )
 
                     if existing:
-                        status_created = ensure_inbox_status(
-                            db,
-                            user_id=user_id,
-                            content_id=existing.id,
-                            content_type=content_type_value,
-                        )
-                        if status_created:
+                        inbox_created = False
+                        if should_add_to_inbox(content_type_value):
+                            if user_id is not None:
+                                inbox_created = ensure_inbox_status(
+                                    db,
+                                    user_id=user_id,
+                                    content_id=existing.id,
+                                    content_type=content_type_value,
+                                )
+                            elif content_type_value == ContentType.NEWS.value:
+                                if active_user_ids is None:
+                                    active_user_ids = list_active_user_ids(db)
+                                for active_user_id in active_user_ids:
+                                    if ensure_inbox_status(
+                                        db,
+                                        user_id=active_user_id,
+                                        content_id=existing.id,
+                                        content_type=content_type_value,
+                                    ):
+                                        inbox_created = True
+                        if inbox_created:
                             db.commit()
                         logger.debug(f"URL already exists: {item['url']}")
                         duplicate_count += 1
@@ -174,16 +189,24 @@ class BaseScraper(ABC):
                     db.add(content)
                     db.flush()
 
-                    needs_inbox = content_type_value in {
-                        ContentType.ARTICLE.value,
-                        ContentType.PODCAST.value,
-                    }
-                    ensure_inbox_status(
-                        db,
-                        user_id=user_id if needs_inbox else None,
-                        content_id=content.id,
-                        content_type=content_type_value,
-                    )
+                    if should_add_to_inbox(content_type_value):
+                        if user_id is not None:
+                            ensure_inbox_status(
+                                db,
+                                user_id=user_id,
+                                content_id=content.id,
+                                content_type=content_type_value,
+                            )
+                        elif content_type_value == ContentType.NEWS.value:
+                            if active_user_ids is None:
+                                active_user_ids = list_active_user_ids(db)
+                            for active_user_id in active_user_ids:
+                                ensure_inbox_status(
+                                    db,
+                                    user_id=active_user_id,
+                                    content_id=content.id,
+                                    content_type=content_type_value,
+                                )
 
                     db.commit()
                     db.refresh(content)

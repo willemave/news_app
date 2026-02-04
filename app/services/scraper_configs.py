@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.core.logging import get_logger
 from app.models.schema import ContentStatusEntry, UserScraperConfig
+from app.models.user import User
 
 logger = get_logger(__name__)
 
@@ -297,7 +298,7 @@ def ensure_inbox_status(
     """Ensure a content_status row exists for this user/content."""
     if user_id is None:
         return False
-    if content_type and content_type not in ("article", "podcast", "unknown"):
+    if content_type and not should_add_to_inbox(content_type):
         return False
 
     existing = (
@@ -321,3 +322,16 @@ def ensure_inbox_status(
         )
     )
     return True
+
+
+def should_add_to_inbox(content_type: str | None) -> bool:
+    """Return True when a content type should be added to the inbox."""
+    if not content_type:
+        return False
+    return content_type in ("article", "podcast", "news", "unknown")
+
+
+def list_active_user_ids(db: Session) -> list[int]:
+    """Return active user ids for inbox backfills."""
+    rows = db.query(User.id).filter(User.is_active.is_(True)).all()
+    return [row[0] for row in rows]
