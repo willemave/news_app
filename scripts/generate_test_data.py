@@ -46,15 +46,28 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy.orm import Session
 
+from app.constants import (
+    SUMMARY_KIND_LONG_BULLETS,
+    SUMMARY_KIND_LONG_INTERLEAVED,
+    SUMMARY_KIND_LONG_STRUCTURED,
+    SUMMARY_KIND_SHORT_NEWS_DIGEST,
+    SUMMARY_VERSION_V1,
+    SUMMARY_VERSION_V2,
+)
 from app.core.db import get_db, init_db
 from app.models.metadata import (
     ArticleMetadata,
+    BulletedSummary,
     ContentStatus,
     ContentType,
     InterleavedInsight,
     InterleavedSummary,
+    InterleavedSummaryV2,
+    InterleavedTopic,
     NewsSummary,
     PodcastMetadata,
+    StructuredSummary,
+    SummaryTextBullet,
 )
 from app.models.schema import Content, ContentStatusEntry
 from app.models.user import User
@@ -116,6 +129,8 @@ NEWS_HEADLINES = [
     "Federal Reserve Announces Interest Rate Decision",
 ]
 
+SUMMARY_FORMATS = ["bulleted", "interleaved_v2", "structured", "interleaved_v1"]
+
 
 def random_datetime(days_back: int = 30) -> datetime:
     """Generate a random datetime within the last N days."""
@@ -140,27 +155,86 @@ def generate_bullet_points(count: int = 4) -> list[dict[str, str]]:
     ]
 
 
-def generate_quotes(count: int = 2) -> list[dict[str, str]]:
-    """Generate sample quotes with context."""
+def generate_quotes(count: int = 2) -> list[dict[str, str | None]]:
+    """Generate sample quotes with context and attribution."""
     quotes = [
         (
             "The future belongs to those who understand the implications of AI.",
             "Author's perspective",
+            "Author",
         ),
         (
             "We're not just building technology; we're shaping how humans interact with machines.",
             "CEO Interview",
+            "CEO",
         ),
         (
             "The key to success in this field is relentless iteration and learning from failure.",
+            "Industry Expert",
             "Industry Expert",
         ),
     ]
 
     return [
-        {"text": text, "context": ctx}
-        for text, ctx in random.sample(quotes, min(count, len(quotes)))
+        {"text": text, "context": ctx, "attribution": attribution}
+        for text, ctx, attribution in random.sample(quotes, min(count, len(quotes)))
     ]
+
+
+def generate_bulleted_points(count: int) -> list[dict[str, Any]]:
+    """Generate bullet points with details and supporting quotes."""
+    bullet_texts = [
+        "Organizations are standardizing tools to reduce operational overhead.",
+        "The approach delivers measurable performance gains across benchmarks.",
+        "Adoption depends on integration with existing workflows and governance.",
+        "Cost visibility is reshaping procurement decisions for AI tooling.",
+        "Teams report faster iteration cycles once the workflow is in place.",
+        "Reliability improves when monitoring and feedback loops are formalized.",
+        "Security reviews now gate most production deployments of new models.",
+        "The market is consolidating around a few dominant platform providers.",
+        "Talent needs are shifting toward systems and infrastructure expertise.",
+        "Long-term ROI is tied to data quality and operational maturity.",
+        "Early pilots show uneven outcomes depending on domain complexity.",
+        "Product roadmaps increasingly prioritize automation and orchestration.",
+    ]
+
+    detail_templates = [
+        (
+            "Evidence points to {detail_focus} as a deciding factor in adoption. "
+            "Teams that address this early report smoother rollouts and clearer outcomes."
+        ),
+        (
+            "The data suggests {detail_focus} is a leading indicator of success. "
+            "Executives are monitoring this closely to justify continued investment."
+        ),
+        (
+            "Practitioners highlight {detail_focus} when describing the biggest shifts. "
+            "These changes are already influencing roadmap and staffing decisions."
+        ),
+    ]
+
+    selected: list[str] = []
+    pool = bullet_texts.copy()
+    while len(selected) < count:
+        if not pool:
+            pool = bullet_texts.copy()
+        take = min(count - len(selected), len(pool))
+        chunk = random.sample(pool, take)
+        selected.extend(chunk)
+        for item in chunk:
+            pool.remove(item)
+    points: list[dict[str, Any]] = []
+    for text in selected:
+        detail_focus = text.lower().rstrip(".")
+        detail = random.choice(detail_templates).format(detail_focus=detail_focus)
+        points.append(
+            {
+                "text": text,
+                "detail": detail,
+                "quotes": generate_quotes(random.randint(1, 3)),
+            }
+        )
+    return points
 
 
 def generate_questions(count: int = 2) -> list[str]:
@@ -278,6 +352,52 @@ def generate_interleaved_insights(count: int = 5) -> list[InterleavedInsight]:
     ]
 
 
+def generate_interleaved_key_points(count: int = 4) -> list[SummaryTextBullet]:
+    """Generate key points for interleaved v2 summaries."""
+    candidates = [
+        "Benchmark accuracy improves by roughly 35-40% across tasks.",
+        "Training costs fall as teams optimize the new pipeline.",
+        "Deployment timelines shrink from months to weeks.",
+        "Adoption accelerates in teams with strong data tooling.",
+        "Operational risk drops when monitoring is integrated early.",
+    ]
+    return [SummaryTextBullet(text=text) for text in random.sample(candidates, count)]
+
+
+def generate_interleaved_topics(count: int = 2) -> list[InterleavedTopic]:
+    """Generate topics for interleaved v2 summaries."""
+    topic_names = [
+        "Performance Gains",
+        "Operational Impact",
+        "Adoption Patterns",
+        "Architecture",
+        "Cost Considerations",
+        "Market Implications",
+    ]
+    selected = random.sample(topic_names, count)
+    topics: list[InterleavedTopic] = []
+    for name in selected:
+        bullets = [
+            SummaryTextBullet(text="Teams see consistent improvements across workflows."),
+            SummaryTextBullet(text="Investments in tooling reduce long-term overhead."),
+        ]
+        if random.random() > 0.5:
+            bullets.append(SummaryTextBullet(text="Early wins unlock broader buy-in."))
+        topics.append(InterleavedTopic(topic=name, bullets=bullets[:3]))
+    return topics
+
+
+def resolve_summary_format(summary_format: str) -> str:
+    """Normalize summary format selection."""
+    if summary_format != "mixed":
+        return summary_format
+    return random.choices(
+        SUMMARY_FORMATS,
+        weights=[0.45, 0.25, 0.2, 0.1],
+        k=1,
+    )[0]
+
+
 class ArticleGenerator:
     """Generate article test data with full metadata."""
 
@@ -285,32 +405,86 @@ class ArticleGenerator:
     def generate(
         url_base: str = "https://example.com/article",
         status: str = ContentStatus.COMPLETED.value,
+        summary_format: str = "mixed",
     ) -> dict[str, Any]:
-        """Generate a complete article with metadata using InterleavedSummary format."""
+        """Generate a complete article with metadata using multiple summary formats."""
         article_id = random.randint(1000, 999999)
         url = f"{url_base}-{article_id}"
         title = random.choice(ARTICLE_TITLES)
         source = random.choice(ARTICLE_SOURCES)
         topics = random.choice(TOPICS)
 
-        # Generate interleaved summary (new format for articles)
-        summary = InterleavedSummary(
-            summary_type="interleaved",
-            title=title,
-            hook=(
-                f"This article explores {topics[0].lower()} with a focus on practical "
-                f"applications and future implications. It provides comprehensive analysis "
-                "backed by research and real-world examples demonstrating the impact."
-            ),
-            insights=generate_interleaved_insights(random.randint(5, 6)),
-            takeaway=(
-                "Understanding these developments is crucial for anyone looking to stay ahead "
-                "in the rapidly evolving landscape. The implications extend beyond immediate "
-                "applications to reshape how we think about solving complex problems."
-            ),
-            classification="to_read" if random.random() > 0.2 else "skip",
-            summarization_date=random_datetime(7),
-        )
+        selected_format = resolve_summary_format(summary_format)
+        summary_kind = SUMMARY_KIND_LONG_BULLETS
+        summary_version = SUMMARY_VERSION_V1
+
+        if selected_format == "interleaved_v1":
+            summary = InterleavedSummary(
+                summary_type="interleaved",
+                title=title,
+                hook=(
+                    f"This article explores {topics[0].lower()} with a focus on practical "
+                    f"applications and future implications. It provides comprehensive analysis "
+                    "backed by research and real-world examples demonstrating the impact."
+                ),
+                insights=generate_interleaved_insights(random.randint(5, 6)),
+                takeaway=(
+                    "Understanding these developments is crucial for anyone looking to stay ahead "
+                    "in the rapidly evolving landscape. The implications extend beyond immediate "
+                    "applications to reshape how we think about solving complex problems."
+                ),
+                classification="to_read" if random.random() > 0.2 else "skip",
+                summarization_date=random_datetime(7),
+            )
+            summary_kind = SUMMARY_KIND_LONG_INTERLEAVED
+            summary_version = SUMMARY_VERSION_V1
+        elif selected_format == "interleaved_v2":
+            summary = InterleavedSummaryV2(
+                title=title,
+                hook=(
+                    f"This article explores {topics[0].lower()} with a focus on practical "
+                    "applications and future implications. It provides comprehensive analysis "
+                    "backed by research and real-world examples demonstrating the impact."
+                ),
+                key_points=generate_interleaved_key_points(random.randint(3, 5)),
+                topics=generate_interleaved_topics(2),
+                quotes=generate_quotes(random.randint(1, 2)),
+                takeaway=(
+                    "Understanding these developments is crucial for anyone looking to stay ahead "
+                    "in the rapidly evolving landscape. The implications extend beyond immediate "
+                    "applications to reshape how we think about solving complex problems."
+                ),
+                classification="to_read" if random.random() > 0.2 else "skip",
+                summarization_date=random_datetime(7),
+            )
+            summary_kind = SUMMARY_KIND_LONG_INTERLEAVED
+            summary_version = SUMMARY_VERSION_V2
+        elif selected_format == "structured":
+            summary = StructuredSummary(
+                title=title,
+                overview=(
+                    "This article summarizes key developments, tying together evidence "
+                    "from recent research and practitioner feedback."
+                ),
+                bullet_points=generate_bullet_points(random.randint(4, 6)),
+                quotes=generate_quotes(random.randint(1, 3)),
+                topics=topics,
+                questions=generate_questions(random.randint(2, 3)),
+                counter_arguments=generate_counter_arguments(random.randint(1, 2)),
+                summarization_date=random_datetime(7),
+                classification="to_read" if random.random() > 0.2 else "skip",
+            )
+            summary_kind = SUMMARY_KIND_LONG_STRUCTURED
+            summary_version = SUMMARY_VERSION_V1
+        else:
+            summary = BulletedSummary(
+                title=title,
+                points=generate_bulleted_points(random.randint(10, 20)),
+                classification="to_read" if random.random() > 0.2 else "skip",
+                summarization_date=random_datetime(7),
+            )
+            summary_kind = SUMMARY_KIND_LONG_BULLETS
+            summary_version = SUMMARY_VERSION_V1
 
         # Generate article metadata
         metadata = ArticleMetadata(
@@ -322,6 +496,8 @@ class ArticleGenerator:
             final_url_after_redirects=url,
             word_count=random.randint(500, 3000),
             summary=summary,
+            summary_kind=summary_kind,
+            summary_version=summary_version,
         )
 
         return {
@@ -345,8 +521,9 @@ class PodcastGenerator:
     def generate(
         url_base: str = "https://example.com/podcast",
         status: str = ContentStatus.COMPLETED.value,
+        summary_format: str = "mixed",
     ) -> dict[str, Any]:
-        """Generate a complete podcast with metadata using InterleavedSummary format."""
+        """Generate a complete podcast with metadata using multiple summary formats."""
         episode_id = random.randint(1000, 999999)
         url = f"{url_base}/episode-{episode_id}.mp3"
         title = random.choice(PODCAST_TITLES)
@@ -354,24 +531,79 @@ class PodcastGenerator:
         topics = random.choice(TOPICS)
         episode_number = random.randint(1, 200)
 
-        # Generate interleaved summary (new format for podcasts)
-        summary = InterleavedSummary(
-            summary_type="interleaved",
-            title=title,
-            hook=(
-                f"In this episode, the hosts discuss {topics[0].lower()} and share insights from "
-                "their experiences. The conversation covers key strategies, common pitfalls, and "
-                "actionable advice that listeners can apply immediately to their own work."
-            ),
-            insights=generate_interleaved_insights(random.randint(5, 6)),
-            takeaway=(
-                "This episode offers valuable perspectives for practitioners at all levels. "
-                "The guests' combined experience provides a nuanced view that challenges "
-                "conventional thinking while offering practical next steps for listeners."
-            ),
-            classification="to_read" if random.random() > 0.15 else "skip",
-            summarization_date=random_datetime(7),
-        )
+        selected_format = resolve_summary_format(summary_format)
+        summary_kind = SUMMARY_KIND_LONG_BULLETS
+        summary_version = SUMMARY_VERSION_V1
+
+        if selected_format == "interleaved_v1":
+            summary = InterleavedSummary(
+                summary_type="interleaved",
+                title=title,
+                hook=(
+                    f"In this episode, the hosts discuss {topics[0].lower()} "
+                    "and share insights from their experiences. The conversation "
+                    "covers key strategies, common pitfalls, and actionable advice "
+                    "that listeners can apply immediately to their own work."
+                ),
+                insights=generate_interleaved_insights(random.randint(5, 6)),
+                takeaway=(
+                    "This episode offers valuable perspectives for practitioners at all levels. "
+                    "The guests' combined experience provides a nuanced view that challenges "
+                    "conventional thinking while offering practical next steps for listeners."
+                ),
+                classification="to_read" if random.random() > 0.15 else "skip",
+                summarization_date=random_datetime(7),
+            )
+            summary_kind = SUMMARY_KIND_LONG_INTERLEAVED
+            summary_version = SUMMARY_VERSION_V1
+        elif selected_format == "interleaved_v2":
+            summary = InterleavedSummaryV2(
+                title=title,
+                hook=(
+                    f"In this episode, the hosts discuss {topics[0].lower()} "
+                    "and share insights from their experiences. The conversation "
+                    "covers key strategies, common pitfalls, and actionable advice "
+                    "that listeners can apply immediately to their own work."
+                ),
+                key_points=generate_interleaved_key_points(random.randint(3, 5)),
+                topics=generate_interleaved_topics(2),
+                quotes=generate_quotes(random.randint(1, 2)),
+                takeaway=(
+                    "This episode offers valuable perspectives for practitioners at all levels. "
+                    "The guests' combined experience provides a nuanced view that challenges "
+                    "conventional thinking while offering practical next steps for listeners."
+                ),
+                classification="to_read" if random.random() > 0.15 else "skip",
+                summarization_date=random_datetime(7),
+            )
+            summary_kind = SUMMARY_KIND_LONG_INTERLEAVED
+            summary_version = SUMMARY_VERSION_V2
+        elif selected_format == "structured":
+            summary = StructuredSummary(
+                title=title,
+                overview=(
+                    "This episode focuses on practical lessons and strategies "
+                    "shared by the guests, supported by specific examples."
+                ),
+                bullet_points=generate_bullet_points(random.randint(4, 6)),
+                quotes=generate_quotes(random.randint(1, 3)),
+                topics=topics,
+                questions=generate_questions(random.randint(2, 3)),
+                counter_arguments=generate_counter_arguments(random.randint(1, 2)),
+                summarization_date=random_datetime(7),
+                classification="to_read" if random.random() > 0.15 else "skip",
+            )
+            summary_kind = SUMMARY_KIND_LONG_STRUCTURED
+            summary_version = SUMMARY_VERSION_V1
+        else:
+            summary = BulletedSummary(
+                title=title,
+                points=generate_bulleted_points(random.randint(10, 20)),
+                classification="to_read" if random.random() > 0.15 else "skip",
+                summarization_date=random_datetime(7),
+            )
+            summary_kind = SUMMARY_KIND_LONG_BULLETS
+            summary_version = SUMMARY_VERSION_V1
 
         # Generate podcast metadata
         metadata = PodcastMetadata(
@@ -382,6 +614,8 @@ class PodcastGenerator:
             episode_number=episode_number,
             word_count=random.randint(3000, 10000),
             summary=summary,
+            summary_kind=summary_kind,
+            summary_version=summary_version,
         )
 
         return {
@@ -431,6 +665,8 @@ class NewsGenerator:
         metadata = {
             "source": source_domain,
             "platform": platform,
+            "summary_kind": SUMMARY_KIND_SHORT_NEWS_DIGEST,
+            "summary_version": SUMMARY_VERSION_V1,
             "article": {
                 "url": article_url,
                 "title": headline,
@@ -467,6 +703,8 @@ def generate_test_data(
     num_podcasts: int = 5,
     num_news: int = 15,
     include_pending: bool = True,
+    article_summary_format: str = "mixed",
+    podcast_summary_format: str = "mixed",
 ) -> list[dict[str, Any]]:
     """
     Generate a mix of test data across all content types.
@@ -488,7 +726,7 @@ def generate_test_data(
             status = random.choice([ContentStatus.NEW.value, ContentStatus.PROCESSING.value])
         else:
             status = ContentStatus.COMPLETED.value
-        data.append(ArticleGenerator.generate(status=status))
+        data.append(ArticleGenerator.generate(status=status, summary_format=article_summary_format))
 
     # Generate podcasts
     for i in range(num_podcasts):
@@ -496,7 +734,9 @@ def generate_test_data(
             status = random.choice([ContentStatus.NEW.value, ContentStatus.PROCESSING.value])
         else:
             status = ContentStatus.COMPLETED.value
-        data.append(PodcastGenerator.generate(status=status))
+        data.append(
+            PodcastGenerator.generate(status=status, summary_format=podcast_summary_format)
+        )
 
     # Generate news
     for i in range(num_news):
@@ -556,6 +796,22 @@ def insert_test_data(
     return inserted_ids
 
 
+def _parse_user_ids(raw_value: str | None) -> list[int] | None:
+    """Parse comma-separated user IDs into a list."""
+    if not raw_value:
+        return None
+    user_ids: list[int] = []
+    for chunk in raw_value.split(","):
+        cleaned = chunk.strip()
+        if not cleaned:
+            continue
+        try:
+            user_ids.append(int(cleaned))
+        except ValueError:
+            continue
+    return user_ids or None
+
+
 def main():
     """Main entry point for the script."""
     import argparse
@@ -570,6 +826,22 @@ def main():
         help="Don't include items in pending/processing states",
     )
     parser.add_argument("--dry-run", action="store_true", help="Generate but don't insert data")
+    parser.add_argument(
+        "--article-summary-format",
+        choices=["mixed", "bulleted", "interleaved_v2", "interleaved_v1", "structured"],
+        default="mixed",
+        help="Summary format for articles (default: mixed)",
+    )
+    parser.add_argument(
+        "--podcast-summary-format",
+        choices=["mixed", "bulleted", "interleaved_v2", "interleaved_v1", "structured"],
+        default="mixed",
+        help="Summary format for podcasts (default: mixed)",
+    )
+    parser.add_argument(
+        "--user-ids",
+        help="Comma-separated user IDs to receive article/podcast inbox entries",
+    )
 
     args = parser.parse_args()
 
@@ -584,6 +856,8 @@ def main():
         num_podcasts=args.podcasts,
         num_news=args.news,
         include_pending=not args.no_pending,
+        article_summary_format=args.article_summary_format,
+        podcast_summary_format=args.podcast_summary_format,
     )
 
     if args.dry_run:
@@ -600,7 +874,8 @@ def main():
     print("\nInserting data into database...")
     init_db()
     with get_db() as session:
-        inserted_ids = insert_test_data(session, data)
+        user_ids = _parse_user_ids(args.user_ids)
+        inserted_ids = insert_test_data(session, data, user_ids=user_ids)
 
     print(f"\nSuccessfully inserted {len(inserted_ids)} items")
     print(f"  IDs: {min(inserted_ids)} - {max(inserted_ids)}")
