@@ -7,6 +7,7 @@ from app.constants import SUMMARY_KIND_SHORT_NEWS_DIGEST, SUMMARY_VERSION_V1
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
+from app.utils.summary_metadata import infer_summary_kind_version
 from app.utils.url_utils import is_http_url
 
 logger = get_logger(__name__)
@@ -95,11 +96,14 @@ def _normalize_summary_metadata(metadata: dict[str, Any], content_type: str) -> 
     if summary_kind and summary_version:
         return
 
-    if content_type == ContentType.NEWS.value:
-        if not summary_kind:
-            metadata["summary_kind"] = SUMMARY_KIND_SHORT_NEWS_DIGEST
-        if not summary_version:
-            metadata["summary_version"] = SUMMARY_VERSION_V1
+    inferred = infer_summary_kind_version(content_type, summary, summary_kind, summary_version)
+    if not inferred:
+        return
+    inferred_kind, inferred_version = inferred
+    if not summary_kind:
+        metadata["summary_kind"] = inferred_kind
+    if not summary_version:
+        metadata["summary_version"] = inferred_version
 
 
 def domain_to_content(content_data: ContentData, existing: DBContent | None = None) -> DBContent:
