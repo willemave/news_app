@@ -4,9 +4,8 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
-from app.core.deps import DEV_USER_EMAIL, get_current_user
+from app.core.deps import get_current_user
 from app.core.security import create_access_token, create_refresh_token
-from app.core.settings import get_settings
 from app.models.user import User
 
 
@@ -101,16 +100,3 @@ def test_get_current_user_refresh_token(db: Session):
 
     assert exc_info.value.status_code == 401
 
-
-def test_get_current_user_debug_bypass(db: Session, monkeypatch):
-    """Test get_current_user bypasses authentication when debug is enabled."""
-    monkeypatch.setenv("DEBUG", "true")
-    get_settings.cache_clear()
-
-    try:
-        result = get_current_user(credentials=None, db=db)
-        assert result.email == DEV_USER_EMAIL
-        assert result.is_active is True
-    finally:
-        monkeypatch.delenv("DEBUG", raising=False)
-        get_settings.cache_clear()

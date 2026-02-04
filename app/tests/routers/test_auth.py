@@ -306,8 +306,11 @@ def test_admin_logout(monkeypatch):
     assert data["message"] == "Logged out"
 
 
-def test_get_current_user_info(db: Session):
+def test_get_current_user_info(db: Session, monkeypatch):
     """Test /auth/me endpoint."""
+    from app.core.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "debug", False)
     # Override get_db_session to use our test db
     from app.core.db import get_db_session, get_readonly_db_session
 
@@ -343,21 +346,27 @@ def test_get_current_user_info(db: Session):
         app.dependency_overrides.clear()
 
 
-def test_get_current_user_info_invalid_token():
+def test_get_current_user_info_invalid_token(monkeypatch):
     """Test /auth/me with invalid token."""
+    from app.core.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "debug", False)
     response = client.get("/auth/me", headers={"Authorization": "Bearer invalid.token.here"})
 
     assert response.status_code == 401
 
 
-def test_get_current_user_info_no_token():
+def test_get_current_user_info_no_token(monkeypatch):
     """Test /auth/me without token."""
+    from app.core.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "debug", False)
     response = client.get("/auth/me")
 
     assert response.status_code == 403  # Forbidden when no auth header
 
 
-def test_datetime_serialization_has_timezone(db: Session):
+def test_datetime_serialization_has_timezone(db: Session, monkeypatch):
     """
     Test that datetime fields in user responses are serialized with timezone indicator.
 
@@ -368,6 +377,9 @@ def test_datetime_serialization_has_timezone(db: Session):
     "Expected date string to be ISO8601-formatted."
     """
     # Override get_db_session to use our test db
+    from app.core.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "debug", False)
     from app.core.db import get_db_session, get_readonly_db_session
 
     def override_get_db_session():
@@ -435,7 +447,8 @@ def test_datetime_serialization_has_timezone(db: Session):
         app.dependency_overrides.clear()
 
 
-def test_debug_new_user_disabled():
+def test_debug_new_user_disabled(monkeypatch):
+    monkeypatch.setattr("app.routers.auth.settings.debug", False)
     response = client.post("/auth/debug/new-user")
     assert response.status_code == 404
 
