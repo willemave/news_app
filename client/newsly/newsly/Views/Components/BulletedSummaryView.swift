@@ -1,0 +1,160 @@
+//
+//  BulletedSummaryView.swift
+//  newsly
+//
+//  Bullet-first summary with expandable details and quotes.
+//
+
+import SwiftUI
+
+private enum BulletedSummaryDesign {
+    static let sectionSpacing: CGFloat = 18
+    static let itemSpacing: CGFloat = 10
+    static let quoteBarWidth: CGFloat = 3
+}
+
+struct BulletedSummaryView: View {
+    let summary: BulletedSummary
+    var contentId: Int?
+
+    @State private var expandedIndices: Set<Int> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BulletedSummaryDesign.sectionSpacing) {
+            VStack(alignment: .leading, spacing: BulletedSummaryDesign.itemSpacing) {
+                ForEach(Array(summary.points.enumerated()), id: \.offset) { index, point in
+                    bulletDisclosureRow(point: point, index: index)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bulletDisclosureRow(point: BulletSummaryPoint, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if expandedIndices.contains(index) {
+                        expandedIndices.remove(index)
+                    } else {
+                        expandedIndices.insert(index)
+                    }
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.secondary.opacity(0.7))
+                        .rotationEffect(.degrees(expandedIndices.contains(index) ? 90 : 0))
+                        .padding(.top, 4)
+
+                    Text(point.text)
+                        .font(.callout)
+                        .foregroundColor(.primary.opacity(0.9))
+                        .multilineTextAlignment(.leading)
+
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+
+            if expandedIndices.contains(index) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(point.detail)
+                        .font(.subheadline)
+                        .foregroundColor(.primary.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !point.quotes.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(point.quotes, id: \.text) { quote in
+                                quoteCard(quote)
+                            }
+                        }
+                    }
+                }
+                .padding(.leading, 16)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private func quoteCard(_ quote: Quote) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(quote.text)
+                .font(.callout)
+                .italic()
+                .foregroundColor(.primary.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let attributionLine = quoteAttributionLine(quote) {
+                Text("— \(attributionLine)")
+                    .font(.footnote)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.leading, 12)
+        .overlay(
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [.purple.opacity(0.8), .purple.opacity(0.4)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: BulletedSummaryDesign.quoteBarWidth),
+            alignment: .leading
+        )
+    }
+
+    private func quoteAttributionLine(_ quote: Quote) -> String? {
+        let candidates: [String?] = [quote.attribution, quote.context]
+        let parts: [String] = candidates.compactMap { value in
+            guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !trimmed.isEmpty else { return nil }
+            return trimmed
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+#Preview {
+    ScrollView {
+        BulletedSummaryView(
+            summary: BulletedSummary(
+                title: "Bulleted Summary",
+                points: [
+                    BulletSummaryPoint(
+                        text: "Enterprise teams are consolidating agent workflows across departments.",
+                        detail: "Procurement and security teams are pushing for fewer vendors and clearer controls. This consolidation is accelerating standardization of internal agent tooling.",
+                        quotes: [
+                            Quote(
+                                text: "We can't have five different agent stacks in one company.",
+                                context: "Security lead",
+                                attribution: nil
+                            )
+                        ]
+                    ),
+                    BulletSummaryPoint(
+                        text: "Cost visibility is becoming a primary driver of agent adoption choices.",
+                        detail: "Teams are demanding per-task cost reporting to justify ongoing spend. Vendor selection is increasingly driven by predictability rather than raw capability.",
+                        quotes: [
+                            Quote(
+                                text: "If we can't predict the bill, we can't roll it out.",
+                                context: "Finance stakeholder",
+                                attribution: nil
+                            )
+                        ]
+                    )
+                ],
+                classification: "to_read",
+                summarizationDate: "2026-02-04T12:00:00Z"
+            )
+        )
+        .padding()
+    }
+}

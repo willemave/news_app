@@ -15,6 +15,8 @@ private enum DetailDesign {
     // Spacing
     static let horizontalPadding: CGFloat = 20
     static let sectionSpacing: CGFloat = 20
+    static let actionBarTopPadding: CGFloat = 8
+    static let summaryTopPadding: CGFloat = 12
     static let cardPadding: CGFloat = 16
 
     // Corner radii
@@ -94,14 +96,14 @@ struct ContentDetailView: View {
                         // Floating action bar
                         actionBar(content: content)
                             .padding(.horizontal, DetailDesign.horizontalPadding)
-                            .padding(.top, 16)
+                            .padding(.top, DetailDesign.actionBarTopPadding)
 
                         // Chat status banner (inline, under header)
                         if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
                             ChatStatusBanner(
                                 session: activeSession,
                                 onTap: {
-                                    Task { await openChatSession(sessionId: activeSession.id, contentId: content.id) }
+                                    openChatSession(sessionId: activeSession.id, contentId: content.id)
                                 },
                                 onDismiss: {
                                     chatSessionManager.markAsViewed(contentId: content.id)
@@ -127,11 +129,23 @@ struct ContentDetailView: View {
                             .padding(.top, 12)
                         }
 
-                        // Summary Section (interleaved v2, interleaved v1, or structured)
-                        if let interleavedSummary = content.interleavedSummaryV2 {
+                        // Summary Section (bulleted v1, interleaved v2, interleaved v1, or structured)
+                        if let bulletedSummary = content.bulletedSummary {
+                            BulletedSummaryView(summary: bulletedSummary, contentId: content.id)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.summaryTopPadding)
+                                .onAppear {
+                                    logSummarySection(
+                                        content: content,
+                                        section: "bulleted_v1",
+                                        bulletPointCount: bulletedSummary.points.count,
+                                        insightCount: 0
+                                    )
+                                }
+                        } else if let interleavedSummary = content.interleavedSummaryV2 {
                             InterleavedSummaryV2View(summary: interleavedSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
-                                .padding(.top, DetailDesign.sectionSpacing)
+                                .padding(.top, DetailDesign.summaryTopPadding)
                                 .onAppear {
                                     logSummarySection(
                                         content: content,
@@ -143,7 +157,7 @@ struct ContentDetailView: View {
                         } else if let interleavedSummary = content.interleavedSummary {
                             InterleavedSummaryView(summary: interleavedSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
-                                .padding(.top, DetailDesign.sectionSpacing)
+                                .padding(.top, DetailDesign.summaryTopPadding)
                                 .onAppear {
                                     logSummarySection(
                                         content: content,
@@ -155,7 +169,7 @@ struct ContentDetailView: View {
                         } else if let structuredSummary = content.structuredSummary {
                             StructuredSummaryView(summary: structuredSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
-                                .padding(.top, DetailDesign.sectionSpacing)
+                                .padding(.top, DetailDesign.summaryTopPadding)
                                 .onAppear {
                                     logSummarySection(
                                         content: content,
@@ -957,7 +971,7 @@ struct ContentDetailView: View {
             Button(action: {
                 Task {
                     if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
-                        await openChatSession(sessionId: activeSession.id, contentId: content.id)
+                        openChatSession(sessionId: activeSession.id, contentId: content.id)
                         return
                     }
                     if !content.isFavorited {
@@ -970,23 +984,7 @@ struct ContentDetailView: View {
             }
             .disabled(isCheckingChatSession)
 
-            // Navigation - Next (only if there's more)
-            if currentIndex < allContentIds.count - 1 {
-                Spacer()
-
-                Button(action: {
-                    withAnimation(.easeInOut) { navigateToNext() }
-                }) {
-                    HStack(spacing: 2) {
-                        Text("Next")
-                            .font(.subheadline)
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(.secondary)
-                }
-            }
+            // Navigation - Next removed (swipe only)
         }
         .frame(height: 44)
     }
@@ -1233,8 +1231,9 @@ struct ContentDetailView: View {
         let structuredCount = content.structuredSummary?.bulletPoints.count ?? 0
         let interleavedV1Count = content.interleavedSummary?.insights.count ?? 0
         let interleavedV2Count = content.interleavedSummaryV2?.keyPoints.count ?? 0
+        let bulletedCount = content.bulletedSummary?.points.count ?? 0
         detailLogger.info(
-            "[ContentDetailView] summary snapshot (\(context)) id=\(content.id) type=\(content.contentType, privacy: .public) structured=\(content.structuredSummary != nil) interleaved_v1=\(content.interleavedSummary != nil) interleaved_v2=\(content.interleavedSummaryV2 != nil) structured_points=\(structuredCount) interleaved_insights=\(interleavedV1Count) interleaved_key_points=\(interleavedV2Count) raw_bullets=\(content.bulletPoints.count)"
+            "[ContentDetailView] summary snapshot (\(context)) id=\(content.id) type=\(content.contentType, privacy: .public) bulleted_v1=\(content.bulletedSummary != nil) structured=\(content.structuredSummary != nil) interleaved_v1=\(content.interleavedSummary != nil) interleaved_v2=\(content.interleavedSummaryV2 != nil) bulleted_points=\(bulletedCount) structured_points=\(structuredCount) interleaved_insights=\(interleavedV1Count) interleaved_key_points=\(interleavedV2Count) raw_bullets=\(content.bulletPoints.count)"
         )
     }
 

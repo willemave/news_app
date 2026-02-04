@@ -167,6 +167,21 @@ struct ContentDetail: Codable, Identifiable {
         return nil
     }
 
+    /// Parse the raw summary as BulletedSummary (returns nil if not bulleted format)
+    var bulletedSummary: BulletedSummary? {
+        guard resolvedSummaryKind == "long_bullets",
+              resolvedSummaryVersion == 1,
+              let raw = structuredSummaryRaw else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        if let jsonData = try? JSONSerialization.data(withJSONObject: raw.mapValues { $0.value }) {
+            return try? decoder.decode(BulletedSummary.self, from: jsonData)
+        }
+        return nil
+    }
+
     /// Parse the raw summary as StructuredSummary (returns nil if interleaved format)
     var structuredSummary: StructuredSummary? {
         guard resolvedSummaryKind == "long_structured",

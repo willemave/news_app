@@ -116,3 +116,27 @@ struct InterleavedSummaryV2: Codable {
         case summarizationDate = "summarization_date"
     }
 }
+
+// MARK: - Bulleted Summary v1
+
+struct BulletSummaryPoint: Codable, Identifiable {
+    let text: String
+    let detail: String
+    let quotes: [Quote]
+
+    var id: String { text }
+}
+
+struct BulletedSummary: Codable {
+    let title: String?
+    let points: [BulletSummaryPoint]
+    let classification: String?
+    let summarizationDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case points
+        case classification
+        case summarizationDate = "summarization_date"
+    }
+}
