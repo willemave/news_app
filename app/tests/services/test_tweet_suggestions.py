@@ -524,10 +524,21 @@ class TestTweetSuggestionService:
             title="Test Podcast",
             status=ContentStatus.COMPLETED,
             metadata={
+                "summary_kind": "long_structured",
+                "summary_version": 1,
                 "summary": {
                     "title": "Podcast Episode",
-                    "overview": "Overview of the podcast.",
-                    "bullet_points": ["Key takeaway"],
+                    "overview": (
+                        "This overview is intentionally long enough to satisfy structured "
+                        "summary validation for podcast content."
+                    ),
+                    "bullet_points": [
+                        {"text": "Key takeaway from the episode.", "category": "key_finding"},
+                        {"text": "Second highlight from the discussion.", "category": "insight"},
+                        {"text": "Third point explaining the main theme.", "category": "context"},
+                    ],
+                    "quotes": [],
+                    "topics": [],
                 }
             },
         )

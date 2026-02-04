@@ -335,11 +335,16 @@ final class OnboardingViewModel: ObservableObject {
         audioTimer?.invalidate()
         audioDurationSeconds = 0
         audioTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.audioDurationSeconds += 1
-            if self.audioDurationSeconds >= 30 && self.audioState == .recording {
-                Task { await self.stopAudioCaptureAndDiscover() }
+            Task { @MainActor in
+                self?.handleAudioTimerTick()
             }
+        }
+    }
+
+    private func handleAudioTimerTick() {
+        audioDurationSeconds += 1
+        if audioDurationSeconds >= 30 && audioState == .recording {
+            Task { await stopAudioCaptureAndDiscover() }
         }
     }
 

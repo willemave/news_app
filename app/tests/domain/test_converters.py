@@ -39,6 +39,11 @@ def test_content_to_domain_preserves_article_metadata() -> None:
 
 def test_content_to_domain_sets_news_summary_kind() -> None:
     metadata = {
+        "article": {
+            "title": "Example Story",
+            "url": "https://example.com/story",
+            "source_domain": "example.com",
+        },
         "summary": {
             "title": "Digest title",
             "summary": "Short digest summary",

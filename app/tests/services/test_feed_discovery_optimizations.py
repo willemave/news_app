@@ -13,7 +13,7 @@ def test_skip_candidate_on_known_host():
     candidate = DiscoveryCandidate(
         title="Tracking",
         site_url="https://link.chtbl.com/rss.xml",
-        rationale="Skip tracking",
+        rationale="Skip tracking host",
     )
 
     assert feed_discovery._normalize_candidate(candidate) is None
@@ -41,13 +41,13 @@ def test_domain_attempt_cap_limits_validation(db_session, test_user, monkeypatch
             title="One",
             site_url="https://example.com/a",
             feed_url="https://example.com/feed.xml",
-            rationale="First",
+            rationale="First candidate",
         ),
         DiscoveryCandidate(
             title="Two",
             site_url="https://example.com/b",
             feed_url="https://example.com/feed2.xml",
-            rationale="Second",
+            rationale="Second candidate",
         ),
     ]
 

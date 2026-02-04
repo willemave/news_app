@@ -40,8 +40,8 @@ final class TweetSuggestionsViewModel: ObservableObject {
 
     // MARK: - Public Methods
 
-    init(transcriptionService: any SpeechTranscribing = VoiceDictationService.shared) {
-        self.transcriptionService = transcriptionService
+    init(transcriptionService: (any SpeechTranscribing)? = nil) {
+        self.transcriptionService = transcriptionService ?? VoiceDictationService.shared
     }
 
     /// Initialize with content ID and generate suggestions.

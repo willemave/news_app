@@ -18,10 +18,7 @@ final class AuthenticationService: NSObject {
     }
 
     private var currentNonce: String?
-    private var refreshTask: Task<String, Error>?
-    private var lastRefreshAttempt: Date?
-    private let refreshCooldownSeconds: TimeInterval = 10
-    private let refreshLock = NSLock()
+    private let refreshCoordinator = RefreshCoordinator(cooldownSeconds: 10)
 
     /// Sign in with Apple
     @MainActor
@@ -56,35 +53,30 @@ final class AuthenticationService: NSObject {
     /// - Saves both tokens (replaces old refresh token)
     /// - This allows active users to stay logged in indefinitely
     func refreshAccessToken() async throws -> String {
-        refreshLock.lock()
-        if let task = refreshTask {
-            refreshLock.unlock()
+        if let task = await refreshCoordinator.activeTask() {
             return try await task.value
         }
 
-        if let lastAttempt = lastRefreshAttempt,
-           Date().timeIntervalSince(lastAttempt) < refreshCooldownSeconds,
-           let token = KeychainManager.shared.getToken(key: .accessToken),
-           !token.isEmpty {
-            refreshLock.unlock()
-            return token
+        if let cached = await refreshCoordinator.cachedToken(
+            accessToken: KeychainManager.shared.getToken(key: .accessToken)
+        ) {
+            return cached
         }
 
-        lastRefreshAttempt = Date()
+        await refreshCoordinator.markAttempt()
+
         let task = Task { [weak self] () throws -> String in
-            defer { self?.clearRefreshTask() }
-            return try await self?.performRefreshAccessToken() ?? { throw AuthError.refreshFailed }()
+            defer {
+                Task { [weak self] in
+                    await self?.refreshCoordinator.clearTask()
+                }
+            }
+            guard let self else { throw AuthError.refreshFailed }
+            return try await self.performRefreshAccessToken()
         }
-        refreshTask = task
-        refreshLock.unlock()
 
+        await refreshCoordinator.setTask(task)
         return try await task.value
-    }
-
-    private func clearRefreshTask() {
-        refreshLock.lock()
-        refreshTask = nil
-        refreshLock.unlock()
     }
 
     private func performRefreshAccessToken() async throws -> String {
@@ -450,5 +442,41 @@ private func persistSessionTokens(_ tokenResponse: TokenResponse) {
         }
     } else {
         print("⚠️ [Auth] No OpenAI API key in token response from server")
+    }
+}
+
+private actor RefreshCoordinator {
+    private var refreshTask: Task<String, Error>?
+    private var lastRefreshAttempt: Date?
+    private let cooldownSeconds: TimeInterval
+
+    init(cooldownSeconds: TimeInterval) {
+        self.cooldownSeconds = cooldownSeconds
+    }
+
+    func activeTask() -> Task<String, Error>? {
+        refreshTask
+    }
+
+    func setTask(_ task: Task<String, Error>) {
+        refreshTask = task
+    }
+
+    func clearTask() {
+        refreshTask = nil
+    }
+
+    func markAttempt() {
+        lastRefreshAttempt = Date()
+    }
+
+    func cachedToken(accessToken: String?) -> String? {
+        guard let lastRefreshAttempt,
+              Date().timeIntervalSince(lastRefreshAttempt) < cooldownSeconds,
+              let token = accessToken,
+              !token.isEmpty else {
+            return nil
+        }
+        return token
     }
 }

@@ -61,10 +61,16 @@ class RedditUnifiedScraper(BaseScraper):
 
     def _load_subreddit_config(self) -> dict[str, int]:
         """Load subreddit configuration from user configs and YAML defaults."""
-        subreddits = self._load_subreddits_from_db()
         file_subreddits = self._load_subreddits_from_file()
 
-        merged = {**file_subreddits, **subreddits}
+        config_override = os.getenv("NEWSAPP_CONFIG_DIR")
+        if config_override and file_subreddits:
+            logger.info("Using config override at %s; skipping DB subreddits", config_override)
+            merged = file_subreddits
+            subreddits = {}
+        else:
+            subreddits = self._load_subreddits_from_db()
+            merged = {**file_subreddits, **subreddits}
         logger.info(
             "Loaded %s subreddits (db=%s, file=%s)",
             len(merged),

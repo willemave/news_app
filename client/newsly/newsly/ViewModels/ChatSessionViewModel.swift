@@ -32,18 +32,20 @@ class ChatSessionViewModel: ObservableObject {
     private var thinkingTimer: Timer?
     let sessionId: Int
 
-    init(sessionId: Int, transcriptionService: any SpeechTranscribing = VoiceDictationService.shared) {
+    init(sessionId: Int, transcriptionService: (any SpeechTranscribing)? = nil) {
         self.sessionId = sessionId
-        self.transcriptionService = transcriptionService
-        self.isLiveTranscriber = transcriptionService is RealtimeTranscriptionService
+        let resolvedService = transcriptionService ?? VoiceDictationService.shared
+        self.transcriptionService = resolvedService
+        self.isLiveTranscriber = resolvedService is RealtimeTranscriptionService
         configureTranscriptionCallbacks()
     }
 
-    init(session: ChatSessionSummary, transcriptionService: any SpeechTranscribing = VoiceDictationService.shared) {
+    init(session: ChatSessionSummary, transcriptionService: (any SpeechTranscribing)? = nil) {
         self.sessionId = session.id
         self.session = session
-        self.transcriptionService = transcriptionService
-        self.isLiveTranscriber = transcriptionService is RealtimeTranscriptionService
+        let resolvedService = transcriptionService ?? VoiceDictationService.shared
+        self.transcriptionService = resolvedService
+        self.isLiveTranscriber = resolvedService is RealtimeTranscriptionService
         configureTranscriptionCallbacks()
     }
 

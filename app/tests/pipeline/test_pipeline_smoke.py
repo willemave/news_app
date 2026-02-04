@@ -3,9 +3,10 @@
 from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
-from app.models.metadata import ContentStatus, ContentType
+from app.models.metadata import BulletedSummary, ContentStatus, ContentType
 from app.models.schema import Content
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
+from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope
 from app.scraping.base import BaseScraper
 from app.services.queue import QueueService, TaskType
@@ -38,8 +39,9 @@ class DummyScraper(BaseScraper):
         ]
 
 
-def _patch_db_access(monkeypatch, db_session) -> None:
-    override = _override_get_db(db_session)
+def _patch_db_access(monkeypatch, db_session):
+    def override():
+        return _override_get_db(db_session)
 
     import app.core.db as core_db
     import app.pipeline.task_context as task_context
@@ -55,9 +57,11 @@ def _patch_db_access(monkeypatch, db_session) -> None:
     monkeypatch.setattr(event_logger, "get_db", override)
     monkeypatch.setattr(queue_service, "get_db", override)
 
+    return override
+
 
 def test_scrape_to_completion_smoke(db_session, monkeypatch) -> None:
-    _patch_db_access(monkeypatch, db_session)
+    db_override = _patch_db_access(monkeypatch, db_session)
 
     scraper = DummyScraper()
     stats = scraper.run_with_stats()
@@ -73,11 +77,26 @@ def test_scrape_to_completion_smoke(db_session, monkeypatch) -> None:
         mock_http_service.return_value = Mock()
 
         mock_llm = Mock()
-        mock_llm.summarize_content.return_value = {
-            "title": "Article Title",
-            "overview": "Summary",
-            "bullet_points": [],
-        }
+        mock_llm.summarize_content.return_value = BulletedSummary(
+            title="Article Title",
+            points=[
+                {
+                    "text": f"Point {idx + 1} highlights a key takeaway.",
+                    "detail": (
+                        "This detail expands on the takeaway with concrete evidence "
+                        "and explains why it matters for the reader."
+                    ),
+                    "quotes": [
+                        {
+                            "text": "This supporting quote provides additional context.",
+                            "context": "Test Source",
+                        }
+                    ],
+                }
+                for idx in range(10)
+            ],
+            classification="to_read",
+        )
         mock_llm_service.return_value = mock_llm
 
         mock_strategy = Mock()
@@ -101,6 +120,13 @@ def test_scrape_to_completion_smoke(db_session, monkeypatch) -> None:
         mock_registry.return_value = mock_registry_instance
 
         processor = SequentialTaskProcessor()
+        processor.context = TaskContext(
+            queue_service=processor.queue_service,
+            settings=processor.settings,
+            llm_service=processor.llm_service,
+            worker_id=processor.worker_id,
+            db_factory=db_override,
+        )
 
         task = queue_service.dequeue(worker_id="test-worker")
         assert task is not None

@@ -90,7 +90,10 @@ def test_tweet_suggestions_with_message(client: TestClient, db_session: Session)
         content_metadata={
             "summary": {
                 "title": "Article Title",
-                "overview": "This is an overview that is long enough for validation.",
+                "overview": (
+                    "This overview is intentionally long enough to satisfy validation "
+                    "requirements and provide realistic context for testing."
+                ),
                 "bullet_points": [
                     {"text": "Key point one", "category": "key_finding"},
                     {"text": "Key point two", "category": "methodology"},
@@ -262,7 +265,10 @@ def test_tweet_suggestions_llm_failure(client: TestClient, db_session: Session) 
         content_metadata={
             "summary": {
                 "title": "Article Title",
-                "overview": "Overview that is long enough for validation.",
+                "overview": (
+                    "This overview is intentionally long enough to satisfy validation "
+                    "requirements and provide realistic context for testing."
+                ),
                 "bullet_points": [
                     {"text": "Key point one", "category": "key_finding"},
                     {"text": "Key point two", "category": "methodology"},
@@ -355,7 +361,10 @@ def test_tweet_suggestions_default_creativity(client: TestClient, db_session: Se
         content_metadata={
             "summary": {
                 "title": "Article Title",
-                "overview": "Overview that is long enough for validation.",
+                "overview": (
+                    "This overview is intentionally long enough to satisfy validation "
+                    "requirements and provide realistic context for testing."
+                ),
                 "bullet_points": [
                     {"text": "Key point one", "category": "key_finding"},
                     {"text": "Key point two", "category": "methodology"},

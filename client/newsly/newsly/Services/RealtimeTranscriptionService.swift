@@ -37,7 +37,8 @@ private enum RealtimeConnectionState {
     case failed
 }
 
-final class RealtimeTranscriptionService: SpeechTranscribing {
+@MainActor
+final class RealtimeTranscriptionService: SpeechTranscribing, @unchecked Sendable {
     var onTranscriptDelta: ((String) -> Void)?
     var onTranscriptFinal: ((String) -> Void)?
     var onError: ((String) -> Void)?
@@ -168,7 +169,11 @@ final class RealtimeTranscriptionService: SpeechTranscribing {
         let audioSession = AVAudioSession.sharedInstance()
         realtimeLogger.info("Configuring audio session")
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
+            try audioSession.setCategory(
+                .playAndRecord,
+                mode: .measurement,
+                options: [.defaultToSpeaker, .allowBluetoothHFP]
+            )
             try audioSession.setPreferredSampleRate(targetSampleRate)
             try audioSession.setPreferredIOBufferDuration(0.02)
             try audioSession.setActive(true)
@@ -225,30 +230,40 @@ final class RealtimeTranscriptionService: SpeechTranscribing {
                 return
             }
             connectionContinuation = continuation
-            DispatchQueue.main.asyncAfter(deadline: .now() + connectionTimeoutSeconds) { [weak self] in
-                guard let self else { return }
-                if self.connectionState != .connected {
-                    self.connectionState = .failed
-                    realtimeLogger.error("Realtime connection timeout")
-                    self.resumeConnectionFailure(RealtimeTranscriptionError.connectionTimeout)
-                }
+            scheduleConnectionTimeout()
+        }
+    }
+
+    private func scheduleConnectionTimeout() {
+        let timeoutSeconds = connectionTimeoutSeconds
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+            guard let self else { return }
+            if self.connectionState != .connected {
+                self.connectionState = .failed
+                realtimeLogger.error("Realtime connection timeout")
+                self.resumeConnectionFailure(RealtimeTranscriptionError.connectionTimeout)
             }
         }
     }
 
     private func listenForMessages() {
         webSocket?.receive { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .failure(let error):
-                realtimeLogger.error("WebSocket receive error: \(error.localizedDescription, privacy: .public)")
-                self.connectionState = .failed
-                self.resumeConnectionFailure(error)
-                self.onError?(error.localizedDescription)
-            case .success(let message):
-                realtimeLogger.debug("WebSocket message received")
-                self.handleMessage(message)
-                self.listenForMessages()
+            Task { @MainActor in
+                guard let self else { return }
+                switch result {
+                case .failure(let error):
+                    realtimeLogger.error(
+                        "WebSocket receive error: \(error.localizedDescription, privacy: .public)"
+                    )
+                    self.connectionState = .failed
+                    self.resumeConnectionFailure(error)
+                    self.onError?(error.localizedDescription)
+                case .success(let message):
+                    realtimeLogger.debug("WebSocket message received")
+                    self.handleMessage(message)
+                    self.listenForMessages()
+                }
             }
         }
     }
@@ -352,9 +367,12 @@ final class RealtimeTranscriptionService: SpeechTranscribing {
         audioConverter = converter
         self.audioEngine = audioEngine
 
+        let audioQueue = audioQueue
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            self?.audioQueue.async {
-                self?.sendAudioBuffer(buffer, targetFormat: targetFormat)
+            audioQueue.async {
+                Task { @MainActor in
+                    self?.sendAudioBuffer(buffer, targetFormat: targetFormat)
+                }
             }
         }
 
@@ -427,11 +445,15 @@ final class RealtimeTranscriptionService: SpeechTranscribing {
         }
 
         webSocket.send(.string(text)) { [weak self] error in
-            if let error {
-                realtimeLogger.error("WebSocket send error: \(error.localizedDescription, privacy: .public)")
-                self?.connectionState = .failed
-                self?.resumeConnectionFailure(error)
-                self?.onError?(error.localizedDescription)
+            guard let error else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                realtimeLogger.error(
+                    "WebSocket send error: \(error.localizedDescription, privacy: .public)"
+                )
+                self.connectionState = .failed
+                self.resumeConnectionFailure(error)
+                self.onError?(error.localizedDescription)
             }
         }
     }

@@ -510,12 +510,18 @@ class FeedDetector:
 
     def _validate_feed_candidate(self, feed_url: str) -> dict[str, str] | None:
         try:
-            head_response = self.http_service.head(
-                feed_url,
-                allow_statuses={405},
-                log_client_errors=False,
-                log_exceptions=False,
-            )
+            try:
+                head_response = self.http_service.head(
+                    feed_url,
+                    allow_statuses={405},
+                    log_client_errors=False,
+                    log_exceptions=False,
+                )
+            except TypeError:
+                try:
+                    head_response = self.http_service.head(feed_url, allow_statuses={405})
+                except TypeError:
+                    head_response = self.http_service.head(feed_url)
         except Exception as e:  # noqa: BLE001
             logger.debug(
                 "Feed candidate HEAD failed: %s",

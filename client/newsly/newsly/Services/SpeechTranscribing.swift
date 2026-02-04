@@ -6,6 +6,7 @@ enum SpeechTranscriptionState: Equatable {
     case transcribing
 }
 
+@MainActor
 protocol SpeechTranscribing: AnyObject {
     var onTranscriptDelta: ((String) -> Void)? { get set }
     var onTranscriptFinal: ((String) -> Void)? { get set }
