@@ -8,6 +8,7 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.models.metadata import (
+    BulletedSummary,
     ContentQuote,
     ContentType,
     InterleavedSummary,
@@ -47,9 +48,13 @@ class SummarizationRequest:
 
 
 def _finalize_summary(
-    summary: StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary,
+    summary: StructuredSummary
+    | InterleavedSummary
+    | InterleavedSummaryV2
+    | BulletedSummary
+    | NewsSummary,
     content_type: str | ContentType,
-) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary:
+) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | BulletedSummary | NewsSummary:
     """Apply lightweight cleanup to keep summaries consistent."""
     if isinstance(summary, StructuredSummary) and summary.quotes:
         filtered: list[ContentQuote] = [
@@ -71,7 +76,7 @@ def _normalize_content_type(content_type: str | ContentType) -> str:
 
 def _prompt_content_type(content_type: str) -> str:
     if content_type in {"article", "podcast"}:
-        return "interleaved"
+        return "long_bullets"
     if content_type == "news":
         return "news_digest"
     return content_type
@@ -119,6 +124,7 @@ DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "article": "anthropic:claude-haiku-4-5-20251001",
     "podcast": "anthropic:claude-haiku-4-5-20251001",
     "interleaved": "anthropic:claude-haiku-4-5-20251001",
+    "long_bullets": "anthropic:claude-haiku-4-5-20251001",
 }
 
 FALLBACK_SUMMARIZATION_MODEL = "google-gla:gemini-2.5-flash-preview-09-2025"
@@ -151,7 +157,14 @@ class ContentSummarizer:
         content_id: str | int | None = None,
         provider_override: str | None = None,
         model_hint: str | None = None,
-    ) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary | None:
+    ) -> (
+        StructuredSummary
+        | InterleavedSummary
+        | InterleavedSummaryV2
+        | BulletedSummary
+        | NewsSummary
+        | None
+    ):
         """Summarize arbitrary content with sensible defaults per content type."""
         normalized_type = _normalize_content_type(content_type)
         default_model_spec = self.default_models.get(
@@ -186,7 +199,14 @@ class ContentSummarizer:
         content_id: str | int | None = None,
         provider_override: str | None = None,
         model_hint: str | None = None,
-    ) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary | None:
+    ) -> (
+        StructuredSummary
+        | InterleavedSummary
+        | InterleavedSummaryV2
+        | BulletedSummary
+        | NewsSummary
+        | None
+    ):
         """Compatibility wrapper mirroring legacy service API."""
         return self.summarize(
             content=content,
@@ -213,14 +233,21 @@ def get_content_summarizer() -> ContentSummarizer:
 
 def summarize_content(
     request: SummarizationRequest,
-) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary | None:
+) -> (
+    StructuredSummary
+    | InterleavedSummary
+    | InterleavedSummaryV2
+    | BulletedSummary
+    | NewsSummary
+    | None
+):
     """Generate a structured summary via pydantic-ai.
 
     Args:
         request: SummarizationRequest containing content, model spec, and limits.
 
     Returns:
-        Parsed StructuredSummary or NewsSummary instance, or None on failure.
+        Parsed summary payload (Bulleted/Structured/Interleaved/News), or None on failure.
     """
     try:
         payload = (

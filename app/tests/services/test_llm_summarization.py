@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.metadata import (
+    BulletedSummary,
     InterleavedInsight,
     InterleavedSummary,
     InterleavedSummaryV2,
@@ -295,6 +296,18 @@ class TestInterleavedSummaryV2Model:
 class TestGenerateSummaryPrompt:
     """Tests for generate_summary_prompt function."""
 
+    def test_long_bullets_prompt_contains_guidelines(self):
+        """Long bullets prompt contains specific guidelines."""
+        system_prompt, _ = generate_summary_prompt(
+            content_type="long_bullets",
+            max_bullet_points=20,
+            max_quotes=3,
+        )
+
+        assert "points" in system_prompt.lower()
+        assert "detail" in system_prompt.lower()
+        assert "quotes" in system_prompt.lower()
+
     def test_interleaved_prompt_contains_guidelines(self):
         """Interleaved prompt contains specific guidelines."""
         system_prompt, user_template = generate_summary_prompt(
@@ -310,21 +323,20 @@ class TestGenerateSummaryPrompt:
         assert "takeaway" in system_prompt.lower()
         assert "to_read" in system_prompt.lower() or "skip" in system_prompt.lower()
 
-    def test_article_prompt_matches_interleaved(self):
-        """Article prompt maps to interleaved prompt."""
-        interleaved_system, _ = generate_summary_prompt(
-            content_type="interleaved",
-            max_bullet_points=6,
-            max_quotes=8,
+    def test_article_prompt_matches_long_bullets(self):
+        """Article prompt maps to long bullets prompt."""
+        long_bullets_system, _ = generate_summary_prompt(
+            content_type="long_bullets",
+            max_bullet_points=20,
+            max_quotes=3,
         )
         article_system, _ = generate_summary_prompt(
             content_type="article",
-            max_bullet_points=6,
-            max_quotes=8,
+            max_bullet_points=20,
+            max_quotes=3,
         )
 
-        # Article now maps to interleaved prompt
-        assert interleaved_system == article_system
+        assert long_bullets_system == article_system
 
 
 class TestGetSummarizationAgent:
@@ -402,3 +414,35 @@ class TestSummarizationRequest:
         assert request.max_bullet_points == 6
         assert request.max_quotes == 8
         assert request.content_id is None
+
+
+class TestBulletedSummaryModel:
+    """Tests for BulletedSummary Pydantic model validation."""
+
+    def test_valid_summary(self):
+        points = [
+            {
+                "text": f"Point {idx + 1} describes a key claim from the article.",
+                "detail": (
+                    f"Detail for point {idx + 1} adds concrete context and implications. "
+                    "It stays focused and provides supporting evidence."
+                ),
+                "quotes": [
+                    {
+                        "text": f"Supporting quote for point {idx + 1} with enough length.",
+                        "context": "Source",
+                    }
+                ],
+            }
+            for idx in range(10)
+        ]
+
+        summary = BulletedSummary(
+            title="Bulleted Summary Example",
+            points=points,
+            classification="to_read",
+        )
+
+        assert summary.title == "Bulleted Summary Example"
+        assert len(summary.points) == 10
+        assert summary.points[0].text.startswith("Point 1")

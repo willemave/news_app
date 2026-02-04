@@ -9,6 +9,7 @@ from app.models.schema import Content
         ({"overview": "Short overview"}, "Short overview"),
         ({"hook": "Interleaved hook"}, "Interleaved hook"),
         ({"summary": "Daily digest"}, "Daily digest"),
+        ({"points": [{"text": "First bullet point summary"}]}, "First bullet point summary"),
         ("Plain summary", "Plain summary"),
     ],
 )

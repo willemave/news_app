@@ -19,6 +19,7 @@ from pydantic import (
 )
 
 from app.constants import (
+    SUMMARY_KIND_LONG_BULLETS,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
     SUMMARY_KIND_SHORT_NEWS_DIGEST,
@@ -237,6 +238,57 @@ class InterleavedSummaryV2(BaseModel):
     summarization_date: datetime = Field(default_factory=datetime.utcnow)
 
 
+class BulletSummaryPoint(BaseModel):
+    """Bullet point with supporting detail and quotes."""
+
+    text: str = Field(..., min_length=10, max_length=500, description="One-sentence main bullet")
+    detail: str = Field(..., min_length=30, max_length=1200, description="2-3 sentence expansion")
+    quotes: list[ContentQuote] = Field(
+        ..., min_items=1, max_items=3, description="1-3 supporting quotes"
+    )
+
+
+class BulletedSummary(BaseModel):
+    """Bullet-first summary format with expandable details and quotes."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "AI Agents Are Becoming a Default Interface",
+                "points": [
+                    {
+                        "text": "Enterprises are standardizing agent workflows across teams.",
+                        "detail": (
+                            "Large orgs are consolidating agent tools to reduce duplication "
+                            "and improve governance. This shift is driven by procurement and "
+                            "security teams looking for consistent controls."
+                        ),
+                        "quotes": [
+                            {
+                                "text": "We can't have five different agent stacks in one company.",
+                                "context": "Security lead",
+                            }
+                        ],
+                    }
+                ],
+                "classification": "to_read",
+                "summarization_date": "2025-10-01T12:00:00Z",
+            }
+        }
+    )
+
+    title: str = Field(
+        ..., min_length=5, max_length=1000, description="Descriptive title for the content"
+    )
+    points: list[BulletSummaryPoint] = Field(..., min_items=10, max_items=30)
+    classification: str = Field(
+        default="to_read",
+        pattern="^(to_read|skip)$",
+        description="Content classification: 'to_read' or 'skip'",
+    )
+    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+
+
 class StructuredSummary(BaseModel):
     """Structured summary with bullet points and quotes."""
 
@@ -385,7 +437,9 @@ class NewsAggregatorMetadata(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-SummaryPayload = StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | NewsSummary
+SummaryPayload = (
+    StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | BulletedSummary | NewsSummary
+)
 
 
 def _parse_summary_payload(
@@ -398,6 +452,10 @@ def _parse_summary_payload(
             return InterleavedSummary.model_validate(value)
         if summary_version == SUMMARY_VERSION_V2:
             return InterleavedSummaryV2.model_validate(value)
+        raise ValueError(f"Unsupported summary version: {summary_version}")
+    if summary_kind == SUMMARY_KIND_LONG_BULLETS:
+        if summary_version == SUMMARY_VERSION_V1:
+            return BulletedSummary.model_validate(value)
         raise ValueError(f"Unsupported summary version: {summary_version}")
     if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
         return StructuredSummary.model_validate(value)
@@ -434,7 +492,14 @@ class BaseContentMetadata(BaseModel):
     def validate_summary(cls, value: SummaryPayload | dict[str, Any] | None, info):
         """Normalize summary payloads into structured models."""
         if value is None or isinstance(
-            value, (StructuredSummary, InterleavedSummary, InterleavedSummaryV2, NewsSummary)
+            value,
+            (
+                StructuredSummary,
+                InterleavedSummary,
+                InterleavedSummaryV2,
+                BulletedSummary,
+                NewsSummary,
+            ),
         ):
             return value
         if isinstance(value, dict):
@@ -447,7 +512,7 @@ class BaseContentMetadata(BaseModel):
             )
         raise ValueError(
             "Summary must be StructuredSummary, InterleavedSummary, InterleavedSummaryV2, "
-            "NewsSummary, or dict"
+            "BulletedSummary, NewsSummary, or dict"
         )
 
 
@@ -742,6 +807,7 @@ class ContentData(BaseModel):
         if isinstance(summary_data, dict) and summary_kind in {
             SUMMARY_KIND_LONG_STRUCTURED,
             SUMMARY_KIND_LONG_INTERLEAVED,
+            SUMMARY_KIND_LONG_BULLETS,
         }:
             return summary_data
         # Legacy fallback: infer by payload shape
@@ -778,6 +844,14 @@ class ContentData(BaseModel):
                     for ins in insights
                     if ins.get("insight")
                 ]
+        if summary_kind == SUMMARY_KIND_LONG_BULLETS:
+            points = self.structured_summary.get("points", [])
+            if isinstance(points, list):
+                return [
+                    {"text": point.get("text", ""), "category": "key_point"}
+                    for point in points
+                    if isinstance(point, dict) and point.get("text")
+                ]
 
         return []
 
@@ -813,6 +887,25 @@ class ContentData(BaseModel):
                         }
                     )
             return quotes
+        if summary_kind == SUMMARY_KIND_LONG_BULLETS:
+            points = self.structured_summary.get("points", [])
+            if isinstance(points, list):
+                flattened: list[dict[str, str]] = []
+                for point in points:
+                    if not isinstance(point, dict):
+                        continue
+                    for quote in point.get("quotes", []) or []:
+                        if not isinstance(quote, dict):
+                            continue
+                        text = quote.get("text")
+                        if text:
+                            flattened.append(
+                                {
+                                    "text": text,
+                                    "context": quote.get("context") or quote.get("attribution", ""),
+                                }
+                            )
+                return flattened
 
         return []
 
@@ -850,6 +943,8 @@ class ContentData(BaseModel):
                             seen.add(topic)
                             topics.append(topic)
                     return topics
+            if summary_kind == SUMMARY_KIND_LONG_BULLETS:
+                return []
 
         return self.metadata.get("topics", [])
 

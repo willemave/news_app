@@ -16,7 +16,7 @@ def generate_summary_prompt(
     - User message template is for variable content (not cached)
 
     Args:
-        content_type: Type of content ("article", "podcast", "news_digest", "hackernews", "interleaved")
+        content_type: Type of content ("article", "podcast", "news_digest", "hackernews", "interleaved", "long_bullets")
         max_bullet_points: Maximum number of bullet points to generate
         max_quotes: Maximum number of quotes to extract
 
@@ -26,7 +26,7 @@ def generate_summary_prompt(
     """
     normalized_type = content_type.lower()
     if normalized_type in {"article", "podcast"}:
-        normalized_type = "interleaved"
+        normalized_type = "long_bullets"
     if normalized_type == "news":
         normalized_type = "news_digest"
     content_type = normalized_type
@@ -98,6 +98,53 @@ Guidelines:
 """
 
         user_message = "Article & Aggregator Context:\n\n{content}"
+
+    elif content_type == "long_bullets":
+        system_message = f"""You are an expert content analyst. Produce an exhaustive bullet-first summary
+where each bullet can expand into a brief detail and supporting quotes.
+
+Return a JSON object with exactly these fields:
+{{
+  "title": "Descriptive title (max 110 characters)",
+  "points": [
+    {{
+      "text": "One-sentence main bullet",
+      "detail": "2-3 sentences that expand the bullet",
+      "quotes": [
+        {{
+          "text": "Direct quote supporting the point (min 20 chars)",
+          "attribution": "Who said it (optional)",
+          "context": "Context if needed (optional)"
+        }}
+      ]
+    }}
+  ],
+  "classification": "to_read" | "skip",
+  "summarization_date": "ISO 8601 timestamp"
+}}
+
+Guidelines:
+- points: target 10-20 bullets; include up to {max_bullet_points} when needed for completeness.
+- Each point must include 1-3 quotes that support the claim.
+- Each "text" is one sentence, concrete and specific.
+- "detail" expands the point with evidence, numbers, names, and implications.
+- Quotes must be verbatim from the content; avoid duplication across points.
+- There may be technical terms in the content, please don't make any spelling errors.
+- Never include markdown or extra fields.
+
+Classification Guidelines:
+- Set classification to "skip" if the content:
+  * Is light on content or seems like marketing/promotional material
+  * Is general mainstream news without depth or unique insights
+  * Lacks substantive information or analysis
+  * Appears to be clickbait or sensationalized
+- Set classification to "to_read" if the content:
+  * Contains in-depth analysis or unique insights
+  * Provides technical or specialized knowledge
+  * Offers original research or investigation
+  * Has educational or informative value"""
+
+        user_message = "Content:\n\n{content}"
 
     else:
         # Interleaved format v2: key points, quotes list, topic bullets
