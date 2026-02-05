@@ -87,6 +87,10 @@ struct ShortFormView: View {
             .padding(.top, 8)
         }
         .scrollPosition(id: $topVisibleItemId, anchor: .top)
+        .scrollTargetBehavior(.viewAligned)
+        .onChange(of: topVisibleItemId) { _, _ in
+            markItemsAboveAsRead()
+        }
         .onScrollPhaseChange { _, newPhase in
             guard newPhase == .idle else { return }
             markItemsAboveAsRead()
