@@ -51,7 +51,8 @@ struct BulletedSummaryView: View {
 
                     Text(point.text)
                         .font(.callout)
-                        .foregroundColor(.primary.opacity(0.9))
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
 
                     Spacer()
@@ -63,7 +64,7 @@ struct BulletedSummaryView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(point.detail)
                         .font(.subheadline)
-                        .foregroundColor(.primary.opacity(0.85))
+                        .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if !point.quotes.isEmpty {
@@ -84,9 +85,9 @@ struct BulletedSummaryView: View {
     private func quoteCard(_ quote: Quote) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(quote.text)
-                .font(.callout)
+                .font(.subheadline)
                 .italic()
-                .foregroundColor(.primary.opacity(0.9))
+                .foregroundColor(.primary.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
 
             if let attributionLine = quoteAttributionLine(quote) {

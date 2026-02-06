@@ -15,8 +15,8 @@ private enum DetailDesign {
     // Spacing
     static let horizontalPadding: CGFloat = 20
     static let sectionSpacing: CGFloat = 20
-    static let actionBarTopPadding: CGFloat = 12
-    static let summaryTopPadding: CGFloat = 16
+    static let actionBarTopPadding: CGFloat = 0
+    static let summaryTopPadding: CGFloat = 14
     static let cardPadding: CGFloat = 16
 
     // Corner radii
@@ -96,8 +96,6 @@ struct ContentDetailView: View {
                         // Action bar
                         actionBar(content: content)
                             .padding(.horizontal, DetailDesign.horizontalPadding)
-                            .padding(.top, 12)
-                            .padding(.bottom, 4)
 
                         // Chat status banner (inline, under header)
                         if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
@@ -879,7 +877,7 @@ struct ContentDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, DetailDesign.horizontalPadding)
             .padding(.top, 16)
-            .padding(.bottom, 16)
+            .padding(.bottom, 6)
         }
         .fullScreenCover(isPresented: $showFullImage) {
             if let url = fullImageURL {
