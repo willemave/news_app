@@ -21,7 +21,7 @@ struct ShortFormView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
+            LazyVStack(spacing: 16) {
                 if case .error(let error) = viewModel.state, viewModel.currentItems().isEmpty {
                     ErrorView(message: error.localizedDescription) {
                         viewModel.refreshTrigger.send(())
@@ -83,8 +83,8 @@ struct ShortFormView: View {
                 }
             }
             .scrollTargetLayout()
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
         }
         .scrollPosition(id: $topVisibleItemId, anchor: .top)
         .onChange(of: topVisibleItemId) { _, _ in
@@ -231,7 +231,7 @@ private struct ShortNewsRow: View {
             Divider()
                 .padding(.leading, hasImage ? 72 : 0)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
     }
 
     @ViewBuilder
