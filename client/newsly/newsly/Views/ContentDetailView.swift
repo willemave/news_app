@@ -56,8 +56,9 @@ struct ContentDetailView: View {
     @State private var chatError: String?
     @State private var audioTranscript: String = ""
     @StateObject private var dictationService = VoiceDictationService.shared
-    // Share sheet options
+    // Share / download sheet options
     @State private var showShareOptions: Bool = false
+    @State private var showDownloadSheet: Bool = false
     // Full image viewer
     @State private var showFullImage: Bool = false
     @State private var fullImageURL: URL?
@@ -379,6 +380,12 @@ struct ContentDetailView: View {
         .sheet(isPresented: $showShareOptions) {
             shareSheet
                 .presentationDetents([.height(340)])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(24)
+        }
+        .sheet(isPresented: $showDownloadSheet) {
+            downloadSheet
+                .presentationDetents([.height(320)])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(24)
         }
@@ -931,13 +938,7 @@ struct ContentDetailView: View {
 
             // Download more from series (article/podcast only)
             if content.contentTypeEnum == .article || content.contentTypeEnum == .podcast {
-                Menu {
-                    ForEach([3, 5, 10, 20], id: \.self) { count in
-                        Button("\(count) items") {
-                            Task { await viewModel.downloadMoreFromSeries(count: count) }
-                        }
-                    }
-                } label: {
+                Button { showDownloadSheet = true } label: {
                     minimalActionIcon("tray.and.arrow.down")
                 }
             }
@@ -1009,24 +1010,22 @@ struct ContentDetailView: View {
             .contentShape(Rectangle())
     }
 
-    // MARK: - Share Sheet
+    // MARK: - Mini Sheet Components
+
     @ViewBuilder
-    private var shareSheet: some View {
+    private func sheetHeader(title: String, dismiss: @escaping () -> Void) -> some View {
         VStack(spacing: 0) {
-            // Drag indicator
             RoundedRectangle(cornerRadius: 2.5)
                 .fill(Color.secondary.opacity(0.3))
                 .frame(width: 36, height: 5)
                 .padding(.top, 8)
 
             HStack {
-                Text("Share")
+                Text(title)
                     .font(.title3)
                     .fontWeight(.bold)
                 Spacer()
-                Button {
-                    showShareOptions = false
-                } label: {
+                Button(action: dismiss) {
                     Image(systemName: "xmark")
                         .font(.subheadline)
                         .fontWeight(.semibold)
@@ -1039,63 +1038,13 @@ struct ContentDetailView: View {
             .padding(.horizontal, 20)
             .padding(.top, 14)
             .padding(.bottom, 16)
-
-            VStack(spacing: 8) {
-                shareOptionRow(
-                    icon: "link",
-                    title: "Title + link",
-                    subtitle: "Headline and URL only",
-                    action: {
-                        showShareOptions = false
-                        viewModel.shareContent(option: .light)
-                    }
-                )
-                shareOptionRow(
-                    icon: "text.quote",
-                    title: "Key points",
-                    subtitle: "Summary, top quotes, and link",
-                    action: {
-                        showShareOptions = false
-                        viewModel.shareContent(option: .medium)
-                    }
-                )
-                shareOptionRow(
-                    icon: "doc.plaintext",
-                    title: "Full content",
-                    subtitle: "Complete article or transcript",
-                    action: {
-                        showShareOptions = false
-                        viewModel.shareContent(option: .full)
-                    }
-                )
-            }
-            .padding(.horizontal, 20)
-
-            Divider()
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-
-            shareOptionRow(
-                icon: "at",
-                title: "Tweet suggestions",
-                subtitle: "Generate tweet-ready snippets",
-                action: {
-                    showShareOptions = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        showTweetSheet = true
-                    }
-                }
-            )
-            .padding(.horizontal, 20)
-
-            Spacer()
         }
-        .background(Color(.systemBackground))
     }
 
     @ViewBuilder
-    private func shareOptionRow(
+    private func sheetOptionRow(
         icon: String,
+        iconColor: Color = .accentColor,
         title: String,
         subtitle: String,
         action: @escaping () -> Void
@@ -1104,9 +1053,9 @@ struct ContentDetailView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.accentColor)
+                    .foregroundColor(iconColor)
                     .frame(width: 32, height: 32)
-                    .background(Color.accentColor.opacity(0.1))
+                    .background(iconColor.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -1126,6 +1075,120 @@ struct ContentDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Share Sheet
+    @ViewBuilder
+    private var shareSheet: some View {
+        VStack(spacing: 0) {
+            sheetHeader(title: "Share") { showShareOptions = false }
+
+            VStack(spacing: 8) {
+                sheetOptionRow(
+                    icon: "link",
+                    title: "Title + link",
+                    subtitle: "Headline and URL only",
+                    action: {
+                        showShareOptions = false
+                        viewModel.shareContent(option: .light)
+                    }
+                )
+                sheetOptionRow(
+                    icon: "text.quote",
+                    title: "Key points",
+                    subtitle: "Summary, top quotes, and link",
+                    action: {
+                        showShareOptions = false
+                        viewModel.shareContent(option: .medium)
+                    }
+                )
+                sheetOptionRow(
+                    icon: "doc.plaintext",
+                    title: "Full content",
+                    subtitle: "Complete article or transcript",
+                    action: {
+                        showShareOptions = false
+                        viewModel.shareContent(option: .full)
+                    }
+                )
+            }
+            .padding(.horizontal, 20)
+
+            Divider()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+
+            sheetOptionRow(
+                icon: "at",
+                title: "Tweet suggestions",
+                subtitle: "Generate tweet-ready snippets",
+                action: {
+                    showShareOptions = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showTweetSheet = true
+                    }
+                }
+            )
+            .padding(.horizontal, 20)
+
+            Spacer()
+        }
+        .background(Color(.systemBackground))
+    }
+
+    // MARK: - Download Sheet
+    @ViewBuilder
+    private var downloadSheet: some View {
+        VStack(spacing: 0) {
+            sheetHeader(title: "Load more from series") { showDownloadSheet = false }
+
+            VStack(spacing: 8) {
+                sheetOptionRow(
+                    icon: "square.stack",
+                    iconColor: .secondary,
+                    title: "3 episodes",
+                    subtitle: "Quick catch-up",
+                    action: {
+                        showDownloadSheet = false
+                        Task { await viewModel.downloadMoreFromSeries(count: 3) }
+                    }
+                )
+                sheetOptionRow(
+                    icon: "square.stack",
+                    iconColor: .secondary,
+                    title: "5 episodes",
+                    subtitle: "Recent backlog",
+                    action: {
+                        showDownloadSheet = false
+                        Task { await viewModel.downloadMoreFromSeries(count: 5) }
+                    }
+                )
+                sheetOptionRow(
+                    icon: "square.stack.3d.up",
+                    iconColor: .secondary,
+                    title: "10 episodes",
+                    subtitle: "Deep dive into the series",
+                    action: {
+                        showDownloadSheet = false
+                        Task { await viewModel.downloadMoreFromSeries(count: 10) }
+                    }
+                )
+                sheetOptionRow(
+                    icon: "square.stack.3d.up.fill",
+                    iconColor: .secondary,
+                    title: "20 episodes",
+                    subtitle: "Full archive pull",
+                    action: {
+                        showDownloadSheet = false
+                        Task { await viewModel.downloadMoreFromSeries(count: 20) }
+                    }
+                )
+            }
+            .padding(.horizontal, 20)
+
+            Spacer()
+        }
+        .background(Color(.systemBackground))
     }
 
     // MARK: - Modern Section Components (Flat, no borders)
