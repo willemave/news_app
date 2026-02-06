@@ -96,6 +96,11 @@ struct ContentDetailView: View {
                         // Action bar
                         actionBar(content: content)
                             .padding(.horizontal, DetailDesign.horizontalPadding)
+                            .padding(.top, 2)
+
+                        Divider()
+                            .padding(.horizontal, DetailDesign.horizontalPadding)
+                            .padding(.top, 6)
 
                         // Chat status banner (inline, under header)
                         if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
