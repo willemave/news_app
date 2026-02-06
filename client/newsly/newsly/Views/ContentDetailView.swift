@@ -230,12 +230,6 @@ struct ContentDetailView: View {
                             .padding(.top, DetailDesign.sectionSpacing)
                         }
 
-                        if content.contentTypeEnum == .article || content.contentTypeEnum == .podcast {
-                            downloadMoreSection(content: content)
-                                .padding(.horizontal, DetailDesign.horizontalPadding)
-                                .padding(.top, DetailDesign.sectionSpacing)
-                        }
-
                         // Bottom spacing
                         Spacer()
                             .frame(height: 40)
@@ -391,6 +385,9 @@ struct ContentDetailView: View {
             }
             Button("Full · Article + transcript") {
                 viewModel.shareContent(option: .full)
+            }
+            Button("Tweet suggestions") {
+                showTweetSheet = true
             }
             Button("Cancel", role: .cancel) { }
         }
@@ -941,9 +938,17 @@ struct ContentDetailView: View {
 
             Spacer()
 
-            // Tweet
-            Button(action: { showTweetSheet = true }) {
-                minimalActionIcon("text.bubble")
+            // Download more from series (article/podcast only)
+            if content.contentTypeEnum == .article || content.contentTypeEnum == .podcast {
+                Menu {
+                    ForEach([3, 5, 10, 20], id: \.self) { count in
+                        Button("\(count) items") {
+                            Task { await viewModel.downloadMoreFromSeries(count: count) }
+                        }
+                    }
+                } label: {
+                    minimalActionIcon("tray.and.arrow.down")
+                }
             }
 
             Spacer()
@@ -1002,14 +1007,6 @@ struct ContentDetailView: View {
             // Navigation - Next removed (swipe only)
         }
         .frame(height: 44)
-    }
-
-    @ViewBuilder
-    private func downloadMoreSection(content: ContentDetail) -> some View {
-        DownloadMoreMenu(title: "Load more") { count in
-            Task { await viewModel.downloadMoreFromSeries(count: count) }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
