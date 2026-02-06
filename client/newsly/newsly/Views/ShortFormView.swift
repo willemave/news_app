@@ -83,8 +83,8 @@ struct ShortFormView: View {
                 }
             }
             .scrollTargetLayout()
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
         }
         .scrollPosition(id: $topVisibleItemId, anchor: .top)
         .onChange(of: topVisibleItemId) { _, _ in
