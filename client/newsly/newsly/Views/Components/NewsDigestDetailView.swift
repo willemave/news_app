@@ -12,7 +12,7 @@ struct NewsDigestDetailView: View {
     let metadata: NewsMetadata
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 28) {
             if let summary = metadata.summary {
                 summarySection(summary: summary)
             }
@@ -24,14 +24,10 @@ struct NewsDigestDetailView: View {
             }
 
             if let article = metadata.article {
-                Divider()
-                    .padding(.vertical, 4)
                 articleSection(article: article)
             }
 
             if let aggregator = metadata.aggregator {
-                Divider()
-                    .padding(.vertical, 4)
                 aggregatorSection(aggregator: aggregator)
             }
         }
@@ -110,8 +106,9 @@ struct NewsDigestDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Linked Article")
-                    .font(.headline)
+                    .font(.subheadline)
                     .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
 
                 if let sourceDomain = article.sourceDomain {
                     Text(sourceDomain)
@@ -150,8 +147,9 @@ struct NewsDigestDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Aggregator")
-                    .font(.headline)
+                    .font(.subheadline)
                     .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
 
                 if let name = aggregator.name {
                     Text(name)

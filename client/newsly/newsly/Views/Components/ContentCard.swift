@@ -21,18 +21,36 @@ struct ContentCard: View {
 
     private let thumbnailSize: CGFloat = 60
 
+    private var hasImage: Bool {
+        let displayUrl = content.thumbnailUrl ?? content.imageUrl
+        guard let urlString = displayUrl,
+              urlString.count > 1
+        else { return false }
+        return buildImageURL(from: urlString) != nil
+    }
+
+    private var titleWeight: Font.Weight {
+        dimReadState && content.isRead ? .regular : .semibold
+    }
+
+    private var titleColor: Color {
+        dimReadState && content.isRead ? .secondary : .primary
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            // Thumbnail on left
-            thumbnailView
+            // Thumbnail only when image exists
+            if hasImage {
+                thumbnailView
+            }
 
             // Main content
             VStack(alignment: .leading, spacing: 6) {
                 // Title
                 Text(content.displayTitle)
                     .font(.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(dimReadState && content.isRead ? .secondary : .primary)
+                    .fontWeight(titleWeight)
+                    .foregroundColor(titleColor)
                     .lineLimit(3)
                     .truncationMode(.tail)
 
@@ -61,7 +79,6 @@ struct ContentCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(minHeight: 76, alignment: .center)
-        .opacity(dimReadState && content.isRead ? 0.85 : 1.0)
     }
 
     @ViewBuilder

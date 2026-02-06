@@ -15,8 +15,8 @@ private enum DetailDesign {
     // Spacing
     static let horizontalPadding: CGFloat = 20
     static let sectionSpacing: CGFloat = 20
-    static let actionBarTopPadding: CGFloat = 8
-    static let summaryTopPadding: CGFloat = 12
+    static let actionBarTopPadding: CGFloat = 12
+    static let summaryTopPadding: CGFloat = 16
     static let cardPadding: CGFloat = 16
 
     // Corner radii
@@ -93,10 +93,11 @@ struct ContentDetailView: View {
                         // Modern hero header
                         heroHeader(content: content)
 
-                        // Floating action bar
+                        // Action bar
                         actionBar(content: content)
                             .padding(.horizontal, DetailDesign.horizontalPadding)
-                            .padding(.top, DetailDesign.actionBarTopPadding)
+                            .padding(.top, 12)
+                            .padding(.bottom, 4)
 
                         // Chat status banner (inline, under header)
                         if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
@@ -795,8 +796,9 @@ struct ContentDetailView: View {
     private func heroHeader(content: ContentDetail) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // Hero image (optional, tappable) - extends to top of screen
-            if content.contentTypeEnum != .news,
-               let imageUrlString = content.imageUrl,
+            if let imageUrlString = content.imageUrl,
+               !imageUrlString.isEmpty,
+               content.contentTypeEnum != .news,
                let imageUrl = buildImageURL(from: imageUrlString) {
                 Button {
                     fullImageURL = imageUrl
@@ -826,6 +828,16 @@ struct ContentDetailView: View {
                     .frame(height: 220)
                 }
                 .buttonStyle(.plain)
+            } else {
+                // Compact icon header for content without hero image
+                HStack {
+                    Image(systemName: contentTypeIcon(for: content))
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundColor(.secondary.opacity(0.4))
+                    Spacer()
+                }
+                .padding(.horizontal, DetailDesign.horizontalPadding)
+                .padding(.top, 8)
             }
 
             // Title and metadata section

@@ -87,7 +87,6 @@ struct ShortFormView: View {
             .padding(.top, 8)
         }
         .scrollPosition(id: $topVisibleItemId, anchor: .top)
-        .scrollTargetBehavior(.viewAligned)
         .onChange(of: topVisibleItemId) { _, _ in
             markItemsAboveAsRead()
         }
@@ -141,8 +140,20 @@ private struct ShortNewsRow: View {
 
     private let thumbnailSize: CGFloat = 60
 
-    private var textOpacity: Double {
-        item.isRead ? 0.5 : 1.0
+    private var hasImage: Bool {
+        let displayUrl = item.thumbnailUrl ?? item.imageUrl
+        guard let urlString = displayUrl,
+              urlString.count > 1
+        else { return false }
+        return buildImageURL(from: urlString) != nil
+    }
+
+    private var titleWeight: Font.Weight {
+        item.isRead ? .regular : .semibold
+    }
+
+    private var titleColor: Color {
+        item.isRead ? .secondary : .primary
     }
 
     /// Platform-specific accent color for badges
@@ -167,23 +178,25 @@ private struct ShortNewsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
-                // Thumbnail on left with subtle shadow
-                thumbnailView
-                    .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+                // Thumbnail only when image exists
+                if hasImage {
+                    thumbnailView
+                        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+                }
 
                 // Text content
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.displayTitle)
-                        .font(.headline)
-                        .foregroundColor(.primary.opacity(textOpacity))
+                        .font(.body)
+                        .fontWeight(titleWeight)
+                        .foregroundColor(titleColor)
                         .lineLimit(3)
-                        .lineSpacing(-2) // Tighter line height
                         .multilineTextAlignment(.leading)
 
                     if let summary = item.shortSummary, !summary.isEmpty {
                         Text(summary)
                             .font(.subheadline)
-                            .foregroundColor(.secondary.opacity(textOpacity))
+                            .foregroundColor(.secondary)
                             .lineLimit(2)
                     }
 
@@ -191,15 +204,15 @@ private struct ShortNewsRow: View {
                         if let source = item.source {
                             Text(source)
                                 .font(.caption)
-                                .foregroundColor(.secondary.opacity(textOpacity))
+                                .foregroundColor(.secondary)
                         }
                         if let time = item.relativeTimeDisplay {
-                            Text("•")
+                            Text("·")
                                 .font(.caption)
-                                .foregroundColor(.secondary.opacity(textOpacity * 0.6))
+                                .foregroundColor(Color(.quaternaryLabel))
                             Text(time)
                                 .font(.caption)
-                                .foregroundColor(.secondary.opacity(textOpacity))
+                                .foregroundColor(.secondary)
                         }
                         Spacer()
                         if let platform = item.platform {
@@ -216,7 +229,7 @@ private struct ShortNewsRow: View {
             }
 
             Divider()
-                .padding(.leading, 72) // Inset to align with text (thumbnail 60 + spacing 12)
+                .padding(.leading, hasImage ? 72 : 0)
         }
         .padding(.vertical, 8)
     }

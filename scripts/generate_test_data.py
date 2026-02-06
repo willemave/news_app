@@ -754,6 +754,31 @@ def _fetch_user_ids(session: Session) -> list[int]:
     return [row[0] for row in session.query(User.id).all()]
 
 
+def _resolve_logged_in_user_id(session: Session) -> int | None:
+    """Resolve the most likely logged-in user ID.
+
+    This is a best-effort resolver because JWT sessions are stateless and not persisted.
+    It prefers the most recently updated active non-admin user.
+    """
+    user = (
+        session.query(User)
+        .filter(User.is_active.is_(True))
+        .filter(User.is_admin.is_(False))
+        .order_by(User.updated_at.desc())
+        .first()
+    )
+    if user is not None:
+        return user.id
+
+    fallback_user = (
+        session.query(User)
+        .filter(User.is_active.is_(True))
+        .order_by(User.updated_at.desc())
+        .first()
+    )
+    return fallback_user.id if fallback_user is not None else None
+
+
 def insert_test_data(
     session: Session,
     data: list[dict[str, Any]],
@@ -781,8 +806,9 @@ def insert_test_data(
         session.flush()  # Get the ID
         inserted_ids.append(content.id)
 
-        # Add articles and podcasts to all users' inboxes so they're visible
-        if item["content_type"] in ("article", "podcast") and user_ids:
+        # Add generated content to users' inboxes so it is visible in list endpoints.
+        # Short-form news also requires a content_status inbox row.
+        if item["content_type"] in ("article", "podcast", "news") and user_ids:
             for user_id in user_ids:
                 session.add(
                     ContentStatusEntry(
@@ -810,6 +836,40 @@ def _parse_user_ids(raw_value: str | None) -> list[int] | None:
         except ValueError:
             continue
     return user_ids or None
+
+
+def resolve_target_user_ids(
+    session: Session,
+    raw_user_ids: str | None,
+    use_logged_in_user: bool,
+) -> list[int] | None:
+    """Resolve user IDs for content visibility entries.
+
+    Args:
+        session: SQLAlchemy session.
+        raw_user_ids: Optional comma-separated user IDs from CLI.
+        use_logged_in_user: Whether to target the inferred logged-in user.
+
+    Returns:
+        User ID list for inbox entries, or None to target all users.
+
+    Raises:
+        ValueError: If both targeting modes are set or logged-in user can't be resolved.
+    """
+    if raw_user_ids and use_logged_in_user:
+        raise ValueError("Use either --user-ids or --logged-in-user, not both.")
+
+    parsed_user_ids = _parse_user_ids(raw_user_ids)
+    if parsed_user_ids is not None:
+        return parsed_user_ids
+
+    if not use_logged_in_user:
+        return None
+
+    resolved_user_id = _resolve_logged_in_user_id(session)
+    if resolved_user_id is None:
+        raise ValueError("Could not resolve a logged-in user ID from the database.")
+    return [resolved_user_id]
 
 
 def main():
@@ -841,6 +901,14 @@ def main():
     parser.add_argument(
         "--user-ids",
         help="Comma-separated user IDs to receive article/podcast inbox entries",
+    )
+    parser.add_argument(
+        "--logged-in-user",
+        action="store_true",
+        help=(
+            "Target only the inferred logged-in user "
+            "(most recently updated active non-admin user)"
+        ),
     )
 
     args = parser.parse_args()
@@ -874,7 +942,18 @@ def main():
     print("\nInserting data into database...")
     init_db()
     with get_db() as session:
-        user_ids = _parse_user_ids(args.user_ids)
+        try:
+            user_ids = resolve_target_user_ids(
+                session=session,
+                raw_user_ids=args.user_ids,
+                use_logged_in_user=args.logged_in_user,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        if user_ids is None:
+            print("  - Inbox assignment user IDs: all users")
+        else:
+            print(f"  - Inbox assignment user IDs: {', '.join(map(str, user_ids))}")
         inserted_ids = insert_test_data(session, data, user_ids=user_ids)
 
     print(f"\nSuccessfully inserted {len(inserted_ids)} items")
