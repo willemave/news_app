@@ -400,97 +400,10 @@ struct ContentDetailView: View {
             chatError = nil
         }) {
             if let content = viewModel.content {
-                VStack(spacing: 0) {
-                    // Modern drag indicator
-                    RoundedRectangle(cornerRadius: 2.5)
-                        .fill(Color.secondary.opacity(0.3))
-                        .frame(width: 36, height: 5)
-                        .padding(.top, 8)
-
-                    // Modern header
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("AI Chat")
-                                .font(.title3)
-                                .fontWeight(.bold)
-                            Text("Choose how to explore this article")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-
-                        Spacer()
-
-                        Button {
-                            showChatOptionsSheet = false
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.secondary)
-                                .frame(width: 30, height: 30)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(Circle())
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 20)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        if let chatError {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                    .foregroundColor(.red)
-                                Text(chatError)
-                                    .font(.footnote)
-                                    .foregroundColor(.red)
-                            }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.red.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-
-                        chatPromptCard(
-                            title: "Dig deeper",
-                            icon: "doc.text.magnifyingglass",
-                            iconColor: .blue,
-                            prompt: deepDivePrompt(for: content),
-                            contentId: content.id
-                        )
-
-                        chatPromptCard(
-                            title: "Corroborate",
-                            icon: "checkmark.shield",
-                            iconColor: .green,
-                            prompt: corroboratePrompt(for: content),
-                            contentId: content.id
-                        )
-
-                        deepResearchCard(for: content)
-
-                        audioPromptCard(for: content)
-
-                        if isStartingChat {
-                            HStack(spacing: 10) {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                Text("Starting conversation...")
-                                    .font(.footnote)
-                                    .foregroundColor(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-
-                    Spacer()
-                }
-                .background(Color(.systemBackground))
-                .presentationDetents([.height(480)])
-                .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(24)
+                chatSheet(content: content)
+                    .presentationDetents([.height(380)])
+                    .presentationDragIndicator(.hidden)
+                    .presentationCornerRadius(24)
             }
         }
         .sheet(isPresented: $showDeepDiveSheet) {
@@ -603,107 +516,6 @@ struct ContentDetailView: View {
     }
 
     @ViewBuilder
-    private func deepResearchCard(for content: ContentDetail) -> some View {
-        Button {
-            Task {
-                await startDeepResearchWithPrompt(
-                    deepResearchPrompt(for: content),
-                    contentId: content.id
-                )
-            }
-        } label: {
-            modernChatOptionCard(
-                icon: "magnifyingglass.circle.fill",
-                iconColor: .purple,
-                title: "Deep Research",
-                subtitle: "Comprehensive analysis with sources",
-                badge: "~2-5 min"
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isStartingChat)
-    }
-
-    @ViewBuilder
-    private func chatPromptCard(
-        title: String,
-        icon: String,
-        iconColor: Color,
-        prompt: String,
-        contentId: Int
-    ) -> some View {
-        Button {
-            Task { await startChatWithPrompt(prompt, contentId: contentId) }
-        } label: {
-            modernChatOptionCard(
-                icon: icon,
-                iconColor: iconColor,
-                title: title,
-                subtitle: chatSubtitle(for: title)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isStartingChat)
-    }
-
-    private func chatSubtitle(for title: String) -> String {
-        switch title {
-        case "Dig deeper":
-            return "Explore key points in detail"
-        case "Corroborate":
-            return "Verify claims with sources"
-        default:
-            return "Start a conversation"
-        }
-    }
-
-    @ViewBuilder
-    private func modernChatOptionCard(
-        icon: String,
-        iconColor: Color,
-        title: String,
-        subtitle: String,
-        badge: String? = nil
-    ) -> some View {
-        HStack(spacing: 12) {
-            // Icon container
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(iconColor)
-                .frame(width: 32, height: 32)
-                .background(iconColor.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            if let badge = badge {
-                Text(badge)
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-            }
-
-            Image(systemName: "chevron.right")
-                .font(.caption2)
-                .fontWeight(.bold)
-                .foregroundColor(.secondary.opacity(0.4))
-        }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    @ViewBuilder
     private func audioPromptCard(for content: ContentDetail) -> some View {
         Button {
             Task { await toggleRecording() }
@@ -719,7 +531,7 @@ struct ContentDetailView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(dictationService.isRecording ? "Stop Recording" : "Ask with Voice")
                         .font(.subheadline)
-                        .fontWeight(.semibold)
+                        .fontWeight(.medium)
                         .foregroundColor(.primary)
                     Text(dictationService.isRecording ? "Tap to finish" : "Record your question")
                         .font(.caption)
@@ -727,15 +539,10 @@ struct ContentDetailView: View {
                 }
 
                 Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .foregroundColor(.secondary.opacity(0.4))
             }
-            .padding(12)
+            .padding(10)
             .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .disabled(isStartingChat)
@@ -1047,6 +854,8 @@ struct ContentDetailView: View {
         iconColor: Color = .accentColor,
         title: String,
         subtitle: String,
+        badge: String? = nil,
+        disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -1069,12 +878,20 @@ struct ContentDetailView: View {
                 }
 
                 Spacer()
+
+                if let badge {
+                    Text(badge)
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                }
             }
             .padding(10)
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
     }
 
     // MARK: - Share Sheet
@@ -1185,6 +1002,85 @@ struct ContentDetailView: View {
                 )
             }
             .padding(.horizontal, 20)
+
+            Spacer()
+        }
+        .background(Color(.systemBackground))
+    }
+
+    // MARK: - AI Chat Sheet
+    @ViewBuilder
+    private func chatSheet(content: ContentDetail) -> some View {
+        VStack(spacing: 0) {
+            sheetHeader(title: "AI Chat") { showChatOptionsSheet = false }
+
+            VStack(spacing: 8) {
+                if let chatError {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.red)
+                        Text(chatError)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.red.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                sheetOptionRow(
+                    icon: "doc.text.magnifyingglass",
+                    iconColor: .blue,
+                    title: "Dig deeper",
+                    subtitle: "Explore key points in detail",
+                    disabled: isStartingChat,
+                    action: {
+                        Task { await startChatWithPrompt(deepDivePrompt(for: content), contentId: content.id) }
+                    }
+                )
+                sheetOptionRow(
+                    icon: "checkmark.shield",
+                    iconColor: .green,
+                    title: "Corroborate",
+                    subtitle: "Verify claims with sources",
+                    disabled: isStartingChat,
+                    action: {
+                        Task { await startChatWithPrompt(corroboratePrompt(for: content), contentId: content.id) }
+                    }
+                )
+                sheetOptionRow(
+                    icon: "magnifyingglass.circle.fill",
+                    iconColor: .purple,
+                    title: "Deep Research",
+                    subtitle: "Comprehensive analysis with sources",
+                    badge: "~2-5 min",
+                    disabled: isStartingChat,
+                    action: {
+                        Task { await startDeepResearchWithPrompt(deepResearchPrompt(for: content), contentId: content.id) }
+                    }
+                )
+            }
+            .padding(.horizontal, 20)
+
+            Divider()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+
+            audioPromptCard(for: content)
+                .padding(.horizontal, 20)
+
+            if isStartingChat {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Starting conversation...")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+            }
 
             Spacer()
         }
