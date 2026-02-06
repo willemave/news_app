@@ -25,6 +25,8 @@ struct ArticleCardView: View {
     var yOffset: CGFloat = 0
     var cardOpacity: Double = 1.0
 
+    @State private var showDownloadSheet = false
+
     private let cardCornerRadius: CGFloat = 20
     private let heroImageHeight: CGFloat = 200
 
@@ -52,9 +54,13 @@ struct ArticleCardView: View {
             }
             .padding(20)
         }
-        .background(Color(.systemGray6))
+        .background(Color(.systemBackground))
         .cornerRadius(cardCornerRadius)
-        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
+        .overlay(
+            RoundedRectangle(cornerRadius: cardCornerRadius)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 3)
         .onAppear {
             logPreviewState(context: "appear")
         }
@@ -67,7 +73,6 @@ struct ArticleCardView: View {
                let imageUrl = buildImageURL(from: imageUrlString) {
                 // Use progressive loading: thumbnail first, then full image
                 let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
-                let _ = print("ArticleCardView: imageUrl=\(imageUrl), thumbnailUrl=\(thumbnailUrl?.absoluteString ?? "nil")")
                 CachedAsyncImage(
                     url: imageUrl,
                     thumbnailUrl: thumbnailUrl
@@ -81,7 +86,6 @@ struct ArticleCardView: View {
                     placeholderImage
                 }
             } else {
-                let _ = print("ArticleCardView: No image URL for content \(content.id), imageUrl=\(content.imageUrl ?? "nil")")
                 placeholderImage
             }
 
@@ -103,7 +107,7 @@ struct ArticleCardView: View {
         Rectangle()
             .fill(
                 LinearGradient(
-                    colors: [Color(.systemGray4), Color(.systemGray5)],
+                    colors: [Color(.systemGray5), Color(.systemGray6)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -111,8 +115,8 @@ struct ArticleCardView: View {
             .frame(height: heroImageHeight)
             .overlay(
                 Image(systemName: contentTypeIcon)
-                    .font(.system(size: 48, weight: .light))
-                    .foregroundColor(.white.opacity(0.5))
+                    .font(.system(size: 36, weight: .light))
+                    .foregroundColor(.secondary.opacity(0.4))
             )
     }
 
@@ -176,7 +180,7 @@ struct ArticleCardView: View {
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .italic()
-                .foregroundColor(.primary.opacity(0.85))
+                .foregroundColor(.secondary)
                 .padding(.vertical, 4)
         }
     }
@@ -203,11 +207,9 @@ struct ArticleCardView: View {
     private var keyPointsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Key Points")
-                .font(.caption)
+                .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundColor(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
 
             if isLoadingKeyPoints {
                 skeletonKeyPoints
@@ -218,7 +220,7 @@ struct ArticleCardView: View {
             } else if let summary = content.shortSummary, !summary.isEmpty {
                 Text(summary)
                     .font(.subheadline)
-                    .foregroundColor(.primary.opacity(0.85))
+                    .foregroundColor(.primary)
                     .lineLimit(4)
             } else {
                 Text("No summary available")
@@ -238,7 +240,7 @@ struct ArticleCardView: View {
 
             Text(text)
                 .font(.subheadline)
-                .foregroundColor(.primary.opacity(0.9))
+                .foregroundColor(.primary)
                 .multilineTextAlignment(.leading)
         }
     }
@@ -275,9 +277,12 @@ struct ArticleCardView: View {
             Spacer()
 
             // Download more
-            DownloadMoreMenu(title: "More") { count in
-                onDownloadMore(count)
+            Button { showDownloadSheet = true } label: {
+                Image(systemName: "tray.and.arrow.down")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundColor(.secondary)
             }
+            .frame(width: 44, height: 44)
 
             Spacer()
 
@@ -289,6 +294,75 @@ struct ArticleCardView: View {
             }
             .frame(width: 44, height: 44)
         }
+        .sheet(isPresented: $showDownloadSheet) {
+            downloadSheet
+        }
+    }
+
+    private var downloadSheet: some View {
+        VStack(spacing: 0) {
+            // Drag indicator
+            Capsule()
+                .fill(Color.secondary.opacity(0.4))
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+
+            HStack {
+                Text("Download More")
+                    .font(.headline)
+                Spacer()
+                Button { showDownloadSheet = false } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+
+            VStack(spacing: 2) {
+                downloadSheetRow(count: 3, subtitle: "Quick catch-up")
+                downloadSheetRow(count: 5, subtitle: "A good batch")
+                downloadSheetRow(count: 10, subtitle: "Deep dive session")
+                downloadSheetRow(count: 20, subtitle: "Full backlog")
+            }
+            .padding(.horizontal, 20)
+
+            Spacer()
+        }
+        .presentationDetents([.height(320)])
+        .presentationCornerRadius(20)
+        .presentationDragIndicator(.hidden)
+    }
+
+    private func downloadSheetRow(count: Int, subtitle: String) -> some View {
+        Button {
+            showDownloadSheet = false
+            onDownloadMore(count)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(.accentColor)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(count) episodes")
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 4)
+        }
+        .buttonStyle(.plain)
     }
 
     private var contentTypeIcon: String {
