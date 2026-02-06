@@ -376,20 +376,11 @@ struct ContentDetailView: View {
         .onDisappear {
             readingStateStore.clear()
         }
-        .confirmationDialog("Share article", isPresented: $showShareOptions, titleVisibility: .visible) {
-            Button("Light · Title + link") {
-                viewModel.shareContent(option: .light)
-            }
-            Button("Medium · Key points, quotes, link") {
-                viewModel.shareContent(option: .medium)
-            }
-            Button("Full · Article + transcript") {
-                viewModel.shareContent(option: .full)
-            }
-            Button("Tweet suggestions") {
-                showTweetSheet = true
-            }
-            Button("Cancel", role: .cancel) { }
+        .sheet(isPresented: $showShareOptions) {
+            shareSheet
+                .presentationDetents([.height(340)])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(24)
         }
         .sheet(isPresented: $showTweetSheet) {
             if let content = viewModel.content {
@@ -1016,6 +1007,125 @@ struct ContentDetailView: View {
             .foregroundColor(color)
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
+    }
+
+    // MARK: - Share Sheet
+    @ViewBuilder
+    private var shareSheet: some View {
+        VStack(spacing: 0) {
+            // Drag indicator
+            RoundedRectangle(cornerRadius: 2.5)
+                .fill(Color.secondary.opacity(0.3))
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+
+            HStack {
+                Text("Share")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                Spacer()
+                Button {
+                    showShareOptions = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(width: 30, height: 30)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 16)
+
+            VStack(spacing: 8) {
+                shareOptionRow(
+                    icon: "link",
+                    title: "Title + link",
+                    subtitle: "Headline and URL only",
+                    action: {
+                        showShareOptions = false
+                        viewModel.shareContent(option: .light)
+                    }
+                )
+                shareOptionRow(
+                    icon: "text.quote",
+                    title: "Key points",
+                    subtitle: "Summary, top quotes, and link",
+                    action: {
+                        showShareOptions = false
+                        viewModel.shareContent(option: .medium)
+                    }
+                )
+                shareOptionRow(
+                    icon: "doc.plaintext",
+                    title: "Full content",
+                    subtitle: "Complete article or transcript",
+                    action: {
+                        showShareOptions = false
+                        viewModel.shareContent(option: .full)
+                    }
+                )
+            }
+            .padding(.horizontal, 20)
+
+            Divider()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+
+            shareOptionRow(
+                icon: "at",
+                title: "Tweet suggestions",
+                subtitle: "Generate tweet-ready snippets",
+                action: {
+                    showShareOptions = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showTweetSheet = true
+                    }
+                }
+            )
+            .padding(.horizontal, 20)
+
+            Spacer()
+        }
+        .background(Color(.systemBackground))
+    }
+
+    @ViewBuilder
+    private func shareOptionRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.accentColor)
+                    .frame(width: 32, height: 32)
+                    .background(Color.accentColor.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding(10)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Modern Section Components (Flat, no borders)
