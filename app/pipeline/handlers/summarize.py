@@ -388,21 +388,17 @@ class SummarizeHandler:
                             share_and_chat_user_ids,
                         )
 
-                    if content.content_type == ContentType.NEWS.value:
-                        context.queue_service.enqueue(
-                            task_type=TaskType.GENERATE_THUMBNAIL,
-                            content_id=content_id,
-                        )
-                        logger.info(
-                            "Enqueued thumbnail generation for news content %s",
-                            content_id,
-                        )
-                    else:
+                    if content.content_type != ContentType.NEWS.value:
                         context.queue_service.enqueue(
                             task_type=TaskType.GENERATE_IMAGE,
                             content_id=content_id,
                         )
                         logger.info("Enqueued image generation for content %s", content_id)
+                    else:
+                        logger.info(
+                            "Skipping post-summary image generation for news content %s",
+                            content_id,
+                        )
 
                     return TaskResult.ok()
 

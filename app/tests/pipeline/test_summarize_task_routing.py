@@ -69,7 +69,7 @@ def _build_context(db_session, queue_service, llm_service) -> TaskContext:
     )
 
 
-def test_summarize_news_enqueues_thumbnail(db_session) -> None:
+def test_summarize_news_does_not_enqueue_image_tasks(db_session) -> None:
     content = _create_content(db_session, "news")
     queue_service = Mock()
     handler = SummarizeHandler()
@@ -82,10 +82,7 @@ def test_summarize_news_enqueues_thumbnail(db_session) -> None:
     )
 
     assert handler.handle(task, context).success is True
-    queue_service.enqueue.assert_called_once_with(
-        task_type=TaskType.GENERATE_THUMBNAIL,
-        content_id=content.id,
-    )
+    queue_service.enqueue.assert_not_called()
 
 
 def test_summarize_article_enqueues_image(db_session) -> None:

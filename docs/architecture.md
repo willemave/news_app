@@ -11,7 +11,7 @@
 - Unified content ingestion (scrapers + user submissions) feeding a DB-backed task queue (analyze → process → summarize → image).
 - URL analysis stage uses pattern matching + LLM page analysis to detect content type/platform and embedded media.
 - Processing workers apply URL strategies, fetch/extract content, summarize with LLMs (interleaved for articles/podcasts), and persist typed metadata.
-- Post-summary imagery uses Playwright screenshots for news and AI infographics for articles/podcasts to speed client loading.
+- Post-summary imagery uses AI infographics for articles/podcasts; news currently skips post-summary image generation.
 - API surface covers auth, feed/list/search, read/favorite state, conversions, tweet ideas, chat, and user-managed scrapers.
 - Deep-dive chat uses pydantic-ai agents with Exa web search; conversations are stored server-side.
 - Deep Research mode uses OpenAI's o4-mini-deep-research model for comprehensive async research (2-5 min).
@@ -61,7 +61,7 @@ flowchart LR
 | Class | Location | Responsibilities | Key Methods |
 |---|---|---|---|
 | `Settings` | app/core/settings.py | Env-driven config (DB, JWT, API keys, paths, worker limits) | properties `podcast_media_dir`, `substack_media_dir`, `logs_dir` |
-| `QueueService` | app/services/queue.py | DB-backed task queue (SCRAPE/ANALYZE_URL/PROCESS_CONTENT/DOWNLOAD_AUDIO/TRANSCRIBE/SUMMARIZE/GENERATE_IMAGE/GENERATE_THUMBNAIL) with retries/stats | `enqueue`, `dequeue`, `complete_task`, `retry_task`, `get_queue_stats`, `cleanup_old_tasks` |
+| `QueueService` | app/services/queue.py | DB-backed task queue (SCRAPE/ANALYZE_URL/PROCESS_CONTENT/DOWNLOAD_AUDIO/TRANSCRIBE/SUMMARIZE/GENERATE_IMAGE) with retries/stats | `enqueue`, `dequeue`, `complete_task`, `retry_task`, `get_queue_stats`, `cleanup_old_tasks` |
 | `CheckoutManager` | app/pipeline/checkout.py | Row-level locking for content checkout/release | `checkout_content` context, `release_stale_checkouts`, `get_checkout_stats` |
 | `ContentWorker` | app/pipeline/worker.py | Process articles/news/podcasts: choose strategy, download/extract, summarize, persist | `process_content`, `_process_article`, `_process_podcast` |
 | `PodcastDownloadWorker` / `PodcastTranscribeWorker` | app/pipeline/podcast_workers.py | Download audio (with retries) then transcribe via Whisper; queue follow-up tasks | `process_download_task`, `process_transcribe_task` |
@@ -72,7 +72,7 @@ flowchart LR
 | `ScraperRunner` | app/scraping/runner.py | Orchestrates scrapers, logs stats to EventLog | `run_all(_with_stats)`, `run_scraper`, `list_scrapers` |
 | `Chat Agent` | app/services/chat_agent.py | pydantic-ai agent with Exa tool, message persistence | `get_chat_agent`, `run_chat_turn`, `generate_initial_suggestions` |
 | `DeepResearchClient` | app/services/deep_research.py | OpenAI Responses API client for async deep research | `start_research`, `poll_result`, `wait_for_completion`, `process_deep_research_message` |
-| `ImageGenerationService` | app/services/image_generation.py | Gemini image generation (news thumbnails + 16:9 infographics) + local thumbnailing | `generate_image`, `generate_thumbnail`, `get_image_url` |
+| `ImageGenerationService` | app/services/image_generation.py | Gemini image generation (16:9 infographics) + local thumbnailing for generated assets | `generate_image`, `generate_thumbnail`, `get_image_url` |
 | `Feed Detection` | app/services/feed_detection.py | Extract RSS/Atom links and classify feed type with LLM | `extract_feed_links`, `classify_feed_type_with_llm` |
 | `Event Logger` | app/services/event_logger.py | Structured event logging to DB | `log_event`, `track_event`, `get_recent_events` |
 
@@ -81,7 +81,7 @@ flowchart LR
 |---|---|---|
 | `users` | Accounts from Apple Sign In + admin | `id`, `apple_id` UQ, `email` UQ, `full_name`, `is_admin`, `is_active`, timestamps |
 | `contents` | Core content records | `id`, `content_type` (`article/podcast/news/unknown`), `url` (canonical, UQ per type), `source_url` (original scraped/submitted URL), `title`, `source`, `platform`, `is_aggregate` (legacy, always false), `status`, `classification`, `error_message`, `retry_count`, checkout fields, `content_metadata` JSON (summary/interleaved, detected_feed, image_generated_at, thumbnail_url), timestamps, indexes on type/status/created_at |
-| `processing_tasks` | Task queue | `task_type` (`scrape/analyze_url/process_content/download_audio/transcribe/summarize/generate_image/generate_thumbnail`), `content_id`, `payload` JSON, `status`, retry counters, timestamps, idx on status+created_at |
+| `processing_tasks` | Task queue | `task_type` (`scrape/analyze_url/process_content/download_audio/transcribe/summarize/generate_image`), `content_id`, `payload` JSON, `status`, retry counters, timestamps, idx on status+created_at |
 | `content_read_status` | User read marks | UQ `(user_id, content_id)`, `read_at` |
 | `content_favorites` | User favorites | UQ `(user_id, content_id)` |
 | `content_unlikes` | User unlikes | UQ `(user_id, content_id)` |
@@ -122,7 +122,7 @@ flowchart LR
   6) Persist extraction metadata, set `status=processing`, set `processed_at`; summarization task later writes summary + final status and enqueues image generation.
 - **Podcasts**: `PodcastDownloadWorker` saves audio under `settings.podcast_media_dir`, skips YouTube audio, enqueues transcribe; `PodcastTranscribeWorker` runs Whisper (`app/services/whisper_local.py`), updates metadata, sets status to `completed`.
 - **Summarization defaults**: per-type default models (news → `openai:gpt-5-mini`, articles/podcasts → interleaved with Anthropic Haiku), fallback Gemini Flash; truncates content above 220k chars and prunes empty quotes.
-- **Image generation**: post-summary tasks call Gemini for article/podcast infographics (`GENERATE_IMAGE`) or Playwright screenshots for news (`GENERATE_THUMBNAIL`); generated images are stored under `IMAGES_BASE_DIR` (default `/data/images`) and served at `/static/images/...`.
+- **Image generation**: post-summary tasks call Gemini for article/podcast infographics (`GENERATE_IMAGE`); news currently skips post-summary image generation. Generated images are stored under `IMAGES_BASE_DIR` (default `/data/images`) and served at `/static/images/...`.
 
 ## Processing Strategies (`app/processing_strategies/`)
 - **HackerNewsProcessorStrategy**: handles HN item URLs, extracts linked article, metadata.
@@ -168,7 +168,7 @@ flowchart LR
 1) Scrapers create `contents` rows → enqueue `PROCESS_CONTENT`; `/submit` creates `content_type=unknown` → enqueue `ANALYZE_URL` → `PROCESS_CONTENT`.
 2) `SequentialTaskProcessor` dequeues → `ContentWorker` selects strategy, downloads, extracts, summarizes (interleaved/news digest) → updates `contents.status` + metadata/summary.
 3) Podcasts: download → transcribe → summarize; tasks chained via queue.
-4) Summaries enqueue `GENERATE_THUMBNAIL` for news (Playwright screenshot) or `GENERATE_IMAGE` for others → static image URLs exposed in API responses.
+4) Summaries enqueue `GENERATE_IMAGE` for article/podcast content; news does not enqueue a post-summary image task.
 5) API list/search filters: only summarized articles/podcasts + completed news, excludes `classification=skip`, requires `content_status` inbox rows for per-user feeds.
 6) Chat sessions reference `contents` (optional) and persist assistant/user messages; Exa search tool available when `EXA_API_KEY` is set.
 7) Deep research sessions use OpenAI Responses API: message sent → background task polls for completion (2-5 min) → result persisted to `chat_messages`.

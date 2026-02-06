@@ -311,7 +311,7 @@ Style requirements:
 def _should_skip_image_generation(content: ContentData) -> tuple[bool, str]:
     """Check if image generation should be skipped."""
     if content.content_type == ContentType.NEWS:
-        return True, "News thumbnails use Playwright screenshots"
+        return True, "News thumbnails are disabled"
 
     if content.content_type == ContentType.PODCAST:
         metadata = content.metadata or {}
