@@ -22,7 +22,7 @@ struct OnboardingFlowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(UIColor.systemBackground))
             if viewModel.isLoading {
-                Color.black.opacity(0.2)
+                Color.black.opacity(0.15)
                     .ignoresSafeArea()
                 LoadingOverlay(message: viewModel.loadingMessage)
             }
@@ -50,60 +50,67 @@ struct OnboardingFlowView: View {
         }
     }
 
+    // MARK: - Intro
+
     private var introView: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             Spacer()
             Image(systemName: "sparkles")
-                .font(.system(size: 44, weight: .semibold))
-                .foregroundColor(.blue)
+                .font(.system(size: 36, weight: .medium))
+                .foregroundColor(.accentColor)
             Text("Welcome to Newsly")
-                .font(.largeTitle.bold())
-            Text("Your personal inbox for long-form and short-form news. We’ll tune your feeds to match your interests.")
-                .font(.body)
+                .font(.title2.bold())
+            Text("Your personal inbox for long-form and short-form news. We'll tune your feeds to match your interests.")
+                .font(.callout)
                 .foregroundColor(.secondary)
             Spacer()
-            Button("Continue") {
+            primaryButton("Continue") {
                 viewModel.advanceToChoice()
             }
-            .buttonStyle(.borderedProminent)
         }
-        .padding(32)
+        .padding(24)
     }
 
+    // MARK: - Choice
+
     private var choiceView: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Set up your feeds")
-                .font(.title.bold())
-            Text("Share what you want to read and we’ll find the best sources, or start with defaults.")
+                .font(.title2.bold())
+            Text("Share what you want to read and we'll find the best sources, or start with defaults.")
+                .font(.callout)
                 .foregroundColor(.secondary)
 
-            Button("Personalize my feeds") {
+            Spacer().frame(height: 8)
+
+            primaryButton("Personalize my feeds") {
                 viewModel.startPersonalized()
             }
-            .buttonStyle(.borderedProminent)
 
-            Button("Use defaults") {
+            secondaryButton("Use defaults") {
                 viewModel.chooseDefaults()
             }
-            .buttonStyle(.bordered)
 
             if let error = viewModel.errorMessage {
                 Text(error)
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundColor(.red)
             }
 
             Spacer()
         }
-        .padding(32)
+        .padding(24)
     }
+
+    // MARK: - Audio
 
     private var audioView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Tell us what you read")
-                    .font(.title.bold())
-                Text("We’ll record a short voice note and build your feed from it.")
+                    .font(.title2.bold())
+                Text("We'll record a short voice note and build your feed from it.")
+                    .font(.callout)
                     .foregroundColor(.secondary)
 
                 switch viewModel.audioState {
@@ -119,11 +126,11 @@ struct OnboardingFlowView: View {
 
                 if let error = viewModel.errorMessage {
                     Text(error)
-                        .font(.footnote)
+                        .font(.caption)
                         .foregroundColor(.red)
                 }
             }
-            .padding(32)
+            .padding(24)
         }
         .task {
             await viewModel.startAudioCaptureIfNeeded()
@@ -131,97 +138,93 @@ struct OnboardingFlowView: View {
     }
 
     private var audioIntroCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundColor(.blue)
-                VStack(alignment: .leading, spacing: 4) {
+                    .font(.title3)
+                    .foregroundColor(.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Start speaking")
-                        .font(.headline)
-                    Text("Say what you’re interested in. We’ll stop at 30 seconds.")
-                        .font(.subheadline)
+                        .font(.callout.weight(.medium))
+                    Text("Say what you're interested in. We'll stop at 30s.")
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 Spacer()
             }
 
-            Button("Start recording") {
+            primaryButton("Start recording") {
                 Task { await viewModel.startAudioCapture() }
             }
-            .buttonStyle(.borderedProminent)
 
-            Button("Use defaults instead") {
+            secondaryButton("Use defaults instead") {
                 viewModel.chooseDefaults()
             }
-            .buttonStyle(.bordered)
         }
         .padding(16)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var audioRecordingView: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "waveform")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.body.weight(.medium))
                     .foregroundColor(.red)
-                Text("Listening • \(formattedAudioDuration)")
-                    .font(.subheadline)
+                Text("Listening \(formattedAudioDuration)")
+                    .font(.callout)
                     .foregroundColor(.secondary)
                 Spacer()
             }
 
-            Text("We’ll auto-stop at 30 seconds.")
-                .font(.footnote)
+            Text("Auto-stops at 30 seconds.")
+                .font(.caption)
                 .foregroundColor(.secondary)
 
-            Button("Stop and search") {
+            primaryButton("Stop and search") {
                 Task { await viewModel.stopAudioCaptureAndDiscover() }
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding(16)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var audioTranscribingView: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ProgressView()
-            Text("Transcribing your note…")
-                .font(.subheadline)
+            Text("Transcribing...")
+                .font(.callout)
                 .foregroundColor(.secondary)
         }
-        .padding(12)
-        .background(.ultraThinMaterial)
+        .padding(14)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var audioErrorView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.callout)
                     .foregroundColor(.orange)
-                Text("We couldn’t record audio")
-                    .font(.subheadline)
+                Text("We couldn't record audio")
+                    .font(.callout)
                     .foregroundColor(.secondary)
             }
 
-            Button("Try again") {
+            primaryButton("Try again") {
                 Task { await viewModel.startAudioCapture() }
             }
-            .buttonStyle(.borderedProminent)
 
-            Button("Use defaults instead") {
+            secondaryButton("Use defaults instead") {
                 viewModel.chooseDefaults()
             }
-            .buttonStyle(.bordered)
         }
         .padding(16)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var formattedAudioDuration: String {
@@ -230,23 +233,26 @@ struct OnboardingFlowView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    // MARK: - Loading / Discovery
+
     private var loadingView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Finding your feeds")
-                    .font(.title.bold())
-                Text("We’re searching across newsletters, podcasts, and Reddit.")
+                    .font(.title2.bold())
+                Text("Searching newsletters, podcasts, and Reddit.")
+                    .font(.callout)
                     .foregroundColor(.secondary)
 
                 if viewModel.discoveryLanes.isEmpty {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         ProgressView()
-                        Text("Preparing search lanes…")
-                            .font(.subheadline)
+                        Text("Preparing search lanes...")
+                            .font(.callout)
                             .foregroundColor(.secondary)
                     }
-                    .padding(12)
-                    .background(.ultraThinMaterial)
+                    .padding(14)
+                    .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else {
                     ForEach(viewModel.discoveryLanes) { lane in
@@ -255,34 +261,38 @@ struct OnboardingFlowView: View {
                 }
 
                 Text("This usually takes under a minute.")
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundColor(.secondary)
 
                 if let message = viewModel.discoveryErrorMessage {
                     Text(message)
-                        .font(.footnote)
+                        .font(.caption)
                         .foregroundColor(.orange)
                 }
 
-                Button("Use defaults instead") {
+                secondaryButton("Use defaults instead") {
                     viewModel.chooseDefaults()
                 }
-                .buttonStyle(.bordered)
             }
-            .padding(32)
+            .padding(24)
         }
     }
 
+    // MARK: - Suggestions
+
     private var suggestionsView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Top picks for you")
-                    .font(.title.bold())
+                    .font(.title2.bold())
                 Text("Review the suggested sources. You can edit these later.")
+                    .font(.callout)
                     .foregroundColor(.secondary)
+                    .padding(.bottom, 4)
 
                 if viewModel.substackSuggestions.isEmpty && viewModel.podcastSuggestions.isEmpty && viewModel.subredditSuggestions.isEmpty {
-                    Text("We couldn’t find enough matches yet — we’ll start you with defaults.")
+                    Text("We couldn't find enough matches yet — we'll start you with defaults.")
+                        .font(.callout)
                         .foregroundColor(.secondary)
                 }
 
@@ -325,74 +335,115 @@ struct OnboardingFlowView: View {
                     }
                 }
 
-                Button("Finish setup") {
+                Spacer().frame(height: 8)
+
+                primaryButton("Finish setup") {
                     Task { await viewModel.completeOnboarding() }
                 }
-                .buttonStyle(.borderedProminent)
                 .disabled(viewModel.isLoading)
 
                 if let error = viewModel.errorMessage {
                     Text(error)
-                        .font(.footnote)
+                        .font(.caption)
                         .foregroundColor(.red)
                 }
             }
-            .padding(32)
+            .padding(24)
         }
     }
 
+    // MARK: - Completion
+
     private var completionView: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             Spacer()
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 36, weight: .medium))
+                .foregroundColor(.green)
             Text("Your inbox is ready")
-                .font(.title.bold())
+                .font(.title2.bold())
             if let response = viewModel.completionResponse {
-                Text("\(response.inboxCountEstimate)+ unread news stories waiting.")
-                    .font(.title3)
-                Text("Long-form content: \(response.longformStatus.capitalized)")
+                Text("\(response.inboxCountEstimate)+ unread stories waiting.")
+                    .font(.callout)
+                Text("Long-form: \(response.longformStatus.capitalized)")
+                    .font(.callout)
                     .foregroundColor(.secondary)
             } else {
-                Text("Your feeds are loading. You’ll start with at least 100 unread stories.")
+                Text("Your feeds are loading. You'll start with at least 100 unread stories.")
+                    .font(.callout)
                     .foregroundColor(.secondary)
             }
             Spacer()
-            Button("Start reading") {
+            primaryButton("Start reading") {
                 if let response = viewModel.completionResponse {
                     onFinish(response)
                 }
             }
-            .buttonStyle(.borderedProminent)
             .disabled(viewModel.completionResponse == nil)
         }
-        .padding(32)
+        .padding(24)
     }
+
+    // MARK: - Shared Components
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.headline)
-            .padding(.top, 8)
+            .font(.subheadline.weight(.semibold))
+            .foregroundColor(.secondary)
+            .padding(.top, 12)
+    }
+
+    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .foregroundColor(.white)
+                .background(Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func secondaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.callout.weight(.medium))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .foregroundColor(.primary)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
     }
 }
+
+// MARK: - Lane Status Row
 
 private struct LaneStatusRow: View {
     let lane: OnboardingDiscoveryLaneStatus
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: statusIcon)
+                .font(.callout)
                 .foregroundColor(statusColor)
-            VStack(alignment: .leading, spacing: 4) {
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 2) {
                 Text(lane.name)
-                    .font(.body)
+                    .font(.callout)
                 Text(statusLabel)
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundColor(.secondary)
             }
             Spacer()
         }
-        .padding(12)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private var statusLabel: String {
@@ -424,7 +475,7 @@ private struct LaneStatusRow: View {
     private var statusColor: Color {
         switch lane.status {
         case "processing":
-            return .blue
+            return .accentColor
         case "completed":
             return .green
         case "failed":
@@ -435,6 +486,8 @@ private struct LaneStatusRow: View {
     }
 }
 
+// MARK: - Suggestion Row
+
 private struct SuggestionRow: View {
     let title: String
     let subtitle: String?
@@ -443,41 +496,45 @@ private struct SuggestionRow: View {
 
     var body: some View {
         Button(action: onToggle) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .blue : .secondary)
-                VStack(alignment: .leading, spacing: 4) {
+                    .font(.body)
+                    .foregroundColor(isSelected ? .accentColor : Color(.tertiaryLabel))
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.body)
+                        .font(.callout.weight(.medium))
                         .foregroundColor(.primary)
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
-                            .font(.footnote)
+                            .font(.caption)
                             .foregroundColor(.secondary)
+                            .lineLimit(2)
                     }
                 }
                 Spacer()
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
     }
 }
 
+// MARK: - Loading Overlay
+
 private struct LoadingOverlay: View {
     let message: String
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             ProgressView()
-                .scaleEffect(1.2)
             Text(message)
-                .font(.subheadline)
+                .font(.callout)
                 .foregroundColor(.secondary)
         }
-        .padding(24)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(radius: 10)
+        .padding(20)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
     }
 }
