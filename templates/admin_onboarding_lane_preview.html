@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="mb-6">
+    <h2 class="text-2xl font-bold text-gray-900">Onboarding Lane Preview</h2>
+    <p class="text-sm text-gray-600 mt-2">
+      Paste a transcript to preview inferred topics and generated discovery lanes.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-lg shadow p-6 space-y-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="md:col-span-2">
+        <label for="transcript" class="block text-sm font-medium text-gray-700 mb-2">Transcript</label>
+        <textarea
+          id="transcript"
+          rows="8"
+          class="w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
+          placeholder="Example: I want AI policy, startup strategy, and climate tech updates..."
+        ></textarea>
+      </div>
+      <div>
+        <label for="locale" class="block text-sm font-medium text-gray-700 mb-2">Locale</label>
+        <input
+          id="locale"
+          type="text"
+          value="en-US"
+          class="w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
+        />
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button
+        id="preview-btn"
+        class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+      >
+        Generate Lanes
+      </button>
+      <span id="status" class="text-sm text-gray-500"></span>
+    </div>
+
+    <div id="error" class="hidden text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3"></div>
+
+    <div>
+      <h3 class="text-sm font-semibold text-gray-900 mb-2">Preview Response</h3>
+      <pre
+        id="output"
+        class="text-xs bg-gray-50 border border-gray-200 rounded-md p-4 overflow-x-auto min-h-[240px]"
+      >{}</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+  const previewButton = document.getElementById('preview-btn');
+  const transcriptInput = document.getElementById('transcript');
+  const localeInput = document.getElementById('locale');
+  const output = document.getElementById('output');
+  const status = document.getElementById('status');
+  const errorBox = document.getElementById('error');
+
+  async function runPreview() {
+    const transcript = transcriptInput.value.trim();
+    const locale = localeInput.value.trim();
+
+    if (!transcript) {
+      errorBox.textContent = 'Transcript is required.';
+      errorBox.classList.remove('hidden');
+      return;
+    }
+
+    previewButton.disabled = true;
+    status.textContent = 'Generating lanes...';
+    errorBox.classList.add('hidden');
+
+    try {
+      const response = await fetch('/admin/onboarding/lane-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript,
+          locale: locale || null,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || 'Failed to generate lanes');
+      }
+
+      output.textContent = JSON.stringify(payload, null, 2);
+      status.textContent = `Generated ${payload.lanes.length} lanes`;
+    } catch (error) {
+      errorBox.textContent = error.message;
+      errorBox.classList.remove('hidden');
+      status.textContent = 'Failed';
+    } finally {
+      previewButton.disabled = false;
+    }
+  }
+
+  previewButton.addEventListener('click', runPreview);
+</script>
+{% endblock %}

@@ -9,6 +9,7 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
+from pydantic_ai.providers.cerebras import CerebrasProvider
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -21,6 +22,7 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
+    CEREBRAS = "cerebras"
     DEEP_RESEARCH = "deep_research"
 
 
@@ -29,6 +31,7 @@ PROVIDER_PREFIXES: dict[str, str] = {
     LLMProvider.OPENAI.value: "openai",
     LLMProvider.ANTHROPIC.value: "anthropic",
     LLMProvider.GOOGLE.value: "google-gla",
+    LLMProvider.CEREBRAS.value: "cerebras",
     LLMProvider.DEEP_RESEARCH.value: "deep_research",
 }
 
@@ -36,6 +39,7 @@ PROVIDER_DEFAULTS: dict[str, str] = {
     LLMProvider.OPENAI.value: "openai:gpt-5.1",
     LLMProvider.ANTHROPIC.value: "anthropic:claude-opus-4-5-20251101",
     LLMProvider.GOOGLE.value: "google-gla:gemini-3-pro-preview",
+    LLMProvider.CEREBRAS.value: "cerebras:zai-glm-4.7",
     LLMProvider.DEEP_RESEARCH.value: "deep_research:o4-mini-deep-research-2025-06-26",
 }
 
@@ -131,6 +135,17 @@ def build_pydantic_model(model_spec: str) -> tuple[Model | str, GoogleModelSetti
         provider = AnthropicProvider(api_key=settings.anthropic_api_key)
         model_to_use = model_name if provider_prefix == "anthropic" else model_spec
         return AnthropicModel(model_to_use, provider=provider), None
+
+    if provider_prefix == "cerebras" or model_spec.startswith("cerebras:"):
+        if not settings.cerebras_api_key:
+            raise ValueError("CEREBRAS_API_KEY not configured in settings.")
+        model_to_use = (
+            model_name
+            if provider_prefix
+            else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
+        )
+        provider = CerebrasProvider(api_key=settings.cerebras_api_key)
+        return OpenAIModel(model_to_use, provider=provider), None
 
     if (
         provider_prefix == "openai"

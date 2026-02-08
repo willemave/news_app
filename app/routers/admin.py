@@ -1,9 +1,9 @@
 """Admin router for administrative functionality."""
 
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, func
@@ -12,6 +12,19 @@ from sqlalchemy.orm import Session
 from app.core.db import get_readonly_db_session
 from app.core.deps import require_admin
 from app.models.schema import Content, EventLog, ProcessingTask
+from app.routers.api.models import (
+    OnboardingAudioDiscoverRequest,
+    OnboardingAudioLanePreviewResponse,
+)
+from app.services.admin_eval import (
+    EVAL_MODEL_LABELS,
+    EVAL_MODEL_SPECS,
+    LONGFORM_TEMPLATE_LABELS,
+    AdminEvalRunRequest,
+    get_default_pricing,
+    run_admin_eval,
+)
+from app.services.onboarding import preview_audio_lane_plan
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory="templates")
@@ -99,3 +112,60 @@ def admin_dashboard(
             "content_without_summary": content_without_summary,
         },
     )
+
+
+@router.get("/onboarding/lane-preview", response_class=HTMLResponse)
+def onboarding_lane_preview_page(
+    request: Request,
+    _: None = Depends(require_admin),
+) -> HTMLResponse:
+    """Render admin tool for onboarding lane preview."""
+    return templates.TemplateResponse(
+        "admin_onboarding_lane_preview.html",
+        {
+            "request": request,
+        },
+    )
+
+
+@router.post(
+    "/onboarding/lane-preview",
+    response_model=OnboardingAudioLanePreviewResponse,
+)
+async def onboarding_lane_preview(
+    payload: OnboardingAudioDiscoverRequest,
+    _: None = Depends(require_admin),
+) -> OnboardingAudioLanePreviewResponse:
+    """Preview generated onboarding lanes from transcript input."""
+    try:
+        return await preview_audio_lane_plan(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/evals/summaries", response_class=HTMLResponse)
+def admin_eval_summaries_page(
+    request: Request,
+    _: None = Depends(require_admin),
+) -> HTMLResponse:
+    """Render admin summary eval UI."""
+    return templates.TemplateResponse(
+        "admin_eval_summaries.html",
+        {
+            "request": request,
+            "model_specs": EVAL_MODEL_SPECS,
+            "model_labels": EVAL_MODEL_LABELS,
+            "template_labels": LONGFORM_TEMPLATE_LABELS,
+            "default_pricing": get_default_pricing(),
+        },
+    )
+
+
+@router.post("/evals/summaries/run")
+def admin_eval_summaries_run(
+    payload: AdminEvalRunRequest,
+    db: Annotated[Session, Depends(get_readonly_db_session)],
+    _: None = Depends(require_admin),
+) -> dict[str, Any]:
+    """Run summary/title eval against selected models and content samples."""
+    return run_admin_eval(db, payload)

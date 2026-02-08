@@ -37,194 +37,300 @@ struct OnboardingFlowView: View {
         switch viewModel.step {
         case .intro:
             introView
+                .transition(.opacity)
         case .choice:
             choiceView
+                .transition(.opacity)
         case .audio:
             audioView
+                .transition(.opacity)
         case .loading:
             loadingView
+                .transition(.opacity)
         case .suggestions:
             suggestionsView
+                .transition(.opacity)
         case .done:
             completionView
+                .transition(.opacity)
         }
     }
 
     // MARK: - Intro
 
     private var introView: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
             Spacer()
-            Image(systemName: "sparkles")
-                .font(.system(size: 36, weight: .medium))
-                .foregroundColor(.accentColor)
-            Text("Welcome to Newsly")
-                .font(.title2.bold())
-            Text("Your personal inbox for long-form and short-form news. We'll tune your feeds to match your interests.")
-                .font(.callout)
-                .foregroundColor(.secondary)
+
+            VStack(spacing: 24) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.1))
+                        .frame(width: 88, height: 88)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 36, weight: .medium))
+                        .foregroundColor(.accentColor)
+                }
+
+                VStack(spacing: 10) {
+                    Text("Welcome to Newsly")
+                        .font(.title2.bold())
+                    Text("Your personal inbox for long-form\nand short-form news.")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+
             Spacer()
-            primaryButton("Continue") {
-                viewModel.advanceToChoice()
+
+            VStack(spacing: 12) {
+                primaryButton("Get started") {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        viewModel.advanceToChoice()
+                    }
+                }
+
+                Text("Takes about 1 minute")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .padding(24)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Choice
 
     private var choiceView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Set up your feeds")
-                .font(.title2.bold())
-            Text("Share what you want to read and we'll find the best sources, or start with defaults.")
-                .font(.callout)
-                .foregroundColor(.secondary)
+        VStack(spacing: 0) {
+            Spacer()
 
-            Spacer().frame(height: 8)
+            VStack(spacing: 24) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.1))
+                        .frame(width: 88, height: 88)
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 32, weight: .medium))
+                        .foregroundColor(.accentColor)
+                }
 
-            primaryButton("Personalize my feeds") {
-                viewModel.startPersonalized()
+                VStack(spacing: 10) {
+                    Text("Set up your feeds")
+                        .font(.title2.bold())
+                    Text("Share what you read and we'll\ncurate the best sources for you.")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
 
-            secondaryButton("Use defaults") {
-                viewModel.chooseDefaults()
+            Spacer()
+
+            VStack(spacing: 10) {
+                choiceCard(
+                    icon: "mic.fill",
+                    title: "Personalize with voice",
+                    subtitle: "Tell us your interests in 30 seconds",
+                    isPrimary: true
+                ) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        viewModel.startPersonalized()
+                    }
+                }
+
+                choiceCard(
+                    icon: "wand.and.stars",
+                    title: "Start with defaults",
+                    subtitle: "We'll pick popular tech & news feeds",
+                    isPrimary: false
+                ) {
+                    viewModel.chooseDefaults()
+                }
             }
 
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
                     .foregroundColor(.red)
+                    .padding(.top, 8)
             }
-
-            Spacer()
         }
         .padding(24)
+        .padding(.bottom, 8)
+    }
+
+    private func choiceCard(
+        icon: String,
+        title: String,
+        subtitle: String,
+        isPrimary: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.body.weight(.medium))
+                    .foregroundColor(isPrimary ? .white : .accentColor)
+                    .frame(width: 36, height: 36)
+                    .background(isPrimary ? Color.accentColor : Color.accentColor.opacity(0.12))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                        .foregroundColor(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(16)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Audio
 
     private var audioView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Tell us what you read")
                     .font(.title2.bold())
-                Text("We'll record a short voice note and build your feed from it.")
+                Text("Speak naturally about your interests.")
                     .font(.callout)
                     .foregroundColor(.secondary)
-
-                switch viewModel.audioState {
-                case .idle:
-                    audioIntroCard
-                case .recording:
-                    audioRecordingView
-                case .transcribing:
-                    audioTranscribingView
-                case .error:
-                    audioErrorView
-                }
-
-                if let error = viewModel.errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
             }
-            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 24)
+
+            Spacer()
+
+            switch viewModel.audioState {
+            case .idle:
+                audioIdleView
+            case .recording:
+                audioActiveView
+            case .transcribing:
+                audioProcessingView
+            case .error:
+                audioErrorView
+            }
+
+            Spacer()
+
+            if viewModel.audioState != .transcribing {
+                Button("Use defaults instead") {
+                    viewModel.chooseDefaults()
+                }
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 8)
+            }
+
+            if let error = viewModel.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.bottom, 4)
+            }
         }
+        .padding(.horizontal, 24)
         .task {
             await viewModel.startAudioCaptureIfNeeded()
         }
     }
 
-    private var audioIntroCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
+    private var audioIdleView: some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(width: 100, height: 100)
                 Image(systemName: "mic.fill")
-                    .font(.title3)
+                    .font(.system(size: 36, weight: .medium))
                     .foregroundColor(.accentColor)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Start speaking")
-                        .font(.callout.weight(.medium))
-                    Text("Say what you're interested in. We'll stop at 30s.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
             }
+
+            Text("Tap to start recording")
+                .font(.callout)
+                .foregroundColor(.secondary)
 
             primaryButton("Start recording") {
                 Task { await viewModel.startAudioCapture() }
             }
-
-            secondaryButton("Use defaults instead") {
-                viewModel.chooseDefaults()
-            }
+            .frame(maxWidth: 240)
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private var audioRecordingView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
+    private var audioActiveView: some View {
+        VStack(spacing: 20) {
+            ZStack {
+                // Pulsing ring
+                Circle()
+                    .stroke(Color.red.opacity(0.2), lineWidth: 3)
+                    .frame(width: 100, height: 100)
+                Circle()
+                    .fill(Color.red.opacity(0.1))
+                    .frame(width: 100, height: 100)
                 Image(systemName: "waveform")
-                    .font(.body.weight(.medium))
+                    .font(.system(size: 32, weight: .medium))
                     .foregroundColor(.red)
-                Text("Listening \(formattedAudioDuration)")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-                Spacer()
             }
 
-            Text("Auto-stops at 30 seconds.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            VStack(spacing: 4) {
+                Text("Listening...")
+                    .font(.callout.weight(.medium))
+                Text(formattedAudioDuration)
+                    .font(.title3.monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
 
-            primaryButton("Stop and search") {
+            primaryButton("Done") {
                 Task { await viewModel.stopAudioCaptureAndDiscover() }
             }
+            .frame(maxWidth: 240)
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private var audioTranscribingView: some View {
-        HStack(spacing: 10) {
+    private var audioProcessingView: some View {
+        VStack(spacing: 16) {
             ProgressView()
-            Text("Transcribing...")
+                .scaleEffect(1.2)
+            Text("Processing your interests...")
                 .font(.callout)
                 .foregroundColor(.secondary)
         }
-        .padding(14)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var audioErrorView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.callout)
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 28, weight: .medium))
                     .foregroundColor(.orange)
-                Text("We couldn't record audio")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
             }
+
+            Text("Recording failed")
+                .font(.callout.weight(.medium))
 
             primaryButton("Try again") {
                 Task { await viewModel.startAudioCapture() }
             }
-
-            secondaryButton("Use defaults instead") {
-                viewModel.chooseDefaults()
-            }
+            .frame(maxWidth: 240)
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var formattedAudioDuration: String {
@@ -236,31 +342,37 @@ struct OnboardingFlowView: View {
     // MARK: - Loading / Discovery
 
     private var loadingView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Finding your feeds")
                     .font(.title2.bold())
                 Text("Searching newsletters, podcasts, and Reddit.")
                     .font(.callout)
                     .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 24)
 
+            Spacer()
+
+            VStack(spacing: 16) {
                 if viewModel.discoveryLanes.isEmpty {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Preparing search lanes...")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(14)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    ProgressView()
+                        .scaleEffect(1.2)
+                    Text("Preparing search...")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
                 } else {
                     ForEach(viewModel.discoveryLanes) { lane in
                         LaneStatusRow(lane: lane)
                     }
                 }
+            }
 
-                Text("This usually takes under a minute.")
+            Spacer()
+
+            VStack(spacing: 12) {
+                Text("Usually takes under a minute")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
@@ -270,74 +382,76 @@ struct OnboardingFlowView: View {
                         .foregroundColor(.orange)
                 }
 
-                secondaryButton("Use defaults instead") {
+                Button("Use defaults instead") {
                     viewModel.chooseDefaults()
                 }
+                .font(.callout)
+                .foregroundColor(.secondary)
             }
-            .padding(24)
         }
+        .padding(24)
     }
 
     // MARK: - Suggestions
 
     private var suggestionsView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Top picks for you")
-                    .font(.title2.bold())
-                Text("Review the suggested sources. You can edit these later.")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 4)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Your picks")
+                            .font(.title2.bold())
+                        Text("Tap to deselect any you don't want.")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.bottom, 20)
 
-                if viewModel.substackSuggestions.isEmpty && viewModel.podcastSuggestions.isEmpty && viewModel.subredditSuggestions.isEmpty {
-                    Text("We couldn't find enough matches yet — we'll start you with defaults.")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                }
+                    if viewModel.substackSuggestions.isEmpty && viewModel.podcastSuggestions.isEmpty && viewModel.subredditSuggestions.isEmpty {
+                        Text("No matches found — we'll start you with defaults.")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 20)
+                    }
 
-                if !viewModel.substackSuggestions.isEmpty {
-                    sectionHeader("Substacks & Feeds")
-                    ForEach(viewModel.substackSuggestions, id: \.stableKey) { suggestion in
-                        SuggestionRow(
-                            title: suggestion.displayTitle,
-                            subtitle: suggestion.rationale,
-                            isSelected: viewModel.selectedSourceKeys.contains(suggestion.feedURL ?? "")
-                        ) {
-                            viewModel.toggleSource(suggestion)
-                        }
+                    if !viewModel.substackSuggestions.isEmpty {
+                        suggestionSection(
+                            title: "Newsletters",
+                            icon: "envelope.open",
+                            items: viewModel.substackSuggestions,
+                            isSelected: { viewModel.selectedSourceKeys.contains($0.feedURL ?? "") },
+                            onToggle: { viewModel.toggleSource($0) }
+                        )
+                    }
+
+                    if !viewModel.podcastSuggestions.isEmpty {
+                        suggestionSection(
+                            title: "Podcasts",
+                            icon: "headphones",
+                            items: viewModel.podcastSuggestions,
+                            isSelected: { viewModel.selectedSourceKeys.contains($0.feedURL ?? "") },
+                            onToggle: { viewModel.toggleSource($0) }
+                        )
+                    }
+
+                    if !viewModel.subredditSuggestions.isEmpty {
+                        suggestionSection(
+                            title: "Reddit",
+                            icon: "bubble.left.and.text.bubble.right",
+                            items: viewModel.subredditSuggestions,
+                            isSelected: { viewModel.selectedSubreddits.contains($0.subreddit ?? "") },
+                            onToggle: { viewModel.toggleSubreddit($0) }
+                        )
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+                .padding(.bottom, 16)
+            }
 
-                if !viewModel.podcastSuggestions.isEmpty {
-                    sectionHeader("Podcasts")
-                    ForEach(viewModel.podcastSuggestions, id: \.stableKey) { suggestion in
-                        SuggestionRow(
-                            title: suggestion.displayTitle,
-                            subtitle: suggestion.rationale,
-                            isSelected: viewModel.selectedSourceKeys.contains(suggestion.feedURL ?? "")
-                        ) {
-                            viewModel.toggleSource(suggestion)
-                        }
-                    }
-                }
-
-                if !viewModel.subredditSuggestions.isEmpty {
-                    sectionHeader("Reddit")
-                    ForEach(viewModel.subredditSuggestions, id: \.stableKey) { suggestion in
-                        SuggestionRow(
-                            title: suggestion.displayTitle,
-                            subtitle: suggestion.rationale,
-                            isSelected: viewModel.selectedSubreddits.contains(suggestion.subreddit ?? "")
-                        ) {
-                            viewModel.toggleSubreddit(suggestion)
-                        }
-                    }
-                }
-
-                Spacer().frame(height: 8)
-
-                primaryButton("Finish setup") {
+            // Sticky bottom button
+            VStack(spacing: 8) {
+                primaryButton("Continue") {
                     Task { await viewModel.completeOnboarding() }
                 }
                 .disabled(viewModel.isLoading)
@@ -348,32 +462,91 @@ struct OnboardingFlowView: View {
                         .foregroundColor(.red)
                 }
             }
-            .padding(24)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
+            .padding(.top, 8)
+            .background(
+                Color(UIColor.systemBackground)
+                    .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: -4)
+            )
+        }
+    }
+
+    private func suggestionSection(
+        title: String,
+        icon: String,
+        items: [OnboardingSuggestion],
+        isSelected: @escaping (OnboardingSuggestion) -> Bool,
+        onToggle: @escaping (OnboardingSuggestion) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.top, 16)
+            .padding(.bottom, 4)
+
+            VStack(spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.element.stableKey) { index, suggestion in
+                    SuggestionRow(
+                        title: suggestion.displayTitle,
+                        subtitle: suggestion.rationale,
+                        isSelected: isSelected(suggestion)
+                    ) {
+                        onToggle(suggestion)
+                    }
+
+                    if index < items.count - 1 {
+                        Divider()
+                            .padding(.leading, 36)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
     // MARK: - Completion
 
     private var completionView: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(spacing: 0) {
             Spacer()
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 36, weight: .medium))
-                .foregroundColor(.green)
-            Text("Your inbox is ready")
-                .font(.title2.bold())
-            if let response = viewModel.completionResponse {
-                Text("\(response.inboxCountEstimate)+ unread stories waiting.")
-                    .font(.callout)
-                Text("Long-form: \(response.longformStatus.capitalized)")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-            } else {
-                Text("Your feeds are loading. You'll start with at least 100 unread stories.")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
+
+            VStack(spacing: 24) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.1))
+                        .frame(width: 88, height: 88)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 32, weight: .semibold))
+                        .foregroundColor(.green)
+                }
+
+                VStack(spacing: 10) {
+                    Text("You're all set")
+                        .font(.title2.bold())
+                    if let response = viewModel.completionResponse {
+                        Text("\(response.inboxCountEstimate)+ stories ready to read")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Your feeds are loading...")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
+
             Spacer()
+
             primaryButton("Start reading") {
                 if let response = viewModel.completionResponse {
                     onFinish(response)
@@ -382,16 +555,10 @@ struct OnboardingFlowView: View {
             .disabled(viewModel.completionResponse == nil)
         }
         .padding(24)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Shared Components
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.subheadline.weight(.semibold))
-            .foregroundColor(.secondary)
-            .padding(.top, 12)
-    }
 
     private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -405,19 +572,6 @@ struct OnboardingFlowView: View {
         }
         .buttonStyle(.plain)
     }
-
-    private func secondaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.callout.weight(.medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .foregroundColor(.primary)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 // MARK: - Lane Status Row
@@ -426,11 +580,16 @@ private struct LaneStatusRow: View {
     let lane: OnboardingDiscoveryLaneStatus
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: statusIcon)
-                .font(.callout)
-                .foregroundColor(statusColor)
-                .frame(width: 20)
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.12))
+                    .frame(width: 32, height: 32)
+                Image(systemName: statusIcon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(statusColor)
+            }
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(lane.name)
                     .font(.callout)
@@ -440,16 +599,13 @@ private struct LaneStatusRow: View {
             }
             Spacer()
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 14)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 8)
     }
 
     private var statusLabel: String {
         switch lane.status {
         case "processing":
-            return "Searching"
+            return "Searching..."
         case "completed":
             return "Done"
         case "failed":
@@ -464,9 +620,9 @@ private struct LaneStatusRow: View {
         case "processing":
             return "hourglass"
         case "completed":
-            return "checkmark.circle.fill"
+            return "checkmark"
         case "failed":
-            return "exclamationmark.triangle.fill"
+            return "exclamationmark"
         default:
             return "circle"
         }
@@ -496,15 +652,15 @@ private struct SuggestionRow: View {
 
     var body: some View {
         Button(action: onToggle) {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.body)
                     .foregroundColor(isSelected ? .accentColor : Color(.tertiaryLabel))
-                    .padding(.top, 1)
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.callout.weight(.medium))
-                        .foregroundColor(.primary)
+                        .foregroundColor(isSelected ? .primary : .secondary)
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.caption)
@@ -514,7 +670,7 @@ private struct SuggestionRow: View {
                 }
                 Spacer()
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
     }

@@ -111,6 +111,12 @@ struct OnboardingSuggestion: Codable, Hashable {
     }
 
     var displayTitle: String {
+        if suggestionType == "reddit",
+           let redditLabel = Self.formatRedditLabel(subreddit ?? title ?? siteURL)
+        {
+            return redditLabel
+        }
+
         if let title, !title.isEmpty {
             return title
         }
@@ -118,6 +124,38 @@ struct OnboardingSuggestion: Codable, Hashable {
             return "r/\(subreddit)"
         }
         return feedURL ?? "Untitled"
+    }
+
+    private static func formatRedditLabel(_ rawValue: String?) -> String? {
+        guard var value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+
+        if let url = URL(string: value),
+           let host = url.host?.lowercased(),
+           host.contains("reddit.com")
+        {
+            let pathParts = url.path
+                .split(separator: "/", omittingEmptySubsequences: true)
+                .map(String.init)
+            if let rIndex = pathParts.firstIndex(where: { $0.lowercased() == "r" }),
+               rIndex + 1 < pathParts.count
+            {
+                value = pathParts[rIndex + 1]
+            }
+        }
+
+        value = value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if value.lowercased().hasPrefix("r/") {
+            value = String(value.dropFirst(2))
+        }
+        if let queryIndex = value.firstIndex(of: "?") {
+            value = String(value[..<queryIndex])
+        }
+        value = value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        guard !value.isEmpty else { return nil }
+        return "r/\(value)"
     }
 }
 

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_NEW_FEED_LIMIT
@@ -27,6 +29,8 @@ from app.repositories.content_repository import apply_visibility_filters, build_
 from app.routers.api.models import (
     OnboardingAudioDiscoverRequest,
     OnboardingAudioDiscoverResponse,
+    OnboardingAudioLanePreview,
+    OnboardingAudioLanePreviewResponse,
     OnboardingCompleteRequest,
     OnboardingCompleteResponse,
     OnboardingDiscoveryLaneStatus,
@@ -50,10 +54,19 @@ from app.utils.paths import resolve_config_path
 
 logger = get_logger(__name__)
 
-PROFILE_MODEL = "anthropic:claude-haiku-4-5-20251001"
-FAST_DISCOVER_MODEL = "anthropic:claude-haiku-4-5-20251001"
-VOICE_PARSE_MODEL = "anthropic:claude-haiku-4-5-20251001"
-AUDIO_PLAN_MODEL = "anthropic:claude-haiku-4-5-20251001"
+ONBOARDING_PRIMARY_MODEL = "cerebras:zai-glm-4.7"
+PROFILE_MODEL = ONBOARDING_PRIMARY_MODEL
+FAST_DISCOVER_MODEL = ONBOARDING_PRIMARY_MODEL
+VOICE_PARSE_MODEL = ONBOARDING_PRIMARY_MODEL
+AUDIO_PLAN_MODEL = ONBOARDING_PRIMARY_MODEL
+DISCOVERY_FALLBACK_MODELS = (
+    "google-gla:gemini-2.5-flash",
+    "openai:gpt-5-mini",
+)
+AUDIO_PLAN_FALLBACK_MODELS = (
+    "google-gla:gemini-2.5-flash",
+    "openai:gpt-5-mini",
+)
 
 PROFILE_TIMEOUT_SECONDS = 8
 FAST_DISCOVER_TIMEOUT_SECONDS = 12
@@ -62,9 +75,17 @@ AUDIO_PLAN_TIMEOUT_SECONDS = 8
 ENRICH_TIMEOUT_SECONDS = 25
 
 FAST_DISCOVER_MAX_QUERIES = 6
-FAST_DISCOVER_EXA_RESULTS = 3
+PROFILE_EXA_RESULTS = 3
+FAST_DISCOVER_EXA_RESULTS = 12
 ENRICH_MAX_QUERIES = 10
-ENRICH_EXA_RESULTS = 6
+ENRICH_EXA_RESULTS = 12
+DISCOVERY_PROMPT_MAX_WEB_RESULTS = 200
+DISCOVERY_PROMPT_SNIPPET_CHARS = 280
+DISCOVERY_PROMPT_MAX_FILL_IN_FEEDS = 8
+DISCOVERY_PROMPT_MAX_FILL_IN_PODCASTS = 6
+DISCOVERY_PROMPT_MAX_FILL_IN_REDDIT = 8
+ONBOARDING_FEED_SUGGESTION_LIMIT = 10
+EXA_DISCOVERY_MAX_WORKERS = 8
 
 DEFAULT_SOURCE_LIMITS = {
     "substack": 8,
@@ -91,8 +112,15 @@ PROFILE_SYSTEM_PROMPT = (
 
 FAST_DISCOVER_SYSTEM_PROMPT = (
     "You are selecting high-quality sources for a new user. "
-    "Use the profile summary, topics, and search snippets to suggest Substack feeds, "
-    "podcast RSS feeds, and relevant subreddits. Prefer sources with clear RSS URLs when possible. "
+    "Use the profile summary, topics, search snippets, and curated fill-in candidates "
+    "to suggest Substack/Atom feeds, podcast RSS feeds, and relevant subreddits. "
+    "Prioritize sources grounded in web_results first; "
+    "use curated_fill_ins as backups when needed. "
+    "Every suggestion must include a concise, specific rationale sentence. "
+    "Prefer sources with clear RSS URLs when possible. "
+    "For feed-like sources, always provide a best-effort feed_url when available. "
+    "If uncertain, include candidate_feed_url and set is_likely_feed plus feed_confidence (0-1). "
+    "For reddit entries, include subreddit. "
     "Return structured output only."
 )
 
@@ -107,7 +135,10 @@ AUDIO_PLAN_SYSTEM_PROMPT = (
     "You design onboarding discovery lanes based on a user's spoken interests. "
     "Return a concise topic_summary, 3-6 inferred_topics, and 3-5 lanes. "
     "Each lane must include name, goal, target (feeds, podcasts, reddit), "
-    "and 2-4 web search queries. Include at least one reddit lane. "
+    "and 2-4 web search queries. Queries must be varied and specific: each query should be "
+    "a compact search phrase (5-10 words) with concrete keywords tied to the lane goal, "
+    "and avoid repeating the same wording pattern. "
+    "Include at least one reddit lane. "
     "Return structured output only."
 )
 
@@ -126,6 +157,9 @@ class _DiscoverSuggestion(BaseModel):
     title: str | None = None
     site_url: str | None = None
     feed_url: str | None = None
+    candidate_feed_url: str | None = None
+    is_likely_feed: bool | None = None
+    feed_confidence: float | None = Field(default=None, ge=0, le=1)
     subreddit: str | None = None
     rationale: str | None = None
     score: float | None = None
@@ -137,6 +171,18 @@ class _DiscoverOutput(BaseModel):
     substacks: list[_DiscoverSuggestion] = Field(default_factory=list)
     podcasts: list[_DiscoverSuggestion] = Field(default_factory=list)
     subreddits: list[_DiscoverSuggestion] = Field(default_factory=list)
+
+
+class _DiscoveryWebResult(BaseModel):
+    """Web result used for onboarding discovery prompting."""
+
+    title: str
+    url: str
+    snippet: str | None = None
+    published_date: str | None = None
+    query: str | None = None
+    lane_name: str | None = None
+    lane_target: Literal["feeds", "podcasts", "reddit"] | None = None
 
 
 class _VoiceParseOutput(BaseModel):
@@ -174,7 +220,7 @@ def build_onboarding_profile(request: OnboardingProfileRequest) -> OnboardingPro
         OnboardingProfileResponse with summary and inferred topics.
     """
     queries = _build_profile_queries(request)
-    results = _run_exa_queries(queries, num_results=FAST_DISCOVER_EXA_RESULTS, include_social=False)
+    results = _run_exa_queries(queries, num_results=PROFILE_EXA_RESULTS, include_social=False)
 
     if not results:
         fallback_summary = _build_profile_fallback_summary(
@@ -268,6 +314,33 @@ def parse_onboarding_voice(request: OnboardingVoiceParseRequest) -> OnboardingVo
         interest_topics=topics,
         confidence=output.confidence,
         missing_fields=missing_fields,
+    )
+
+
+async def preview_audio_lane_plan(
+    request: OnboardingAudioDiscoverRequest,
+) -> OnboardingAudioLanePreviewResponse:
+    """Preview generated audio discovery lanes for admin debugging.
+
+    Args:
+        request: OnboardingAudioDiscoverRequest payload.
+
+    Returns:
+        OnboardingAudioLanePreviewResponse with generated lanes and fallback metadata.
+    """
+    transcript = request.transcript.strip()
+    if not transcript:
+        raise ValueError("Transcript is required")
+
+    plan, used_fallback, fallback_reason = await _build_audio_lane_plan_with_metadata(
+        transcript, request.locale
+    )
+    return OnboardingAudioLanePreviewResponse(
+        topic_summary=plan.topic_summary,
+        inferred_topics=plan.inferred_topics,
+        lanes=[_serialize_audio_lane_preview(lane) for lane in plan.lanes],
+        used_fallback=used_fallback,
+        fallback_reason=fallback_reason,
     )
 
 
@@ -384,17 +457,31 @@ def fast_discover(request: OnboardingFastDiscoverRequest) -> OnboardingFastDisco
     """
     curated = _load_curated_defaults()
     queries = _build_discovery_queries(request)
-    results = _run_exa_queries(queries, num_results=FAST_DISCOVER_EXA_RESULTS)
+    results = _run_discovery_exa_queries(queries, num_results=FAST_DISCOVER_EXA_RESULTS)
+    prompt_results = _select_prompt_results(results)
 
-    if not results:
-        return _fast_discover_from_defaults(curated)
+    if not prompt_results:
+        return _fast_discover_from_defaults(
+            curated,
+            profile_summary=request.profile_summary,
+            inferred_topics=request.inferred_topics,
+        )
 
     try:
-        prompt = _format_discovery_prompt(request, results)
-        agent = get_basic_agent(FAST_DISCOVER_MODEL, _DiscoverOutput, FAST_DISCOVER_SYSTEM_PROMPT)
-        result = agent.run_sync(prompt, model_settings={"timeout": FAST_DISCOVER_TIMEOUT_SECONDS})
-        output = _get_agent_output(result)
-        return _build_discovery_response(output, curated)
+        prompt = _format_discovery_prompt(
+            request, prompt_results, _curated_fill_in_candidates(curated)
+        )
+        output = _run_discover_output_with_fallback(
+            prompt=prompt,
+            timeout_seconds=FAST_DISCOVER_TIMEOUT_SECONDS,
+            operation="fast_discover",
+        )
+        return _build_discovery_response(
+            output,
+            curated,
+            profile_summary=request.profile_summary,
+            inferred_topics=request.inferred_topics,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "Fast onboarding discovery failed",
@@ -404,7 +491,11 @@ def fast_discover(request: OnboardingFastDiscoverRequest) -> OnboardingFastDisco
                 "context_data": {"error": str(exc)},
             },
         )
-        return _fast_discover_from_defaults(curated)
+        return _fast_discover_from_defaults(
+            curated,
+            profile_summary=request.profile_summary,
+            inferred_topics=request.inferred_topics,
+        )
 
 
 def complete_onboarding(
@@ -546,14 +637,21 @@ def run_discover_enrich(
         return None
     curated = _load_curated_defaults()
     queries = _build_discovery_queries(request, max_queries=ENRICH_MAX_QUERIES)
-    results = _run_exa_queries(queries, num_results=ENRICH_EXA_RESULTS)
-    if not results:
+    results = _run_discovery_exa_queries(queries, num_results=ENRICH_EXA_RESULTS)
+    prompt_results = _select_prompt_results(results)
+    if not prompt_results:
         return None
 
     try:
-        prompt = _format_discovery_prompt(request, results)
-        agent = get_basic_agent(FAST_DISCOVER_MODEL, _DiscoverOutput, FAST_DISCOVER_SYSTEM_PROMPT)
-        result = agent.run_sync(prompt, model_settings={"timeout": ENRICH_TIMEOUT_SECONDS})
+        prompt = _format_discovery_prompt(
+            request, prompt_results, _curated_fill_in_candidates(curated)
+        )
+        output = _run_discover_output_with_fallback(
+            prompt=prompt,
+            timeout_seconds=ENRICH_TIMEOUT_SECONDS,
+            operation="discover_enrich",
+            item_id=str(user_id),
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "Onboarding discover enrich failed",
@@ -566,8 +664,12 @@ def run_discover_enrich(
         )
         return None
 
-    output = _get_agent_output(result)
-    suggestions = _build_discovery_response(output, curated)
+    suggestions = _build_discovery_response(
+        output,
+        curated,
+        profile_summary=request.profile_summary,
+        inferred_topics=request.inferred_topics,
+    )
     return _persist_discovery_run(db, user_id, suggestions)
 
 
@@ -595,7 +697,7 @@ def run_audio_discovery(db: Session, run_id: int) -> None:
             .all()
         )
 
-        results: list[ExaSearchResult] = []
+        results: list[_DiscoveryWebResult] = []
         for lane in lanes:
             lane.status = "processing"
             lane.completed_queries = 0
@@ -604,10 +706,12 @@ def run_audio_discovery(db: Session, run_id: int) -> None:
 
             for idx, query in enumerate(lane.queries or []):
                 results.extend(
-                    _run_exa_queries(
+                    _run_discovery_exa_queries(
                         [query],
                         num_results=FAST_DISCOVER_EXA_RESULTS,
                         include_social=(lane.target == "reddit"),
+                        lane_name=lane.lane_name,
+                        lane_target=lane.target,
                     )
                 )
                 lane.completed_queries = idx + 1
@@ -617,8 +721,13 @@ def run_audio_discovery(db: Session, run_id: int) -> None:
             db.commit()
 
         curated = _load_curated_defaults()
-        if not results:
-            suggestions = _fast_discover_from_defaults(curated)
+        prompt_results = _select_prompt_results(results, lane_balanced=True)
+        if not prompt_results:
+            suggestions = _fast_discover_from_defaults(
+                curated,
+                profile_summary=run.topic_summary,
+                inferred_topics=list(run.inferred_topics or []),
+            )
             _persist_onboarding_suggestions(db, run, suggestions)
             run.status = "completed"
             run.completed_at = datetime.utcnow()
@@ -629,10 +738,21 @@ def run_audio_discovery(db: Session, run_id: int) -> None:
             profile_summary=run.topic_summary or "News interests",
             inferred_topics=list(run.inferred_topics or []),
         )
-        prompt = _format_discovery_prompt(request, results)
-        agent = get_basic_agent(FAST_DISCOVER_MODEL, _DiscoverOutput, FAST_DISCOVER_SYSTEM_PROMPT)
-        result = agent.run_sync(prompt, model_settings={"timeout": FAST_DISCOVER_TIMEOUT_SECONDS})
-        suggestions = _build_discovery_response(_get_agent_output(result), curated)
+        prompt = _format_discovery_prompt(
+            request, prompt_results, _curated_fill_in_candidates(curated)
+        )
+        output = _run_discover_output_with_fallback(
+            prompt=prompt,
+            timeout_seconds=FAST_DISCOVER_TIMEOUT_SECONDS,
+            operation="audio_discover_suggestions",
+            item_id=str(run_id),
+        )
+        suggestions = _build_discovery_response(
+            output,
+            curated,
+            profile_summary=request.profile_summary,
+            inferred_topics=request.inferred_topics,
+        )
         _persist_onboarding_suggestions(db, run, suggestions)
         run.status = "completed"
         run.completed_at = datetime.utcnow()
@@ -729,6 +849,112 @@ def _run_exa_queries(
     return results
 
 
+def _run_discovery_exa_queries(
+    queries: Iterable[str],
+    *,
+    num_results: int,
+    include_social: bool = False,
+    lane_name: str | None = None,
+    lane_target: Literal["feeds", "podcasts", "reddit"] | None = None,
+) -> list[_DiscoveryWebResult]:
+    """Run Exa queries and attach onboarding discovery metadata."""
+    results: list[_DiscoveryWebResult] = []
+    exclude_domains = [] if include_social else None
+    cleaned_queries = [
+        query.strip()
+        for query in queries
+        if isinstance(query, str) and query.strip()
+    ]
+    if not cleaned_queries:
+        return results
+
+    max_workers = min(EXA_DISCOVERY_MAX_WORKERS, len(cleaned_queries))
+
+    def _search_query(query: str) -> tuple[str, list[ExaSearchResult]]:
+        return (
+            query,
+            exa_search(
+                query,
+                num_results=num_results,
+                max_characters=1200,
+                exclude_domains=exclude_domains,
+            ),
+        )
+
+    # Preserve query order while still running network-bound Exa calls concurrently.
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        query_results = list(executor.map(_search_query, cleaned_queries))
+
+    for query, raw_results in query_results:
+        for item in raw_results:
+            # Preserve each Exa result and include lane/query context for prompt balancing.
+            results.append(
+                _DiscoveryWebResult(
+                    title=item.title,
+                    url=item.url,
+                    snippet=item.snippet,
+                    published_date=item.published_date,
+                    query=query,
+                    lane_name=lane_name,
+                    lane_target=lane_target,
+                )
+            )
+    return results
+
+
+def _select_prompt_results(
+    results: list[_DiscoveryWebResult],
+    *,
+    lane_balanced: bool = False,
+) -> list[_DiscoveryWebResult]:
+    """Select and deduplicate discovery results for prompt construction."""
+    deduped: list[_DiscoveryWebResult] = []
+    seen_urls: set[str] = set()
+    for result in results:
+        url_key = result.url.strip().lower()
+        if not url_key or url_key in seen_urls:
+            continue
+        seen_urls.add(url_key)
+        deduped.append(result)
+
+    if not lane_balanced:
+        return deduped[:DISCOVERY_PROMPT_MAX_WEB_RESULTS]
+
+    grouped: dict[str, list[_DiscoveryWebResult]] = {}
+    group_order: list[str] = []
+    for result in deduped:
+        lane_key = result.lane_name or "general"
+        if lane_key not in grouped:
+            grouped[lane_key] = []
+            group_order.append(lane_key)
+        grouped[lane_key].append(result)
+
+    selected: list[_DiscoveryWebResult] = []
+    indices = {lane_key: 0 for lane_key in group_order}
+    while len(selected) < DISCOVERY_PROMPT_MAX_WEB_RESULTS:
+        advanced = False
+        for lane_key in group_order:
+            lane_results = grouped[lane_key]
+            lane_index = indices[lane_key]
+            if lane_index >= len(lane_results):
+                continue
+            selected.append(lane_results[lane_index])
+            indices[lane_key] = lane_index + 1
+            advanced = True
+            if len(selected) >= DISCOVERY_PROMPT_MAX_WEB_RESULTS:
+                break
+        if not advanced:
+            break
+
+    return selected
+
+
+def _prompt_snippet(snippet: str | None) -> str:
+    if not snippet:
+        return ""
+    return snippet.strip().replace("\n", " ")[:DISCOVERY_PROMPT_SNIPPET_CHARS]
+
+
 def _format_profile_prompt(
     request: OnboardingProfileRequest, results: list[ExaSearchResult]
 ) -> str:
@@ -754,15 +980,24 @@ def _format_voice_parse_prompt(transcript: str, locale: str | None) -> str:
 
 
 async def _build_audio_lane_plan(transcript: str, locale: str | None) -> _AudioPlanOutput:
+    plan, _, _ = await _build_audio_lane_plan_with_metadata(transcript, locale)
+    return plan
+
+
+async def _build_audio_lane_plan_with_metadata(
+    transcript: str, locale: str | None
+) -> tuple[_AudioPlanOutput, bool, str | None]:
     try:
         prompt = _format_audio_plan_prompt(transcript, locale)
-        agent = get_basic_agent(AUDIO_PLAN_MODEL, _AudioPlanOutput, AUDIO_PLAN_SYSTEM_PROMPT)
-        if hasattr(agent, "run"):
-            result = await agent.run(prompt, model_settings={"timeout": AUDIO_PLAN_TIMEOUT_SECONDS})
-        else:
-            result = agent.run_sync(prompt, model_settings={"timeout": AUDIO_PLAN_TIMEOUT_SECONDS})
-        output = _get_agent_output(result)
-        return _normalize_audio_lane_plan(output, transcript)
+        output = await _run_audio_plan_with_fallback(
+            prompt=prompt,
+            timeout_seconds=AUDIO_PLAN_TIMEOUT_SECONDS,
+        )
+        normalized_plan, used_fallback = _normalize_audio_lane_plan_with_metadata(
+            output, transcript
+        )
+        fallback_reason = "Generated lanes were empty or invalid." if used_fallback else None
+        return normalized_plan, used_fallback, fallback_reason
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "Onboarding audio lane plan failed",
@@ -772,12 +1007,124 @@ async def _build_audio_lane_plan(transcript: str, locale: str | None) -> _AudioP
                 "context_data": {"error": str(exc)},
             },
         )
-        return _fallback_audio_lane_plan(transcript)
+        return _fallback_audio_lane_plan(transcript), True, str(exc)
 
 
 def _format_audio_plan_prompt(transcript: str, locale: str | None) -> str:
     locale_value = locale or "unknown"
     return f"locale: {locale_value}\ntranscript: {transcript}"
+
+
+def _candidate_models(primary: str, fallbacks: tuple[str, ...]) -> list[str]:
+    models: list[str] = []
+    for model in (primary, *fallbacks):
+        if model in models:
+            continue
+        models.append(model)
+    return models
+
+
+def _run_discover_output_with_fallback(
+    *,
+    prompt: str,
+    timeout_seconds: int,
+    operation: str,
+    item_id: str | None = None,
+) -> _DiscoverOutput:
+    last_error: Exception | None = None
+    models = _candidate_models(FAST_DISCOVER_MODEL, DISCOVERY_FALLBACK_MODELS)
+
+    for attempt_index, model_spec in enumerate(models, start=1):
+        try:
+            agent = get_basic_agent(model_spec, _DiscoverOutput, FAST_DISCOVER_SYSTEM_PROMPT)
+            result = agent.run_sync(prompt, model_settings={"timeout": timeout_seconds})
+            output = _get_agent_output(result)
+            if attempt_index > 1:
+                logger.warning(
+                    "Onboarding discovery succeeded on fallback model",
+                    extra={
+                        "component": "onboarding",
+                        "operation": operation,
+                        "item_id": item_id,
+                        "context_data": {
+                            "model": model_spec,
+                            "attempt": attempt_index,
+                            "models_tried": models,
+                        },
+                    },
+                )
+            return output
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            logger.warning(
+                "Onboarding discovery model attempt failed",
+                extra={
+                    "component": "onboarding",
+                    "operation": operation,
+                    "item_id": item_id,
+                    "context_data": {
+                        "model": model_spec,
+                        "attempt": attempt_index,
+                        "models_tried": models,
+                        "error": str(exc),
+                    },
+                },
+            )
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("No discovery models configured")
+
+
+async def _run_audio_plan_with_fallback(
+    *,
+    prompt: str,
+    timeout_seconds: int,
+) -> _AudioPlanOutput:
+    last_error: Exception | None = None
+    models = _candidate_models(AUDIO_PLAN_MODEL, AUDIO_PLAN_FALLBACK_MODELS)
+
+    for attempt_index, model_spec in enumerate(models, start=1):
+        try:
+            agent = get_basic_agent(model_spec, _AudioPlanOutput, AUDIO_PLAN_SYSTEM_PROMPT)
+            if hasattr(agent, "run"):
+                result = await agent.run(prompt, model_settings={"timeout": timeout_seconds})
+            else:
+                result = agent.run_sync(prompt, model_settings={"timeout": timeout_seconds})
+            output = _get_agent_output(result)
+            if attempt_index > 1:
+                logger.warning(
+                    "Onboarding audio plan succeeded on fallback model",
+                    extra={
+                        "component": "onboarding",
+                        "operation": "audio_plan",
+                        "context_data": {
+                            "model": model_spec,
+                            "attempt": attempt_index,
+                            "models_tried": models,
+                        },
+                    },
+                )
+            return output
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            logger.warning(
+                "Onboarding audio plan model attempt failed",
+                extra={
+                    "component": "onboarding",
+                    "operation": "audio_plan",
+                    "context_data": {
+                        "model": model_spec,
+                        "attempt": attempt_index,
+                        "models_tried": models,
+                        "error": str(exc),
+                    },
+                },
+            )
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("No audio plan models configured")
 
 
 def _get_agent_output(result: Any) -> Any:
@@ -789,6 +1136,13 @@ def _get_agent_output(result: Any) -> Any:
 
 
 def _normalize_audio_lane_plan(plan: _AudioPlanOutput, transcript: str) -> _AudioPlanOutput:
+    normalized_plan, _ = _normalize_audio_lane_plan_with_metadata(plan, transcript)
+    return normalized_plan
+
+
+def _normalize_audio_lane_plan_with_metadata(
+    plan: _AudioPlanOutput, transcript: str
+) -> tuple[_AudioPlanOutput, bool]:
     topic_summary = (plan.topic_summary or "").strip()
     if not topic_summary:
         topic_summary = _fallback_topic_summary(transcript)
@@ -807,7 +1161,14 @@ def _normalize_audio_lane_plan(plan: _AudioPlanOutput, transcript: str) -> _Audi
             continue
         seen_names.add(normalized_name)
 
-        queries = _clean_queries(lane.queries)
+        goal = (lane.goal or "").strip()
+        queries = _refine_lane_queries(
+            target=lane.target,
+            queries=lane.queries,
+            lane_goal=goal,
+            inferred_topics=inferred_topics,
+            topic_summary=topic_summary,
+        )
         if len(queries) < 2:
             continue
 
@@ -818,7 +1179,7 @@ def _normalize_audio_lane_plan(plan: _AudioPlanOutput, transcript: str) -> _Audi
         lanes.append(
             _AudioLane(
                 name=name,
-                goal=(lane.goal or "").strip(),
+                goal=goal,
                 target=target,
                 queries=queries[:4],
             )
@@ -827,10 +1188,10 @@ def _normalize_audio_lane_plan(plan: _AudioPlanOutput, transcript: str) -> _Audi
             break
 
     if not lanes:
-        return _fallback_audio_lane_plan(transcript)
+        return _fallback_audio_lane_plan(transcript), True
 
     if not has_reddit:
-        reddit_lane = _fallback_reddit_lane(transcript, inferred_topics)
+        reddit_lane = _fallback_reddit_lane(transcript, inferred_topics, topic_summary)
         if lanes:
             existing_names = {lane.name.lower() for lane in lanes if lane.name}
             if reddit_lane.name.lower() in existing_names:
@@ -848,10 +1209,13 @@ def _normalize_audio_lane_plan(plan: _AudioPlanOutput, transcript: str) -> _Audi
     if len(lanes) < 3:
         lanes.extend(_fallback_core_lanes(transcript, inferred_topics, existing=lanes))
 
-    return _AudioPlanOutput(
-        topic_summary=topic_summary,
-        inferred_topics=inferred_topics,
-        lanes=lanes[:5],
+    return (
+        _AudioPlanOutput(
+            topic_summary=topic_summary,
+            inferred_topics=inferred_topics,
+            lanes=lanes[:5],
+        ),
+        False,
     )
 
 
@@ -872,49 +1236,73 @@ def _fallback_core_lanes(
     existing: list[_AudioLane],
 ) -> list[_AudioLane]:
     seed = _seed_phrase(transcript, inferred_topics)
+    topic_summary = _fallback_topic_summary(transcript)
     lanes = list(existing)
     if len(lanes) < 3:
+        goal = "Find newsletters and RSS feeds aligned with the user's interests."
         lanes.append(
             _AudioLane(
                 name="Newsletters & Feeds",
-                goal="Find newsletters and RSS feeds aligned with the user's interests.",
+                goal=goal,
                 target="feeds",
-                queries=[
-                    f"{seed} newsletter",
-                    f"{seed} RSS feed",
-                    f"best {seed} Substack",
-                ],
+                queries=_refine_lane_queries(
+                    target="feeds",
+                    queries=[
+                        f"{seed} newsletter",
+                        f"{seed} RSS feed",
+                        f"best {seed} Substack",
+                    ],
+                    lane_goal=goal,
+                    inferred_topics=inferred_topics,
+                    topic_summary=topic_summary,
+                ),
             )
         )
     if len(lanes) < 3:
+        goal = "Find podcast feeds covering the user's interests."
         lanes.append(
             _AudioLane(
                 name="Podcasts",
-                goal="Find podcast feeds covering the user's interests.",
+                goal=goal,
                 target="podcasts",
-                queries=[
-                    f"{seed} podcast",
-                    f"{seed} podcast RSS",
-                    f"best {seed} podcasts",
-                ],
+                queries=_refine_lane_queries(
+                    target="podcasts",
+                    queries=[
+                        f"{seed} podcast",
+                        f"{seed} podcast RSS",
+                        f"best {seed} podcasts",
+                    ],
+                    lane_goal=goal,
+                    inferred_topics=inferred_topics,
+                    topic_summary=topic_summary,
+                ),
             )
         )
     if not any(lane.target == "reddit" for lane in lanes):
-        lanes.append(_fallback_reddit_lane(transcript, inferred_topics))
+        lanes.append(_fallback_reddit_lane(transcript, inferred_topics, topic_summary))
     return lanes
 
 
-def _fallback_reddit_lane(transcript: str, inferred_topics: list[str]) -> _AudioLane:
+def _fallback_reddit_lane(
+    transcript: str, inferred_topics: list[str], topic_summary: str | None = None
+) -> _AudioLane:
     seed = _seed_phrase(transcript, inferred_topics)
+    goal = "Find active subreddits for the user's interests."
     return _AudioLane(
         name="Reddit",
-        goal="Find active subreddits for the user's interests.",
+        goal=goal,
         target="reddit",
-        queries=[
-            f"{seed} subreddit",
-            f"best subreddits for {seed}",
-            f"{seed} reddit community",
-        ],
+        queries=_refine_lane_queries(
+            target="reddit",
+            queries=[
+                f"{seed} subreddit",
+                f"best subreddits for {seed}",
+                f"{seed} reddit community",
+            ],
+            lane_goal=goal,
+            inferred_topics=inferred_topics,
+            topic_summary=topic_summary or _fallback_topic_summary(transcript),
+        ),
     )
 
 
@@ -952,6 +1340,166 @@ def _clean_queries(queries: Iterable[str]) -> list[str]:
     return cleaned
 
 
+def _refine_lane_queries(
+    *,
+    target: Literal["feeds", "podcasts", "reddit"],
+    queries: Iterable[str],
+    lane_goal: str,
+    inferred_topics: list[str],
+    topic_summary: str,
+) -> list[str]:
+    cleaned = _clean_queries(queries)
+    keyword_pool = _merge_topics(inferred_topics, max_topics=6)
+    if not keyword_pool:
+        keyword_pool = _merge_topics([lane_goal], [topic_summary], max_topics=4)
+    patterns = _query_patterns_for_target(target)
+
+    if not cleaned:
+        cleaned = [keyword_pool[0] if keyword_pool else lane_goal or "current developments"]
+
+    refined: list[str] = []
+    for idx, query in enumerate(cleaned[:4]):
+        template = patterns[idx % len(patterns)]
+        focus = _query_focus_phrase(query, keyword_pool, idx)
+        candidate = template.format(focus=focus)
+        refined.append(_enforce_query_word_range(candidate, target))
+
+    while len(refined) < 3:
+        idx = len(refined)
+        template = patterns[idx % len(patterns)]
+        focus_seed = keyword_pool[idx % len(keyword_pool)] if keyword_pool else lane_goal
+        focus = _query_focus_phrase(focus_seed, keyword_pool, idx)
+        candidate = template.format(focus=focus)
+        refined.append(_enforce_query_word_range(candidate, target))
+
+    normalized = _clean_queries(refined)
+    if len(normalized) >= 2:
+        return normalized[:4]
+
+    fallback_focus = keyword_pool[0] if keyword_pool else "high-signal sources"
+    return [
+        _enforce_query_word_range(
+            f"best {_target_query_keyword(target)} for {fallback_focus}",
+            target,
+        ),
+        _enforce_query_word_range(
+            f"top {_target_query_keyword(target)} about {fallback_focus}",
+            target,
+        ),
+    ]
+
+
+def _query_focus_phrase(query: str, keyword_pool: list[str], index: int) -> str:
+    focus = query.strip().strip(".,;:!?")
+    if not focus:
+        focus = keyword_pool[index % len(keyword_pool)] if keyword_pool else "current trends"
+
+    focus_tokens = [token for token in focus.split() if token]
+    while focus_tokens and focus_tokens[0].lower() in {
+        "best",
+        "top",
+        "popular",
+        "weekly",
+        "find",
+        "search",
+        "discover",
+        "identify",
+    }:
+        focus_tokens.pop(0)
+
+    deduped_focus_tokens: list[str] = []
+    seen_focus: set[str] = set()
+    for token in focus_tokens:
+        lowered = token.lower()
+        if lowered in seen_focus:
+            continue
+        seen_focus.add(lowered)
+        deduped_focus_tokens.append(token)
+    focus_tokens = deduped_focus_tokens
+
+    if len(focus_tokens) < 2 and keyword_pool:
+        keyword = keyword_pool[index % len(keyword_pool)]
+        keyword_tokens = [token for token in keyword.split() if token]
+        for token in keyword_tokens:
+            if len(focus_tokens) >= 4:
+                break
+            if token.lower() in {existing.lower() for existing in focus_tokens}:
+                continue
+            focus_tokens.append(token)
+
+    if not focus_tokens:
+        return "current developments"
+    return " ".join(focus_tokens[:4])
+
+
+def _query_patterns_for_target(
+    target: Literal["feeds", "podcasts", "reddit"],
+) -> list[str]:
+    if target == "podcasts":
+        return [
+            "best {focus} podcast episodes",
+            "top {focus} podcast rss feeds",
+            "weekly {focus} interview podcasts",
+            "{focus} long-form educational podcasts",
+        ]
+
+    if target == "reddit":
+        return [
+            "best subreddits for {focus}",
+            "active reddit communities about {focus}",
+            "top reddit threads on {focus}",
+            "{focus} subreddit recommendations and discussions",
+        ]
+
+    return [
+        "best {focus} newsletters and rss feeds",
+        "top {focus} substack and atom feeds",
+        "weekly {focus} analysis newsletter feeds",
+        "credible {focus} editorial rss sources",
+    ]
+
+
+def _target_query_keyword(target: Literal["feeds", "podcasts", "reddit"]) -> str:
+    if target == "podcasts":
+        return "podcasts"
+    if target == "reddit":
+        return "reddit communities"
+    return "newsletters and rss feeds"
+
+
+def _enforce_query_word_range(
+    query: str, target: Literal["feeds", "podcasts", "reddit"]
+) -> str:
+    tokens = [token.strip(".,;:!?") for token in query.split()]
+    tokens = [token for token in tokens if token]
+
+    deduped_tokens: list[str] = []
+    seen_tokens: set[str] = set()
+    for token in tokens:
+        lowered = token.lower()
+        if lowered in seen_tokens:
+            continue
+        seen_tokens.add(lowered)
+        deduped_tokens.append(token)
+    tokens = deduped_tokens
+
+    if len(tokens) > 10:
+        tokens = tokens[:10]
+
+    target_fillers = {
+        "feeds": ["newsletter", "rss", "feeds"],
+        "podcasts": ["podcast", "episodes"],
+        "reddit": ["reddit", "communities"],
+    }
+    fillers = target_fillers[target]
+    filler_index = 0
+    while len(tokens) < 5:
+        tokens.append(fillers[filler_index % len(fillers)])
+        filler_index += 1
+
+    return " ".join(tokens)
+
+
 def _merge_topics(*topic_lists: Iterable[str], max_topics: int = 8) -> list[str]:
     merged: list[str] = []
     seen: set[str] = set()
@@ -979,8 +1527,38 @@ def _build_profile_fallback_summary(first_name: str, topics: list[str]) -> str:
     return first_name
 
 
+def _curated_fill_in_candidates(
+    curated: dict[str, list[OnboardingSuggestion]],
+) -> dict[str, list[OnboardingSuggestion]]:
+    feed_defaults = curated.get("substack", []) + curated.get("atom", [])
+    return {
+        "feeds": feed_defaults[:DISCOVERY_PROMPT_MAX_FILL_IN_FEEDS],
+        "podcasts": curated.get("podcast_rss", [])[:DISCOVERY_PROMPT_MAX_FILL_IN_PODCASTS],
+        "reddit": curated.get("reddit", [])[:DISCOVERY_PROMPT_MAX_FILL_IN_REDDIT],
+    }
+
+
+def _format_curated_candidate(item: OnboardingSuggestion) -> str:
+    if item.suggestion_type == "reddit":
+        label = item.subreddit or item.title or ""
+        label = label.removeprefix("r/").strip("/")
+        rationale = (item.rationale or "").strip()
+        if rationale:
+            return f"subreddit: {label} | rationale_hint: {rationale}"
+        return f"subreddit: {label}"
+
+    title = (item.title or "").strip() or "<untitled>"
+    feed_url = (item.feed_url or "").strip() or (item.site_url or "").strip() or "<missing>"
+    rationale = (item.rationale or "").strip()
+    if rationale:
+        return f"title: {title} | feed_url: {feed_url} | rationale_hint: {rationale}"
+    return f"title: {title} | feed_url: {feed_url}"
+
+
 def _format_discovery_prompt(
-    request: OnboardingFastDiscoverRequest, results: list[ExaSearchResult]
+    request: OnboardingFastDiscoverRequest,
+    results: list[_DiscoveryWebResult],
+    curated_fill_ins: dict[str, list[OnboardingSuggestion]] | None = None,
 ) -> str:
     lines = [
         f"profile_summary: {request.profile_summary}",
@@ -988,28 +1566,56 @@ def _format_discovery_prompt(
         "",
         "web_results:",
     ]
-    for idx, item in enumerate(results[:12], start=1):
-        lines.append(f"{idx}. {item.title}\nurl: {item.url}\nsummary: {item.snippet or ''}")
+    for idx, item in enumerate(results[:DISCOVERY_PROMPT_MAX_WEB_RESULTS], start=1):
+        lane_name = getattr(item, "lane_name", None)
+        query = getattr(item, "query", None)
+        lane_context = f" | lane: {lane_name}" if lane_name else ""
+        query_context = f" | query: {query}" if query else ""
+        lines.append(
+            f"{idx}. {item.title}{lane_context}{query_context}\n"
+            f"url: {item.url}\n"
+            f"summary: {_prompt_snippet(item.snippet)}"
+        )
+
+    lines.extend(["", "curated_fill_ins:"])
+    fill_ins = curated_fill_ins or {}
+    for section_name in ("feeds", "podcasts", "reddit"):
+        section_items = fill_ins.get(section_name, [])
+        lines.append(f"{section_name}:")
+        if not section_items:
+            lines.append("  - none")
+            continue
+        for idx, item in enumerate(section_items, start=1):
+            lines.append(f"  {idx}. {_format_curated_candidate(item)}")
     return "\n".join(lines)
 
 
 def _fast_discover_from_defaults(
     curated: dict[str, list[OnboardingSuggestion]],
+    profile_summary: str | None = None,
+    inferred_topics: list[str] | None = None,
 ) -> OnboardingFastDiscoverResponse:
     feed_defaults = curated.get("substack", []) + curated.get("atom", [])
-    return OnboardingFastDiscoverResponse(
+    response = OnboardingFastDiscoverResponse(
         recommended_pods=curated.get("podcast_rss", []),
-        recommended_substacks=feed_defaults,
+        recommended_substacks=feed_defaults[:ONBOARDING_FEED_SUGGESTION_LIMIT],
         recommended_subreddits=curated.get("reddit", []),
+    )
+    return _ensure_response_rationales(
+        response,
+        profile_summary=profile_summary,
+        inferred_topics=inferred_topics,
     )
 
 
 def _build_discovery_response(
     output: _DiscoverOutput,
     curated: dict[str, list[OnboardingSuggestion]],
+    profile_summary: str | None = None,
+    inferred_topics: list[str] | None = None,
 ) -> OnboardingFastDiscoverResponse:
     feed_defaults = curated.get("substack", []) + curated.get("atom", [])
-    feed_limit = DEFAULT_SOURCE_LIMITS["substack"] + DEFAULT_SOURCE_LIMITS["atom"]
+    feed_limit = ONBOARDING_FEED_SUGGESTION_LIMIT
     substacks = _merge_suggestions(
         _normalize_suggestions(output.substacks, "substack"),
         feed_defaults,
@@ -1026,11 +1632,52 @@ def _build_discovery_response(
         DEFAULT_SOURCE_LIMITS["reddit"],
     )
 
-    return OnboardingFastDiscoverResponse(
+    response = OnboardingFastDiscoverResponse(
         recommended_pods=podcasts,
         recommended_substacks=substacks,
         recommended_subreddits=subreddits,
     )
+    return _ensure_response_rationales(
+        response,
+        profile_summary=profile_summary,
+        inferred_topics=inferred_topics,
+    )
+
+
+def _ensure_response_rationales(
+    response: OnboardingFastDiscoverResponse,
+    profile_summary: str | None = None,
+    inferred_topics: list[str] | None = None,
+) -> OnboardingFastDiscoverResponse:
+    topic_list = list(inferred_topics or [])
+    for item in (
+        response.recommended_substacks
+        + response.recommended_pods
+        + response.recommended_subreddits
+    ):
+        if item.rationale and item.rationale.strip():
+            continue
+        item.rationale = _default_rationale(
+            item,
+            profile_summary=profile_summary,
+            inferred_topics=topic_list,
+        )
+    return response
+
+
+def _infer_feed_url_from_site(site_url: str | None) -> str | None:
+    """Infer a likely feed URL from a candidate site URL without network calls."""
+    if not site_url:
+        return None
+    normalized = site_url.strip()
+    if not normalized:
+        return None
+
+    lowered = normalized.lower()
+    feed_markers = ("/feed", ".xml", "rss", "atom", "podcast")
+    if any(marker in lowered for marker in feed_markers):
+        return normalized
+    return None
 
 
 def _normalize_suggestions(
@@ -1039,13 +1686,18 @@ def _normalize_suggestions(
     normalized: list[OnboardingSuggestion] = []
     for item in items:
         feed_url = (item.feed_url or "").strip()
+        candidate_feed_url = (item.candidate_feed_url or "").strip()
         site_url = (item.site_url or "").strip() or None
-        subreddit = (item.subreddit or "").strip() or None
+        subreddit = _normalize_subreddit_name((item.subreddit or "").strip())
 
+        if not feed_url and candidate_feed_url:
+            feed_url = candidate_feed_url
         if suggestion_type == "substack" and not feed_url and site_url:
             feed_url = site_url.rstrip("/") + "/feed"
+        if not feed_url and item.is_likely_feed:
+            feed_url = _infer_feed_url_from_site(site_url)
         if suggestion_type == "reddit" and not subreddit:
-            subreddit = _extract_subreddit(site_url)
+            subreddit = _normalize_subreddit_name(_extract_subreddit(site_url))
 
         if suggestion_type == "reddit":
             if not subreddit:
@@ -1101,8 +1753,18 @@ def _merge_suggestions(
 
 def _suggestion_key(item: OnboardingSuggestion) -> str | None:
     if item.suggestion_type == "reddit":
-        return item.subreddit
+        return _normalize_subreddit_name(item.subreddit)
     return item.feed_url
+
+
+def _normalize_subreddit_name(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    cleaned = cleaned.removeprefix("r/").strip("/")
+    return cleaned or None
 
 
 def _extract_subreddit(site_url: str | None) -> str | None:
@@ -1131,6 +1793,17 @@ def _load_curated_defaults() -> dict[str, list[OnboardingSuggestion]]:
     return defaults
 
 
+def _extract_curated_rationale(item: dict[str, Any]) -> str | None:
+    for field in ("rationale", "description", "summary", "about", "notes"):
+        value = item.get(field)
+        if not isinstance(value, str):
+            continue
+        cleaned = value.strip()
+        if cleaned:
+            return cleaned
+    return None
+
+
 def _load_substack_defaults() -> list[OnboardingSuggestion]:
     feeds = load_substack_feeds()
     suggestions = []
@@ -1144,6 +1817,7 @@ def _load_substack_defaults() -> list[OnboardingSuggestion]:
                 title=feed.get("name"),
                 feed_url=feed_url,
                 site_url=feed_url,
+                rationale=_extract_curated_rationale(feed) if isinstance(feed, dict) else None,
                 is_default=True,
             )
         )
@@ -1163,6 +1837,7 @@ def _load_atom_defaults() -> list[OnboardingSuggestion]:
                 title=feed.get("name"),
                 feed_url=feed_url,
                 site_url=feed_url,
+                rationale=_extract_curated_rationale(feed) if isinstance(feed, dict) else None,
                 is_default=True,
             )
         )
@@ -1194,6 +1869,7 @@ def _load_podcast_defaults() -> list[OnboardingSuggestion]:
                 title=feed.get("name"),
                 feed_url=feed_url,
                 site_url=feed_url,
+                rationale=_extract_curated_rationale(feed),
                 is_default=True,
             )
         )
@@ -1216,7 +1892,7 @@ def _load_reddit_defaults() -> list[OnboardingSuggestion]:
     for sub in subreddits:
         if not isinstance(sub, dict):
             continue
-        name = (sub.get("name") or "").strip()
+        name = _normalize_subreddit_name((sub.get("name") or "").strip())
         if not name:
             continue
         suggestions.append(
@@ -1225,6 +1901,7 @@ def _load_reddit_defaults() -> list[OnboardingSuggestion]:
                 title=name,
                 site_url=f"https://www.reddit.com/r/{name}/",
                 subreddit=name,
+                rationale=_extract_curated_rationale(sub),
                 is_default=True,
             )
         )
@@ -1235,9 +1912,15 @@ def _defaults_to_selected_sources(
     curated: dict[str, list[OnboardingSuggestion]],
 ) -> list[OnboardingSelectedSource]:
     selections: list[OnboardingSelectedSource] = []
+    feed_selections = 0
     for suggestion_type in ("substack", "podcast_rss", "atom"):
         defaults = curated.get(suggestion_type, [])
-        limit = DEFAULT_SOURCE_LIMITS[suggestion_type]
+        if suggestion_type in {"substack", "atom"}:
+            limit = ONBOARDING_FEED_SUGGESTION_LIMIT - feed_selections
+            if limit <= 0:
+                continue
+        else:
+            limit = DEFAULT_SOURCE_LIMITS[suggestion_type]
         for suggestion in defaults[:limit]:
             selections.append(
                 OnboardingSelectedSource(
@@ -1247,12 +1930,14 @@ def _defaults_to_selected_sources(
                     config={"feed_url": suggestion.feed_url or ""},
                 )
             )
+            if suggestion_type in {"substack", "atom"}:
+                feed_selections += 1
     return selections
 
 
 def _create_reddit_configs(db: Session, user_id: int, subreddits: list[str]) -> None:
     for subreddit in subreddits:
-        cleaned = subreddit.strip().lstrip("r/").strip("/")
+        cleaned = _normalize_subreddit_name(subreddit)
         if not cleaned:
             continue
         try:
@@ -1358,6 +2043,17 @@ def _serialize_lane_status(lane: OnboardingDiscoveryLane) -> OnboardingDiscovery
     )
 
 
+def _serialize_audio_lane_preview(lane: _AudioLane) -> OnboardingAudioLanePreview:
+    return OnboardingAudioLanePreview(
+        name=lane.name,
+        goal=lane.goal,
+        target=lane.target,
+        queries=list(lane.queries),
+        include_social=lane.target == "reddit",
+        exa_results_per_query=FAST_DISCOVER_EXA_RESULTS,
+    )
+
+
 def _persist_onboarding_suggestions(
     db: Session,
     run: OnboardingDiscoveryRun,
@@ -1383,7 +2079,11 @@ def _persist_onboarding_suggestions(
         if item.suggestion_type != "reddit" and not item.feed_url:
             continue
         if not item.rationale or not item.rationale.strip():
-            item.rationale = _default_rationale(item)
+            item.rationale = _default_rationale(
+                item,
+                profile_summary=run.topic_summary,
+                inferred_topics=list(run.inferred_topics or []),
+            )
         db.add(
             OnboardingDiscoverySuggestion(
                 run_id=run.id,
@@ -1401,15 +2101,37 @@ def _persist_onboarding_suggestions(
     db.commit()
 
 
-def _default_rationale(item: OnboardingSuggestion) -> str:
-    if item.suggestion_type == "podcast_rss":
-        label = item.title or "podcast"
-        return f"Podcast recommendation aligned with your interests ({label})."
+def _suggestion_label(item: OnboardingSuggestion) -> str:
     if item.suggestion_type == "reddit":
-        label = item.subreddit or item.title or "subreddit"
-        return f"Active community discussing {label}."
-    label = item.title or "newsletter"
-    return f"Suggested source aligned with your interests ({label})."
+        return _normalize_subreddit_name(item.subreddit) or (item.title or "subreddit")
+    return item.title or "this source"
+
+
+def _discovery_context_hint(
+    profile_summary: str | None,
+    inferred_topics: list[str] | None,
+) -> str:
+    merged = _merge_topics(inferred_topics or [], [profile_summary or ""], max_topics=3)
+    if not merged:
+        return "your interests"
+    if len(merged) == 1:
+        return merged[0]
+    return ", ".join(merged[:2])
+
+
+def _default_rationale(
+    item: OnboardingSuggestion,
+    profile_summary: str | None = None,
+    inferred_topics: list[str] | None = None,
+) -> str:
+    label = _suggestion_label(item)
+    context_hint = _discovery_context_hint(profile_summary, inferred_topics)
+
+    if item.suggestion_type == "podcast_rss":
+        return f"Podcast covering {label} with discussions relevant to {context_hint}."
+    if item.suggestion_type == "reddit":
+        return f"Active subreddit for {label} with ongoing threads related to {context_hint}."
+    return f"Feed focused on {label} with updates tied to {context_hint}."
 
 
 def _load_onboarding_suggestions(db: Session, run_id: int) -> OnboardingFastDiscoverResponse:
@@ -1466,9 +2188,9 @@ def _persist_discovery_run(
 
     persisted = 0
     candidate_feed_urls = [
-        suggestion.feed_url
+        suggestion.feed_url.strip()
         for suggestion in suggestions.recommended_substacks + suggestions.recommended_pods
-        if suggestion.feed_url
+        if suggestion.feed_url and suggestion.feed_url.strip()
     ]
     existing_feed_urls: set[str] = set()
     if candidate_feed_urls:
@@ -1481,26 +2203,47 @@ def _persist_discovery_run(
             )
             .all()
         }
+    pending_feed_urls = set(existing_feed_urls)
     for suggestion in suggestions.recommended_substacks + suggestions.recommended_pods:
-        if not suggestion.feed_url:
+        feed_url = (suggestion.feed_url or "").strip()
+        if not feed_url:
             continue
-        if suggestion.feed_url in existing_feed_urls:
+        if feed_url in pending_feed_urls:
             continue
-        db.add(
-            FeedDiscoverySuggestion(
-                run_id=run.id,
-                user_id=user_id,
-                suggestion_type=suggestion.suggestion_type,
-                site_url=suggestion.site_url,
-                feed_url=suggestion.feed_url,
-                title=suggestion.title,
-                rationale=suggestion.rationale,
-                score=suggestion.score,
-                status="new",
-                config={"feed_url": suggestion.feed_url},
+
+        pending_feed_urls.add(feed_url)
+
+        try:
+            with db.begin_nested():
+                db.add(
+                    FeedDiscoverySuggestion(
+                        run_id=run.id,
+                        user_id=user_id,
+                        suggestion_type=suggestion.suggestion_type,
+                        site_url=suggestion.site_url,
+                        feed_url=feed_url,
+                        title=suggestion.title,
+                        rationale=suggestion.rationale,
+                        score=suggestion.score,
+                        status="new",
+                        config={"feed_url": feed_url},
+                    )
+                )
+                db.flush()
+            persisted += 1
+        except IntegrityError:
+            # Keep onboarding discovery idempotent if another worker/run already inserted this feed.
+            pending_feed_urls.discard(feed_url)
+            logger.warning(
+                "Skipping duplicate discovery suggestion during persistence",
+                extra={
+                    "component": "onboarding",
+                    "operation": "persist_discovery_run",
+                    "item_id": str(user_id),
+                    "context_data": {"feed_url": feed_url},
+                },
             )
-        )
-        persisted += 1
+            continue
 
     if not persisted:
         db.rollback()

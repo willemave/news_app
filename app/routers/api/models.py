@@ -1,6 +1,6 @@
 """Pydantic models for API endpoints."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -467,11 +467,19 @@ class UnreadCountsResponse(BaseModel):
 
 
 class ProcessingCountResponse(BaseModel):
-    """Response containing the long-form processing count."""
+    """Response containing processing counts grouped by lane."""
 
     processing_count: int = Field(
         ...,
-        description="Number of long-form items pending or processing for the user",
+        description="Total number of inbox items queued, pending, or processing for the user",
+    )
+    long_form_count: int = Field(
+        ...,
+        description="Number of long-form inbox items queued, pending, or processing",
+    )
+    news_count: int = Field(
+        ...,
+        description="Number of short-form news inbox items queued, pending, or processing",
     )
 
 
@@ -530,7 +538,7 @@ class TweetSuggestion(BaseModel):
         }
 
 
-class TweetLength(str, Enum):
+class TweetLength(StrEnum):
     """Tweet length preference."""
 
     SHORT = "short"  # 100-180 chars - concise, punchy
@@ -690,6 +698,27 @@ class OnboardingDiscoveryLaneStatus(BaseModel):
     status: str
     completed_queries: int = 0
     query_count: int = 0
+
+
+class OnboardingAudioLanePreview(BaseModel):
+    """Preview payload for a generated onboarding discovery lane."""
+
+    name: str
+    goal: str
+    target: Literal["feeds", "podcasts", "reddit"]
+    queries: list[str] = Field(default_factory=list)
+    include_social: bool = False
+    exa_results_per_query: int = 0
+
+
+class OnboardingAudioLanePreviewResponse(BaseModel):
+    """Preview response for onboarding audio lane generation."""
+
+    topic_summary: str
+    inferred_topics: list[str] = Field(default_factory=list)
+    lanes: list[OnboardingAudioLanePreview] = Field(default_factory=list)
+    used_fallback: bool = False
+    fallback_reason: str | None = None
 
 
 class OnboardingAudioDiscoverResponse(BaseModel):

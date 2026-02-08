@@ -11,6 +11,7 @@ from app.models.schema import (
     OnboardingDiscoverySuggestion,
     UserScraperConfig,
 )
+from app.routers.api.models import OnboardingSuggestion
 from app.services.queue import TaskType
 
 
@@ -80,6 +81,37 @@ def test_onboarding_fast_discover_defaults(client):
     assert "recommended_substacks" in data
     assert "recommended_pods" in data
     assert "recommended_subreddits" in data
+
+
+def test_onboarding_fast_discover_defaults_have_rationale(client, monkeypatch):
+    monkeypatch.setattr("app.services.onboarding._run_exa_queries", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        "app.services.onboarding._load_curated_defaults",
+        lambda: {
+            "substack": [
+                OnboardingSuggestion(
+                    suggestion_type="substack",
+                    title="Example Feed",
+                    feed_url="https://example.com/feed.xml",
+                    site_url="https://example.com",
+                    is_default=True,
+                )
+            ],
+            "atom": [],
+            "podcast_rss": [],
+            "reddit": [],
+        },
+    )
+
+    response = client.post(
+        "/api/onboarding/fast-discover",
+        json={"profile_summary": "AI engineer", "inferred_topics": ["AI", "ML"]},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["recommended_substacks"]
+    assert data["recommended_substacks"][0]["rationale"]
 
 
 def test_onboarding_profile_requires_interests(client, monkeypatch):

@@ -41,3 +41,10 @@ def test_resolve_model_with_unprefixed_openai_hint() -> None:
     provider, model_spec = resolve_model("openai", "gpt-4o")
     assert provider == "openai"
     assert model_spec == "openai:gpt-4o"
+
+
+def test_resolve_model_with_cerebras_hint() -> None:
+    """Cerebras hints are prefixed with cerebras."""
+    provider, model_spec = resolve_model("cerebras", "zai-glm-4.7")
+    assert provider == "cerebras"
+    assert model_spec == "cerebras:zai-glm-4.7"

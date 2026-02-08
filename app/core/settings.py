@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "News Aggregator"
+    environment: str = "development"
     debug: bool = False
     log_level: str = "INFO"
 
@@ -56,6 +57,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
+    cerebras_api_key: str | None = None
     exa_api_key: str | None = None
 
     # Feed discovery
