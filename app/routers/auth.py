@@ -192,7 +192,8 @@ def debug_create_user(
     db: Annotated[Session, Depends(get_db_session)],
 ) -> TokenResponse:
     """Create a debug user session (debug mode only)."""
-    if not settings.debug:
+    is_development_env = settings.environment.lower() == "development"
+    if not (settings.debug or is_development_env):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     apple_id = f"debug_{secrets.token_urlsafe(16)}"

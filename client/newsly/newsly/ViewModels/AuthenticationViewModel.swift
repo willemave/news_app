@@ -7,6 +7,9 @@
 
 import Foundation
 import SwiftUI
+import os.log
+
+private let authViewModelLogger = Logger(subsystem: "com.newsly", category: "AuthenticationViewModel")
 
 /// Authentication state
 enum AuthState: Equatable {
@@ -34,7 +37,17 @@ final class AuthenticationViewModel: ObservableObject {
             forName: .authenticationRequired,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
+            let endpoint = notification.userInfo?["endpoint"] as? String ?? "unknown"
+            let reason = notification.userInfo?["reason"] as? String ?? "unknown"
+            let status = notification.userInfo?["statusCode"] as? Int
+            let detail = notification.userInfo?["detail"] as? String ?? "n/a"
+            let statusText = status.map(String.init) ?? "n/a"
+
+            authViewModelLogger.error(
+                "[AuthState] Received authenticationRequired | endpoint=\(endpoint, privacy: .public) reason=\(reason, privacy: .public) status=\(statusText, privacy: .public) detail=\(detail, privacy: .public)"
+            )
+
             Task { @MainActor in
                 self?.logout()
             }

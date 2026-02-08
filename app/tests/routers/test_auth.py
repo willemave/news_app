@@ -449,6 +449,7 @@ def test_datetime_serialization_has_timezone(db: Session, monkeypatch):
 
 def test_debug_new_user_disabled(monkeypatch):
     monkeypatch.setattr("app.routers.auth.settings.debug", False)
+    monkeypatch.setattr("app.routers.auth.settings.environment", "production")
     response = client.post("/auth/debug/new-user")
     assert response.status_code == 404
 
@@ -464,7 +465,8 @@ def test_debug_new_user_enabled(db: Session, monkeypatch):
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     app.dependency_overrides[get_readonly_db_session] = override_get_db_session
-    monkeypatch.setattr("app.routers.auth.settings.debug", True)
+    monkeypatch.setattr("app.routers.auth.settings.debug", False)
+    monkeypatch.setattr("app.routers.auth.settings.environment", "development")
 
     try:
         response = client.post("/auth/debug/new-user")

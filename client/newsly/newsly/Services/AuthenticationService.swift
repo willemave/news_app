@@ -8,6 +8,9 @@
 import Foundation
 import AuthenticationServices
 import CryptoKit
+import os.log
+
+private let authLogger = Logger(subsystem: "com.newsly", category: "AuthenticationService")
 
 /// Authentication service handling Apple Sign In and token management
 final class AuthenticationService: NSObject {
@@ -63,8 +66,6 @@ final class AuthenticationService: NSObject {
             return cached
         }
 
-        await refreshCoordinator.markAttempt()
-
         let task = Task { [weak self] () throws -> String in
             defer {
                 Task { [weak self] in
@@ -72,7 +73,9 @@ final class AuthenticationService: NSObject {
                 }
             }
             guard let self else { throw AuthError.refreshFailed }
-            return try await self.performRefreshAccessToken()
+            let token = try await self.performRefreshAccessToken()
+            await self.refreshCoordinator.markSuccess()
+            return token
         }
 
         await refreshCoordinator.setTask(task)
@@ -141,24 +144,37 @@ final class AuthenticationService: NSObject {
                 // Refresh token is no longer valid; clear stored tokens so we do not loop
                 KeychainManager.shared.deleteToken(key: .accessToken)
                 KeychainManager.shared.deleteToken(key: .refreshToken)
+                SharedContainer.userDefaults.removeObject(forKey: "accessToken")
 
                 if let errorBody = String(data: data, encoding: .utf8) {
                     print("❌ Refresh token expired/invalid: \(errorBody)")
+                    authLogger.error(
+                        "[AuthRefresh] Invalid refresh token | status=\(httpResponse.statusCode) detail=\(errorBody, privacy: .public)"
+                    )
                 }
                 throw AuthError.refreshTokenExpired
 
             default:
                 let errorBody = String(data: data, encoding: .utf8)
                 print("❌ Refresh failed with status \(httpResponse.statusCode): \(errorBody ?? "<no body>")")
+                if let errorBody {
+                    authLogger.error(
+                        "[AuthRefresh] Refresh failed | status=\(httpResponse.statusCode) detail=\(errorBody, privacy: .public)"
+                    )
+                } else {
+                    authLogger.error("[AuthRefresh] Refresh failed | status=\(httpResponse.statusCode)")
+                }
                 throw AuthError.serverError(statusCode: httpResponse.statusCode, message: errorBody)
             }
         } catch let urlError as URLError {
             print("❌ Token refresh network error: \(urlError)")
+            authLogger.error("[AuthRefresh] Network error | code=\(urlError.errorCode) description=\(urlError.localizedDescription, privacy: .public)")
             throw AuthError.networkError(urlError)
         } catch let authError as AuthError {
             throw authError
         } catch {
             print("❌ Token refresh error: \(error)")
+            authLogger.error("[AuthRefresh] Unexpected error | description=\(error.localizedDescription, privacy: .public)")
             throw AuthError.refreshFailed
         }
     }
@@ -447,7 +463,7 @@ private func persistSessionTokens(_ tokenResponse: TokenResponse) {
 
 private actor RefreshCoordinator {
     private var refreshTask: Task<String, Error>?
-    private var lastRefreshAttempt: Date?
+    private var lastSuccessfulRefresh: Date?
     private let cooldownSeconds: TimeInterval
 
     init(cooldownSeconds: TimeInterval) {
@@ -466,13 +482,13 @@ private actor RefreshCoordinator {
         refreshTask = nil
     }
 
-    func markAttempt() {
-        lastRefreshAttempt = Date()
+    func markSuccess() {
+        lastSuccessfulRefresh = Date()
     }
 
     func cachedToken(accessToken: String?) -> String? {
-        guard let lastRefreshAttempt,
-              Date().timeIntervalSince(lastRefreshAttempt) < cooldownSeconds,
+        guard let lastSuccessfulRefresh,
+              Date().timeIntervalSince(lastSuccessfulRefresh) < cooldownSeconds,
               let token = accessToken,
               !token.isEmpty else {
             return nil

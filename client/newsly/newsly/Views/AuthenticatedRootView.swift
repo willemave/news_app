@@ -7,67 +7,81 @@
 
 import SwiftUI
 
+private enum AuthenticatedPresentationState {
+    case deciding
+    case onboarding
+    case tutorial
+    case content
+}
+
 struct AuthenticatedRootView: View {
     @EnvironmentObject var authViewModel: AuthenticationViewModel
     let user: User
 
-    @State private var showOnboarding = false
-    @State private var showTutorial = false
+    @State private var presentationState: AuthenticatedPresentationState = .deciding
 
     private let onboardingStateStore = OnboardingStateStore.shared
     private let onboardingService = OnboardingService.shared
 
     var body: some View {
-        ContentView()
-            .environmentObject(authViewModel)
-            .withToast()
-            .task {
-                await LocalNotificationService.shared.requestAuthorization()
-            }
-            .fullScreenCover(isPresented: $showOnboarding) {
+        Group {
+            switch presentationState {
+            case .deciding:
+                LoadingView()
+            case .onboarding:
                 OnboardingFlowView(user: user) { response in
                     onboardingStateStore.clearPending(userId: user.id)
-                    showOnboarding = false
                     if !response.hasCompletedNewUserTutorial {
-                        showTutorial = true
+                        presentationState = .tutorial
+                    } else {
+                        presentationState = .content
                     }
                 }
-            }
-            .sheet(isPresented: $showTutorial) {
+            case .tutorial:
                 HowItWorksModal {
                     Task { await completeTutorial() }
                 }
+            case .content:
+                ContentView()
+                    .environmentObject(authViewModel)
+                    .withToast()
+                    .task {
+                        await LocalNotificationService.shared.requestAuthorization()
+                    }
             }
-            .onAppear {
-                updatePresentation()
-            }
-            .onChange(of: authViewModel.lastSignInWasNewUser) { _, _ in
-                updatePresentation()
-            }
-            .onChange(of: user.id) { _, _ in
-                updatePresentation()
-            }
-            .onChange(of: user.hasCompletedNewUserTutorial) { _, _ in
-                updatePresentation()
-            }
+        }
+        .onAppear {
+            updatePresentation()
+        }
+        .onChange(of: authViewModel.lastSignInWasNewUser) { _, _ in
+            updatePresentation()
+        }
+        .onChange(of: user.id) { _, _ in
+            updatePresentation()
+        }
+        .onChange(of: user.hasCompletedNewUserTutorial) { _, _ in
+            updatePresentation()
+        }
     }
 
     private func updatePresentation() {
         let needsOnboarding = authViewModel.lastSignInWasNewUser || onboardingStateStore.needsOnboarding(userId: user.id)
         if needsOnboarding {
-            showTutorial = false
-            showOnboarding = true
+            presentationState = .onboarding
             authViewModel.lastSignInWasNewUser = false
             return
         }
 
         if !user.hasCompletedNewUserTutorial {
-            showTutorial = true
+            presentationState = .tutorial
+            return
         }
+
+        presentationState = .content
     }
 
     private func completeTutorial() async {
-        showTutorial = false
+        presentationState = .content
         do {
             let response = try await onboardingService.markTutorialComplete()
             if response.hasCompletedNewUserTutorial {

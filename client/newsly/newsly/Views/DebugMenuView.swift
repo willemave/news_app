@@ -229,11 +229,12 @@ struct DebugMenuView: View {
                 authViewModel.authState = .loading
                 let user = try await AuthenticationService.shared.getCurrentUser()
                 await MainActor.run {
-                    authViewModel.authState = .authenticated(user)
                     if forceOnboardingAfterTokenSave {
+                        onboardingStateStore.clearDiscoveryRun(userId: user.id)
                         onboardingStateStore.setPending(userId: user.id)
                         authViewModel.lastSignInWasNewUser = true
                     }
+                    authViewModel.authState = .authenticated(user)
                     forceOnboardingAfterTokenSave = false
                 }
             } catch {
@@ -255,18 +256,34 @@ struct DebugMenuView: View {
 
         Task {
             do {
-                authViewModel.authState = .loading
                 let session = try await AuthenticationService.shared.createDebugUser()
                 if let previousUserId {
                     onboardingStateStore.clearPending(userId: previousUserId)
                     onboardingStateStore.clearDiscoveryRun(userId: previousUserId)
                 }
                 await MainActor.run {
-                    authViewModel.authState = .authenticated(session.user)
-                    onboardingStateStore.setPending(userId: session.user.id)
-                    authViewModel.lastSignInWasNewUser = true
-                    alertMessage = "Created debug user \(session.user.id). Onboarding will start."
-                    showingAlert = true
+                    triggerForcedOnboarding(user: session.user)
+                }
+            } catch let authError as AuthError {
+                await MainActor.run {
+                    switch authError {
+                    case .serverError(let statusCode, _) where statusCode == 404:
+                        if let previousUser {
+                            authViewModel.authState = .authenticated(previousUser)
+                        } else {
+                            authViewModel.authState = .unauthenticated
+                        }
+                        alertMessage = "Debug new-user endpoint is disabled on this server. Enable DEBUG=true or run with ENVIRONMENT=development."
+                        showingAlert = true
+                    default:
+                        if let previousUser {
+                            authViewModel.authState = .authenticated(previousUser)
+                        } else {
+                            authViewModel.authState = .unauthenticated
+                        }
+                        alertMessage = "Failed to create debug user: \(authError.localizedDescription)"
+                        showingAlert = true
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -280,6 +297,14 @@ struct DebugMenuView: View {
                 }
             }
         }
+    }
+
+    @MainActor
+    private func triggerForcedOnboarding(user: User) {
+        onboardingStateStore.clearDiscoveryRun(userId: user.id)
+        onboardingStateStore.setPending(userId: user.id)
+        authViewModel.lastSignInWasNewUser = true
+        authViewModel.authState = .authenticated(user)
     }
 
     private func resetAuth() {

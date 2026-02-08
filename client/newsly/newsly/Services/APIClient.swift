@@ -72,9 +72,10 @@ class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         // Ensure we send a token or attempt refresh before issuing the request
-        if let accessToken = try await fetchAccessTokenOrRefresh() {
+        if let accessToken = try await fetchAccessTokenOrRefresh(endpoint: endpoint) {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
+        let sentAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
 
         if let body = body {
             request.httpBody = body
@@ -87,10 +88,29 @@ class APIClient {
                 throw APIError.unknown
             }
 
-            // Handle 401/403 (missing or expired token) - try refresh once
+            // Handle likely auth failures (always 401; some 403) - try refresh once
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                let detail = extractErrorDetail(from: data)
+                guard shouldTreatAsAuthFailure(
+                    statusCode: httpResponse.statusCode,
+                    response: httpResponse,
+                    detail: detail,
+                    sentAuthHeader: sentAuthHeader
+                ) else {
+                    logger.error(
+                        "[APIClient] Non-auth HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode) detail=\((detail ?? "n/a"), privacy: .public)"
+                    )
+                    throw APIError.httpError(statusCode: httpResponse.statusCode)
+                }
+
                 guard allowRefresh else {
-                    NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                    notifyAuthenticationRequired(
+                        endpoint: endpoint,
+                        statusCode: httpResponse.statusCode,
+                        detail: detail,
+                        sentAuthHeader: sentAuthHeader,
+                        reason: "request_no_refresh_remaining"
+                    )
                     throw APIError.unauthorized
                 }
                 do {
@@ -106,7 +126,13 @@ class APIClient {
                 } catch let authError as AuthError {
                     switch authError {
                     case .refreshTokenExpired, .noRefreshToken:
-                        NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                        notifyAuthenticationRequired(
+                            endpoint: endpoint,
+                            statusCode: httpResponse.statusCode,
+                            detail: detail,
+                            sentAuthHeader: sentAuthHeader,
+                            reason: "refresh_token_unavailable_or_expired"
+                        )
                         throw APIError.unauthorized
                     default:
                         throw APIError.networkError(authError)
@@ -145,25 +171,45 @@ class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         // Ensure we send a token or attempt refresh before issuing the request
-        if let accessToken = try await fetchAccessTokenOrRefresh() {
+        if let accessToken = try await fetchAccessTokenOrRefresh(endpoint: endpoint) {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
+        let sentAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
 
         if let body = body {
             request.httpBody = body
         }
 
         do {
-            let (_, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.unknown
             }
 
-            // Handle 401/403 (missing or expired token) - try refresh once
+            // Handle likely auth failures (always 401; some 403) - try refresh once
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                let detail = extractErrorDetail(from: data)
+                guard shouldTreatAsAuthFailure(
+                    statusCode: httpResponse.statusCode,
+                    response: httpResponse,
+                    detail: detail,
+                    sentAuthHeader: sentAuthHeader
+                ) else {
+                    logger.error(
+                        "[APIClient] Non-auth HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode) detail=\((detail ?? "n/a"), privacy: .public)"
+                    )
+                    throw APIError.httpError(statusCode: httpResponse.statusCode)
+                }
+
                 guard allowRefresh else {
-                    NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                    notifyAuthenticationRequired(
+                        endpoint: endpoint,
+                        statusCode: httpResponse.statusCode,
+                        detail: detail,
+                        sentAuthHeader: sentAuthHeader,
+                        reason: "request_void_no_refresh_remaining"
+                    )
                     throw APIError.unauthorized
                 }
                 do {
@@ -172,7 +218,13 @@ class APIClient {
                 } catch let authError as AuthError {
                     switch authError {
                     case .refreshTokenExpired, .noRefreshToken:
-                        NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                        notifyAuthenticationRequired(
+                            endpoint: endpoint,
+                            statusCode: httpResponse.statusCode,
+                            detail: detail,
+                            sentAuthHeader: sentAuthHeader,
+                            reason: "refresh_token_unavailable_or_expired"
+                        )
                         throw APIError.unauthorized
                     default:
                         throw APIError.networkError(authError)
@@ -216,9 +268,10 @@ class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         // Ensure we send a token or attempt refresh before issuing the request
-        if let accessToken = try await fetchAccessTokenOrRefresh() {
+        if let accessToken = try await fetchAccessTokenOrRefresh(endpoint: endpoint) {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
+        let sentAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
 
         if let body = body {
             request.httpBody = body
@@ -231,10 +284,29 @@ class APIClient {
                 throw APIError.unknown
             }
 
-            // Handle 401/403 (missing or expired token) - try refresh once
+            // Handle likely auth failures (always 401; some 403) - try refresh once
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                let detail = extractErrorDetail(from: data)
+                guard shouldTreatAsAuthFailure(
+                    statusCode: httpResponse.statusCode,
+                    response: httpResponse,
+                    detail: detail,
+                    sentAuthHeader: sentAuthHeader
+                ) else {
+                    logger.error(
+                        "[APIClient] Non-auth HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode) detail=\((detail ?? "n/a"), privacy: .public)"
+                    )
+                    throw APIError.httpError(statusCode: httpResponse.statusCode)
+                }
+
                 guard allowRefresh else {
-                    NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                    notifyAuthenticationRequired(
+                        endpoint: endpoint,
+                        statusCode: httpResponse.statusCode,
+                        detail: detail,
+                        sentAuthHeader: sentAuthHeader,
+                        reason: "request_raw_no_refresh_remaining"
+                    )
                     throw APIError.unauthorized
                 }
                 do {
@@ -250,7 +322,13 @@ class APIClient {
                 } catch let authError as AuthError {
                     switch authError {
                     case .refreshTokenExpired, .noRefreshToken:
-                        NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                        notifyAuthenticationRequired(
+                            endpoint: endpoint,
+                            statusCode: httpResponse.statusCode,
+                            detail: detail,
+                            sentAuthHeader: sentAuthHeader,
+                            reason: "refresh_token_unavailable_or_expired"
+                        )
                         throw APIError.unauthorized
                     default:
                         throw APIError.networkError(authError)
@@ -296,9 +374,10 @@ class APIClient {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
 
-                    if let accessToken = try await fetchAccessTokenOrRefresh() {
+                    if let accessToken = try await fetchAccessTokenOrRefresh(endpoint: endpoint) {
                         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                     }
+                    let sentAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
 
                     if let body = body {
                         request.httpBody = body
@@ -317,8 +396,28 @@ class APIClient {
 
                     guard (200...299).contains(httpResponse.statusCode) else {
                         if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                            logger.error("[Stream] Auth error | status=\(httpResponse.statusCode)")
-                            continuation.finish(throwing: APIError.unauthorized)
+                            let detail = extractErrorDetail(from: Data())
+                            if shouldTreatAsAuthFailure(
+                                statusCode: httpResponse.statusCode,
+                                response: httpResponse,
+                                detail: detail,
+                                sentAuthHeader: sentAuthHeader
+                            ) {
+                                notifyAuthenticationRequired(
+                                    endpoint: endpoint,
+                                    statusCode: httpResponse.statusCode,
+                                    detail: detail,
+                                    sentAuthHeader: sentAuthHeader,
+                                    reason: "stream_auth_failure"
+                                )
+                                logger.error("[Stream] Auth error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)")
+                                continuation.finish(throwing: APIError.unauthorized)
+                            } else {
+                                logger.error(
+                                    "[Stream] Non-auth HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)"
+                                )
+                                continuation.finish(throwing: APIError.httpError(statusCode: httpResponse.statusCode))
+                            }
                         } else {
                             logger.error("[Stream] HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)")
                             continuation.finish(throwing: APIError.httpError(statusCode: httpResponse.statusCode))
@@ -362,7 +461,7 @@ class APIClient {
 
     /// Get an access token if present; otherwise attempt a refresh.
     /// Returns nil for truly unauthenticated flows (e.g., public endpoints).
-    private func fetchAccessTokenOrRefresh() async throws -> String? {
+    private func fetchAccessTokenOrRefresh(endpoint: String) async throws -> String? {
         if let token = KeychainManager.shared.getToken(key: .accessToken) {
             return token
         }
@@ -378,7 +477,13 @@ class APIClient {
         } catch let authError as AuthError {
             switch authError {
             case .refreshTokenExpired, .noRefreshToken:
-                NotificationCenter.default.post(name: .authenticationRequired, object: nil)
+                notifyAuthenticationRequired(
+                    endpoint: endpoint,
+                    statusCode: 401,
+                    detail: authError.localizedDescription,
+                    sentAuthHeader: false,
+                    reason: "fetch_token_refresh_failed"
+                )
                 throw APIError.unauthorized
             default:
                 throw APIError.networkError(authError)
@@ -386,6 +491,98 @@ class APIClient {
         } catch {
             throw APIError.networkError(error)
         }
+    }
+
+    private func shouldTreatAsAuthFailure(
+        statusCode: Int,
+        response: HTTPURLResponse,
+        detail: String?,
+        sentAuthHeader: Bool
+    ) -> Bool {
+        if statusCode == 401 {
+            return true
+        }
+        guard statusCode == 403 else {
+            return false
+        }
+
+        // Missing auth header on a protected endpoint is authentication failure.
+        if !sentAuthHeader {
+            return true
+        }
+
+        if let wwwAuth = response.value(forHTTPHeaderField: "WWW-Authenticate")?.lowercased(),
+           wwwAuth.contains("bearer") {
+            return true
+        }
+
+        guard let lowered = detail?.lowercased() else {
+            return false
+        }
+
+        let authMarkers = [
+            "not authenticated",
+            "could not validate credentials",
+            "invalid token",
+            "token expired",
+            "expired token",
+            "missing token",
+            "invalid refresh token",
+            "unauthorized"
+        ]
+        return authMarkers.contains { lowered.contains($0) }
+    }
+
+    private func extractErrorDetail(from data: Data) -> String? {
+        guard !data.isEmpty else {
+            return nil
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let detail = json["detail"] {
+            return String(describing: detail).prefix(240).description
+        }
+
+        if let raw = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            return raw.prefix(240).description
+        }
+
+        return nil
+    }
+
+    private func notifyAuthenticationRequired(
+        endpoint: String,
+        statusCode: Int?,
+        detail: String?,
+        sentAuthHeader: Bool,
+        reason: String
+    ) {
+        let hasAccessToken = KeychainManager.shared.getToken(key: .accessToken) != nil
+        let hasRefreshToken = KeychainManager.shared.getToken(key: .refreshToken) != nil
+        let statusText = statusCode.map(String.init) ?? "n/a"
+        let detailText = detail ?? "n/a"
+
+        logger.error(
+            "[Auth] Authentication required | endpoint=\(endpoint, privacy: .public) reason=\(reason, privacy: .public) status=\(statusText, privacy: .public) sentAuth=\(sentAuthHeader) hasAccess=\(hasAccessToken) hasRefresh=\(hasRefreshToken) detail=\(detailText, privacy: .public)"
+        )
+
+        var userInfo: [String: Any] = [
+            "endpoint": endpoint,
+            "reason": reason,
+            "sentAuthHeader": sentAuthHeader,
+            "hasAccessToken": hasAccessToken,
+            "hasRefreshToken": hasRefreshToken
+        ]
+        if let statusCode {
+            userInfo["statusCode"] = statusCode
+        }
+        if let detail {
+            userInfo["detail"] = detail
+        }
+
+        NotificationCenter.default.post(name: .authenticationRequired, object: nil, userInfo: userInfo)
     }
 }
 
