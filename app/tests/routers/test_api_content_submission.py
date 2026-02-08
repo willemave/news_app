@@ -3,7 +3,7 @@
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentReadStatus, ContentStatusEntry, ProcessingTask
-from app.services.queue import TaskStatus, TaskType
+from app.services.queue import TaskQueue, TaskStatus, TaskType
 
 
 def test_submit_url_creates_content_and_analyze_task(client, db_session):
@@ -30,6 +30,7 @@ def test_submit_url_creates_content_and_analyze_task(client, db_session):
     task = db_session.query(ProcessingTask).filter_by(content_id=created.id).first()
     assert task is not None
     assert task.task_type == TaskType.ANALYZE_URL.value
+    assert task.queue_name == TaskQueue.CONTENT.value
     assert task.status == TaskStatus.PENDING.value
 
 
@@ -222,3 +223,4 @@ def test_share_and_chat_existing_completed_enqueues_dig_deeper_task(client, db_s
         .first()
     )
     assert task is not None
+    assert task.queue_name == TaskQueue.CHAT.value

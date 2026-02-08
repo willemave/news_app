@@ -1,5 +1,5 @@
-import enum
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import ValidationError
@@ -146,6 +146,7 @@ class ProcessingTask(Base):
     content_id = Column(Integer, nullable=True, index=True)
     payload = Column(JSON, default=dict)
     status = Column(String(20), default="pending", index=True)
+    queue_name = Column(String(32), nullable=False, index=True, default="content")
 
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
@@ -154,7 +155,10 @@ class ProcessingTask(Base):
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0)
 
-    __table_args__ = (Index("idx_task_status_created", "status", "created_at"),)
+    __table_args__ = (
+        Index("idx_task_status_created", "status", "created_at"),
+        Index("idx_task_queue_status_created", "queue_name", "status", "created_at"),
+    )
 
 
 class ContentReadStatus(Base):
@@ -414,7 +418,7 @@ class ChatSession(Base):
     )
 
 
-class MessageProcessingStatus(str, enum.Enum):
+class MessageProcessingStatus(StrEnum):
     """Processing status for async chat messages."""
 
     PROCESSING = "processing"

@@ -13,7 +13,7 @@ from app.domain.converters import content_to_domain
 from app.models.schema import ChatSession, Content, ProcessingTask
 from app.services.chat_agent import create_processing_message, process_message_async
 from app.services.llm_models import DEFAULT_MODEL, DEFAULT_PROVIDER
-from app.services.queue import TaskStatus, TaskType
+from app.services.queue import TaskQueue, TaskStatus, TaskType
 
 logger = get_logger(__name__)
 
@@ -153,6 +153,7 @@ def enqueue_dig_deeper_task(db: Session, content_id: int, user_id: int) -> int:
         content_id=content_id,
         payload=payload,
         status=TaskStatus.PENDING.value,
+        queue_name=TaskQueue.CHAT.value,
     )
     db.add(task)
     db.commit()

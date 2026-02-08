@@ -23,7 +23,7 @@ from app.pipeline.task_context import TaskContext
 from app.pipeline.task_handler import TaskHandler
 from app.pipeline.task_models import TaskEnvelope, TaskResult
 from app.pipeline.worker import get_llm_service
-from app.services.queue import QueueService
+from app.services.queue import QueueService, TaskQueue
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,11 @@ logger = get_logger(__name__)
 class SequentialTaskProcessor:
     """Sequential task processor - processes tasks one at a time."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        queue_name: TaskQueue | str = TaskQueue.CONTENT,
+        worker_slot: int = 1,
+    ) -> None:
         logger.debug("Initializing SequentialTaskProcessor...")
         self.queue_service = QueueService()
         logger.debug("QueueService initialized")
@@ -40,8 +44,14 @@ class SequentialTaskProcessor:
         self.settings = get_settings()
         logger.debug("Settings loaded")
         self.running = True
-        self.worker_id = "sequential-processor"
-        logger.debug("SequentialTaskProcessor initialized with worker_id: %s", self.worker_id)
+        self.queue_name = QueueService._normalize_queue_name(queue_name) or TaskQueue.CONTENT.value
+        self.worker_slot = worker_slot
+        self.worker_id = f"{self.queue_name}-processor-{self.worker_slot}"
+        logger.debug(
+            "SequentialTaskProcessor initialized with worker_id: %s queue=%s",
+            self.worker_id,
+            self.queue_name,
+        )
         self.context = TaskContext(
             queue_service=self.queue_service,
             settings=self.settings,
@@ -108,7 +118,11 @@ class SequentialTaskProcessor:
             max_tasks: Maximum number of tasks to process. None for unlimited.
         """
         logger.debug("Entering run method with max_tasks=%s", max_tasks)
-        logger.info("Starting sequential task processor (worker_id: %s)", self.worker_id)
+        logger.info(
+            "Starting sequential task processor (worker_id: %s, queue=%s)",
+            self.worker_id,
+            self.queue_name,
+        )
 
         self._shutdown_requested = False
 
@@ -139,7 +153,10 @@ class SequentialTaskProcessor:
         while self.running:
             try:
                 logger.debug("Attempting to dequeue task (poll #%s)", startup_polls + 1)
-                task_data = self.queue_service.dequeue(worker_id=self.worker_id)
+                task_data = self.queue_service.dequeue(
+                    worker_id=self.worker_id,
+                    queue_name=self.queue_name,
+                )
                 logger.debug("Dequeue result: %s", task_data is not None)
 
                 if not task_data:

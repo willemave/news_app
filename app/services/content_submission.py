@@ -14,7 +14,7 @@ from app.models.schema import Content, ProcessingTask
 from app.models.user import User
 from app.services import read_status
 from app.services.dig_deeper import enqueue_dig_deeper_task
-from app.services.queue import TaskStatus, TaskType
+from app.services.queue import TaskQueue, TaskStatus, TaskType
 from app.services.scraper_configs import ensure_inbox_status
 
 # Re-export for backwards compatibility
@@ -90,6 +90,7 @@ def _ensure_analyze_url_task(
         content_id=content_id,
         payload=payload,
         status=TaskStatus.PENDING.value,
+        queue_name=TaskQueue.CONTENT.value,
     )
     db.add(task)
     db.commit()

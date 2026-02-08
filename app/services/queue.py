@@ -1,10 +1,5 @@
-from datetime import datetime, timedelta
-
-try:  # Python 3.11+
-    from datetime import UTC
-except ImportError:  # Fallback for Python 3.10
-    UTC = UTC
-from enum import Enum
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import and_, func
@@ -16,7 +11,7 @@ from app.models.schema import ProcessingTask
 logger = get_logger(__name__)
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     SCRAPE = "scrape"
     ANALYZE_URL = "analyze_url"  # Analyze URL to determine content type
     PROCESS_CONTENT = "process_content"
@@ -29,7 +24,27 @@ class TaskType(str, Enum):
     DIG_DEEPER = "dig_deeper"
 
 
-class TaskStatus(str, Enum):
+class TaskQueue(StrEnum):
+    CONTENT = "content"
+    ONBOARDING = "onboarding"
+    CHAT = "chat"
+
+
+TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
+    TaskType.SCRAPE: TaskQueue.CONTENT,
+    TaskType.ANALYZE_URL: TaskQueue.CONTENT,
+    TaskType.PROCESS_CONTENT: TaskQueue.CONTENT,
+    TaskType.DOWNLOAD_AUDIO: TaskQueue.CONTENT,
+    TaskType.TRANSCRIBE: TaskQueue.CONTENT,
+    TaskType.SUMMARIZE: TaskQueue.CONTENT,
+    TaskType.GENERATE_IMAGE: TaskQueue.CONTENT,
+    TaskType.DISCOVER_FEEDS: TaskQueue.CONTENT,
+    TaskType.ONBOARDING_DISCOVER: TaskQueue.ONBOARDING,
+    TaskType.DIG_DEEPER: TaskQueue.CHAT,
+}
+
+
+class TaskStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -39,11 +54,34 @@ class TaskStatus(str, Enum):
 class QueueService:
     """Simple database-backed task queue."""
 
+    @staticmethod
+    def _normalize_queue_name(
+        queue_name: TaskQueue | str | None,
+    ) -> str | None:
+        """Normalize queue names for DB filtering."""
+        if queue_name is None:
+            return None
+        if isinstance(queue_name, TaskQueue):
+            return queue_name.value
+        return TaskQueue(queue_name).value
+
+    @staticmethod
+    def _resolve_task_queue(
+        task_type: TaskType,
+        queue_name: TaskQueue | str | None = None,
+    ) -> str:
+        """Resolve the target queue for a task enqueue."""
+        normalized = QueueService._normalize_queue_name(queue_name)
+        if normalized:
+            return normalized
+        return TASK_QUEUE_BY_TYPE[task_type].value
+
     def enqueue(
         self,
         task_type: TaskType,
         content_id: int | None = None,
         payload: dict[str, Any] | None = None,
+        queue_name: TaskQueue | str | None = None,
     ) -> int:
         """
         Add a task to the queue.
@@ -51,22 +89,32 @@ class QueueService:
         Returns:
             Task ID
         """
+        target_queue = self._resolve_task_queue(task_type, queue_name)
         with get_db() as db:
             task = ProcessingTask(
                 task_type=task_type.value,
                 content_id=content_id,
                 payload=payload or {},
                 status=TaskStatus.PENDING.value,
+                queue_name=target_queue,
             )
             db.add(task)
             db.commit()
             db.refresh(task)
 
-            logger.info(f"Enqueued task {task.id} of type {task_type}")
+            logger.info(
+                "Enqueued task %s of type %s (queue=%s)",
+                task.id,
+                task_type.value,
+                target_queue,
+            )
             return task.id
 
     def dequeue(
-        self, task_type: TaskType | None = None, worker_id: str = "worker"
+        self,
+        task_type: TaskType | None = None,
+        worker_id: str = "worker",
+        queue_name: TaskQueue | str | None = None,
     ) -> dict[str, Any] | None:
         """
         Get the next available task from the queue.
@@ -74,6 +122,7 @@ class QueueService:
         Args:
             task_type: Filter by task type (optional)
             worker_id: ID of the worker claiming the task
+            queue_name: Filter by queue partition (optional)
 
         Returns:
             Task data as dictionary or None if queue is empty
@@ -86,6 +135,10 @@ class QueueService:
 
             if task_type:
                 query = query.filter(ProcessingTask.task_type == task_type.value)
+
+            normalized_queue = self._normalize_queue_name(queue_name)
+            if normalized_queue:
+                query = query.filter(ProcessingTask.queue_name == normalized_queue)
 
             # Order by priority (retry_count) and creation time
             query = query.order_by(ProcessingTask.retry_count, ProcessingTask.created_at)
@@ -107,11 +160,17 @@ class QueueService:
                     "payload": task.payload,
                     "retry_count": task.retry_count,
                     "status": task.status,
+                    "queue_name": task.queue_name,
                     "created_at": task.created_at,
                     "started_at": task.started_at,
                 }
 
-                logger.debug(f"Dequeued task {task_data['id']} for {worker_id}")
+                logger.debug(
+                    "Dequeued task %s for %s (queue=%s)",
+                    task_data["id"],
+                    worker_id,
+                    task_data["queue_name"],
+                )
 
                 return task_data
 
@@ -191,6 +250,31 @@ class QueueService:
             )
 
             stats["pending_by_type"] = {task_type: count for task_type, count in type_counts}
+
+            queue_counts = (
+                db.query(ProcessingTask.queue_name, func.count(ProcessingTask.id))
+                .filter(ProcessingTask.status == TaskStatus.PENDING.value)
+                .group_by(ProcessingTask.queue_name)
+                .all()
+            )
+            stats["pending_by_queue"] = {queue_name: count for queue_name, count in queue_counts}
+
+            queue_type_counts = (
+                db.query(
+                    ProcessingTask.queue_name,
+                    ProcessingTask.task_type,
+                    func.count(ProcessingTask.id),
+                )
+                .filter(ProcessingTask.status == TaskStatus.PENDING.value)
+                .group_by(ProcessingTask.queue_name, ProcessingTask.task_type)
+                .all()
+            )
+            pending_by_queue_type: dict[str, dict[str, int]] = {}
+            for queue_name, task_type, count in queue_type_counts:
+                if queue_name not in pending_by_queue_type:
+                    pending_by_queue_type[queue_name] = {}
+                pending_by_queue_type[queue_name][task_type] = count
+            stats["pending_by_queue_type"] = pending_by_queue_type
 
             # Failed tasks in last hour
             one_hour_ago = datetime.now(UTC) - timedelta(hours=1)

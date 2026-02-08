@@ -21,6 +21,7 @@ class TaskEnvelope(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     retry_count: int = 0
     status: str | None = None
+    queue_name: str | None = None
     created_at: datetime | None = None
     started_at: datetime | None = None
 
@@ -48,6 +49,7 @@ class TaskEnvelope(BaseModel):
             "payload": self.payload,
             "retry_count": self.retry_count,
             "status": self.status,
+            "queue_name": self.queue_name,
             "created_at": self.created_at,
             "started_at": self.started_at,
         }

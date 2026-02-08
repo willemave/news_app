@@ -33,7 +33,7 @@ establish_ssh_connection() {
 #       --force-env                 Force deletion/recreation of the remote .venv
 #       --debug                     Verbose output; enable local and remote tracing
 #       --restart-supervisor        Reread/update and restart programs
-#       --programs "a b c"          Supervisor program names (default: news_app_server news_app_workers news_app_scrapers)
+#       --programs "a b c"          Supervisor program names (default: news_app_server news_app_workers_content news_app_workers_onboarding news_app_workers_chat news_app_scrapers)
 #       --promote-user USER         Run remote promote step as this user (default: root)
 #       --extra-exclude PATTERN     Additional rsync exclude (can repeat)
 #       --dry-run                   Show what would be done by rsync
@@ -52,7 +52,13 @@ DO_INSTALL=false
 PY_VER="3.13"
 DEBUG=false
 RESTART_SUP=false
-PROGRAMS=(news_app_server news_app_workers news_app_scrapers)
+PROGRAMS=(
+  news_app_server
+  news_app_workers_content
+  news_app_workers_onboarding
+  news_app_workers_chat
+  news_app_scrapers
+)
 DRY_RUN=false
 PROMOTE_USER="root"
 ENV_REFRESHED=false

@@ -99,21 +99,36 @@ fi
 
 # Parse command line arguments
 MAX_TASKS=""
-DEBUG_FLAG=""
+DEBUG_ENABLED=false
 STATS_INTERVAL="30"
+CONTENT_WORKERS="${CONTENT_WORKER_PROCS:-2}"
+ONBOARDING_WORKERS="${ONBOARDING_WORKER_PROCS:-1}"
+CHAT_WORKERS="${CHAT_WORKER_PROCS:-1}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --debug)
-            DEBUG_FLAG="--debug"
+            DEBUG_ENABLED=true
             shift
             ;;
         --max-tasks)
-            MAX_TASKS="--max-tasks $2"
+            MAX_TASKS="$2"
             shift 2
             ;;
         --stats-interval)
             STATS_INTERVAL="$2"
+            shift 2
+            ;;
+        --content-workers)
+            CONTENT_WORKERS="$2"
+            shift 2
+            ;;
+        --onboarding-workers)
+            ONBOARDING_WORKERS="$2"
+            shift 2
+            ;;
+        --chat-workers)
+            CHAT_WORKERS="$2"
             shift 2
             ;;
         --no-stats)
@@ -127,6 +142,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --debug              Enable debug logging"
             echo "  --max-tasks N        Process at most N tasks then exit"
             echo "  --stats-interval N   Show stats every N seconds (default: 30)"
+            echo "  --content-workers N  Number of content queue workers (default: 2)"
+            echo "  --onboarding-workers N  Number of onboarding queue workers (default: 1)"
+            echo "  --chat-workers N     Number of chat queue workers (default: 1)"
             echo "  --no-stats           Disable periodic stats display"
             echo "  -h, --help           Show this help message"
             exit 0
@@ -162,24 +180,35 @@ from app.services.queue import get_queue_service
 init_db()
 queue = get_queue_service()
 stats = queue.get_queue_stats()
-pending = sum(stats.get('pending_by_type', {}).values())
-print(f'pending:{pending}')
-print(f'completed:{stats.get(\"completed\", 0)}')
-print(f'failed:{stats.get(\"failed\", 0)}')
+pending_by_queue = stats.get('pending_by_queue', {})
+by_status = stats.get('by_status', {})
+pending_total = sum(pending_by_queue.values())
+print(f'pending_total:{pending_total}')
+print(f'pending_content:{pending_by_queue.get(\"content\", 0)}')
+print(f'pending_onboarding:{pending_by_queue.get(\"onboarding\", 0)}')
+print(f'pending_chat:{pending_by_queue.get(\"chat\", 0)}')
+print(f'completed:{by_status.get(\"completed\", 0)}')
+print(f'failed:{by_status.get(\"failed\", 0)}')
 " 2>/dev/null)
 
 if [ -z "$QUEUE_CHECK" ]; then
     echo "⚠️  Could not check queue status. Proceeding anyway..."
 else
-    PENDING=$(echo "$QUEUE_CHECK" | grep "pending:" | cut -d: -f2)
+    PENDING_TOTAL=$(echo "$QUEUE_CHECK" | grep "pending_total:" | cut -d: -f2)
+    PENDING_CONTENT=$(echo "$QUEUE_CHECK" | grep "pending_content:" | cut -d: -f2)
+    PENDING_ONBOARDING=$(echo "$QUEUE_CHECK" | grep "pending_onboarding:" | cut -d: -f2)
+    PENDING_CHAT=$(echo "$QUEUE_CHECK" | grep "pending_chat:" | cut -d: -f2)
     COMPLETED=$(echo "$QUEUE_CHECK" | grep "completed:" | cut -d: -f2)
     FAILED=$(echo "$QUEUE_CHECK" | grep "failed:" | cut -d: -f2)
     
-    echo "  Pending tasks: $PENDING"
+    echo "  Pending tasks (total): $PENDING_TOTAL"
+    echo "    content: $PENDING_CONTENT"
+    echo "    onboarding: $PENDING_ONBOARDING"
+    echo "    chat: $PENDING_CHAT"
     echo "  Completed: $COMPLETED"
     echo "  Failed: $FAILED"
     
-    if [ "$PENDING" = "0" ]; then
+    if [ "$PENDING_TOTAL" = "0" ]; then
         echo ""
         echo "⚠️  No pending tasks in queue!"
         echo "💡 Run './scripts/start_scrapers.sh' first to populate content"
@@ -187,20 +216,28 @@ else
     fi
 fi
 
-# Build worker command
-WORKER_COMMAND="python scripts/run_workers.py $DEBUG_FLAG $MAX_TASKS --stats-interval $STATS_INTERVAL"
+if ! [[ "$CONTENT_WORKERS" =~ ^[0-9]+$ ]] || ! [[ "$ONBOARDING_WORKERS" =~ ^[0-9]+$ ]] || ! [[ "$CHAT_WORKERS" =~ ^[0-9]+$ ]]; then
+    echo "❌ Worker counts must be non-negative integers"
+    exit 1
+fi
+
+TOTAL_WORKERS=$((CONTENT_WORKERS + ONBOARDING_WORKERS + CHAT_WORKERS))
+if [ "$TOTAL_WORKERS" -le 0 ]; then
+    echo "❌ At least one worker must be enabled"
+    exit 1
+fi
 
 # Show what we're about to run
 echo ""
-echo "🚀 Starting task processing workers..."
+echo "🚀 Starting task processing workers (multi-queue)..."
 
 if [ -n "$MAX_TASKS" ]; then
-    echo "Max tasks: ${MAX_TASKS#--max-tasks }"
+    echo "Max tasks per worker: $MAX_TASKS"
 else
-    echo "Max tasks: unlimited (run until queue is empty or interrupted)"
+    echo "Max tasks: unlimited (run until interrupted)"
 fi
 
-if [ -n "$DEBUG_FLAG" ]; then
+if [ "$DEBUG_ENABLED" = true ]; then
     echo "Debug mode: ENABLED"
 fi
 
@@ -209,18 +246,71 @@ if [ "$STATS_INTERVAL" != "0" ]; then
 else
     echo "Stats display: DISABLED"
 fi
+echo "Worker pools: content=$CONTENT_WORKERS onboarding=$ONBOARDING_WORKERS chat=$CHAT_WORKERS"
 
 echo ""
 echo "Press Ctrl+C to stop gracefully"
 echo ""
 
-# Run the workers
-trap 'echo -e "\n\n✋ Workers stopped by user"; exit 0' INT
-eval $WORKER_COMMAND || {
-    echo ""
-    echo "❌ Workers failed"
-    exit 1
+PIDS=()
+LABELS=()
+
+launch_workers() {
+    local queue="$1"
+    local count="$2"
+    local slot=1
+
+    while [ "$slot" -le "$count" ]; do
+        local cmd=(python scripts/run_workers.py --queue "$queue" --worker-slot "$slot" --stats-interval "$STATS_INTERVAL")
+        if [ "$DEBUG_ENABLED" = true ]; then
+            cmd+=(--debug)
+        fi
+        if [ -n "$MAX_TASKS" ]; then
+            cmd+=(--max-tasks "$MAX_TASKS")
+        fi
+
+        echo "▶️  Launching ${queue} worker ${slot}: ${cmd[*]}"
+        "${cmd[@]}" &
+        PIDS+=("$!")
+        LABELS+=("${queue}#${slot}")
+        slot=$((slot + 1))
+    done
 }
+
+graceful_shutdown() {
+    echo ""
+    echo "✋ Workers stopped by user; terminating child processes..."
+    for pid in "${PIDS[@]}"; do
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    wait
+    exit 0
+}
+
+trap graceful_shutdown INT TERM
+
+launch_workers "content" "$CONTENT_WORKERS"
+launch_workers "onboarding" "$ONBOARDING_WORKERS"
+launch_workers "chat" "$CHAT_WORKERS"
+
+EXIT_CODE=0
+for idx in "${!PIDS[@]}"; do
+    pid="${PIDS[$idx]}"
+    label="${LABELS[$idx]}"
+    if wait "$pid"; then
+        echo "✅ Worker exited cleanly: $label"
+    else
+        code=$?
+        echo "❌ Worker failed: $label (exit=$code)"
+        EXIT_CODE=1
+    fi
+done
+
+if [ "$EXIT_CODE" -ne 0 ]; then
+    echo ""
+    echo "❌ One or more workers failed"
+    exit 1
+fi
 
 echo ""
 echo "✅ Task processing completed!"
@@ -235,8 +325,12 @@ init_db()
 queue = get_queue_service()
 stats = queue.get_queue_stats()
 by_status = stats.get('by_status', {})
-pending = sum(stats.get('pending_by_type', {}).values())
-print(f'  Pending tasks: {pending}')
+pending_by_queue = stats.get('pending_by_queue', {})
+pending = sum(pending_by_queue.values())
+print(f'  Pending tasks (total): {pending}')
+print(f'    content: {pending_by_queue.get(\"content\", 0)}')
+print(f'    onboarding: {pending_by_queue.get(\"onboarding\", 0)}')
+print(f'    chat: {pending_by_queue.get(\"chat\", 0)}')
 print(f'  Completed: {by_status.get(\"completed\", 0)}')
 print(f'  Failed: {by_status.get(\"failed\", 0)}')
 " 2>/dev/null || echo "  Could not retrieve final stats"

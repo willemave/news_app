@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.db import init_db
 from app.core.logging import get_logger, setup_logging
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
-from app.services.queue import get_queue_service
+from app.services.queue import TaskQueue, get_queue_service
 
 logger = get_logger(__name__)
 
@@ -34,6 +34,18 @@ def main():
         default=30,
         help="Show stats every N seconds (default: 30, 0 to disable)",
     )
+    parser.add_argument(
+        "--queue",
+        choices=[queue.value for queue in TaskQueue],
+        default=TaskQueue.CONTENT.value,
+        help="Queue partition to process",
+    )
+    parser.add_argument(
+        "--worker-slot",
+        type=int,
+        default=1,
+        help="Worker slot number for stable worker IDs",
+    )
     args = parser.parse_args()
 
     # Setup logging
@@ -43,6 +55,8 @@ def main():
     logger.info("=" * 60)
     logger.info("Sequential Task Processor")
     logger.info("=" * 60)
+    logger.info("Queue: %s", args.queue)
+    logger.info("Worker slot: %s", args.worker_slot)
 
     # Initialize database
     logger.info("Initializing database...")
@@ -51,7 +65,7 @@ def main():
     # Check initial queue stats
     queue_service = get_queue_service()
     stats = queue_service.get_queue_stats()
-    pending_total = sum(stats.get("pending_by_type", {}).values())
+    pending_total = stats.get("pending_by_queue", {}).get(args.queue, 0)
 
     by_status = stats.get("by_status", {})
     logger.info("Initial queue state:")
@@ -61,9 +75,11 @@ def main():
     logger.info(f"  Completed: {by_status.get('completed', 0)}")
     logger.info(f"  Failed: {by_status.get('failed', 0)}")
 
+    queue_pending_by_type = stats.get("pending_by_queue_type", {}).get(args.queue, {})
+
     if pending_total > 0:
-        logger.info("\nPending tasks by type:")
-        for task_type, count in stats.get("pending_by_type", {}).items():
+        logger.info("\nPending tasks by type (queue=%s):", args.queue)
+        for task_type, count in queue_pending_by_type.items():
             logger.info(f"  {task_type}: {count}")
 
     # Start processor
@@ -73,7 +89,7 @@ def main():
     logger.info("Press Ctrl+C to stop")
 
     logger.debug("Creating SequentialTaskProcessor instance...")
-    processor = SequentialTaskProcessor()
+    processor = SequentialTaskProcessor(queue_name=args.queue, worker_slot=args.worker_slot)
     logger.debug("SequentialTaskProcessor instance created")
 
     # Start stats thread if enabled
@@ -86,10 +102,11 @@ def main():
                 time.sleep(args.stats_interval)
                 if processor.running:
                     stats = queue_service.get_queue_stats()
-                    pending = sum(stats.get("pending_by_type", {}).values())
+                    pending = stats.get("pending_by_queue", {}).get(args.queue, 0)
                     by_status = stats.get("by_status", {})
                     logger.info(
-                        "Queue stats - Pending: %s, Completed: %s, Failed: %s",
+                        "Queue stats (%s) - Pending: %s, Completed: %s, Failed: %s",
+                        args.queue,
                         pending,
                         by_status.get("completed", 0),
                         by_status.get("failed", 0),
@@ -109,10 +126,11 @@ def main():
         time.sleep(1)  # Let workers finish
         final_stats = queue_service.get_queue_stats()
         final_by_status = final_stats.get("by_status", {})
+        final_pending = final_stats.get("pending_by_queue", {}).get(args.queue, 0)
         logger.info("\nFinal queue stats:")
         logger.info(f"  Completed: {final_by_status.get('completed', 0)}")
         logger.info(f"  Failed: {final_by_status.get('failed', 0)}")
-        logger.info(f"  Remaining: {sum(final_stats.get('pending_by_type', {}).values())}")
+        logger.info(f"  Remaining in {args.queue}: {final_pending}")
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
         return 1
