@@ -142,6 +142,8 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
             summary = summary_data.get("overview", "")
         elif summary_kind == "long_interleaved":
             summary = summary_data.get("hook") or summary_data.get("takeaway", "")
+        elif summary_kind == "long_editorial_narrative":
+            summary = summary_data.get("editorial_narrative", "")
         elif summary_kind == "short_news_digest" or "summary" in summary_data:
             summary = summary_data.get("summary", "")
 
@@ -163,6 +165,11 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
                 for insight in insights[:5]:
                     if isinstance(insight, dict):
                         key_points.append(insight.get("insight", ""))
+            elif summary_kind == "long_editorial_narrative":
+                editorial_points = summary_data.get("key_points", [])
+                for point in editorial_points[:5]:
+                    if isinstance(point, dict):
+                        key_points.append(point.get("point", ""))
 
         # Get quotes (for articles with StructuredSummary)
         raw_quotes = summary_data.get("quotes", [])

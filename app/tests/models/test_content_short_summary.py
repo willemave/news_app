@@ -10,6 +10,10 @@ from app.models.schema import Content
         ({"hook": "Interleaved hook"}, "Interleaved hook"),
         ({"summary": "Daily digest"}, "Daily digest"),
         ({"points": [{"text": "First bullet point summary"}]}, "First bullet point summary"),
+        (
+            {"editorial_narrative": "Editorial first paragraph.\n\nEditorial second paragraph."},
+            "Editorial first paragraph.",
+        ),
         ("Plain summary", "Plain summary"),
     ],
 )

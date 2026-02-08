@@ -11,6 +11,7 @@ from app.models.metadata import (
     BulletedSummary,
     ContentQuote,
     ContentType,
+    EditorialNarrativeSummary,
     InterleavedSummary,
     InterleavedSummaryV2,
     NewsSummary,
@@ -52,9 +53,17 @@ def _finalize_summary(
     | InterleavedSummary
     | InterleavedSummaryV2
     | BulletedSummary
+    | EditorialNarrativeSummary
     | NewsSummary,
     content_type: str | ContentType,
-) -> StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | BulletedSummary | NewsSummary:
+) -> (
+    StructuredSummary
+    | InterleavedSummary
+    | InterleavedSummaryV2
+    | BulletedSummary
+    | EditorialNarrativeSummary
+    | NewsSummary
+):
     """Apply lightweight cleanup to keep summaries consistent."""
     if isinstance(summary, StructuredSummary) and summary.quotes:
         filtered: list[ContentQuote] = [
@@ -66,6 +75,10 @@ def _finalize_summary(
             quote for quote in summary.quotes if len((quote.text or "").strip()) >= 10
         ]
         summary.quotes = filtered_quotes
+    if isinstance(summary, EditorialNarrativeSummary) and summary.quotes:
+        summary.quotes = [
+            quote for quote in summary.quotes if len((quote.text or "").strip()) >= 10
+        ]
 
     return summary
 
@@ -76,7 +89,7 @@ def _normalize_content_type(content_type: str | ContentType) -> str:
 
 def _prompt_content_type(content_type: str) -> str:
     if content_type in {"article", "podcast"}:
-        return "long_bullets"
+        return "editorial_narrative"
     if content_type == "news":
         return "news_digest"
     return content_type
@@ -119,12 +132,13 @@ def _clip_payload(payload: str, max_chars: int) -> tuple[str, bool]:
 
 
 DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
-    "news": "openai:gpt-5-mini",
-    "news_digest": "openai:gpt-5-mini",
-    "article": "anthropic:claude-haiku-4-5-20251001",
-    "podcast": "anthropic:claude-haiku-4-5-20251001",
-    "interleaved": "anthropic:claude-haiku-4-5-20251001",
-    "long_bullets": "anthropic:claude-haiku-4-5-20251001",
+    "news": "anthropic:claude-haiku-4-5-20251001",
+    "news_digest": "anthropic:claude-haiku-4-5-20251001",
+    "article": "google-gla:gemini-3-pro-preview",
+    "podcast": "google-gla:gemini-3-pro-preview",
+    "interleaved": "google-gla:gemini-3-pro-preview",
+    "long_bullets": "google-gla:gemini-3-pro-preview",
+    "editorial_narrative": "google-gla:gemini-3-pro-preview",
 }
 
 FALLBACK_SUMMARIZATION_MODEL = "google-gla:gemini-2.5-flash-preview-09-2025"
@@ -162,6 +176,7 @@ class ContentSummarizer:
         | InterleavedSummary
         | InterleavedSummaryV2
         | BulletedSummary
+        | EditorialNarrativeSummary
         | NewsSummary
         | None
     ):
@@ -204,6 +219,7 @@ class ContentSummarizer:
         | InterleavedSummary
         | InterleavedSummaryV2
         | BulletedSummary
+        | EditorialNarrativeSummary
         | NewsSummary
         | None
     ):
@@ -238,6 +254,7 @@ def summarize_content(
     | InterleavedSummary
     | InterleavedSummaryV2
     | BulletedSummary
+    | EditorialNarrativeSummary
     | NewsSummary
     | None
 ):

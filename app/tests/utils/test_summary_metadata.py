@@ -1,5 +1,6 @@
 from app.constants import (
     SUMMARY_KIND_LONG_BULLETS,
+    SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
     SUMMARY_KIND_SHORT_NEWS_DIGEST,
@@ -37,6 +38,15 @@ def test_infer_summary_kind_version_bullets() -> None:
     summary = {"points": [{"text": "Point"}]}
     result = infer_summary_kind_version("article", summary, None, None)
     assert result == (SUMMARY_KIND_LONG_BULLETS, SUMMARY_VERSION_V1)
+
+
+def test_infer_summary_kind_version_editorial_narrative() -> None:
+    summary = {
+        "editorial_narrative": "Narrative paragraph with enough substance.",
+        "key_points": [{"point": "A concrete point"}],
+    }
+    result = infer_summary_kind_version("article", summary, None, None)
+    assert result == (SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE, SUMMARY_VERSION_V1)
 
 
 def test_infer_summary_kind_version_news_content_type_defaults() -> None:

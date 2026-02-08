@@ -6,6 +6,7 @@ from typing import Any
 
 from app.constants import (
     SUMMARY_KIND_LONG_BULLETS,
+    SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
     SUMMARY_KIND_SHORT_NEWS_DIGEST,
@@ -32,6 +33,7 @@ def infer_summary_kind_version(
         if summary_kind in {
             SUMMARY_KIND_LONG_STRUCTURED,
             SUMMARY_KIND_LONG_BULLETS,
+            SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
             SUMMARY_KIND_SHORT_NEWS_DIGEST,
         }:
             return summary_kind, SUMMARY_VERSION_V1
@@ -51,6 +53,8 @@ def infer_summary_kind_version(
         return SUMMARY_KIND_LONG_INTERLEAVED, SUMMARY_VERSION_V1
     if "points" in summary:
         return SUMMARY_KIND_LONG_BULLETS, SUMMARY_VERSION_V1
+    if "editorial_narrative" in summary and "key_points" in summary:
+        return SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE, SUMMARY_VERSION_V1
     if "bullet_points" in summary or "overview" in summary:
         return SUMMARY_KIND_LONG_STRUCTURED, SUMMARY_VERSION_V1
 

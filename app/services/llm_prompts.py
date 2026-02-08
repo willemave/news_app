@@ -16,7 +16,7 @@ def generate_summary_prompt(
     - User message template is for variable content (not cached)
 
     Args:
-        content_type: Type of content ("article", "podcast", "news_digest", "hackernews", "interleaved", "long_bullets")
+        content_type: Type of content ("article", "podcast", "news_digest", "hackernews", "interleaved", "long_bullets", "editorial_narrative")
         max_bullet_points: Maximum number of bullet points to generate
         max_quotes: Maximum number of quotes to extract
 
@@ -26,7 +26,7 @@ def generate_summary_prompt(
     """
     normalized_type = content_type.lower()
     if normalized_type in {"article", "podcast"}:
-        normalized_type = "long_bullets"
+        normalized_type = "editorial_narrative"
     if normalized_type == "news":
         normalized_type = "news_digest"
     content_type = normalized_type
@@ -99,6 +99,45 @@ Guidelines:
 
         user_message = "Article & Aggregator Context:\n\n{content}"
 
+    elif content_type == "editorial_narrative":
+        system_message = f"""You are an expert editor writing an information-dense narrative summary.
+
+Return a JSON object with exactly these fields:
+{{
+  "title": "Descriptive title (max 110 characters)",
+  "editorial_narrative": "2-4 compact paragraphs with a clear thesis and factual synthesis",
+  "quotes": [
+    {{
+      "text": "Direct quote from the content (min 10 chars)",
+      "attribution": "Who said it (optional)"
+    }}
+  ],
+  "key_points": [
+    {{
+      "point": "Concrete key point"
+    }}
+  ],
+  "classification": "to_read" | "skip",
+  "summarization_date": "ISO 8601 timestamp"
+}}
+
+Guidelines:
+- Start the first paragraph with the core thesis or the most consequential takeaway.
+- Keep the narrative information-dense: include named entities, numbers, dates, constraints, and implications.
+- Avoid filler, repetition, and generic framing.
+- Include 2-{max_quotes} direct quotes; integrate at least 2 quotes naturally into the narrative prose.
+- key_points: include 4-{max_bullet_points} non-overlapping points.
+- Each key point must be specific and evidence-oriented, not vague advice.
+- There may be technical terms in the content; preserve exact spelling.
+- Never include markdown or any fields outside this schema.
+
+Classification Guidelines:
+- Set classification to "skip" if the content lacks depth, evidence, or practical signal.
+- Set classification to "to_read" if the content delivers substantial insight, original reporting, or high-signal analysis.
+"""
+
+        user_message = "Content:\n\n{content}"
+
     elif content_type == "long_bullets":
         system_message = f"""You are an expert content analyst. Produce an exhaustive bullet-first summary
 where each bullet can expand into a brief detail and supporting quotes.
@@ -143,6 +182,44 @@ Classification Guidelines:
   * Provides technical or specialized knowledge
   * Offers original research or investigation
   * Has educational or informative value"""
+
+        user_message = "Content:\n\n{content}"
+
+    elif content_type == "structured":
+        system_message = f"""You are an expert content analyst. Return a structured JSON summary.
+
+Return a JSON object with exactly these fields:
+{{
+  "title": "Descriptive title (max 110 characters)",
+  "overview": "Brief overview paragraph (min 50 chars)",
+  "bullet_points": [
+    {{
+      "text": "Concrete key point",
+      "category": "optional category label"
+    }}
+  ],
+  "quotes": [
+    {{
+      "text": "Direct quote from the content (min 10 chars)",
+      "attribution": "Who said it (optional)",
+      "context": "Context if needed (optional)"
+    }}
+  ],
+  "topics": ["topic1", "topic2"],
+  "questions": ["question1"],
+  "counter_arguments": ["counter argument 1"],
+  "classification": "to_read" | "skip",
+  "summarization_date": "ISO 8601 timestamp",
+  "full_markdown": "Readable markdown form of the source"
+}}
+
+Guidelines:
+- bullet_points: include 6-{max_bullet_points} high-signal points.
+- quotes: include up to {max_quotes} non-trivial quotes.
+- Keep details specific with names, numbers, and implications.
+- There may be technical terms in the content, please don't make any spelling errors.
+- Never include markdown outside JSON or any extra fields.
+"""
 
         user_message = "Content:\n\n{content}"
 

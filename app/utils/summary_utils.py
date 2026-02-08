@@ -24,6 +24,12 @@ def extract_short_summary(summary: dict[str, Any] | str | None) -> str | None:
     if summary.get("summary_type") == "news_digest":
         return summary.get("summary") or summary.get("overview")
 
+    if summary.get("editorial_narrative"):
+        narrative = summary.get("editorial_narrative")
+        if isinstance(narrative, str):
+            first_paragraph = narrative.split("\n\n", 1)[0].strip()
+            return first_paragraph or narrative
+
     points = summary.get("points")
     if isinstance(points, list) and points:
         first_point = points[0] if isinstance(points[0], dict) else None

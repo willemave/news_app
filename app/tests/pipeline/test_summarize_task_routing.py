@@ -3,7 +3,8 @@
 from contextlib import contextmanager
 from unittest.mock import Mock
 
-from app.models.metadata import NewsSummary
+from app.constants import SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE, SUMMARY_VERSION_V1
+from app.models.metadata import EditorialNarrativeSummary, NewsSummary
 from app.models.schema import Content
 from app.pipeline.handlers.summarize import SummarizeHandler
 from app.pipeline.task_context import TaskContext
@@ -38,7 +39,26 @@ class DummySummarizer:
                 key_points=["Point 1"],
                 summary="Overview",
             )
-        return {"title": "Article Title", "overview": "Summary", "bullet_points": []}
+        return EditorialNarrativeSummary(
+            title="Article Title",
+            editorial_narrative=(
+                "First paragraph with concrete details, entities, metrics, and a clear thesis "
+                "about why execution quality, governance controls, and measurable impact matter "
+                "more than isolated benchmark gains.\n\n"
+                "Second paragraph with implications, constraints, and evidence-driven guidance "
+                "that outlines near-term tradeoffs, implementation risks, and practical actions."
+            ),
+            quotes=[
+                {"text": "Quote one with enough detail for validation.", "attribution": "Source A"},
+                {"text": "Quote two with enough detail for validation.", "attribution": "Source B"},
+            ],
+            key_points=[
+                {"point": "Key point one with concrete detail and consequence."},
+                {"point": "Key point two with concrete detail and consequence."},
+                {"point": "Key point three with concrete detail and consequence."},
+                {"point": "Key point four with concrete detail and consequence."},
+            ],
+        )
 
 
 def _create_content(db_session, content_type: str) -> Content:
@@ -102,6 +122,9 @@ def test_summarize_article_enqueues_image(db_session) -> None:
         task_type=TaskType.GENERATE_IMAGE,
         content_id=content.id,
     )
+    db_session.refresh(content)
+    assert content.content_metadata["summary_kind"] == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
+    assert content.content_metadata["summary_version"] == SUMMARY_VERSION_V1
 
 
 def test_summarize_article_falls_back_to_content_to_summarize(db_session) -> None:

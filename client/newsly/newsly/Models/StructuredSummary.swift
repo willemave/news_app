@@ -140,3 +140,36 @@ struct BulletedSummary: Codable {
         case summarizationDate = "summarization_date"
     }
 }
+
+// MARK: - Editorial Narrative Summary v1
+
+struct EditorialKeyPoint: Codable, Identifiable {
+    let point: String
+
+    var id: String { point }
+}
+
+struct EditorialNarrativeSummary: Codable {
+    let title: String?
+    let editorialNarrative: String
+    let quotes: [Quote]
+    let keyPoints: [EditorialKeyPoint]
+    let classification: String?
+    let summarizationDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case editorialNarrative = "editorial_narrative"
+        case quotes
+        case keyPoints = "key_points"
+        case classification
+        case summarizationDate = "summarization_date"
+    }
+
+    var narrativeParagraphs: [String] {
+        editorialNarrative
+            .split(separator: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+}

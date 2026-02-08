@@ -134,8 +134,20 @@ struct ContentDetailView: View {
                             .padding(.top, 12)
                         }
 
-                        // Summary Section (bulleted v1, interleaved v2, interleaved v1, or structured)
-                        if let bulletedSummary = content.bulletedSummary {
+                        // Summary Section (editorial v1, bulleted v1, interleaved v2, interleaved v1, or structured)
+                        if let editorialSummary = content.editorialSummary {
+                            EditorialNarrativeSummaryView(summary: editorialSummary, contentId: content.id)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.summaryTopPadding)
+                                .onAppear {
+                                    logSummarySection(
+                                        content: content,
+                                        section: "editorial_v1",
+                                        bulletPointCount: editorialSummary.keyPoints.count,
+                                        insightCount: 0
+                                    )
+                                }
+                        } else if let bulletedSummary = content.bulletedSummary {
                             BulletedSummaryView(summary: bulletedSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.summaryTopPadding)
@@ -1313,8 +1325,9 @@ struct ContentDetailView: View {
         let interleavedV1Count = content.interleavedSummary?.insights.count ?? 0
         let interleavedV2Count = content.interleavedSummaryV2?.keyPoints.count ?? 0
         let bulletedCount = content.bulletedSummary?.points.count ?? 0
+        let editorialCount = content.editorialSummary?.keyPoints.count ?? 0
         detailLogger.info(
-            "[ContentDetailView] summary snapshot (\(context)) id=\(content.id) type=\(content.contentType, privacy: .public) bulleted_v1=\(content.bulletedSummary != nil) structured=\(content.structuredSummary != nil) interleaved_v1=\(content.interleavedSummary != nil) interleaved_v2=\(content.interleavedSummaryV2 != nil) bulleted_points=\(bulletedCount) structured_points=\(structuredCount) interleaved_insights=\(interleavedV1Count) interleaved_key_points=\(interleavedV2Count) raw_bullets=\(content.bulletPoints.count)"
+            "[ContentDetailView] summary snapshot (\(context)) id=\(content.id) type=\(content.contentType, privacy: .public) editorial_v1=\(content.editorialSummary != nil) bulleted_v1=\(content.bulletedSummary != nil) structured=\(content.structuredSummary != nil) interleaved_v1=\(content.interleavedSummary != nil) interleaved_v2=\(content.interleavedSummaryV2 != nil) editorial_key_points=\(editorialCount) bulleted_points=\(bulletedCount) structured_points=\(structuredCount) interleaved_insights=\(interleavedV1Count) interleaved_key_points=\(interleavedV2Count) raw_bullets=\(content.bulletPoints.count)"
         )
     }
 

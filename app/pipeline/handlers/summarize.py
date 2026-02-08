@@ -7,6 +7,7 @@ from typing import Any
 
 from app.constants import (
     SUMMARY_KIND_LONG_BULLETS,
+    SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
     SUMMARY_KIND_SHORT_NEWS_DIGEST,
@@ -18,6 +19,7 @@ from app.models.metadata import (
     BulletedSummary,
     ContentStatus,
     ContentType,
+    EditorialNarrativeSummary,
     InterleavedSummary,
     InterleavedSummaryV2,
     NewsSummary,
@@ -262,13 +264,12 @@ class SummarizeHandler:
 
                 if content.content_type == "news":
                     summarization_type = "news_digest"
-                    provider_override = "openai"
                     max_bullet_points = 4
                     max_quotes = 0
                 elif content.content_type in ("article", "podcast"):
-                    summarization_type = "long_bullets"
-                    max_bullet_points = 30
-                    max_quotes = 3
+                    summarization_type = "editorial_narrative"
+                    max_bullet_points = 10
+                    max_quotes = 4
 
                 logger.info(
                     "Calling LLM for content %s: provider=%s, type=%s, "
@@ -326,6 +327,9 @@ class SummarizeHandler:
 
                     if isinstance(summary, NewsSummary):
                         summary_kind = SUMMARY_KIND_SHORT_NEWS_DIGEST
+                        summary_version = SUMMARY_VERSION_V1
+                    elif isinstance(summary, EditorialNarrativeSummary):
+                        summary_kind = SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
                         summary_version = SUMMARY_VERSION_V1
                     elif isinstance(summary, BulletedSummary):
                         summary_kind = SUMMARY_KIND_LONG_BULLETS

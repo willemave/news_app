@@ -14,7 +14,7 @@ from app.models.metadata import (
 )
 from app.services.llm_agents import get_summarization_agent
 from app.services.llm_prompts import generate_summary_prompt
-from app.services.llm_summarization import SummarizationRequest
+from app.services.llm_summarization import DEFAULT_SUMMARIZATION_MODELS, SummarizationRequest
 
 
 class TestInterleavedInsightModel:
@@ -323,20 +323,33 @@ class TestGenerateSummaryPrompt:
         assert "takeaway" in system_prompt.lower()
         assert "to_read" in system_prompt.lower() or "skip" in system_prompt.lower()
 
-    def test_article_prompt_matches_long_bullets(self):
-        """Article prompt maps to long bullets prompt."""
-        long_bullets_system, _ = generate_summary_prompt(
-            content_type="long_bullets",
-            max_bullet_points=20,
-            max_quotes=3,
+    def test_editorial_narrative_prompt_contains_guidelines(self):
+        """Editorial narrative prompt includes narrative/quote/key-point guidance."""
+        system_prompt, _ = generate_summary_prompt(
+            content_type="editorial_narrative",
+            max_bullet_points=10,
+            max_quotes=4,
+        )
+
+        assert "editorial_narrative" in system_prompt
+        assert "key_points" in system_prompt
+        assert "quotes" in system_prompt
+        assert "information-dense" in system_prompt.lower()
+
+    def test_article_prompt_matches_editorial_narrative(self):
+        """Article prompt maps to editorial narrative prompt."""
+        editorial_system, _ = generate_summary_prompt(
+            content_type="editorial_narrative",
+            max_bullet_points=10,
+            max_quotes=4,
         )
         article_system, _ = generate_summary_prompt(
             content_type="article",
-            max_bullet_points=20,
-            max_quotes=3,
+            max_bullet_points=10,
+            max_quotes=4,
         )
 
-        assert long_bullets_system == article_system
+        assert editorial_system == article_system
 
 
 class TestGetSummarizationAgent:
@@ -414,6 +427,25 @@ class TestSummarizationRequest:
         assert request.max_bullet_points == 6
         assert request.max_quotes == 8
         assert request.content_id is None
+
+
+class TestDefaultSummarizationModels:
+    """Tests for provider defaults in summarization routing."""
+
+    def test_article_and_podcast_default_to_gemini_3_pro(self):
+        assert DEFAULT_SUMMARIZATION_MODELS["article"] == "google-gla:gemini-3-pro-preview"
+        assert DEFAULT_SUMMARIZATION_MODELS["podcast"] == "google-gla:gemini-3-pro-preview"
+        assert (
+            DEFAULT_SUMMARIZATION_MODELS["editorial_narrative"]
+            == "google-gla:gemini-3-pro-preview"
+        )
+
+    def test_news_defaults_to_haiku_4_5(self):
+        assert DEFAULT_SUMMARIZATION_MODELS["news"] == "anthropic:claude-haiku-4-5-20251001"
+        assert (
+            DEFAULT_SUMMARIZATION_MODELS["news_digest"]
+            == "anthropic:claude-haiku-4-5-20251001"
+        )
 
 
 class TestBulletedSummaryModel:

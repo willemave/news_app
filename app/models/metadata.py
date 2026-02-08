@@ -20,6 +20,7 @@ from pydantic import (
 
 from app.constants import (
     SUMMARY_KIND_LONG_BULLETS,
+    SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
     SUMMARY_KIND_SHORT_NEWS_DIGEST,
@@ -289,6 +290,80 @@ class BulletedSummary(BaseModel):
     summarization_date: datetime = Field(default_factory=datetime.utcnow)
 
 
+class EditorialQuote(BaseModel):
+    """Quote snippet in editorial narrative summaries."""
+
+    text: str = Field(..., min_length=10, max_length=5000)
+    attribution: str | None = Field(
+        None, description="Who said the quote - author, speaker, or publication (optional)"
+    )
+
+
+class EditorialKeyPoint(BaseModel):
+    """Key point entry in editorial narrative summaries."""
+
+    point: str = Field(..., min_length=10, max_length=500)
+
+
+class EditorialNarrativeSummary(BaseModel):
+    """Narrative-first summary format with explicit key points and quotes."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "AI Strategy Shifts from Tools to Operating Model",
+                "editorial_narrative": (
+                    "Enterprises are no longer treating AI as a pilot project. They are "
+                    "restructuring workflows around model-assisted decision loops, with "
+                    "procurement and security teams setting constraints early.\n\n"
+                    "The article argues that performance gains alone are no longer enough; "
+                    "organizations now prioritize reliability, auditability, and predictable "
+                    "cost envelopes across teams."
+                ),
+                "quotes": [
+                    {
+                        "text": "We can't run five incompatible AI stacks in one company.",
+                        "attribution": "Security lead",
+                    },
+                    {
+                        "text": "The biggest shift is governance moving upstream.",
+                        "attribution": "Platform engineering manager",
+                    },
+                ],
+                "key_points": [
+                    {"point": "Budget owners are pushing for usage transparency by workflow."},
+                    {"point": "Security reviews now happen before broad internal rollouts."},
+                    {"point": "Tool consolidation is reducing duplicated agent infrastructure."},
+                    {"point": "Teams that enforce evaluation gates ship faster over time."},
+                ],
+                "classification": "to_read",
+                "summarization_date": "2026-02-08T10:30:00Z",
+            }
+        }
+    )
+
+    title: str = Field(
+        ..., min_length=5, max_length=1000, description="Descriptive title for the content"
+    )
+    editorial_narrative: str = Field(
+        ...,
+        min_length=180,
+        description="Narrative summary (2-4 information-dense paragraphs).",
+    )
+    quotes: list[EditorialQuote] = Field(
+        ..., min_items=2, max_items=6, description="2-6 notable direct quotes"
+    )
+    key_points: list[EditorialKeyPoint] = Field(
+        ..., min_items=4, max_items=12, description="4-12 concrete key points"
+    )
+    classification: str = Field(
+        default="to_read",
+        pattern="^(to_read|skip)$",
+        description="Content classification: 'to_read' or 'skip'",
+    )
+    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+
+
 class StructuredSummary(BaseModel):
     """Structured summary with bullet points and quotes."""
 
@@ -438,7 +513,12 @@ class NewsAggregatorMetadata(BaseModel):
 
 
 SummaryPayload = (
-    StructuredSummary | InterleavedSummary | InterleavedSummaryV2 | BulletedSummary | NewsSummary
+    StructuredSummary
+    | InterleavedSummary
+    | InterleavedSummaryV2
+    | BulletedSummary
+    | EditorialNarrativeSummary
+    | NewsSummary
 )
 
 
@@ -456,6 +536,10 @@ def _parse_summary_payload(
     if summary_kind == SUMMARY_KIND_LONG_BULLETS:
         if summary_version == SUMMARY_VERSION_V1:
             return BulletedSummary.model_validate(value)
+        raise ValueError(f"Unsupported summary version: {summary_version}")
+    if summary_kind == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE:
+        if summary_version == SUMMARY_VERSION_V1:
+            return EditorialNarrativeSummary.model_validate(value)
         raise ValueError(f"Unsupported summary version: {summary_version}")
     if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
         return StructuredSummary.model_validate(value)
@@ -498,6 +582,7 @@ class BaseContentMetadata(BaseModel):
                 InterleavedSummary,
                 InterleavedSummaryV2,
                 BulletedSummary,
+                EditorialNarrativeSummary,
                 NewsSummary,
             ),
         ):
@@ -512,7 +597,7 @@ class BaseContentMetadata(BaseModel):
             )
         raise ValueError(
             "Summary must be StructuredSummary, InterleavedSummary, InterleavedSummaryV2, "
-            "BulletedSummary, NewsSummary, or dict"
+            "BulletedSummary, EditorialNarrativeSummary, NewsSummary, or dict"
         )
 
 
@@ -808,11 +893,14 @@ class ContentData(BaseModel):
             SUMMARY_KIND_LONG_STRUCTURED,
             SUMMARY_KIND_LONG_INTERLEAVED,
             SUMMARY_KIND_LONG_BULLETS,
+            SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
         }:
             return summary_data
         # Legacy fallback: infer by payload shape
         if isinstance(summary_data, dict) and (
-            "bullet_points" in summary_data or "insights" in summary_data
+            "bullet_points" in summary_data
+            or "insights" in summary_data
+            or "editorial_narrative" in summary_data
         ):
             return summary_data
         return None
@@ -851,6 +939,14 @@ class ContentData(BaseModel):
                     {"text": point.get("text", ""), "category": "key_point"}
                     for point in points
                     if isinstance(point, dict) and point.get("text")
+                ]
+        if summary_kind == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE:
+            key_points = self.structured_summary.get("key_points", [])
+            if isinstance(key_points, list):
+                return [
+                    {"text": point.get("point", ""), "category": "key_point"}
+                    for point in key_points
+                    if isinstance(point, dict) and point.get("point")
                 ]
 
         return []
@@ -906,6 +1002,17 @@ class ContentData(BaseModel):
                                 }
                             )
                 return flattened
+        if summary_kind == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE:
+            raw_quotes = self.structured_summary.get("quotes", [])
+            if isinstance(raw_quotes, list):
+                return [
+                    {
+                        "text": quote.get("text", ""),
+                        "context": quote.get("attribution", ""),
+                    }
+                    for quote in raw_quotes
+                    if isinstance(quote, dict) and quote.get("text")
+                ]
 
         return []
 
@@ -944,6 +1051,8 @@ class ContentData(BaseModel):
                             topics.append(topic)
                     return topics
             if summary_kind == SUMMARY_KIND_LONG_BULLETS:
+                return []
+            if summary_kind == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE:
                 return []
 
         return self.metadata.get("topics", [])
