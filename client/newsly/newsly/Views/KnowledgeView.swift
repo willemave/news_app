@@ -289,7 +289,9 @@ struct KnowledgeView: View {
 
     private func deleteSessions(at offsets: IndexSet, from sessions: [ChatSessionSummary]) {
         let idsToDelete = offsets.map { sessions[$0].id }
-        viewModel.sessions.removeAll { idsToDelete.contains($0.id) }
+        Task {
+            await viewModel.deleteSessions(ids: idsToDelete)
+        }
     }
 
     private var chatSearchBarRow: some View {
@@ -578,6 +580,17 @@ struct NewChatSheet: View {
                     .foregroundColor(.red)
                 }
             }
+            .padding(.horizontal, 20)
+
+            HStack(spacing: 6) {
+                Image(systemName: "star")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+                Text("Favorite articles to chat about them with full context.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.top, 10)
             .padding(.horizontal, 20)
 
             Spacer()

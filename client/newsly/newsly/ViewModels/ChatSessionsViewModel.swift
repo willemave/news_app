@@ -49,8 +49,21 @@ class ChatSessionsViewModel: ObservableObject {
         }
     }
 
-    func deleteSession(at indexSet: IndexSet) {
-        // Note: Backend doesn't support deletion yet, just archive locally
-        sessions.remove(atOffsets: indexSet)
+    func deleteSessions(ids: [Int]) async {
+        guard !ids.isEmpty else { return }
+
+        errorMessage = nil
+        let previousSessions = sessions
+        sessions.removeAll { ids.contains($0.id) }
+
+        do {
+            for id in ids {
+                try await chatService.deleteSession(sessionId: id)
+            }
+        } catch {
+            sessions = previousSessions
+            errorMessage = error.localizedDescription
+            await loadSessions()
+        }
     }
 }

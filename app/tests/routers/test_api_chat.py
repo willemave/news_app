@@ -259,6 +259,56 @@ def test_get_chat_session_wrong_user(
     assert response.status_code == 403
 
 
+def test_delete_chat_session_archives_session(
+    client: TestClient, db_session: Session, test_user
+) -> None:
+    """Test deleting a chat session archives it and hides it from list endpoint."""
+    session = ChatSession(
+        user_id=test_user.id,
+        title="Session to delete",
+        llm_model="openai:gpt-5.1",
+        llm_provider="openai",
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    response = client.delete(f"/api/content/chat/sessions/{session.id}")
+    assert response.status_code == 204
+
+    db_session.refresh(session)
+    assert session.is_archived is True
+
+    list_response = client.get("/api/content/chat/sessions")
+    assert list_response.status_code == 200
+    assert session.id not in {item["id"] for item in list_response.json()}
+
+
+def test_delete_chat_session_not_found(client: TestClient) -> None:
+    """Test deleting a non-existent chat session."""
+    response = client.delete("/api/content/chat/sessions/99999")
+    assert response.status_code == 404
+
+
+def test_delete_chat_session_wrong_user(client: TestClient, db_session: Session) -> None:
+    """Test that users cannot delete other users' sessions."""
+    session = ChatSession(
+        user_id=99999,  # Different user
+        title="Other User Session",
+        llm_model="openai:gpt-5.1",
+        llm_provider="openai",
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    response = client.delete(f"/api/content/chat/sessions/{session.id}")
+    assert response.status_code == 403
+
+    db_session.refresh(session)
+    assert session.is_archived is False
+
+
 def test_different_llm_providers(
     client: TestClient, db_session: Session
 ) -> None:

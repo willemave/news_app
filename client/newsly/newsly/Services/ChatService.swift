@@ -132,6 +132,14 @@ class ChatService {
         )
     }
 
+    /// Soft-delete (archive) a chat session
+    func deleteSession(sessionId: Int) async throws {
+        try await client.requestVoid(
+            APIEndpoints.chatSession(id: sessionId),
+            method: "DELETE"
+        )
+    }
+
     // MARK: - Messaging
 
     /// Send a message and start async processing

@@ -3,7 +3,16 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    status,
+)
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -454,6 +463,42 @@ async def get_session(
 
     session_summary = _session_to_summary(session, article_title, article_url)
     return ChatSessionDetailDto(session=session_summary, messages=messages)
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete chat session",
+    description="Soft-delete a chat session for the current user by archiving it.",
+)
+async def delete_session(
+    session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    """Archive a chat session for the current user."""
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this session")
+
+    if not session.is_archived:
+        session.is_archived = True
+        session.updated_at = datetime.utcnow()
+        db.commit()
+
+    log_event(
+        event_type="chat",
+        event_name="session_deleted",
+        status="completed",
+        user_id=current_user.id,
+        session_id=session.id,
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
