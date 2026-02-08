@@ -100,3 +100,44 @@ def test_list_filters_articles_without_keypoints_or_image(
             ready_image.unlink()
         if missing_summary_image.exists():
             missing_summary_image.unlink()
+
+
+def test_list_hides_news_images_even_when_metadata_has_urls(
+    client,
+    db_session,
+    test_user,
+) -> None:
+    news_item = Content(
+        url="https://example.com/news-item",
+        content_type=ContentType.NEWS.value,
+        status=ContentStatus.COMPLETED.value,
+        title="News Item",
+        content_metadata={
+            "summary": {
+                "title": "News Item",
+                "summary": "Short news summary",
+                "classification": "to_read",
+            },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
+            "article": {"url": "https://example.com/news-item"},
+            "image_url": "https://example.com/screenshot.png",
+            "thumbnail_url": "https://example.com/screenshot-thumb.png",
+            "image_generated_at": "2026-01-01T00:00:00Z",
+        },
+    )
+
+    db_session.add(news_item)
+    db_session.commit()
+    db_session.refresh(news_item)
+
+    _add_inbox_status(db_session, test_user.id, news_item.id)
+    db_session.commit()
+
+    response = client.get("/api/content/", params={"content_type": "news"})
+    assert response.status_code == 200
+    payload = response.json()
+
+    returned_item = next(item for item in payload["contents"] if item["id"] == news_item.id)
+    assert returned_item["image_url"] is None
+    assert returned_item["thumbnail_url"] is None

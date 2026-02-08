@@ -18,6 +18,9 @@ def resolve_image_urls(domain_content: ContentData) -> tuple[str | None, str | N
     """Resolve image URLs without filesystem checks."""
     metadata = domain_content.metadata or {}
 
+    if domain_content.content_type == ContentType.NEWS:
+        return None, None
+
     if domain_content.content_type == ContentType.PODCAST:
         thumbnail = metadata.get("thumbnail_url")
         if thumbnail:

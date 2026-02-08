@@ -12,6 +12,7 @@ struct LongFormView: View {
     let onSelect: (ContentDetailRoute) -> Void
 
     @ObservedObject private var settings = AppSettings.shared
+    @StateObject private var processingCountService = ProcessingCountService.shared
     @State private var showMarkAllConfirmation = false
     @State private var isProcessingBulk = false
 
@@ -26,16 +27,7 @@ struct LongFormView: View {
                     }
                 } else {
                     if viewModel.currentItems().isEmpty {
-                        VStack(spacing: 16) {
-                            Spacer()
-                            Image(systemName: "doc.richtext")
-                                .font(.largeTitle)
-                                .foregroundColor(.secondary)
-                            Text("No long-form content found.")
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        longFormEmptyState
                     } else {
                         List {
                             ForEach(viewModel.currentItems(), id: \.id) { content in
@@ -100,6 +92,7 @@ struct LongFormView: View {
                         .navigationBarHidden(true)
                         .refreshable {
                             viewModel.refreshTrigger.send(())
+                            await processingCountService.refreshCount()
                         }
                         .simultaneousGesture(
                             LongPressGesture(minimumDuration: 0.8).onEnded { _ in
@@ -132,6 +125,9 @@ struct LongFormView: View {
             .onAppear {
                 viewModel.setReadFilter(settings.showReadContent ? .all : .unread)
                 viewModel.refreshTrigger.send(())
+                Task {
+                    await processingCountService.refreshCount()
+                }
             }
             .onChange(of: settings.showReadContent) { _, showRead in
                 viewModel.setReadFilter(showRead ? .all : .unread)
@@ -160,5 +156,25 @@ struct LongFormView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 8)
         }
+    }
+
+    @ViewBuilder
+    private var longFormEmptyState: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "doc.richtext")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            if processingCountService.longFormProcessingCount > 0 {
+                ProgressView()
+                Text("Preparing \(processingCountService.longFormProcessingCount) long-form items")
+                    .foregroundColor(.secondary)
+            } else {
+                Text("No long-form content found.")
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -17,7 +17,7 @@ def _add_inbox_status(db_session, user_id: int, content_id: int) -> None:
     )
 
 
-def test_processing_count_filters_long_form(client, db_session, test_user) -> None:
+def test_processing_count_includes_news_and_new_status(client, db_session, test_user) -> None:
     other_user = User(
         apple_id="other_apple_id",
         email="other@example.com",
@@ -72,6 +72,12 @@ def test_processing_count_filters_long_form(client, db_session, test_user) -> No
         status=ContentStatus.PENDING.value,
         content_metadata={},
     )
+    queued_news = Content(
+        url="https://example.com/news-queued",
+        content_type=ContentType.NEWS.value,
+        status=ContentStatus.NEW.value,
+        content_metadata={},
+    )
 
     db_session.add_all(
         [
@@ -82,6 +88,7 @@ def test_processing_count_filters_long_form(client, db_session, test_user) -> No
             pending_youtube_news,
             completed_article,
             pending_article_no_inbox,
+            queued_news,
         ]
     )
     db_session.commit()
@@ -93,6 +100,7 @@ def test_processing_count_filters_long_form(client, db_session, test_user) -> No
         pending_youtube_news,
         completed_article,
         pending_article_no_inbox,
+        queued_news,
     ):
         db_session.refresh(content)
 
@@ -102,6 +110,7 @@ def test_processing_count_filters_long_form(client, db_session, test_user) -> No
     _add_inbox_status(db_session, test_user.id, pending_news.id)
     _add_inbox_status(db_session, test_user.id, pending_youtube_news.id)
     _add_inbox_status(db_session, test_user.id, completed_article.id)
+    _add_inbox_status(db_session, test_user.id, queued_news.id)
     _add_inbox_status(db_session, other_user.id, pending_article_no_inbox.id)
     db_session.commit()
 
@@ -109,7 +118,9 @@ def test_processing_count_filters_long_form(client, db_session, test_user) -> No
     assert response.status_code == 200
     payload = response.json()
 
-    assert payload["processing_count"] == 3
+    assert payload["long_form_count"] == 3
+    assert payload["news_count"] == 3
+    assert payload["processing_count"] == 6
 
 
 def test_long_form_stats_counts(client, db_session, test_user) -> None:

@@ -13,6 +13,7 @@ private let logger = Logger(subsystem: "com.newsly", category: "ShortFormView")
 struct ShortFormView: View {
     @ObservedObject var viewModel: ShortNewsListViewModel
     let onSelect: (ContentDetailRoute) -> Void
+    @StateObject private var processingCountService = ProcessingCountService.shared
 
     /// Track which items have already been marked as read to avoid duplicates
     @State private var markedAsReadIds: Set<Int> = []
@@ -31,16 +32,7 @@ struct ShortFormView: View {
                     ProgressView("Loading")
                         .padding(.top, 48)
                 } else if viewModel.currentItems().isEmpty {
-                    VStack(spacing: 16) {
-                        Spacer()
-                        Image(systemName: "bolt.fill")
-                            .font(.largeTitle)
-                            .foregroundColor(.secondary)
-                        Text("No short-form content found.")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
+                    shortFormEmptyState
                 } else {
                     ForEach(viewModel.currentItems(), id: \.id) { item in
                         ShortNewsRow(item: item)
@@ -96,10 +88,14 @@ struct ShortFormView: View {
         }
         .refreshable {
             viewModel.refreshTrigger.send(())
+            await processingCountService.refreshCount()
         }
         .onAppear {
             if viewModel.currentItems().isEmpty {
                 viewModel.refreshTrigger.send(())
+            }
+            Task {
+                await processingCountService.refreshCount()
             }
         }
         .confirmationDialog(
@@ -132,6 +128,26 @@ struct ShortFormView: View {
         logger.info("[ShortFormView] Items scrolled past top | ids=\(idsToMark, privacy: .public)")
         idsToMark.forEach { markedAsReadIds.insert($0) }
         viewModel.itemsScrolledPastTop(ids: idsToMark)
+    }
+
+    @ViewBuilder
+    private var shortFormEmptyState: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "bolt.fill")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            if processingCountService.newsProcessingCount > 0 {
+                ProgressView()
+                Text("Preparing \(processingCountService.newsProcessingCount) short-form items")
+                    .foregroundColor(.secondary)
+            } else {
+                Text("No short-form content found.")
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

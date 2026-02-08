@@ -58,28 +58,35 @@ def get_unread_counts(
 @router.get(
     "/processing-count",
     response_model=ProcessingCountResponse,
-    summary="Get long-form processing count",
+    summary="Get processing counts",
     description=(
-        "Return the number of long-form content items currently pending or processing "
-        "for the authenticated user (articles, podcasts, and YouTube)."
+        "Return queued/pending/processing counts for the authenticated user, including "
+        "long-form and short-form (news) inbox content."
     ),
 )
 def get_processing_count(
     db: Annotated[Session, Depends(get_readonly_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ProcessingCountResponse:
-    """Return the number of long-form content items pending or processing for the user."""
+    """Return processing counts for long-form, news, and total."""
     long_form_types = {ContentType.ARTICLE.value, ContentType.PODCAST.value}
-    processing_statuses = {ContentStatus.PENDING.value, ContentStatus.PROCESSING.value}
+    processing_statuses = {
+        ContentStatus.NEW.value,
+        ContentStatus.PENDING.value,
+        ContentStatus.PROCESSING.value,
+    }
+
+    base_query = (
+        db.query(func.count(Content.id))
+        .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
+        .filter(ContentStatusEntry.user_id == current_user.id)
+        .filter(ContentStatusEntry.status == "inbox")
+        .filter(Content.status.in_(processing_statuses))
+    )
 
     with timed("query processing_count"):
-        count_query = (
-            db.query(func.count(Content.id))
-            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
-            .filter(ContentStatusEntry.user_id == current_user.id)
-            .filter(ContentStatusEntry.status == "inbox")
-            .filter(Content.status.in_(processing_statuses))
-            .filter(
+        long_form_count = (
+            base_query.filter(
                 or_(
                     Content.content_type.in_(long_form_types),
                     and_(
@@ -87,11 +94,18 @@ def get_processing_count(
                         Content.content_type != ContentType.NEWS.value,
                     ),
                 )
-            )
+            ).scalar()
+            or 0
         )
-        processing_count = count_query.scalar() or 0
+        news_count = (
+            base_query.filter(Content.content_type == ContentType.NEWS.value).scalar() or 0
+        )
 
-    return ProcessingCountResponse(processing_count=processing_count)
+    return ProcessingCountResponse(
+        processing_count=long_form_count + news_count,
+        long_form_count=long_form_count,
+        news_count=news_count,
+    )
 
 
 @router.get(
@@ -135,7 +149,11 @@ def get_long_form_stats(
         )
     )
 
-    processing_statuses = [ContentStatus.PENDING.value, ContentStatus.PROCESSING.value]
+    processing_statuses = [
+        ContentStatus.NEW.value,
+        ContentStatus.PENDING.value,
+        ContentStatus.PROCESSING.value,
+    ]
 
     with timed("query long_form_stats"):
         total_count = (
