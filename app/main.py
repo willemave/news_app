@@ -10,7 +10,7 @@ from app.core.db import init_db
 from app.core.deps import AdminAuthRequired
 from app.core.logging import setup_logging
 from app.core.settings import get_settings
-from app.routers import admin, api_content, auth, content, logs
+from app.routers import admin, api_content, auth, logs
 from app.routers.api import discovery, onboarding, openai, scraper_configs
 
 # Initialize
@@ -147,7 +147,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(content.router)
 app.include_router(admin.router)
 app.include_router(logs.router)
 app.include_router(api_content.router, prefix="/api/content")
@@ -164,6 +163,12 @@ async def startup_event():
     logger.info("Starting up...")
     init_db()
     logger.info("Database initialized")
+
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    """Redirect root path to admin dashboard."""
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # Health check

@@ -1,9 +1,24 @@
-"""Tests for content router with read status functionality."""
-from sqlalchemy.orm import Session
+"""Tests for admin-only web interface routes."""
 
-from app.models.schema import Content, ContentReadStatus
 
-# Note: Web route tests (test_news_content_rendering, test_unprocessed_news_excluded_from_list)
-# were removed because web routes now require admin authentication via session cookies.
-# The test client fixture provides user authentication for API routes but not admin session auth.
-# These tests can be re-added if admin session authentication is mocked in the test fixtures.
+def test_root_redirects_to_admin(client):
+    """Root should redirect to admin dashboard entry point."""
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin"
+
+
+def test_removed_web_content_routes_return_404(client):
+    """Legacy web content browsing routes should not exist."""
+    assert client.get("/favorites").status_code == 404
+    assert client.get("/content/1").status_code == 404
+    assert client.get("/content/1/json").status_code == 404
+
+
+def test_admin_dashboard_requires_admin_session(client):
+    """Admin dashboard should still enforce admin session auth."""
+    response = client.get("/admin/", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/auth/admin/login?next=")
