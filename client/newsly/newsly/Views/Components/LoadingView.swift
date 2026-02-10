@@ -13,10 +13,10 @@ struct LoadingView: View {
             ProgressView()
                 .scaleEffect(1.5)
             Text("Loading...")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                .font(.listSubtitle)
+                .foregroundStyle(Color.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(UIColor.systemBackground))
+        .background(Color.surfacePrimary)
     }
 }

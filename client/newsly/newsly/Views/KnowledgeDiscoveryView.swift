@@ -50,14 +50,14 @@ struct KnowledgeDiscoveryView: View {
         VStack(spacing: 0) {
             if viewModel.isJobRunning {
                 runningJobBanner
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, Spacing.screenHorizontal)
                     .padding(.top, 12)
                     .padding(.bottom, 8)
             }
 
             if hasNewSuggestions && !viewModel.isJobRunning {
                 newSuggestionsBanner
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, Spacing.screenHorizontal)
                     .padding(.top, 12)
                     .padding(.bottom, 8)
             }
@@ -117,7 +117,7 @@ struct KnowledgeDiscoveryView: View {
                 .font(.caption2)
                 .foregroundColor(Color(.tertiaryLabel))
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Spacing.screenHorizontal)
         .padding(.vertical, 12)
     }
 
@@ -133,7 +133,7 @@ struct KnowledgeDiscoveryView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Spacing.screenHorizontal)
         .padding(.vertical, 12)
     }
 

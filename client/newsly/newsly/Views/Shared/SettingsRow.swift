@@ -52,9 +52,7 @@ struct SettingsRow<Accessory: View>: View {
 
             accessory()
         }
-        .padding(.vertical, Spacing.rowVertical)
-        .padding(.horizontal, Spacing.rowHorizontal)
-        .contentShape(Rectangle())
+        .appRow(.compact)
     }
 }
 
@@ -133,9 +131,7 @@ struct SettingsToggleRow: View {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
         }
-        .padding(.vertical, Spacing.rowVertical)
-        .padding(.horizontal, Spacing.rowHorizontal)
-        .contentShape(Rectangle())
+        .appRow(.compact)
     }
 }
 
@@ -143,11 +139,11 @@ struct SettingsToggleRow: View {
     VStack(spacing: 0) {
         SettingsRow(icon: "star", iconColor: .yellow, title: "Favorites")
 
-        Divider().padding(.leading, 56)
+        RowDivider()
 
         SettingsRow(icon: "list.bullet.rectangle", title: "Feed Sources", subtitle: "12 sources")
 
-        Divider().padding(.leading, 56)
+        RowDivider()
 
         SettingsToggleRow(
             icon: "eye",

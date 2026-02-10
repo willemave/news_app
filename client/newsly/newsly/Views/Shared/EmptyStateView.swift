@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct SettingsEmptyStateView: View {
+struct EmptyStateView: View {
     let icon: String
     let title: String
     let subtitle: String
@@ -26,7 +26,7 @@ struct SettingsEmptyStateView: View {
                     .foregroundStyle(Color.textPrimary)
 
                 Text(subtitle)
-                    .font(.subheadline)
+                    .font(.listSubtitle)
                     .foregroundStyle(Color.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 280)
@@ -47,8 +47,11 @@ struct SettingsEmptyStateView: View {
     }
 }
 
+/// Backward-compatible alias.
+typealias SettingsEmptyStateView = EmptyStateView
+
 #Preview {
-    SettingsEmptyStateView(
+    EmptyStateView(
         icon: "star",
         title: "No Favorites",
         subtitle: "Swipe right on content to save it here",

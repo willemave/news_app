@@ -12,75 +12,54 @@ struct SearchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Filter
             Picker("Content Type", selection: $viewModel.selectedContentType) {
                 ForEach(viewModel.contentTypeOptions, id: \.0) { value, label in
                     Text(label).tag(value)
                 }
             }
             .pickerStyle(.segmented)
-            .padding([.horizontal, .top])
+            .padding(.horizontal, Spacing.screenHorizontal)
+            .padding(.top, 8)
 
-            // Results / States
             Group {
                 if viewModel.isLoading {
-                    ProgressView("Searching...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    LoadingView()
                 } else if let error = viewModel.errorMessage {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 44))
-                            .foregroundColor(.orange)
-                        Text("Search Error")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                        Text(error).font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
-                        Button("Try Again") {
-                            viewModel.retrySearch()
-                        }.buttonStyle(.borderedProminent)
+                    ErrorView(message: error) {
+                        viewModel.retrySearch()
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.hasSearched && viewModel.results.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 44))
-                            .foregroundColor(.secondary)
-                        Text("No Results")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                        Text("Try different keywords or filters.")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        title: "No Results",
+                        subtitle: "Try different keywords or filters."
+                    )
                 } else if !viewModel.hasSearched {
-                    VStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 44))
-                            .foregroundColor(.secondary)
-                        Text("Search Articles & Podcasts")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                        Text("Type at least 2 characters to search titles, sources and summaries.")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        title: "Search Articles & Podcasts",
+                        subtitle: "Type at least 2 characters to search titles, sources and summaries."
+                    )
                 } else {
                     List {
                         ForEach(viewModel.results, id: \.id) { item in
                             NavigationLink(destination: ContentDetailView(contentId: item.id)) {
                                 HStack(spacing: 12) {
                                     Image(systemName: item.contentType == "podcast" ? "waveform" : "doc.text")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Color.textSecondary)
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(item.displayTitle).font(.subheadline).fontWeight(.semibold).lineLimit(3)
+                                        Text(item.displayTitle)
+                                            .font(.listTitle)
+                                            .lineLimit(3)
                                         HStack(spacing: 6) {
-                                            if let source = item.source { Text(source).font(.caption).foregroundStyle(.secondary) }
-                                            Text(item.contentType.capitalized).font(.caption2).foregroundStyle(.secondary)
+                                            if let source = item.source {
+                                                Text(source)
+                                                    .font(.listCaption)
+                                                    .foregroundStyle(Color.textTertiary)
+                                            }
+                                            Text(item.contentType.capitalized)
+                                                .font(.chipLabel)
+                                                .foregroundStyle(Color.textTertiary)
                                         }
                                     }
                                     Spacer()
@@ -93,9 +72,8 @@ struct SearchView: View {
                 }
             }
         }
+        .screenContainer()
         .navigationTitle("Search")
-        .toolbarBackground(Color(.systemBackground), for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
         .searchable(text: $viewModel.searchText, prompt: "Search articles and podcasts")
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)

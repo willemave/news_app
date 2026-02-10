@@ -72,9 +72,7 @@ struct FavoritesView: View {
                 )) {
                     FavoriteRow(content: content)
                 }
-                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+                .appListRow()
                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
                     if !content.isRead {
                         Button {
@@ -105,7 +103,6 @@ struct FavoritesView: View {
                 }
             }
 
-            // Loading more indicator
             if viewModel.isLoadingMore {
                 HStack {
                     Spacer()
@@ -113,9 +110,7 @@ struct FavoritesView: View {
                         .padding()
                     Spacer()
                 }
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+                .appListRow()
             }
         }
         .listStyle(.plain)
@@ -134,10 +129,8 @@ private struct FavoriteRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Thumbnail
             thumbnailView
 
-            // Content
             VStack(alignment: .leading, spacing: 4) {
                 Text(content.displayTitle)
                     .font(.listTitle)
@@ -166,14 +159,9 @@ private struct FavoriteRow: View {
 
             Spacer(minLength: 8)
 
-            // Chevron
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.textTertiary)
+            NavigationChevron()
         }
-        .padding(.vertical, Spacing.rowVertical)
-        .padding(.horizontal, Spacing.rowHorizontal)
-        .contentShape(Rectangle())
+        .appRow(.regular)
     }
 
     // MARK: - Thumbnail
@@ -187,7 +175,7 @@ private struct FavoriteRow: View {
                 image
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 56, height: 56)
+                    .frame(width: RowMetrics.thumbnailSize, height: RowMetrics.thumbnailSize)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } placeholder: {
                 thumbnailPlaceholder
@@ -200,7 +188,7 @@ private struct FavoriteRow: View {
     private var thumbnailPlaceholder: some View {
         RoundedRectangle(cornerRadius: 8)
             .fill(Color.surfaceSecondary)
-            .frame(width: 56, height: 56)
+            .frame(width: RowMetrics.thumbnailSize, height: RowMetrics.thumbnailSize)
             .overlay(
                 Image(systemName: contentTypeIcon)
                     .font(.system(size: 20))

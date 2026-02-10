@@ -38,16 +38,14 @@ struct SubmissionsView: View {
                     NavigationLink {
                         SubmissionDetailView(submission: submission)
                     } label: {
-                        EmptyView()
+                        SwiftUI.EmptyView()
                     }
                     .opacity(0)
                     .buttonStyle(PlainButtonStyle())
 
                     SubmissionStatusRow(submission: submission)
                 }
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+                .appListRow()
                 .onAppear {
                     if submission.id == viewModel.submissions.last?.id {
                         Task { await viewModel.loadMore() }
@@ -62,9 +60,7 @@ struct SubmissionsView: View {
                         .padding()
                     Spacer()
                 }
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+                .appListRow()
             }
         }
         .listStyle(.plain)
@@ -74,17 +70,11 @@ struct SubmissionsView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "tray")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            Text("No submissions in progress.")
-                .foregroundColor(.secondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(UIColor.systemBackground))
+        EmptyStateView(
+            icon: "tray",
+            title: "No Submissions",
+            subtitle: "Submitted URLs will appear here while they're being processed."
+        )
     }
 }
 

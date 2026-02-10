@@ -36,13 +36,13 @@ struct MoreView: View {
                     HStack(spacing: 16) {
                         minimalIcon("tray.and.arrow.up")
                         Text("Submissions")
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color.textPrimary)
                         Spacer()
                         if submissionsViewModel.submissions.count > 0 {
-                            minimalBadge(count: submissionsViewModel.submissions.count, color: .red)
+                            CountBadge(count: submissionsViewModel.submissions.count, color: .red)
                         }
                     }
-                    .frame(minHeight: 44)
+                    .frame(minHeight: RowMetrics.compactHeight)
                 }
 
                 NavigationLink {
@@ -51,13 +51,13 @@ struct MoreView: View {
                     HStack(spacing: 16) {
                         minimalIcon("clock.arrow.circlepath")
                         Text("Processing")
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color.textPrimary)
                         Spacer()
                         if processingCountService.processingCount > 0 {
-                            minimalBadge(count: processingCountService.processingCount, color: .teal)
+                            CountBadge(count: processingCountService.processingCount, color: .teal)
                         }
                     }
-                    .frame(minHeight: 44)
+                    .frame(minHeight: RowMetrics.compactHeight)
                 }
             }
 
@@ -85,24 +85,17 @@ struct MoreView: View {
             HStack(spacing: 16) {
                 minimalIcon(icon)
                 Text(title)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.textPrimary)
             }
-            .frame(minHeight: 44)
+            .frame(minHeight: RowMetrics.compactHeight)
         }
     }
 
     private func minimalIcon(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: 20, weight: .regular))
-            .foregroundStyle(.secondary)
+            .font(.system(size: Spacing.smallIcon, weight: .regular))
+            .foregroundStyle(Color.textSecondary)
             .frame(width: 24, height: 24)
-    }
-
-    private func minimalBadge(count: Int, color: Color) -> some View {
-        Text("\(count)")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(color)
-            .monospacedDigit()
     }
 }
 

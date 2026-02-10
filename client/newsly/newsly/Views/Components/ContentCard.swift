@@ -19,7 +19,7 @@ struct ContentCard: View {
         self.dimReadState = dimReadState
     }
 
-    private let thumbnailSize: CGFloat = 60
+    private let thumbnailSize: CGFloat = RowMetrics.thumbnailSize
 
     private var hasImage: Bool {
         let displayUrl = content.thumbnailUrl ?? content.imageUrl
@@ -76,9 +76,7 @@ struct ContentCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(minHeight: 76, alignment: .center)
+        .appRow(.regular)
     }
 
     @ViewBuilder

@@ -15,50 +15,48 @@ struct SubmissionStatusRow: View {
             HStack(alignment: .top, spacing: 12) {
                 // Status icon
                 statusIcon
-                    .frame(width: 40, height: 40)
+                    .frame(width: RowMetrics.smallThumbnailSize, height: RowMetrics.smallThumbnailSize)
                     .background(statusColor.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    // Title row with badges
                     Text(submission.displayTitle)
-                        .font(.headline)
+                        .font(.listTitle)
+                        .foregroundStyle(Color.textPrimary)
                         .lineLimit(2)
 
-                    // URL
                     Text(submission.url)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.listMono)
+                        .foregroundStyle(Color.textTertiary)
                         .lineLimit(1)
 
-                    // Metadata row
                     HStack(spacing: 6) {
                         if let date = submission.statusDateDisplay {
                             Text(date)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.listCaption)
+                                .foregroundStyle(Color.textSecondary)
                         }
                         Spacer()
                         if submission.isSelfSubmission {
-                            badge(text: "Submitted", color: .blue)
+                            TextBadge(text: "Submitted", color: .blue)
                         }
-                        badge(text: submission.statusLabel, color: statusColor)
+                        TextBadge(text: submission.statusLabel, color: statusColor)
                     }
 
-                    // Error message if present
                     if let error = submission.errorDisplayText {
                         Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                            .font(.listCaption)
+                            .foregroundStyle(Color.statusDestructive)
                             .lineLimit(2)
                             .padding(.top, 2)
                     }
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, Spacing.rowVertical)
+            .padding(.horizontal, Spacing.rowHorizontal)
 
             Divider()
-                .padding(.leading, 52) // Inset to align with text (icon 40 + spacing 12)
+                .padding(.leading, Spacing.rowHorizontal + RowMetrics.smallThumbnailSize + 12)
         }
     }
 
@@ -100,16 +98,6 @@ struct SubmissionStatusRow: View {
         }
     }
 
-    private func badge(text: String, color: Color) -> some View {
-        Text(text.uppercased())
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
-    }
 }
 
 #Preview {

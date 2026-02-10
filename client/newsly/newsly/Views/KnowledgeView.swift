@@ -174,7 +174,7 @@ struct KnowledgeView: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding(.horizontal)
+        .padding(.horizontal, Spacing.screenHorizontal)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
@@ -190,31 +190,14 @@ struct KnowledgeView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "books.vertical")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            Text("Your Knowledge Base")
-                .font(.headline)
-                .foregroundColor(.secondary)
-            Text("Save articles to build your knowledge base. Tap the brain on any article to add it here and start exploring with AI.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Button {
-                showingNewChat = true
-            } label: {
-                Label("New Chat", systemImage: "plus.circle.fill")
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
-            Spacer()
+        EmptyStateView(
+            icon: "books.vertical",
+            title: "Your Knowledge Base",
+            subtitle: "Save articles to build your knowledge base. Tap the brain on any article to add it here and start exploring with AI.",
+            actionTitle: "New Chat"
+        ) {
+            showingNewChat = true
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Parse a date string to Date
@@ -247,7 +230,10 @@ struct KnowledgeView: View {
                     ChatSessionRow(session: session, isNew: isNewSession(session))
                 }
                 .buttonStyle(.plain)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowInsets(EdgeInsets(
+                    top: 8, leading: Spacing.rowHorizontal,
+                    bottom: 8, trailing: Spacing.rowHorizontal
+                ))
             }
             .onDelete { offsets in
                 deleteSessions(at: offsets, from: filteredSessions)
@@ -316,25 +302,31 @@ struct KnowledgeView: View {
         .padding(.horizontal, 12)
         .background(Color(.secondarySystemBackground))
         .cornerRadius(10)
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowInsets(EdgeInsets(
+            top: 8, leading: Spacing.rowHorizontal,
+            bottom: 8, trailing: Spacing.rowHorizontal
+        ))
         .listRowSeparator(.hidden)
     }
 
     private var noResultsRow: some View {
         VStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 28))
-                .foregroundColor(.secondary)
+                .font(.system(size: Spacing.iconSize))
+                .foregroundStyle(Color.textSecondary)
             Text("No matching chats")
-                .font(.subheadline)
+                .font(.listSubtitle)
                 .fontWeight(.semibold)
             Text("Try a different keyword.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.listCaption)
+                .foregroundStyle(Color.textTertiary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .padding(.vertical, Spacing.sectionTop)
+        .listRowInsets(EdgeInsets(
+            top: 8, leading: Spacing.rowHorizontal,
+            bottom: 8, trailing: Spacing.rowHorizontal
+        ))
         .listRowSeparator(.hidden)
     }
 

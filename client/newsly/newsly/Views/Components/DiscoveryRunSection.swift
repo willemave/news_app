@@ -87,7 +87,7 @@ struct DiscoveryRunSection: View {
                 )
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Spacing.screenHorizontal)
     }
 
     private func runTitle(for dateString: String) -> String {

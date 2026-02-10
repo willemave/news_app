@@ -75,8 +75,8 @@ struct ShortFormView: View {
                 }
             }
             .scrollTargetLayout()
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
+            .padding(.horizontal, Spacing.screenHorizontal)
+            .padding(.top, Spacing.rowVertical)
         }
         .scrollPosition(id: $topVisibleItemId, anchor: .top)
         .onChange(of: topVisibleItemId) { _, _ in
@@ -132,29 +132,30 @@ struct ShortFormView: View {
 
     @ViewBuilder
     private var shortFormEmptyState: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "bolt.fill")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            if processingCountService.newsProcessingCount > 0 {
+        if processingCountService.newsProcessingCount > 0 {
+            VStack(spacing: 16) {
+                Spacer()
                 ProgressView()
                 Text("Preparing \(processingCountService.newsProcessingCount) short-form items")
-                    .foregroundColor(.secondary)
-            } else {
-                Text("No short-form content found.")
-                    .foregroundColor(.secondary)
+                    .font(.listSubtitle)
+                    .foregroundStyle(Color.textSecondary)
+                Spacer()
             }
-            Spacer()
+            .frame(maxWidth: .infinity)
+        } else {
+            EmptyStateView(
+                icon: "bolt.fill",
+                title: "No Short-Form Content",
+                subtitle: "News digests will appear here once processed"
+            )
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
 private struct ShortNewsRow: View {
     let item: ContentSummary
 
-    private let thumbnailSize: CGFloat = 60
+    private let thumbnailSize: CGFloat = RowMetrics.thumbnailSize
 
     private var hasImage: Bool {
         let displayUrl = item.thumbnailUrl ?? item.imageUrl

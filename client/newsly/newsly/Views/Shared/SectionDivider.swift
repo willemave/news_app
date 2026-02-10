@@ -17,7 +17,7 @@ struct SectionDivider: View {
 }
 
 struct RowDivider: View {
-    var leadingInset: CGFloat = 56
+    var leadingInset: CGFloat = Spacing.rowDividerInset
 
     var body: some View {
         Divider()

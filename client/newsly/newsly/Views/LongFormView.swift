@@ -43,8 +43,7 @@ struct LongFormView: View {
 
                                     downloadMoreRow(for: content)
                                 }
-                                .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-                                .listRowSeparator(.hidden)
+                                .appListRow()
                                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                     if !content.isRead {
                                         Button {
@@ -82,13 +81,10 @@ struct LongFormView: View {
                                         .padding()
                                     Spacer()
                                 }
-                                .listRowInsets(EdgeInsets())
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
+                                .appListRow()
                             }
                         }
                         .listStyle(.plain)
-                        .padding(.top, 8)
                         .navigationBarHidden(true)
                         .refreshable {
                             viewModel.refreshTrigger.send(())
@@ -153,28 +149,29 @@ struct LongFormView: View {
                 }
                 Spacer()
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, Spacing.rowHorizontal)
             .padding(.vertical, 8)
         }
     }
 
     @ViewBuilder
     private var longFormEmptyState: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "doc.richtext")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            if processingCountService.longFormProcessingCount > 0 {
+        if processingCountService.longFormProcessingCount > 0 {
+            VStack(spacing: 16) {
+                Spacer()
                 ProgressView()
                 Text("Preparing \(processingCountService.longFormProcessingCount) long-form items")
-                    .foregroundColor(.secondary)
-            } else {
-                Text("No long-form content found.")
-                    .foregroundColor(.secondary)
+                    .font(.listSubtitle)
+                    .foregroundStyle(Color.textSecondary)
+                Spacer()
             }
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            EmptyStateView(
+                icon: "doc.richtext",
+                title: "No Long-Form Content",
+                subtitle: "Articles and podcasts will appear here once processed"
+            )
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
