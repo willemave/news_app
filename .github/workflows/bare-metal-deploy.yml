@@ -59,7 +59,7 @@ jobs:
           SSH_OPTS=(-p "$PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes)
           REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/news_app}"
           OWNER_GROUP="${DEPLOY_OWNER_GROUP:-newsapp:newsapp}"
-          PROGRAMS="${DEPLOY_PROGRAMS:-news_app_server news_app_workers news_app_scrapers}"
+          PROGRAMS="${DEPLOY_PROGRAMS:-news_app_server news_app_workers news_app_workers_content news_app_workers_onboarding news_app_workers_chat news_app_scrapers}"
 
           echo "→ Verifying SSH connectivity"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "echo 'SSH ok: $(whoami)@$(hostname) on port $PORT'"
@@ -105,8 +105,26 @@ jobs:
 
           SERVICE_USER="${OWNER_GROUP%%:*}"
           PY_VERSION="${DEPLOY_PYTHON_VERSION:-3.13}"
-          echo "→ Stopping supervisor programs: $PROGRAMS"
-          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl stop $PROGRAMS || true"
+          echo "→ Resolving supervisor programs to stop/start"
+          RESOLVED_PROGRAMS=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "bash -lc '
+            set -euo pipefail
+            existing=\$(sudo supervisorctl status | awk \"{print \\$1}\")
+            resolved=\"\"
+            for p in $PROGRAMS; do
+              if echo \"\$existing\" | grep -qx \"\$p\"; then
+                resolved+=\"\$p \"
+              fi
+            done
+            echo \"\${resolved}\" | xargs
+          '")
+          if [[ -z "${RESOLVED_PROGRAMS:-}" ]]; then
+            echo "No matching supervisor programs found for: $PROGRAMS" >&2
+            exit 1
+          fi
+          echo "→ Supervisor programs: $RESOLVED_PROGRAMS"
+
+          echo "→ Stopping supervisor programs"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl stop $RESOLVED_PROGRAMS || true"
 
           echo "→ Setting up Python environment on remote (uv venv, deps, playwright)"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -u $SERVICE_USER -H bash -lc 'cd $REMOTE_DIR && ./scripts/setup_uv_env.sh --python-version $PY_VERSION --recreate'"
@@ -114,5 +132,16 @@ jobs:
           echo "→ Running Alembic migrations"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -u $SERVICE_USER -H bash -lc 'cd $REMOTE_DIR && ./scripts/check_and_run_migrations.sh'"
 
-          echo "→ Restarting supervisor programs: $PROGRAMS"
-          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl start $PROGRAMS && sudo supervisorctl status"
+          echo "→ Syncing cron from repo crontab"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "bash -lc '
+            set -euo pipefail
+            CRON_FILE=\"$REMOTE_DIR/crontab\"
+            if [[ ! -f \"\$CRON_FILE\" ]]; then
+              echo \"Missing \$CRON_FILE\" >&2
+              exit 1
+            fi
+            sudo -u $SERVICE_USER -H bash -lc \"crontab \\\"\$CRON_FILE\\\" && crontab -l\"
+          '"
+
+          echo "→ Restarting supervisor programs"
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl start $RESOLVED_PROGRAMS && sudo supervisorctl status"
