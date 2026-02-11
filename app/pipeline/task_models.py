@@ -61,6 +61,7 @@ class TaskResult(BaseModel):
     success: bool
     error_message: str | None = None
     retry_delay_seconds: int | None = None
+    retryable: bool = True
 
     @classmethod
     def ok(cls) -> TaskResult:
@@ -68,6 +69,17 @@ class TaskResult(BaseModel):
         return cls(success=True)
 
     @classmethod
-    def fail(cls, error_message: str | None = None) -> TaskResult:
+    def fail(
+        cls,
+        error_message: str | None = None,
+        *,
+        retryable: bool = True,
+        retry_delay_seconds: int | None = None,
+    ) -> TaskResult:
         """Return a failed task result."""
-        return cls(success=False, error_message=error_message)
+        return cls(
+            success=False,
+            error_message=error_message,
+            retryable=retryable,
+            retry_delay_seconds=retry_delay_seconds,
+        )

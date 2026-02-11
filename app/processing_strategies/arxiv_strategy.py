@@ -156,7 +156,21 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
                         "final_url_after_redirects": url,
                     }
             except Exception as exc:  # noqa: BLE001
-                logger.error("ArxivStrategy: Gemini extraction failed for %s: %s", url, exc)
+                error_message = str(exc).lower()
+                if (
+                    "failed_precondition" in error_message
+                    or "user location is not supported" in error_message
+                ):
+                    logger.warning(
+                        (
+                            "ArxivStrategy: Gemini extraction unavailable for %s; "
+                            "falling back to raw PDF bytes: %s"
+                        ),
+                        url,
+                        exc,
+                    )
+                else:
+                    logger.error("ArxivStrategy: Gemini extraction failed for %s: %s", url, exc)
         else:
             logger.warning(
                 "ArxivStrategy: Google API key missing; cannot extract PDF text for %s",

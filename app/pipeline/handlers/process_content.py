@@ -33,7 +33,7 @@ class ProcessContentHandler:
                         "context_data": {"task_data": task.model_dump()},
                     },
                 )
-                return TaskResult.fail("No content_id provided")
+                return TaskResult.fail("No content_id provided", retryable=False)
 
             content_id = int(content_id)
             logger.info("Processing content %s", content_id)

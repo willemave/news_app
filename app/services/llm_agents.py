@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Any, TypeVar, cast
 
 from pydantic_ai import Agent
@@ -21,9 +20,8 @@ from app.services.llm_models import build_pydantic_model
 OutputT = TypeVar("OutputT")
 
 
-@lru_cache(maxsize=32)
 def _cached_agent(model_spec: str, output_type: type[Any], system_prompt: str) -> Agent[None, Any]:
-    """Build and cache a simple Agent with no dependencies."""
+    """Build a simple Agent with no dependencies."""
     model, model_settings = build_pydantic_model(model_spec)
     return Agent(
         model,
@@ -37,7 +35,7 @@ def _cached_agent(model_spec: str, output_type: type[Any], system_prompt: str) -
 def get_basic_agent[OutputT](
     model_spec: str, output_type: type[OutputT], system_prompt: str
 ) -> Agent[None, OutputT]:
-    """Return a cached agent for an arbitrary task."""
+    """Return a new agent for an arbitrary task."""
     agent = _cached_agent(model_spec, output_type, system_prompt)
     return cast(Agent[None, OutputT], agent)
 

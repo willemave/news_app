@@ -34,6 +34,12 @@ CONTEXT_LENGTH_ERROR_HINTS: tuple[str, ...] = (
     "prompt is too long",
 )
 
+PROVIDER_PRECONDITION_ERROR_HINTS: tuple[str, ...] = (
+    "failed_precondition",
+    "user location is not supported",
+    "not supported for the api use",
+)
+
 
 @dataclass
 class SummarizationRequest:
@@ -134,14 +140,18 @@ def _clip_payload(payload: str, max_chars: int) -> tuple[str, bool]:
 DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "news": "anthropic:claude-haiku-4-5-20251001",
     "news_digest": "anthropic:claude-haiku-4-5-20251001",
-    "article": "google-gla:gemini-3-pro-preview",
-    "podcast": "google-gla:gemini-3-pro-preview",
+    "article": "openai:gpt-5.2",
+    "podcast": "openai:gpt-5.2",
     "interleaved": "google-gla:gemini-3-pro-preview",
     "long_bullets": "google-gla:gemini-3-pro-preview",
-    "editorial_narrative": "google-gla:gemini-3-pro-preview",
+    "editorial_narrative": "openai:gpt-5.2",
 }
 
 FALLBACK_SUMMARIZATION_MODEL = "google-gla:gemini-2.5-flash-preview-09-2025"
+CROSS_PROVIDER_FALLBACK_MODELS: tuple[str, ...] = (
+    "openai:gpt-5.2-mini",
+    "anthropic:claude-haiku-4-5-20251001",
+)
 
 
 def _model_hint_from_spec(model_spec: str) -> tuple[str, str]:
@@ -149,6 +159,11 @@ def _model_hint_from_spec(model_spec: str) -> tuple[str, str]:
         provider_prefix, hint = model_spec.split(":", 1)
         return provider_prefix, hint
     return "", model_spec
+
+
+def _is_provider_precondition_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(hint in message for hint in PROVIDER_PRECONDITION_ERROR_HINTS)
 
 
 @dataclass
@@ -294,46 +309,77 @@ def summarize_content(
             prompt_content_type, request.max_bullet_points, request.max_quotes
         )
 
-        agent = get_summarization_agent(request.model_spec, prompt_content_type, system_prompt)
-
         def _build_user_message(content_payload: str) -> str:
             content_body = content_payload
             if request.title:
                 content_body = f"Title: {request.title}\n\n{content_body}"
             return user_template.format(content=content_body)
 
-        try:
-            result = agent.run_sync(_build_user_message(payload))
-        except Exception as error:  # noqa: BLE001
-            if _is_context_length_error(error):
+        def _run_with_model(model_spec: str, content_payload: str) -> Any:
+            agent = get_summarization_agent(model_spec, prompt_content_type, system_prompt)
+            return agent.run_sync(_build_user_message(content_payload))
+
+        def _run_with_context_fallback(model_spec: str) -> Any:
+            try:
+                return _run_with_model(model_spec, payload)
+            except Exception as model_error:  # noqa: BLE001
+                if not _is_context_length_error(model_error):
+                    raise
+
+                if model_spec != FALLBACK_SUMMARIZATION_MODEL:
+                    logger.warning(
+                        "Summarization context too long for content %s with model %s; "
+                        "retrying with fallback model %s",
+                        request.content_id or "unknown",
+                        model_spec,
+                        FALLBACK_SUMMARIZATION_MODEL,
+                    )
+                    return _run_with_context_fallback(FALLBACK_SUMMARIZATION_MODEL)
+
+                fallback_payload, _ = _clip_payload(
+                    raw_payload,
+                    FALLBACK_SUMMARIZATION_PAYLOAD_CHARS,
+                )
                 logger.warning(
-                    "Summarization context too long for content %s with model %s; "
-                    "retrying with fallback model %s",
-                    request.content_id or "unknown",
-                    request.model_spec,
+                    "Fallback model %s exceeded context; clipping to %s chars",
                     FALLBACK_SUMMARIZATION_MODEL,
+                    FALLBACK_SUMMARIZATION_PAYLOAD_CHARS,
                 )
-                # Retry with Gemini fallback model (larger context window)
-                fallback_agent = get_summarization_agent(
-                    FALLBACK_SUMMARIZATION_MODEL, prompt_content_type, system_prompt
-                )
-                try:
-                    result = fallback_agent.run_sync(_build_user_message(payload))
-                except Exception as fallback_error:  # noqa: BLE001
-                    # If fallback also fails with context error, try clipping content
-                    if _is_context_length_error(fallback_error):
-                        fallback_payload, _ = _clip_payload(
-                            raw_payload, FALLBACK_SUMMARIZATION_PAYLOAD_CHARS
-                        )
-                        logger.warning(
-                            "Fallback model also exceeded context; clipping to %s chars",
-                            FALLBACK_SUMMARIZATION_PAYLOAD_CHARS,
-                        )
-                        result = fallback_agent.run_sync(_build_user_message(fallback_payload))
-                    else:
-                        raise
-            else:
+                return _run_with_model(model_spec, fallback_payload)
+
+        try:
+            result = _run_with_context_fallback(request.model_spec)
+        except Exception as primary_error:  # noqa: BLE001
+            if not _is_provider_precondition_error(primary_error):
                 raise
+
+            logger.warning(
+                "Primary summarization model %s failed precondition for content %s; "
+                "trying cross-provider fallbacks",
+                request.model_spec,
+                request.content_id or "unknown",
+            )
+            last_error: Exception = primary_error
+            attempted_specs = {request.model_spec}
+
+            for fallback_model_spec in CROSS_PROVIDER_FALLBACK_MODELS:
+                if fallback_model_spec in attempted_specs:
+                    continue
+                attempted_specs.add(fallback_model_spec)
+                try:
+                    result = _run_with_context_fallback(fallback_model_spec)
+                    break
+                except Exception as fallback_error:  # noqa: BLE001
+                    last_error = fallback_error
+                    if _is_provider_precondition_error(fallback_error):
+                        logger.warning(
+                            "Cross-provider fallback model %s also failed precondition",
+                            fallback_model_spec,
+                        )
+                        continue
+                    raise
+            else:
+                raise last_error
 
         summary = _extract_agent_output(result)
         if summary is None:

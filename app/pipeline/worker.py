@@ -2,6 +2,8 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
@@ -78,6 +80,16 @@ class ContentWorker:
         content.error_message = reason
         content.processed_at = datetime.now(UTC)
 
+    def _mark_non_retryable_failure(self, content: ContentData, reason: str) -> None:
+        """Mark content as terminal failure that should not be retried."""
+        metadata = dict(content.metadata or {})
+        metadata["error"] = reason
+        metadata["error_type"] = "non_retryable"
+        content.metadata = metadata
+        content.status = ContentStatus.FAILED
+        content.error_message = reason
+        content.processed_at = datetime.now(UTC)
+
     def process_content(self, content_id: int, worker_id: str) -> bool:
         """
         Process a single content item.
@@ -88,13 +100,17 @@ class ContentWorker:
         logger.info(f"Worker {worker_id} processing content {content_id}")
 
         try:
+            terminal_statuses = {ContentStatus.FAILED, ContentStatus.SKIPPED}
+            enqueue_summarize_task = False
+            state_persisted = False
+
             # Get content from database
             with get_db() as db:
                 db_content = db.query(Content).filter(Content.id == content_id).first()
 
                 if not db_content:
                     logger.error(f"Content {content_id} not found")
-                    return False
+                    return True
 
                 content = content_to_domain(db_content)
 
@@ -105,17 +121,45 @@ class ContentWorker:
                 success = self._process_podcast(content)
             else:
                 logger.error(f"Unknown content type: {content.content_type}")
+                self._mark_non_retryable_failure(
+                    content,
+                    f"Unknown content type: {content.content_type}",
+                )
                 success = False
 
+            if (
+                success
+                and content.content_type in {ContentType.ARTICLE, ContentType.NEWS}
+                and content.status == ContentStatus.PROCESSING
+            ):
+                summary_payload = content.metadata.get("content_to_summarize")
+                if isinstance(summary_payload, str):
+                    enqueue_summarize_task = bool(summary_payload.strip())
+
             # Update database when processing succeeded or content was marked failed/skipped.
-            if success or content.status in {ContentStatus.FAILED, ContentStatus.SKIPPED}:
+            if success or content.status in terminal_statuses:
                 with get_db() as db:
                     db_content = db.query(Content).filter(Content.id == content_id).first()
                     if db_content:
                         domain_to_content(content, db_content)
-                        db.commit()
+                        try:
+                            db.commit()
+                            state_persisted = True
+                        except IntegrityError as exc:
+                            db.rollback()
+                            if self._handle_canonical_integrity_conflict(content, exc):
+                                return True
+                            raise
 
-            return success
+            if enqueue_summarize_task and state_persisted and content.id is not None:
+                self.queue_service.enqueue(TaskType.SUMMARIZE, content_id=content.id)
+                logger.info(
+                    "Enqueued SUMMARIZE task for content %s (%s)",
+                    content.id,
+                    content.content_type.value,
+                )
+
+            return success or content.status in terminal_statuses
 
         except Exception as e:
             logger.exception(
@@ -156,27 +200,24 @@ class ContentWorker:
                     raw_content = strategy.download_content(processed_url)
             except NonRetryableError as e:
                 logger.warning(f"Non-retryable error for {processed_url}: {e}")
-                # Mark as failed but don't retry
-                with get_db() as db:
-                    db_content = db.query(Content).filter(Content.id == content.id).first()
-                    if db_content:
-                        db_content.status = ContentStatus.FAILED.value
-                        # Handle metadata properly
-                        metadata = (
-                            dict(db_content.content_metadata) if db_content.content_metadata else {}
-                        )
-                        metadata["error"] = str(e)
-                        metadata["error_type"] = "non_retryable"
-                        db_content.content_metadata = metadata
-                        db.commit()
+                self._mark_non_retryable_failure(content, str(e))
                 return False
 
             # Extract data using strategy
-            # Handle async methods from YouTubeStrategy
-            if asyncio.iscoroutinefunction(strategy.extract_data):
-                extracted_data = asyncio.run(strategy.extract_data(raw_content, processed_url))
-            else:
-                extracted_data = strategy.extract_data(raw_content, processed_url)
+            try:
+                # Handle async methods from YouTubeStrategy
+                if asyncio.iscoroutinefunction(strategy.extract_data):
+                    extracted_data = asyncio.run(strategy.extract_data(raw_content, processed_url))
+                else:
+                    extracted_data = strategy.extract_data(raw_content, processed_url)
+            except NonRetryableError as e:
+                logger.warning(
+                    "Non-retryable extraction error for %s: %s",
+                    processed_url,
+                    e,
+                )
+                self._mark_non_retryable_failure(content, str(e))
+                return False
 
             # Check if this is a delegation case (e.g., from PubMed)
             delegated_url = extracted_data.get("next_url_to_process")
@@ -189,11 +230,20 @@ class ContentWorker:
                 return self._process_article(content)
 
             # Prepare for LLM processing
-            # Handle async methods from strategies like YouTubeStrategy
-            if asyncio.iscoroutinefunction(strategy.prepare_for_llm):
-                llm_data = asyncio.run(strategy.prepare_for_llm(extracted_data)) or {}
-            else:
-                llm_data = strategy.prepare_for_llm(extracted_data) or {}
+            try:
+                # Handle async methods from strategies like YouTubeStrategy
+                if asyncio.iscoroutinefunction(strategy.prepare_for_llm):
+                    llm_data = asyncio.run(strategy.prepare_for_llm(extracted_data)) or {}
+                else:
+                    llm_data = strategy.prepare_for_llm(extracted_data) or {}
+            except NonRetryableError as e:
+                logger.warning(
+                    "Non-retryable LLM-prep error for %s: %s",
+                    processed_url,
+                    e,
+                )
+                self._mark_non_retryable_failure(content, str(e))
+                return False
 
             # Check if strategy marked this content to be skipped (e.g., images, YouTube auth)
             if extracted_data.get("skip_processing") or llm_data.get("skip_processing"):
@@ -350,7 +400,7 @@ class ContentWorker:
 
             if failure_reason:
                 if failure_reason == "missing content_to_summarize":
-                    logger.error(
+                    logger.warning(
                         "Missing content_to_summarize for content %s; extracted_text_len=%s",
                         content.id,
                         len(text_content),
@@ -371,19 +421,9 @@ class ContentWorker:
                     failure_reason,
                     llm_content_text or text_content,
                 )
-                return failure_reason != "missing content_to_summarize"
+                return True
 
-            # Store content_to_summarize in metadata for the SUMMARIZE task
-            if llm_data.get("content_to_summarize"):
-                # Content is already stored in metadata["content"] from extraction
-                # Enqueue SUMMARIZE task to handle summarization asynchronously
-                self.queue_service.enqueue(TaskType.SUMMARIZE, content_id=content.id)
-                logger.info(
-                    "Enqueued SUMMARIZE task for content %s (%s)",
-                    content.id,
-                    content.content_type.value,
-                )
-            else:
+            if not llm_data.get("content_to_summarize"):
                 logger.error(
                     "No LLM payload generated for content %s; keys=%s",
                     content.id,
@@ -505,25 +545,93 @@ class ContentWorker:
             return
 
         with get_db() as db:
-            existing = (
-                db.query(Content)
+            existing_row = (
+                db.query(Content.id)
                 .filter(Content.id != content.id)
                 .filter(Content.content_type == content.content_type.value)
                 .filter(Content.url == canonical_url)
                 .first()
             )
 
-        if existing:
-            content.metadata["canonical_content_id"] = existing.id
+        existing_id = int(existing_row[0]) if existing_row else None
+        if existing_id is not None:
+            content.metadata["canonical_content_id"] = existing_id
             logger.warning(
                 "Canonical URL already exists for content %s -> %s (existing=%s)",
                 content.id,
                 canonical_url,
-                existing.id,
+                existing_id,
             )
             return
 
         content.url = canonical_url
+
+    def _handle_canonical_integrity_conflict(
+        self,
+        content: ContentData,
+        exc: IntegrityError,
+    ) -> bool:
+        """Handle canonical URL uniqueness conflicts as terminal, non-retryable outcomes."""
+        error_text = str(exc).lower()
+        looks_like_canonical_conflict = (
+            "contents.url, contents.content_type" in error_text
+            or (
+                "duplicate key value violates unique constraint" in error_text
+                and "contents" in error_text
+                and "url" in error_text
+                and "content_type" in error_text
+            )
+        )
+        if not looks_like_canonical_conflict:
+            return False
+
+        duplicate_id: int | None = None
+        with get_db() as db:
+            duplicate_row = (
+                db.query(Content.id)
+                .filter(Content.id != content.id)
+                .filter(Content.content_type == content.content_type.value)
+                .filter(Content.url == str(content.url))
+                .first()
+            )
+            if duplicate_row:
+                duplicate_id = int(duplicate_row[0])
+
+            db_content = db.query(Content).filter(Content.id == content.id).first()
+            if not db_content:
+                logger.warning(
+                    "Canonical URL conflict for content %s but row no longer exists",
+                    content.id,
+                )
+                return True
+
+            metadata = dict(db_content.content_metadata or {})
+            if duplicate_id is not None:
+                metadata["canonical_content_id"] = duplicate_id
+
+            existing_errors = metadata.get("processing_errors")
+            processing_errors = existing_errors.copy() if isinstance(existing_errors, list) else []
+            processing_errors.append(
+                {
+                    "stage": "process_content",
+                    "reason": "canonical_url_conflict",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
+            metadata["processing_errors"] = processing_errors
+
+            db_content.content_metadata = metadata
+            db_content.status = ContentStatus.SKIPPED.value
+            db_content.error_message = "Canonical URL conflicts with existing content"
+            db_content.processed_at = datetime.now(UTC)
+            db.commit()
+
+        logger.warning(
+            "Marked content %s as skipped due to canonical URL conflict (existing=%s)",
+            content.id,
+            duplicate_id,
+        )
+        return True
 
     def _process_podcast(self, content: ContentData) -> bool:
         """Process podcast content."""

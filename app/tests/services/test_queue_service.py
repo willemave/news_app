@@ -67,6 +67,39 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     assert tasks[chat_task_id].queue_name == TaskQueue.CHAT.value
 
 
+def test_enqueue_dedupes_content_tasks_by_default(db_session, monkeypatch):
+    """Content tasks reuse an existing pending/processing task for the same content."""
+    queue = _patch_db(monkeypatch, db_session)
+
+    first_task_id = queue.enqueue(TaskType.SUMMARIZE, content_id=42)
+    second_task_id = queue.enqueue(TaskType.SUMMARIZE, content_id=42)
+    assert second_task_id == first_task_id
+
+    queued_tasks = (
+        db_session.query(ProcessingTask)
+        .filter(ProcessingTask.task_type == TaskType.SUMMARIZE.value)
+        .filter(ProcessingTask.content_id == 42)
+        .all()
+    )
+    assert len(queued_tasks) == 1
+
+
+def test_enqueue_does_not_dedupe_onboarding_tasks(db_session, monkeypatch):
+    """Non-content tasks can enqueue multiple pending jobs with different payloads."""
+    queue = _patch_db(monkeypatch, db_session)
+
+    first_task_id = queue.enqueue(TaskType.ONBOARDING_DISCOVER, payload={"user_id": 1})
+    second_task_id = queue.enqueue(TaskType.ONBOARDING_DISCOVER, payload={"user_id": 2})
+    assert second_task_id != first_task_id
+
+    queued_tasks = (
+        db_session.query(ProcessingTask)
+        .filter(ProcessingTask.task_type == TaskType.ONBOARDING_DISCOVER.value)
+        .all()
+    )
+    assert len(queued_tasks) == 2
+
+
 def test_dequeue_filters_by_queue_name(db_session, monkeypatch):
     """Dequeuing a queue partition never returns tasks from another queue."""
     queue = _patch_db(monkeypatch, db_session)

@@ -129,7 +129,7 @@ class SummarizeHandler:
                         "context_data": {"task_data": task.model_dump()},
                     },
                 )
-                return TaskResult.fail("No content_id provided")
+                return TaskResult.fail("No content_id provided", retryable=False)
 
             logger.info("Processing summarize task for content %s", content_id)
 
@@ -146,7 +146,7 @@ class SummarizeHandler:
                             "context_data": {"content_id": content_id},
                         },
                     )
-                    return TaskResult.fail("Content not found")
+                    return TaskResult.fail("Content not found", retryable=False)
 
                 title_preview = "No title"
                 if content.title and isinstance(content.title, str):
@@ -160,7 +160,11 @@ class SummarizeHandler:
                     content.status,
                 )
 
-                def _persist_failure(reason: str) -> None:
+                def _persist_failure(
+                    reason: str,
+                    *,
+                    status: ContentStatus = ContentStatus.FAILED,
+                ) -> None:
                     metadata = dict(content.content_metadata or {})
                     metadata.pop("summary", None)
                     existing_errors = metadata.get("processing_errors")
@@ -177,9 +181,9 @@ class SummarizeHandler:
                     metadata["processing_errors"] = processing_errors
 
                     content.content_metadata = metadata
-                    content.status = ContentStatus.FAILED.value
+                    content.status = status.value
                     content.error_message = reason[:500]
-                    content.processed_at = datetime.utcnow()
+                    content.processed_at = datetime.now(UTC)
                     db.commit()
 
                 metadata = content.content_metadata or {}
@@ -220,14 +224,14 @@ class SummarizeHandler:
                         },
                     )
                     _persist_failure(reason)
-                    return TaskResult.fail(reason)
+                    return TaskResult.fail(reason, retryable=False)
 
                 if not text_to_summarize:
                     expected_field = (
                         "transcript" if content.content_type == "podcast" else "content"
                     )
                     reason = f"No text to summarize for content {content_id}"
-                    logger.error(
+                    logger.warning(
                         "SUMMARIZE_TASK_ERROR: %s. Type: %s, expected field: %s, "
                         "metadata keys: %s, URL: %s",
                         reason,
@@ -248,8 +252,8 @@ class SummarizeHandler:
                             },
                         },
                     )
-                    _persist_failure(reason)
-                    return TaskResult.fail(reason)
+                    _persist_failure(reason, status=ContentStatus.SKIPPED)
+                    return TaskResult.ok()
 
                 logger.debug(
                     "Content %s has %d characters to summarize",
@@ -314,7 +318,7 @@ class SummarizeHandler:
                         },
                     )
                     _persist_failure(f"Summarization error: {exc}")
-                    return TaskResult.fail(str(exc))
+                    return TaskResult.fail(str(exc), retryable=False)
 
                 if summary is not None:
                     metadata = dict(content.content_metadata or {})
@@ -430,7 +434,7 @@ class SummarizeHandler:
                     },
                 )
                 _persist_failure(reason)
-                return TaskResult.fail(reason)
+                return TaskResult.fail(reason, retryable=False)
 
         except Exception as exc:  # noqa: BLE001
             logger.exception(

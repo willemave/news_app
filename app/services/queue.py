@@ -43,6 +43,12 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.DIG_DEEPER: TaskQueue.CHAT,
 }
 
+DEDUPABLE_CONTENT_TASK_TYPES: set[TaskType] = {
+    TaskType.PROCESS_CONTENT,
+    TaskType.SUMMARIZE,
+    TaskType.GENERATE_IMAGE,
+}
+
 
 class TaskStatus(StrEnum):
     PENDING = "pending"
@@ -82,6 +88,7 @@ class QueueService:
         content_id: int | None = None,
         payload: dict[str, Any] | None = None,
         queue_name: TaskQueue | str | None = None,
+        dedupe: bool | None = None,
     ) -> int:
         """
         Add a task to the queue.
@@ -91,6 +98,33 @@ class QueueService:
         """
         target_queue = self._resolve_task_queue(task_type, queue_name)
         with get_db() as db:
+            should_dedupe = (
+                dedupe if dedupe is not None else task_type in DEDUPABLE_CONTENT_TASK_TYPES
+            )
+            if should_dedupe and content_id is not None:
+                existing_task = (
+                    db.query(ProcessingTask)
+                    .filter(ProcessingTask.task_type == task_type.value)
+                    .filter(ProcessingTask.content_id == content_id)
+                    .filter(ProcessingTask.queue_name == target_queue)
+                    .filter(
+                        ProcessingTask.status.in_(
+                            [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
+                        )
+                    )
+                    .order_by(ProcessingTask.created_at.desc())
+                    .first()
+                )
+                if existing_task:
+                    logger.info(
+                        "Reusing existing task %s of type %s for content %s (queue=%s)",
+                        existing_task.id,
+                        task_type.value,
+                        content_id,
+                        target_queue,
+                    )
+                    return existing_task.id
+
             task = ProcessingTask(
                 task_type=task_type.value,
                 content_id=content_id,

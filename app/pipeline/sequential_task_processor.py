@@ -89,6 +89,7 @@ class SequentialTaskProcessor:
                     success=False,
                     error_message=f"{task.task_type.value} returned False",
                     retry_delay_seconds=result.retry_delay_seconds,
+                    retryable=result.retryable,
                 )
             elapsed = time.time() - start_time
             logger.info(
@@ -234,7 +235,7 @@ class SequentialTaskProcessor:
                     )
                 else:
                     max_retries = getattr(self.settings, "max_retries", 3)
-                    if retry_count < max_retries:
+                    if result.retryable and retry_count < max_retries:
                         delay_seconds = min(60 * (2**retry_count), 3600)
                         self.queue_service.retry_task(task.id, delay_seconds=delay_seconds)
                         logger.info(
@@ -243,6 +244,12 @@ class SequentialTaskProcessor:
                             retry_count + 1,
                             max_retries,
                             delay_seconds,
+                        )
+                    elif not result.retryable:
+                        logger.info(
+                            "Task %s failed with non-retryable error: %s",
+                            task.id,
+                            result.error_message or "unknown error",
                         )
                     else:
                         logger.error(
@@ -301,7 +308,11 @@ class SequentialTaskProcessor:
             error_message=result.error_message,
         )
 
-        if not result.success and task.retry_count < getattr(self.settings, "max_retries", 3):
+        if (
+            not result.success
+            and result.retryable
+            and task.retry_count < getattr(self.settings, "max_retries", 3)
+        ):
             retry_count = task.retry_count
             delay_seconds = min(60 * (2**retry_count), 3600)
             self.queue_service.retry_task(task_id, delay_seconds=delay_seconds)
