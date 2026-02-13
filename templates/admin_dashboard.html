@@ -3,128 +3,302 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
   <h2 class="text-2xl font-bold text-gray-900 mb-8">Admin Dashboard</h2>
-  
-  <!-- Statistics Section -->
+
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Total Content</div>
+      <div class="text-2xl font-semibold text-gray-900">{{ total_content }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Total Tasks</div>
+      <div class="text-2xl font-semibold text-gray-900">{{ total_tasks }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Recent Tasks (24h)</div>
+      <div class="text-2xl font-semibold text-gray-900">{{ recent_tasks }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Recent Failure Buckets (24h)</div>
+      <div class="text-2xl font-semibold text-gray-900">{{ recent_failure_total }}</div>
+    </div>
+  </div>
+
+  <!-- Core statistics -->
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-    <!-- Content Statistics -->
     <div class="bg-white rounded-lg shadow p-6">
       <h3 class="text-lg font-semibold text-gray-900 mb-4">Content Statistics</h3>
-      <div class="space-y-3">
+      <div class="space-y-2">
+        {% for content_type, count in content_stats.items() %}
         <div class="flex justify-between items-center">
-          <span class="text-sm font-medium text-gray-500">Total Content</span>
-          <span class="text-lg font-semibold text-gray-900">{{ total_content }}</span>
+          <span class="text-sm text-gray-600">{{ content_type.title() }}</span>
+          <span class="text-sm font-medium text-gray-900">{{ count }}</span>
         </div>
-        <div class="border-t pt-3 space-y-2">
-          {% for content_type, count in content_stats.items() %}
-          <div class="flex justify-between items-center">
-            <span class="text-sm text-gray-600">{{ content_type.title() }}</span>
-            <span class="text-sm font-medium text-gray-900">{{ count }}</span>
-          </div>
-          {% endfor %}
-        </div>
+        {% endfor %}
       </div>
     </div>
-    
-    <!-- Processing Task Statistics -->
+
     <div class="bg-white rounded-lg shadow p-6">
       <h3 class="text-lg font-semibold text-gray-900 mb-4">Processing Tasks</h3>
-      <div class="space-y-3">
+      <div class="space-y-2">
+        {% for status, count in task_stats.items() %}
         <div class="flex justify-between items-center">
-          <span class="text-sm font-medium text-gray-500">Total Tasks</span>
-          <span class="text-lg font-semibold text-gray-900">{{ total_tasks }}</span>
+          <span class="text-sm text-gray-600">{{ status }}</span>
+          <span class="text-sm font-medium text-gray-900">{{ count }}</span>
         </div>
-        <div class="flex justify-between items-center">
-          <span class="text-sm font-medium text-gray-500">Recent (24h)</span>
-          <span class="text-lg font-semibold text-gray-900">{{ recent_tasks }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Queue and phase status -->
+  <div class="grid grid-cols-1 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Queue Status by Partition</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Queue</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pending</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Processing</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Failed</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            {% for row in queue_status_rows %}
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ row.queue_name }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ row.pending }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ row.processing }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-red-700">{{ row.failed }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ row.completed }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ row.total }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Task Phases (Processing Queue)</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Type</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pending</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Processing</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Failed</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            {% for row in phase_status_rows %}
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ row.task_type }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ row.pending }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ row.processing }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-red-700">{{ row.failed }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ row.completed }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ row.total }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error and scraper readouts -->
+  <div class="grid grid-cols-1 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Recent Failure Types (24h)</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Type</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error Type</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Count</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sample</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            {% if recent_failure_rows %}
+              {% for row in recent_failure_rows %}
+              <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row.task_type }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-red-700">{{ row.error_type }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ row.count }}</td>
+                <td class="px-6 py-4 text-sm text-gray-700">{{ row.sample_error }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="4" class="px-6 py-4 text-sm text-gray-500">No failed tasks in the last 24 hours.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-4">Scraper Health (24h)</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="border border-gray-200 rounded-lg p-4">
+          <div class="text-sm text-gray-500">Scraper Events</div>
+          <div class="text-xl font-semibold text-gray-900">{{ scraper_total_events_24h }}</div>
         </div>
-        <div class="border-t pt-3 space-y-2">
-          {% for status, count in task_stats.items() %}
-          <div class="flex justify-between items-center">
-            <span class="text-sm text-gray-600">
-              {% if status == 'pending' %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  {{ status.title() }}
-                </span>
-              {% elif status == 'processing' %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  {{ status.title() }}
-                </span>
-              {% elif status == 'completed' %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  {{ status.title() }}
-                </span>
-              {% elif status == 'failed' %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                  {{ status.title() }}
-                </span>
-              {% else %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                  {{ status.title() }}
-                </span>
-              {% endif %}
-            </span>
-            <span class="text-sm font-medium text-gray-900">{{ count }}</span>
+        <div class="border border-gray-200 rounded-lg p-4">
+          <div class="text-sm text-gray-500">Scraper Error Events</div>
+          <div class="text-xl font-semibold text-red-700">{{ scraper_error_events_24h }}</div>
+        </div>
+        <div class="border border-gray-200 rounded-lg p-4">
+          <div class="text-sm text-gray-500">Scraper Run States</div>
+          <div class="text-sm text-gray-800 space-y-1 mt-2">
+            {% for status, count in scraper_run_status_counts.items() %}
+            <div class="flex justify-between">
+              <span>{{ status }}</span>
+              <span class="font-medium">{{ count }}</span>
+            </div>
+            {% endfor %}
           </div>
-          {% endfor %}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h4 class="text-sm font-semibold text-gray-900 mb-3">Latest Scraper Stats</h4>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Scraper</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Scraped</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saved</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Errors</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200">
+                {% if scraper_latest_stats %}
+                  {% for row in scraper_latest_stats %}
+                  <tr>
+                    <td class="px-3 py-2 text-sm text-gray-900">{{ row.scraper_name }}</td>
+                    <td class="px-3 py-2 text-sm text-gray-700">{{ row.scraped }}</td>
+                    <td class="px-3 py-2 text-sm text-gray-700">{{ row.saved }}</td>
+                    <td class="px-3 py-2 text-sm text-red-700">{{ row.errors }}</td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="4" class="px-3 py-2 text-sm text-gray-500">No scraper stats in the last 24 hours.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="text-sm font-semibold text-gray-900 mb-3">Top Scraper Errors</h4>
+          <div class="space-y-2">
+            {% if scraper_error_counts %}
+              {% for row in scraper_error_counts %}
+              <div class="flex justify-between text-sm border border-gray-200 rounded-md p-2">
+                <span class="text-gray-800">{{ row.scraper_name }}</span>
+                <span class="font-medium text-red-700">{{ row.count }}</span>
+              </div>
+              {% endfor %}
+            {% else %}
+              <p class="text-sm text-gray-500">No scraper_error events in the last 24 hours.</p>
+            {% endif %}
+          </div>
         </div>
       </div>
     </div>
   </div>
-  
-  <!-- Content Without Summary Section -->
+
+  <!-- User lifecycle -->
+  <div class="bg-white rounded-lg shadow p-6 mb-8">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">User Lifecycle</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="text-sm text-gray-500">Total Users</div>
+        <div class="text-xl font-semibold text-gray-900">{{ user_stats.total_users }}</div>
+        <div class="text-xs text-gray-500 mt-1">New (24h): {{ user_stats.new_users_24h }}</div>
+      </div>
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="text-sm text-gray-500">Active / Inactive</div>
+        <div class="text-sm text-gray-800 mt-2 space-y-1">
+          <div class="flex justify-between"><span>Active</span><span class="font-medium">{{ user_stats.active_users }}</span></div>
+          <div class="flex justify-between"><span>Inactive</span><span class="font-medium">{{ user_stats.inactive_users }}</span></div>
+          <div class="flex justify-between"><span>Admins</span><span class="font-medium">{{ user_stats.admin_users }}</span></div>
+        </div>
+      </div>
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="text-sm text-gray-500">Tutorial / Onboarding</div>
+        <div class="text-sm text-gray-800 mt-2 space-y-1">
+          <div class="flex justify-between"><span>Tutorial completed</span><span class="font-medium">{{ user_stats.tutorial_completed_users }}</span></div>
+          <div class="flex justify-between"><span>Tutorial pending</span><span class="font-medium">{{ user_stats.tutorial_pending_users }}</span></div>
+          <div class="flex justify-between"><span>With onboarding runs</span><span class="font-medium">{{ user_stats.users_with_onboarding }}</span></div>
+          <div class="flex justify-between"><span>No onboarding run</span><span class="font-medium">{{ user_stats.users_without_onboarding }}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <h4 class="text-sm font-semibold text-gray-900 mb-3">Latest Onboarding Status (Per User)</h4>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
+      {% if onboarding_latest_status_counts %}
+        {% for status, count in onboarding_latest_status_counts.items() %}
+        <div class="border border-gray-200 rounded-md px-3 py-2 text-sm flex justify-between">
+          <span class="text-gray-700">{{ status }}</span>
+          <span class="font-medium text-gray-900">{{ count }}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-gray-500">No onboarding discovery runs found.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Content without summary -->
   {% if content_without_summary %}
   <div class="bg-white rounded-lg shadow mb-8">
     <div class="px-6 py-4 border-b border-gray-200">
       <h3 class="text-lg font-semibold text-gray-900">Content Without Summary (With Errors)</h3>
       <p class="text-sm text-gray-500 mt-1">Content that failed to generate summaries</p>
     </div>
-    
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Created
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Type
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Title
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Error Message
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Actions
-            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error Message</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
           {% for content in content_without_summary %}
           <tr class="hover:bg-gray-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-              {{ content.created_at.strftime('%Y-%m-%d %H:%M') }}
-            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ content.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ content.content_type }}</td>
+            <td class="px-6 py-4 text-sm text-gray-900"><div class="max-w-xs truncate" title="{{ content.title }}">{{ content.title }}</div></td>
+            <td class="px-6 py-4 text-sm text-red-600"><div class="max-w-md">{{ content.error_message }}</div></td>
             <td class="px-6 py-4 whitespace-nowrap text-sm">
-              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                {{ content.content_type }}
-              </span>
-            </td>
-            <td class="px-6 py-4 text-sm text-gray-900">
-              <div class="max-w-xs truncate" title="{{ content.title }}">
-                {{ content.title }}
-              </div>
-            </td>
-            <td class="px-6 py-4 text-sm text-red-600">
-              <div class="max-w-md">
-                {{ content.error_message }}
-              </div>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              <a href="{{ content.url }}" target="_blank" class="text-blue-600 hover:text-blue-800 mr-3">
-                View Source
-              </a>
+              <a href="{{ content.url }}" target="_blank" class="text-blue-600 hover:text-blue-800 mr-3">View Source</a>
             </td>
           </tr>
           {% endfor %}
@@ -133,8 +307,8 @@
     </div>
   </div>
   {% endif %}
-  
-  <!-- Event Logs Section -->
+
+  <!-- Event logs -->
   <div class="bg-white rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200">
       <div class="flex justify-between items-center">
@@ -143,9 +317,7 @@
           <select name="event_type" onchange="this.form.submit()" class="text-sm border-gray-300 rounded-md">
             <option value="">All Events</option>
             {% for event_type in event_types %}
-            <option value="{{ event_type }}" {% if selected_event_type == event_type %}selected{% endif %}>
-              {{ event_type }}
-            </option>
+            <option value="{{ event_type }}" {% if selected_event_type == event_type %}selected{% endif %}>{{ event_type }}</option>
             {% endfor %}
           </select>
           <select name="limit" onchange="this.form.submit()" class="text-sm border-gray-300 rounded-md">
@@ -156,61 +328,24 @@
         </form>
       </div>
     </div>
-    
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Timestamp
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Event Type
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Event Name
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Status
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Data
-            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Event Type</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Event Name</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
           {% for log in event_logs %}
           <tr class="hover:bg-gray-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-              {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                {{ log.event_type }}
-              </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-              {{ log.event_name }}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              {% if log.status == 'success' %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  {{ log.status }}
-                </span>
-              {% elif log.status == 'error' %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                  {{ log.status }}
-                </span>
-              {% elif log.status == 'warning' %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  {{ log.status }}
-                </span>
-              {% else %}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                  {{ log.status or 'info' }}
-                </span>
-              {% endif %}
-            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ log.event_type }}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ log.event_name }}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ log.status or 'info' }}</td>
             <td class="px-6 py-4 text-sm text-gray-900">
               <details class="cursor-pointer">
                 <summary class="text-blue-600 hover:text-blue-800">View Data</summary>

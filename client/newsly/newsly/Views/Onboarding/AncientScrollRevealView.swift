@@ -7,6 +7,7 @@
 
 import SpriteKit
 import SwiftUI
+import UIKit
 
 struct AncientScrollRevealView: View {
     let obfuscatedSeed: UInt64
@@ -19,6 +20,8 @@ struct AncientScrollRevealView: View {
     @State private var lastDragPoint: CGPoint?
     @State private var lastDragTime: Date?
     @State private var cumulativeSwipeDistance: CGFloat = 0
+    @State private var headingVisible = false
+    @State private var hasTriggeredHaptic = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -26,11 +29,11 @@ struct AncientScrollRevealView: View {
 
             ZStack {
                 background
-                gridOverlay
 
                 SpriteView(scene: physicsScene, options: [.allowsTransparency])
                     .allowsHitTesting(false)
 
+                edgeVignettes
                 topTextOverlay
             }
             .clipped()
@@ -38,6 +41,9 @@ struct AncientScrollRevealView: View {
             .gesture(swipeGesture(in: canvasSize))
             .onAppear {
                 configureScene(for: canvasSize)
+                withAnimation(.easeOut(duration: 0.8).delay(0.3)) {
+                    headingVisible = true
+                }
             }
             .onChange(of: canvasSize) { _, newSize in
                 configureScene(for: newSize)
@@ -57,7 +63,7 @@ struct AncientScrollRevealView: View {
                 colors: [
                     Color(red: 0.05, green: 0.08, blue: 0.12),
                     Color(red: 0.08, green: 0.10, blue: 0.16),
-                    Color(red: 0.10, green: 0.12, blue: 0.18)
+                    Color(red: 0.10, green: 0.12, blue: 0.18),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -66,7 +72,7 @@ struct AncientScrollRevealView: View {
             RadialGradient(
                 colors: [
                     Color(red: 0.30, green: 0.36, blue: 0.44).opacity(0.22),
-                    .clear
+                    .clear,
                 ],
                 center: .topTrailing,
                 startRadius: 40,
@@ -76,7 +82,7 @@ struct AncientScrollRevealView: View {
             RadialGradient(
                 colors: [
                     Color(red: 0.22, green: 0.26, blue: 0.32).opacity(0.18),
-                    .clear
+                    .clear,
                 ],
                 center: .bottomLeading,
                 startRadius: 30,
@@ -85,45 +91,52 @@ struct AncientScrollRevealView: View {
         }
     }
 
-    private var gridOverlay: some View {
-        Canvas { context, size in
-            let spacing: CGFloat = 24
-            let lineColor = Color.white.opacity(0.03)
+    private var edgeVignettes: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.08, blue: 0.12),
+                    Color(red: 0.05, green: 0.08, blue: 0.12).opacity(0.55),
+                    .clear,
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 140)
 
-            var x: CGFloat = 0
-            while x <= size.width {
-                var path = Path()
-                path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: size.height))
-                context.stroke(path, with: .color(lineColor), lineWidth: 0.5)
-                x += spacing
-            }
+            Spacer()
 
-            var y: CGFloat = 0
-            while y <= size.height {
-                var path = Path()
-                path.move(to: CGPoint(x: 0, y: y))
-                path.addLine(to: CGPoint(x: size.width, y: y))
-                context.stroke(path, with: .color(lineColor), lineWidth: 0.5)
-                y += spacing
-            }
+            LinearGradient(
+                colors: [
+                    .clear,
+                    Color(red: 0.06, green: 0.09, blue: 0.14).opacity(0.65),
+                    Color(red: 0.06, green: 0.09, blue: 0.14),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 100)
         }
-        .blendMode(.overlay)
         .allowsHitTesting(false)
     }
 
     private var topTextOverlay: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Willem News")
-                .font(.system(size: 36, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.90))
+                .font(.system(size: 34, weight: .semibold, design: .rounded))
+                .tracking(0.5)
+                .foregroundStyle(Color.white.opacity(0.88))
 
-            Text("Curated updates and concise summaries, minus the noise.")
-                .font(.callout.weight(.regular))
-                .foregroundStyle(Color.white.opacity(0.74))
+            Text("Curated updates and concise summaries,\nminus the noise.")
+                .font(.subheadline.weight(.regular))
+                .foregroundStyle(Color.white.opacity(0.50))
+                .lineSpacing(3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(24)
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+        .opacity(headingVisible ? 1 : 0)
+        .offset(y: headingVisible ? 0 : 8)
         .allowsHitTesting(false)
     }
 
@@ -141,6 +154,12 @@ struct AncientScrollRevealView: View {
     private func handleSwipe(value: DragGesture.Value, canvasSize: CGSize) {
         guard canvasSize.width > 0, canvasSize.height > 0 else { return }
         guard showsPhysics, !reduceMotion else { return }
+
+        if !hasTriggeredHaptic {
+            hasTriggeredHaptic = true
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+        }
 
         let clampedPoint = CGPoint(
             x: min(max(0, value.location.x), canvasSize.width),
