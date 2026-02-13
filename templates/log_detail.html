@@ -1,24 +1,32 @@
 {% extends "base.html" %}
+{% block title %}{{ filename }}{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <div class="bg-white shadow rounded-lg">
-    <div class="px-6 py-4 border-b border-gray-200">
-      <div class="flex justify-between items-center">
-        <h2 class="text-xl font-semibold text-gray-900">{{ filename }}</h2>
-        <div class="space-x-2">
-          <a href="/admin/logs/{{ filename }}/download" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            Download
-          </a>
-          <a href="/admin/logs" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            Back to Logs
-          </a>
-        </div>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
+    <div class="min-w-0">
+      <div class="flex items-center gap-2 mb-1">
+        <a href="/admin/logs" class="text-sm text-gray-400 hover:text-gray-600 transition-colors">Logs</a>
+        <span class="text-gray-300">/</span>
       </div>
+      <h1 class="text-lg font-semibold text-gray-900 font-mono truncate">{{ filename }}</h1>
     </div>
-    
-    <div class="px-6 py-4">
-      <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm font-mono">{{ content }}</pre>
+    <div class="flex items-center gap-2 self-start">
+      <a href="/admin/logs/{{ filename }}/download" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        Download
+      </a>
+      <a href="/admin/logs" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+        Back to Logs
+      </a>
+    </div>
+  </div>
+
+  <!-- Log content -->
+  <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="overflow-x-auto">
+      <pre class="bg-gray-900 text-gray-100 p-4 text-xs font-mono leading-relaxed overflow-x-auto min-h-[200px]">{{ content }}</pre>
     </div>
   </div>
 </div>
