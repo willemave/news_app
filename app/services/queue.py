@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 
 from app.core.db import get_db
 from app.core.logging import get_logger
@@ -162,28 +162,54 @@ class QueueService:
             Task data as dictionary or None if queue is empty
         """
         with get_db() as db:
-            # Build query
-            query = db.query(ProcessingTask).filter(
-                ProcessingTask.status == TaskStatus.PENDING.value
-            )
+            # Retry claim a few times to avoid races across worker processes.
+            # This compare-and-set pattern works reliably even where SKIP LOCKED
+            # semantics are unavailable (e.g., SQLite).
+            for _ in range(5):
+                now = datetime.now(UTC)
+                query = db.query(ProcessingTask.id).filter(
+                    ProcessingTask.status == TaskStatus.PENDING.value,
+                    or_(ProcessingTask.created_at.is_(None), ProcessingTask.created_at <= now),
+                )
 
-            if task_type:
-                query = query.filter(ProcessingTask.task_type == task_type.value)
+                if task_type:
+                    query = query.filter(ProcessingTask.task_type == task_type.value)
 
-            normalized_queue = self._normalize_queue_name(queue_name)
-            if normalized_queue:
-                query = query.filter(ProcessingTask.queue_name == normalized_queue)
+                normalized_queue = self._normalize_queue_name(queue_name)
+                if normalized_queue:
+                    query = query.filter(ProcessingTask.queue_name == normalized_queue)
 
-            # Order by priority (retry_count) and creation time
-            query = query.order_by(ProcessingTask.retry_count, ProcessingTask.created_at)
+                # Order by retry priority and schedule time.
+                task_row = query.order_by(
+                    ProcessingTask.retry_count,
+                    ProcessingTask.created_at,
+                ).first()
+                if task_row is None:
+                    return None
 
-            # Lock the row for update
-            task = query.with_for_update(skip_locked=True).first()
-
-            if task:
-                task.status = TaskStatus.PROCESSING.value
-                task.started_at = datetime.now(UTC)
+                task_id = int(task_row[0])
+                claimed = (
+                    db.query(ProcessingTask)
+                    .filter(
+                        ProcessingTask.id == task_id,
+                        ProcessingTask.status == TaskStatus.PENDING.value,
+                    )
+                    .update(
+                        {
+                            ProcessingTask.status: TaskStatus.PROCESSING.value,
+                            ProcessingTask.started_at: now,
+                        },
+                        synchronize_session=False,
+                    )
+                )
+                if claimed == 0:
+                    db.rollback()
+                    continue
                 db.commit()
+
+                task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+                if task is None:
+                    return None
 
                 # Create a dictionary with all necessary task data
                 # This prevents "not bound to Session" errors
@@ -205,7 +231,6 @@ class QueueService:
                     worker_id,
                     task_data["queue_name"],
                 )
-
                 return task_data
 
             return None

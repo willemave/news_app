@@ -60,29 +60,35 @@ struct OnboardingFlowView: View {
 
     private var introView: some View {
         VStack(spacing: 0) {
-            Spacer()
-
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.1))
-                        .frame(width: 88, height: 88)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 36, weight: .medium))
-                        .foregroundColor(.accentColor)
+            ZStack(alignment: .bottom) {
+                AncientScrollRevealView(
+                    obfuscatedSeed: 0xA53F_71D2,
+                    showsPhysics: true
+                ) { _ in }
+                .overlay(alignment: .bottom) {
+                    LinearGradient(
+                        colors: [
+                            Color.black.opacity(0.0),
+                            Color.black.opacity(0.25)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 100)
+                    .allowsHitTesting(false)
                 }
 
-                VStack(spacing: 10) {
-                    Text("Welcome to Newsly")
-                        .font(.title2.bold())
-                    Text("Your personal inbox for long-form\nand short-form news.")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+                HStack(spacing: 6) {
+                    Image(systemName: "hand.draw.fill")
+                        .font(.caption2)
+                    Text("Swipe to scatter")
+                        .font(.caption.weight(.medium))
                 }
+                .foregroundStyle(.white.opacity(0.55))
+                .padding(.bottom, 16)
+                .allowsHitTesting(false)
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             VStack(spacing: 12) {
                 primaryButton("Get started") {
@@ -95,9 +101,18 @@ struct OnboardingFlowView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+            .background(
+                ZStack {
+                    Color(UIColor.systemBackground).opacity(0.9)
+                    Rectangle().fill(.thinMaterial)
+                }
+                .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: -2)
+            )
         }
-        .padding(24)
-        .padding(.bottom, 8)
+        .ignoresSafeArea(edges: .top)
     }
 
     // MARK: - Choice

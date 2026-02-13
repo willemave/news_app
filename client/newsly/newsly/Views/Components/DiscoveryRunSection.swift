@@ -31,8 +31,8 @@ struct DiscoveryRunSection: View {
                         .padding(.top, 2)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
+            .padding(.horizontal, Spacing.screenHorizontal)
+            .padding(.top, Spacing.sectionTop)
             .padding(.bottom, 16)
 
             if !run.feeds.isEmpty {
@@ -70,7 +70,7 @@ struct DiscoveryRunSection: View {
 
             Spacer()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Spacing.screenHorizontal)
         .padding(.top, 20)
         .padding(.bottom, 12)
     }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -38,6 +39,17 @@ PROVIDER_PRECONDITION_ERROR_HINTS: tuple[str, ...] = (
     "failed_precondition",
     "user location is not supported",
     "not supported for the api use",
+)
+
+PROVIDER_CONFIG_ERROR_HINTS: tuple[str, ...] = (
+    "not configured in settings",
+    "api key is required",
+    "api key not configured",
+)
+
+EVENT_LOOP_BINDING_ERROR_HINTS: tuple[str, ...] = (
+    "bound to a different event loop",
+    "attached to a different loop",
 )
 
 
@@ -142,8 +154,8 @@ DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "news_digest": "anthropic:claude-haiku-4-5-20251001",
     "article": "openai:gpt-5.2",
     "podcast": "openai:gpt-5.2",
-    "interleaved": "google-gla:gemini-3-pro-preview",
-    "long_bullets": "google-gla:gemini-3-pro-preview",
+    "interleaved": "openai:gpt-5.2",
+    "long_bullets": "openai:gpt-5.2",
     "editorial_narrative": "openai:gpt-5.2",
 }
 
@@ -164,6 +176,16 @@ def _model_hint_from_spec(model_spec: str) -> tuple[str, str]:
 def _is_provider_precondition_error(error: Exception) -> bool:
     message = str(error).lower()
     return any(hint in message for hint in PROVIDER_PRECONDITION_ERROR_HINTS)
+
+
+def _is_provider_config_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(hint in message for hint in PROVIDER_CONFIG_ERROR_HINTS)
+
+
+def _is_event_loop_binding_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(hint in message for hint in EVENT_LOOP_BINDING_ERROR_HINTS)
 
 
 @dataclass
@@ -316,8 +338,30 @@ def summarize_content(
             return user_template.format(content=content_body)
 
         def _run_with_model(model_spec: str, content_payload: str) -> Any:
+            message = _build_user_message(content_payload)
             agent = get_summarization_agent(model_spec, prompt_content_type, system_prompt)
-            return agent.run_sync(_build_user_message(content_payload))
+            try:
+                return agent.run_sync(message)
+            except RuntimeError as loop_error:
+                if not _is_event_loop_binding_error(loop_error):
+                    raise
+                logger.warning(
+                    "Event-loop binding error for content %s with model %s; retrying in isolated "
+                    "thread",
+                    request.content_id or "unknown",
+                    model_spec,
+                )
+
+                def _run_in_thread() -> Any:
+                    retry_agent = get_summarization_agent(
+                        model_spec,
+                        prompt_content_type,
+                        system_prompt,
+                    )
+                    return retry_agent.run_sync(message)
+
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    return executor.submit(_run_in_thread).result()
 
         def _run_with_context_fallback(model_spec: str) -> Any:
             try:
@@ -375,6 +419,13 @@ def summarize_content(
                         logger.warning(
                             "Cross-provider fallback model %s also failed precondition",
                             fallback_model_spec,
+                        )
+                        continue
+                    if _is_provider_config_error(fallback_error):
+                        logger.warning(
+                            "Skipping fallback model %s due to provider configuration: %s",
+                            fallback_model_spec,
+                            fallback_error,
                         )
                         continue
                     raise

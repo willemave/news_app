@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from app.core.logging import get_logger
+from app.models.metadata import ContentStatus
+from app.models.schema import Content
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
 from app.pipeline.worker import ContentWorker
@@ -44,6 +46,29 @@ class ProcessContentHandler:
             if success:
                 logger.info("Content %s processed successfully", content_id)
                 return TaskResult.ok()
+
+            with context.db_factory() as db:
+                content_row = (
+                    db.query(Content.status, Content.error_message)
+                    .filter(Content.id == content_id)
+                    .first()
+                )
+
+            if content_row:
+                status, _error_message = content_row
+                terminal_statuses = {
+                    ContentStatus.FAILED.value,
+                    ContentStatus.SKIPPED.value,
+                    ContentStatus.COMPLETED.value,
+                }
+                if status in terminal_statuses:
+                    logger.info(
+                        "Content %s ended in terminal status=%s; not retrying process task",
+                        content_id,
+                        status,
+                    )
+                    # Processing reached a terminal state; task itself is complete.
+                    return TaskResult.ok()
 
             logger.error(
                 "Content %s processing failed",

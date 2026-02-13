@@ -159,6 +159,27 @@ class SummarizeHandler:
                     content.url,
                     content.status,
                 )
+                metadata = content.content_metadata or {}
+                terminal_statuses = {
+                    ContentStatus.FAILED.value,
+                    ContentStatus.SKIPPED.value,
+                }
+                if content.status in terminal_statuses:
+                    logger.info(
+                        "Skipping summarize task for content %s due to terminal status=%s",
+                        content_id,
+                        content.status,
+                    )
+                    return TaskResult.ok()
+                if (
+                    content.status == ContentStatus.COMPLETED.value
+                    and isinstance(metadata.get("summary"), dict)
+                ):
+                    logger.info(
+                        "Skipping summarize task for content %s; summary already exists",
+                        content_id,
+                    )
+                    return TaskResult.ok()
 
                 def _persist_failure(
                     reason: str,
@@ -186,7 +207,6 @@ class SummarizeHandler:
                     content.processed_at = datetime.now(UTC)
                     db.commit()
 
-                metadata = content.content_metadata or {}
                 if content.content_type == "article":
                     text_to_summarize = metadata.get("content") or metadata.get(
                         "content_to_summarize", ""

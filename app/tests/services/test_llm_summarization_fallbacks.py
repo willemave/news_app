@@ -71,3 +71,72 @@ def test_summarize_content_uses_context_fallback_model(monkeypatch) -> None:
     assert result is not None
     assert "openai:gpt-5.2" in calls
     assert FALLBACK_SUMMARIZATION_MODEL in calls
+
+
+def test_summarize_content_skips_unconfigured_fallback_provider(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def _fake_agent_factory(model_spec: str, *_args, **_kwargs):  # noqa: ANN001
+        class _Agent:
+            def run_sync(self, _message: str):  # noqa: ANN001
+                calls.append(model_spec)
+                if model_spec.startswith("google-gla:"):
+                    raise RuntimeError(
+                        "status_code: 400 FAILED_PRECONDITION - "
+                        "User location is not supported for the API use."
+                    )
+                if model_spec.startswith("openai:"):
+                    raise ValueError("OPENAI_API_KEY not configured in settings.")
+                return SimpleNamespace(output={"title": "Anthropic fallback summary"})
+
+        return _Agent()
+
+    monkeypatch.setattr(llm_summarization, "get_summarization_agent", _fake_agent_factory)
+
+    request = SummarizationRequest(
+        content="A short body of content for testing",
+        content_type="article",
+        model_spec="google-gla:gemini-3-pro-preview",
+        content_id=125,
+    )
+
+    result = summarize_content(request)
+
+    assert result is not None
+    assert calls == [
+        "google-gla:gemini-3-pro-preview",
+        "openai:gpt-5.2-mini",
+        "anthropic:claude-haiku-4-5-20251001",
+    ]
+
+
+def test_summarize_content_recovers_from_event_loop_binding_error(monkeypatch) -> None:
+    calls: list[str] = []
+    run_invocations = {"count": 0}
+
+    def _fake_agent_factory(model_spec: str, *_args, **_kwargs):  # noqa: ANN001
+        calls.append(model_spec)
+
+        class _Agent:
+            def run_sync(self, _message: str):  # noqa: ANN001
+                run_invocations["count"] += 1
+                if run_invocations["count"] == 1:
+                    raise RuntimeError("is bound to a different event loop")
+                return SimpleNamespace(output={"title": "Recovered summary"})
+
+        return _Agent()
+
+    monkeypatch.setattr(llm_summarization, "get_summarization_agent", _fake_agent_factory)
+
+    request = SummarizationRequest(
+        content="A short body of content for testing",
+        content_type="article",
+        model_spec="openai:gpt-5.2",
+        content_id=126,
+    )
+
+    result = summarize_content(request)
+
+    assert result is not None
+    assert run_invocations["count"] == 2
+    assert calls == ["openai:gpt-5.2", "openai:gpt-5.2"]

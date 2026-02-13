@@ -1,6 +1,7 @@
 """Tests for queue service behavior."""
 
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 
 from app.models.schema import ProcessingTask
 from app.services.queue import QueueService, TaskQueue, TaskStatus, TaskType
@@ -199,3 +200,33 @@ def test_get_queue_stats_reports_pending_by_queue(db_session, monkeypatch):
         ]
         == 1
     )
+
+
+def test_dequeue_respects_retry_delay_schedule(db_session, monkeypatch):
+    """Tasks scheduled for future retry are not dequeued early."""
+    queue = _patch_db(monkeypatch, db_session)
+    now = datetime.now(UTC)
+
+    ready_task = ProcessingTask(
+        task_type=TaskType.SUMMARIZE.value,
+        status=TaskStatus.PENDING.value,
+        payload={},
+        queue_name=TaskQueue.CONTENT.value,
+        created_at=now - timedelta(seconds=1),
+    )
+    delayed_task = ProcessingTask(
+        task_type=TaskType.SUMMARIZE.value,
+        status=TaskStatus.PENDING.value,
+        payload={},
+        queue_name=TaskQueue.CONTENT.value,
+        created_at=now + timedelta(minutes=5),
+    )
+    db_session.add_all([ready_task, delayed_task])
+    db_session.commit()
+
+    first = queue.dequeue(worker_id="worker-a", queue_name=TaskQueue.CONTENT)
+    second = queue.dequeue(worker_id="worker-b", queue_name=TaskQueue.CONTENT)
+
+    assert first is not None
+    assert first["id"] == ready_task.id
+    assert second is None

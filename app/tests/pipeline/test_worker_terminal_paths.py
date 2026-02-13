@@ -88,3 +88,42 @@ def test_handle_canonical_integrity_conflict_marks_content_skipped(monkeypatch, 
     db_session.refresh(incoming)
     assert incoming.status == ContentStatus.SKIPPED.value
     assert incoming.content_metadata["canonical_content_id"] == existing.id
+
+
+def test_process_content_handles_integrity_error_from_worker(monkeypatch, db_session) -> None:
+    _patch_worker_db(monkeypatch, db_session)
+
+    existing = Content(
+        content_type=ContentType.ARTICLE.value,
+        url="https://example.com/dupe-worker",
+        status=ContentStatus.PROCESSING.value,
+        content_metadata={},
+    )
+    incoming = Content(
+        content_type=ContentType.ARTICLE.value,
+        url="https://example.com/original-worker",
+        status=ContentStatus.PROCESSING.value,
+        content_metadata={},
+    )
+    db_session.add_all([existing, incoming])
+    db_session.commit()
+    db_session.refresh(existing)
+    db_session.refresh(incoming)
+
+    def _raise_integrity(_self, content):  # noqa: ANN001
+        content.url = "https://example.com/dupe-worker"
+        raise IntegrityError(
+            "UPDATE contents ...",
+            {},
+            Exception("UNIQUE constraint failed: contents.url, contents.content_type"),
+        )
+
+    monkeypatch.setattr(ContentWorker, "_process_article", _raise_integrity)
+
+    worker = ContentWorker()
+    handled = worker.process_content(incoming.id, "test-worker")
+
+    assert handled is True
+    db_session.refresh(incoming)
+    assert incoming.status == ContentStatus.SKIPPED.value
+    assert incoming.content_metadata["canonical_content_id"] == existing.id

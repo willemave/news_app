@@ -28,7 +28,7 @@ struct SettingsView: View {
 
                 readStatusSection
 
-                #if DEBUG
+                #if DEBUG && targetEnvironment(simulator)
                 SectionDivider()
                 debugSection
                 #endif

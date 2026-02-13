@@ -105,7 +105,7 @@ Guidelines:
 Return a JSON object with exactly these fields:
 {{
   "title": "Descriptive title (max 110 characters)",
-  "editorial_narrative": "2-4 compact paragraphs with a clear thesis and factual synthesis",
+  "editorial_narrative": "2-3 tight paragraphs with a clear thesis and factual synthesis",
   "quotes": [
     {{
       "text": "Direct quote from the content (min 10 chars)",
@@ -123,7 +123,8 @@ Return a JSON object with exactly these fields:
 
 Guidelines:
 - Start the first paragraph with the core thesis or the most consequential takeaway.
-- Keep the narrative information-dense: include named entities, numbers, dates, constraints, and implications.
+- Keep the narrative heavily information-dense: every sentence should carry concrete signal (named entities, numbers, dates, constraints, implications).
+- Keep it slightly shorter: target roughly 180-260 words across the full narrative.
 - Avoid filler, repetition, and generic framing.
 - Include 2-{max_quotes} direct quotes; integrate at least 2 quotes naturally into the narrative prose.
 - key_points: include 4-{max_bullet_points} non-overlapping points.

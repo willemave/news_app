@@ -50,14 +50,12 @@ struct KnowledgeDiscoveryView: View {
         VStack(spacing: 0) {
             if viewModel.isJobRunning {
                 runningJobBanner
-                    .padding(.horizontal, Spacing.screenHorizontal)
                     .padding(.top, 12)
                     .padding(.bottom, 8)
             }
 
             if hasNewSuggestions && !viewModel.isJobRunning {
                 newSuggestionsBanner
-                    .padding(.horizontal, Spacing.screenHorizontal)
                     .padding(.top, 12)
                     .padding(.bottom, 8)
             }

@@ -572,7 +572,7 @@ struct NewChatSheet: View {
                     .foregroundColor(.red)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, Spacing.screenHorizontal)
 
             HStack(spacing: 6) {
                 Image(systemName: "star")
@@ -583,7 +583,7 @@ struct NewChatSheet: View {
                     .foregroundColor(.secondary)
             }
             .padding(.top, 10)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, Spacing.screenHorizontal)
 
             Spacer()
 
@@ -622,7 +622,7 @@ struct NewChatSheet: View {
                 }
                 .padding(.bottom, 8)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, Spacing.screenHorizontal)
             .padding(.bottom, 16)
         }
         .onAppear {

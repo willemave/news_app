@@ -9,7 +9,7 @@ AI-powered news aggregation and summarization with a FastAPI backend and a nativ
 
 ## Key docs
 - `docs/architecture.md` — full system, schema, and API details
-- `CLAUDE.md` — coding rules and workflow
+- `AGENTS.md` — coding rules and workflow
 
 ## Quick start
 ```bash

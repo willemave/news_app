@@ -2,19 +2,19 @@
 
 > Technical reference for the FastAPI backend, content pipeline, chat system, and SwiftUI client contracts.
 
-**Last Updated:** 2025-12-29  
+**Last Updated:** 2026-02-12  
 **Runtime:** Python 3.13, FastAPI + SQLAlchemy 2, Pydantic v2, pydantic-ai  
 **Database:** PostgreSQL (prod) / SQLite (dev)  
 **Clients:** SwiftUI (iOS 17+), Jinja admin views
 
 ## System Overview
-- Unified content ingestion (scrapers + user submissions) feeding a DB-backed task queue (analyze → process → summarize → image).
+- Unified content ingestion (scrapers + user submissions) feeding a DB-backed task queue (`analyze → process → summarize → image`) plus feed/discovery and dig-deeper follow-up task flows.
 - URL analysis stage uses pattern matching + LLM page analysis to detect content type/platform and embedded media.
-- Processing workers apply URL strategies, fetch/extract content, summarize with LLMs (interleaved for articles/podcasts), and persist typed metadata.
+- Processing workers apply URL strategies, fetch/extract content, summarize with LLMs (editorial narrative by default with interleaved variants), and persist typed metadata.
 - Post-summary imagery uses AI infographics for articles/podcasts; news currently skips post-summary image generation.
 - API surface covers auth, feed/list/search, read/favorite state, conversions, tweet ideas, chat, and user-managed scrapers.
 - Deep-dive chat uses pydantic-ai agents with Exa web search; conversations are stored server-side.
-- Deep Research mode uses OpenAI's o4-mini-deep-research model for comprehensive async research (2-5 min).
+- Deep Research uses OpenAI's `o4-mini-deep-research-2025-06-26` model for comprehensive async research (up to ~10 minutes, with 2-second polling).
 - Admin/Jinja web UI shares the same services as the mobile API.
 
 ```mermaid
@@ -34,7 +34,7 @@ flowchart LR
   Worker --> ImageGen[Image Generation\nGemini]
   Worker --> Media[(media/logs dirs)]
   API <--> Chat[Chat Agent\nExa search]
-  API <--> DeepResearch[Deep Research\nOpenAI o4-mini]
+  API <--> DeepResearch[Deep Research\nOpenAI o4-mini-deep-research]
 ```
 
 ## Codebase Map
@@ -61,11 +61,11 @@ flowchart LR
 | Class | Location | Responsibilities | Key Methods |
 |---|---|---|---|
 | `Settings` | app/core/settings.py | Env-driven config (DB, JWT, API keys, paths, worker limits) | properties `podcast_media_dir`, `substack_media_dir`, `logs_dir` |
-| `QueueService` | app/services/queue.py | DB-backed task queue (SCRAPE/ANALYZE_URL/PROCESS_CONTENT/DOWNLOAD_AUDIO/TRANSCRIBE/SUMMARIZE/GENERATE_IMAGE) with retries/stats | `enqueue`, `dequeue`, `complete_task`, `retry_task`, `get_queue_stats`, `cleanup_old_tasks` |
+| `QueueService` | app/services/queue.py | DB-backed task queue (`scrape`/`analyze_url`/`process_content`/`download_audio`/`transcribe`/`summarize`/`generate_image`/`discover_feeds`/`onboarding_discover`/`dig_deeper`) with retries | `enqueue`, `dequeue`, `complete_task`, `retry_task`, `get_queue_stats`, `cleanup_old_tasks` |
 | `CheckoutManager` | app/pipeline/checkout.py | Row-level locking for content checkout/release | `checkout_content` context, `release_stale_checkouts`, `get_checkout_stats` |
 | `ContentWorker` | app/pipeline/worker.py | Process articles/news/podcasts: choose strategy, download/extract, summarize, persist | `process_content`, `_process_article`, `_process_podcast` |
 | `PodcastDownloadWorker` / `PodcastTranscribeWorker` | app/pipeline/podcast_workers.py | Download audio (with retries) then transcribe via Whisper; queue follow-up tasks | `process_download_task`, `process_transcribe_task` |
-| `ContentSummarizer` | app/services/llm_summarization.py | pydantic-ai summarization with per-type defaults (news digest + interleaved for article/podcast) | `summarize`, `summarize_content` |
+| `ContentSummarizer` | app/services/llm_summarization.py | pydantic-ai summarization with per-type defaults (news digest + editorial narrative + interleaved variants) | `summarize`, `summarize_content` |
 | `ContentAnalyzer` | app/services/content_analyzer.py | Fetch page text (trafilatura), detect embedded media/RSS, LLM classify type/platform | `analyze_url`, `_detect_media_in_html` |
 | `StrategyRegistry` | app/processing_strategies/registry.py | Ordered URL strategy matching | `get_strategy`, `register`, `list_strategies` |
 | `RobustHttpClient` | app/http_client/robust_http_client.py | Resilient HTTP GET/HEAD with retries/logging | `get`, `head`, `close` |
@@ -81,7 +81,7 @@ flowchart LR
 |---|---|---|
 | `users` | Accounts from Apple Sign In + admin | `id`, `apple_id` UQ, `email` UQ, `full_name`, `is_admin`, `is_active`, timestamps |
 | `contents` | Core content records | `id`, `content_type` (`article/podcast/news/unknown`), `url` (canonical, UQ per type), `source_url` (original scraped/submitted URL), `title`, `source`, `platform`, `is_aggregate` (legacy, always false), `status`, `classification`, `error_message`, `retry_count`, checkout fields, `content_metadata` JSON (summary/interleaved, detected_feed, image_generated_at, thumbnail_url), timestamps, indexes on type/status/created_at |
-| `processing_tasks` | Task queue | `task_type` (`scrape/analyze_url/process_content/download_audio/transcribe/summarize/generate_image`), `content_id`, `payload` JSON, `status`, retry counters, timestamps, idx on status+created_at |
+| `processing_tasks` | Task queue | `task_type` (`scrape`/`analyze_url`/`process_content`/`download_audio`/`transcribe`/`summarize`/`generate_image`/`discover_feeds`/`onboarding_discover`/`dig_deeper`), `content_id`, `payload` JSON, `status`, retry counters, timestamps, idx on status+created_at |
 | `content_read_status` | User read marks | UQ `(user_id, content_id)`, `read_at` |
 | `content_favorites` | User favorites | UQ `(user_id, content_id)` |
 | `content_unlikes` | User unlikes | UQ `(user_id, content_id)` |
@@ -94,7 +94,7 @@ flowchart LR
 ## Domain & Pydantic Types
 - **Enums (app/models/metadata.py)**: `ContentType` (`ARTICLE/PODCAST/NEWS/UNKNOWN`), `ContentStatus` (`new/pending/processing/completed/failed/skipped`), `ContentClassification` (`to_read/skip`).
 - **Metadata models**: `ArticleMetadata` (author, publication_date, content, word_count, summary), `PodcastMetadata` (audio_url, transcript, duration, episode_number, YouTube fields, thumbnail_url, summary), `NewsMetadata` (article: url/title/source_domain; aggregator info + `discussion_url`; discovery_time; summary `NewsSummary`).
-- **Summaries**: `InterleavedSummary` (summary_type, hook, insights w/ supporting quotes, takeaway), `StructuredSummary` (title, overview, bullet_points, quotes, topics, questions, counter_arguments, classification, full_markdown), `NewsSummary` (title, article_url, key_points, summary, classification, summarization_date).
+- **Summaries**: `InterleavedSummary` (summary_type, hook, insights w/ supporting quotes, takeaway), `InterleavedSummaryV2` (key_points, topics, quotes, takeaway), `StructuredSummary` (title, overview, bullet_points, quotes, topics, questions, counter_arguments, classification, full_markdown), `EditorialNarrativeSummary` (headline + structured narrative), `BulletedSummary`, `NewsSummary` (title, article_url, key_points, summary, classification, summarization_date).
 - **Domain wrapper**: `ContentData` (id, content_type, url, source_url, title, status, metadata dict + computed `display_title`, `short_summary`, `structured_summary`, `interleaved_summary`, `bullet_points`, `quotes`, `topics`, `transcript`; timestamps, retry/error fields). Interleaved summaries are normalized into bullets/quotes/topics for list views.
 - **API schemas (app/routers/api/models.py)**: `ContentSummaryResponse`/`ContentDetailResponse` (includes `image_url`, `thumbnail_url`, `detected_feed`), `ContentListResponse`, `UnreadCountsResponse`, `SubmitContentRequest` + `ContentSubmissionResponse`, `ConvertNewsResponse`, `TweetSuggestionsRequest/Response`, chat DTOs (`ChatSessionSummaryResponse`, `ChatSessionDetailResponse`, `ChatMessageResponse`, `CreateChatSessionRequest/Response`, `SendChatMessageRequest`).
 
@@ -121,7 +121,7 @@ flowchart LR
   5) Prepare LLM payload; enqueue `SUMMARIZE` task (pydantic-ai prompts in `app/services/llm_prompts.py`).
   6) Persist extraction metadata, set `status=processing`, set `processed_at`; summarization task later writes summary + final status and enqueues image generation.
 - **Podcasts**: `PodcastDownloadWorker` saves audio under `settings.podcast_media_dir`, skips YouTube audio, enqueues transcribe; `PodcastTranscribeWorker` runs Whisper (`app/services/whisper_local.py`), updates metadata, sets status to `completed`.
-- **Summarization defaults**: per-type default models (news → `openai:gpt-5-mini`, articles/podcasts → interleaved with Anthropic Haiku), fallback Gemini Flash; truncates content above 220k chars and prunes empty quotes.
+- **Summarization defaults**: per-type default models (news → `anthropic:claude-haiku-4-5-20251001`; article/podcast/editorial_narrative → `openai:gpt-5.2`; interleaved/long_bullets fallback hint `google-gla:gemini-3-pro-preview`; fallback model `google-gla:gemini-2.5-flash-preview-09-2025`), fallback Gemini Flash for failures; truncates content above 220k chars and prunes empty quotes.
 - **Image generation**: post-summary tasks call Gemini for article/podcast infographics (`GENERATE_IMAGE`); news currently skips post-summary image generation. Generated images are stored under `IMAGES_BASE_DIR` (default `/data/images`) and served at `/static/images/...`.
 
 ## Processing Strategies (`app/processing_strategies/`)
@@ -147,7 +147,7 @@ flowchart LR
 ## Deep-Dive Chat
 - **Data model**: `chat_sessions` + `chat_messages` (serialized pydantic-ai `ModelMessage` lists). Sessions store provider/model, topic/session_type, archive flag; messages track async `status` + `error`. List responses surface `is_favorite`, `has_messages`, `has_pending_message`.
 - **Agent**: `app/services/chat_agent.py` builds pydantic-ai `Agent` with system prompt + Exa search tool (`exa_web_search`); article context pulled from summaries/content; model resolution via `app/services/llm_models.py` (OpenAI/Anthropic/Google with API-key aware construction).
-- **Deep Research**: `app/services/deep_research.py` uses OpenAI's Responses API with `o4-mini-deep-research` model for comprehensive research. Runs as background task (~2-5 min) with web search and code interpreter tools. Uses `background=True` mode with polling via `AsyncOpenAI` SDK.
+- **Deep Research**: `app/services/deep_research.py` uses OpenAI's Responses API with `o4-mini-deep-research-2025-06-26` model for comprehensive research. Runs as a background task with web search and code interpreter tools. Uses `background=True` mode with ~2-second polling via `AsyncOpenAI` SDK (up to 10 minutes by default).
 - **Session Types**: `article_brain` (dig deeper into article), `topic` (search/corroborate), `ad_hoc` (general chat), `deep_research` (comprehensive async research).
 - **Endpoints**: create/list/get sessions, send messages (runs agent, appends DB message list), initial suggestions for article sessions; list includes favorite/pending flags. Deep research sessions route to `process_deep_research_message` background task instead of pydantic-ai agent. Message displays extract user/assistant text from stored message lists.
 
@@ -157,7 +157,7 @@ flowchart LR
 - Views model feed (list/search with cursor), detail, favorites, chat sessions/messages; supports share-sheet submissions and topic/ad-hoc chats; Knowledge tab unifies favorites + chat sessions.
 - **Rendering**: content detail renders interleaved summaries when `summary_type=interleaved`; list views prefer `thumbnail_url` for progressive image loading with local caching.
 - **Share Extension**: `client/newsly/ShareExtension` target reads shared auth token (Keychain/app group) and submits URLs to `POST /api/content/submit`.
-- **Chat UI**: Chat list shows session type icons (dig deeper, search, deep research, chat) with purple highlight for deep research. Article detail "Start a Chat" sheet offers Dig Deeper, Corroborate, Deep Research (~2-5 min), and voice input options. `ChatModelProvider` enum defines available providers (OpenAI, Anthropic, Google, Deep Research).
+- **Chat UI**: Chat list shows session type icons (dig deeper, search, deep research, chat). Article detail "Start a Chat" sheet offers Dig Deeper, Corroborate, Deep Research, and voice input options. `ChatModelProvider` enum defines available providers (OpenAI, Anthropic, Google, Deep Research).
 
 ## Security & Observability Notes
 - **Gaps**: Apple token signature verification disabled (dev only) in `app/core/security.py`; admin sessions stored in-memory (`app/routers/auth.py`); CORS allows all origins; JWT secret/ADMIN_PASSWORD must be provided via env.
@@ -171,4 +171,4 @@ flowchart LR
 4) Summaries enqueue `GENERATE_IMAGE` for article/podcast content; news does not enqueue a post-summary image task.
 5) API list/search filters: only summarized articles/podcasts + completed news, excludes `classification=skip`, requires `content_status` inbox rows for per-user feeds.
 6) Chat sessions reference `contents` (optional) and persist assistant/user messages; Exa search tool available when `EXA_API_KEY` is set.
-7) Deep research sessions use OpenAI Responses API: message sent → background task polls for completion (2-5 min) → result persisted to `chat_messages`.
+7) Deep research sessions use OpenAI Responses API: message sent → background task polls for completion (up to ~10 min) → result persisted to `chat_messages`.

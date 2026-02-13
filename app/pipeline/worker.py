@@ -162,6 +162,17 @@ class ContentWorker:
             return success or content.status in terminal_statuses
 
         except Exception as e:
+            if isinstance(e, IntegrityError):
+                candidate_content = locals().get("content")
+                if isinstance(candidate_content, ContentData):
+                    try:
+                        if self._handle_canonical_integrity_conflict(candidate_content, e):
+                            return True
+                    except Exception:  # noqa: BLE001
+                        logger.exception(
+                            "Failed to handle canonical URL integrity conflict for content %s",
+                            content_id,
+                        )
             logger.exception(
                 "Error processing content %s: %s",
                 content_id,

@@ -94,10 +94,6 @@
       "Bash(pip show:*)",
       "Bash(.venv/bin/ruff check app/services/chat_agent.py)",
       "Bash(.venv/bin/ruff format app/services/chat_agent.py)",
-      "Bash(bd create:*)",
-      "Bash(bd update:*)",
-      "Bash(bd close:*)",
-      "Bash(bd sync:*)",
       "Bash(.venv/bin/pip show:*)",
       "Bash(http GET:*)",
       "Bash(timeout 30 .venv/bin/python:*)",
@@ -111,7 +107,6 @@
       "Bash(brew list:*)",
       "Bash(brew install:*)",
       "Bash(timeout 120 .venv/bin/python:*)",
-      "Bash(bd list:*)",
       "Bash(unzip:*)",
       "Bash(.venv/bin/pytest app/tests/ -v)",
       "Bash(.venv/bin/pytest:*)",
@@ -129,9 +124,6 @@
       "Bash(git -C /Users/Willem/Development/news_app log --diff-filter=D --summary)",
       "Bash(git -C /Users/Willem/Development/news_app worktree list)",
       "Bash(yt-dlp --version:*)",
-      "Bash(bd dep:*)",
-      "Bash(bd blocked)",
-      "Bash(bd ready:*)",
       "Bash(timeout 60 .venv/bin/python:*)",
       "Bash(git -C /Users/willem/Development/news_app diff app/services/content_analyzer.py)",
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidHlwZSI6ImFjY2VzcyIsImV4cCI6MTc2NzE2MDkxNywiaWF0IjoxNzY2NTU2MTE3fQ.kgWKcGFLLPGuREGFgP2ezTD9MvhdhL4lBx6z2_TMSIw\")",
@@ -148,39 +140,5 @@
     ],
     "deny": []
   },
-  "hooks": {
-    "PreCompact": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bd prime"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bd prime"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "You are evaluating whether a Claude Code session should continue to update documentation.\n\nFirst, check the input JSON ($ARGUMENTS). If stop_hook_active is true, you MUST respond with: {\"ok\": true, \"continue\": true} to prevent infinite loops.\n\nOtherwise, evaluate if this session made significant changes to the codebase that warrant documentation updates. Consider: new features added, API changes, architectural changes, new dependencies, schema changes, or significant refactoring.\n\nIf the session was substantial (more than trivial fixes/typos), respond with:\n{\"ok\": true, \"continue\": false, \"reason\": \"Session made substantial changes. Please: 1) Review CLAUDE.md and update any outdated sections, 2) Review docs/architecture.md and update relevant sections, 3) Keep updates concise - only change what's necessary, 4) Commit documentation changes with message 'docs: update documentation after session changes'\"}\n\nIf the session was minor (small fixes, questions only, no code changes), respond with:\n{\"ok\": true, \"continue\": true}",
-            "timeout": 60
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": {}
 }
