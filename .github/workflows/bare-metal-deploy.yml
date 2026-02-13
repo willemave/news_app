@@ -108,7 +108,7 @@ jobs:
           echo "→ Resolving supervisor programs to stop/start"
           RESOLVED_PROGRAMS=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "bash -lc '
             set -euo pipefail
-            existing=\$(sudo supervisorctl status | awk \"{print \\$1}\")
+            existing=\$(sudo supervisorctl status | sed -E \"s/[[:space:]].*$//\")
             resolved=\"\"
             for p in $PROGRAMS; do
               if echo \"\$existing\" | grep -qx \"\$p\"; then
