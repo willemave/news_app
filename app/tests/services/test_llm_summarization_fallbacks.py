@@ -73,7 +73,9 @@ def test_summarize_content_uses_context_fallback_model(monkeypatch) -> None:
     assert FALLBACK_SUMMARIZATION_MODEL in calls
 
 
-def test_summarize_content_skips_unconfigured_fallback_provider(monkeypatch) -> None:
+def test_summarize_content_returns_none_when_openai_fallback_is_unconfigured(
+    monkeypatch,
+) -> None:
     calls: list[str] = []
 
     def _fake_agent_factory(model_spec: str, *_args, **_kwargs):  # noqa: ANN001
@@ -87,7 +89,7 @@ def test_summarize_content_skips_unconfigured_fallback_provider(monkeypatch) -> 
                     )
                 if model_spec.startswith("openai:"):
                     raise ValueError("OPENAI_API_KEY not configured in settings.")
-                return SimpleNamespace(output={"title": "Anthropic fallback summary"})
+                return SimpleNamespace(output={"title": "Unexpected fallback summary"})
 
         return _Agent()
 
@@ -102,11 +104,10 @@ def test_summarize_content_skips_unconfigured_fallback_provider(monkeypatch) -> 
 
     result = summarize_content(request)
 
-    assert result is not None
+    assert result is None
     assert calls == [
         "google-gla:gemini-3-pro-preview",
         "openai:gpt-5.2-mini",
-        "anthropic:claude-haiku-4-5-20251001",
     ]
 
 

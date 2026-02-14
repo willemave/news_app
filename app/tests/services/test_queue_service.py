@@ -49,21 +49,27 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     queue = _patch_db(monkeypatch, db_session)
 
     content_task_id = queue.enqueue(TaskType.SUMMARIZE, content_id=1)
+    transcribe_task_id = queue.enqueue(TaskType.TRANSCRIBE, content_id=2)
     onboarding_task_id = queue.enqueue(TaskType.ONBOARDING_DISCOVER, payload={"user_id": 11})
     chat_task_id = queue.enqueue(
         TaskType.DIG_DEEPER,
-        content_id=2,
+        content_id=3,
         payload={"user_id": 11},
     )
 
     tasks = {
         task.id: task
         for task in db_session.query(ProcessingTask)
-        .filter(ProcessingTask.id.in_([content_task_id, onboarding_task_id, chat_task_id]))
+        .filter(
+            ProcessingTask.id.in_(
+                [content_task_id, transcribe_task_id, onboarding_task_id, chat_task_id]
+            )
+        )
         .all()
     }
 
     assert tasks[content_task_id].queue_name == TaskQueue.CONTENT.value
+    assert tasks[transcribe_task_id].queue_name == TaskQueue.TRANSCRIBE.value
     assert tasks[onboarding_task_id].queue_name == TaskQueue.ONBOARDING.value
     assert tasks[chat_task_id].queue_name == TaskQueue.CHAT.value
 
@@ -114,6 +120,12 @@ def test_dequeue_filters_by_queue_name(db_session, monkeypatch):
                 queue_name=TaskQueue.CONTENT.value,
             ),
             ProcessingTask(
+                task_type=TaskType.TRANSCRIBE.value,
+                status=TaskStatus.PENDING.value,
+                payload={},
+                queue_name=TaskQueue.TRANSCRIBE.value,
+            ),
+            ProcessingTask(
                 task_type=TaskType.ONBOARDING_DISCOVER.value,
                 status=TaskStatus.PENDING.value,
                 payload={"user_id": 1},
@@ -147,6 +159,11 @@ def test_dequeue_filters_by_queue_name(db_session, monkeypatch):
     assert content_task is not None
     assert content_task["task_type"] == TaskType.SUMMARIZE.value
     assert content_task["queue_name"] == TaskQueue.CONTENT.value
+
+    transcribe_task = queue.dequeue(worker_id="transcribe-test", queue_name=TaskQueue.TRANSCRIBE)
+    assert transcribe_task is not None
+    assert transcribe_task["task_type"] == TaskType.TRANSCRIBE.value
+    assert transcribe_task["queue_name"] == TaskQueue.TRANSCRIBE.value
 
     chat_task = queue.dequeue(worker_id="chat-test", queue_name=TaskQueue.CHAT)
     assert chat_task is not None

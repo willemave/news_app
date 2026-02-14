@@ -26,6 +26,7 @@ class TaskType(StrEnum):
 
 class TaskQueue(StrEnum):
     CONTENT = "content"
+    TRANSCRIBE = "transcribe"
     ONBOARDING = "onboarding"
     CHAT = "chat"
 
@@ -35,7 +36,7 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.ANALYZE_URL: TaskQueue.CONTENT,
     TaskType.PROCESS_CONTENT: TaskQueue.CONTENT,
     TaskType.DOWNLOAD_AUDIO: TaskQueue.CONTENT,
-    TaskType.TRANSCRIBE: TaskQueue.CONTENT,
+    TaskType.TRANSCRIBE: TaskQueue.TRANSCRIBE,
     TaskType.SUMMARIZE: TaskQueue.CONTENT,
     TaskType.GENERATE_IMAGE: TaskQueue.CONTENT,
     TaskType.DISCOVER_FEEDS: TaskQueue.CONTENT,

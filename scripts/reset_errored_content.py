@@ -12,9 +12,12 @@ Note: Only processes articles and podcasts, not news items.
 """
 
 import argparse
+import json
 import os
+import re
 import sys
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 # Add parent directory to path for imports (use os.path for Python 3.13 compatibility)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,6 +27,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import get_settings
 from app.models.schema import Content, ContentStatus, ProcessingTask
+
+LOG_FILE_SUFFIXES = (".jsonl", ".log", ".txt")
 
 
 def parse_datetime(value: str) -> datetime:
@@ -51,6 +56,69 @@ def parse_datetime(value: str) -> datetime:
     )
 
 
+def export_raw_logs_for_content(
+    content_ids: list[int],
+    logs_dir: str,
+    output_path: str,
+) -> tuple[int, int, str]:
+    """Export raw log entries that mention the selected content ids.
+
+    Args:
+        content_ids: Target content ids being reset.
+        logs_dir: Root directory containing log files.
+        output_path: JSONL output file path for matching raw lines.
+
+    Returns:
+        Tuple of (matched_lines, matched_files, manifest_path).
+        The manifest file contains one matched source log file per line.
+    """
+    if not content_ids:
+        raise ValueError("No content ids provided for raw log export")
+
+    if not os.path.isdir(logs_dir):
+        raise FileNotFoundError(f"Logs directory not found: {logs_dir}")
+
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    target_ids = {str(content_id) for content_id in content_ids}
+    candidate_files: list[str] = []
+    for root, _dirs, files in os.walk(logs_dir):
+        for filename in files:
+            if filename.endswith(LOG_FILE_SUFFIXES):
+                candidate_files.append(os.path.join(root, filename))
+
+    matched_lines = 0
+    matched_paths: set[str] = set()
+    with open(output_path, "w", encoding="utf-8") as output_file:
+        for file_path in sorted(candidate_files):
+            try:
+                with open(file_path, encoding="utf-8", errors="replace") as source_file:
+                    for line_number, line in enumerate(source_file, start=1):
+                        numeric_tokens = set(re.findall(r"\b\d+\b", line))
+                        if not numeric_tokens or target_ids.isdisjoint(numeric_tokens):
+                            continue
+
+                        record: dict[str, Any] = {
+                            "file": file_path,
+                            "line_number": line_number,
+                            "line": line.rstrip("\n"),
+                        }
+                        output_file.write(json.dumps(record, ensure_ascii=True) + "\n")
+                        matched_lines += 1
+                        matched_paths.add(file_path)
+            except OSError as exc:
+                print(f"Warning: could not read log file {file_path}: {exc}", file=sys.stderr)
+
+    manifest_path = f"{output_path}.files.txt"
+    with open(manifest_path, "w", encoding="utf-8") as manifest_file:
+        for matched_path in sorted(matched_paths):
+            manifest_file.write(f"{matched_path}\n")
+
+    return matched_lines, len(matched_paths), manifest_path
+
+
 def reset_errored_content(
     days: int | None = None,
     since: datetime | None = None,
@@ -58,7 +126,10 @@ def reset_errored_content(
     stuck_hours: float | None = None,
     missing_summary: bool = False,
     dry_run: bool = False,
-):
+    return_raw_logs: bool = False,
+    raw_logs_dir: str = "logs_from_server",
+    raw_logs_output: str | None = None,
+) -> None:
     """Reset errored or stuck articles/podcasts for re-processing.
 
     Args:
@@ -68,6 +139,9 @@ def reset_errored_content(
         stuck_hours: Also include content stuck in 'processing' for more than X hours
         missing_summary: Also include 'completed' content that's missing a summary
         dry_run: If True, show what would be reset without making changes
+        return_raw_logs: If True, export matching raw log entries for affected ids
+        raw_logs_dir: Directory containing raw logs to scan
+        raw_logs_output: Optional JSONL output path for raw log export
     """
     # Get database settings
     settings = get_settings()
@@ -147,6 +221,24 @@ def reset_errored_content(
             if missing_summary_count:
                 print(f"  - {missing_summary_count} 'completed' but missing summary")
 
+            content_ids = [content.id for content in affected_content]
+            if return_raw_logs:
+                default_name = (
+                    f"reset_errored_content_raw_logs_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.jsonl"
+                )
+                output_path = raw_logs_output or os.path.join("outputs", default_name)
+                matched_lines, matched_files, manifest_path = export_raw_logs_for_content(
+                    content_ids=content_ids,
+                    logs_dir=raw_logs_dir,
+                    output_path=output_path,
+                )
+                print(
+                    f"Raw log export complete: {matched_lines} matching lines from "
+                    f"{matched_files} files"
+                )
+                print(f"  - Lines output: {output_path}")
+                print(f"  - File manifest: {manifest_path}")
+
             if dry_run:
                 print("\nDRY RUN - Would reset the following content:")
                 for content in affected_content[:20]:  # Show first 20 in dry run
@@ -161,7 +253,6 @@ def reset_errored_content(
                 return
 
             # Delete existing processing tasks for affected content
-            content_ids = [c.id for c in affected_content]
             deleted_tasks = (
                 db.query(ProcessingTask)
                 .filter(ProcessingTask.content_id.in_(content_ids))
@@ -176,6 +267,7 @@ def reset_errored_content(
             for content in affected_content:
                 # Capture original status before reset
                 original_status = content.status
+                original_error_message = content.error_message
 
                 # Reset content fields
                 content.status = ContentStatus.NEW.value
@@ -196,8 +288,8 @@ def reset_errored_content(
                         "url": content.url,
                         "source": content.source,
                         "reset_from_status": original_status,
-                        "original_error": content.error_message[:500]
-                        if content.error_message
+                        "original_error": original_error_message[:500]
+                        if original_error_message
                         else None,
                     },
                 )
@@ -253,6 +345,10 @@ Examples:
   # Reset content errored since a specific date
   python scripts/reset_errored_content.py --since 2024-12-01
 
+  # Reset and export matching raw log lines + matching raw log file list
+  python scripts/reset_errored_content.py --since 2026-02-10 --until 2026-02-14 \\
+    --return-raw-logs --raw-logs-dir logs_from_server
+
 Note: Only processes articles and podcasts, not news items.
         """,
     )
@@ -291,6 +387,23 @@ Note: Only processes articles and podcasts, not news items.
         "--dry-run", action="store_true", help="Show what would be reset without making changes"
     )
 
+    parser.add_argument(
+        "--return-raw-logs",
+        action="store_true",
+        help="Export matching raw log entries for the selected content ids",
+    )
+
+    parser.add_argument(
+        "--raw-logs-dir",
+        default="logs_from_server",
+        help="Directory containing raw logs to scan (default: logs_from_server)",
+    )
+
+    parser.add_argument(
+        "--raw-logs-output",
+        help="Optional JSONL output path for raw log export (default: outputs/<timestamp>.jsonl)",
+    )
+
     args = parser.parse_args()
 
     # Validate conflicting options
@@ -307,6 +420,9 @@ Note: Only processes articles and podcasts, not news items.
         stuck_hours=args.stuck_hours,
         missing_summary=args.missing_summary,
         dry_run=args.dry_run,
+        return_raw_logs=args.return_raw_logs,
+        raw_logs_dir=args.raw_logs_dir,
+        raw_logs_output=args.raw_logs_output,
     )
 
 

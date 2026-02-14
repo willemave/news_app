@@ -102,6 +102,7 @@ MAX_TASKS=""
 DEBUG_ENABLED=false
 STATS_INTERVAL="30"
 CONTENT_WORKERS="${CONTENT_WORKER_PROCS:-2}"
+TRANSCRIBE_WORKERS="${TRANSCRIBE_WORKER_PROCS:-1}"
 ONBOARDING_WORKERS="${ONBOARDING_WORKER_PROCS:-1}"
 CHAT_WORKERS="${CHAT_WORKER_PROCS:-1}"
 
@@ -121,6 +122,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --content-workers)
             CONTENT_WORKERS="$2"
+            shift 2
+            ;;
+        --transcribe-workers)
+            TRANSCRIBE_WORKERS="$2"
             shift 2
             ;;
         --onboarding-workers)
@@ -143,6 +148,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --max-tasks N        Process at most N tasks then exit"
             echo "  --stats-interval N   Show stats every N seconds (default: 30)"
             echo "  --content-workers N  Number of content queue workers (default: 2)"
+            echo "  --transcribe-workers N  Number of transcribe queue workers (default: 1)"
             echo "  --onboarding-workers N  Number of onboarding queue workers (default: 1)"
             echo "  --chat-workers N     Number of chat queue workers (default: 1)"
             echo "  --no-stats           Disable periodic stats display"
@@ -185,6 +191,7 @@ by_status = stats.get('by_status', {})
 pending_total = sum(pending_by_queue.values())
 print(f'pending_total:{pending_total}')
 print(f'pending_content:{pending_by_queue.get(\"content\", 0)}')
+print(f'pending_transcribe:{pending_by_queue.get(\"transcribe\", 0)}')
 print(f'pending_onboarding:{pending_by_queue.get(\"onboarding\", 0)}')
 print(f'pending_chat:{pending_by_queue.get(\"chat\", 0)}')
 print(f'completed:{by_status.get(\"completed\", 0)}')
@@ -196,6 +203,7 @@ if [ -z "$QUEUE_CHECK" ]; then
 else
     PENDING_TOTAL=$(echo "$QUEUE_CHECK" | grep "pending_total:" | cut -d: -f2)
     PENDING_CONTENT=$(echo "$QUEUE_CHECK" | grep "pending_content:" | cut -d: -f2)
+    PENDING_TRANSCRIBE=$(echo "$QUEUE_CHECK" | grep "pending_transcribe:" | cut -d: -f2)
     PENDING_ONBOARDING=$(echo "$QUEUE_CHECK" | grep "pending_onboarding:" | cut -d: -f2)
     PENDING_CHAT=$(echo "$QUEUE_CHECK" | grep "pending_chat:" | cut -d: -f2)
     COMPLETED=$(echo "$QUEUE_CHECK" | grep "completed:" | cut -d: -f2)
@@ -203,6 +211,7 @@ else
     
     echo "  Pending tasks (total): $PENDING_TOTAL"
     echo "    content: $PENDING_CONTENT"
+    echo "    transcribe: $PENDING_TRANSCRIBE"
     echo "    onboarding: $PENDING_ONBOARDING"
     echo "    chat: $PENDING_CHAT"
     echo "  Completed: $COMPLETED"
@@ -216,12 +225,12 @@ else
     fi
 fi
 
-if ! [[ "$CONTENT_WORKERS" =~ ^[0-9]+$ ]] || ! [[ "$ONBOARDING_WORKERS" =~ ^[0-9]+$ ]] || ! [[ "$CHAT_WORKERS" =~ ^[0-9]+$ ]]; then
+if ! [[ "$CONTENT_WORKERS" =~ ^[0-9]+$ ]] || ! [[ "$TRANSCRIBE_WORKERS" =~ ^[0-9]+$ ]] || ! [[ "$ONBOARDING_WORKERS" =~ ^[0-9]+$ ]] || ! [[ "$CHAT_WORKERS" =~ ^[0-9]+$ ]]; then
     echo "❌ Worker counts must be non-negative integers"
     exit 1
 fi
 
-TOTAL_WORKERS=$((CONTENT_WORKERS + ONBOARDING_WORKERS + CHAT_WORKERS))
+TOTAL_WORKERS=$((CONTENT_WORKERS + TRANSCRIBE_WORKERS + ONBOARDING_WORKERS + CHAT_WORKERS))
 if [ "$TOTAL_WORKERS" -le 0 ]; then
     echo "❌ At least one worker must be enabled"
     exit 1
@@ -246,7 +255,7 @@ if [ "$STATS_INTERVAL" != "0" ]; then
 else
     echo "Stats display: DISABLED"
 fi
-echo "Worker pools: content=$CONTENT_WORKERS onboarding=$ONBOARDING_WORKERS chat=$CHAT_WORKERS"
+echo "Worker pools: content=$CONTENT_WORKERS transcribe=$TRANSCRIBE_WORKERS onboarding=$ONBOARDING_WORKERS chat=$CHAT_WORKERS"
 
 echo ""
 echo "Press Ctrl+C to stop gracefully"
@@ -290,6 +299,7 @@ graceful_shutdown() {
 trap graceful_shutdown INT TERM
 
 launch_workers "content" "$CONTENT_WORKERS"
+launch_workers "transcribe" "$TRANSCRIBE_WORKERS"
 launch_workers "onboarding" "$ONBOARDING_WORKERS"
 launch_workers "chat" "$CHAT_WORKERS"
 
@@ -329,6 +339,7 @@ pending_by_queue = stats.get('pending_by_queue', {})
 pending = sum(pending_by_queue.values())
 print(f'  Pending tasks (total): {pending}')
 print(f'    content: {pending_by_queue.get(\"content\", 0)}')
+print(f'    transcribe: {pending_by_queue.get(\"transcribe\", 0)}')
 print(f'    onboarding: {pending_by_queue.get(\"onboarding\", 0)}')
 print(f'    chat: {pending_by_queue.get(\"chat\", 0)}')
 print(f'  Completed: {by_status.get(\"completed\", 0)}')

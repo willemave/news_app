@@ -439,12 +439,9 @@ class TestDefaultSummarizationModels:
         assert DEFAULT_SUMMARIZATION_MODELS["interleaved"] == "openai:gpt-5.2"
         assert DEFAULT_SUMMARIZATION_MODELS["long_bullets"] == "openai:gpt-5.2"
 
-    def test_news_defaults_to_haiku_4_5(self):
-        assert DEFAULT_SUMMARIZATION_MODELS["news"] == "anthropic:claude-haiku-4-5-20251001"
-        assert (
-            DEFAULT_SUMMARIZATION_MODELS["news_digest"]
-            == "anthropic:claude-haiku-4-5-20251001"
-        )
+    def test_news_defaults_to_gpt_5_2(self):
+        assert DEFAULT_SUMMARIZATION_MODELS["news"] == "openai:gpt-5.2"
+        assert DEFAULT_SUMMARIZATION_MODELS["news_digest"] == "openai:gpt-5.2"
 
 
 class TestBulletedSummaryModel:
