@@ -247,3 +247,44 @@ def test_dequeue_respects_retry_delay_schedule(db_session, monkeypatch):
     assert first is not None
     assert first["id"] == ready_task.id
     assert second is None
+
+
+def test_dequeue_rotates_retry_buckets(db_session, monkeypatch):
+    """Dequeue should rotate available retry buckets to avoid starvation."""
+    queue = _patch_db(monkeypatch, db_session)
+    now = datetime.now(UTC)
+
+    retry_zero_oldest = ProcessingTask(
+        task_type=TaskType.SUMMARIZE.value,
+        status=TaskStatus.PENDING.value,
+        payload={},
+        queue_name=TaskQueue.CONTENT.value,
+        retry_count=0,
+        created_at=now - timedelta(minutes=10),
+    )
+    retry_zero_newer = ProcessingTask(
+        task_type=TaskType.SUMMARIZE.value,
+        status=TaskStatus.PENDING.value,
+        payload={},
+        queue_name=TaskQueue.CONTENT.value,
+        retry_count=0,
+        created_at=now - timedelta(minutes=5),
+    )
+    retry_one_task = ProcessingTask(
+        task_type=TaskType.SUMMARIZE.value,
+        status=TaskStatus.PENDING.value,
+        payload={},
+        queue_name=TaskQueue.CONTENT.value,
+        retry_count=1,
+        created_at=now - timedelta(minutes=20),
+    )
+    db_session.add_all([retry_zero_oldest, retry_zero_newer, retry_one_task])
+    db_session.commit()
+
+    first = queue.dequeue(worker_id="worker-a", queue_name=TaskQueue.CONTENT)
+    second = queue.dequeue(worker_id="worker-b", queue_name=TaskQueue.CONTENT)
+
+    assert first is not None
+    assert second is not None
+    assert first["id"] == retry_zero_oldest.id
+    assert second["id"] == retry_one_task.id

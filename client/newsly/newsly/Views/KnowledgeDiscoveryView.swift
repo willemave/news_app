@@ -19,12 +19,13 @@ struct KnowledgeDiscoveryView: View {
                     DiscoveryErrorStateView(error: error) {
                         Task { await viewModel.loadSuggestions(force: true) }
                     }
-                } else if !viewModel.hasSuggestions {
-                    DiscoveryEmptyStateView(
-                        isJobRunning: viewModel.isJobRunning,
+                } else if !viewModel.hasSuggestions && viewModel.isJobRunning {
+                    DiscoveryProcessingStateView(
                         runStatusDescription: viewModel.runStatusDescription,
                         currentJobStage: viewModel.currentJobStage
-                    ) {
+                    )
+                } else if !viewModel.hasSuggestions {
+                    DiscoveryEmptyStateView {
                         Task { await viewModel.refreshDiscovery() }
                     }
                 } else {

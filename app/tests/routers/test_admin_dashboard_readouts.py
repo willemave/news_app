@@ -89,6 +89,32 @@ def test_admin_dashboard_shows_operational_readouts(client, db_session, test_use
                     data={"error": "boom"},
                     created_at=now,
                 ),
+                EventLog(
+                    event_type="queue_watchdog_run",
+                    event_name="queue_recovery",
+                    status="completed",
+                    data={
+                        "total_touched": 3,
+                        "moved_transcribe": 1,
+                        "requeued_transcribe": 1,
+                        "requeued_process_content": 1,
+                    },
+                    created_at=now,
+                ),
+                EventLog(
+                    event_type="queue_watchdog_action",
+                    event_name="move_transcribe",
+                    status="completed",
+                    data={"touched_count": 1},
+                    created_at=now,
+                ),
+                EventLog(
+                    event_type="queue_watchdog_alert",
+                    event_name="slack",
+                    status="sent",
+                    data={"total_touched": 3},
+                    created_at=now,
+                ),
             ]
         )
 
@@ -119,15 +145,16 @@ def test_admin_dashboard_shows_operational_readouts(client, db_session, test_use
         assert response.status_code == 200
         body = response.text
 
-        assert "Queue Status by Partition" in body
-        assert "Task Phases (Processing Queue)" in body
-        assert "Recent Failure Types (24h)" in body
+        assert "Queue Status" in body
+        assert "Task Phases" in body
+        assert "Recent Failures (24h)" in body
         assert "Scraper Health (24h)" in body
+        assert "Queue Watchdog (24h)" in body
         assert "User Lifecycle" in body
 
         assert "onboarding" in body
         assert "hackernews" in body
         assert "reddit" in body
-        assert "Tutorial completed" in body
+        assert "Tutorial Done" in body
     finally:
         app.dependency_overrides.pop(require_admin, None)

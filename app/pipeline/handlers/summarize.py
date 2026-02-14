@@ -32,6 +32,33 @@ from app.services.queue import TaskType
 
 logger = get_logger(__name__)
 
+RETRYABLE_SUMMARIZATION_TOKENS = (
+    "timeout",
+    "timed out",
+    "rate limit",
+    "too many requests",
+    "429",
+    "temporarily unavailable",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+    "connection reset",
+    "connection refused",
+    "connection aborted",
+    "resource exhausted",
+    "precondition",
+    "overloaded",
+)
+
+
+def _is_retryable_summarization_error(exc: Exception) -> bool:
+    """Return True when summarize failure looks transient and should retry."""
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+
+    message = str(exc).lower()
+    return any(token in message for token in RETRYABLE_SUMMARIZATION_TOKENS)
+
 
 def _extract_share_and_chat_user_ids(metadata: dict[str, Any]) -> list[int]:
     """Extract share-and-chat user IDs from metadata if present."""
@@ -207,6 +234,27 @@ class SummarizeHandler:
                     content.processed_at = datetime.now(UTC)
                     db.commit()
 
+                def _persist_retryable_failure(reason: str) -> None:
+                    metadata = dict(content.content_metadata or {})
+                    existing_errors = metadata.get("processing_errors")
+                    processing_errors = (
+                        existing_errors.copy() if isinstance(existing_errors, list) else []
+                    )
+                    processing_errors.append(
+                        {
+                            "stage": "summarization",
+                            "reason": reason,
+                            "retryable": True,
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    )
+                    metadata["processing_errors"] = processing_errors
+
+                    content.content_metadata = metadata
+                    content.status = ContentStatus.PROCESSING.value
+                    content.error_message = reason[:500]
+                    db.commit()
+
                 if content.content_type == "article":
                     text_to_summarize = metadata.get("content") or metadata.get(
                         "content_to_summarize", ""
@@ -337,7 +385,12 @@ class SummarizeHandler:
                             },
                         },
                     )
-                    _persist_failure(f"Summarization error: {exc}")
+                    failure_reason = f"Summarization error: {exc}"
+                    if _is_retryable_summarization_error(exc):
+                        _persist_retryable_failure(failure_reason)
+                        return TaskResult.fail(str(exc), retryable=True)
+
+                    _persist_failure(failure_reason)
                     return TaskResult.fail(str(exc), retryable=False)
 
                 if summary is not None:

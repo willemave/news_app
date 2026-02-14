@@ -33,7 +33,7 @@ establish_ssh_connection() {
 #       --force-env                 Force deletion/recreation of the remote .venv
 #       --debug                     Verbose output; enable local and remote tracing
 #       --restart-supervisor        Reread/update and restart programs
-#       --programs "a b c"          Supervisor program names (default: news_app_server news_app_workers_content news_app_workers_onboarding news_app_workers_chat news_app_scrapers)
+#       --programs "a b c"          Supervisor program names (default: news_app_server news_app_workers_content news_app_workers_transcribe news_app_workers_onboarding news_app_workers_chat news_app_scrapers news_app_queue_watchdog)
 #       --promote-user USER         Run remote promote step as this user (default: root)
 #       --extra-exclude PATTERN     Additional rsync exclude (can repeat)
 #       --dry-run                   Show what would be done by rsync
@@ -55,9 +55,18 @@ RESTART_SUP=false
 PROGRAMS=(
   news_app_server
   news_app_workers_content
+  news_app_workers_transcribe
   news_app_workers_onboarding
   news_app_workers_chat
   news_app_scrapers
+  news_app_queue_watchdog
+)
+REQUIRED_PROGRAMS=(
+  news_app_server
+  news_app_workers_content
+  news_app_workers_transcribe
+  news_app_workers_onboarding
+  news_app_workers_chat
 )
 DRY_RUN=false
 PROMOTE_USER="root"
@@ -88,21 +97,147 @@ EXCLUDES=(
   ".env"      # deploy uses .env.racknerd instead of local dev env
 )
 
+require_option_value() {
+  local option_name="$1"
+  local option_value="${2:-}"
+  if [[ -z "$option_value" || "$option_value" == -* ]]; then
+    echo "Option $option_name requires a value" >&2
+    exit 1
+  fi
+}
+
+validate_supervisor_state() {
+  local -a expected_programs=("$@")
+  if [[ ${#expected_programs[@]} -eq 0 ]]; then
+    echo "No expected supervisor programs configured for validation" >&2
+    exit 1
+  fi
+
+  local expected_csv required_csv
+  expected_csv="$(IFS=,; echo "${expected_programs[*]}")"
+  required_csv="$(IFS=,; echo "${REQUIRED_PROGRAMS[*]}")"
+
+  local remote_cmd
+  printf -v remote_cmd 'EXPECTED_CSV=%q REQUIRED_CSV=%q bash -s' "$expected_csv" "$required_csv"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$remote_cmd" <<'REMOTE'
+set -euo pipefail
+
+IFS=',' read -r -a expected <<< "${EXPECTED_CSV:-}"
+IFS=',' read -r -a required <<< "${REQUIRED_CSV:-}"
+
+if [[ ${#required[@]} -eq 0 ]]; then
+  echo "No required supervisor programs configured" >&2
+  exit 1
+fi
+if [[ ${#expected[@]} -eq 0 ]]; then
+  echo "No expected supervisor programs configured" >&2
+  exit 1
+fi
+
+status_output=""
+attempts=60
+for ((i=1; i<=attempts; i++)); do
+  status_output="$(sudo supervisorctl status)"
+  all_required_running=true
+
+  for required_program in "${required[@]}"; do
+    matches="$(printf '%s\n' "$status_output" | awk -v p="$required_program" '$1 == p || index($1, p ":") == 1' || true)"
+    if [[ -z "$matches" ]]; then
+      all_required_running=false
+      break
+    fi
+    if ! printf '%s\n' "$matches" | awk '$2 == "RUNNING" {found=1} END {exit found ? 0 : 1}'; then
+      all_required_running=false
+      break
+    fi
+  done
+
+  if [[ "$all_required_running" == "true" ]]; then
+    break
+  fi
+
+  if [[ "$i" -eq "$attempts" ]]; then
+    echo "Required supervisor programs did not all reach RUNNING within ${attempts}s" >&2
+    printf '%s\n' "$status_output"
+    exit 1
+  fi
+  sleep 1
+done
+
+missing_expected=()
+for expected_program in "${expected[@]}"; do
+  if ! printf '%s\n' "$status_output" | awk -v p="$expected_program" '$1 == p || index($1, p ":") == 1 {found=1} END {exit found ? 0 : 1}'; then
+    missing_expected+=("$expected_program")
+  fi
+done
+
+if [[ ${#missing_expected[@]} -gt 0 ]]; then
+  echo "Missing expected supervisor programs: ${missing_expected[*]}" >&2
+  printf '%s\n' "$status_output"
+  exit 1
+fi
+
+for required_program in "${required[@]}"; do
+  matches="$(printf '%s\n' "$status_output" | awk -v p="$required_program" '$1 == p || index($1, p ":") == 1' || true)"
+  if ! printf '%s\n' "$matches" | awk '$2 == "RUNNING" {found=1} END {exit found ? 0 : 1}'; then
+    echo "Required supervisor program is not RUNNING: $required_program" >&2
+    printf '%s\n' "$matches"
+    exit 1
+  fi
+done
+
+echo "Supervisor validation passed"
+printf '%s\n' "$status_output"
+REMOTE
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -h|--host) REMOTE_HOST="$2"; shift 2 ;;
-    -d|--dir) REMOTE_DIR="$2"; shift 2 ;;
-    -o|--owner) OWNER_GROUP="$2"; shift 2 ;;
-    --staging) REMOTE_STAGING="$2"; shift 2 ;;
+    -h|--host)
+      require_option_value "$1" "${2:-}"
+      REMOTE_HOST="$2"
+      shift 2
+      ;;
+    -d|--dir)
+      require_option_value "$1" "${2:-}"
+      REMOTE_DIR="$2"
+      shift 2
+      ;;
+    -o|--owner)
+      require_option_value "$1" "${2:-}"
+      OWNER_GROUP="$2"
+      shift 2
+      ;;
+    --staging)
+      require_option_value "$1" "${2:-}"
+      REMOTE_STAGING="$2"
+      shift 2
+      ;;
     --no-delete) RSYNC_DELETE=false; shift ;;
     --install) DO_INSTALL=true; shift ;;
-    --python-version) PY_VER="$2"; shift 2 ;;
+    --python-version)
+      require_option_value "$1" "${2:-}"
+      PY_VER="$2"
+      shift 2
+      ;;
     --force-env) FORCE_ENV=true; shift ;;
     --debug) DEBUG=true; shift ;;
     --restart-supervisor) RESTART_SUP=true; shift ;;
-    --programs) shift; IFS=' ' read -r -a PROGRAMS <<< "${1:-}"; shift || true ;;
-    --promote-user) PROMOTE_USER="$2"; shift 2 ;;
-    --extra-exclude) EXCLUDES+=("$2"); shift 2 ;;
+    --programs)
+      require_option_value "$1" "${2:-}"
+      IFS=' ' read -r -a PROGRAMS <<< "$2"
+      shift 2
+      ;;
+    --promote-user)
+      require_option_value "$1" "${2:-}"
+      PROMOTE_USER="$2"
+      shift 2
+      ;;
+    --extra-exclude)
+      require_option_value "$1" "${2:-}"
+      EXCLUDES+=("$2")
+      shift 2
+      ;;
     --dry-run) DRY_RUN=true; shift ;;
     --env-only) ENV_ONLY=true; shift ;;
     -\?|--help|-h)
@@ -171,8 +306,8 @@ if "$ENV_ONLY"; then
   if "$RESTART_SUP"; then
     echo "→ Restarting supervisor programs"
     ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart all"
-    echo "→ Final supervisor status:"
-    ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl status"
+    echo "→ Validating required supervisor programs"
+    validate_supervisor_state "${PROGRAMS[@]}"
   fi
 
   echo "✅ Env sync completed to $REMOTE_HOST:$REMOTE_DIR"
@@ -335,12 +470,8 @@ if "$RESTART_SUP"; then
   echo "→ Restarting all supervisor programs"
   ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl restart all"
 
-  echo "→ Waiting for server to start (up to 30 seconds)"
-  printf -v WAIT_SERVER_CMD 'for i in {1..30}; do if sudo supervisorctl status news_app_server | grep -q RUNNING; then echo "Server is running"; exit 0; fi; echo "Waiting for server... ($i/30)"; sleep 1; done; echo "Server failed to start" >&2; exit 1'
-  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "bash -lc %q" "$WAIT_SERVER_CMD")"
-
-  echo "→ Final supervisor status:"
-  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "sudo supervisorctl status"
+  echo "→ Validating required supervisor programs"
+  validate_supervisor_state "${PROGRAMS[@]}"
 fi
 
 echo "✅ App sync completed to $REMOTE_HOST:$REMOTE_DIR"

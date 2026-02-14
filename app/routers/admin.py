@@ -241,6 +241,105 @@ def _build_scraper_health(db: Session, recent_cutoff: datetime) -> dict[str, Any
     }
 
 
+def _build_queue_watchdog_health(db: Session, recent_cutoff: datetime) -> dict[str, Any]:
+    """Build queue watchdog run/action/alert aggregates for dashboard display."""
+    run_events = (
+        db.query(EventLog)
+        .filter(EventLog.event_type == "queue_watchdog_run")
+        .filter(EventLog.created_at >= recent_cutoff)
+        .order_by(desc(EventLog.created_at))
+        .all()
+    )
+    total_runs_24h = len(run_events)
+    total_touched_24h = 0
+    runs_touching_tasks_24h = 0
+    failed_runs_24h = 0
+    latest_run_at: datetime | None = None
+
+    for event in run_events:
+        data = event.data if isinstance(event.data, dict) else {}
+        touched = _coerce_event_metric(data, "total_touched")
+        total_touched_24h += touched
+        if touched > 0:
+            runs_touching_tasks_24h += 1
+        if str(event.status or "") == "failed":
+            failed_runs_24h += 1
+        if latest_run_at is None:
+            latest_run_at = event.created_at
+
+    action_rows = (
+        db.query(
+            EventLog.event_name,
+            func.count(EventLog.id).label("runs"),
+        )
+        .filter(EventLog.event_type == "queue_watchdog_action")
+        .filter(EventLog.created_at >= recent_cutoff)
+        .group_by(EventLog.event_name)
+        .order_by(desc(func.count(EventLog.id)))
+        .all()
+    )
+    action_stats = []
+    for event_name, runs in action_rows:
+        total_touched = (
+            db.query(EventLog)
+            .filter(EventLog.event_type == "queue_watchdog_action")
+            .filter(EventLog.event_name == event_name)
+            .filter(EventLog.created_at >= recent_cutoff)
+            .all()
+        )
+        touched_sum = 0
+        for event in total_touched:
+            data = event.data if isinstance(event.data, dict) else {}
+            touched_sum += _coerce_event_metric(data, "touched_count")
+
+        action_stats.append(
+            {
+                "action_name": str(event_name or "unknown"),
+                "runs": int(runs or 0),
+                "touched_total": int(touched_sum),
+            }
+        )
+
+    alert_rows = (
+        db.query(EventLog.status, func.count(EventLog.id).label("count"))
+        .filter(EventLog.event_type == "queue_watchdog_alert")
+        .filter(EventLog.created_at >= recent_cutoff)
+        .group_by(EventLog.status)
+        .all()
+    )
+    alert_counts = {str(status or "unknown"): int(count or 0) for status, count in alert_rows}
+
+    recent_action_events = (
+        db.query(EventLog)
+        .filter(EventLog.event_type == "queue_watchdog_action")
+        .order_by(desc(EventLog.created_at))
+        .limit(12)
+        .all()
+    )
+    recent_actions = []
+    for event in recent_action_events:
+        data = event.data if isinstance(event.data, dict) else {}
+        recent_actions.append(
+            {
+                "action_name": str(event.event_name or "unknown"),
+                "status": str(event.status or "unknown"),
+                "created_at": event.created_at,
+                "touched_count": _coerce_event_metric(data, "touched_count"),
+            }
+        )
+
+    return {
+        "total_runs_24h": int(total_runs_24h),
+        "total_touched_24h": int(total_touched_24h),
+        "runs_touching_tasks_24h": int(runs_touching_tasks_24h),
+        "failed_runs_24h": int(failed_runs_24h),
+        "latest_run_at": latest_run_at,
+        "action_stats": action_stats,
+        "alert_counts": alert_counts,
+        "recent_actions": recent_actions,
+    }
+
+
 def _build_user_lifecycle(
     db: Session, recent_cutoff: datetime
 ) -> tuple[dict[str, int], dict[str, int]]:
@@ -347,6 +446,7 @@ def admin_dashboard(
     phase_status_rows = _build_phase_status_rows(db)
     recent_failure_rows, recent_failure_total = _build_recent_failure_rows(db, recent_cutoff)
     scraper_health = _build_scraper_health(db, recent_cutoff)
+    watchdog_health = _build_queue_watchdog_health(db, recent_cutoff)
     user_stats, onboarding_latest_status_counts = _build_user_lifecycle(db, recent_cutoff)
 
     # Event logs with optional filtering
@@ -389,6 +489,14 @@ def admin_dashboard(
             "scraper_run_status_counts": scraper_health["run_status_counts"],
             "scraper_latest_stats": scraper_health["latest_stats_rows"],
             "scraper_error_counts": scraper_health["error_counts"],
+            "watchdog_total_runs_24h": watchdog_health["total_runs_24h"],
+            "watchdog_total_touched_24h": watchdog_health["total_touched_24h"],
+            "watchdog_runs_touching_tasks_24h": watchdog_health["runs_touching_tasks_24h"],
+            "watchdog_failed_runs_24h": watchdog_health["failed_runs_24h"],
+            "watchdog_latest_run_at": watchdog_health["latest_run_at"],
+            "watchdog_action_stats": watchdog_health["action_stats"],
+            "watchdog_alert_counts": watchdog_health["alert_counts"],
+            "watchdog_recent_actions": watchdog_health["recent_actions"],
             "user_stats": user_stats,
             "onboarding_latest_status_counts": onboarding_latest_status_counts,
             "event_logs": event_logs,

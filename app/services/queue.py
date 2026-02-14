@@ -61,6 +61,11 @@ class TaskStatus(StrEnum):
 class QueueService:
     """Simple database-backed task queue."""
 
+    def __init__(self) -> None:
+        # Cursor used for best-effort rotation across retry buckets.
+        # Keyed by (queue_name, task_type) so busy queues do not starve retries.
+        self._retry_bucket_cursor: dict[tuple[str | None, str | None], int] = {}
+
     @staticmethod
     def _normalize_queue_name(
         queue_name: TaskQueue | str | None,
@@ -82,6 +87,21 @@ class QueueService:
         if normalized:
             return normalized
         return TASK_QUEUE_BY_TYPE[task_type].value
+
+    def _select_retry_bucket(
+        self,
+        available_retry_counts: list[int],
+        cursor_key: tuple[str | None, str | None],
+    ) -> int:
+        """Select a retry bucket using round-robin to reduce starvation."""
+        if len(available_retry_counts) == 1:
+            return available_retry_counts[0]
+
+        cursor = self._retry_bucket_cursor.get(cursor_key, 0)
+        slot = cursor % len(available_retry_counts)
+        selected = available_retry_counts[slot]
+        self._retry_bucket_cursor[cursor_key] = (slot + 1) % len(available_retry_counts)
+        return selected
 
     def enqueue(
         self,
@@ -180,11 +200,40 @@ class QueueService:
                 if normalized_queue:
                     query = query.filter(ProcessingTask.queue_name == normalized_queue)
 
-                # Order by retry priority and schedule time.
-                task_row = query.order_by(
-                    ProcessingTask.retry_count,
-                    ProcessingTask.created_at,
-                ).first()
+                retry_rows = (
+                    query.with_entities(ProcessingTask.retry_count)
+                    .distinct()
+                    .order_by(ProcessingTask.retry_count.asc())
+                    .all()
+                )
+                if not retry_rows:
+                    return None
+
+                available_retry_counts = [int(row[0] or 0) for row in retry_rows]
+                cursor_key = (
+                    normalized_queue,
+                    task_type.value if task_type is not None else None,
+                )
+                selected_retry = self._select_retry_bucket(available_retry_counts, cursor_key)
+
+                task_row = (
+                    query.filter(ProcessingTask.retry_count == selected_retry)
+                    .order_by(ProcessingTask.created_at.asc(), ProcessingTask.id.asc())
+                    .first()
+                )
+                if task_row is None:
+                    fallback_task_row = (
+                        query.order_by(
+                            ProcessingTask.created_at.asc(),
+                            ProcessingTask.retry_count.asc(),
+                            ProcessingTask.id.asc(),
+                        )
+                        .first()
+                    )
+                    if fallback_task_row is None:
+                        return None
+                    task_row = fallback_task_row
+
                 if task_row is None:
                     return None
 

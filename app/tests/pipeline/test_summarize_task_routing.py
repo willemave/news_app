@@ -237,3 +237,47 @@ def test_summarize_none_result_is_non_retryable_failure(db_session) -> None:
 
     assert result.success is False
     assert result.retryable is False
+
+
+def test_summarize_transient_exception_is_retryable(db_session) -> None:
+    content = _create_content(db_session, "article")
+    queue_service = Mock()
+    llm_service = Mock()
+    llm_service.summarize_content.side_effect = TimeoutError("request timed out")
+    handler = SummarizeHandler()
+    context = _build_context(db_session, queue_service, llm_service)
+
+    task = TaskEnvelope(
+        id=6,
+        task_type=TaskType.SUMMARIZE,
+        content_id=content.id,
+    )
+
+    result = handler.handle(task, context)
+
+    assert result.success is False
+    assert result.retryable is True
+    db_session.refresh(content)
+    assert content.status == "processing"
+
+
+def test_summarize_non_retryable_exception_marks_failed(db_session) -> None:
+    content = _create_content(db_session, "article")
+    queue_service = Mock()
+    llm_service = Mock()
+    llm_service.summarize_content.side_effect = ValueError("schema validation failed")
+    handler = SummarizeHandler()
+    context = _build_context(db_session, queue_service, llm_service)
+
+    task = TaskEnvelope(
+        id=7,
+        task_type=TaskType.SUMMARIZE,
+        content_id=content.id,
+    )
+
+    result = handler.handle(task, context)
+
+    assert result.success is False
+    assert result.retryable is False
+    db_session.refresh(content)
+    assert content.status == "failed"

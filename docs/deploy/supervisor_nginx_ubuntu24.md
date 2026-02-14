@@ -76,8 +76,8 @@ stdout_logfile=/var/log/news_app/server.log
 stderr_logfile=/var/log/news_app/server.err.log
 environment=ENVIRONMENT="production"
 
-[program:news_app_workers]
-command=/bin/bash -lc "/opt/news_app/scripts/start_workers.sh --stats-interval 60"
+[program:news_app_workers_content]
+command=/bin/bash -lc "/opt/news_app/.venv/bin/python /opt/news_app/scripts/run_workers.py --queue content --worker-slot 1 --stats-interval 60"
 directory=/opt/news_app
 user=newsapp
 autostart=true
@@ -85,8 +85,47 @@ autorestart=true
 stopasgroup=true
 killasgroup=true
 stopsignal=TERM
-stdout_logfile=/var/log/news_app/workers.log
-stderr_logfile=/var/log/news_app/workers.err.log
+stdout_logfile=/var/log/news_app/workers-content.log
+stderr_logfile=/var/log/news_app/workers-content.err.log
+environment=ENVIRONMENT="production"
+
+[program:news_app_workers_transcribe]
+command=/bin/bash -lc "/opt/news_app/.venv/bin/python /opt/news_app/scripts/run_workers.py --queue transcribe --worker-slot 1 --stats-interval 60"
+directory=/opt/news_app
+user=newsapp
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stdout_logfile=/var/log/news_app/workers-transcribe.log
+stderr_logfile=/var/log/news_app/workers-transcribe.err.log
+environment=ENVIRONMENT="production"
+
+[program:news_app_workers_onboarding]
+command=/bin/bash -lc "/opt/news_app/.venv/bin/python /opt/news_app/scripts/run_workers.py --queue onboarding --worker-slot 1 --stats-interval 60"
+directory=/opt/news_app
+user=newsapp
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stdout_logfile=/var/log/news_app/workers-onboarding.log
+stderr_logfile=/var/log/news_app/workers-onboarding.err.log
+environment=ENVIRONMENT="production"
+
+[program:news_app_workers_chat]
+command=/bin/bash -lc "/opt/news_app/.venv/bin/python /opt/news_app/scripts/run_workers.py --queue chat --worker-slot 1 --stats-interval 60"
+directory=/opt/news_app
+user=newsapp
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stdout_logfile=/var/log/news_app/workers-chat.log
+stderr_logfile=/var/log/news_app/workers-chat.err.log
 environment=ENVIRONMENT="production"
 
 ; Scrapers are one-shot; run them periodically (default: every 4h = 14400s)
@@ -100,6 +139,19 @@ stopsignal=INT
 stdout_logfile=/var/log/news_app/scrapers.log
 stderr_logfile=/var/log/news_app/scrapers.err.log
 environment=ENVIRONMENT="production",SCRAPER_INTERVAL_SECONDS="14400"
+
+[program:news_app_queue_watchdog]
+command=/bin/bash -lc "/opt/news_app/scripts/start_queue_watchdog.sh"
+directory=/opt/news_app
+user=newsapp
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stdout_logfile=/var/log/news_app/watchdog.log
+stderr_logfile=/var/log/news_app/watchdog.err.log
+environment=ENVIRONMENT="production",QUEUE_WATCHDOG_TRANSCRIBE_STALE_HOURS="2",QUEUE_WATCHDOG_PROCESS_CONTENT_STALE_HOURS="2",QUEUE_WATCHDOG_ALERT_THRESHOLD="1"
 ```
 
 Enable and load Supervisor programs:
@@ -115,8 +167,12 @@ Start/verify:
 
 ```bash
 sudo supervisorctl start news_app_server
-sudo supervisorctl start news_app_workers
+sudo supervisorctl start news_app_workers_content
+sudo supervisorctl start news_app_workers_transcribe
+sudo supervisorctl start news_app_workers_onboarding
+sudo supervisorctl start news_app_workers_chat
 sudo supervisorctl start news_app_scrapers
+sudo supervisorctl start news_app_queue_watchdog
 sudo supervisorctl status
 ```
 
