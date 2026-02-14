@@ -6,7 +6,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Session
 
@@ -27,9 +26,9 @@ from app.services.admin_eval import (
     run_admin_eval,
 )
 from app.services.onboarding import preview_audio_lane_plan
+from app.templates import templates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-templates = Jinja2Templates(directory="templates")
 TASK_STATUS_ORDER = ("pending", "processing", "failed", "completed")
 
 

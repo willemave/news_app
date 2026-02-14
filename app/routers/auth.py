@@ -6,7 +6,6 @@ from typing import Annotated
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -31,12 +30,12 @@ from app.models.user import (
     User,
     UserResponse,
 )
+from app.templates import templates
 
 logger = get_logger(__name__)
 settings = get_settings()
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 # PRODUCTION WARNING - IN-MEMORY SESSION STORAGE:
 # This in-memory set stores admin session tokens. This has critical limitations:
