@@ -23,6 +23,7 @@ _STRUCTURED_LOG_KEYS = {
     "error_type",
     "error_message",
 }
+_CONSOLE_STRUCTURED_MAX_CHARS = 700
 
 
 def _sanitize_filename(value: str) -> str:
@@ -110,6 +111,34 @@ def _merge_context_data(context_data: Any, extra_fields: dict[str, Any]) -> Any:
         merged.update(context_data)
         return merged
     return {"context_data": context_data, **extra_fields}
+
+
+def _truncate_console_value(value: Any, max_chars: int = _CONSOLE_STRUCTURED_MAX_CHARS) -> str:
+    """Serialize and truncate structured values for console output."""
+
+    redacted = _redact_value(value)
+    try:
+        text = json.dumps(redacted, ensure_ascii=False, default=str, separators=(",", ":"))
+    except Exception:
+        text = str(redacted)
+
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "..."
+
+
+def _record_has_structured_fields(record: logging.LogRecord) -> bool:
+    """Return whether record carries structured context worth showing in console logs."""
+
+    if getattr(record, "context_data", None) is not None:
+        return True
+    if getattr(record, "http_details", None) is not None:
+        return True
+    if getattr(record, "item_id", None) is not None:
+        return True
+    if getattr(record, "operation", None) is not None:
+        return True
+    return bool(_extract_extra_fields(record))
 
 
 def _build_error_json_payload(record: logging.LogRecord) -> dict[str, Any]:
@@ -215,17 +244,44 @@ class _JsonLineStructuredFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+class _ConsoleStructuredFormatter(logging.Formatter):
+    """Console formatter that appends structured metadata to human-readable lines."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        base_line = super().format(record)
+        if not _record_has_structured_fields(record):
+            return base_line
+
+        payload = _build_structured_json_payload(record)
+        suffix_parts: list[str] = []
+
+        component = payload.get("component")
+        if component:
+            suffix_parts.append(f"component={component}")
+
+        operation = payload.get("operation")
+        if operation:
+            suffix_parts.append(f"operation={operation}")
+
+        if "item_id" in payload:
+            suffix_parts.append(f"item_id={payload['item_id']}")
+
+        context_data = payload.get("context_data")
+        if context_data is not None:
+            suffix_parts.append(f"context_data={_truncate_console_value(context_data)}")
+
+        http_details = payload.get("http_details")
+        if http_details is not None:
+            suffix_parts.append(f"http_details={_truncate_console_value(http_details)}")
+
+        if not suffix_parts:
+            return base_line
+        return f"{base_line} | {' '.join(suffix_parts)}"
+
+
 class _StructuredLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        if getattr(record, "context_data", None) is not None:
-            return True
-        if getattr(record, "http_details", None) is not None:
-            return True
-        if getattr(record, "item_id", None) is not None:
-            return True
-        if getattr(record, "operation", None) is not None:
-            return True
-        return bool(_extract_extra_fields(record))
+        return _record_has_structured_fields(record)
 
 
 def _rotate_jsonl_namer(default_name: str) -> str:
@@ -308,7 +364,7 @@ def setup_logging(name: str | None = None, level: str | None = None) -> logging.
     console_handler.setLevel(getattr(logging, log_level.upper()))
 
     # Format with more context
-    formatter = logging.Formatter(
+    formatter = _ConsoleStructuredFormatter(
         "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )

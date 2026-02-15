@@ -6,6 +6,7 @@ import logging
 from app.core.logging import (
     _build_error_json_payload,
     _build_structured_json_payload,
+    _ConsoleStructuredFormatter,
     _redact_value,
     _sanitize_filename,
     _StructuredLogFilter,
@@ -396,3 +397,72 @@ class TestJsonLineErrorFormatter:
 
         assert "\u00e9\u00e8\u00ea" in parsed["message"]
         assert "\u4e2d\u6587" in parsed["message"]
+
+
+class TestConsoleStructuredFormatter:
+    """Tests for console formatter structured metadata output."""
+
+    def test_plain_record_has_no_structured_suffix(self):
+        """Plain logs should not include structured suffixes."""
+
+        formatter = _ConsoleStructuredFormatter("%(message)s")
+        record = logging.LogRecord(
+            name="test.logger",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
+        )
+
+        result = formatter.format(record)
+
+        assert result == "hello"
+
+    def test_structured_record_includes_operation_and_context(self):
+        """Structured logs include operation/item/context in console output."""
+
+        formatter = _ConsoleStructuredFormatter("%(message)s")
+        record = logging.LogRecord(
+            name="test.logger",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="voice trace",
+            args=(),
+            exc_info=None,
+        )
+        record.component = "voice_ws"
+        record.operation = "audio_commit_received"
+        record.item_id = 123
+        record.context_data = {"event_type": "audio.commit"}
+
+        result = formatter.format(record)
+
+        assert "voice trace" in result
+        assert "component=voice_ws" in result
+        assert "operation=audio_commit_received" in result
+        assert "item_id=123" in result
+        assert "audio.commit" in result
+
+    def test_structured_record_redacts_sensitive_context(self):
+        """Sensitive fields are redacted in console structured suffix."""
+
+        formatter = _ConsoleStructuredFormatter("%(message)s")
+        record = logging.LogRecord(
+            name="test.logger",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="auth trace",
+            args=(),
+            exc_info=None,
+        )
+        record.operation = "auth_debug"
+        record.context_data = {"password": "secret123", "username": "demo"}
+
+        result = formatter.format(record)
+
+        assert "<redacted>" in result
+        assert "secret123" not in result
