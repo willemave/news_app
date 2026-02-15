@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, EmailStr, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.sql import func
 
@@ -21,6 +21,7 @@ class User(Base):
     is_admin = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     has_completed_new_user_tutorial = Column(Boolean, default=False, nullable=False)
+    has_completed_live_voice_onboarding = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -49,6 +50,7 @@ class UserResponse(UserBase):
     is_admin: bool
     is_active: bool
     has_completed_new_user_tutorial: bool
+    has_completed_live_voice_onboarding: bool
     created_at: datetime
     updated_at: datetime
 
@@ -71,8 +73,7 @@ class UserResponse(UserBase):
         # Format as ISO8601 with 'Z' suffix
         return dt.isoformat().replace("+00:00", "Z")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AppleSignInRequest(BaseModel):

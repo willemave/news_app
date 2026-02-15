@@ -4,8 +4,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic import Field, PostgresDsn, field_validator
-from pydantic_settings import BaseSettings
+from pydantic import AliasChoices, Field, PostgresDsn, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load .env file into os.environ so libraries like openai/pydantic-ai can read it
 load_dotenv(override=True)
@@ -23,6 +23,12 @@ def _default_images_base_dir() -> Path:
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore",  # Ignore extra fields from existing .env
+    )
+
     # Database - allow both PostgreSQL and SQLite for development
     database_url: PostgresDsn | str
     database_pool_size: int = 20
@@ -59,6 +65,32 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     cerebras_api_key: str | None = None
     exa_api_key: str | None = None
+    elevenlabs_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ELEVENLABS_API_KEY", "ELEVENLABS"),
+    )
+    elevenlabs_stt_model_id: str = "scribe_v2_realtime"
+    elevenlabs_stt_language: str | None = None
+    elevenlabs_tts_voice_id: str | None = "JBFqnCBsd6RMkjVDRZzb"
+    elevenlabs_tts_model: str | None = "eleven_multilingual_v2"
+    elevenlabs_tts_output_format: str | None = "pcm_16000"
+    elevenlabs_agent_id: str = "agent_4701khf4v6jef3vskb8sd2a30m36"
+    elevenlabs_agent_text_only: bool = True
+    elevenlabs_agent_turn_timeout_seconds: int = 25
+    voice_haiku_model: str = "anthropic:claude-haiku-4-5-20251001"
+    voice_session_ttl_minutes: int = 60
+    voice_max_context_turns: int = 20
+    voice_stt_commit_timeout_seconds: int = 8
+    voice_max_input_seconds: int = 30
+    voice_max_assistant_chars: int = 4_000
+    voice_ws_max_queue: int = 500
+    voice_trace_logging: bool = True
+    voice_trace_max_chars: int = 600
+    admin_conversational_session_ttl_minutes: int = 120
+    admin_conversational_max_turns: int = 20
+    admin_conversational_ws_max_queue: int = 500
+    admin_conversational_trace_logging: bool = True
+    admin_conversational_trace_max_chars: int = 1200
 
     # Feed discovery
     discovery_model: str = Field(
@@ -119,11 +151,6 @@ class Settings(BaseSettings):
     crawl4ai_table_min_rows_per_chunk: int = 10
     crawl4ai_table_max_parallel_chunks: int = 5
     crawl4ai_table_verbose: bool = False
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        extra = "ignore"  # Ignore extra fields from existing .env
 
     @field_validator("database_url")
     @classmethod

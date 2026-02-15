@@ -1,4 +1,6 @@
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -11,15 +13,28 @@ from app.core.deps import AdminAuthRequired
 from app.core.logging import setup_logging
 from app.core.settings import get_settings
 from app.routers import admin, api_content, auth, logs
-from app.routers.api import discovery, onboarding, openai, scraper_configs
+from app.routers.api import discovery, interactions, onboarding, openai, scraper_configs, voice
 
 # Initialize
 settings = get_settings()
 logger = setup_logging()
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Initialize and teardown application services."""
+    logger.info("Starting up...")
+    init_db()
+    logger.info("Database initialized")
+    yield
+
+
 # Create app
 app = FastAPI(
-    title=settings.app_name, version="2.0.0", description="Unified News Aggregation System"
+    title=settings.app_name,
+    version="2.0.0",
+    description="Unified News Aggregation System",
+    lifespan=lifespan,
 )
 
 
@@ -75,7 +90,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
     # Return standard FastAPI validation error response with serialized errors
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={"detail": _serialize_validation_errors(exc.errors()), "body": body_text},
     )
 
@@ -150,19 +165,12 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(admin.router)
 app.include_router(logs.router)
 app.include_router(api_content.router, prefix="/api/content")
+app.include_router(interactions.router, prefix="/api")
 app.include_router(scraper_configs.router, prefix="/api")
 app.include_router(discovery.router, prefix="/api")
 app.include_router(onboarding.router, prefix="/api")
 app.include_router(openai.router, prefix="/api")
-
-
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup."""
-    logger.info("Starting up...")
-    init_db()
-    logger.info("Database initialized")
+app.include_router(voice.router, prefix="/api")
 
 
 @app.get("/", include_in_schema=False)

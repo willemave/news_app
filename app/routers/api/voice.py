@@ -1,0 +1,515 @@
+"""Realtime voice conversation endpoints."""
+
+from __future__ import annotations
+
+import asyncio
+from contextlib import suppress
+from typing import Annotated, Any
+from uuid import uuid4
+
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
+from sqlalchemy.orm import Session
+
+from app.core.db import get_db, get_db_session, get_readonly_db_session
+from app.core.deps import get_current_user
+from app.core.logging import get_logger
+from app.core.security import verify_token
+from app.core.settings import get_settings
+from app.models.user import User
+from app.routers.api.voice_models import (
+    VOICE_CLIENT_EVENT_ADAPTER,
+    CreateVoiceSessionRequest,
+    CreateVoiceSessionResponse,
+    VoiceHealthResponse,
+)
+from app.services.voice.elevenlabs_streaming import build_voice_health_flags
+from app.services.voice.orchestrator import VoiceConversationOrchestrator
+from app.services.voice.persistence import (
+    build_live_intro_text,
+    format_voice_content_context,
+    load_voice_content_context,
+    mark_live_voice_onboarding_complete,
+    resolve_or_create_voice_chat_session,
+)
+from app.services.voice.session_manager import (
+    configure_voice_session,
+    create_voice_session,
+    get_voice_session,
+    prune_voice_sessions,
+    set_voice_session_intro_pending,
+)
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/voice", tags=["voice"])
+
+AUTO_SUMMARY_SEEDED_PROMPT = (
+    "Give me a concise spoken summary of this content first, then ask one brief follow-up question."
+)
+
+
+def _extract_websocket_bearer_token(websocket: WebSocket) -> str | None:
+    """Extract bearer token from websocket headers or query param."""
+
+    authorization = websocket.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        if token:
+            return token
+
+    query_token = websocket.query_params.get("token", "").strip()
+    if query_token:
+        return query_token
+    return None
+
+
+def _authenticate_websocket_user(websocket: WebSocket, db: Session) -> User | None:
+    """Authenticate websocket user via JWT bearer token."""
+
+    token = _extract_websocket_bearer_token(websocket)
+    if not token:
+        return None
+
+    try:
+        payload = verify_token(token)
+    except jwt.InvalidTokenError:
+        return None
+
+    user_id = payload.get("sub")
+    token_type = payload.get("type")
+    if not user_id or token_type != "access":
+        return None
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if user is None or not user.is_active:
+        return None
+    return user
+
+
+async def _send_ws_event(
+    websocket: WebSocket,
+    send_lock: asyncio.Lock,
+    payload: dict[str, Any],
+) -> bool:
+    """Send one websocket event payload safely."""
+
+    try:
+        async with send_lock:
+            await websocket.send_json(payload)
+        return True
+    except Exception:
+        return False
+
+
+async def _cancel_task(task: asyncio.Task[Any] | None) -> None:
+    """Cancel task and wait for shutdown."""
+
+    if task is None:
+        return
+    if task.done():
+        with suppress(Exception):
+            task.result()
+        return
+    task.cancel()
+    with suppress(Exception):
+        await task
+
+
+@router.post("/sessions", response_model=CreateVoiceSessionResponse)
+async def create_or_resume_voice_session(
+    payload: CreateVoiceSessionRequest,
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> CreateVoiceSessionResponse:
+    """Create or resume an authenticated voice session."""
+
+    try:
+        state = create_voice_session(user_id=current_user.id, session_id=payload.session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    settings = get_settings()
+    context = load_voice_content_context(
+        db,
+        user_id=current_user.id,
+        content_id=payload.content_id,
+    )
+    content_context = format_voice_content_context(context)
+    chat_session = resolve_or_create_voice_chat_session(
+        db,
+        user_id=current_user.id,
+        existing_chat_session_id=payload.chat_session_id or state.chat_session_id,
+        context=context,
+        launch_mode=payload.launch_mode,
+        model_spec=settings.voice_haiku_model,
+    )
+    pending_intro = bool(
+        payload.request_intro and not current_user.has_completed_live_voice_onboarding
+    )
+    configured_state = configure_voice_session(
+        session_id=state.session_id,
+        user_id=current_user.id,
+        chat_session_id=chat_session.id,
+        content_id=context.content_id if context is not None else None,
+        launch_mode=payload.launch_mode,
+        source_surface=payload.source_surface,
+        pending_intro=pending_intro,
+        content_context=content_context,
+        content_title=context.title if context is not None else None,
+    )
+    if configured_state is None:
+        raise HTTPException(status_code=404, detail="Voice session not found")
+
+    return CreateVoiceSessionResponse(
+        session_id=configured_state.session_id,
+        websocket_path=f"/api/voice/ws/{configured_state.session_id}",
+        sample_rate_hz=payload.sample_rate_hz,
+        tts_output_format=settings.elevenlabs_tts_output_format or "pcm_16000",
+        max_input_seconds=max(1, int(settings.voice_max_input_seconds)),
+        chat_session_id=chat_session.id,
+        launch_mode=payload.launch_mode,
+        content_context_attached=context is not None,
+    )
+
+
+@router.get("/health", response_model=VoiceHealthResponse)
+async def voice_health(
+    _current_user: Annotated[User, Depends(get_current_user)],
+) -> VoiceHealthResponse:
+    """Return dependency readiness for voice APIs."""
+
+    return VoiceHealthResponse(**build_voice_health_flags())
+
+
+@router.websocket("/ws/{session_id}")
+async def voice_websocket(
+    websocket: WebSocket,
+    session_id: str,
+    db: Annotated[Session, Depends(get_readonly_db_session)],
+) -> None:
+    """Handle authenticated realtime voice websocket session."""
+
+    prune_voice_sessions()
+    user = _authenticate_websocket_user(websocket, db)
+    if user is None:
+        await websocket.close(code=4401)
+        return
+
+    state = get_voice_session(session_id=session_id, user_id=user.id)
+    if state is None:
+        await websocket.close(code=4404)
+        return
+
+    settings = get_settings()
+    voice_trace_logging = bool(settings.voice_trace_logging)
+
+    def log_ws_trace(operation: str, context_data: dict[str, Any]) -> None:
+        if not voice_trace_logging:
+            return
+        logger.info(
+            "Voice websocket trace",
+            extra={
+                "component": "voice_ws",
+                "operation": operation,
+                "item_id": user.id,
+                "context_data": {"session_id": session_id, **context_data},
+            },
+        )
+
+    await websocket.accept()
+    logger.info(
+        "Voice websocket connected",
+        extra={
+            "component": "voice_ws",
+            "operation": "connect",
+            "item_id": user.id,
+            "context_data": {
+                "session_id": session_id,
+                "launch_mode": state.launch_mode,
+                "chat_session_id": state.chat_session_id,
+                "has_content_context": bool(state.content_context),
+            },
+        },
+    )
+    send_lock = asyncio.Lock()
+    orchestrator: VoiceConversationOrchestrator | None = None
+    orchestrator_started = False
+    active_turn_task: asyncio.Task[Any] | None = None
+    auto_summary_requested = bool(
+        state.launch_mode == "dictate_summary"
+        and state.content_context
+        and not state.message_history
+    )
+    auto_summary_started = False
+    receive_task: asyncio.Task[Any] = asyncio.create_task(websocket.receive_json())
+
+    async def emit(payload: dict[str, Any]) -> bool:
+        return await _send_ws_event(websocket, send_lock, payload)
+
+    async def start_auto_summary_turn() -> None:
+        nonlocal orchestrator, active_turn_task, auto_summary_started
+
+        if not auto_summary_requested or auto_summary_started:
+            return
+
+        if orchestrator is None:
+            orchestrator = VoiceConversationOrchestrator(
+                session_id=session_id,
+                user_id=user.id,
+                emit_event=emit,
+                chat_session_id=state.chat_session_id,
+                launch_mode=state.launch_mode,
+                content_context=state.content_context,
+            )
+
+        await _cancel_task(active_turn_task)
+        turn_id = f"turn_{uuid4().hex}"
+        auto_summary_started = True
+        log_ws_trace("auto_summary_started", {"turn_id": turn_id})
+        active_turn_task = asyncio.create_task(
+            orchestrator.process_text_turn(
+                turn_id,
+                AUTO_SUMMARY_SEEDED_PROMPT,
+            )
+        )
+
+    await emit(
+        {
+            "type": "session.ready",
+            "session_id": session_id,
+            "user_id": user.id,
+            "chat_session_id": state.chat_session_id,
+            "launch_mode": state.launch_mode,
+        }
+    )
+
+    try:
+        while True:
+            wait_targets: set[asyncio.Task[Any]] = {receive_task}
+            if active_turn_task is not None:
+                wait_targets.add(active_turn_task)
+
+            done, _ = await asyncio.wait(wait_targets, return_when=asyncio.FIRST_COMPLETED)
+
+            if receive_task in done:
+                try:
+                    raw_payload = receive_task.result()
+                except WebSocketDisconnect as exc:
+                    logger.info(
+                        "Voice websocket disconnected by client",
+                        extra={
+                            "component": "voice_ws",
+                            "operation": "disconnect",
+                            "item_id": user.id,
+                            "context_data": {
+                                "session_id": session_id,
+                                "code": getattr(exc, "code", None),
+                            },
+                        },
+                    )
+                    return
+                except Exception:
+                    is_open = await emit(
+                        {
+                            "type": "error",
+                            "code": "invalid_payload",
+                            "message": "Expected JSON websocket message.",
+                            "retryable": True,
+                        }
+                    )
+                    if not is_open:
+                        return
+                    receive_task = asyncio.create_task(websocket.receive_json())
+                    continue
+
+                receive_task = asyncio.create_task(websocket.receive_json())
+                try:
+                    event = VOICE_CLIENT_EVENT_ADAPTER.validate_python(raw_payload)
+                except ValidationError as exc:
+                    is_open = await emit(
+                        {
+                            "type": "error",
+                            "code": "validation_error",
+                            "message": exc.errors()[0]["msg"] if exc.errors() else "Invalid event.",
+                            "retryable": True,
+                        }
+                    )
+                    if not is_open:
+                        return
+                    continue
+
+                event_type = event.type
+                if event_type != "audio.frame":
+                    log_ws_trace("client_event", {"event_type": event_type})
+
+                if event_type == "session.start":
+                    if event.session_id != session_id:
+                        is_open = await emit(
+                            {
+                                "type": "error",
+                                "code": "session_mismatch",
+                                "message": "session_id does not match websocket path.",
+                                "retryable": False,
+                            }
+                        )
+                        if not is_open:
+                            return
+                    if state.pending_intro:
+                        if orchestrator is None:
+                            orchestrator = VoiceConversationOrchestrator(
+                                session_id=session_id,
+                                user_id=user.id,
+                                emit_event=emit,
+                                chat_session_id=state.chat_session_id,
+                                launch_mode=state.launch_mode,
+                                content_context=state.content_context,
+                            )
+
+                        await _cancel_task(active_turn_task)
+                        intro_turn_id = f"turn_{uuid4().hex}"
+                        intro_text = build_live_intro_text(
+                            launch_mode=state.launch_mode,
+                            context_title=state.content_title,
+                        )
+                        log_ws_trace(
+                            "intro_turn_started",
+                            {"turn_id": intro_turn_id, "intro_chars": len(intro_text)},
+                        )
+                        active_turn_task = asyncio.create_task(
+                            orchestrator.process_intro_turn(
+                                intro_turn_id,
+                                intro_text,
+                            )
+                        )
+                        set_voice_session_intro_pending(
+                            session_id=session_id,
+                            user_id=user.id,
+                            pending_intro=False,
+                        )
+                    elif auto_summary_requested:
+                        await start_auto_summary_turn()
+                    continue
+
+                if event_type == "session.end":
+                    log_ws_trace("session_end_requested", {})
+                    await websocket.close(code=1000)
+                    return
+
+                if event_type == "intro.ack":
+                    completed = False
+                    with get_db() as write_db:
+                        completed = mark_live_voice_onboarding_complete(write_db, user_id=user.id)
+                    set_voice_session_intro_pending(
+                        session_id=session_id,
+                        user_id=user.id,
+                        pending_intro=False,
+                    )
+                    is_open = await emit(
+                        {
+                            "type": "intro.acknowledged",
+                            "completed": completed,
+                        }
+                    )
+                    if not is_open:
+                        return
+                    if auto_summary_requested:
+                        await start_auto_summary_turn()
+                    continue
+
+                if event_type == "response.cancel":
+                    log_ws_trace("response_cancel_requested", {})
+                    await _cancel_task(active_turn_task)
+                    active_turn_task = None
+                    continue
+
+                if event_type == "audio.frame":
+                    if active_turn_task is not None and not active_turn_task.done():
+                        await _cancel_task(active_turn_task)
+                        active_turn_task = None
+
+                    if orchestrator is None:
+                        orchestrator = VoiceConversationOrchestrator(
+                            session_id=session_id,
+                            user_id=user.id,
+                            emit_event=emit,
+                            chat_session_id=state.chat_session_id,
+                            launch_mode=state.launch_mode,
+                            content_context=state.content_context,
+                            sample_rate_hz=event.sample_rate_hz,
+                        )
+                    if not orchestrator_started:
+                        await orchestrator.start()
+                        orchestrator_started = True
+                        log_ws_trace(
+                            "audio_stream_started",
+                            {"sample_rate_hz": event.sample_rate_hz},
+                        )
+
+                    await orchestrator.handle_audio_frame(event.pcm16_b64)
+                    continue
+
+                if event_type == "audio.commit":
+                    if orchestrator is None:
+                        is_open = await emit(
+                            {
+                                "type": "error",
+                                "code": "no_audio_buffered",
+                                "message": "Send at least one audio.frame before audio.commit.",
+                                "retryable": True,
+                            }
+                        )
+                        if not is_open:
+                            return
+                        continue
+
+                    await _cancel_task(active_turn_task)
+                    turn_id = f"turn_{uuid4().hex}"
+                    log_ws_trace("audio_commit_received", {"turn_id": turn_id})
+                    active_turn_task = asyncio.create_task(orchestrator.process_turn(turn_id))
+                    continue
+
+            if active_turn_task is not None and active_turn_task in done:
+                try:
+                    await active_turn_task
+                    log_ws_trace("turn_task_completed", {})
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    logger.exception(
+                        "Voice websocket turn task failed",
+                        extra={
+                            "component": "voice_ws",
+                            "operation": "turn_task",
+                            "item_id": user.id,
+                            "context_data": {"session_id": session_id},
+                        },
+                    )
+                    is_open = await emit(
+                        {
+                            "type": "error",
+                            "code": "turn_task_failed",
+                            "message": str(exc),
+                            "retryable": True,
+                        }
+                    )
+                    if not is_open:
+                        return
+                finally:
+                    active_turn_task = None
+    finally:
+        logger.info(
+            "Voice websocket closing",
+            extra={
+                "component": "voice_ws",
+                "operation": "close",
+                "item_id": user.id,
+                "context_data": {"session_id": session_id},
+            },
+        )
+        await _cancel_task(receive_task)
+        await _cancel_task(active_turn_task)
+        if orchestrator is not None:
+            with suppress(Exception):
+                await orchestrator.close()
