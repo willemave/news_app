@@ -18,6 +18,7 @@ router = APIRouter(prefix="/admin")
 settings = get_settings()
 LOGS_DIR = settings.logs_dir
 ERRORS_DIR = LOGS_DIR / "errors"
+STRUCTURED_DIR = LOGS_DIR / "structured"
 
 # Logger
 logger = get_logger(__name__)
@@ -28,6 +29,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
     """List all log files with recent error logs."""
     log_files = []
     recent_errors = []
+    recent_structured = []
 
     # Get all log files from errors directory
     if ERRORS_DIR.exists():
@@ -70,6 +72,19 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
                     }
                 )
 
+    # Include structured JSONL logs for turn traces and context diagnostics
+    if STRUCTURED_DIR.exists():
+        for file_path in STRUCTURED_DIR.glob("*.jsonl"):
+            stat = file_path.stat()
+            log_files.append(
+                {
+                    "filename": f"structured/{file_path.name}",
+                    "size": f"{stat.st_size / 1024:.1f} KB",
+                    "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                    "modified_timestamp": stat.st_mtime,
+                }
+            )
+
     # Sort by modified time, newest first
     log_files.sort(key=lambda x: x["modified_timestamp"], reverse=True)
 
@@ -79,10 +94,17 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
 
     # Get recent errors from the most recent error files
     recent_errors = _get_recent_errors(limit=10)
+    recent_structured = _get_recent_structured_events(limit=20)
 
     return templates.TemplateResponse(
+        request,
         "logs_list.html",
-        {"request": request, "log_files": log_files, "recent_errors": recent_errors},
+        {
+            "request": request,
+            "log_files": log_files,
+            "recent_errors": recent_errors,
+            "recent_structured": recent_structured,
+        },
     )
 
 
@@ -106,7 +128,9 @@ async def view_log(request: Request, filename: str, _: None = Depends(require_ad
         raise HTTPException(status_code=500, detail=f"Error reading log file: {str(e)}") from e
 
     return templates.TemplateResponse(
-        "log_detail.html", {"request": request, "filename": filename, "content": content}
+        request,
+        "log_detail.html",
+        {"request": request, "filename": filename, "content": content},
     )
 
 
@@ -178,6 +202,7 @@ async def errors_dashboard(
         )
 
     return templates.TemplateResponse(
+        request,
         "admin_errors.html",
         {
             "request": request,
@@ -300,7 +325,9 @@ def _an_parse_log_file(file_path: Path) -> list[dict[str, Any]]:
                     if strong and not plural_noise:
                         out.append(
                             {
-                                "timestamp": datetime.utcnow().isoformat() + "Z",
+                                "timestamp": datetime.now(UTC)
+                                .isoformat()
+                                .replace("+00:00", "Z"),
                                 "error_message": line.strip(),
                                 "file": str(file_path),
                             }
@@ -712,6 +739,53 @@ def _get_recent_errors(limit: int = 10) -> list[dict[str, Any]]:
             continue
 
     return errors
+
+
+def _get_recent_structured_events(limit: int = 20, max_files: int = 10) -> list[dict[str, Any]]:
+    """Get recent structured events from JSONL logs for quick live debugging."""
+
+    events: list[dict[str, Any]] = []
+    if not STRUCTURED_DIR.exists():
+        return events
+
+    structured_files = list(STRUCTURED_DIR.glob("*.jsonl"))
+    structured_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+
+    for file_path in structured_files[: max(1, max_files)]:
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception:
+            continue
+
+        for line in reversed(lines):
+            if len(events) >= limit:
+                break
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line.strip())
+            except json.JSONDecodeError:
+                continue
+
+            timestamp = str(data.get("timestamp", "Unknown"))
+            message = str(data.get("message", "")).strip()
+            events.append(
+                {
+                    "timestamp": timestamp,
+                    "level": str(data.get("level", "INFO")),
+                    "component": str(data.get("component") or "unknown"),
+                    "operation": str(data.get("operation") or ""),
+                    "item_id": data.get("item_id"),
+                    "message": message[:240] + ("..." if len(message) > 240 else ""),
+                    "file": file_path.name,
+                }
+            )
+
+        if len(events) >= limit:
+            break
+
+    return events
 
 
 def _format_jsonl_content(file_path: Path) -> str:
