@@ -6,7 +6,7 @@ Deep research runs as a background task with web search and code interpreter too
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from time import perf_counter
 
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
@@ -417,8 +417,8 @@ async def process_deep_research_message(
                 db_message.status = MessageProcessingStatus.COMPLETED.value
 
                 # Update session timestamps
-                session.last_message_at = datetime.utcnow()
-                session.updated_at = datetime.utcnow()
+                session.last_message_at = datetime.now(UTC)
+                session.updated_at = datetime.now(UTC)
                 db.commit()
 
                 total_ms = (perf_counter() - total_start) * 1000

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ProcessingTask
@@ -79,7 +79,7 @@ class TestContentModel:
                 "article_url": "https://example.com/story",
                 "key_points": ["Key takeaway one", "Key takeaway two"],
                 "classification": "to_read",
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
             },
         }
 
@@ -177,7 +177,7 @@ class TestContentModel:
         
         # Transition to completed
         content.status = ContentStatus.COMPLETED.value
-        content.processed_at = datetime.utcnow()
+        content.processed_at = datetime.now(UTC)
         assert content.status == ContentStatus.COMPLETED.value
         assert content.processed_at is not None
     
@@ -195,7 +195,7 @@ class TestContentModel:
         
         # Check out to worker
         content.checked_out_by = "worker-123"
-        content.checked_out_at = datetime.utcnow()
+        content.checked_out_at = datetime.now(UTC)
         content.status = ContentStatus.PROCESSING.value
         
         assert content.checked_out_by == "worker-123"
@@ -235,7 +235,7 @@ class TestContentModel:
     
     def test_content_timestamps(self):
         """Test timestamp handling."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         content = Content(
             content_type=ContentType.ARTICLE.value,
@@ -248,7 +248,7 @@ class TestContentModel:
         assert content.updated_at == now
         
         # Test processed_at
-        processed_time = datetime.utcnow()
+        processed_time = datetime.now(UTC)
         content.processed_at = processed_time
         assert content.processed_at == processed_time
 
@@ -328,7 +328,7 @@ class TestProcessingTaskModel:
     
     def test_processing_task_timestamps(self):
         """Test ProcessingTask timestamp handling."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         task = ProcessingTask(
             task_type="test",
@@ -340,8 +340,8 @@ class TestProcessingTaskModel:
         assert task.completed_at is None
         
         # Set processing timestamps
-        started = datetime.utcnow()
-        completed = datetime.utcnow()
+        started = datetime.now(UTC)
+        completed = datetime.now(UTC)
         
         task.started_at = started
         task.completed_at = completed
@@ -413,14 +413,14 @@ class TestModelIntegration:
         # 3. Simulate processing
         content.status = ContentStatus.PROCESSING.value
         content.checked_out_by = "worker-1"
-        content.checked_out_at = datetime.utcnow()
+        content.checked_out_at = datetime.now(UTC)
         
         task.status = "processing"
-        task.started_at = datetime.utcnow()
+        task.started_at = datetime.now(UTC)
         
         # 4. Simulate completion
         content.status = ContentStatus.COMPLETED.value
-        content.processed_at = datetime.utcnow()
+        content.processed_at = datetime.now(UTC)
         content.content_metadata = {
             "author": "Test Author",
             "word_count": 1200,
@@ -428,7 +428,7 @@ class TestModelIntegration:
         }
         
         task.status = "completed"
-        task.completed_at = datetime.utcnow()
+        task.completed_at = datetime.now(UTC)
         
         # Verify final state
         assert content.status == ContentStatus.COMPLETED.value

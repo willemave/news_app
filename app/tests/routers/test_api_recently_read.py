@@ -1,6 +1,6 @@
 """Tests for recently read content endpoints."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -40,7 +40,7 @@ def test_recently_read_scoped_to_user(client, db_session: Session, test_user: Us
     db_session.refresh(content_one)
     db_session.refresh(content_two)
 
-    timestamp = datetime.utcnow()
+    timestamp = datetime.now(UTC)
     db_session.add_all(
         [
             ContentReadStatus(

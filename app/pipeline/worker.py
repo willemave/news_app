@@ -110,7 +110,7 @@ class ContentWorker:
 
                 if not db_content:
                     logger.error(f"Content {content_id} not found")
-                    return True
+                    return False
 
                 content = content_to_domain(db_content)
 
@@ -159,7 +159,7 @@ class ContentWorker:
                     content.content_type.value,
                 )
 
-            return success or content.status in terminal_statuses
+            return success
 
         except Exception as e:
             if isinstance(e, IntegrityError):

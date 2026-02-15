@@ -1,6 +1,6 @@
 """Tests for cursor-based pagination in API content endpoints."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -18,7 +18,7 @@ from app.utils.pagination import PaginationCursor
 def sample_contents(db_session: Session, test_user: User):
     """Create sample content items for pagination testing."""
     contents = []
-    base_time = datetime.utcnow()
+    base_time = datetime.now(UTC)
     images_dir = get_content_images_dir()
     images_dir.mkdir(parents=True, exist_ok=True)
     image_paths: list[Path] = []
@@ -153,7 +153,7 @@ class TestCursorEncoding:
         filters = {"content_type": "article", "date": "2025-06-19"}
         cursor = PaginationCursor.encode_cursor(
             last_id=123,
-            last_created_at=datetime.utcnow(),
+            last_created_at=datetime.now(UTC),
             filters=filters,
         )
 
@@ -402,7 +402,7 @@ class TestPaginationStability:
     ):
         """Test pagination handles items with identical timestamps."""
         # Create items with same timestamp
-        same_time = datetime.utcnow()
+        same_time = datetime.now(UTC)
         contents = []
         for i in range(10):
             content = Content(

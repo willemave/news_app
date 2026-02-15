@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.llm_models import LLMProvider as ChatModelProvider
 
 
-class ChatMessageRole(str, Enum):
+class ChatMessageRole(StrEnum):
     """Role of a chat message."""
 
     USER = "user"
@@ -19,7 +19,7 @@ class ChatMessageRole(str, Enum):
     TOOL = "tool"
 
 
-class MessageProcessingStatus(str, Enum):
+class MessageProcessingStatus(StrEnum):
     """Processing status for async chat messages."""
 
     PROCESSING = "processing"
@@ -42,8 +42,8 @@ class CreateChatSessionRequest(BaseModel):
         None, max_length=2000, description="Optional initial user message"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "content_id": 123,
                 "topic": None,
@@ -52,6 +52,7 @@ class CreateChatSessionRequest(BaseModel):
                 "initial_message": "What are the key insights from this article?",
             }
         }
+    )
 
 
 class UpdateChatSessionRequest(BaseModel):
@@ -64,13 +65,14 @@ class UpdateChatSessionRequest(BaseModel):
         None, max_length=100, description="Optional specific model to use"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "llm_provider": "anthropic",
                 "llm_model_hint": None,
             }
         }
+    )
 
 
 class SendChatMessageRequest(BaseModel):
@@ -78,8 +80,9 @@ class SendChatMessageRequest(BaseModel):
 
     message: str = Field(..., min_length=1, max_length=10000, description="Message to send")
 
-    class Config:
-        json_schema_extra = {"example": {"message": "Can you explain that in more detail?"}}
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"message": "Can you explain that in more detail?"}}
+    )
 
 
 class ChatMessageDto(BaseModel):

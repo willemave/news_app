@@ -2,7 +2,7 @@
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from time import perf_counter
 
 from fastapi.concurrency import run_in_threadpool
@@ -477,7 +477,7 @@ def save_messages(
         db_message = ChatMessage(
             session_id=session_id,
             message_list=message_json,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             status=status.value,
         )
         db.add(db_message)
@@ -679,8 +679,8 @@ async def run_chat_turn(
         new_messages = result.new_messages()
         save_messages(db, session.id, new_messages)
 
-        session.last_message_at = datetime.utcnow()
-        session.updated_at = datetime.utcnow()
+        session.last_message_at = datetime.now(UTC)
+        session.updated_at = datetime.now(UTC)
         db.commit()
 
         total_ms = (perf_counter() - total_start) * 1000
@@ -825,8 +825,8 @@ async def process_message_async(
         save_ms = (perf_counter() - save_start) * 1000
 
         # Update session timestamps
-        session.last_message_at = datetime.utcnow()
-        session.updated_at = datetime.utcnow()
+        session.last_message_at = datetime.now(UTC)
+        session.updated_at = datetime.now(UTC)
         db.commit()
 
         total_ms = (perf_counter() - total_start) * 1000
@@ -919,8 +919,8 @@ async def generate_initial_suggestions(
         save_messages(db, session.id, new_messages)
         save_ms = (perf_counter() - save_start) * 1000
 
-        session.last_message_at = datetime.utcnow()
-        session.updated_at = datetime.utcnow()
+        session.last_message_at = datetime.now(UTC)
+        session.updated_at = datetime.now(UTC)
         db.commit()
 
         total_ms = (perf_counter() - total_start) * 1000

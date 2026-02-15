@@ -1,6 +1,6 @@
 """Integration tests for the complete processing pipeline."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -30,7 +30,7 @@ def setup_test_db():
                 title="Test Article 1",
                 content_type=ContentType.ARTICLE.value,
                 status=ContentStatus.NEW.value,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 content_metadata={},
             ),
             Content(
@@ -39,7 +39,7 @@ def setup_test_db():
                 title="Test Podcast 1",
                 content_type=ContentType.PODCAST.value,
                 status=ContentStatus.NEW.value,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 content_metadata={"audio_url": "https://example.com/podcast1.mp3"},
             ),
             Content(
@@ -48,7 +48,7 @@ def setup_test_db():
                 title="Failing Article",
                 content_type=ContentType.ARTICLE.value,
                 status=ContentStatus.NEW.value,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 content_metadata={},
             ),
         ]
@@ -320,7 +320,7 @@ class TestPipelineIntegration:
                 task_type="INVALID_TYPE",
                 payload={"content_id": 1},
                 status="pending",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 retry_count=0,
             )
             db.add(invalid_task)
@@ -357,7 +357,7 @@ class TestPipelineIntegration:
                         title=f"Scraped from {source}",
                         content_type=ContentType.ARTICLE.value,
                         status=ContentStatus.NEW.value,
-                        created_at=datetime.utcnow(),
+                        created_at=datetime.now(UTC),
                         content_metadata={},
                     )
                     db.add(new_content)

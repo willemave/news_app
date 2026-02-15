@@ -1,5 +1,5 @@
 """Tests for metadata schema validation."""
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -131,7 +131,7 @@ class TestArticleMetadata:
         metadata = ArticleMetadata(
             content="This is the article content",
             author="John Doe",
-            publication_date=datetime.utcnow(),
+            publication_date=datetime.now(UTC),
             content_type="html",
             final_url_after_redirects="https://example.com/article",
             word_count=100
@@ -234,7 +234,7 @@ class TestContentMetadataValidation:
         metadata_dict = {
             "content": "Article text",
             "author": "Author Name",
-            "publication_date": datetime.utcnow().isoformat()
+            "publication_date": datetime.now(UTC).isoformat()
         }
         
         result = validate_content_metadata("article", metadata_dict)

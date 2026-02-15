@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -96,7 +96,7 @@ def get_or_create_dig_deeper_session(
         session_type="article_brain",
         llm_provider=DEFAULT_PROVIDER,
         llm_model=DEFAULT_MODEL,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
     db.add(session)
     db.commit()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.core.deps import require_admin
 from app.main import app
@@ -18,7 +18,7 @@ def test_admin_dashboard_shows_operational_readouts(client, db_session, test_use
 
     app.dependency_overrides[require_admin] = override_require_admin
     try:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         other_user = User(
             apple_id="test_apple_other",

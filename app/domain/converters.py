@@ -1,9 +1,8 @@
 """Converters between domain models and database models."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from app.constants import SUMMARY_KIND_SHORT_NEWS_DIGEST, SUMMARY_VERSION_V1
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
@@ -142,7 +141,7 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
         existing.retry_count = content_data.retry_count
         if content_data.processed_at:
             existing.processed_at = content_data.processed_at
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = datetime.now(UTC)
         return existing
     else:
         # Create new
@@ -161,6 +160,6 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
             content_metadata=md,
             error_message=content_data.error_message,
             retry_count=content_data.retry_count,
-            created_at=content_data.created_at or datetime.utcnow(),
+            created_at=content_data.created_at or datetime.now(UTC),
             processed_at=content_data.processed_at,
         )

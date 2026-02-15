@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.db import get_db
@@ -8,7 +8,11 @@ from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.models.scraper_runs import ScraperStats
 from app.services.queue import TaskType, get_queue_service
-from app.services.scraper_configs import ensure_inbox_status, list_active_user_ids, should_add_to_inbox
+from app.services.scraper_configs import (
+    ensure_inbox_status,
+    list_active_user_ids,
+    should_add_to_inbox,
+)
 from app.utils.url_utils import is_http_url, normalize_http_url
 
 logger = get_logger(__name__)
@@ -183,7 +187,7 @@ class BaseScraper(ABC):
                         is_aggregate=bool(item.get("is_aggregate", False)),
                         status=ContentStatus.NEW.value,
                         content_metadata=metadata,
-                        created_at=datetime.utcnow(),
+                        created_at=datetime.now(UTC),
                     )
 
                     db.add(content)

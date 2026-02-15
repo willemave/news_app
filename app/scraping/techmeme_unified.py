@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -227,7 +227,9 @@ class TechmemeScraper(BaseScraper):
             },
             "discussion_url": normalized_permalink,
             "discovery_time": (
-                publication_date.isoformat() if publication_date else datetime.utcnow().isoformat()
+                publication_date.isoformat()
+                if publication_date
+                else datetime.now(UTC).isoformat()
             ),
         }
 

@@ -298,8 +298,8 @@ def test_admin_logout(monkeypatch):
     response = client.post("/auth/admin/login", json={"password": "test_admin_pass"})
 
     # Then logout
-    cookies = {"admin_session": response.cookies["admin_session"]}
-    response = client.post("/auth/admin/logout", cookies=cookies)
+    client.cookies.set("admin_session", response.cookies["admin_session"])
+    response = client.post("/auth/admin/logout")
 
     assert response.status_code == 200
     data = response.json()

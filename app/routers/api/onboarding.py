@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
@@ -46,7 +47,7 @@ async def build_profile(
 ) -> OnboardingProfileResponse:
     """Build onboarding profile summary."""
     _ = current_user
-    return build_onboarding_profile(payload)
+    return await run_in_threadpool(build_onboarding_profile, payload)
 
 
 @router.post(
@@ -60,7 +61,7 @@ async def parse_voice(
 ) -> OnboardingVoiceParseResponse:
     """Parse onboarding transcript into profile fields."""
     _ = current_user
-    return parse_onboarding_voice(payload)
+    return await run_in_threadpool(parse_onboarding_voice, payload)
 
 
 @router.post(
@@ -74,7 +75,7 @@ async def run_fast_discover(
 ) -> OnboardingFastDiscoverResponse:
     """Return fast discovery suggestions for onboarding."""
     _ = current_user
-    return fast_discover(payload)
+    return await run_in_threadpool(fast_discover, payload)
 
 
 @router.post(

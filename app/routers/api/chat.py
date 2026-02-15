@@ -1,6 +1,6 @@
 """Chat session endpoints for deep-dive conversations."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import (
@@ -352,7 +352,7 @@ async def create_session(
         topic=request.topic,
         llm_model=model_spec,
         llm_provider=provider,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
     db.add(session)
@@ -403,7 +403,7 @@ async def update_session(
         provider, model_spec = resolve_model(request.llm_provider, request.llm_model_hint)
         session.llm_provider = provider
         session.llm_model = model_spec
-        session.updated_at = datetime.utcnow()
+        session.updated_at = datetime.now(UTC)
 
         log_event(
             event_type="chat",
@@ -487,7 +487,7 @@ async def delete_session(
 
     if not session.is_archived:
         session.is_archived = True
-        session.updated_at = datetime.utcnow()
+        session.updated_at = datetime.now(UTC)
         db.commit()
 
     log_event(

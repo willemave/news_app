@@ -1,6 +1,6 @@
 """Content listing and search endpoints."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -63,13 +63,13 @@ def list_contents(
     ] = None,
     date: Annotated[
         str | None,
-        Query(description="Filter by date (YYYY-MM-DD format)", regex="^\\d{4}-\\d{2}-\\d{2}$"),
+        Query(description="Filter by date (YYYY-MM-DD format)", pattern="^\\d{4}-\\d{2}-\\d{2}$"),
     ] = None,
     read_filter: Annotated[
         str,
         Query(
             description="Filter by read status (all/read/unread)",
-            regex="^(all|read|unread)$",
+            pattern="^(all|read|unread)$",
         ),
     ] = "all",
     cursor: Annotated[str | None, Query(description="Pagination cursor for next page")] = None,
@@ -112,7 +112,7 @@ def list_contents(
     # and news items are always completed before becoming visible
     available_dates = []
     if not cursor:
-        lookback_start = datetime.utcnow() - timedelta(days=AVAILABLE_DATES_LOOKBACK_DAYS)
+        lookback_start = datetime.now(UTC) - timedelta(days=AVAILABLE_DATES_LOOKBACK_DAYS)
         available_dates_query = db.query(func.date(Content.created_at).label("date")).filter(
             Content.created_at >= lookback_start
         )
@@ -295,7 +295,7 @@ def search_contents(
     ),
     type: str = Query(
         "all",
-        regex=r"^(all|article|podcast|news)$",
+        pattern=r"^(all|article|podcast|news)$",
         description="Optional content type filter",
     ),
     limit: int = Query(25, ge=1, le=100, description="Max results to return"),

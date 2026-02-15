@@ -1,6 +1,6 @@
 """Repository for content favorites operations."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -62,7 +62,7 @@ def toggle_favorite(
         favorite = ContentFavorites(
             user_id=user_id,
             content_id=content_id,
-            favorited_at=datetime.utcnow(),
+            favorited_at=datetime.now(UTC),
         )
         db.add(favorite)
 
@@ -133,7 +133,7 @@ def _create_chat_session_for_favorite(db: Session, content_id: int, user_id: int
         session_type="article_brain",
         llm_provider=DEFAULT_LLM_PROVIDER,
         llm_model=DEFAULT_LLM_MODEL,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
     db.add(session)
     logger.debug(
@@ -215,7 +215,7 @@ def add_favorite(db: Session, content_id: int, user_id: int) -> ContentFavorites
         favorite = ContentFavorites(
             user_id=user_id,
             content_id=content_id,
-            favorited_at=datetime.utcnow(),
+            favorited_at=datetime.now(UTC),
         )
         db.add(favorite)
         db.commit()

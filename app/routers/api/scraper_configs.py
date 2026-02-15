@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_NEW_FEED_LIMIT
@@ -36,8 +36,8 @@ class ScraperConfigResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": 1,
                 "scraper_type": "substack",
@@ -49,6 +49,7 @@ class ScraperConfigResponse(BaseModel):
                 "created_at": "2025-06-24T12:00:00Z",
             }
         }
+    )
 
 
 def _coerce_limit(config: dict[str, Any]) -> int | None:
@@ -169,14 +170,15 @@ class SubscribeToFeedRequest(BaseModel):
     feed_type: str
     display_name: str | None = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "feed_url": "https://example.substack.com/feed",
                 "feed_type": "substack",
                 "display_name": "Example Newsletter",
             }
         }
+    )
 
 
 @router.post(

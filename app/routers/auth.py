@@ -180,7 +180,7 @@ def apple_signin(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.from_orm(user),
+        user=UserResponse.model_validate(user),
         is_new_user=is_new_user,
         openai_api_key=settings.openai_api_key,
     )
@@ -213,7 +213,7 @@ def debug_create_user(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.from_orm(user),
+        user=UserResponse.model_validate(user),
         is_new_user=True,
         openai_api_key=settings.openai_api_key,
     )
@@ -303,12 +303,12 @@ def get_current_user_info(
         HTTPException: 401 if token is invalid
     """
     try:
-        return UserResponse.from_orm(current_user)
+        return UserResponse.model_validate(current_user)
     except ValidationError as exc:
         if not _is_email_validation_error(exc):
             raise
         user = _repair_invalid_email(db, current_user, exc.errors())
-        return UserResponse.from_orm(user)
+        return UserResponse.model_validate(user)
 
 
 def _is_email_validation_error(exc: ValidationError) -> bool:
@@ -359,7 +359,7 @@ def admin_login_page(request: Request) -> HTMLResponse:
     Returns:
         HTML login page
     """
-    return templates.TemplateResponse("admin_login.html", {"request": request})
+    return templates.TemplateResponse(request, "admin_login.html", {"request": request})
 
 
 @router.post("/admin/login", response_model=AdminLoginResponse)

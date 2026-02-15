@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
-from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.cerebras import CerebrasProvider
 from pydantic_ai.providers.google import GoogleProvider
@@ -16,7 +16,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from app.core.settings import get_settings
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     """Supported LLM providers."""
 
     OPENAI = "openai"
@@ -145,7 +145,7 @@ def build_pydantic_model(model_spec: str) -> tuple[Model | str, GoogleModelSetti
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
         provider = CerebrasProvider(api_key=settings.cerebras_api_key)
-        return OpenAIModel(model_to_use, provider=provider), None
+        return OpenAIChatModel(model_to_use, provider=provider), None
 
     if (
         provider_prefix == "openai"
@@ -160,7 +160,7 @@ def build_pydantic_model(model_spec: str) -> tuple[Model | str, GoogleModelSetti
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
         return (
-            OpenAIModel(model_to_use, provider=OpenAIProvider(api_key=settings.openai_api_key)),
+            OpenAIChatModel(model_to_use, provider=OpenAIProvider(api_key=settings.openai_api_key)),
             None,
         )
 

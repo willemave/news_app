@@ -1,6 +1,6 @@
 """Tests for ContentWorker."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -84,7 +84,7 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             processed_at=None,
             retry_count=0,
         )
@@ -146,7 +146,7 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             processed_at=None,
             retry_count=0,
         )
@@ -184,7 +184,7 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             processed_at=None,
             retry_count=0,
         )
@@ -223,7 +223,7 @@ class TestContentWorker:
                 "article": {"url": "http://example.com/story"},
                 "discussion_url": "https://www.techmeme.com/cluster",
             },
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
         resolved = worker._resolve_article_url(news_content)
@@ -259,7 +259,7 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata=metadata,
             title="Original headline",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
         mock_db = Mock()
@@ -309,7 +309,7 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             processed_at=None,
             retry_count=0,
         )
@@ -349,7 +349,7 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Why ML Needs a New Programming Language",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
         mock_db = Mock()
@@ -425,7 +425,7 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={"audio_url": "https://example.com/podcast.mp3"},
             title="Test Podcast",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             processed_at=None,
             retry_count=0,
         )
@@ -492,7 +492,7 @@ class TestContentWorker:
             status=ContentStatus.NEW,
             metadata={},
             title="Test Article",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             processed_at=None,
             retry_count=0,
         )

@@ -3,7 +3,7 @@ Simple event logging service for tracking all system events, stats, and errors.
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.db import get_db
@@ -70,7 +70,7 @@ def track_event(event_type: str, event_name: str | None = None, **initial_data: 
             # Log additional data
             log_event("scraper_stats", "hackernews", parent_event_id=event_id, **stats)
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(UTC)
 
     # Log start event
     event_id = log_event(
@@ -85,20 +85,20 @@ def track_event(event_type: str, event_name: str | None = None, **initial_data: 
         yield event_id
 
         # Success - log completion
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         log_event(
             event_type=event_type,
             event_name=event_name,
             status="completed",
             event_id=event_id,
             duration_seconds=duration,
-            completed_at=datetime.utcnow().isoformat(),
+            completed_at=datetime.now(UTC).isoformat(),
             started_at=start_time.isoformat(),
         )
 
     except Exception as e:
         # Failure - log error
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         log_event(
             event_type=event_type,
             event_name=event_name,
@@ -107,7 +107,7 @@ def track_event(event_type: str, event_name: str | None = None, **initial_data: 
             duration_seconds=duration,
             error=str(e),
             error_type=type(e).__name__,
-            completed_at=datetime.utcnow().isoformat(),
+            completed_at=datetime.now(UTC).isoformat(),
             started_at=start_time.isoformat(),
         )
         raise
@@ -143,7 +143,7 @@ def get_recent_events(
         if status:
             query = query.filter(EventLog.status == status)
         if hours:
-            cutoff = datetime.utcnow() - timedelta(hours=hours)
+            cutoff = datetime.now(UTC) - timedelta(hours=hours)
             query = query.filter(EventLog.created_at >= cutoff)
 
         return query.order_by(EventLog.created_at.desc()).limit(limit).all()
@@ -165,7 +165,7 @@ def get_event_stats(event_type: str, hours: int = 24) -> dict[str, Any]:
     from sqlalchemy import func
 
     with get_db() as db:
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
         # Get counts by status
         status_counts = (

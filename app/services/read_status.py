@@ -1,7 +1,7 @@
 """Repository for content read status operations."""
 
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, select
@@ -53,14 +53,14 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
                     "mark_content_as_read", content_id=content_id, user_id=user_id
                 ),
             )
-            existing.read_at = datetime.utcnow()
+            existing.read_at = datetime.now(UTC)
             db.commit()
             return existing
 
         read_status = ContentReadStatus(
             user_id=user_id,
             content_id=content_id,
-            read_at=datetime.utcnow(),
+            read_at=datetime.now(UTC),
         )
         db.add(read_status)
         db.commit()
@@ -134,7 +134,7 @@ def mark_contents_as_read(
         ),
     )
 
-    timestamp = datetime.utcnow()
+    timestamp = datetime.now(UTC)
     try:
         existing_records = (
             db.execute(

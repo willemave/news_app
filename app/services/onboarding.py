@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import yaml
@@ -730,7 +730,7 @@ def run_audio_discovery(db: Session, run_id: int) -> None:
             )
             _persist_onboarding_suggestions(db, run, suggestions)
             run.status = "completed"
-            run.completed_at = datetime.utcnow()
+            run.completed_at = datetime.now(UTC)
             db.commit()
             return
 
@@ -755,7 +755,7 @@ def run_audio_discovery(db: Session, run_id: int) -> None:
         )
         _persist_onboarding_suggestions(db, run, suggestions)
         run.status = "completed"
-        run.completed_at = datetime.utcnow()
+        run.completed_at = datetime.now(UTC)
         db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.exception(

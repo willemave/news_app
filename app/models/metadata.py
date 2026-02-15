@@ -5,8 +5,8 @@ Merges functionality from app/schemas/metadata.py and app/domain/content.py.
 
 from __future__ import annotations
 
-from datetime import datetime
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import (
@@ -31,14 +31,14 @@ from app.utils.summary_utils import extract_short_summary, extract_summary_text
 
 
 # Enums from app/domain/content.py
-class ContentType(str, Enum):
+class ContentType(StrEnum):
     ARTICLE = "article"
     PODCAST = "podcast"
     NEWS = "news"
     UNKNOWN = "unknown"  # URL pending LLM analysis to determine type
 
 
-class ContentStatus(str, Enum):
+class ContentStatus(StrEnum):
     NEW = "new"
     PENDING = "pending"  # Legacy status still in database
     PROCESSING = "processing"
@@ -47,7 +47,7 @@ class ContentStatus(str, Enum):
     SKIPPED = "skipped"
 
 
-class ContentClassification(str, Enum):
+class ContentClassification(StrEnum):
     TO_READ = "to_read"
     SKIP = "skip"
 
@@ -154,7 +154,7 @@ class InterleavedSummary(BaseModel):
         pattern="^(to_read|skip)$",
         description="Content classification: 'to_read' or 'skip'",
     )
-    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+    summarization_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class InterleavedTopic(BaseModel):
@@ -164,7 +164,7 @@ class InterleavedTopic(BaseModel):
         ..., min_length=2, max_length=80, description="Key topic or theme (2-5 words)"
     )
     bullets: list[SummaryTextBullet] = Field(
-        ..., min_items=2, max_items=3, description="2-3 bullet points for the topic"
+        ..., min_length=2, max_length=3, description="2-3 bullet points for the topic"
     )
 
 
@@ -220,13 +220,13 @@ class InterleavedSummaryV2(BaseModel):
         ..., min_length=80, description="Opening hook (2-3 sentences) capturing the main story"
     )
     key_points: list[SummaryTextBullet] = Field(
-        ..., min_items=3, max_items=5, description="3-5 key bullet points"
+        ..., min_length=3, max_length=5, description="3-5 key bullet points"
     )
     topics: list[InterleavedTopic] = Field(
-        ..., min_items=2, description="Topic sections with 2-3 bullets each"
+        ..., min_length=2, description="Topic sections with 2-3 bullets each"
     )
     quotes: list[ContentQuote] = Field(
-        default_factory=list, max_items=20, description="Notable longer quotes"
+        default_factory=list, max_length=20, description="Notable longer quotes"
     )
     takeaway: str = Field(
         ..., min_length=80, description="Final takeaway (2-3 sentences) for the reader"
@@ -236,7 +236,7 @@ class InterleavedSummaryV2(BaseModel):
         pattern="^(to_read|skip)$",
         description="Content classification: 'to_read' or 'skip'",
     )
-    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+    summarization_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class BulletSummaryPoint(BaseModel):
@@ -245,7 +245,7 @@ class BulletSummaryPoint(BaseModel):
     text: str = Field(..., min_length=10, max_length=500, description="One-sentence main bullet")
     detail: str = Field(..., min_length=30, max_length=1200, description="2-3 sentence expansion")
     quotes: list[ContentQuote] = Field(
-        ..., min_items=1, max_items=3, description="1-3 supporting quotes"
+        ..., min_length=1, max_length=3, description="1-3 supporting quotes"
     )
 
 
@@ -281,13 +281,13 @@ class BulletedSummary(BaseModel):
     title: str = Field(
         ..., min_length=5, max_length=1000, description="Descriptive title for the content"
     )
-    points: list[BulletSummaryPoint] = Field(..., min_items=10, max_items=30)
+    points: list[BulletSummaryPoint] = Field(..., min_length=10, max_length=30)
     classification: str = Field(
         default="to_read",
         pattern="^(to_read|skip)$",
         description="Content classification: 'to_read' or 'skip'",
     )
-    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+    summarization_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class EditorialQuote(BaseModel):
@@ -351,17 +351,17 @@ class EditorialNarrativeSummary(BaseModel):
         description="Narrative summary (2-4 information-dense paragraphs).",
     )
     quotes: list[EditorialQuote] = Field(
-        ..., min_items=2, max_items=6, description="2-6 notable direct quotes"
+        ..., min_length=2, max_length=6, description="2-6 notable direct quotes"
     )
     key_points: list[EditorialKeyPoint] = Field(
-        ..., min_items=4, max_items=12, description="4-12 concrete key points"
+        ..., min_length=4, max_length=12, description="4-12 concrete key points"
     )
     classification: str = Field(
         default="to_read",
         pattern="^(to_read|skip)$",
         description="Content classification: 'to_read' or 'skip'",
     )
-    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+    summarization_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class StructuredSummary(BaseModel):
@@ -404,20 +404,20 @@ class StructuredSummary(BaseModel):
     overview: str = Field(
         ..., min_length=50, description="Brief overview paragraph (longer for podcasts)"
     )
-    bullet_points: list[SummaryBulletPoint] = Field(..., min_items=3, max_items=50)
-    quotes: list[ContentQuote] = Field(default_factory=list, max_items=50)
-    topics: list[str] = Field(default_factory=list, max_items=50)
+    bullet_points: list[SummaryBulletPoint] = Field(..., min_length=3, max_length=50)
+    quotes: list[ContentQuote] = Field(default_factory=list, max_length=50)
+    topics: list[str] = Field(default_factory=list, max_length=50)
     questions: list[str] = Field(
         default_factory=list,
-        max_items=10,
+        max_length=10,
         description="Questions to help readers think critically about the content",
     )
     counter_arguments: list[str] = Field(
         default_factory=list,
-        max_items=10,
+        max_length=10,
         description="Counter-arguments or alternative perspectives to the main claims",
     )
-    summarization_date: datetime = Field(default_factory=datetime.utcnow)
+    summarization_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
     classification: str = Field(
         default="to_read", description="Content classification: 'to_read' or 'skip'"
     )
@@ -481,7 +481,7 @@ class NewsSummary(BaseModel):
         description="Read recommendation classification",
     )
     summarization_date: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp when the digest was generated",
     )
 
@@ -744,7 +744,8 @@ class NewsMetadata(BaseContentMetadata):
         None, description="Aggregator discussion link (HN thread, tweet, etc.)"
     )
     discovery_time: datetime | None = Field(
-        default_factory=datetime.utcnow, description="When the item was discovered"
+        default_factory=lambda: datetime.now(UTC),
+        description="When the item was discovered",
     )
 
 
@@ -759,8 +760,7 @@ class ProcessingResult(BaseModel):
     error_message: str | None = None
     internal_links: list[str] = Field(default_factory=list)
 
-    class Config:
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 # Processing error from app/schemas/metadata.py
@@ -769,7 +769,7 @@ class ProcessingError(BaseModel):
 
     error: str = Field(..., description="Error message")
     error_type: str = Field(default="unknown", pattern="^(retryable|non_retryable|unknown)$")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # ContentData wrapper from app/domain/content.py with enhancements
@@ -779,7 +779,7 @@ class ContentData(BaseModel):
     """
 
     model_config = ConfigDict(
-        ignored_types=(property,), json_encoders={datetime: lambda value: value.isoformat()}
+        ignored_types=(property,)
     )
 
     id: int | None = None

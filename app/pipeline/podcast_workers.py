@@ -1,6 +1,6 @@
 import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -334,7 +334,7 @@ class PodcastDownloadWorker:
 
                     content.metadata["youtube_video"] = True
                     content.metadata["file_path"] = str(file_path)
-                    content.metadata["download_date"] = datetime.utcnow().isoformat()
+                    content.metadata["download_date"] = datetime.now(UTC).isoformat()
                     content.metadata["file_size"] = file_path.stat().st_size
 
                     # Update database
@@ -378,7 +378,7 @@ class PodcastDownloadWorker:
                 if file_path.exists() and file_path.stat().st_size > 0:
                     logger.info(f"File already exists: {file_path}")
                     content.metadata["file_path"] = str(file_path)
-                    content.metadata["download_date"] = datetime.utcnow().isoformat()
+                    content.metadata["download_date"] = datetime.now(UTC).isoformat()
                     content.metadata["file_size"] = file_path.stat().st_size
 
                     # Update database
@@ -399,7 +399,7 @@ class PodcastDownloadWorker:
 
                 # Update content metadata
                 content.metadata["file_path"] = str(file_path)
-                content.metadata["download_date"] = datetime.utcnow().isoformat()
+                content.metadata["download_date"] = datetime.now(UTC).isoformat()
                 content.metadata["file_size"] = file_path.stat().st_size
 
                 # Update database
@@ -520,7 +520,7 @@ class PodcastTranscribeWorker:
 
                     # Update content metadata
                     content.metadata["transcript_path"] = str(text_path)
-                    content.metadata["transcription_date"] = datetime.utcnow().isoformat()
+                    content.metadata["transcription_date"] = datetime.now(UTC).isoformat()
                     content.metadata["transcription_service"] = "youtube"
 
                     # Update database
@@ -596,7 +596,7 @@ class PodcastTranscribeWorker:
                 # Update content metadata
                 content.metadata["transcript_path"] = str(text_path)
                 content.metadata["transcript"] = transcript_text.strip()
-                content.metadata["transcription_date"] = datetime.utcnow().isoformat()
+                content.metadata["transcription_date"] = datetime.now(UTC).isoformat()
                 if detected_language:
                     content.metadata["detected_language"] = detected_language
                 content.metadata["transcription_service"] = "whisper_local"

@@ -1,6 +1,6 @@
 """Pydantic models for content submission workflows."""
 
-from pydantic import AliasChoices, BaseModel, Field, HttpUrl
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, HttpUrl
 
 from app.models.metadata import ContentStatus, ContentType
 
@@ -49,8 +49,8 @@ class SubmitContentRequest(BaseModel):
         ),
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "url": "https://open.spotify.com/episode/abc123",
                 "content_type": "podcast",
@@ -62,6 +62,7 @@ class SubmitContentRequest(BaseModel):
                 "share_and_chat": False,
             }
         }
+    )
 
 
 class ContentSubmissionResponse(BaseModel):
@@ -80,8 +81,8 @@ class ContentSubmissionResponse(BaseModel):
         None, description="Source attribution recorded for the content (self submission)"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "content_id": 42,
                 "content_type": "podcast",
@@ -93,3 +94,4 @@ class ContentSubmissionResponse(BaseModel):
                 "source": "self submission",
             }
         }
+    )

@@ -451,13 +451,13 @@ class SummarizeHandler:
                             content.title = summary_dict["title"]
                         logger.info("Generated summary for content %s", content_id)
 
-                    metadata["summarization_date"] = datetime.utcnow().isoformat()
+                    metadata["summarization_date"] = datetime.now(UTC).isoformat()
                     if share_and_chat_user_ids:
                         metadata.pop("share_and_chat_user_ids", None)
 
                     content.content_metadata = metadata
                     content.status = ContentStatus.COMPLETED.value
-                    content.processed_at = datetime.utcnow()
+                    content.processed_at = datetime.now(UTC)
                     db.commit()
 
                     if share_and_chat_user_ids:

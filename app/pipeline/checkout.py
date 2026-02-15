@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, func
@@ -74,7 +74,7 @@ class CheckoutManager:
             # Check out each item
             for content in content_list:
                 content.checked_out_by = worker_id
-                content.checked_out_at = datetime.utcnow()
+                content.checked_out_at = datetime.now(UTC)
                 content.status = ContentStatus.PROCESSING.value
 
             db.commit()
@@ -109,7 +109,7 @@ class CheckoutManager:
             content.checked_out_at = None
 
             if new_status == ContentStatus.COMPLETED:
-                content.processed_at = datetime.utcnow()
+                content.processed_at = datetime.now(UTC)
             elif new_status == ContentStatus.FAILED:
                 content.error_message = error_message
                 content.retry_count += 1
@@ -120,7 +120,7 @@ class CheckoutManager:
     def release_stale_checkouts(self) -> int:
         """Release checkouts that have timed out."""
         with get_db() as db:
-            timeout_threshold = datetime.utcnow() - timedelta(minutes=self.timeout_minutes)
+            timeout_threshold = datetime.now(UTC) - timedelta(minutes=self.timeout_minutes)
 
             stale_content = (
                 db.query(Content)
