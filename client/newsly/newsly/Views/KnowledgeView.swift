@@ -149,6 +149,22 @@ struct KnowledgeView: View {
                 viewModel: discoveryViewModel,
                 hasNewSuggestions: hasNewDiscoverySuggestions
             )
+        case .live:
+            KnowledgeLiveView(
+                initialRoute: LiveVoiceRoute(
+                    sourceSurface: .knowledgeLive,
+                    autoConnect: false
+                ),
+                onOpenChatSession: { chatSessionId in
+                    onSelectSession?(
+                        ChatSessionRoute(
+                            sessionId: chatSessionId,
+                            mode: .live
+                        )
+                    )
+                }
+            )
+            .accessibilityIdentifier("knowledge.live")
         }
     }
 
@@ -170,13 +186,16 @@ struct KnowledgeView: View {
     private var tabPicker: some View {
         Picker("Knowledge Tabs", selection: $selectedTab) {
             ForEach(KnowledgeTab.allCases, id: \.self) { tab in
-                Text(tabTitle(for: tab)).tag(tab)
+                Text(tabTitle(for: tab))
+                    .accessibilityIdentifier("knowledge.segment.\(tab.rawValue)")
+                    .tag(tab)
             }
         }
         .pickerStyle(.segmented)
         .padding(.horizontal, Spacing.screenHorizontal)
         .padding(.top, 8)
         .padding(.bottom, 4)
+        .accessibilityIdentifier("knowledge.tab_picker")
     }
 
     private var hasNewDiscoverySuggestions: Bool {
@@ -225,7 +244,17 @@ struct KnowledgeView: View {
 
             ForEach(filteredSessions) { session in
                 Button {
-                    onSelectSession?(ChatSessionRoute(sessionId: session.id))
+                    if session.sessionType == "voice_live" {
+                        onSelectSession?(
+                            ChatSessionRoute(
+                                sessionId: session.id,
+                                mode: .live,
+                                contentId: session.contentId
+                            )
+                        )
+                    } else {
+                        onSelectSession?(ChatSessionRoute(sessionId: session.id))
+                    }
                 } label: {
                     ChatSessionRow(session: session, isNew: isNewSession(session))
                 }
@@ -336,6 +365,8 @@ struct KnowledgeView: View {
             await viewModel.loadSessions()
         case .discover:
             await discoveryViewModel.loadSuggestions()
+        case .live:
+            return
         }
     }
 
@@ -357,6 +388,7 @@ struct KnowledgeView: View {
 private enum KnowledgeTab: String, CaseIterable {
     case discover
     case chats
+    case live
 
     var title: String {
         switch self {
@@ -364,6 +396,8 @@ private enum KnowledgeTab: String, CaseIterable {
             return "Discover"
         case .chats:
             return "Chats"
+        case .live:
+            return "Live"
         }
     }
 }

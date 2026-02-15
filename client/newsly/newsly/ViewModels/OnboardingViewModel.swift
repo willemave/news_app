@@ -13,7 +13,6 @@ enum OnboardingStep: Int {
     case audio
     case loading
     case suggestions
-    case done
 }
 
 enum OnboardingAudioState: Equatable {
@@ -55,6 +54,7 @@ final class OnboardingViewModel: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var didAutoStartRecording = false
     private var didAttemptResume = false
+    private var isSubmittingAudioDiscovery = false
 
     init(user: User) {
         self.user = user
@@ -112,6 +112,7 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     func startAudioCapture() async {
+        configureDictationCallbacks()
         errorMessage = nil
         hasMicPermissionDenied = false
         hasDictationError = false
@@ -129,8 +130,7 @@ final class OnboardingViewModel: ObservableObject {
         audioState = .transcribing
         stopAudioTimer()
         do {
-            let transcript = try await dictationService.stop()
-            await beginDiscovery(transcript: transcript)
+            _ = try await dictationService.stop()
         } catch {
             handleAudioError(error)
         }
@@ -183,13 +183,16 @@ final class OnboardingViewModel: ObservableObject {
             let response = try await service.complete(request: request)
             completionResponse = response
             onboardingStateStore.clearDiscoveryRun(userId: user.id)
-            step = .done
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     private func beginDiscovery(transcript: String) async {
+        guard !isSubmittingAudioDiscovery else { return }
+        isSubmittingAudioDiscovery = true
+        defer { isSubmittingAudioDiscovery = false }
+
         do {
             let request = OnboardingAudioDiscoverRequest(
                 transcript: transcript,
@@ -322,6 +325,7 @@ final class OnboardingViewModel: ObservableObject {
         suggestions = nil
         selectedSourceKeys = []
         selectedSubreddits = []
+        isSubmittingAudioDiscovery = false
         onboardingStateStore.clearDiscoveryRun(userId: user.id)
     }
 
@@ -329,6 +333,67 @@ final class OnboardingViewModel: ObservableObject {
         dictationService.cancel()
         stopAudioTimer()
         audioState = .idle
+    }
+
+    private func configureDictationCallbacks() {
+        dictationService.onTranscriptDelta = nil
+        dictationService.onTranscriptFinal = { [weak self] transcript in
+            Task { @MainActor in
+                guard let self else { return }
+                guard self.step == .audio else { return }
+                guard self.audioState == .recording || self.audioState == .transcribing else {
+                    return
+                }
+
+                let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    self.errorMessage = "No speech detected. Please try again."
+                    self.hasDictationError = true
+                    self.audioState = .error
+                    self.stopAudioTimer()
+                    return
+                }
+
+                self.audioState = .transcribing
+                self.stopAudioTimer()
+                await self.beginDiscovery(transcript: trimmed)
+            }
+        }
+        dictationService.onStateChange = nil
+
+        dictationService.onStopReason = { [weak self] reason in
+            Task { @MainActor in
+                self?.handleDictationStopReason(reason)
+            }
+        }
+
+        dictationService.onError = { [weak self] message in
+            Task { @MainActor in
+                guard let self else { return }
+                guard self.step == .audio else { return }
+                self.errorMessage = message
+                self.hasDictationError = true
+                self.audioState = .error
+                self.stopAudioTimer()
+            }
+        }
+    }
+
+    private func handleDictationStopReason(_ reason: SpeechStopReason) {
+        guard step == .audio else { return }
+        switch reason {
+        case .manual:
+            return
+        case .silenceAutoStop:
+            return
+        case .cancel:
+            audioState = .idle
+            stopAudioTimer()
+        case .failure:
+            hasDictationError = true
+            audioState = .error
+            stopAudioTimer()
+        }
     }
 
     private func startAudioTimer() {

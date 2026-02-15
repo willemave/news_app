@@ -229,7 +229,7 @@ struct OnboardingCompleteRequest: Codable {
     }
 }
 
-struct OnboardingCompleteResponse: Codable {
+struct OnboardingCompleteResponse: Codable, Equatable {
     let status: String
     let taskId: Int?
     let inboxCountEstimate: Int

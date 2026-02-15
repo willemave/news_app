@@ -102,6 +102,87 @@ struct SettingsView: View {
                 subtitle: "Display both read and unread",
                 isOn: $settings.showReadContent
             )
+
+            RowDivider()
+
+            textSizeRow
+        }
+    }
+
+    private var textSizeRow: some View {
+        VStack(spacing: 0) {
+            textSizeSlider(
+                icon: "textformat.size",
+                iconColor: .orange,
+                title: "App Text Size",
+                subtitle: AppTextSize(index: settings.appTextSizeIndex).label,
+                value: Binding(
+                    get: { Double(settings.appTextSizeIndex) },
+                    set: { settings.appTextSizeIndex = Int($0.rounded()) }
+                ),
+                range: 0...3
+            )
+
+            RowDivider()
+
+            textSizeSlider(
+                icon: "book",
+                iconColor: .purple,
+                title: "Content Text Size",
+                subtitle: ContentTextSize(index: settings.contentTextSizeIndex).label,
+                value: Binding(
+                    get: { Double(settings.contentTextSizeIndex) },
+                    set: { settings.contentTextSizeIndex = Int($0.rounded()) }
+                ),
+                range: 0...4
+            )
+        }
+    }
+
+    private func textSizeSlider(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        subtitle: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>
+    ) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(iconColor)
+                    .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.listTitle)
+                        .foregroundStyle(Color.textPrimary)
+
+                    Text(subtitle)
+                        .font(.listCaption)
+                        .foregroundStyle(Color.textTertiary)
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, Spacing.rowHorizontal)
+            .padding(.top, Spacing.rowVertical)
+
+            HStack(spacing: 12) {
+                Text("A")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.textTertiary)
+
+                Slider(value: value, in: range, step: 1)
+                    .tint(.accentColor)
+
+                Text("A")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.textTertiary)
+            }
+            .padding(.horizontal, Spacing.rowHorizontal)
+            .padding(.bottom, Spacing.rowVertical)
         }
     }
 
@@ -169,6 +250,16 @@ struct SettingsView: View {
     private var debugSection: some View {
         VStack(spacing: 0) {
             SectionHeader(title: "Debug")
+
+            SettingsToggleRow(
+                icon: "text.bubble",
+                iconColor: .orange,
+                title: "Show Live Voice Transcript",
+                subtitle: "Display transcript/assistant text on Live tab",
+                isOn: $settings.showLiveVoiceDebugText
+            )
+
+            RowDivider()
 
             Button {
                 showingDebugMenu = true

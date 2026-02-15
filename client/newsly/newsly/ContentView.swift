@@ -46,6 +46,10 @@ struct ContentView: View {
         )
     }
 
+    private var contentTextSize: DynamicTypeSize {
+        ContentTextSize(index: settings.contentTextSizeIndex).dynamicTypeSize
+    }
+
     private var longBadge: String? {
         let total = unreadCountService.articleCount + unreadCountService.podcastCount
         return total > 0 ? String(total) : nil
@@ -87,6 +91,7 @@ struct ContentView: View {
                 }
                 .tabItem {
                     Label("Long", systemImage: "doc.richtext")
+                        .accessibilityIdentifier("tab.long")
                 }
                 .badge(longBadge)
                 .tag(RootTab.longContent)
@@ -99,6 +104,7 @@ struct ContentView: View {
                 )
                 .tabItem {
                     Label("Short", systemImage: "bolt.fill")
+                        .accessibilityIdentifier("tab.short")
                 }
                 .badge(shortBadge)
                 .tag(RootTab.shortNews)
@@ -113,6 +119,7 @@ struct ContentView: View {
                 )
                     .tabItem {
                         Label("Knowledge", systemImage: "books.vertical.fill")
+                            .accessibilityIdentifier("tab.knowledge")
                     }
                     .badge(knowledgeBadge)
                     .tag(RootTab.knowledge)
@@ -120,6 +127,7 @@ struct ContentView: View {
                 MoreView(submissionsViewModel: submissionStatusViewModel)
                     .tabItem {
                         Label("More", systemImage: "ellipsis.circle.fill")
+                            .accessibilityIdentifier("tab.more")
                     }
                     .badge(moreBadge)
                     .tag(RootTab.more)
@@ -127,14 +135,38 @@ struct ContentView: View {
             .navigationDestination(for: ContentDetailRoute.self) { route in
                 ContentDetailView(
                     contentId: route.contentId,
-                    allContentIds: route.allContentIds
+                    allContentIds: route.allContentIds,
+                    onStartLiveVoice: { liveRoute in
+                        path.append(liveRoute)
+                    }
                 )
+                .dynamicTypeSize(contentTextSize)
                 .environmentObject(readingStateStore)
             }
             .navigationDestination(for: ChatSessionRoute.self) { route in
-                ChatSessionView(sessionId: route.sessionId)
+                if route.mode == .live {
+                    KnowledgeLiveView(
+                        initialRoute: LiveVoiceRoute(
+                            chatSessionId: route.sessionId,
+                            contentId: route.contentId,
+                            launchMode: route.contentId == nil ? .general : .articleVoice,
+                            sourceSurface: .chatSession
+                        )
+                    )
+                } else {
+                    ChatSessionView(
+                        sessionId: route.sessionId,
+                        onStartLiveVoice: { liveRoute in
+                            path.append(liveRoute)
+                        }
+                    )
+                }
+            }
+            .navigationDestination(for: LiveVoiceRoute.self) { route in
+                KnowledgeLiveView(initialRoute: route)
             }
         }
+        .dynamicTypeSize(AppTextSize(index: settings.appTextSizeIndex).dynamicTypeSize)
         .environmentObject(readingStateStore)
         .onAppear {
             tabCoordinator.ensureInitialLoads()

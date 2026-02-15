@@ -33,6 +33,7 @@ struct ContentDetailView: View {
     let initialContentId: Int
     let allContentIds: [Int]
     let onConvert: ((Int) async -> Void)?
+    let onStartLiveVoice: ((LiveVoiceRoute) -> Void)?
     @StateObject private var viewModel = ContentDetailViewModel()
     @StateObject private var chatSessionManager = ActiveChatSessionManager.shared
     @EnvironmentObject var readingStateStore: ReadingStateStore
@@ -67,10 +68,16 @@ struct ContentDetailView: View {
     @State private var didTriggerSwipeHaptic: Bool = false
     // Transcript/Full Article collapsed state
     @State private var isTranscriptExpanded: Bool = false
-    init(contentId: Int, allContentIds: [Int] = [], onConvert: ((Int) async -> Void)? = nil) {
+    init(
+        contentId: Int,
+        allContentIds: [Int] = [],
+        onConvert: ((Int) async -> Void)? = nil,
+        onStartLiveVoice: ((LiveVoiceRoute) -> Void)? = nil
+    ) {
         self.initialContentId = contentId
         self.allContentIds = allContentIds.isEmpty ? [contentId] : allContentIds
         self.onConvert = onConvert
+        self.onStartLiveVoice = onStartLiveVoice
         if let index = allContentIds.firstIndex(of: contentId) {
             self._currentIndex = State(initialValue: index)
         } else {
@@ -251,6 +258,7 @@ struct ContentDetailView: View {
             }
         }
         .textSelection(.enabled)
+        .accessibilityIdentifier("content.detail.screen")
         .overlay(alignment: .leading) {
             // Left edge indicator (previous)
             if dragAmount > 30 && currentIndex > 0 {
@@ -529,70 +537,76 @@ struct ContentDetailView: View {
 
     @ViewBuilder
     private func audioPromptCard(for content: ContentDetail) -> some View {
-        Button {
-            Task { await toggleRecording() }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: dictationService.isRecording ? "stop.circle.fill" : "mic.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(dictationService.isRecording ? .red : .orange)
-                    .frame(width: 32, height: 32)
-                    .background((dictationService.isRecording ? Color.red : Color.orange).opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+        VStack(spacing: 10) {
+            Button {
+                launchLiveVoice(for: content, mode: .articleVoice)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "waveform.and.mic")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.blue)
+                        .frame(width: 32, height: 32)
+                        .background(Color.blue.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(dictationService.isRecording ? "Stop Recording" : "Ask with Voice")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                    Text(dictationService.isRecording ? "Tap to finish" : "Record your question")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Voice with this article")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        Text("Start live conversation mode")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
                 }
-
-                Spacer()
+                .padding(10)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(10)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-        .disabled(isStartingChat)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("content.voice_with_article")
 
-        if dictationService.isTranscribing {
-            HStack(spacing: 10) {
-                ProgressView()
-                    .scaleEffect(0.8)
-                Text("Transcribing...")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.vertical, 8)
-        } else if !audioTranscript.isEmpty {
-            VStack(spacing: 10) {
-                Text(audioTranscript)
-                    .font(.footnote)
-                    .foregroundColor(.primary.opacity(0.9))
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            Button {
+                launchLiveVoice(for: content, mode: .dictateSummary)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "text.quote")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.indigo)
+                        .frame(width: 32, height: 32)
+                        .background(Color.indigo.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                Button {
-                    Task { await startChatWithPrompt(audioPrompt(audioTranscript, content: content), contentId: content.id) }
-                } label: {
-                    Text("Send Question")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.accentColor)
-                        .foregroundColor(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Dictate summary live")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        Text("Get a spoken summary first")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
                 }
-                .disabled(isStartingChat)
+                .padding(10)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("content.dictate_summary_live")
         }
+    }
+
+    private func launchLiveVoice(for content: ContentDetail, mode: LiveLaunchMode) {
+        let route = LiveVoiceRoute(
+            contentId: content.id,
+            launchMode: mode,
+            sourceSurface: .contentDetail
+        )
+        onStartLiveVoice?(route)
     }
 
     private func toggleRecording() async {
@@ -744,6 +758,7 @@ struct ContentDetailView: View {
                 Link(destination: url) {
                     minimalActionIcon("safari", color: .accentColor)
                 }
+                .accessibilityIdentifier("content.action.open_external")
             }
 
             Spacer()
@@ -752,20 +767,22 @@ struct ContentDetailView: View {
             Button(action: { showShareOptions = true }) {
                 minimalActionIcon("square.and.arrow.up")
             }
-
-            Spacer()
+            .accessibilityIdentifier("content.action.share")
 
             // Download more from series (article/podcast only)
             if content.contentTypeEnum == .article || content.contentTypeEnum == .podcast {
+                Spacer()
+
                 Button { showDownloadSheet = true } label: {
                     minimalActionIcon("tray.and.arrow.down")
                 }
+                .accessibilityIdentifier("content.action.download_more")
             }
-
-            Spacer()
 
             // Convert (news only)
             if content.contentTypeEnum == .news, let onConvert = onConvert {
+                Spacer()
+
                 Button(action: {
                     Task {
                         isConverting = true
@@ -782,9 +799,10 @@ struct ContentDetailView: View {
                     }
                 }
                 .disabled(isConverting)
-
-                Spacer()
+                .accessibilityIdentifier("content.action.convert")
             }
+
+            Spacer()
 
             // Favorite
             Button(action: {
@@ -794,6 +812,18 @@ struct ContentDetailView: View {
                     content.isFavorited ? "star.fill" : "star",
                     color: content.isFavorited ? .yellow : .secondary
                 )
+            }
+            .accessibilityIdentifier("content.action.favorite")
+
+            if content.contentTypeEnum == .article || content.contentTypeEnum == .news {
+                Spacer()
+
+                Button(action: {
+                    launchLiveVoice(for: content, mode: .articleVoice)
+                }) {
+                    minimalActionIcon("waveform.and.mic")
+                }
+                .accessibilityIdentifier("content.action.live_voice")
             }
 
             Spacer()
@@ -814,6 +844,7 @@ struct ContentDetailView: View {
                 minimalActionIcon("brain.head.profile")
             }
             .disabled(isCheckingChatSession)
+            .accessibilityIdentifier("content.action.deep_dive")
 
             // Navigation - Next removed (swipe only)
         }

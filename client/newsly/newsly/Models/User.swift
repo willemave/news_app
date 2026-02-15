@@ -16,6 +16,7 @@ struct User: Codable, Identifiable, Equatable {
     let isAdmin: Bool
     let isActive: Bool
     let hasCompletedNewUserTutorial: Bool
+    let hasCompletedLiveVoiceOnboarding: Bool
     let createdAt: Date
     let updatedAt: Date
 
@@ -27,8 +28,50 @@ struct User: Codable, Identifiable, Equatable {
         case isAdmin = "is_admin"
         case isActive = "is_active"
         case hasCompletedNewUserTutorial = "has_completed_new_user_tutorial"
+        case hasCompletedLiveVoiceOnboarding = "has_completed_live_voice_onboarding"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    init(
+        id: Int,
+        appleId: String,
+        email: String,
+        fullName: String?,
+        isAdmin: Bool,
+        isActive: Bool,
+        hasCompletedNewUserTutorial: Bool,
+        hasCompletedLiveVoiceOnboarding: Bool,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.appleId = appleId
+        self.email = email
+        self.fullName = fullName
+        self.isAdmin = isAdmin
+        self.isActive = isActive
+        self.hasCompletedNewUserTutorial = hasCompletedNewUserTutorial
+        self.hasCompletedLiveVoiceOnboarding = hasCompletedLiveVoiceOnboarding
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        appleId = try container.decode(String.self, forKey: .appleId)
+        email = try container.decode(String.self, forKey: .email)
+        fullName = try container.decodeIfPresent(String.self, forKey: .fullName)
+        isAdmin = try container.decode(Bool.self, forKey: .isAdmin)
+        isActive = try container.decode(Bool.self, forKey: .isActive)
+        hasCompletedNewUserTutorial = try container.decode(Bool.self, forKey: .hasCompletedNewUserTutorial)
+        hasCompletedLiveVoiceOnboarding = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .hasCompletedLiveVoiceOnboarding
+        ) ?? false
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 }
 

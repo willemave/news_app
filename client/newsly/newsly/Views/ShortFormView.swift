@@ -36,6 +36,7 @@ struct ShortFormView: View {
                 } else {
                     ForEach(viewModel.currentItems(), id: \.id) { item in
                         ShortNewsRow(item: item)
+                            .accessibilityIdentifier("short.row.\(item.id)")
                             .id(item.id)
                             .onTapGesture {
                                 let ids = viewModel.currentItems().map(\.id)
@@ -78,6 +79,7 @@ struct ShortFormView: View {
             .padding(.horizontal, Spacing.screenHorizontal)
             .padding(.top, Spacing.rowVertical)
         }
+        .accessibilityIdentifier("short.screen")
         .scrollPosition(id: $topVisibleItemId, anchor: .top)
         .onChange(of: topVisibleItemId) { _, _ in
             markItemsAboveAsRead()
@@ -134,20 +136,21 @@ struct ShortFormView: View {
     private var shortFormEmptyState: some View {
         if processingCountService.newsProcessingCount > 0 {
             VStack(spacing: 16) {
-                Spacer()
                 ProgressView()
                 Text("Preparing \(processingCountService.newsProcessingCount) short-form items")
                     .font(.listSubtitle)
                     .foregroundStyle(Color.textSecondary)
-                Spacer()
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .containerRelativeFrame(.vertical)
         } else {
             EmptyStateView(
                 icon: "bolt.fill",
                 title: "No Short-Form Content",
                 subtitle: "News digests will appear here once processed"
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .containerRelativeFrame(.vertical)
         }
     }
 }
@@ -249,6 +252,8 @@ private struct ShortNewsRow: View {
                 .padding(.leading, hasImage ? 72 : 0)
         }
         .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("short.row.\(item.id)")
     }
 
     @ViewBuilder

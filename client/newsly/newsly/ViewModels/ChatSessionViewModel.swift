@@ -28,7 +28,6 @@ class ChatSessionViewModel: ObservableObject {
 
     private let chatService = ChatService.shared
     private let transcriptionService: any SpeechTranscribing
-    private let isLiveTranscriber: Bool
     private var thinkingTimer: Timer?
     let sessionId: Int
 
@@ -36,7 +35,6 @@ class ChatSessionViewModel: ObservableObject {
         self.sessionId = sessionId
         let resolvedService = transcriptionService ?? VoiceDictationService.shared
         self.transcriptionService = resolvedService
-        self.isLiveTranscriber = resolvedService is RealtimeTranscriptionService
         configureTranscriptionCallbacks()
     }
 
@@ -45,7 +43,6 @@ class ChatSessionViewModel: ObservableObject {
         self.session = session
         let resolvedService = transcriptionService ?? VoiceDictationService.shared
         self.transcriptionService = resolvedService
-        self.isLiveTranscriber = resolvedService is RealtimeTranscriptionService
         configureTranscriptionCallbacks()
     }
 
@@ -282,6 +279,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     /// Start voice recording for chat message.
     func startVoiceRecording() async {
+        configureTranscriptionCallbacks()
         do {
             try await transcriptionService.start()
             isRecording = true
@@ -290,7 +288,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         }
     }
 
-    /// Stop recording, transcribe, and auto-send message.
+    /// Stop recording and transcribe into the input box.
     func stopVoiceRecording() async {
         guard isRecording else { return }
 
@@ -302,10 +300,6 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
             let transcription = try await transcriptionService.stop()
             logger.info("[ViewModel] Transcription complete | length=\(transcription.count)")
             isTranscribing = false
-
-            if !isLiveTranscriber {
-                appendLiveChunk(transcription)
-            }
         } catch {
             logger.error("[ViewModel] Voice transcription error: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -341,18 +335,23 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     }
 
     private func configureTranscriptionCallbacks() {
-        transcriptionService.onTranscriptDelta = { [weak self] delta in
-            Task { @MainActor in
-                guard let self else { return }
-                guard self.isLiveTranscriber else { return }
-                self.appendLiveChunk(delta)
-            }
-        }
+        transcriptionService.onTranscriptDelta = nil
         transcriptionService.onTranscriptFinal = { [weak self] transcript in
             Task { @MainActor in
                 guard let self else { return }
-                guard self.isLiveTranscriber else { return }
                 self.appendLiveChunk(transcript)
+            }
+        }
+        transcriptionService.onStopReason = { [weak self] reason in
+            Task { @MainActor in
+                guard let self else { return }
+                switch reason {
+                case .manual:
+                    return
+                case .silenceAutoStop, .cancel, .failure:
+                    self.isRecording = false
+                    self.isTranscribing = false
+                }
             }
         }
         transcriptionService.onError = { [weak self] message in

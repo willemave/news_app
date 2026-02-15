@@ -42,6 +42,69 @@ extension Font {
     static let chipLabel = Font.caption2.weight(.medium)
 }
 
+// MARK: - Text Size
+
+enum AppTextSize: Int, CaseIterable {
+    case small = 0
+    case standard = 1
+    case large = 2
+    case extraLarge = 3
+
+    var label: String {
+        switch self {
+        case .small: return "Small"
+        case .standard: return "Standard"
+        case .large: return "Large"
+        case .extraLarge: return "Extra Large"
+        }
+    }
+
+    var dynamicTypeSize: DynamicTypeSize {
+        switch self {
+        case .small: return .small
+        case .standard: return .large
+        case .large: return .xLarge
+        case .extraLarge: return .xxLarge
+        }
+    }
+
+    init(index: Int) {
+        self = AppTextSize(rawValue: index) ?? .standard
+    }
+}
+
+enum ContentTextSize: Int, CaseIterable {
+    case small = 0
+    case standard = 1
+    case medium = 2
+    case large = 3
+    case extraLarge = 4
+
+    var label: String {
+        switch self {
+        case .small: return "Small"
+        case .standard: return "Standard"
+        case .medium: return "Medium"
+        case .large: return "Large"
+        case .extraLarge: return "Extra Large"
+        }
+    }
+
+    var dynamicTypeSize: DynamicTypeSize {
+        switch self {
+        case .small: return .small
+        case .standard: return .large
+        case .medium: return .xLarge
+        case .large: return .xxLarge
+        case .extraLarge: return .xxxLarge
+        }
+    }
+
+    init(index: Int) {
+        self = ContentTextSize(rawValue: index) ?? .medium
+    }
+}
+
 // MARK: - Spacing
 
 enum Spacing {

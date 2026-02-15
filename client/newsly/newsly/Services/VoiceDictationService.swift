@@ -7,11 +7,20 @@
 //
 
 import AVFoundation
-import Combine
 import Foundation
 import os.log
 
 private let logger = Logger(subsystem: "com.newsly", category: "VoiceDictation")
+
+private enum SilenceDetectionConfig {
+    static let meteringIntervalSeconds: TimeInterval = 0.1
+    static let calibrationWindowSeconds: TimeInterval = 0.3
+    static let speechMarginDb: Float = 12
+    static let minimumSpeechThresholdDb: Float = -42
+    static let silenceHysteresisDb: Float = 6
+    static let silenceTimeoutSeconds: TimeInterval = 2
+    static let minimumRecordingDurationForAutoStopSeconds: TimeInterval = 0.75
+}
 
 /// Error types for voice dictation.
 enum VoiceDictationError: LocalizedError {
@@ -53,9 +62,20 @@ final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribin
     var onTranscriptFinal: ((String) -> Void)?
     var onError: ((String) -> Void)?
     var onStateChange: ((SpeechTranscriptionState) -> Void)?
+    var onStopReason: ((SpeechStopReason) -> Void)?
 
     private var audioRecorder: AVAudioRecorder?
     private var recordingURL: URL?
+    private var meteringTimer: Timer?
+    private var autoStopTask: Task<Void, Never>?
+    private var recordingStartedAt: Date?
+    private var silenceStartedAt: Date?
+    private var hasDetectedSpeech = false
+    private var ambientPeakDb: Float = -80
+    private var speechThresholdDb = SilenceDetectionConfig.minimumSpeechThresholdDb
+    private var silenceThresholdDb =
+        SilenceDetectionConfig.minimumSpeechThresholdDb - SilenceDetectionConfig.silenceHysteresisDb
+    private var isFinalizing = false
 
     private var openAIAPIKey: String? {
         // Try multiple sources for the API key:
@@ -94,6 +114,7 @@ final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribin
         do {
             try await startRecording()
         } catch {
+            onStopReason?(.failure)
             onError?(error.localizedDescription)
             throw error
         }
@@ -150,9 +171,20 @@ final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribin
         ]
 
         do {
-            audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
-            audioRecorder?.delegate = self
-            audioRecorder?.record()
+            let recorder = try AVAudioRecorder(url: audioFilename, settings: settings)
+            recorder.delegate = self
+            recorder.isMeteringEnabled = true
+            recorder.prepareToRecord()
+
+            resetSilenceDetectionState()
+            recordingStartedAt = Date()
+
+            guard recorder.record() else {
+                throw VoiceDictationError.recordingFailed
+            }
+
+            audioRecorder = recorder
+            startMetering()
             isRecording = true
             logger.info("Started recording")
         } catch {
@@ -162,39 +194,32 @@ final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribin
 
     /// Stop recording and transcribe.
     func stopRecordingAndTranscribe() async throws -> String {
-        guard isRecording, let recorder = audioRecorder else {
-            throw VoiceDictationError.recordingFailed
-        }
-
-        recorder.stop()
-        isRecording = false
-        logger.info("Stopped recording")
-
-        guard let url = recordingURL else {
-            throw VoiceDictationError.recordingFailed
-        }
-
-        // Transcribe using OpenAI
-        isTranscribing = true
-        defer { isTranscribing = false }
-
-        let transcript = try await transcribeAudio(fileURL: url)
-        onTranscriptFinal?(transcript)
-        return transcript
+        return try await finalizeRecordingAndTranscribe(stopReason: .manual)
     }
 
     /// Cancel recording without transcribing.
     func cancelRecording() {
+        let wasActive = isRecording || isTranscribing || recordingURL != nil
+        stopMetering()
+        autoStopTask?.cancel()
+        autoStopTask = nil
         audioRecorder?.stop()
         audioRecorder = nil
         isRecording = false
         isTranscribing = false
+        isFinalizing = false
 
         // Clean up recording file
         if let url = recordingURL {
             try? FileManager.default.removeItem(at: url)
         }
         recordingURL = nil
+        resetSilenceDetectionState()
+        recordingStartedAt = nil
+
+        if wasActive {
+            onStopReason?(.cancel)
+        }
     }
 
     // MARK: - Private
@@ -207,6 +232,138 @@ final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribin
         } else {
             onStateChange?(.idle)
         }
+    }
+
+    private func finalizeRecordingAndTranscribe(stopReason: SpeechStopReason) async throws -> String {
+        guard isRecording, let recorder = audioRecorder else {
+            throw VoiceDictationError.recordingFailed
+        }
+        guard !isFinalizing else {
+            throw VoiceDictationError.recordingFailed
+        }
+
+        isFinalizing = true
+        stopMetering()
+        recorder.stop()
+        isRecording = false
+        logger.info("Stopped recording")
+
+        guard let url = recordingURL else {
+            isFinalizing = false
+            throw VoiceDictationError.recordingFailed
+        }
+
+        isTranscribing = true
+        defer {
+            isTranscribing = false
+            isFinalizing = false
+            audioRecorder = nil
+            recordingStartedAt = nil
+            resetSilenceDetectionState()
+            if let recordingURL {
+                try? FileManager.default.removeItem(at: recordingURL)
+            }
+            recordingURL = nil
+        }
+
+        do {
+            let transcript = try await transcribeAudio(fileURL: url)
+            onTranscriptFinal?(transcript)
+            onStopReason?(stopReason)
+            return transcript
+        } catch {
+            onStopReason?(.failure)
+            throw error
+        }
+    }
+
+    private func startMetering() {
+        meteringTimer?.invalidate()
+        let timer = Timer.scheduledTimer(
+            withTimeInterval: SilenceDetectionConfig.meteringIntervalSeconds,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleMeteringTick()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        meteringTimer = timer
+    }
+
+    private func stopMetering() {
+        meteringTimer?.invalidate()
+        meteringTimer = nil
+    }
+
+    private func handleMeteringTick() {
+        guard isRecording, !isFinalizing, let recorder = audioRecorder else { return }
+        recorder.updateMeters()
+
+        let powerDb = recorder.averagePower(forChannel: 0)
+        let now = Date()
+        if let recordingStartedAt,
+           now.timeIntervalSince(recordingStartedAt) <= SilenceDetectionConfig.calibrationWindowSeconds {
+            ambientPeakDb = max(ambientPeakDb, powerDb)
+            speechThresholdDb = max(
+                ambientPeakDb + SilenceDetectionConfig.speechMarginDb,
+                SilenceDetectionConfig.minimumSpeechThresholdDb
+            )
+            silenceThresholdDb = speechThresholdDb - SilenceDetectionConfig.silenceHysteresisDb
+        }
+
+        if powerDb >= speechThresholdDb {
+            hasDetectedSpeech = true
+            silenceStartedAt = nil
+            return
+        }
+        if hasDetectedSpeech, powerDb >= silenceThresholdDb {
+            silenceStartedAt = nil
+            return
+        }
+
+        guard hasDetectedSpeech else { return }
+        if silenceStartedAt == nil {
+            silenceStartedAt = now
+            return
+        }
+
+        guard let silenceStartedAt else { return }
+        let silenceDuration = now.timeIntervalSince(silenceStartedAt)
+        let recordingDuration =
+            now.timeIntervalSince(recordingStartedAt ?? now)
+        guard
+            silenceDuration >= SilenceDetectionConfig.silenceTimeoutSeconds,
+            recordingDuration >= SilenceDetectionConfig.minimumRecordingDurationForAutoStopSeconds
+        else {
+            return
+        }
+
+        triggerSilenceAutoStop()
+    }
+
+    private func triggerSilenceAutoStop() {
+        guard isRecording, autoStopTask == nil, !isFinalizing else { return }
+        logger.info("Detected silence; auto-stopping recording")
+
+        autoStopTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.autoStopTask = nil }
+            do {
+                _ = try await self.finalizeRecordingAndTranscribe(stopReason: .silenceAutoStop)
+            } catch {
+                self.onError?(error.localizedDescription)
+            }
+        }
+    }
+
+    private func resetSilenceDetectionState() {
+        hasDetectedSpeech = false
+        silenceStartedAt = nil
+        ambientPeakDb = -80
+        speechThresholdDb = SilenceDetectionConfig.minimumSpeechThresholdDb
+        silenceThresholdDb =
+            SilenceDetectionConfig.minimumSpeechThresholdDb - SilenceDetectionConfig.silenceHysteresisDb
     }
 
     private func transcribeAudio(fileURL: URL) async throws -> String {

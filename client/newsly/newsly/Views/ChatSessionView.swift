@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import MarkdownUI
 import UIKit
 
 // MARK: - Share Content
@@ -146,7 +145,15 @@ class DigDeeperTextView: UITextView {
               let selectedText = text(in: selectedTextRange),
               !selectedText.isEmpty else { return }
 
-        onDigDeeper?(selectedText)
+        let callback = onDigDeeper
+        let captured = selectedText
+
+        // Resign first responder to dismiss the edit menu/selection,
+        // then dispatch callback to avoid blocking the UIKit run loop.
+        resignFirstResponder()
+        DispatchQueue.main.async {
+            callback?(captured)
+        }
     }
 }
 
@@ -213,6 +220,7 @@ struct SelectableAttributedText: UIViewRepresentable {
 
 struct ChatSessionView: View {
     @StateObject private var viewModel: ChatSessionViewModel
+    let onStartLiveVoice: ((LiveVoiceRoute) -> Void)?
     @FocusState private var isInputFocused: Bool
     @State private var showingModelPicker = false
     @State private var navigateToNewSessionId: Int?
@@ -222,22 +230,24 @@ struct ChatSessionView: View {
     @State private var hasRestoredScroll = false
     @State private var isAtBottom = false
 
-    init(session: ChatSessionSummary) {
+    init(
+        session: ChatSessionSummary,
+        onStartLiveVoice: ((LiveVoiceRoute) -> Void)? = nil
+    ) {
         _viewModel = StateObject(
-            wrappedValue: ChatSessionViewModel(
-                session: session,
-                transcriptionService: RealtimeTranscriptionService()
-            )
+            wrappedValue: ChatSessionViewModel(session: session)
         )
+        self.onStartLiveVoice = onStartLiveVoice
     }
 
-    init(sessionId: Int) {
+    init(
+        sessionId: Int,
+        onStartLiveVoice: ((LiveVoiceRoute) -> Void)? = nil
+    ) {
         _viewModel = StateObject(
-            wrappedValue: ChatSessionViewModel(
-                sessionId: sessionId,
-                transcriptionService: RealtimeTranscriptionService()
-            )
+            wrappedValue: ChatSessionViewModel(sessionId: sessionId)
         )
+        self.onStartLiveVoice = onStartLiveVoice
     }
 
     private var titleMaxWidth: CGFloat {
@@ -301,6 +311,25 @@ struct ChatSessionView: View {
                     }
                 }
 
+                if let onStartLiveVoice {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            let launchMode: LiveLaunchMode =
+                                session.contentId == nil ? .general : .articleVoice
+                            onStartLiveVoice(
+                                LiveVoiceRoute(
+                                    chatSessionId: session.id,
+                                    contentId: session.contentId,
+                                    launchMode: launchMode,
+                                    sourceSurface: .chatSession
+                                )
+                            )
+                        } label: {
+                            Image(systemName: "waveform.and.mic")
+                        }
+                    }
+                }
+
                 // Provider selector (trailing, icon-only)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -342,7 +371,7 @@ struct ChatSessionView: View {
             }
         }
         .navigationDestination(item: $navigateToNewSessionId) { sessionId in
-            ChatSessionView(sessionId: sessionId)
+            ChatSessionView(sessionId: sessionId, onStartLiveVoice: onStartLiveVoice)
         }
         .sheet(item: $shareContent) { content in
             ShareSheet(content: content)
@@ -655,11 +684,13 @@ struct ChatSessionView: View {
                                 .progressViewStyle(CircularProgressViewStyle(tint: sendButtonDisabled ? .secondary : .accentColor))
                         } else {
                             Image(systemName: "arrow.up")
-                                .font(.system(size: 18, weight: .medium))
+                                .font(.system(size: 16, weight: .medium))
                         }
                     }
                     .foregroundColor(sendButtonDisabled ? .secondary : .accentColor)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 34, height: 34)
+                    .background(sendButtonDisabled ? Color.clear : Color.accentColor.opacity(0.1))
+                    .clipShape(Circle())
                 }
                 .disabled(sendButtonDisabled)
             }
@@ -756,9 +787,6 @@ struct MessageBubble: View {
                 }
             }
 
-            if !message.isUser {
-                Spacer(minLength: 60)
-            }
         }
     }
 
@@ -776,13 +804,16 @@ struct MessageBubble: View {
                 Text(message.content)
                     .font(.callout)
                     .foregroundColor(Color(textColor))
+                    .textSelection(.enabled)
             } else {
-                Markdown(message.content)
-                    .markdownTheme(.gitHub)
-                    .font(.callout)
+                SelectableMarkdownView(
+                    markdown: message.content,
+                    textColor: textColor,
+                    baseFont: .preferredFont(forTextStyle: .callout),
+                    onDigDeeper: onDigDeeper
+                )
             }
         }
-        .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
     }
@@ -830,8 +861,6 @@ struct ThinkingBubbleView: View {
                     .monospacedDigit()
                     .padding(.horizontal, 4)
             }
-
-            Spacer(minLength: 60)
         }
         .onAppear {
             isAnimating = true

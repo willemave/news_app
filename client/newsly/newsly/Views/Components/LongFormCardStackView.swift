@@ -71,19 +71,11 @@ struct LongFormCardStackView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "doc.richtext")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            Text("No long-form content found.")
-                .foregroundColor(.secondary)
-            Button("Refresh") {
-                viewModel.refreshTrigger.send(())
-            }
-            .buttonStyle(.bordered)
-            Spacer()
-        }
+        EmptyStateView(
+            icon: "doc.richtext",
+            title: "No Long-Form Content",
+            subtitle: "Articles and podcasts will appear here once processed"
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

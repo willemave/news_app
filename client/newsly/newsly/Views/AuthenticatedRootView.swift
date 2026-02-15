@@ -101,6 +101,7 @@ struct AuthenticatedRootView: View {
             isAdmin: user.isAdmin,
             isActive: user.isActive,
             hasCompletedNewUserTutorial: completed,
+            hasCompletedLiveVoiceOnboarding: user.hasCompletedLiveVoiceOnboarding,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         )

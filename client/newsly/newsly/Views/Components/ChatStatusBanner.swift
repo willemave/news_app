@@ -13,6 +13,7 @@ struct ChatStatusBanner: View {
     let onTap: () -> Void
     let onDismiss: () -> Void
     var style: BannerStyle = .floating
+    @State private var isPulsing = false
 
     enum BannerStyle {
         case floating  // Card with shadow (for overlays)
@@ -47,6 +48,16 @@ struct ChatStatusBanner: View {
         .padding(.vertical, style == .inline ? 10 : 12)
         .background(backgroundColor)
         .applyBannerStyle(style)
+        .opacity(isPulsing && style == .inline && isProcessing ? 0.7 : 1.0)
+        .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: isPulsing)
+        .onAppear {
+            if style == .inline && isProcessing {
+                isPulsing = true
+            }
+        }
+        .onChange(of: isProcessing) { _, processing in
+            isPulsing = processing && style == .inline
+        }
         .onTapGesture {
             if case .completed = session.status {
                 onTap()
@@ -77,7 +88,7 @@ struct ChatStatusBanner: View {
     private var statusTitle: String {
         switch session.status {
         case .processing:
-            return "gathering information and starting chat session"
+            return "Preparing your deep dive..."
         case .completed:
             return "Analysis ready"
         case .failed(let error):
@@ -111,6 +122,11 @@ struct ChatStatusBanner: View {
         }
     }
 
+    private var isProcessing: Bool {
+        if case .processing = session.status { return true }
+        return false
+    }
+
     private var backgroundColor: Color {
         switch session.status {
         case .processing:
@@ -136,6 +152,11 @@ private extension View {
                 .padding(.top, 8)
         case .inline:
             self
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(.separator), lineWidth: 0.5)
+                )
         }
     }
 }

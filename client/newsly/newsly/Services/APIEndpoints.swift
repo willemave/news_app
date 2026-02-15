@@ -22,6 +22,7 @@ enum APIEndpoints {
     static func markContentUnread(id: Int) -> String {
         return "/api/content/\(id)/mark-unread"
     }
+    static let analytics = "/api/analytics"
     static let bulkMarkRead = "/api/content/bulk-mark-read"
     static func toggleFavorite(id: Int) -> String {
         return "/api/content/\(id)/favorite"
@@ -75,6 +76,10 @@ enum APIEndpoints {
 
     // MARK: - OpenAI Endpoints
     static let openaiRealtimeToken = "/api/openai/realtime/token"
+
+    // MARK: - Voice Endpoints
+    static let voiceSessions = "/api/voice/sessions"
+    static let voiceHealth = "/api/voice/health"
 
     // MARK: - Chat Endpoints
     static let chatSessions = "/api/content/chat/sessions"

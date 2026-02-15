@@ -181,6 +181,8 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     /// Icon name for the session type (used in chat list)
     var sessionTypeIconName: String {
         switch sessionType {
+        case "voice_live":
+            return "waveform.and.mic"
         case "deep_research":
             return "magnifyingglass.circle.fill"
         case "topic":
@@ -197,6 +199,8 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     /// Human-readable label for the session type
     var sessionTypeLabel: String {
         switch sessionType {
+        case "voice_live":
+            return "Live Voice"
         case "deep_research":
             return "Deep Research"
         case "topic":

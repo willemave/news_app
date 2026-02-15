@@ -50,9 +50,11 @@ struct OnboardingFlowView: View {
         case .suggestions:
             suggestionsView
                 .transition(.opacity)
-        case .done:
-            completionView
-                .transition(.opacity)
+                .onChange(of: viewModel.completionResponse) { _, response in
+                    if let response {
+                        onFinish(response)
+                    }
+                }
         }
     }
 
@@ -466,7 +468,7 @@ struct OnboardingFlowView: View {
 
             // Sticky bottom button
             VStack(spacing: 8) {
-                primaryButton("Continue") {
+                primaryButton("Start reading") {
                     Task { await viewModel.completeOnboarding() }
                 }
                 .disabled(viewModel.isLoading)
@@ -527,50 +529,6 @@ struct OnboardingFlowView: View {
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
-    }
-
-    // MARK: - Completion
-
-    private var completionView: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.1))
-                        .frame(width: 88, height: 88)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 32, weight: .semibold))
-                        .foregroundColor(.green)
-                }
-
-                VStack(spacing: 10) {
-                    Text("You're all set")
-                        .font(.title2.bold())
-                    if let response = viewModel.completionResponse {
-                        Text("\(response.inboxCountEstimate)+ stories ready to read")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("Your feeds are loading...")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-
-            Spacer()
-
-            primaryButton("Start reading") {
-                if let response = viewModel.completionResponse {
-                    onFinish(response)
-                }
-            }
-            .disabled(viewModel.completionResponse == nil)
-        }
-        .padding(24)
-        .padding(.bottom, 8)
     }
 
     // MARK: - Shared Components

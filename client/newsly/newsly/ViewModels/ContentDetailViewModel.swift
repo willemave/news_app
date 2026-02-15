@@ -61,6 +61,10 @@ class ContentDetailViewModel: ObservableObject {
             wasAlreadyReadWhenLoaded = fetched.isRead
             logger.debug("[ContentDetail] wasAlreadyReadWhenLoaded=\(fetched.isRead) | contentId=\(self.contentId)")
 
+            Task {
+                await self.trackOpenedInteraction(for: fetched)
+            }
+
             // Auto-mark as read if not already read
             if !fetched.isRead {
                 logger.info("[ContentDetail] Content not read, marking as read | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public)")
@@ -96,6 +100,27 @@ class ContentDetailViewModel: ObservableObject {
 
         isLoading = false
         logger.debug("[ContentDetail] loadContent completed | contentId=\(self.contentId)")
+    }
+
+    private func trackOpenedInteraction(for fetched: ContentDetail) async {
+        let contextData: [String: Any] = [
+            "content_type": fetched.contentType,
+            "was_read_when_loaded": fetched.isRead,
+        ]
+
+        do {
+            let response = try await contentService.trackContentOpened(
+                contentId: fetched.id,
+                contextData: contextData
+            )
+            logger.debug(
+                "[ContentDetail] Open interaction tracked | contentId=\(fetched.id) recorded=\(response.recorded)"
+            )
+        } catch {
+            logger.error(
+                "[ContentDetail] Failed to track open interaction | contentId=\(fetched.id) error=\(error.localizedDescription)"
+            )
+        }
     }
     
     func shareContent(option: ShareContentOption) {

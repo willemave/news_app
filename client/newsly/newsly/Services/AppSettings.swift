@@ -16,11 +16,23 @@ class AppSettings: ObservableObject {
     @AppStorage("serverPort", store: SharedContainer.userDefaults) var serverPort: String = "8000"
     @AppStorage("useHTTPS", store: SharedContainer.userDefaults) var useHTTPS: Bool = false
     @AppStorage("showReadContent", store: SharedContainer.userDefaults) var showReadContent: Bool = false
+    @AppStorage("appTextSizeIndex", store: SharedContainer.userDefaults) var appTextSizeIndex: Int = 1
+    @AppStorage("contentTextSizeIndex", store: SharedContainer.userDefaults) var contentTextSizeIndex: Int = 2
     @AppStorage("useLongFormCardStack", store: SharedContainer.userDefaults) var useLongFormCardStack: Bool = true
+    @AppStorage("showLiveVoiceDebugText", store: SharedContainer.userDefaults) var showLiveVoiceDebugText: Bool = false
+
+    private var normalizedHost: String {
+#if targetEnvironment(simulator)
+        if serverHost.caseInsensitiveCompare("localhost") == .orderedSame {
+            return "127.0.0.1"
+        }
+#endif
+        return serverHost
+    }
 
     var baseURL: String {
         let scheme = useHTTPS ? "https" : "http"
-        return "\(scheme)://\(serverHost):\(serverPort)"
+        return "\(scheme)://\(normalizedHost):\(serverPort)"
     }
     
     private init() {}

@@ -84,6 +84,20 @@ struct SubmitContentResponse: Codable {
     }
 }
 
+struct TrackContentInteractionResponse: Codable {
+    let status: String
+    let recorded: Bool
+    let interactionId: String
+    let analyticsInteractionId: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case recorded
+        case interactionId = "interaction_id"
+        case analyticsInteractionId = "analytics_interaction_id"
+    }
+}
+
 class ContentService {
     static let shared = ContentService()
     private let client = APIClient.shared
@@ -202,6 +216,79 @@ class ContentService {
     
     func fetchContentDetail(id: Int) async throws -> ContentDetail {
         return try await client.request(APIEndpoints.contentDetail(id: id))
+    }
+
+    func trackContentInteraction(
+        contentId: Int,
+        interactionType: String,
+        interactionId: UUID = UUID(),
+        occurredAt: Date = Date(),
+        surface: String? = nil,
+        contextData: [String: Any] = [:]
+    ) async throws -> TrackContentInteractionResponse {
+        struct TrackContentInteractionRequest: Codable {
+            let interactionId: String
+            let contentId: Int
+            let interactionType: String
+            let occurredAt: String
+            let surface: String?
+            let contextData: [String: AnyCodable]
+
+            enum CodingKeys: String, CodingKey {
+                case interactionId = "interaction_id"
+                case contentId = "content_id"
+                case interactionType = "interaction_type"
+                case occurredAt = "occurred_at"
+                case surface
+                case contextData = "context_data"
+            }
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        let payload = TrackContentInteractionRequest(
+            interactionId: interactionId.uuidString.lowercased(),
+            contentId: contentId,
+            interactionType: interactionType,
+            occurredAt: formatter.string(from: occurredAt),
+            surface: surface,
+            contextData: contextData.mapValues { AnyCodable($0) }
+        )
+        let body = try JSONEncoder().encode(payload)
+
+        logger.info(
+            "[ContentService] trackContentInteraction called | contentId=\(contentId) interactionType=\(interactionType, privacy: .public) interactionId=\(payload.interactionId, privacy: .public)"
+        )
+        do {
+            let response: TrackContentInteractionResponse = try await client.request(
+                APIEndpoints.analytics,
+                method: "POST",
+                body: body
+            )
+            logger.info(
+                "[ContentService] trackContentInteraction success | contentId=\(contentId) interactionType=\(interactionType, privacy: .public) recorded=\(response.recorded)"
+            )
+            return response
+        } catch {
+            logger.error(
+                "[ContentService] trackContentInteraction failed | contentId=\(contentId) interactionType=\(interactionType, privacy: .public) error=\(error.localizedDescription)"
+            )
+            throw error
+        }
+    }
+
+    func trackContentOpened(
+        contentId: Int,
+        surface: String = "ios_content_detail",
+        contextData: [String: Any] = [:]
+    ) async throws -> TrackContentInteractionResponse {
+        return try await trackContentInteraction(
+            contentId: contentId,
+            interactionType: "opened",
+            surface: surface,
+            contextData: contextData
+        )
     }
 
     func downloadMoreFromSeries(contentId: Int, count: Int) async throws -> DownloadMoreResponse {

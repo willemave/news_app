@@ -43,6 +43,7 @@ final class RealtimeTranscriptionService: SpeechTranscribing, @unchecked Sendabl
     var onTranscriptFinal: ((String) -> Void)?
     var onError: ((String) -> Void)?
     var onStateChange: ((SpeechTranscriptionState) -> Void)?
+    var onStopReason: ((SpeechStopReason) -> Void)?
 
     private let openAIService = OpenAIService.shared
     private let audioQueue = DispatchQueue(label: "com.newsly.realtime.audio")
@@ -141,6 +142,7 @@ final class RealtimeTranscriptionService: SpeechTranscribing, @unchecked Sendabl
         activeSessionType = nil
         hasFinalTranscript = false
         realtimeLogger.info("Realtime transcription stopped")
+        onStopReason?(.manual)
         return currentTranscript
     }
 
@@ -161,6 +163,7 @@ final class RealtimeTranscriptionService: SpeechTranscribing, @unchecked Sendabl
 
     func cancel() {
         reset()
+        onStopReason?(.cancel)
     }
 
     // MARK: - Private
