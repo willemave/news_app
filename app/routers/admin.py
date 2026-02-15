@@ -1,21 +1,40 @@
 """Admin router for administrative functionality."""
 
+import asyncio
+import base64
+import contextlib
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Session
 
 from app.core.db import get_readonly_db_session
-from app.core.deps import require_admin
+from app.core.deps import ADMIN_SESSION_COOKIE, require_admin
+from app.core.settings import get_settings
 from app.models.schema import Content, EventLog, OnboardingDiscoveryRun, ProcessingTask
 from app.models.user import User
+from app.routers.admin_conversational_models import AdminConversationalHealthResponse
 from app.routers.api.models import (
     OnboardingAudioDiscoverRequest,
     OnboardingAudioLanePreviewResponse,
+)
+from app.services.admin_conversational_agent import (
+    AgentConversationRuntime,
+    build_available_knowledge_context,
+    build_health_flags,
+    close_agent_session,
+    create_or_get_session_state,
+    search_knowledge,
+    search_web,
+    serialize_knowledge_hits,
+    serialize_web_hits,
+    start_agent_session,
+    stream_agent_turn,
 )
 from app.services.admin_eval import (
     EVAL_MODEL_LABELS,
@@ -30,6 +49,43 @@ from app.templates import templates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 TASK_STATUS_ORDER = ("pending", "processing", "failed", "completed")
+
+
+def _has_valid_admin_session(websocket: WebSocket) -> bool:
+    """Validate admin auth cookie for websocket endpoints."""
+    from app.routers.auth import admin_sessions
+
+    session_token = websocket.cookies.get(ADMIN_SESSION_COOKIE)
+    return bool(session_token and session_token in admin_sessions)
+
+
+async def _send_ws_event(websocket: WebSocket, payload: dict[str, Any]) -> bool:
+    """Send websocket event and indicate whether the connection is still open."""
+    try:
+        await websocket.send_json(payload)
+        return True
+    except (RuntimeError, WebSocketDisconnect):
+        return False
+
+
+class _TurnEventEmitter:
+    """Thread-safe event bridge from worker thread to async websocket queue."""
+
+    def __init__(self, event_loop: asyncio.AbstractEventLoop, queue: asyncio.Queue[dict[str, Any]]):
+        self._event_loop = event_loop
+        self._queue = queue
+
+    def __call__(self, event: dict[str, Any]) -> None:
+        def enqueue() -> None:
+            if self._queue.full() and event.get("type") in {"assistant_delta", "audio_chunk_raw"}:
+                return
+            if self._queue.full():
+                with contextlib.suppress(asyncio.QueueEmpty):
+                    self._queue.get_nowait()
+            with contextlib.suppress(asyncio.QueueFull):
+                self._queue.put_nowait(event)
+
+        self._event_loop.call_soon_threadsafe(enqueue)
 
 
 def _normalize_task_error_type(error_message: str | None) -> str:
@@ -415,7 +471,7 @@ def admin_dashboard(
     limit: int = 50,
 ):
     """Admin dashboard with system statistics and event logs."""
-    recent_cutoff = datetime.utcnow() - timedelta(hours=24)
+    recent_cutoff = datetime.now(UTC) - timedelta(hours=24)
 
     # Content statistics
     content_stats_result = (
@@ -472,6 +528,7 @@ def admin_dashboard(
     )
 
     return templates.TemplateResponse(
+        request,
         "admin_dashboard.html",
         {
             "request": request,
@@ -515,6 +572,7 @@ def onboarding_lane_preview_page(
 ) -> HTMLResponse:
     """Render admin tool for onboarding lane preview."""
     return templates.TemplateResponse(
+        request,
         "admin_onboarding_lane_preview.html",
         {
             "request": request,
@@ -544,6 +602,7 @@ def admin_eval_summaries_page(
 ) -> HTMLResponse:
     """Render admin summary eval UI."""
     return templates.TemplateResponse(
+        request,
         "admin_eval_summaries.html",
         {
             "request": request,
@@ -563,3 +622,330 @@ def admin_eval_summaries_run(
 ) -> dict[str, Any]:
     """Run summary/title eval against selected models and content samples."""
     return run_admin_eval(db, payload)
+
+
+@router.get("/conversational", response_class=HTMLResponse)
+def admin_conversational_page(
+    request: Request,
+    _: None = Depends(require_admin),
+) -> HTMLResponse:
+    """Render admin conversational prototype UI."""
+    return templates.TemplateResponse(
+        request,
+        "admin_conversational.html",
+        {
+            "request": request,
+        },
+    )
+
+
+@router.get("/conversational/health", response_model=AdminConversationalHealthResponse)
+def admin_conversational_health(
+    _: None = Depends(require_admin),
+) -> AdminConversationalHealthResponse:
+    """Report readiness for admin conversational features."""
+    return AdminConversationalHealthResponse(**build_health_flags())
+
+
+@router.websocket("/conversational/ws")
+async def admin_conversational_ws(
+    websocket: WebSocket,
+    db: Annotated[Session, Depends(get_readonly_db_session)],
+) -> None:
+    """Websocket endpoint for streaming admin conversational turns."""
+    if not _has_valid_admin_session(websocket):
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    settings = get_settings()
+    max_queue_size = max(10, settings.admin_conversational_ws_max_queue)
+    selected_user_id: int | None = None
+    session_id: str | None = None
+    runtime: AgentConversationRuntime | None = None
+
+    try:
+        while True:
+            try:
+                message = await websocket.receive_json()
+            except WebSocketDisconnect:
+                return
+            except Exception:
+                is_open = await _send_ws_event(
+                    websocket,
+                    {
+                        "type": "error",
+                        "code": "invalid_payload",
+                        "message": "Expected JSON message payload.",
+                    },
+                )
+                if not is_open:
+                    return
+                continue
+
+            message_type = str(message.get("type", "")).strip().lower()
+            if message_type == "ping":
+                is_open = await _send_ws_event(websocket, {"type": "pong"})
+                if not is_open:
+                    return
+                continue
+
+            if message_type == "init":
+                raw_user_id = message.get("user_id")
+                raw_session_id = message.get("session_id")
+                requested_session_id = raw_session_id if isinstance(raw_session_id, str) else None
+                try:
+                    user_id = int(raw_user_id)
+                except (TypeError, ValueError):
+                    is_open = await _send_ws_event(
+                        websocket,
+                        {
+                            "type": "error",
+                            "code": "invalid_user_id",
+                            "message": "user_id must be a positive integer.",
+                        },
+                    )
+                    if not is_open:
+                        return
+                    continue
+
+                if user_id <= 0:
+                    is_open = await _send_ws_event(
+                        websocket,
+                        {
+                            "type": "error",
+                            "code": "invalid_user_id",
+                            "message": "user_id must be a positive integer.",
+                        },
+                    )
+                    if not is_open:
+                        return
+                    continue
+
+                user_exists = db.query(User.id).filter(User.id == user_id).first()
+                if user_exists is None:
+                    is_open = await _send_ws_event(
+                        websocket,
+                        {
+                            "type": "error",
+                            "code": "user_not_found",
+                            "message": "Selected user_id does not exist.",
+                        },
+                    )
+                    if not is_open:
+                        return
+                    continue
+
+                try:
+                    state = create_or_get_session_state(requested_session_id, user_id)
+                except ValueError as exc:
+                    is_open = await _send_ws_event(
+                        websocket,
+                        {
+                            "type": "error",
+                            "code": "invalid_session",
+                            "message": str(exc),
+                        },
+                    )
+                    if not is_open:
+                        return
+                    continue
+
+                if runtime is not None:
+                    with contextlib.suppress(Exception):
+                        await asyncio.to_thread(close_agent_session, runtime)
+                    runtime = None
+
+                bootstrap_context = build_available_knowledge_context(
+                    db=db,
+                    user_id=user_id,
+                    limit=100,
+                )
+
+                try:
+                    runtime = await asyncio.to_thread(
+                        start_agent_session,
+                        state.session_id,
+                        user_id,
+                        bootstrap_context,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    selected_user_id = None
+                    session_id = None
+                    is_open = await _send_ws_event(
+                        websocket,
+                        {
+                            "type": "error",
+                            "code": "agent_session_error",
+                            "message": str(exc),
+                        },
+                    )
+                    if not is_open:
+                        return
+                    continue
+
+                selected_user_id = user_id
+                session_id = state.session_id
+                is_open = await _send_ws_event(
+                    websocket,
+                    {
+                        "type": "ready",
+                        "session_id": session_id,
+                    },
+                )
+                if not is_open:
+                    return
+                continue
+
+            if message_type != "user_message":
+                is_open = await _send_ws_event(
+                    websocket,
+                    {
+                        "type": "error",
+                        "code": "unknown_event",
+                        "message": f"Unsupported event type: {message_type or 'empty'}",
+                    },
+                )
+                if not is_open:
+                    return
+                continue
+
+            if selected_user_id is None or session_id is None or runtime is None:
+                is_open = await _send_ws_event(
+                    websocket,
+                    {
+                        "type": "error",
+                        "code": "session_not_initialized",
+                        "message": "Send init event before user_message.",
+                    },
+                )
+                if not is_open:
+                    return
+                continue
+
+            text = str(message.get("text", "")).strip()
+            if not text:
+                is_open = await _send_ws_event(
+                    websocket,
+                    {
+                        "type": "error",
+                        "code": "empty_message",
+                        "message": "text is required.",
+                    },
+                )
+                if not is_open:
+                    return
+                continue
+
+            turn_id = str(message.get("turn_id") or f"turn_{uuid4().hex}")
+            is_open = await _send_ws_event(websocket, {"type": "turn_started", "turn_id": turn_id})
+            if not is_open:
+                return
+
+            knowledge_hits = search_knowledge(db=db, user_id=selected_user_id, query=text, limit=5)
+            web_hits = await asyncio.to_thread(search_web, text, 5)
+            is_open = await _send_ws_event(
+                websocket,
+                {
+                    "type": "sources",
+                    "turn_id": turn_id,
+                    "knowledge_hits": serialize_knowledge_hits(knowledge_hits),
+                    "web_hits": serialize_web_hits(web_hits),
+                },
+            )
+            if not is_open:
+                return
+
+            queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=max_queue_size)
+            event_loop = asyncio.get_running_loop()
+            emit_event = _TurnEventEmitter(event_loop, queue)
+            current_runtime = runtime
+
+            def run_turn(
+                local_runtime: AgentConversationRuntime = current_runtime,
+                local_text: str = text,
+                local_turn_id: str = turn_id,
+                local_knowledge_hits=knowledge_hits,
+                local_web_hits=web_hits,
+                local_emit_event: _TurnEventEmitter = emit_event,
+            ) -> None:
+                try:
+                    stream_agent_turn(
+                        runtime=local_runtime,
+                        user_text=local_text,
+                        turn_id=local_turn_id,
+                        emit_event=local_emit_event,
+                        knowledge_hits=local_knowledge_hits,
+                        web_hits=local_web_hits,
+                    )
+                    local_emit_event({"type": "_internal_done"})
+                except TimeoutError as exc:
+                    local_emit_event(
+                        {
+                            "type": "_internal_error",
+                            "code": "turn_timeout",
+                            "message": str(exc),
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    local_emit_event(
+                        {
+                            "type": "_internal_error",
+                            "code": "agent_error",
+                            "message": str(exc),
+                        }
+                    )
+
+            worker_task = asyncio.create_task(asyncio.to_thread(run_turn))
+
+            while True:
+                event = await queue.get()
+                event_type = event.get("type")
+
+                if event_type == "_internal_done":
+                    is_open = await _send_ws_event(
+                        websocket,
+                        {"type": "turn_complete", "turn_id": turn_id},
+                    )
+                    break
+
+                if event_type == "_internal_error":
+                    is_open = await _send_ws_event(
+                        websocket,
+                        {
+                            "type": "error",
+                            "turn_id": turn_id,
+                            "code": str(event.get("code", "agent_error")),
+                            "message": str(event.get("message", "Turn failed.")),
+                        },
+                    )
+                    break
+
+                if event_type == "audio_chunk_raw":
+                    audio_bytes = event.get("audio_bytes")
+                    if isinstance(audio_bytes, (bytes, bytearray)):
+                        payload = {
+                            "type": "audio_chunk",
+                            "turn_id": turn_id,
+                            "seq": int(event.get("seq", 0)),
+                            "mime_type": str(event.get("mime_type", "application/octet-stream")),
+                            "chunk_b64": base64.b64encode(bytes(audio_bytes)).decode("ascii"),
+                        }
+                        is_open = await _send_ws_event(websocket, payload)
+                        if not is_open:
+                            break
+                    continue
+
+                is_open = await _send_ws_event(websocket, event)
+                if not is_open:
+                    break
+
+            with contextlib.suppress(Exception):
+                await worker_task
+
+            if not is_open:
+                return
+    finally:
+        if runtime is not None:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(close_agent_session, runtime)

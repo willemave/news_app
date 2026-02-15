@@ -16,6 +16,8 @@ logs_from_server/
 .worktrees/
 
 static/*
+!static/js/
+!static/js/admin_conversational.js
 
 *.out
 
