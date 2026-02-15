@@ -1,9 +1,10 @@
 """Pydantic models for API endpoints."""
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants import TWEET_SUGGESTION_MODEL
 from app.models.content_submission import (  # noqa: F401
@@ -67,8 +68,8 @@ class ContentSummaryResponse(BaseModel):
         None, description="URL of 200px thumbnail image for fast loading in list views"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": 123,
                 "content_type": "article",
@@ -87,6 +88,7 @@ class ContentSummaryResponse(BaseModel):
                 "thumbnail_url": "/static/images/thumbnails/123.png",
             }
         }
+    )
 
 
 class ContentListResponse(BaseModel):
@@ -97,8 +99,8 @@ class ContentListResponse(BaseModel):
     content_types: list[str] = Field(..., description="Available content types for filtering")
     meta: PaginationMetadata = Field(..., description="Pagination metadata for the response")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "contents": [
                     {
@@ -125,6 +127,7 @@ class ContentListResponse(BaseModel):
                 },
             }
         }
+    )
 
 
 class SubmissionStatusResponse(BaseModel):
@@ -281,8 +284,8 @@ class DetectedFeed(BaseModel):
     title: str | None = Field(None, description="Feed title from link tag")
     format: str = Field("rss", description="Feed format: rss or atom")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "url": "https://example.substack.com/feed",
                 "type": "substack",
@@ -290,6 +293,7 @@ class DetectedFeed(BaseModel):
                 "format": "rss",
             }
         }
+    )
 
 
 class ContentDetailResponse(BaseModel):
@@ -369,8 +373,8 @@ class ContentDetailResponse(BaseModel):
         description="Whether the current user can subscribe to the detected feed",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": 123,
                 "content_type": "article",
@@ -430,17 +434,88 @@ class ContentDetailResponse(BaseModel):
                 "can_subscribe": False,
             }
         }
+    )
+
+
+class RecordContentInteractionRequest(BaseModel):
+    """Request to record a user interaction with content."""
+
+    interaction_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Client-generated interaction UUID for idempotency",
+    )
+    content_id: int = Field(..., gt=0, description="Content ID to associate with the interaction")
+    interaction_type: Literal["opened"] = Field(
+        ...,
+        description="Interaction type. V1 supports opened.",
+    )
+    occurred_at: datetime | None = Field(
+        None,
+        description="Optional ISO timestamp of when interaction occurred",
+    )
+    surface: str | None = Field(
+        None,
+        max_length=64,
+        description="Surface identifier (e.g., ios_content_detail)",
+    )
+    context_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional structured metadata for analytics",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "interaction_id": "c5d968d3-5608-48b4-9838-cb9e5f63f8ae",
+                "content_id": 123,
+                "interaction_type": "opened",
+                "occurred_at": "2026-02-15T09:30:00Z",
+                "surface": "ios_content_detail",
+                "context_data": {
+                    "content_type": "article",
+                    "was_read_when_loaded": False,
+                },
+            }
+        }
+    )
+
+
+class RecordContentInteractionResponse(BaseModel):
+    """Response after recording a user interaction."""
+
+    status: Literal["success"] = Field(..., description="Operation status")
+    recorded: bool = Field(
+        ...,
+        description="True when a new row was inserted; false when idempotent duplicate",
+    )
+    interaction_id: str = Field(..., description="Echoed client interaction ID")
+    analytics_interaction_id: int | None = Field(
+        None,
+        description="Primary key of recorded analytics row",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "success",
+                "recorded": True,
+                "interaction_id": "c5d968d3-5608-48b4-9838-cb9e5f63f8ae",
+                "analytics_interaction_id": 456,
+            }
+        }
+    )
 
 
 class BulkMarkReadRequest(BaseModel):
     """Request to mark multiple content items as read."""
 
     content_ids: list[int] = Field(
-        ..., description="List of content IDs to mark as read", min_items=1
+        ..., description="List of content IDs to mark as read", min_length=1
     )
 
-    class Config:
-        json_schema_extra = {"example": {"content_ids": [123, 456, 789]}}
+    model_config = ConfigDict(json_schema_extra={"example": {"content_ids": [123, 456, 789]}})
 
 
 class ChatGPTUrlResponse(BaseModel):
@@ -449,13 +524,14 @@ class ChatGPTUrlResponse(BaseModel):
     chat_url: str = Field(..., description="URL to open ChatGPT with the content")
     truncated: bool = Field(..., description="Whether the content was truncated to fit URL limits")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "chat_url": "https://chat.openai.com/?q=Chat+about+this+article...",
                 "truncated": False,
             }
         }
+    )
 
 
 class UnreadCountsResponse(BaseModel):
@@ -504,8 +580,8 @@ class ConvertNewsResponse(BaseModel):
     already_exists: bool = Field(..., description="Whether article already existed")
     message: str = Field(..., description="Human-readable message")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "success",
                 "new_content_id": 123,
@@ -514,6 +590,7 @@ class ConvertNewsResponse(BaseModel):
                 "message": "Article created and queued for processing",
             }
         }
+    )
 
 
 class TweetSuggestion(BaseModel):
@@ -525,8 +602,8 @@ class TweetSuggestion(BaseModel):
         None, description="Style descriptor (e.g., 'insightful', 'provocative')"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": 1,
                 "text": (
@@ -536,6 +613,7 @@ class TweetSuggestion(BaseModel):
                 "style_label": "insightful",
             }
         }
+    )
 
 
 class TweetLength(StrEnum):
@@ -569,8 +647,8 @@ class TweetSuggestionsRequest(BaseModel):
         description="LLM provider to use (openai, anthropic, google). Defaults to google.",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "message": "emphasize the startup angle",
                 "creativity": 7,
@@ -578,6 +656,7 @@ class TweetSuggestionsRequest(BaseModel):
                 "llm_provider": "google",
             }
         }
+    )
 
 
 class TweetSuggestionsResponse(BaseModel):
@@ -597,8 +676,8 @@ class TweetSuggestionsResponse(BaseModel):
         description="Exactly 3 tweet suggestions",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "content_id": 123,
                 "creativity": 7,
@@ -631,6 +710,7 @@ class TweetSuggestionsResponse(BaseModel):
                 ],
             }
         }
+    )
 
 
 class OnboardingProfileRequest(BaseModel):

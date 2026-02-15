@@ -24,6 +24,8 @@ from app.routers.api.models import (
     ContentListResponse,
     ContentSummaryResponse,
     ConvertNewsResponse,
+    RecordContentInteractionRequest,
+    RecordContentInteractionResponse,
     UnreadCountsResponse,
 )
 
@@ -36,4 +38,6 @@ __all__ = [
     "ChatGPTUrlResponse",
     "UnreadCountsResponse",
     "ConvertNewsResponse",
+    "RecordContentInteractionRequest",
+    "RecordContentInteractionResponse",
 ]
