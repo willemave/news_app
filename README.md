@@ -2,7 +2,7 @@
 
 **Your AI-powered knowledge companion.** Newsly pulls in content from across the web, summarizes it with LLMs, generates visual thumbnails, and lets you have real-time voice conversations about anything you've saved — or anything on the internet.
 
-Stop drowning in tabs. Start understanding.
+Stop drowning in tabs. Start understanding what matters.
 
 ## Why Newsly
 
