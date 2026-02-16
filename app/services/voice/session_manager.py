@@ -23,6 +23,7 @@ class VoiceSessionState:
     launch_mode: str = "general"
     source_surface: str = "knowledge_live"
     pending_intro: bool = False
+    is_onboarding_intro: bool = False
     content_context: str | None = None
     content_title: str | None = None
     message_history: list[ModelMessage] = field(default_factory=list)
@@ -80,6 +81,7 @@ def configure_voice_session(
     launch_mode: str,
     source_surface: str,
     pending_intro: bool,
+    is_onboarding_intro: bool = False,
     content_context: str | None,
     content_title: str | None,
 ) -> VoiceSessionState | None:
@@ -94,6 +96,7 @@ def configure_voice_session(
         state.launch_mode = launch_mode
         state.source_surface = source_surface
         state.pending_intro = pending_intro
+        state.is_onboarding_intro = is_onboarding_intro
         state.content_context = content_context
         state.content_title = content_title
         state.updated_at = datetime.now(UTC)

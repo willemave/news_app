@@ -26,7 +26,9 @@ struct KnowledgeLiveView: View {
             VStack(spacing: 20) {
                 LiveVoiceSphereView(
                     energy: viewModel.sphereEnergy,
-                    isSpeaking: viewModel.isAssistantSpeaking
+                    isSpeaking: viewModel.isAssistantSpeaking,
+                    isListening: viewModel.isListening,
+                    isThinking: viewModel.isAwaitingAssistant
                 )
                 .padding(.top, 28)
                 .accessibilityIdentifier("live.sphere")

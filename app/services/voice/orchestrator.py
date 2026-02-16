@@ -229,8 +229,23 @@ class VoiceConversationOrchestrator:
         await self._emit_pending_stt_partials()
         await self._raise_pending_stt_errors()
 
-    async def process_intro_turn(self, turn_id: str, intro_text: str) -> TurnOutcome:
-        """Stream a first-use intro turn through the normal text/audio channels."""
+    async def process_intro_turn(
+        self,
+        turn_id: str,
+        intro_text: str,
+        *,
+        is_onboarding: bool = True,
+    ) -> TurnOutcome:
+        """Stream an intro turn through the normal text/audio channels.
+
+        Args:
+            turn_id: Correlation ID for this turn.
+            intro_text: Pre-built greeting text to speak.
+            is_onboarding: When True, emits ``is_intro: True`` so the client
+                enters the ``intro.ack`` handshake flow. For returning-user
+                greetings this should be False so the client treats the turn
+                as a normal turn and auto-starts listening when it completes.
+        """
 
         assistant_text = intro_text.strip()
         if not assistant_text:
@@ -241,10 +256,14 @@ class VoiceConversationOrchestrator:
             {
                 "turn_id": turn_id,
                 "intro_chars": len(assistant_text),
+                "is_onboarding": is_onboarding,
             },
         )
         start_time = time.perf_counter()
-        await self._emit_event({"type": "turn.started", "turn_id": turn_id, "is_intro": True})
+        turn_started_event: dict[str, object] = {"type": "turn.started", "turn_id": turn_id}
+        if is_onboarding:
+            turn_started_event["is_intro"] = True
+        await self._emit_event(turn_started_event)
         await self._emit_event(
             {
                 "type": "assistant.text.delta",

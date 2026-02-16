@@ -68,6 +68,7 @@ final class LiveVoiceViewModel: ObservableObject {
     private var peakObservedRmsInTurn: Float = 0
     private var lastObservedRms: Float = 0
     private var lastDynamicSpeechThreshold: Float = 0
+    private var hasBargedInThisTurn = false
     private var diagnosticsFrameCounter = 0
 
     private let minimumCommitDurationSeconds: TimeInterval = 0.7
@@ -122,15 +123,15 @@ final class LiveVoiceViewModel: ObservableObject {
         liveVoiceLogger.info("Live connect baseURL: \(AppSettings.shared.baseURL, privacy: .public)")
 
         do {
-            let user = try await AuthenticationService.shared.getCurrentUser()
+            _ = try await AuthenticationService.shared.getCurrentUser()
             let token = try await sessionService.fetchAccessToken()
 
             let launchMode = route?.launchMode ?? .general
             let sourceSurface = route?.sourceSurface ?? .knowledgeLive
-            let requestIntro = !user.hasCompletedLiveVoiceOnboarding
+            let requestIntro = true
             didReceiveSessionReady = false
-            shouldAutoStartListeningOnReady = autoTurnsEnabled && !requestIntro && launchMode != .dictateSummary
-            shouldAutoStartListeningAfterTurn = autoTurnsEnabled || launchMode == .dictateSummary || requestIntro
+            shouldAutoStartListeningOnReady = autoTurnsEnabled && launchMode != .dictateSummary
+            shouldAutoStartListeningAfterTurn = autoTurnsEnabled || launchMode == .dictateSummary
             let request = VoiceCreateSessionRequest(
                 sessionId: route?.sessionId,
                 sampleRateHz: 16_000,
@@ -150,6 +151,7 @@ final class LiveVoiceViewModel: ObservableObject {
             sessionId = sessionResponse.sessionId
             chatSessionId = sessionResponse.chatSessionId
             maxTurnDurationSeconds = TimeInterval(max(5, sessionResponse.maxInputSeconds))
+            playbackEngine.start()
             websocketClient.connect(url: wsURL, bearerToken: token)
             try await sendJSON(
                 [
@@ -157,8 +159,6 @@ final class LiveVoiceViewModel: ObservableObject {
                     "session_id": sessionResponse.sessionId
                 ]
             )
-
-            playbackEngine.start()
             connectionState = .connected
             statusMessage = "Connected"
             maybeAutoStartListening(reason: "session.ready")
@@ -208,10 +208,6 @@ final class LiveVoiceViewModel: ObservableObject {
             statusMessage = "Waiting for response..."
             return
         }
-        guard !isAssistantSpeaking else {
-            statusMessage = "Assistant speaking..."
-            return
-        }
         guard !isAutoCommittingTurn else { return }
         pushDebugEvent("listening start requested")
         frameSequence = 0
@@ -229,6 +225,7 @@ final class LiveVoiceViewModel: ObservableObject {
         trailingSilenceFramesRemaining = 0
         remainingNoiseCalibrationFrames = noiseCalibrationFrames
         isAutoCommittingTurn = false
+        hasBargedInThisTurn = false
         diagnosticsFrameCounter = 0
         peakObservedRmsInTurn = 0
         lastObservedRms = 0
@@ -353,6 +350,16 @@ final class LiveVoiceViewModel: ObservableObject {
         }
     }
 
+    private func performBargeIn() async {
+        hasBargedInThisTurn = true
+        playbackEngine.flush()
+        isAssistantSpeaking = false
+        sphereEnergy = 0
+        pushDebugEvent("barge-in triggered")
+        liveVoiceLogger.info("Barge-in: interrupting assistant playback")
+        await cancelResponse()
+    }
+
     private func configureCallbacks() {
         captureEngine.onAudioFrame = { [weak self] frameB64, rms in
             guard let self else { return }
@@ -454,6 +461,11 @@ final class LiveVoiceViewModel: ObservableObject {
         } else {
             consecutiveSpeechFrames = 0
         }
+        // Barge-in: user started speaking while assistant is playing back
+        if isAssistantSpeaking, isSpeechFrame, consecutiveSpeechFrames >= speechStartConsecutiveFrames, !hasBargedInThisTurn {
+            await performBargeIn()
+        }
+
         sendAudioFrame(frameB64)
         if diagnosticsFrameCounter == 1 || diagnosticsFrameCounter % 24 == 0 {
             liveVoiceLogger.debug(
@@ -547,6 +559,9 @@ final class LiveVoiceViewModel: ObservableObject {
             isAssistantSpeaking = false
             setAwaitingAssistant(false, reason: "turn cancelled")
             refreshDebugPhase()
+            if !isListening {
+                autoResumeListening(reason: "turn.cancelled")
+            }
         case "error":
             let message = event.message ?? "Voice error"
             statusMessage = message
@@ -576,6 +591,7 @@ final class LiveVoiceViewModel: ObservableObject {
         guard let type = payload["type"] as? String else { return }
         if type == "turn.started" {
             assistantText = ""
+            hasBargedInThisTurn = false
             currentTurnId = payload["turn_id"] as? String
             debugCurrentTurnId = currentTurnId
             let isIntro = (payload["is_intro"] as? Bool) ?? false
@@ -645,7 +661,6 @@ final class LiveVoiceViewModel: ObservableObject {
     private func maybeAutoStartListening(reason: String) {
         guard case .connected = connectionState else { return }
         guard !isListening else { return }
-        guard !isAssistantSpeaking else { return }
         guard !pendingIntroAck else { return }
 
         let shouldStart: Bool
@@ -677,7 +692,6 @@ final class LiveVoiceViewModel: ObservableObject {
         guard case .connected = connectionState else { return }
         guard !isListening else { return }
         guard !isAwaitingAssistant else { return }
-        guard !isAssistantSpeaking else { return }
         pushDebugEvent("auto-resume listening (\(reason))")
         Task {
             await startListening()
@@ -761,6 +775,7 @@ final class LiveVoiceViewModel: ObservableObject {
             )
             let sessionResponse = try await sessionService.createSession(request)
             let wsURL = try sessionService.resolveWebSocketURL(path: sessionResponse.websocketPath)
+            playbackEngine.start()
             websocketClient.connect(url: wsURL, bearerToken: token)
             try await sendJSON(
                 [

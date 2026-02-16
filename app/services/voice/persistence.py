@@ -288,8 +288,23 @@ def build_live_intro_text(
     *,
     launch_mode: str,
     context_title: str | None = None,
+    is_onboarding: bool = True,
 ) -> str:
-    """Build spoken intro text for first-use live voice onboarding."""
+    """Build spoken intro text for live voice sessions.
+
+    Args:
+        launch_mode: Session launch mode (general, article_voice, dictate_summary).
+        context_title: Title of attached content, if any.
+        is_onboarding: When True, produce the full first-use onboarding intro.
+            When False, produce a short returning-user greeting.
+    """
+
+    if not is_onboarding:
+        if launch_mode == "dictate_summary" and context_title:
+            return f"Ready to summarize {context_title}. Just say when."
+        if launch_mode == "article_voice" and context_title:
+            return f"We're looking at {context_title}. What would you like to know?"
+        return "Hey! What would you like to explore today?"
 
     if launch_mode == "dictate_summary" and context_title:
         return (

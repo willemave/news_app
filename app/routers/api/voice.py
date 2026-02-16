@@ -145,8 +145,27 @@ async def create_or_resume_voice_session(
         launch_mode=payload.launch_mode,
         model_spec=settings.voice_haiku_model,
     )
-    pending_intro = bool(
-        payload.request_intro and not current_user.has_completed_live_voice_onboarding
+    pending_intro = bool(payload.request_intro)
+    is_onboarding_intro = bool(
+        pending_intro and not current_user.has_completed_live_voice_onboarding
+    )
+    logger.info(
+        "Voice session configured",
+        extra={
+            "component": "voice_api",
+            "operation": "create_session",
+            "item_id": current_user.id,
+            "context_data": {
+                "session_id": state.session_id,
+                "launch_mode": payload.launch_mode,
+                "request_intro": payload.request_intro,
+                "pending_intro": pending_intro,
+                "is_onboarding_intro": is_onboarding_intro,
+                "has_completed_live_voice_onboarding": bool(
+                    current_user.has_completed_live_voice_onboarding
+                ),
+            },
+        },
     )
     configured_state = configure_voice_session(
         session_id=state.session_id,
@@ -156,6 +175,7 @@ async def create_or_resume_voice_session(
         launch_mode=payload.launch_mode,
         source_surface=payload.source_surface,
         pending_intro=pending_intro,
+        is_onboarding_intro=is_onboarding_intro,
         content_context=content_context,
         content_title=context.title if context is not None else None,
     )
@@ -372,15 +392,21 @@ async def voice_websocket(
                         intro_text = build_live_intro_text(
                             launch_mode=state.launch_mode,
                             context_title=state.content_title,
+                            is_onboarding=state.is_onboarding_intro,
                         )
                         log_ws_trace(
                             "intro_turn_started",
-                            {"turn_id": intro_turn_id, "intro_chars": len(intro_text)},
+                            {
+                                "turn_id": intro_turn_id,
+                                "intro_chars": len(intro_text),
+                                "is_onboarding": state.is_onboarding_intro,
+                            },
                         )
                         active_turn_task = asyncio.create_task(
                             orchestrator.process_intro_turn(
                                 intro_turn_id,
                                 intro_text,
+                                is_onboarding=state.is_onboarding_intro,
                             )
                         )
                         set_voice_session_intro_pending(
@@ -425,10 +451,6 @@ async def voice_websocket(
                     continue
 
                 if event_type == "audio.frame":
-                    if active_turn_task is not None and not active_turn_task.done():
-                        await _cancel_task(active_turn_task)
-                        active_turn_task = None
-
                     if orchestrator is None:
                         orchestrator = VoiceConversationOrchestrator(
                             session_id=session_id,

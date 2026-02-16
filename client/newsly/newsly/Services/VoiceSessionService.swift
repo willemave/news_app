@@ -30,7 +30,7 @@ final class VoiceSessionService {
 
     func createSession(_ request: VoiceCreateSessionRequest) async throws -> VoiceCreateSessionResponse {
         logger.info(
-            "Creating voice session | mode=\(request.launchMode.rawValue, privacy: .public) source=\(request.sourceSurface.rawValue, privacy: .public) contentId=\(request.contentId ?? -1) chatSessionId=\(request.chatSessionId ?? -1)"
+            "Creating voice session | mode=\(request.launchMode.rawValue, privacy: .public) source=\(request.sourceSurface.rawValue, privacy: .public) contentId=\(request.contentId ?? -1) chatSessionId=\(request.chatSessionId ?? -1) requestIntro=\(request.requestIntro)"
         )
         let body = try JSONEncoder().encode(request)
         return try await client.request(
