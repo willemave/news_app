@@ -4,6 +4,7 @@
 
 Stop drowning in tabs. Start understanding what matters.
 
+
 ## Why Newsly
 
 - **Smart ingestion** — Drop in any URL or let scrapers pull from Hacker News, Reddit, Substack, Techmeme, podcasts, and Atom feeds. Newsly figures out what it is and does the rest.
