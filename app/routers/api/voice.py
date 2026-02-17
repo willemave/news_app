@@ -491,7 +491,33 @@ async def voice_websocket(
                             {"sample_rate_hz": event.sample_rate_hz},
                         )
 
-                    await orchestrator.handle_audio_frame(event.pcm16_b64)
+                    try:
+                        await orchestrator.handle_audio_frame(event.pcm16_b64)
+                    except Exception as exc:
+                        logger.exception(
+                            "Voice websocket failed to forward audio frame",
+                            extra={
+                                "component": "voice_ws",
+                                "operation": "audio_frame_forward",
+                                "item_id": user.id,
+                                "context_data": {"session_id": session_id},
+                            },
+                        )
+                        orchestrator_started = False
+                        if orchestrator is not None:
+                            with suppress(Exception):
+                                await orchestrator.close()
+                            orchestrator = None
+                        is_open = await emit(
+                            {
+                                "type": "error",
+                                "code": "audio_frame_rejected",
+                                "message": str(exc),
+                                "retryable": True,
+                            }
+                        )
+                        if not is_open:
+                            return
                     continue
 
                 if event_type == "audio.commit":

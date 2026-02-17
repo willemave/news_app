@@ -383,3 +383,72 @@ def test_voice_websocket_reports_start_failure_without_crashing(
         assert error_payload["type"] == "error"
         assert error_payload["code"] == "voice_stream_unavailable"
         assert error_payload["retryable"] is False
+
+
+def test_voice_websocket_reports_audio_frame_failure_without_crashing(
+    client, test_user, monkeypatch
+) -> None:
+    """Audio frame forwarding failures should return a retryable websocket error."""
+
+    class FrameFailingOrchestrator:
+        def __init__(
+            self,
+            *,
+            session_id: str,
+            user_id: int,
+            emit_event,
+            chat_session_id: int | None = None,
+            launch_mode: str = "general",
+            content_context: str | None = None,
+            sample_rate_hz: int = 16_000,
+        ) -> None:
+            _ = (
+                session_id,
+                user_id,
+                emit_event,
+                chat_session_id,
+                launch_mode,
+                content_context,
+                sample_rate_hz,
+            )
+
+        async def start(self) -> None:
+            return
+
+        async def close(self) -> None:
+            return
+
+        async def handle_audio_frame(self, pcm16_b64: str) -> None:
+            _ = pcm16_b64
+            raise RuntimeError("received 1008 invalid_request")
+
+        async def process_turn(self, turn_id: str) -> dict[str, Any]:
+            _ = turn_id
+            return {}
+
+    monkeypatch.setattr(voice_router, "VoiceConversationOrchestrator", FrameFailingOrchestrator)
+
+    created = client.post("/api/voice/sessions", json={})
+    session_id = created.json()["session_id"]
+    token = create_access_token(test_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.websocket_connect(f"/api/voice/ws/{session_id}", headers=headers) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "session.ready"
+
+        websocket.send_json({"type": "session.start", "session_id": session_id})
+        websocket.send_json(
+            {
+                "type": "audio.frame",
+                "seq": 0,
+                "pcm16_b64": "AA==",
+                "sample_rate_hz": 16000,
+                "channels": 1,
+            }
+        )
+
+        error_payload = websocket.receive_json()
+        assert error_payload["type"] == "error"
+        assert error_payload["code"] == "audio_frame_rejected"
+        assert error_payload["retryable"] is True

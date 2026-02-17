@@ -97,6 +97,17 @@ def _resolve_audio_format(sample_rate_hz: int) -> Any:
     return AudioFormat.PCM_48000
 
 
+def _normalize_optional_language_code(language_code: str | None) -> str | None:
+    """Normalize optional language code, treating blank strings as unset."""
+
+    if language_code is None:
+        return None
+    normalized = language_code.strip()
+    if not normalized:
+        return None
+    return normalized
+
+
 async def open_realtime_stt_connection(
     callbacks: ElevenLabsSttCallbacks,
     sample_rate_hz: int = 16_000,
@@ -113,6 +124,7 @@ async def open_realtime_stt_connection(
 
     _ensure_elevenlabs_ready()
     settings = get_settings()
+    language_code = _normalize_optional_language_code(settings.elevenlabs_stt_language)
     if settings.voice_trace_logging:
         logger.info(
             "Opening ElevenLabs realtime STT connection",
@@ -122,20 +134,21 @@ async def open_realtime_stt_connection(
                 "context_data": {
                     "model_id": settings.elevenlabs_stt_model_id,
                     "sample_rate_hz": sample_rate_hz,
-                    "language_code": settings.elevenlabs_stt_language,
+                    "language_code": language_code,
                 },
             },
         )
     client = ElevenLabs(api_key=settings.elevenlabs_api_key)
-    connection: RealtimeConnection = await client.speech_to_text.realtime.connect(
-        {
-            "model_id": settings.elevenlabs_stt_model_id,
-            "audio_format": _resolve_audio_format(sample_rate_hz),
-            "sample_rate": sample_rate_hz,
-            "commit_strategy": CommitStrategy.MANUAL,
-            "language_code": settings.elevenlabs_stt_language,
-        }
-    )
+    connect_options: dict[str, Any] = {
+        "model_id": settings.elevenlabs_stt_model_id,
+        "audio_format": _resolve_audio_format(sample_rate_hz),
+        "sample_rate": sample_rate_hz,
+        "commit_strategy": CommitStrategy.MANUAL,
+    }
+    if language_code is not None:
+        connect_options["language_code"] = language_code
+
+    connection: RealtimeConnection = await client.speech_to_text.realtime.connect(connect_options)
 
     def _extract_transcript(payload: dict[str, Any]) -> str:
         """Extract transcript text across realtime payload variants."""
