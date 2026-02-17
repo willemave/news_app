@@ -51,6 +51,7 @@ final class LiveVoiceViewModel: ObservableObject {
     private var pendingAudioFrameSends = 0
     private var audioFrameSendChain: Task<Void, Never>?
     private var isAutoReconnecting = false
+    private var isDisconnectRequested = false
     private var shouldAutoStartListeningOnReady = false
     private var shouldAutoStartListeningAfterTurn = false
     private var didReceiveSessionReady = false
@@ -71,19 +72,18 @@ final class LiveVoiceViewModel: ObservableObject {
     private var hasBargedInThisTurn = false
     private var diagnosticsFrameCounter = 0
 
-    private let minimumCommitDurationSeconds: TimeInterval = 0.7
+    private let minimumCommitDurationSeconds: TimeInterval = 0.5
     private let postCaptureFlushDelayNanos: UInt64 = 120_000_000
     private let maxCommitWaitNanos: UInt64 = 350_000_000
     private let commitPollIntervalNanos: UInt64 = 20_000_000
-    private let minimumSpeechRmsThreshold: Float = 0.014
+    private let minimumSpeechRmsThreshold: Float = 0.008
     private let minimumTranscriptRmsSignal: Float = 0.008
-    private let strongSpeechRmsThreshold: Float = 0.055
-    private let immediateSpeechRmsThreshold: Float = 0.04
+    private let immediateSpeechRmsThreshold: Float = 0.025
     private let noiseFloorSmoothing: Float = 0.04
     private let speechOverNoiseMultiplier: Float = 3.0
     private let noiseCalibrationFrames = 20
     private let speechStartConsecutiveFrames = 3
-    private let minimumSpeechFramesForCommit = 8
+    private let minimumSpeechFramesForCommit = 4
     private let silenceAutoCommitSeconds: TimeInterval = 1.7
     private let trailingSilenceFrames = 8
 
@@ -113,6 +113,7 @@ final class LiveVoiceViewModel: ObservableObject {
             return
         }
         pushDebugEvent("connect requested")
+        isDisconnectRequested = false
         currentRoute = route
         connectionState = .connecting
         statusMessage = "Connecting..."
@@ -178,6 +179,7 @@ final class LiveVoiceViewModel: ObservableObject {
 
     func disconnect() async {
         pushDebugEvent("disconnect requested")
+        isDisconnectRequested = true
         if isListening {
             await stopListening(reason: "disconnect")
         }
@@ -262,12 +264,10 @@ final class LiveVoiceViewModel: ObservableObject {
 
         let listeningDuration = Date().timeIntervalSince(listeningStartedAt ?? Date())
         let hasTranscriptSignal = hasTranscriptActivityInTurn && peakObservedRmsInTurn >= minimumTranscriptRmsSignal
-        let hasStrongSpeechSignal = hasTranscriptSignal || peakSpeechRmsInTurn >= strongSpeechRmsThreshold
         let hasCommitEligibleSpeech = hasTranscriptSignal
             || (
                 hasDetectedSpeechInTurn
                     && speechFramesInTurn >= minimumSpeechFramesForCommit
-                    && hasStrongSpeechSignal
             )
         let hasCommitEligibleAudio = currentTurnFrameCount > 0
             && listeningDuration >= minimumCommitDurationSeconds
@@ -383,6 +383,10 @@ final class LiveVoiceViewModel: ObservableObject {
         }
         websocketClient.onError = { [weak self] message in
             guard let self else { return }
+            if self.isDisconnectRequested {
+                self.pushDebugEvent("ws error ignored (intentional disconnect)")
+                return
+            }
             let normalized = message.lowercased()
             self.debugLastServerEvent = "ws.error"
             self.pushDebugEvent("ws error: \(message)")
@@ -393,7 +397,7 @@ final class LiveVoiceViewModel: ObservableObject {
                 self.setAwaitingAssistant(false, reason: "connection refused")
             } else if normalized.contains("socket is not connected") {
                 self.statusMessage = "Connection lost. Reconnecting..."
-                if !self.isAutoReconnecting {
+                if !self.isAutoReconnecting && !self.isDisconnectRequested {
                     Task { @MainActor in
                         await self.reconnectCurrentSession()
                     }
@@ -408,6 +412,10 @@ final class LiveVoiceViewModel: ObservableObject {
         }
         websocketClient.onDisconnected = { [weak self] in
             guard let self else { return }
+            if self.isDisconnectRequested {
+                self.pushDebugEvent("ws disconnected (intentional)")
+                return
+            }
             if case .failed = self.connectionState {
                 return
             }
@@ -743,6 +751,7 @@ final class LiveVoiceViewModel: ObservableObject {
     }
 
     private func reconnectCurrentSession() async {
+        guard !isDisconnectRequested else { return }
         guard let currentSessionId = sessionId else {
             connectionState = .failed("Connection lost. Tap Connect to start again.")
             return
@@ -750,6 +759,7 @@ final class LiveVoiceViewModel: ObservableObject {
         guard !isAutoReconnecting else { return }
         isAutoReconnecting = true
         defer { isAutoReconnecting = false }
+        isDisconnectRequested = false
 
         captureEngine.stopCapture()
         isListening = false
@@ -764,6 +774,8 @@ final class LiveVoiceViewModel: ObservableObject {
             let launchMode = currentRoute?.launchMode ?? .general
             let sourceSurface = currentRoute?.sourceSurface ?? .knowledgeLive
             didReceiveSessionReady = false
+            shouldAutoStartListeningOnReady = autoTurnsEnabled && launchMode != .dictateSummary
+            shouldAutoStartListeningAfterTurn = autoTurnsEnabled || launchMode == .dictateSummary
             let request = VoiceCreateSessionRequest(
                 sessionId: currentSessionId,
                 sampleRateHz: 16_000,

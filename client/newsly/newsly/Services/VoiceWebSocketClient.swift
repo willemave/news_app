@@ -28,6 +28,7 @@ final class VoiceWebSocketClient {
 
     private var task: URLSessionWebSocketTask?
     private var isConnected = false
+    private var isIntentionalDisconnect = false
     private let logger = Logger(subsystem: "com.newsly", category: "VoiceWebSocketClient")
     private let suppressedPayloadTypes: Set<String> = [
         "audio.frame",
@@ -38,6 +39,7 @@ final class VoiceWebSocketClient {
 
     func connect(url: URL, bearerToken: String) {
         disconnect()
+        isIntentionalDisconnect = false
         logger.info("Connecting websocket to \(url.absoluteString, privacy: .public)")
 
         var request = URLRequest(url: url)
@@ -53,6 +55,7 @@ final class VoiceWebSocketClient {
 
     func disconnect() {
         logger.info("Disconnecting websocket")
+        isIntentionalDisconnect = true
         isConnected = false
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
@@ -79,6 +82,9 @@ final class VoiceWebSocketClient {
             guard let self else { return }
             switch result {
             case .failure(let error):
+                if self.isIntentionalDisconnect {
+                    return
+                }
                 self.isConnected = false
                 self.logger.error("Websocket receive failed: \(error.localizedDescription, privacy: .public)")
                 DispatchQueue.main.async {

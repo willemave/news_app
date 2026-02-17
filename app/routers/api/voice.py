@@ -109,11 +109,11 @@ async def _cancel_task(task: asyncio.Task[Any] | None) -> None:
     if task is None:
         return
     if task.done():
-        with suppress(Exception):
+        with suppress(asyncio.CancelledError, Exception):
             task.result()
         return
     task.cancel()
-    with suppress(Exception):
+    with suppress(asyncio.CancelledError, Exception):
         await task
 
 
@@ -462,7 +462,29 @@ async def voice_websocket(
                             sample_rate_hz=event.sample_rate_hz,
                         )
                     if not orchestrator_started:
-                        await orchestrator.start()
+                        try:
+                            await orchestrator.start()
+                        except Exception as exc:
+                            logger.exception(
+                                "Voice websocket failed to start audio stream",
+                                extra={
+                                    "component": "voice_ws",
+                                    "operation": "audio_stream_start",
+                                    "item_id": user.id,
+                                    "context_data": {"session_id": session_id},
+                                },
+                            )
+                            is_open = await emit(
+                                {
+                                    "type": "error",
+                                    "code": "voice_stream_unavailable",
+                                    "message": str(exc),
+                                    "retryable": False,
+                                }
+                            )
+                            if not is_open:
+                                return
+                            continue
                         orchestrator_started = True
                         log_ws_trace(
                             "audio_stream_started",
