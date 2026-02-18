@@ -218,6 +218,10 @@ class ContentService {
         return try await client.request(APIEndpoints.contentDetail(id: id))
     }
 
+    func fetchContentDiscussion(id: Int) async throws -> ContentDiscussion {
+        return try await client.request(APIEndpoints.contentDiscussion(id: id))
+    }
+
     func trackContentInteraction(
         contentId: Int,
         interactionType: String,

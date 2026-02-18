@@ -217,6 +217,8 @@ class BaseScraper(ABC):
 
                     # Queue for processing
                     self.queue_service.enqueue(TaskType.PROCESS_CONTENT, content_id=content.id)
+                    if content_type_value == ContentType.NEWS.value:
+                        self.queue_service.enqueue(TaskType.FETCH_DISCUSSION, content_id=content.id)
 
                     saved_count += 1
 

@@ -1,0 +1,784 @@
+"""Discussion ingestion service for news content."""
+
+from __future__ import annotations
+
+import re
+from collections import defaultdict, deque
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from html import unescape
+from typing import Any
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+
+import httpx
+from bs4 import BeautifulSoup
+from sqlalchemy.orm import Session
+
+from app.core.logging import get_logger
+from app.core.settings import get_settings
+from app.models.schema import Content, ContentDiscussion
+from app.utils.url_utils import normalize_http_url
+
+logger = get_logger(__name__)
+settings = get_settings()
+
+DEFAULT_DISCUSSION_COMMENT_CAP = 500
+HN_API_BASE = "https://hacker-news.firebaseio.com/v0"
+URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
+TECHMEME_TOKEN_PATTERN = re.compile(r"/(\d{6})/(p\d+)")
+TECHMEME_ANCHOR_PATTERN = re.compile(r"a(\d{6}p\d+)")
+HN_ITEM_PATTERN = re.compile(r"item\?id=(\d+)")
+
+
+@dataclass(frozen=True)
+class DiscussionFetchResult:
+    """Outcome for one discussion ingestion attempt."""
+
+    success: bool
+    status: str
+    error_message: str | None = None
+    retryable: bool = True
+
+
+@dataclass(frozen=True)
+class DiscussionPayload:
+    """Built discussion payload before persistence."""
+
+    status: str
+    mode: str
+    payload: dict[str, Any]
+    error_message: str | None = None
+
+
+@dataclass(frozen=True)
+class DiscussionTarget:
+    """A discussion URL target with source metadata."""
+
+    label: str
+    url: str
+
+
+def fetch_and_store_discussion(
+    db: Session,
+    content_id: int,
+    comment_cap: int = DEFAULT_DISCUSSION_COMMENT_CAP,
+) -> DiscussionFetchResult:
+    """Fetch and persist discussion payload for one content item.
+
+    Args:
+        db: Active SQLAlchemy session.
+        content_id: Content identifier.
+        comment_cap: Maximum number of comments to persist for comment-based platforms.
+
+    Returns:
+        DiscussionFetchResult describing persistence and retry behavior.
+    """
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if content is None:
+        return DiscussionFetchResult(
+            success=False,
+            status="failed",
+            error_message="Content not found",
+            retryable=False,
+        )
+
+    metadata = dict(content.content_metadata or {})
+    discussion_url = _extract_discussion_url(metadata)
+    platform = _normalize_platform(metadata.get("platform") or content.platform)
+
+    try:
+        payload = _build_discussion_payload(
+            platform=platform,
+            discussion_url=discussion_url,
+            metadata=metadata,
+            comment_cap=comment_cap,
+        )
+    except httpx.TimeoutException as exc:
+        error_message = f"Discussion fetch timed out: {exc}"
+        _upsert_content_discussion(
+            db,
+            content_id=content_id,
+            platform=platform,
+            status="failed",
+            discussion_data={
+                "mode": "none",
+                "source_url": discussion_url,
+                "comments": [],
+                "compact_comments": [],
+                "discussion_groups": [],
+                "links": [],
+                "stats": {},
+            },
+            error_message=error_message,
+            set_fetched_at=False,
+        )
+        return DiscussionFetchResult(
+            success=False,
+            status="failed",
+            error_message=error_message,
+            retryable=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        error_message = f"Discussion fetch failed: {exc}"
+        logger.exception(
+            "Discussion fetch failed for content %s",
+            content_id,
+            extra={
+                "component": "discussion_fetcher",
+                "operation": "fetch_and_store_discussion",
+                "item_id": str(content_id),
+                "context_data": {
+                    "platform": platform,
+                    "discussion_url": discussion_url,
+                    "error": str(exc),
+                },
+            },
+        )
+        _upsert_content_discussion(
+            db,
+            content_id=content_id,
+            platform=platform,
+            status="failed",
+            discussion_data={
+                "mode": "none",
+                "source_url": discussion_url,
+                "comments": [],
+                "compact_comments": [],
+                "discussion_groups": [],
+                "links": [],
+                "stats": {},
+            },
+            error_message=error_message,
+            set_fetched_at=False,
+        )
+        return DiscussionFetchResult(
+            success=False,
+            status="failed",
+            error_message=error_message,
+            retryable=True,
+        )
+
+    _upsert_content_discussion(
+        db,
+        content_id=content_id,
+        platform=platform,
+        status=payload.status,
+        discussion_data=payload.payload,
+        error_message=payload.error_message,
+        set_fetched_at=True,
+    )
+
+    if payload.status == "failed":
+        return DiscussionFetchResult(
+            success=False,
+            status=payload.status,
+            error_message=payload.error_message,
+            retryable=True,
+        )
+
+    return DiscussionFetchResult(
+        success=True,
+        status=payload.status,
+        error_message=payload.error_message,
+        retryable=False,
+    )
+
+
+def _build_discussion_payload(
+    *,
+    platform: str,
+    discussion_url: str | None,
+    metadata: dict[str, Any],
+    comment_cap: int,
+) -> DiscussionPayload:
+    source_url = discussion_url or ""
+
+    if _is_techmeme(platform, discussion_url):
+        if not source_url:
+            return DiscussionPayload(
+                status="partial",
+                mode="discussion_list",
+                payload={
+                    "mode": "discussion_list",
+                    "source_url": None,
+                    "discussion_groups": [],
+                    "comments": [],
+                    "compact_comments": [],
+                    "links": [],
+                    "stats": {
+                        "group_count": 0,
+                        "item_count": 0,
+                    },
+                },
+                error_message="Missing Techmeme discussion URL",
+            )
+
+        groups = _fetch_techmeme_discussion_groups(source_url, metadata)
+        all_links = _build_group_links(groups)
+        status = "completed" if groups else "partial"
+        return DiscussionPayload(
+            status=status,
+            mode="discussion_list",
+            payload={
+                "mode": "discussion_list",
+                "source_url": source_url,
+                "discussion_groups": groups,
+                "comments": [],
+                "compact_comments": [],
+                "links": all_links,
+                "stats": {
+                    "group_count": len(groups),
+                    "item_count": sum(len(group.get("items", [])) for group in groups),
+                },
+            },
+            error_message=None if groups else "No Techmeme discussion groups found",
+        )
+
+    if _is_hackernews(platform, discussion_url):
+        return _build_hackernews_payload(source_url, comment_cap)
+
+    if _is_reddit(platform, discussion_url):
+        return _build_reddit_payload(source_url, comment_cap)
+
+    return DiscussionPayload(
+        status="partial",
+        mode="none",
+        payload={
+            "mode": "none",
+            "source_url": source_url or None,
+            "discussion_groups": [],
+            "comments": [],
+            "compact_comments": [],
+            "links": [],
+            "stats": {},
+        },
+        error_message=f"Unsupported discussion platform: {platform or 'unknown'}",
+    )
+
+
+def _build_hackernews_payload(discussion_url: str, comment_cap: int) -> DiscussionPayload:
+    item_id = _extract_hn_item_id(discussion_url)
+    if not item_id:
+        return DiscussionPayload(
+            status="partial",
+            mode="comments",
+            payload={
+                "mode": "comments",
+                "source_url": discussion_url,
+                "discussion_groups": [],
+                "comments": [],
+                "compact_comments": [],
+                "links": [],
+                "stats": {"cap": comment_cap, "fetched_count": 0, "cap_reached": False},
+            },
+            error_message="Unable to parse Hacker News item id",
+        )
+
+    timeout = httpx.Timeout(timeout=settings.http_timeout_seconds, connect=10.0)
+    comments: list[dict[str, Any]] = []
+    fetched_count = 0
+    cap_reached = False
+    total_seen = 0
+
+    with httpx.Client(timeout=timeout) as client:
+        root_item = _fetch_hn_item(client, item_id)
+        if not isinstance(root_item, dict):
+            return DiscussionPayload(
+                status="partial",
+                mode="comments",
+                payload={
+                    "mode": "comments",
+                    "source_url": discussion_url,
+                    "discussion_groups": [],
+                    "comments": [],
+                    "compact_comments": [],
+                    "links": [],
+                    "stats": {
+                        "cap": comment_cap,
+                        "fetched_count": 0,
+                        "cap_reached": False,
+                        "total_seen": 0,
+                    },
+                },
+                error_message="Unable to load Hacker News story",
+            )
+
+        queue: deque[tuple[int, int, int | None]] = deque(
+            (int(child_id), 0, None) for child_id in root_item.get("kids", [])
+        )
+
+        while queue:
+            comment_id, depth, parent_id = queue.popleft()
+            total_seen += 1
+
+            if fetched_count >= comment_cap:
+                cap_reached = True
+                break
+
+            comment_item = _fetch_hn_item(client, str(comment_id))
+            if not isinstance(comment_item, dict):
+                continue
+            if comment_item.get("type") != "comment":
+                continue
+            if comment_item.get("deleted") or comment_item.get("dead"):
+                continue
+
+            text = _clean_html_text(str(comment_item.get("text") or ""))
+            if not text:
+                continue
+
+            comments.append(
+                {
+                    "comment_id": str(comment_item.get("id") or comment_id),
+                    "parent_id": str(parent_id) if parent_id is not None else None,
+                    "author": comment_item.get("by") or "unknown",
+                    "text": text,
+                    "compact_text": _compact_text(text),
+                    "depth": depth,
+                    "created_at": _unix_to_iso(comment_item.get("time")),
+                    "source_url": discussion_url,
+                }
+            )
+            fetched_count += 1
+
+            for child_id in comment_item.get("kids", []):
+                with_id = int(child_id)
+                queue.append((with_id, depth + 1, int(comment_item.get("id") or comment_id)))
+
+    links = _extract_links_from_comments(comments)
+    status = "completed" if comments else "partial"
+    return DiscussionPayload(
+        status=status,
+        mode="comments",
+        payload={
+            "mode": "comments",
+            "source_url": discussion_url,
+            "discussion_groups": [],
+            "comments": comments,
+            "compact_comments": [item["compact_text"] for item in comments],
+            "links": links,
+            "stats": {
+                "cap": comment_cap,
+                "fetched_count": fetched_count,
+                "cap_reached": cap_reached,
+                "total_seen": total_seen,
+                "declared_comment_count": root_item.get("descendants"),
+            },
+        },
+        error_message=None if comments else "No Hacker News comments found",
+    )
+
+
+def _build_reddit_payload(discussion_url: str, comment_cap: int) -> DiscussionPayload:
+    reddit_json_url = _normalize_reddit_json_url(discussion_url, comment_cap)
+    if not reddit_json_url:
+        return DiscussionPayload(
+            status="partial",
+            mode="comments",
+            payload={
+                "mode": "comments",
+                "source_url": discussion_url,
+                "discussion_groups": [],
+                "comments": [],
+                "compact_comments": [],
+                "links": [],
+                "stats": {"cap": comment_cap, "fetched_count": 0, "cap_reached": False},
+            },
+            error_message="Unable to normalize Reddit discussion URL",
+        )
+
+    timeout = httpx.Timeout(timeout=settings.http_timeout_seconds, connect=10.0)
+    user_agent = settings.reddit_user_agent or "news_app.discussion/1.0"
+
+    with httpx.Client(timeout=timeout, headers={"User-Agent": user_agent}) as client:
+        response = client.get(reddit_json_url)
+        response.raise_for_status()
+        payload = response.json()
+
+    comments: list[dict[str, Any]] = []
+    cap_reached = False
+    total_seen = 0
+
+    if not isinstance(payload, list) or len(payload) < 2:
+        return DiscussionPayload(
+            status="partial",
+            mode="comments",
+            payload={
+                "mode": "comments",
+                "source_url": discussion_url,
+                "discussion_groups": [],
+                "comments": [],
+                "compact_comments": [],
+                "links": [],
+                "stats": {"cap": comment_cap, "fetched_count": 0, "cap_reached": False},
+            },
+            error_message="Unexpected Reddit payload format",
+        )
+
+    listing = payload[1]
+    children = (
+        listing.get("data", {}).get("children", []) if isinstance(listing, dict) else []
+    )
+
+    def walk(nodes: list[dict[str, Any]], depth: int, parent_id: str | None) -> None:
+        nonlocal cap_reached, total_seen
+        for node in nodes:
+            if len(comments) >= comment_cap:
+                cap_reached = True
+                return
+
+            if not isinstance(node, dict):
+                continue
+            if node.get("kind") != "t1":
+                continue
+
+            data = node.get("data", {})
+            if not isinstance(data, dict):
+                continue
+
+            total_seen += 1
+            body = data.get("body") or data.get("body_html") or ""
+            text = _clean_html_text(str(body))
+            if not text:
+                continue
+
+            comment_id = str(data.get("id") or "")
+            comments.append(
+                {
+                    "comment_id": comment_id,
+                    "parent_id": parent_id,
+                    "author": data.get("author") or "unknown",
+                    "text": text,
+                    "compact_text": _compact_text(text),
+                    "depth": depth,
+                    "created_at": _unix_to_iso(data.get("created_utc")),
+                    "source_url": discussion_url,
+                }
+            )
+
+            replies = data.get("replies")
+            if isinstance(replies, dict):
+                reply_children = replies.get("data", {}).get("children", [])
+                if isinstance(reply_children, list):
+                    walk(reply_children, depth + 1, comment_id)
+                    if cap_reached:
+                        return
+
+    walk(children if isinstance(children, list) else [], depth=0, parent_id=None)
+
+    links = _extract_links_from_comments(comments)
+    status = "completed" if comments else "partial"
+    return DiscussionPayload(
+        status=status,
+        mode="comments",
+        payload={
+            "mode": "comments",
+            "source_url": discussion_url,
+            "discussion_groups": [],
+            "comments": comments,
+            "compact_comments": [item["compact_text"] for item in comments],
+            "links": links,
+            "stats": {
+                "cap": comment_cap,
+                "fetched_count": len(comments),
+                "cap_reached": cap_reached,
+                "total_seen": total_seen,
+            },
+        },
+        error_message=None if comments else "No Reddit comments found",
+    )
+
+
+def _fetch_hn_item(client: httpx.Client, item_id: str) -> dict[str, Any] | None:
+    url = f"{HN_API_BASE}/item/{item_id}.json"
+    response = client.get(url)
+    response.raise_for_status()
+    payload = response.json()
+    if isinstance(payload, dict):
+        return payload
+    return None
+
+
+def _fetch_techmeme_discussion_groups(
+    discussion_url: str,
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    canonical_url = discussion_url.split("#", maxsplit=1)[0]
+    response = httpx.get(
+        canonical_url,
+        timeout=httpx.Timeout(timeout=settings.http_timeout_seconds, connect=10.0),
+        headers={"User-Agent": "news_app.discussion/1.0"},
+        follow_redirects=True,
+    )
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    token_candidates = _derive_techmeme_token_candidates(discussion_url, metadata)
+    target_span = None
+    for token in token_candidates:
+        target_span = soup.find("span", attrs={"pml": token})
+        if target_span is not None:
+            break
+
+    if target_span is None:
+        target_span = soup.find("span", attrs={"pml": True})
+    if target_span is None:
+        return []
+
+    item_block = target_span.find_parent("div", class_="item")
+    if item_block is None:
+        return []
+
+    grouped_items: dict[str, list[dict[str, str]]] = defaultdict(list)
+
+    for header in item_block.find_all(class_="drhed"):
+        label = _normalize_label(header.get_text(" ", strip=True))
+        links_container = header.find_next_sibling("span", class_="bls")
+        if not label or links_container is None:
+            continue
+
+        for anchor in links_container.find_all("a"):
+            href = anchor.get("href")
+            normalized_url = normalize_http_url(urljoin(canonical_url, href or ""))
+            if not normalized_url:
+                continue
+            grouped_items[label].append(
+                {
+                    "title": anchor.get_text(" ", strip=True) or normalized_url,
+                    "url": normalized_url,
+                }
+            )
+
+    groups: list[dict[str, Any]] = []
+    for label, items in grouped_items.items():
+        deduped_items = _dedupe_group_items(items)
+        if not deduped_items:
+            continue
+        groups.append({"label": label, "items": deduped_items})
+
+    return groups
+
+
+def _derive_techmeme_token_candidates(
+    discussion_url: str,
+    metadata: dict[str, Any],
+) -> list[str]:
+    tokens: list[str] = []
+
+    match = TECHMEME_TOKEN_PATTERN.search(discussion_url)
+    if match:
+        tokens.append(f"{match.group(1)}{match.group(2)}")
+
+    fragment = urlparse(discussion_url).fragment
+    anchor_match = TECHMEME_ANCHOR_PATTERN.search(fragment)
+    if anchor_match:
+        tokens.append(anchor_match.group(1))
+
+    aggregator = metadata.get("aggregator")
+    if isinstance(aggregator, dict):
+        external_id = aggregator.get("external_id")
+        if isinstance(external_id, str):
+            cleaned = external_id.strip().lstrip("a").replace("#", "")
+            if cleaned:
+                tokens.append(cleaned)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        if token in seen:
+            continue
+        seen.add(token)
+        deduped.append(token)
+    return deduped
+
+
+def _build_group_links(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in groups:
+        label = str(group.get("label") or "").strip()
+        for item in group.get("items", []):
+            if not isinstance(item, dict):
+                continue
+            url = normalize_http_url(item.get("url"))
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            entries.append(
+                {
+                    "url": url,
+                    "source": "discussion_group",
+                    "group_label": label,
+                    "title": item.get("title") or url,
+                }
+            )
+    return entries
+
+
+def _extract_links_from_comments(comments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    links: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for comment in comments:
+        text = str(comment.get("text") or "")
+        comment_id = str(comment.get("comment_id") or "") or None
+        for url in _extract_urls(text):
+            normalized_url = normalize_http_url(url)
+            if not normalized_url or normalized_url in seen:
+                continue
+            seen.add(normalized_url)
+            links.append(
+                {
+                    "url": normalized_url,
+                    "source": "comment",
+                    "comment_id": comment_id,
+                }
+            )
+
+    return links
+
+
+def _extract_urls(text: str) -> list[str]:
+    if not text:
+        return []
+    return URL_PATTERN.findall(text)
+
+
+def _compact_text(text: str, max_chars: int = 400) -> str:
+    cleaned = " ".join(text.split())
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max_chars - 3].rstrip() + "..."
+
+
+def _clean_html_text(value: str) -> str:
+    if not value:
+        return ""
+    soup = BeautifulSoup(unescape(value), "html.parser")
+    return " ".join(soup.get_text(" ", strip=True).split())
+
+
+def _normalize_label(raw: str) -> str:
+    return raw.strip().rstrip(":")
+
+
+def _dedupe_group_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    deduped: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in items:
+        url = normalize_http_url(item.get("url"))
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        deduped.append(
+            {
+                "title": item.get("title") or url,
+                "url": url,
+            }
+        )
+    return deduped
+
+
+def _normalize_reddit_json_url(url: str, cap: int) -> str | None:
+    normalized = normalize_http_url(url)
+    if not normalized:
+        return None
+
+    parsed = urlparse(normalized)
+    path = parsed.path
+    if not path.endswith(".json"):
+        path = path.rstrip("/") + ".json"
+
+    query = parse_qs(parsed.query)
+    query.setdefault("raw_json", ["1"])
+    query.setdefault("limit", [str(min(cap, 500))])
+    query.setdefault("depth", ["10"])
+
+    encoded_query = urlencode(query, doseq=True)
+    rebuilt = parsed._replace(path=path, query=encoded_query)
+    return urlunparse(rebuilt)
+
+
+def _extract_discussion_url(metadata: dict[str, Any]) -> str | None:
+    raw_url = metadata.get("discussion_url")
+    return normalize_http_url(raw_url)
+
+
+def _normalize_platform(platform: Any) -> str:
+    if not isinstance(platform, str):
+        return ""
+    return platform.strip().lower()
+
+
+def _is_hackernews(platform: str, discussion_url: str | None) -> bool:
+    if platform in {"hackernews", "hn"}:
+        return True
+    if not discussion_url:
+        return False
+    host = urlparse(discussion_url).netloc.lower()
+    return "ycombinator.com" in host and "item" in discussion_url
+
+
+def _is_reddit(platform: str, discussion_url: str | None) -> bool:
+    if platform == "reddit":
+        return True
+    if not discussion_url:
+        return False
+    host = urlparse(discussion_url).netloc.lower()
+    return "reddit.com" in host or host.endswith("redd.it")
+
+
+def _is_techmeme(platform: str, discussion_url: str | None) -> bool:
+    if platform == "techmeme":
+        return True
+    if not discussion_url:
+        return False
+    host = urlparse(discussion_url).netloc.lower()
+    return "techmeme.com" in host
+
+
+def _extract_hn_item_id(url: str) -> str | None:
+    match = HN_ITEM_PATTERN.search(url)
+    if match:
+        return match.group(1)
+
+    parsed = urlparse(url)
+    if parsed.path.endswith(".json"):
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2 and parts[-2] == "item":
+            item_id = parts[-1].replace(".json", "")
+            if item_id.isdigit():
+                return item_id
+    return None
+
+
+def _unix_to_iso(raw_timestamp: Any) -> str | None:
+    if raw_timestamp is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(raw_timestamp), tz=UTC).isoformat()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _upsert_content_discussion(
+    db: Session,
+    *,
+    content_id: int,
+    platform: str,
+    status: str,
+    discussion_data: dict[str, Any],
+    error_message: str | None,
+    set_fetched_at: bool,
+) -> None:
+    row = db.query(ContentDiscussion).filter(ContentDiscussion.content_id == content_id).first()
+    if row is None:
+        row = ContentDiscussion(content_id=content_id)
+        db.add(row)
+
+    row.platform = platform or None
+    row.status = status
+    row.discussion_data = discussion_data
+    row.error_message = error_message
+    row.fetched_at = datetime.now(UTC).replace(tzinfo=None) if set_fetched_at else None
+    db.commit()

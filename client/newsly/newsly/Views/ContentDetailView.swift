@@ -38,6 +38,7 @@ struct ContentDetailView: View {
     @StateObject private var chatSessionManager = ActiveChatSessionManager.shared
     @EnvironmentObject var readingStateStore: ReadingStateStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var dragAmount: CGFloat = 0
     @State private var currentIndex: Int
     // Navigation skipping state
@@ -64,6 +65,10 @@ struct ContentDetailView: View {
     @State private var showFullImage: Bool = false
     @State private var fullImageURL: URL?
     @State private var fullThumbnailURL: URL?
+    // Discussion sheet
+    @State private var showDiscussionSheet: Bool = false
+    @State private var discussionPayload: ContentDiscussion?
+    @State private var isLoadingDiscussion: Bool = false
     // Swipe haptic feedback
     @State private var didTriggerSwipeHaptic: Bool = false
     // Transcript/Full Article collapsed state
@@ -207,7 +212,13 @@ struct ContentDetailView: View {
                         if content.contentTypeEnum == .news {
                             if let newsMetadata = content.newsMetadata {
                                 modernSectionPlain(isPadded: false) {
-                                    NewsDigestDetailView(content: content, metadata: newsMetadata)
+                                    NewsDigestDetailView(
+                                        content: content,
+                                        metadata: newsMetadata,
+                                        onDiscussionTap: { url in
+                                            handleDiscussionTap(content: content, fallbackURL: url)
+                                        }
+                                    )
                                 }
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.sectionSpacing)
@@ -413,6 +424,11 @@ struct ContentDetailView: View {
             if let content = viewModel.content {
                 TweetSuggestionsSheet(contentId: content.id)
             }
+        }
+        .sheet(isPresented: $showDiscussionSheet) {
+            discussionSheet
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showChatOptionsSheet, onDismiss: {
             dictationService.cancel()
@@ -1128,6 +1144,123 @@ struct ContentDetailView: View {
             Spacer()
         }
         .background(Color(.systemBackground))
+    }
+
+    private func handleDiscussionTap(content: ContentDetail, fallbackURL: URL) {
+        Task { await loadDiscussion(content: content, fallbackURL: fallbackURL) }
+    }
+
+    @MainActor
+    private func loadDiscussion(content: ContentDetail, fallbackURL: URL) async {
+        if isLoadingDiscussion { return }
+        isLoadingDiscussion = true
+        discussionPayload = nil
+        defer { isLoadingDiscussion = false }
+
+        do {
+            let discussion = try await ContentService.shared.fetchContentDiscussion(id: content.id)
+            if discussion.hasRenderableContent {
+                discussionPayload = discussion
+                showDiscussionSheet = true
+            } else {
+                openURL(fallbackURL)
+            }
+        } catch {
+            openURL(fallbackURL)
+        }
+    }
+
+    @ViewBuilder
+    private var discussionSheet: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let discussion = discussionPayload {
+                        if discussion.mode == "discussion_list" {
+                            if discussion.discussionGroups.isEmpty {
+                                Text("No discussion links available.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                ForEach(discussion.discussionGroups) { group in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text(group.label)
+                                            .font(.headline)
+                                        ForEach(group.items) { item in
+                                            if let url = URL(string: item.url) {
+                                                Link(destination: url) {
+                                                    HStack(spacing: 8) {
+                                                        Image(systemName: "arrow.up.right.square")
+                                                        Text(item.title)
+                                                            .multilineTextAlignment(.leading)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .padding(.bottom, 4)
+                                }
+                            }
+                        } else {
+                            if discussion.comments.isEmpty {
+                                Text("No comments available.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                ForEach(discussion.comments) { comment in
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            Text(comment.author ?? "unknown")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            Spacer()
+                                            if comment.depth > 0 {
+                                                Text("Depth \(comment.depth)")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                        Text(comment.compactText ?? comment.text)
+                                            .font(.callout)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    .padding(12)
+                                    .background(Color(.secondarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                            }
+
+                            if !discussion.links.isEmpty {
+                                Divider().padding(.vertical, 8)
+                                Text("Links")
+                                    .font(.headline)
+                                ForEach(discussion.links) { link in
+                                    if let url = URL(string: link.url) {
+                                        Link(destination: url) {
+                                            Text(link.title ?? link.url)
+                                                .font(.callout)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Text("No discussion available.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            .navigationTitle("Discussion")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showDiscussionSheet = false }
+                }
+            }
+        }
     }
 
     // MARK: - Modern Section Components (Flat, no borders)

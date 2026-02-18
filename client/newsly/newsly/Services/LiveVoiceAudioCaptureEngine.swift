@@ -29,9 +29,12 @@ final class LiveVoiceAudioCaptureEngine {
     private let targetSampleRate: Double = 16_000
     private let logger = Logger(subsystem: "com.newsly", category: "LiveVoiceCapture")
     private let diagnosticsFrameLogInterval = 50
+    private let simulatorPreferredInputEnvKey = "NEWSLY_SIM_AUDIO_INPUT"
+    private let simulatorLoopbackInputHint = "BlackHole"
 
     private var converter: AVAudioConverter?
     private var isCapturing = false
+    private var isStartingCapture = false
     private var capturedBufferCount = 0
 
     func requestMicrophonePermission() async -> Bool {
@@ -44,6 +47,9 @@ final class LiveVoiceAudioCaptureEngine {
 
     func startCapture() async throws {
         guard !isCapturing else { return }
+        guard !isStartingCapture else { return }
+        isStartingCapture = true
+        defer { isStartingCapture = false }
         let hasPermission = await requestMicrophonePermission()
         guard hasPermission else {
             logger.error("Microphone permission denied")
@@ -83,6 +89,7 @@ final class LiveVoiceAudioCaptureEngine {
     }
 
     func stopCapture() {
+        isStartingCapture = false
         guard isCapturing else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
@@ -93,15 +100,78 @@ final class LiveVoiceAudioCaptureEngine {
 
     private func configureAudioSession() throws {
         let audioSession = AVAudioSession.sharedInstance()
+        #if targetEnvironment(simulator)
+        let mode: AVAudioSession.Mode = .measurement
+        let options: AVAudioSession.CategoryOptions = [.mixWithOthers]
+        #else
+        let mode: AVAudioSession.Mode = .voiceChat
+        let options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+        #endif
         try audioSession.setCategory(
             .playAndRecord,
-            mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
+            mode: mode,
+            options: options
         )
         try audioSession.setPreferredSampleRate(targetSampleRate)
         try audioSession.setPreferredIOBufferDuration(0.02)
         try audioSession.setActive(true)
+        #if targetEnvironment(simulator)
+        try configureSimulatorPreferredInput(audioSession)
+        #endif
+        logCurrentRoute(audioSession)
         logger.debug("Audio session configured for live voice capture")
+    }
+
+    #if targetEnvironment(simulator)
+    private func configureSimulatorPreferredInput(_ audioSession: AVAudioSession) throws {
+        guard let availableInputs = audioSession.availableInputs, !availableInputs.isEmpty else {
+            logger.warning("Simulator audio input list is empty")
+            return
+        }
+
+        let inputList = availableInputs
+            .map { "\($0.portName) [\($0.portType.rawValue)]" }
+            .joined(separator: ", ")
+        logger.info("Simulator available audio inputs | inputs=\(inputList, privacy: .public)")
+
+        let requestedInput = ProcessInfo.processInfo.environment[simulatorPreferredInputEnvKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let preferredInput =
+            selectPreferredInput(availableInputs: availableInputs, requestedInput: requestedInput)
+        guard let preferredInput else { return }
+
+        try audioSession.setPreferredInput(preferredInput)
+        logger.info(
+            "Simulator preferred input selected | port=\(preferredInput.portName, privacy: .public) uid=\(preferredInput.uid, privacy: .public)"
+        )
+    }
+
+    private func selectPreferredInput(
+        availableInputs: [AVAudioSessionPortDescription],
+        requestedInput: String?
+    ) -> AVAudioSessionPortDescription? {
+        guard let requestedInput, !requestedInput.isEmpty else {
+            return availableInputs.first {
+                $0.portName.localizedCaseInsensitiveContains(simulatorLoopbackInputHint)
+            }
+        }
+        return availableInputs.first {
+            $0.portName.localizedCaseInsensitiveContains(requestedInput)
+                || $0.uid.localizedCaseInsensitiveContains(requestedInput)
+        }
+    }
+    #endif
+
+    private func logCurrentRoute(_ audioSession: AVAudioSession) {
+        let inputSummary = audioSession.currentRoute.inputs
+            .map { "\($0.portName) [\($0.portType.rawValue)]" }
+            .joined(separator: ", ")
+        let outputSummary = audioSession.currentRoute.outputs
+            .map { "\($0.portName) [\($0.portType.rawValue)]" }
+            .joined(separator: ", ")
+        logger.info(
+            "Audio route | mode=\(audioSession.mode.rawValue, privacy: .public) category=\(audioSession.category.rawValue, privacy: .public) sampleRate=\(audioSession.sampleRate, privacy: .public) inputs=\(inputSummary, privacy: .public) outputs=\(outputSummary, privacy: .public)"
+        )
     }
 
     private func processBuffer(_ buffer: AVAudioPCMBuffer, targetFormat: AVAudioFormat) {

@@ -13,6 +13,7 @@ from app.pipeline.handlers.analyze_url import AnalyzeUrlHandler
 from app.pipeline.handlers.dig_deeper import DigDeeperHandler
 from app.pipeline.handlers.discover_feeds import DiscoverFeedsHandler
 from app.pipeline.handlers.download_audio import DownloadAudioHandler
+from app.pipeline.handlers.fetch_discussion import FetchDiscussionHandler
 from app.pipeline.handlers.generate_image import GenerateImageHandler
 from app.pipeline.handlers.onboarding_discover import OnboardingDiscoverHandler
 from app.pipeline.handlers.process_content import ProcessContentHandler
@@ -69,6 +70,7 @@ class SequentialTaskProcessor:
             DownloadAudioHandler(),
             TranscribeHandler(),
             SummarizeHandler(),
+            FetchDiscussionHandler(),
             GenerateImageHandler(),
             DiscoverFeedsHandler(),
             OnboardingDiscoverHandler(),

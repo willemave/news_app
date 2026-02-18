@@ -52,8 +52,9 @@ final class LiveVoiceViewModel: ObservableObject {
     private var audioFrameSendChain: Task<Void, Never>?
     private var isAutoReconnecting = false
     private var isDisconnectRequested = false
+    private var isStartingListening = false
+    private var isStoppingListening = false
     private var shouldAutoStartListeningOnReady = false
-    private var shouldAutoStartListeningAfterTurn = false
     private var didReceiveSessionReady = false
     private var maxTurnDurationSeconds: TimeInterval = 18
     private var hasDetectedSpeechInTurn = false
@@ -71,6 +72,7 @@ final class LiveVoiceViewModel: ObservableObject {
     private var lastDynamicSpeechThreshold: Float = 0
     private var hasBargedInThisTurn = false
     private var diagnosticsFrameCounter = 0
+    private var consecutiveNearSilentFrames = 0
 
     private let minimumCommitDurationSeconds: TimeInterval = 0.5
     private let postCaptureFlushDelayNanos: UInt64 = 120_000_000
@@ -86,6 +88,8 @@ final class LiveVoiceViewModel: ObservableObject {
     private let minimumSpeechFramesForCommit = 4
     private let silenceAutoCommitSeconds: TimeInterval = 1.7
     private let trailingSilenceFrames = 8
+    private let nearSilentRmsThreshold: Float = 0.0003
+    private let noSignalWarningFrameThreshold = 120
 
     private static let debugTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -131,8 +135,8 @@ final class LiveVoiceViewModel: ObservableObject {
             let sourceSurface = route?.sourceSurface ?? .knowledgeLive
             let requestIntro = true
             didReceiveSessionReady = false
-            shouldAutoStartListeningOnReady = autoTurnsEnabled && launchMode != .dictateSummary
-            shouldAutoStartListeningAfterTurn = autoTurnsEnabled || launchMode == .dictateSummary
+            shouldAutoStartListeningOnReady =
+                autoTurnsEnabled && launchMode != .dictateSummary && !requestIntro
             let request = VoiceCreateSessionRequest(
                 sessionId: route?.sessionId,
                 sampleRateHz: 16_000,
@@ -162,7 +166,6 @@ final class LiveVoiceViewModel: ObservableObject {
             )
             connectionState = .connected
             statusMessage = "Connected"
-            maybeAutoStartListening(reason: "session.ready")
             setAwaitingAssistant(false, reason: "connect complete")
             refreshDebugPhase()
             pushDebugEvent("session connected")
@@ -197,8 +200,9 @@ final class LiveVoiceViewModel: ObservableObject {
         pendingAudioFrameSends = 0
         isAutoReconnecting = false
         shouldAutoStartListeningOnReady = false
-        shouldAutoStartListeningAfterTurn = false
         didReceiveSessionReady = false
+        isStartingListening = false
+        isStoppingListening = false
         setAwaitingAssistant(false, reason: "disconnected")
         refreshDebugPhase()
     }
@@ -206,11 +210,16 @@ final class LiveVoiceViewModel: ObservableObject {
     func startListening() async {
         guard case .connected = connectionState else { return }
         guard !isListening else { return }
+        guard !isStartingListening else { return }
+        guard !isStoppingListening else { return }
+        guard !isDisconnectRequested else { return }
         guard !isAwaitingAssistant else {
             statusMessage = "Waiting for response..."
             return
         }
         guard !isAutoCommittingTurn else { return }
+        isStartingListening = true
+        defer { isStartingListening = false }
         pushDebugEvent("listening start requested")
         frameSequence = 0
         currentTurnFrameCount = 0
@@ -229,11 +238,13 @@ final class LiveVoiceViewModel: ObservableObject {
         isAutoCommittingTurn = false
         hasBargedInThisTurn = false
         diagnosticsFrameCounter = 0
+        consecutiveNearSilentFrames = 0
         peakObservedRmsInTurn = 0
         lastObservedRms = 0
         lastDynamicSpeechThreshold = minimumSpeechRmsThreshold
         transcriptPartial = ""
         transcriptFinal = ""
+        statusMessage = "Preparing microphone..."
         do {
             try await captureEngine.startCapture()
             isListening = true
@@ -254,6 +265,9 @@ final class LiveVoiceViewModel: ObservableObject {
 
     func stopListening(reason: String = "manual") async {
         guard isListening else { return }
+        guard !isStoppingListening else { return }
+        isStoppingListening = true
+        defer { isStoppingListening = false }
         let isAutomaticStop = reason != "manual"
         isAutoCommittingTurn = isAutomaticStop
         defer {
@@ -453,6 +467,7 @@ final class LiveVoiceViewModel: ObservableObject {
         diagnosticsFrameCounter += 1
         if isSpeechFrame {
             consecutiveSpeechFrames += 1
+            consecutiveNearSilentFrames = 0
             if !hasDetectedSpeechInTurn, consecutiveSpeechFrames >= speechStartConsecutiveFrames {
                 pushDebugEvent("speech detected")
                 hasDetectedSpeechInTurn = true
@@ -468,6 +483,21 @@ final class LiveVoiceViewModel: ObservableObject {
             trailingSilenceFramesRemaining -= 1
         } else {
             consecutiveSpeechFrames = 0
+            if rms <= nearSilentRmsThreshold {
+                consecutiveNearSilentFrames += 1
+            } else {
+                consecutiveNearSilentFrames = 0
+            }
+        }
+        if !hasDetectedSpeechInTurn, !hasTranscriptActivityInTurn,
+           consecutiveNearSilentFrames >= noSignalWarningFrameThreshold
+        {
+            if statusMessage != "Listening... (no mic signal detected)" {
+                statusMessage = "Listening... (no mic signal detected)"
+                pushDebugEvent("no mic signal detected")
+            }
+        } else if statusMessage == "Listening... (no mic signal detected)" {
+            statusMessage = "Listening..."
         }
         // Barge-in: user started speaking while assistant is playing back
         if isAssistantSpeaking, isSpeechFrame, consecutiveSpeechFrames >= speechStartConsecutiveFrames, !hasBargedInThisTurn {
@@ -548,14 +578,14 @@ final class LiveVoiceViewModel: ObservableObject {
             }
         case "assistant.audio.final":
             isAssistantSpeaking = false
-            statusMessage = "Connected"
+            statusMessage = isListening ? "Listening..." : "Connected"
             setAwaitingAssistant(false, reason: "assistant audio complete")
             refreshDebugPhase()
             if pendingIntroAck, event.turnId == introTurnId {
                 Task { await sendIntroAck() }
             }
         case "turn.completed":
-            statusMessage = "Connected"
+            statusMessage = isListening ? "Listening..." : "Connected"
             setAwaitingAssistant(false, reason: "turn completed")
             refreshDebugPhase()
             if pendingIntroAck, event.turnId == introTurnId, !introHadAudio {
@@ -669,7 +699,10 @@ final class LiveVoiceViewModel: ObservableObject {
     private func maybeAutoStartListening(reason: String) {
         guard case .connected = connectionState else { return }
         guard !isListening else { return }
+        guard !isStartingListening else { return }
+        guard !isStoppingListening else { return }
         guard !pendingIntroAck else { return }
+        guard !isDisconnectRequested else { return }
 
         let shouldStart: Bool
         if reason == "session.ready" {
@@ -678,8 +711,7 @@ final class LiveVoiceViewModel: ObservableObject {
                 shouldAutoStartListeningOnReady = false
             }
         } else if reason == "turn.completed" {
-            shouldStart = autoTurnsEnabled || shouldAutoStartListeningAfterTurn
-            shouldAutoStartListeningAfterTurn = false
+            shouldStart = autoTurnsEnabled
         } else {
             shouldStart = false
         }
@@ -699,6 +731,9 @@ final class LiveVoiceViewModel: ObservableObject {
         guard autoTurnsEnabled else { return }
         guard case .connected = connectionState else { return }
         guard !isListening else { return }
+        guard !isStartingListening else { return }
+        guard !isStoppingListening else { return }
+        guard !isDisconnectRequested else { return }
         guard !isAwaitingAssistant else { return }
         pushDebugEvent("auto-resume listening (\(reason))")
         Task {
@@ -775,7 +810,6 @@ final class LiveVoiceViewModel: ObservableObject {
             let sourceSurface = currentRoute?.sourceSurface ?? .knowledgeLive
             didReceiveSessionReady = false
             shouldAutoStartListeningOnReady = autoTurnsEnabled && launchMode != .dictateSummary
-            shouldAutoStartListeningAfterTurn = autoTurnsEnabled || launchMode == .dictateSummary
             let request = VoiceCreateSessionRequest(
                 sessionId: currentSessionId,
                 sampleRateHz: 16_000,
@@ -797,7 +831,6 @@ final class LiveVoiceViewModel: ObservableObject {
             )
             connectionState = .connected
             statusMessage = "Reconnected"
-            maybeAutoStartListening(reason: "session.ready")
             refreshDebugPhase()
             pushDebugEvent("auto-reconnect success")
             liveVoiceLogger.info(

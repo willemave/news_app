@@ -35,6 +35,9 @@ enum APIEndpoints {
     static func chatGPTUrl(id: Int) -> String {
         return "/api/content/\(id)/chat-url"
     }
+    static func contentDiscussion(id: Int) -> String {
+        return "/api/content/\(id)/discussion"
+    }
     static let unreadCounts = "/api/content/stats/unread-counts"
     static let processingCount = "/api/content/stats/processing-count"
     static let longFormStats = "/api/content/stats/long-form"

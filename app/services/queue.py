@@ -18,6 +18,7 @@ class TaskType(StrEnum):
     DOWNLOAD_AUDIO = "download_audio"
     TRANSCRIBE = "transcribe"
     SUMMARIZE = "summarize"
+    FETCH_DISCUSSION = "fetch_discussion"
     GENERATE_IMAGE = "generate_image"
     DISCOVER_FEEDS = "discover_feeds"
     ONBOARDING_DISCOVER = "onboarding_discover"
@@ -38,6 +39,7 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.DOWNLOAD_AUDIO: TaskQueue.CONTENT,
     TaskType.TRANSCRIBE: TaskQueue.TRANSCRIBE,
     TaskType.SUMMARIZE: TaskQueue.CONTENT,
+    TaskType.FETCH_DISCUSSION: TaskQueue.CONTENT,
     TaskType.GENERATE_IMAGE: TaskQueue.CONTENT,
     TaskType.DISCOVER_FEEDS: TaskQueue.CONTENT,
     TaskType.ONBOARDING_DISCOVER: TaskQueue.ONBOARDING,
@@ -47,6 +49,7 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
 DEDUPABLE_CONTENT_TASK_TYPES: set[TaskType] = {
     TaskType.PROCESS_CONTENT,
     TaskType.SUMMARIZE,
+    TaskType.FETCH_DISCUSSION,
     TaskType.GENERATE_IMAGE,
 }
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
-from app.models.schema import Content
+from app.models.schema import Content, ContentDiscussion
 from app.models.user import User
 from app.presenters.content_presenter import (
     build_content_detail_response,
@@ -17,7 +17,15 @@ from app.presenters.content_presenter import (
     can_subscribe_for_feed,
 )
 from app.repositories.content_repository import build_visibility_context
-from app.routers.api.models import ChatGPTUrlResponse, ContentDetailResponse
+from app.routers.api.models import (
+    ChatGPTUrlResponse,
+    ContentDetailResponse,
+    ContentDiscussionResponse,
+    DiscussionCommentResponse,
+    DiscussionGroupResponse,
+    DiscussionItemResponse,
+    DiscussionLinkResponse,
+)
 
 router = APIRouter()
 
@@ -80,6 +88,159 @@ def get_content_detail(
         is_favorited=bool(is_favorited),
         detected_feed_data=detected_feed_data,
         can_subscribe=can_subscribe,
+    )
+
+
+def _build_discussion_response(
+    *,
+    content_id: int,
+    discussion_url: str | None,
+    platform: str | None,
+    discussion_row: ContentDiscussion | None,
+) -> ContentDiscussionResponse:
+    """Build a typed discussion response payload."""
+    if discussion_row is None:
+        return ContentDiscussionResponse(
+            content_id=content_id,
+            status="not_ready",
+            mode="none",
+            platform=platform,
+            source_url=discussion_url,
+            discussion_url=discussion_url,
+            fetched_at=None,
+            error_message=None,
+            comments=[],
+            discussion_groups=[],
+            links=[],
+            stats={},
+        )
+
+    data = (
+        discussion_row.discussion_data
+        if isinstance(discussion_row.discussion_data, dict)
+        else {}
+    )
+    mode = (
+        data.get("mode")
+        if data.get("mode") in {"none", "comments", "discussion_list"}
+        else "none"
+    )
+
+    comments: list[DiscussionCommentResponse] = []
+    for entry in data.get("comments", []):
+        if not isinstance(entry, dict):
+            continue
+        comment_id = str(entry.get("comment_id") or "").strip()
+        if not comment_id:
+            continue
+        comments.append(
+            DiscussionCommentResponse(
+                comment_id=comment_id,
+                parent_id=str(entry.get("parent_id")) if entry.get("parent_id") else None,
+                author=str(entry.get("author")) if entry.get("author") else None,
+                text=str(entry.get("text") or ""),
+                compact_text=str(entry.get("compact_text"))
+                if entry.get("compact_text")
+                else None,
+                depth=int(entry.get("depth") or 0),
+                created_at=str(entry.get("created_at")) if entry.get("created_at") else None,
+                source_url=str(entry.get("source_url")) if entry.get("source_url") else None,
+            )
+        )
+
+    groups: list[DiscussionGroupResponse] = []
+    for raw_group in data.get("discussion_groups", []):
+        if not isinstance(raw_group, dict):
+            continue
+        label = str(raw_group.get("label") or "").strip()
+        if not label:
+            continue
+
+        items: list[DiscussionItemResponse] = []
+        for raw_item in raw_group.get("items", []):
+            if not isinstance(raw_item, dict):
+                continue
+            url = str(raw_item.get("url") or "").strip()
+            if not url:
+                continue
+            title = str(raw_item.get("title") or url)
+            items.append(DiscussionItemResponse(title=title, url=url))
+        groups.append(DiscussionGroupResponse(label=label, items=items))
+
+    links: list[DiscussionLinkResponse] = []
+    for raw_link in data.get("links", []):
+        if not isinstance(raw_link, dict):
+            continue
+        url = str(raw_link.get("url") or "").strip()
+        if not url:
+            continue
+        links.append(
+            DiscussionLinkResponse(
+                url=url,
+                source=str(raw_link.get("source") or "unknown"),
+                comment_id=str(raw_link.get("comment_id")) if raw_link.get("comment_id") else None,
+                group_label=str(raw_link.get("group_label"))
+                if raw_link.get("group_label")
+                else None,
+                title=str(raw_link.get("title")) if raw_link.get("title") else None,
+            )
+        )
+
+    source_url = str(data.get("source_url")) if data.get("source_url") else discussion_url
+    return ContentDiscussionResponse(
+        content_id=content_id,
+        status=discussion_row.status,
+        mode=mode,
+        platform=discussion_row.platform or platform,
+        source_url=source_url,
+        discussion_url=discussion_url,
+        fetched_at=discussion_row.fetched_at.isoformat() if discussion_row.fetched_at else None,
+        error_message=discussion_row.error_message,
+        comments=comments,
+        discussion_groups=groups,
+        links=links,
+        stats=data.get("stats") if isinstance(data.get("stats"), dict) else {},
+    )
+
+
+@router.get(
+    "/{content_id}/discussion",
+    response_model=ContentDiscussionResponse,
+    summary="Get discussion payload for a content item",
+    description=(
+        "Return in-app discussion data for the content item. Techmeme items return grouped "
+        "discussion links. Hacker News and Reddit items return normalized comments + links."
+    ),
+    responses={
+        404: {
+            "description": "Content not found",
+            "content": {"application/json": {"example": {"detail": "Content not found"}}},
+        }
+    },
+)
+def get_content_discussion(
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ContentDiscussionResponse:
+    """Return stored discussion payload for a content item."""
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
+    discussion_url = metadata.get("discussion_url")
+    platform = metadata.get("platform") or content.platform
+
+    discussion_row = (
+        db.query(ContentDiscussion).filter(ContentDiscussion.content_id == content_id).first()
+    )
+
+    return _build_discussion_response(
+        content_id=content_id,
+        discussion_url=str(discussion_url) if discussion_url else None,
+        platform=str(platform) if platform else None,
+        discussion_row=discussion_row,
     )
 
 

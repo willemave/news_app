@@ -10,6 +10,7 @@ import SwiftUI
 struct NewsDigestDetailView: View {
     let content: ContentDetail
     let metadata: NewsMetadata
+    let onDiscussionTap: ((URL) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
@@ -35,7 +36,9 @@ struct NewsDigestDetailView: View {
 
     @ViewBuilder
     private func discussionLink(url: URL, aggregatorName: String?) -> some View {
-        Link(destination: url) {
+        Button(action: {
+            onDiscussionTap?(url)
+        }) {
             HStack(spacing: 10) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .font(.body)
@@ -57,6 +60,7 @@ struct NewsDigestDetailView: View {
             )
             .cornerRadius(12)
         }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

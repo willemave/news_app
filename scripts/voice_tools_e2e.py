@@ -46,12 +46,32 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 PROMPTS: list[tuple[str, str]] = [
     (
-        "knowledge_tool_test.mp3",
-        "What is the exact title of my favorited Anthropic article?",
+        "turn1_knowledge.mp3",
+        (
+            "Can you remind me what my favorited Anthropic MCP article is about, "
+            "and keep it short?"
+        ),
     ),
     (
-        "web_tool_test.mp3",
-        "What is one recent Rust project and who built it?",
+        "turn2_web.mp3",
+        (
+            "Now search the web for the latest Anthropic MCP updates and give me "
+            "one concrete recent development."
+        ),
+    ),
+    (
+        "turn3_mix.mp3",
+        (
+            "Compare that web update with the article I saved. "
+            "What changed the most?"
+        ),
+    ),
+    (
+        "turn4_web_followup.mp3",
+        (
+            "Great. Now find one recent Rust project on the web and tell me "
+            "who built it and why it's interesting."
+        ),
     ),
 ]
 

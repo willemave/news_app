@@ -200,11 +200,7 @@ struct KnowledgeLiveView: View {
                     .padding(.vertical, 6)
                     .accessibilityIdentifier("live.connecting")
             case .connected:
-                Text(
-                    viewModel.isListening
-                        ? "Hands-free mode is on. Just talk naturally."
-                        : "Preparing microphone..."
-                )
+                Text("Hands-free mode is on. Just talk naturally.")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .accessibilityIdentifier("live.handsfree_hint")

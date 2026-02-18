@@ -29,6 +29,7 @@ final class VoiceWebSocketClient {
     private var task: URLSessionWebSocketTask?
     private var isConnected = false
     private var isIntentionalDisconnect = false
+    private var connectionGeneration = 0
     private let logger = Logger(subsystem: "com.newsly", category: "VoiceWebSocketClient")
     private let suppressedPayloadTypes: Set<String> = [
         "audio.frame",
@@ -40,6 +41,8 @@ final class VoiceWebSocketClient {
     func connect(url: URL, bearerToken: String) {
         disconnect()
         isIntentionalDisconnect = false
+        connectionGeneration += 1
+        let generation = connectionGeneration
         logger.info("Connecting websocket to \(url.absoluteString, privacy: .public)")
 
         var request = URLRequest(url: url)
@@ -50,15 +53,17 @@ final class VoiceWebSocketClient {
         self.isConnected = true
         webSocketTask.resume()
         logger.info("Websocket task resumed")
-        listenForMessages()
+        listenForMessages(task: webSocketTask, generation: generation)
     }
 
     func disconnect() {
         logger.info("Disconnecting websocket")
         isIntentionalDisconnect = true
+        connectionGeneration += 1
         isConnected = false
-        task?.cancel(with: .normalClosure, reason: nil)
+        let closingTask = task
         task = nil
+        closingTask?.cancel(with: .normalClosure, reason: nil)
     }
 
     func sendJSON(_ payload: [String: Any]) async throws {
@@ -76,10 +81,11 @@ final class VoiceWebSocketClient {
         try await task.send(.string(text))
     }
 
-    private func listenForMessages() {
-        guard let task, isConnected else { return }
+    private func listenForMessages(task: URLSessionWebSocketTask, generation: Int) {
+        guard isConnected else { return }
         task.receive { [weak self] result in
             guard let self else { return }
+            guard generation == self.connectionGeneration else { return }
             switch result {
             case .failure(let error):
                 if self.isIntentionalDisconnect {
@@ -93,7 +99,7 @@ final class VoiceWebSocketClient {
                 }
             case .success(let message):
                 self.handleMessage(message)
-                self.listenForMessages()
+                self.listenForMessages(task: task, generation: generation)
             }
         }
     }

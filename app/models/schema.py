@@ -141,6 +141,29 @@ class Content(Base):
         return extract_short_summary(self.content_metadata.get("summary"))
 
 
+class ContentDiscussion(Base):
+    """Discussion payload for a content item."""
+
+    __tablename__ = "content_discussions"
+
+    id = Column(Integer, primary_key=True)
+    content_id = Column(Integer, nullable=False)
+    platform = Column(String(50), nullable=True)
+    status = Column(String(20), nullable=False, default="pending")
+    discussion_data = Column(JSON, default=dict, nullable=False)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    fetched_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("content_id", name="uq_content_discussions_content"),
+        Index("idx_content_discussions_platform", "platform"),
+        Index("idx_content_discussions_status", "status"),
+        Index("idx_content_discussions_fetched_at", "fetched_at"),
+    )
+
+
 class ProcessingTask(Base):
     """Simple task queue to replace Huey"""
 
