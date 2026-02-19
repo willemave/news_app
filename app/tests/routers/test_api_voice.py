@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 
@@ -452,3 +453,141 @@ def test_voice_websocket_reports_audio_frame_failure_without_crashing(
         assert error_payload["type"] == "error"
         assert error_payload["code"] == "audio_frame_rejected"
         assert error_payload["retryable"] is True
+
+
+def test_voice_websocket_acknowledges_response_cancel_without_active_turn(
+    client, test_user
+) -> None:
+    """Cancelling without an active turn should return a completed acknowledgement."""
+
+    created = client.post("/api/voice/sessions", json={})
+    session_id = created.json()["session_id"]
+    token = create_access_token(test_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.websocket_connect(f"/api/voice/ws/{session_id}", headers=headers) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "session.ready"
+
+        websocket.send_json({"type": "session.start", "session_id": session_id})
+        websocket.send_json({"type": "response.cancel"})
+        payload = websocket.receive_json()
+        assert payload["type"] == "response.cancelled"
+        assert payload["reason"] == "already_completed"
+        assert payload.get("turn_id") is None
+
+
+def test_voice_websocket_session_start_mismatch_does_not_start_turn(
+    client, test_user
+) -> None:
+    """A mismatched session.start must not trigger intro/turn processing."""
+
+    created = client.post("/api/voice/sessions", json={})
+    session_id = created.json()["session_id"]
+    token = create_access_token(test_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.websocket_connect(f"/api/voice/ws/{session_id}", headers=headers) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "session.ready"
+
+        websocket.send_json({"type": "session.start", "session_id": "wrong-session-id"})
+        mismatch = websocket.receive_json()
+        assert mismatch["type"] == "error"
+        assert mismatch["code"] == "session_mismatch"
+
+        websocket.send_json({"type": "response.cancel"})
+        payload = websocket.receive_json()
+        assert payload["type"] == "response.cancelled"
+        assert payload["reason"] == "already_completed"
+        assert payload.get("turn_id") is None
+
+
+def test_voice_websocket_acknowledges_response_cancel_for_active_turn(
+    client, test_user, monkeypatch
+) -> None:
+    """Cancelling an active turn should emit turn.cancelled and response.cancelled."""
+
+    class CancellableOrchestrator:
+        def __init__(
+            self,
+            *,
+            session_id: str,
+            user_id: int,
+            emit_event,
+            chat_session_id: int | None = None,
+            launch_mode: str = "general",
+            content_context: str | None = None,
+            sample_rate_hz: int = 16_000,
+        ) -> None:
+            self.emit_event = emit_event
+            _ = (
+                session_id,
+                user_id,
+                chat_session_id,
+                launch_mode,
+                content_context,
+                sample_rate_hz,
+            )
+
+        async def start(self) -> None:
+            return
+
+        async def close(self) -> None:
+            return
+
+        async def handle_audio_frame(self, pcm16_b64: str) -> None:
+            _ = pcm16_b64
+            return
+
+        async def process_turn(self, turn_id: str) -> dict[str, Any]:
+            await self.emit_event({"type": "turn.started", "turn_id": turn_id})
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                await self.emit_event(
+                    {"type": "turn.cancelled", "turn_id": turn_id, "reason": "client_cancelled"}
+                )
+                raise
+            return {}
+
+    monkeypatch.setattr(voice_router, "VoiceConversationOrchestrator", CancellableOrchestrator)
+
+    created = client.post("/api/voice/sessions", json={})
+    session_id = created.json()["session_id"]
+    token = create_access_token(test_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.websocket_connect(f"/api/voice/ws/{session_id}", headers=headers) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "session.ready"
+
+        websocket.send_json({"type": "session.start", "session_id": session_id})
+        websocket.send_json(
+            {
+                "type": "audio.frame",
+                "seq": 0,
+                "pcm16_b64": "AA==",
+                "sample_rate_hz": 16000,
+                "channels": 1,
+            }
+        )
+        websocket.send_json({"type": "audio.commit", "seq": 0})
+
+        turn_started = websocket.receive_json()
+        assert turn_started["type"] == "turn.started"
+        turn_id = turn_started["turn_id"]
+
+        websocket.send_json({"type": "response.cancel"})
+        payloads: list[dict[str, Any]] = []
+        while True:
+            payload = websocket.receive_json()
+            payloads.append(payload)
+            if payload["type"] == "response.cancelled":
+                break
+
+        assert any(item["type"] == "turn.cancelled" for item in payloads)
+        cancel_ack = payloads[-1]
+        assert cancel_ack["type"] == "response.cancelled"
+        assert cancel_ack["reason"] == "client_request"
+        assert cancel_ack["turn_id"] == turn_id

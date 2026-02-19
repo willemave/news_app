@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     voice_max_assistant_chars: int = 4_000
     voice_ws_max_queue: int = 500
     voice_trace_logging: bool = True
+    voice_audio_diag_logging: bool = False
     voice_trace_max_chars: int = 600
     admin_conversational_session_ttl_minutes: int = 120
     admin_conversational_max_turns: int = 20

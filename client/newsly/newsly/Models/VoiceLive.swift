@@ -67,6 +67,9 @@ struct VoiceServerEvent: Codable {
     let retryable: Bool?
     let latencyMs: Int?
     let ttsEnabled: Bool?
+    let reason: String?
+    let isIntro: Bool?
+    let isOnboardingIntro: Bool?
 
     enum CodingKeys: String, CodingKey {
         case type
@@ -84,5 +87,8 @@ struct VoiceServerEvent: Codable {
         case retryable
         case latencyMs = "latency_ms"
         case ttsEnabled = "tts_enabled"
+        case reason
+        case isIntro = "is_intro"
+        case isOnboardingIntro = "is_onboarding_intro"
     }
 }

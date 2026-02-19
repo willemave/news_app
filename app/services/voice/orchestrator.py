@@ -138,6 +138,7 @@ class VoiceConversationOrchestrator:
         self._last_partial_text = ""
         self._pending_audio_frames = 0
         self._pending_audio_bytes = 0
+        self._audio_diag_frame_counter = 0
 
     def _trace_enabled(self) -> bool:
         settings = get_settings()
@@ -209,6 +210,7 @@ class VoiceConversationOrchestrator:
         if self._stt_connection is None:
             raise RuntimeError("STT connection is not initialized")
         self._pending_audio_frames += 1
+        self._audio_diag_frame_counter += 1
         self._pending_audio_bytes += max(0, (len(pcm16_b64) * 3) // 4)
         if self._pending_audio_frames == 1:
             self._log_trace(
@@ -223,6 +225,22 @@ class VoiceConversationOrchestrator:
                 {
                     "pending_audio_frames": self._pending_audio_frames,
                     "pending_audio_bytes": self._pending_audio_bytes,
+                },
+            )
+        settings = get_settings()
+        if (
+            bool(settings.voice_audio_diag_logging)
+            and self._trace_enabled()
+            and (
+                self._audio_diag_frame_counter == 1
+                or self._audio_diag_frame_counter % 200 == 0
+            )
+        ):
+            self._log_trace(
+                "audio_frame_diagnostics",
+                {
+                    "sample_rate_hz": self.sample_rate_hz,
+                    **self._summarize_pcm16_frame(pcm16_b64),
                 },
             )
         await send_audio_frame(self._stt_connection, pcm16_b64)
@@ -259,54 +277,68 @@ class VoiceConversationOrchestrator:
                 "is_onboarding": is_onboarding,
             },
         )
-        start_time = time.perf_counter()
-        turn_started_event: dict[str, object] = {"type": "turn.started", "turn_id": turn_id}
-        if is_onboarding:
-            turn_started_event["is_intro"] = True
-        await self._emit_event(turn_started_event)
-        await self._emit_event(
-            {
-                "type": "assistant.text.delta",
+        try:
+            start_time = time.perf_counter()
+            turn_started_event: dict[str, object] = {
+                "type": "turn.started",
                 "turn_id": turn_id,
-                "text": assistant_text,
+                "is_intro": True,
+                "is_onboarding_intro": is_onboarding,
             }
-        )
-        await self._emit_event(
-            {
-                "type": "assistant.text.final",
-                "turn_id": turn_id,
-                "text": assistant_text,
-            }
-        )
+            await self._emit_event(turn_started_event)
+            await self._emit_event(
+                {
+                    "type": "assistant.text.delta",
+                    "turn_id": turn_id,
+                    "text": assistant_text,
+                }
+            )
+            await self._emit_event(
+                {
+                    "type": "assistant.text.final",
+                    "turn_id": turn_id,
+                    "text": assistant_text,
+                }
+            )
 
-        tts_enabled = await self._stream_text_to_tts(turn_id, assistant_text)
-        latency_ms = int((time.perf_counter() - start_time) * 1000)
-        await self._emit_event(
-            {
-                "type": "assistant.audio.final",
-                "turn_id": turn_id,
-                "tts_enabled": tts_enabled,
-            }
-        )
-        await self._emit_event(
-            {
-                "type": "turn.completed",
-                "turn_id": turn_id,
-                "latency_ms": latency_ms,
-                "transcript_chars": 0,
-                "response_chars": len(assistant_text),
-                "model": "system:intro",
-            }
-        )
-        self._log_trace(
-            "intro_turn_completed",
-            {
-                "turn_id": turn_id,
-                "latency_ms": latency_ms,
-                "tts_enabled": tts_enabled,
-            },
-        )
-        return TurnOutcome(transcript="", assistant_text=assistant_text, latency_ms=latency_ms)
+            tts_enabled = await self._stream_text_to_tts(turn_id, assistant_text)
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            await self._emit_event(
+                {
+                    "type": "assistant.audio.final",
+                    "turn_id": turn_id,
+                    "tts_enabled": tts_enabled,
+                }
+            )
+            await self._emit_event(
+                {
+                    "type": "turn.completed",
+                    "turn_id": turn_id,
+                    "latency_ms": latency_ms,
+                    "transcript_chars": 0,
+                    "response_chars": len(assistant_text),
+                    "model": "system:intro",
+                }
+            )
+            self._log_trace(
+                "intro_turn_completed",
+                {
+                    "turn_id": turn_id,
+                    "latency_ms": latency_ms,
+                    "tts_enabled": tts_enabled,
+                },
+            )
+            return TurnOutcome(transcript="", assistant_text=assistant_text, latency_ms=latency_ms)
+        except asyncio.CancelledError:
+            await self._emit_event(
+                {
+                    "type": "turn.cancelled",
+                    "turn_id": turn_id,
+                    "reason": "client_cancelled",
+                }
+            )
+            self._log_trace("intro_turn_cancelled", {"turn_id": turn_id})
+            raise
 
     async def process_turn(self, turn_id: str) -> TurnOutcome:
         """Commit STT buffer, run LLM stream, and synthesize streaming TTS.
@@ -650,34 +682,42 @@ class VoiceConversationOrchestrator:
             return False
 
         tts_task = asyncio.create_task(self._pump_tts_audio(turn_id, audio_iterator))
-        for chunk in speech_chunker.add_delta(text):
-            if tts_chars_sent >= max_tts_chars:
-                break
-            remaining = max_tts_chars - tts_chars_sent
-            bounded_chunk = chunk[:remaining]
-            if not bounded_chunk:
-                continue
-            tts_chars_sent += len(bounded_chunk)
-            text_queue.put(bounded_chunk)
+        try:
+            for chunk in speech_chunker.add_delta(text):
+                if tts_chars_sent >= max_tts_chars:
+                    break
+                remaining = max_tts_chars - tts_chars_sent
+                bounded_chunk = chunk[:remaining]
+                if not bounded_chunk:
+                    continue
+                tts_chars_sent += len(bounded_chunk)
+                text_queue.put(bounded_chunk)
 
-        remaining_text = speech_chunker.flush_remaining()
-        if remaining_text and tts_chars_sent < max_tts_chars:
-            remaining = max_tts_chars - tts_chars_sent
-            bounded_remaining = remaining_text[:remaining]
-            if bounded_remaining:
-                text_queue.put(bounded_remaining)
+            remaining_text = speech_chunker.flush_remaining()
+            if remaining_text and tts_chars_sent < max_tts_chars:
+                remaining = max_tts_chars - tts_chars_sent
+                bounded_remaining = remaining_text[:remaining]
+                if bounded_remaining:
+                    text_queue.put(bounded_remaining)
 
-        text_queue.put(None)
-        tts_chunk_count = await tts_task
-        self._log_trace(
-            "intro_tts_completed",
-            {
-                "turn_id": turn_id,
-                "tts_chars_sent": tts_chars_sent,
-                "tts_chunk_count": tts_chunk_count,
-            },
-        )
-        return True
+            text_queue.put(None)
+            tts_chunk_count = await tts_task
+            self._log_trace(
+                "intro_tts_completed",
+                {
+                    "turn_id": turn_id,
+                    "tts_chars_sent": tts_chars_sent,
+                    "tts_chunk_count": tts_chunk_count,
+                },
+            )
+            return True
+        except asyncio.CancelledError:
+            with suppress(queue.Full):
+                text_queue.put_nowait(None)
+            tts_task.cancel()
+            with suppress(Exception):
+                await tts_task
+            raise
 
     async def _persist_turn(self, *, transcript: str, assistant_text: str) -> None:
         """Persist completed turn into chat tables when session mapping exists."""
@@ -821,3 +861,46 @@ class VoiceConversationOrchestrator:
                 return
             if text_item:
                 yield text_item
+
+    def _summarize_pcm16_frame(self, pcm16_b64: str) -> dict[str, float | int]:
+        """Compute compact diagnostics for one base64 PCM16 frame."""
+
+        try:
+            raw = base64.b64decode(pcm16_b64, validate=True)
+        except Exception:
+            return {"decode_error": 1}
+
+        if len(raw) < 2:
+            return {"samples": 0}
+
+        sample_count = len(raw) // 2
+        if sample_count <= 0:
+            return {"samples": 0}
+
+        sum_squares = 0.0
+        max_abs = 0
+        zero_count = 0
+        clipped_count = 0
+
+        # Little-endian signed int16 PCM
+        for index in range(0, sample_count * 2, 2):
+            sample = int.from_bytes(raw[index : index + 2], "little", signed=True)
+            sample_abs = abs(sample)
+            if sample_abs == 0:
+                zero_count += 1
+            if sample_abs >= 32760:
+                clipped_count += 1
+            if sample_abs > max_abs:
+                max_abs = sample_abs
+            normalized = sample / 32768.0
+            sum_squares += normalized * normalized
+
+        rms = (sum_squares / sample_count) ** 0.5
+        peak = max_abs / 32768.0
+        return {
+            "samples": sample_count,
+            "rms": round(rms, 6),
+            "peak": round(peak, 6),
+            "zero_ratio": round(zero_count / sample_count, 6),
+            "clipping_ratio": round(clipped_count / sample_count, 6),
+        }

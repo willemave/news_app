@@ -58,6 +58,9 @@ struct ContentDetailView: View {
     @State private var chatError: String?
     @State private var audioTranscript: String = ""
     @StateObject private var dictationService = VoiceDictationService.shared
+    @StateObject private var inlineNarrationViewModel = LiveVoiceViewModel()
+    @State private var inlineNarrationContentId: Int?
+    @State private var inlineNarrationAutoStopTask: Task<Void, Never>?
     // Share / download sheet options
     @State private var showShareOptions: Bool = false
     @State private var showDownloadSheet: Bool = false
@@ -114,6 +117,12 @@ struct ContentDetailView: View {
                         Divider()
                             .padding(.horizontal, DetailDesign.horizontalPadding)
                             .padding(.top, 6)
+
+                        if shouldShowInlineNarrationStatus(for: content) {
+                            inlineNarrationStatusRow(for: content)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, 10)
+                        }
 
                         // Chat status banner (inline, under header)
                         if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
@@ -374,6 +383,11 @@ struct ContentDetailView: View {
         }
         .onChange(of: viewModel.content?.id) { _, newValue in
             guard let id = newValue, let content = viewModel.content else { return }
+            if let activeContentId = inlineNarrationContentId, activeContentId != id {
+                Task {
+                    await teardownInlineNarration()
+                }
+            }
             if let type = content.contentTypeEnum {
                 readingStateStore.setCurrent(contentId: id, type: type)
             }
@@ -405,7 +419,24 @@ struct ContentDetailView: View {
                 await viewModel.loadContent()
             }
         }
+        .onChange(of: inlineNarrationViewModel.connectionState) { _, newValue in
+            if case .idle = newValue {
+                inlineNarrationAutoStopTask?.cancel()
+                inlineNarrationContentId = nil
+            }
+            scheduleInlineNarrationAutoStopIfNeeded()
+        }
+        .onChange(of: inlineNarrationViewModel.isAwaitingAssistant) { _, _ in
+            scheduleInlineNarrationAutoStopIfNeeded()
+        }
+        .onChange(of: inlineNarrationViewModel.isAssistantSpeaking) { _, _ in
+            scheduleInlineNarrationAutoStopIfNeeded()
+        }
+        .onChange(of: inlineNarrationViewModel.assistantText) { _, _ in
+            scheduleInlineNarrationAutoStopIfNeeded()
+        }
         .onDisappear {
+            Task { await teardownInlineNarration() }
             readingStateStore.clear()
         }
         .sheet(isPresented: $showShareOptions) {
@@ -585,7 +616,7 @@ struct ContentDetailView: View {
             .accessibilityIdentifier("content.voice_with_article")
 
             Button {
-                launchLiveVoice(for: content, mode: .dictateSummary)
+                Task { await toggleInlineSummaryNarration(for: content) }
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "text.quote")
@@ -596,11 +627,11 @@ struct ContentDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Dictate summary live")
+                        Text(isInlineNarrationActive(for: content) ? "Stop summary narration" : "Narrate summary here")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
-                        Text("Get a spoken summary first")
+                        Text(isInlineNarrationActive(for: content) ? "End spoken playback" : "Stay on this article while it speaks")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -613,6 +644,150 @@ struct ContentDetailView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("content.dictate_summary_live")
+        }
+    }
+
+    private func shouldShowInlineNarrationStatus(for content: ContentDetail) -> Bool {
+        guard inlineNarrationContentId == content.id else { return false }
+        switch inlineNarrationViewModel.connectionState {
+        case .idle:
+            return false
+        case .connecting, .connected, .failed:
+            return true
+        }
+    }
+
+    @ViewBuilder
+    private func inlineNarrationStatusRow(for content: ContentDetail) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: inlineNarrationViewModel.isAssistantSpeaking ? "speaker.wave.3.fill" : "speaker.wave.2.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.blue)
+
+            Text(inlineNarrationStatusText(for: content))
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+
+            Spacer()
+
+            Button("Stop") {
+                Task { await stopInlineSummaryNarration() }
+            }
+            .font(.footnote.weight(.semibold))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .accessibilityIdentifier("content.inline_narration_status")
+    }
+
+    @ViewBuilder
+    private func inlineNarrationActionIcon(for content: ContentDetail) -> some View {
+        switch inlineNarrationViewModel.connectionState {
+        case .connecting where inlineNarrationContentId == content.id:
+            ProgressView()
+                .scaleEffect(0.8)
+                .frame(width: 44, height: 44)
+        case .connected where inlineNarrationContentId == content.id:
+            minimalActionIcon("stop.circle.fill", color: .blue)
+        case .failed where inlineNarrationContentId == content.id:
+            minimalActionIcon("speaker.slash", color: .red)
+        default:
+            minimalActionIcon("speaker.wave.2", color: .secondary)
+        }
+    }
+
+    private func inlineNarrationAccessibilityLabel(for content: ContentDetail) -> String {
+        if isInlineNarrationActive(for: content) {
+            return "Stop summary narration"
+        }
+        return "Narrate summary"
+    }
+
+    private func isInlineNarrationActive(for content: ContentDetail) -> Bool {
+        guard inlineNarrationContentId == content.id else { return false }
+        switch inlineNarrationViewModel.connectionState {
+        case .connecting, .connected:
+            return true
+        case .idle, .failed:
+            return false
+        }
+    }
+
+    private func inlineNarrationStatusText(for content: ContentDetail) -> String {
+        guard inlineNarrationContentId == content.id else { return "" }
+        switch inlineNarrationViewModel.connectionState {
+        case .connecting:
+            return "Starting spoken summary..."
+        case .connected:
+            if inlineNarrationViewModel.isAssistantSpeaking {
+                return "Narrating summary..."
+            }
+            if inlineNarrationViewModel.isAwaitingAssistant {
+                return "Preparing spoken summary..."
+            }
+            return "Summary narration is ready."
+        case .failed(let message):
+            return message
+        case .idle:
+            return ""
+        }
+    }
+
+    @MainActor
+    private func toggleInlineSummaryNarration(for content: ContentDetail) async {
+        if isInlineNarrationActive(for: content) {
+            await stopInlineSummaryNarration()
+            return
+        }
+        await startInlineSummaryNarration(for: content)
+    }
+
+    @MainActor
+    private func startInlineSummaryNarration(for content: ContentDetail) async {
+        inlineNarrationAutoStopTask?.cancel()
+        if inlineNarrationContentId != content.id {
+            await teardownInlineNarration()
+        }
+        inlineNarrationContentId = content.id
+        let route = LiveVoiceRoute(
+            contentId: content.id,
+            launchMode: .dictateSummary,
+            sourceSurface: .contentDetail,
+            autoConnect: true
+        )
+        await inlineNarrationViewModel.connect(route: route)
+    }
+
+    @MainActor
+    private func stopInlineSummaryNarration() async {
+        await teardownInlineNarration()
+    }
+
+    @MainActor
+    private func teardownInlineNarration() async {
+        inlineNarrationAutoStopTask?.cancel()
+        await inlineNarrationViewModel.disconnect()
+        inlineNarrationContentId = nil
+    }
+
+    private func scheduleInlineNarrationAutoStopIfNeeded() {
+        inlineNarrationAutoStopTask?.cancel()
+        guard case .connected = inlineNarrationViewModel.connectionState else { return }
+        guard inlineNarrationContentId != nil else { return }
+        guard !inlineNarrationViewModel.isAwaitingAssistant else { return }
+        guard !inlineNarrationViewModel.isAssistantSpeaking else { return }
+        guard !inlineNarrationViewModel.assistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        inlineNarrationAutoStopTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            guard !Task.isCancelled else { return }
+            guard case .connected = inlineNarrationViewModel.connectionState else { return }
+            await teardownInlineNarration()
         }
     }
 
@@ -834,12 +1009,13 @@ struct ContentDetailView: View {
             if content.contentTypeEnum == .article || content.contentTypeEnum == .news {
                 Spacer()
 
-                Button(action: {
-                    launchLiveVoice(for: content, mode: .articleVoice)
-                }) {
-                    minimalActionIcon("waveform.and.mic")
+                Button {
+                    Task { await toggleInlineSummaryNarration(for: content) }
+                } label: {
+                    inlineNarrationActionIcon(for: content)
                 }
-                .accessibilityIdentifier("content.action.live_voice")
+                .accessibilityIdentifier("content.action.narrate_summary")
+                .accessibilityLabel(inlineNarrationAccessibilityLabel(for: content))
             }
 
             Spacer()
@@ -1006,10 +1182,11 @@ struct ContentDetailView: View {
                 }
             )
             .padding(.horizontal, 20)
-
-            Spacer()
+            .padding(.bottom, 20)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(.systemBackground))
+        .ignoresSafeArea(edges: .bottom)
     }
 
     // MARK: - Download Sheet
@@ -1061,10 +1238,11 @@ struct ContentDetailView: View {
                 )
             }
             .padding(.horizontal, 20)
-
-            Spacer()
+            .padding(.bottom, 20)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(.systemBackground))
+        .ignoresSafeArea(edges: .bottom)
     }
 
     // MARK: - AI Chat Sheet
@@ -1141,9 +1319,10 @@ struct ContentDetailView: View {
                 .padding(.vertical, 10)
             }
 
-            Spacer()
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(.systemBackground))
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private func handleDiscussionTap(content: ContentDetail, fallbackURL: URL) {

@@ -257,6 +257,7 @@ async def voice_websocket(
     orchestrator: VoiceConversationOrchestrator | None = None
     orchestrator_started = False
     active_turn_task: asyncio.Task[Any] | None = None
+    active_turn_id: str | None = None
     auto_summary_requested = bool(
         state.launch_mode == "dictate_summary"
         and state.content_context
@@ -269,7 +270,7 @@ async def voice_websocket(
         return await _send_ws_event(websocket, send_lock, payload)
 
     async def start_auto_summary_turn() -> None:
-        nonlocal orchestrator, active_turn_task, auto_summary_started
+        nonlocal orchestrator, active_turn_task, active_turn_id, auto_summary_started
 
         if not auto_summary_requested or auto_summary_started:
             return
@@ -287,6 +288,7 @@ async def voice_websocket(
         await _cancel_task(active_turn_task)
         turn_id = f"turn_{uuid4().hex}"
         auto_summary_started = True
+        active_turn_id = turn_id
         log_ws_trace("auto_summary_started", {"turn_id": turn_id})
         active_turn_task = asyncio.create_task(
             orchestrator.process_text_turn(
@@ -376,6 +378,7 @@ async def voice_websocket(
                         )
                         if not is_open:
                             return
+                        continue
                     if state.pending_intro:
                         if orchestrator is None:
                             orchestrator = VoiceConversationOrchestrator(
@@ -409,6 +412,7 @@ async def voice_websocket(
                                 is_onboarding=state.is_onboarding_intro,
                             )
                         )
+                        active_turn_id = intro_turn_id
                         set_voice_session_intro_pending(
                             session_id=session_id,
                             user_id=user.id,
@@ -446,8 +450,23 @@ async def voice_websocket(
 
                 if event_type == "response.cancel":
                     log_ws_trace("response_cancel_requested", {})
+                    has_active_turn = (
+                        active_turn_task is not None
+                        and not active_turn_task.done()
+                    )
+                    turn_id = active_turn_id if has_active_turn else None
                     await _cancel_task(active_turn_task)
                     active_turn_task = None
+                    active_turn_id = None
+                    is_open = await emit(
+                        {
+                            "type": "response.cancelled",
+                            "turn_id": turn_id,
+                            "reason": "client_request" if has_active_turn else "already_completed",
+                        }
+                    )
+                    if not is_open:
+                        return
                     continue
 
                 if event_type == "audio.frame":
@@ -536,6 +555,7 @@ async def voice_websocket(
 
                     await _cancel_task(active_turn_task)
                     turn_id = f"turn_{uuid4().hex}"
+                    active_turn_id = turn_id
                     log_ws_trace("audio_commit_received", {"turn_id": turn_id})
                     active_turn_task = asyncio.create_task(orchestrator.process_turn(turn_id))
                     continue
@@ -568,6 +588,7 @@ async def voice_websocket(
                         return
                 finally:
                     active_turn_task = None
+                    active_turn_id = None
     finally:
         logger.info(
             "Voice websocket closing",

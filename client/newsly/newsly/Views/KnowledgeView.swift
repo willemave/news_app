@@ -279,9 +279,10 @@ struct KnowledgeView: View {
     }
 
     private var filteredSessions: [ChatSessionSummary] {
+        let nonLiveSessions = viewModel.sessions.filter { $0.sessionType != "voice_live" }
         let trimmedQuery = chatSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return viewModel.sessions }
-        return viewModel.sessions.filter { session in
+        guard !trimmedQuery.isEmpty else { return nonLiveSessions }
+        return nonLiveSessions.filter { session in
             sessionMatchesSearch(session, query: trimmedQuery)
         }
     }

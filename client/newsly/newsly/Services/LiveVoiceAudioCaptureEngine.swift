@@ -184,38 +184,50 @@ final class LiveVoiceAudioCaptureEngine {
         }
 
         var error: NSError?
+        var hasProvidedInput = false
         let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            guard !hasProvidedInput else {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            hasProvidedInput = true
             outStatus.pointee = .haveData
             return buffer
         }
-        converter.convert(to: outputBuffer, error: &error, withInputFrom: inputBlock)
+        let conversionStatus = converter.convert(
+            to: outputBuffer,
+            error: &error,
+            withInputFrom: inputBlock
+        )
         if error != nil {
             return
         }
+        guard conversionStatus == .haveData || conversionStatus == .inputRanDry else { return }
 
         guard let channelData = outputBuffer.int16ChannelData?.pointee else { return }
         let frameLength = Int(outputBuffer.frameLength)
+        let channelCount = Int(outputBuffer.format.channelCount)
         guard frameLength > 0 else { return }
+        guard channelCount > 0 else { return }
 
+        let sampleCount = frameLength * channelCount
         let data = Data(
             bytes: channelData,
-            count: frameLength * MemoryLayout<Int16>.size
+            count: sampleCount * MemoryLayout<Int16>.size
         )
         let b64 = data.base64EncodedString()
         var sumSquares: Float = 0
-        for index in 0..<frameLength {
+        for index in 0..<sampleCount {
             let normalized = Float(channelData[index]) / Float(Int16.max)
             sumSquares += normalized * normalized
         }
-        let rms = sqrt(sumSquares / Float(frameLength))
+        let rms = sqrt(sumSquares / Float(sampleCount))
         capturedBufferCount += 1
         if capturedBufferCount == 1 || capturedBufferCount % diagnosticsFrameLogInterval == 0 {
             logger.debug(
                 "Capture diagnostics | buffer=\(self.capturedBufferCount) frameLength=\(frameLength) rms=\(rms, privacy: .public)"
             )
         }
-        DispatchQueue.main.async {
-            self.onAudioFrame?(b64, rms)
-        }
+        onAudioFrame?(b64, rms)
     }
 }
