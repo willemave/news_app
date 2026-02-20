@@ -9,12 +9,17 @@ import tempfile
 from pathlib import Path
 from typing import BinaryIO
 
-from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
+from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
+
+try:
+    from langfuse.openai import OpenAI
+except Exception:  # noqa: BLE001
+    from openai import OpenAI
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -195,9 +200,18 @@ class OpenAITranscriptionService:
         with open(file_path, "rb") as audio_file:
             logger.info(f"Sending audio file to OpenAI for transcription: {file_path}")
 
-            transcription = self.client.audio.transcriptions.create(
-                model=self.model_name, file=audio_file, response_format="json", prompt=prompt
-            )
+            with langfuse_trace_context(
+                trace_name="queue.transcribe.audio",
+                metadata={
+                    "source": "queue",
+                    "model_spec": f"openai:{self.model_name}",
+                    "file_name": file_path.name,
+                },
+                tags=["queue", "transcription"],
+            ):
+                transcription = self.client.audio.transcriptions.create(
+                    model=self.model_name, file=audio_file, response_format="json", prompt=prompt
+                )
 
             transcript = transcription.text
             language = getattr(transcription, "language", None)

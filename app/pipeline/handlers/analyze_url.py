@@ -368,6 +368,10 @@ class UrlAnalysisFlow:
                         content.title = resolution.episode_title
                 if resolution.audio_url:
                     metadata.setdefault("audio_url", resolution.audio_url)
+            if platform == "youtube" and detected_type == ContentType.PODCAST:
+                metadata.setdefault("audio_url", url)
+                metadata.setdefault("video_url", url)
+                metadata.setdefault("youtube_video", True)
 
             content.content_metadata = metadata
             db.commit()
@@ -387,6 +391,10 @@ class UrlAnalysisFlow:
             if platform:
                 content.platform = platform
                 metadata["platform"] = platform
+            if platform == "youtube" and detected_type == ContentType.PODCAST:
+                metadata.setdefault("audio_url", url)
+                metadata.setdefault("video_url", url)
+                metadata.setdefault("youtube_video", True)
         else:
             analysis = result.analysis
             if analysis.content_type == "article":
@@ -414,6 +422,14 @@ class UrlAnalysisFlow:
             if analysis.content_type == "video":
                 metadata["is_video"] = True
                 metadata["video_url"] = url
+            if (
+                analysis.platform == "youtube"
+                and content.content_type == ContentType.PODCAST.value
+                and "audio_url" not in metadata
+            ):
+                metadata["audio_url"] = url
+                metadata.setdefault("video_url", url)
+                metadata.setdefault("youtube_video", True)
 
             logger.info(
                 "LLM analysis complete for %s: type=%s, platform=%s",

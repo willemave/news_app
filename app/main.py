@@ -14,6 +14,11 @@ from app.core.logging import setup_logging
 from app.core.settings import get_settings
 from app.routers import admin, api_content, auth, logs
 from app.routers.api import discovery, interactions, onboarding, openai, scraper_configs, voice
+from app.services.langfuse_tracing import (
+    flush_langfuse_tracing,
+    initialize_langfuse_tracing,
+    langfuse_trace_context,
+)
 
 # Initialize
 settings = get_settings()
@@ -24,9 +29,13 @@ logger = setup_logging()
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Initialize and teardown application services."""
     logger.info("Starting up...")
+    initialize_langfuse_tracing()
     init_db()
     logger.info("Database initialized")
-    yield
+    try:
+        yield
+    finally:
+        flush_langfuse_tracing()
 
 
 # Create app
@@ -123,7 +132,16 @@ async def log_requests(request: Request, call_next):
         logger.debug(f"    Headers: {dict(request.headers)}")
         logger.debug(f"    Client: {request.client.host if request.client else 'unknown'}")
 
-    response = await call_next(request)
+    with langfuse_trace_context(
+        trace_name=f"http.{request.method.lower()}",
+        metadata={
+            "source": "realtime",
+            "path": path,
+            "method": request.method,
+        },
+        tags=["realtime", "http"],
+    ):
+        response = await call_next(request)
 
     duration_ms = (time.perf_counter() - start_time) * 1000
 

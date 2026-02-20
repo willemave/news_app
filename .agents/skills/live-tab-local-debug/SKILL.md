@@ -1,3 +1,8 @@
+---
+name: live-tab-local-debug
+description: Debug the iOS Live tab end-to-end on localhost, including ElevenLabs voice checks and simulator UI validation via axe.
+---
+
 # Live Tab Local Debug
 
 ## Purpose

@@ -63,6 +63,7 @@ enum APIEndpoints {
     static let discoverySuggestions = "/api/discovery/suggestions"
     static let discoveryHistory = "/api/discovery/history"
     static let discoveryRefresh = "/api/discovery/refresh"
+    static let discoveryPodcastSearch = "/api/discovery/search/podcasts"
     static let discoverySubscribe = "/api/discovery/subscribe"
     static let discoveryAddItem = "/api/discovery/add-item"
     static let discoveryDismiss = "/api/discovery/dismiss"

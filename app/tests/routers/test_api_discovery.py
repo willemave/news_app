@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.models.schema import Content, FeedDiscoveryRun, FeedDiscoverySuggestion, UserScraperConfig
+from app.services.podcast_search import PodcastEpisodeSearchHit
 
 
 def _create_run(db_session, user_id: int) -> FeedDiscoveryRun:
@@ -243,3 +244,29 @@ def test_discovery_history_groups_runs(client, db_session, test_user):
     assert len(data["runs"][0]["podcasts"]) == 1
     assert data["runs"][1]["run_id"] == older_run.id
     assert len(data["runs"][1]["feeds"]) == 1
+
+
+def test_discovery_podcast_search_returns_results(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.routers.api.discovery.search_podcast_episodes",
+        lambda query, limit: [
+            PodcastEpisodeSearchHit(
+                title="AI Founder Interview",
+                episode_url="https://example.fm/episodes/founder-interview",
+                podcast_title="AI Weekly",
+                source="example.fm",
+                snippet="An interview about AI startups.",
+                feed_url="https://example.fm/rss",
+                published_at="2026-02-19T00:00:00Z",
+                provider="listen_notes",
+                score=1.12,
+            )
+        ],
+    )
+
+    response = client.get("/api/discovery/search/podcasts", params={"q": "ai founder", "limit": 5})
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["results"]) == 1
+    assert payload["results"][0]["episode_url"] == "https://example.fm/episodes/founder-interview"
+    assert payload["results"][0]["provider"] == "listen_notes"

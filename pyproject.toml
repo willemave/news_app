@@ -42,6 +42,7 @@ dependencies = [
     "elevenlabs>=2.35.0",
     "pillow>=12.0.0",
     "trafilatura>=2.0.0",
+    "langfuse>=3.14.3",
 ]
 
 [tool.setuptools.packages.find]

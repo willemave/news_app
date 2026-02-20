@@ -11,6 +11,10 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
+from app.services.langfuse_tracing import (
+    extract_google_usage_details,
+    langfuse_generation_context,
+)
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -133,11 +137,24 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
                 Preserve the document structure (headings, paragraphs, lists).
                 If you can identify the title, include it at the beginning.
                 """
-                response = client.models.generate_content(
+                with langfuse_generation_context(
+                    name="queue.arxiv.extract_text",
                     model=model_name,
-                    contents=[pdf_part, extraction_prompt],
-                    config={"temperature": 0.3, "max_output_tokens": 50000},
-                )
+                    input_data=extraction_prompt,
+                    metadata={"source": "queue", "url": url},
+                ) as generation:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[pdf_part, extraction_prompt],
+                        config={"temperature": 0.3, "max_output_tokens": 50000},
+                    )
+                    usage_details = extract_google_usage_details(response)
+                    response_text = getattr(response, "text", None)
+                    if generation is not None:
+                        generation.update(
+                            output=response_text[:400] if isinstance(response_text, str) else None,
+                            usage_details=usage_details,
+                        )
                 text_content = response.text if hasattr(response, "text") else ""
                 if text_content:
                     lines = text_content.strip().split("\n")

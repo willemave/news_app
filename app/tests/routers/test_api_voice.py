@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import time
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
@@ -23,6 +25,21 @@ def reset_voice_sessions() -> None:
     clear_voice_sessions()
 
 
+def _wait_for_condition(
+    predicate: Callable[[], bool],
+    timeout_seconds: float = 3.0,
+    interval_seconds: float = 0.01,
+) -> bool:
+    """Poll until predicate returns true or timeout is reached."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval_seconds)
+    return predicate()
+
+
 def test_create_voice_session(client) -> None:
     """Authenticated user can create voice session metadata."""
 
@@ -37,6 +54,39 @@ def test_create_voice_session(client) -> None:
     assert payload["chat_session_id"] > 0
     assert payload["launch_mode"] == "general"
     assert payload["content_context_attached"] is False
+
+
+def test_create_voice_session_allows_dictate_summary_for_article(
+    client, monkeypatch
+) -> None:
+    """Dictate-summary can be created for article content."""
+
+    monkeypatch.setattr(
+        voice_router,
+        "load_voice_content_context",
+        lambda db, user_id, content_id, include_summary_narration=False: SimpleNamespace(
+            content_id=content_id,
+            title="Article",
+            url="https://example.com/article",
+            source="example.com",
+            summary="Summary",
+            transcript_excerpt=None,
+            summary_narration="Narrative. Point 1. Point 2." if include_summary_narration else None,
+        ),
+    )
+
+    response = client.post(
+        "/api/voice/sessions",
+        json={
+            "launch_mode": "dictate_summary",
+            "content_id": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["launch_mode"] == "dictate_summary"
+    assert payload["content_context_attached"] is True
 
 
 def test_voice_health_returns_flags(client, monkeypatch) -> None:
@@ -195,7 +245,7 @@ def test_voice_websocket_streams_turn_events(client, test_user, monkeypatch) -> 
 def test_voice_websocket_auto_runs_dictate_summary_turn(
     client, test_user, monkeypatch
 ) -> None:
-    """Dictate-summary sessions should start with an automatic seeded summary turn."""
+    """Dictate-summary sessions should auto-start with prebuilt summary narration."""
 
     class FakeOrchestrator:
         def __init__(
@@ -231,20 +281,19 @@ def test_voice_websocket_auto_runs_dictate_summary_turn(
             _ = turn_id
             return {}
 
-        async def process_text_turn(self, turn_id: str, user_text: str) -> dict[str, Any]:
+        async def process_scripted_turn(
+            self,
+            turn_id: str,
+            assistant_text: str,
+            *,
+            model: str = "system:scripted",
+        ) -> dict[str, Any]:
             await self.emit_event({"type": "turn.started", "turn_id": turn_id})
-            await self.emit_event(
-                {
-                    "type": "transcript.final",
-                    "turn_id": turn_id,
-                    "text": user_text,
-                }
-            )
             await self.emit_event(
                 {
                     "type": "assistant.text.final",
                     "turn_id": turn_id,
-                    "text": "Here is your summary.",
+                    "text": assistant_text,
                 }
             )
             await self.emit_event({"type": "assistant.audio.final", "turn_id": turn_id})
@@ -253,9 +302,9 @@ def test_voice_websocket_auto_runs_dictate_summary_turn(
                     "type": "turn.completed",
                     "turn_id": turn_id,
                     "latency_ms": 7,
-                    "transcript_chars": len(user_text),
-                    "response_chars": 21,
-                    "model": "anthropic:claude-haiku-4-5-20251001",
+                    "transcript_chars": 0,
+                    "response_chars": len(assistant_text),
+                    "model": model,
                 }
             )
             return {}
@@ -264,13 +313,14 @@ def test_voice_websocket_auto_runs_dictate_summary_turn(
     monkeypatch.setattr(
         voice_router,
         "load_voice_content_context",
-        lambda db, user_id, content_id: SimpleNamespace(
+        lambda db, user_id, content_id, include_summary_narration=False: SimpleNamespace(
             content_id=content_id,
             title="Sample Item",
             url="https://example.com/item",
             source="Example",
             summary="A short summary",
             transcript_excerpt=None,
+            summary_narration="Narrative. Point 1. Point 2." if include_summary_narration else None,
         ),
     )
     monkeypatch.setattr(
@@ -303,8 +353,8 @@ def test_voice_websocket_auto_runs_dictate_summary_turn(
         assert payload["type"] == "turn.started"
 
         payload = websocket.receive_json()
-        assert payload["type"] == "transcript.final"
-        assert "concise spoken summary" in payload["text"]
+        assert payload["type"] == "assistant.text.final"
+        assert "Point 1" in payload["text"]
 
         event_types: list[str] = [payload["type"]]
         while True:
@@ -315,6 +365,468 @@ def test_voice_websocket_auto_runs_dictate_summary_turn(
 
         assert "assistant.text.final" in event_types
         assert "assistant.audio.final" in event_types
+
+
+def test_voice_websocket_dictate_summary_rejects_audio_input(
+    client, test_user, monkeypatch
+) -> None:
+    """Dictate-summary mode should be read-only and reject microphone events."""
+
+    audio_frame_calls = {"count": 0}
+
+    class FakeOrchestrator:
+        def __init__(
+            self,
+            *,
+            session_id: str,
+            user_id: int,
+            emit_event,
+            chat_session_id: int | None = None,
+            launch_mode: str = "general",
+            content_context: str | None = None,
+            sample_rate_hz: int = 16_000,
+        ) -> None:
+            self.emit_event = emit_event
+            _ = (
+                session_id,
+                user_id,
+                chat_session_id,
+                launch_mode,
+                content_context,
+                sample_rate_hz,
+            )
+
+        async def start(self) -> None:
+            return
+
+        async def close(self) -> None:
+            return
+
+        async def handle_audio_frame(self, pcm16_b64: str) -> None:
+            _ = pcm16_b64
+            audio_frame_calls["count"] += 1
+
+        async def process_turn(self, turn_id: str) -> dict[str, Any]:
+            _ = turn_id
+            return {}
+
+        async def process_scripted_turn(
+            self,
+            turn_id: str,
+            assistant_text: str,
+            *,
+            model: str = "system:scripted",
+        ) -> dict[str, Any]:
+            await self.emit_event({"type": "turn.started", "turn_id": turn_id})
+            await self.emit_event(
+                {
+                    "type": "assistant.text.final",
+                    "turn_id": turn_id,
+                    "text": assistant_text,
+                }
+            )
+            await self.emit_event({"type": "assistant.audio.final", "turn_id": turn_id})
+            await self.emit_event(
+                {
+                    "type": "turn.completed",
+                    "turn_id": turn_id,
+                    "latency_ms": 5,
+                    "transcript_chars": 0,
+                    "response_chars": len(assistant_text),
+                    "model": model,
+                }
+            )
+            return {}
+
+    monkeypatch.setattr(voice_router, "VoiceConversationOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        voice_router,
+        "load_voice_content_context",
+        lambda db, user_id, content_id, include_summary_narration=False: SimpleNamespace(
+            content_id=content_id,
+            title="Sample Item",
+            url="https://example.com/item",
+            source="Example",
+            summary="A short summary",
+            transcript_excerpt=None,
+            summary_narration="Narrative. Point 1. Point 2." if include_summary_narration else None,
+        ),
+    )
+    monkeypatch.setattr(
+        voice_router,
+        "format_voice_content_context",
+        lambda context: f"title: {context.title}\nsummary: {context.summary}",
+    )
+
+    created = client.post(
+        "/api/voice/sessions",
+        json={
+            "launch_mode": "dictate_summary",
+            "content_id": 1,
+        },
+    )
+    assert created.status_code == 200
+
+    session_id = created.json()["session_id"]
+    token = create_access_token(test_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.websocket_connect(f"/api/voice/ws/{session_id}", headers=headers) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "session.ready"
+
+        websocket.send_json({"type": "session.start", "session_id": session_id})
+
+        while True:
+            payload = websocket.receive_json()
+            if payload["type"] == "turn.completed":
+                break
+
+        websocket.send_json(
+            {
+                "type": "audio.frame",
+                "seq": 0,
+                "pcm16_b64": "AA==",
+                "sample_rate_hz": 16000,
+                "channels": 1,
+            }
+        )
+        frame_error = websocket.receive_json()
+        assert frame_error["type"] == "error"
+        assert frame_error["code"] == "read_only_mode"
+        assert frame_error["retryable"] is False
+
+        websocket.send_json({"type": "audio.commit", "seq": 0})
+        commit_error = websocket.receive_json()
+        assert commit_error["type"] == "error"
+        assert commit_error["code"] == "read_only_mode"
+        assert commit_error["retryable"] is False
+
+        assert audio_frame_calls["count"] == 0
+
+
+def test_voice_websocket_auto_runs_dictate_summary_after_returning_intro(
+    client, db_session, test_user, monkeypatch
+) -> None:
+    """Dictate-summary should auto-start narration after non-onboarding intro."""
+
+    test_user.has_completed_live_voice_onboarding = True
+    db_session.add(test_user)
+    db_session.commit()
+    db_session.refresh(test_user)
+
+    scripted_turn_calls = {"count": 0}
+
+    class FakeOrchestrator:
+        def __init__(
+            self,
+            *,
+            session_id: str,
+            user_id: int,
+            emit_event,
+            chat_session_id: int | None = None,
+            launch_mode: str = "general",
+            content_context: str | None = None,
+            sample_rate_hz: int = 16_000,
+        ) -> None:
+            self.emit_event = emit_event
+            _ = (
+                session_id,
+                user_id,
+                chat_session_id,
+                launch_mode,
+                content_context,
+                sample_rate_hz,
+            )
+
+        async def start(self) -> None:
+            return
+
+        async def close(self) -> None:
+            return
+
+        async def handle_audio_frame(self, pcm16_b64: str) -> None:
+            _ = pcm16_b64
+            return
+
+        async def process_turn(self, turn_id: str) -> dict[str, Any]:
+            _ = turn_id
+            return {}
+
+        async def process_intro_turn(
+            self,
+            turn_id: str,
+            intro_text: str,
+            *,
+            is_onboarding: bool = True,
+        ) -> dict[str, Any]:
+            await self.emit_event(
+                {
+                    "type": "turn.started",
+                    "turn_id": turn_id,
+                    "is_intro": True,
+                    "is_onboarding_intro": is_onboarding,
+                }
+            )
+            await self.emit_event(
+                {
+                    "type": "assistant.text.final",
+                    "turn_id": turn_id,
+                    "text": intro_text,
+                }
+            )
+            await self.emit_event(
+                {
+                    "type": "assistant.audio.final",
+                    "turn_id": turn_id,
+                    "tts_enabled": True,
+                }
+            )
+            await self.emit_event(
+                {
+                    "type": "turn.completed",
+                    "turn_id": turn_id,
+                    "latency_ms": 5,
+                    "transcript_chars": 0,
+                    "response_chars": len(intro_text),
+                    "model": "system:intro",
+                }
+            )
+            return {}
+
+        async def process_scripted_turn(
+            self,
+            turn_id: str,
+            assistant_text: str,
+            *,
+            model: str = "system:scripted",
+        ) -> dict[str, Any]:
+            _ = model
+            scripted_turn_calls["count"] += 1
+            await self.emit_event({"type": "turn.started", "turn_id": turn_id})
+            await self.emit_event(
+                {
+                    "type": "assistant.text.final",
+                    "turn_id": turn_id,
+                    "text": assistant_text,
+                }
+            )
+            return {}
+
+    monkeypatch.setattr(voice_router, "VoiceConversationOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        voice_router,
+        "load_voice_content_context",
+        lambda db, user_id, content_id, include_summary_narration=False: SimpleNamespace(
+            content_id=content_id,
+            title="Sample Item",
+            url="https://example.com/item",
+            source="Example",
+            summary="A short summary",
+            transcript_excerpt=None,
+            summary_narration="Narrative. Point 1. Point 2." if include_summary_narration else None,
+        ),
+    )
+    monkeypatch.setattr(
+        voice_router,
+        "format_voice_content_context",
+        lambda context: f"title: {context.title}\nsummary: {context.summary}",
+    )
+
+    created = client.post(
+        "/api/voice/sessions",
+        json={
+            "launch_mode": "dictate_summary",
+            "content_id": 1,
+            "request_intro": True,
+        },
+    )
+    assert created.status_code == 200
+
+    session_id = created.json()["session_id"]
+    token = create_access_token(test_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.websocket_connect(f"/api/voice/ws/{session_id}", headers=headers) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "session.ready"
+        assert ready["launch_mode"] == "dictate_summary"
+
+        websocket.send_json({"type": "session.start", "session_id": session_id})
+
+        intro_started = websocket.receive_json()
+        assert intro_started["type"] == "turn.started"
+        assert intro_started.get("is_intro") is True
+        assert intro_started.get("is_onboarding_intro") is False
+
+        while True:
+            payload = websocket.receive_json()
+            if payload["type"] == "turn.completed":
+                break
+
+        assert _wait_for_condition(lambda: scripted_turn_calls["count"] == 1)
+
+
+def test_voice_websocket_onboarding_requires_intro_ack_for_auto_summary(
+    client, db_session, test_user, monkeypatch
+) -> None:
+    """Onboarding intro should gate dictate-summary auto run until intro.ack."""
+
+    test_user.has_completed_live_voice_onboarding = False
+    db_session.add(test_user)
+    db_session.commit()
+    db_session.refresh(test_user)
+
+    scripted_turn_calls = {"count": 0}
+
+    class FakeOrchestrator:
+        def __init__(
+            self,
+            *,
+            session_id: str,
+            user_id: int,
+            emit_event,
+            chat_session_id: int | None = None,
+            launch_mode: str = "general",
+            content_context: str | None = None,
+            sample_rate_hz: int = 16_000,
+        ) -> None:
+            self.emit_event = emit_event
+            _ = (
+                session_id,
+                user_id,
+                chat_session_id,
+                launch_mode,
+                content_context,
+                sample_rate_hz,
+            )
+
+        async def start(self) -> None:
+            return
+
+        async def close(self) -> None:
+            return
+
+        async def handle_audio_frame(self, pcm16_b64: str) -> None:
+            _ = pcm16_b64
+            return
+
+        async def process_turn(self, turn_id: str) -> dict[str, Any]:
+            _ = turn_id
+            return {}
+
+        async def process_intro_turn(
+            self,
+            turn_id: str,
+            intro_text: str,
+            *,
+            is_onboarding: bool = True,
+        ) -> dict[str, Any]:
+            await self.emit_event(
+                {
+                    "type": "turn.started",
+                    "turn_id": turn_id,
+                    "is_intro": True,
+                    "is_onboarding_intro": is_onboarding,
+                }
+            )
+            await self.emit_event(
+                {
+                    "type": "assistant.text.final",
+                    "turn_id": turn_id,
+                    "text": intro_text,
+                }
+            )
+            await self.emit_event({"type": "assistant.audio.final", "turn_id": turn_id})
+            await self.emit_event(
+                {
+                    "type": "turn.completed",
+                    "turn_id": turn_id,
+                    "latency_ms": 5,
+                    "transcript_chars": 0,
+                    "response_chars": len(intro_text),
+                    "model": "system:intro",
+                }
+            )
+            return {}
+
+        async def process_scripted_turn(
+            self,
+            turn_id: str,
+            assistant_text: str,
+            *,
+            model: str = "system:scripted",
+        ) -> dict[str, Any]:
+            _ = model
+            scripted_turn_calls["count"] += 1
+            await self.emit_event({"type": "turn.started", "turn_id": turn_id})
+            await self.emit_event(
+                {
+                    "type": "assistant.text.final",
+                    "turn_id": turn_id,
+                    "text": assistant_text,
+                }
+            )
+            return {}
+
+    monkeypatch.setattr(voice_router, "VoiceConversationOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        voice_router,
+        "load_voice_content_context",
+        lambda db, user_id, content_id, include_summary_narration=False: SimpleNamespace(
+            content_id=content_id,
+            title="Sample Item",
+            url="https://example.com/item",
+            source="Example",
+            summary="A short summary",
+            transcript_excerpt=None,
+            summary_narration="Narrative. Point 1. Point 2." if include_summary_narration else None,
+        ),
+    )
+    monkeypatch.setattr(
+        voice_router,
+        "format_voice_content_context",
+        lambda context: f"title: {context.title}\nsummary: {context.summary}",
+    )
+
+    created = client.post(
+        "/api/voice/sessions",
+        json={
+            "launch_mode": "dictate_summary",
+            "content_id": 1,
+            "request_intro": True,
+        },
+    )
+    assert created.status_code == 200
+
+    session_id = created.json()["session_id"]
+    token = create_access_token(test_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.websocket_connect(f"/api/voice/ws/{session_id}", headers=headers) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "session.ready"
+        assert ready["launch_mode"] == "dictate_summary"
+
+        websocket.send_json({"type": "session.start", "session_id": session_id})
+
+        intro_started = websocket.receive_json()
+        assert intro_started["type"] == "turn.started"
+        assert intro_started.get("is_intro") is True
+        assert intro_started.get("is_onboarding_intro") is True
+
+        while True:
+            payload = websocket.receive_json()
+            if payload["type"] == "turn.completed":
+                break
+
+        assert not _wait_for_condition(lambda: scripted_turn_calls["count"] == 1)
+
+        websocket.send_json({"type": "intro.ack"})
+        ack = websocket.receive_json()
+        assert ack["type"] == "intro.acknowledged"
+
+        assert _wait_for_condition(lambda: scripted_turn_calls["count"] == 1)
 
 
 def test_voice_websocket_reports_start_failure_without_crashing(

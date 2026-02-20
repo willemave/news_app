@@ -16,8 +16,14 @@ class DiscoveryViewModel: ObservableObject {
     @Published var directionSummary: String?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var podcastSearchQuery = ""
+    @Published var podcastSearchResults: [DiscoveryPodcastSearchResult] = []
+    @Published var isPodcastSearchLoading = false
+    @Published var podcastSearchError: String?
+    @Published var hasPodcastSearchRun = false
 
     private let service = DiscoveryService.shared
+    private let contentService = ContentService.shared
     private var hasLoaded = false
 
     var hasSuggestions: Bool {
@@ -27,6 +33,10 @@ class DiscoveryViewModel: ObservableObject {
             }
         }
         return !feeds.isEmpty || !podcasts.isEmpty || !youtube.isEmpty
+    }
+
+    var hasPodcastSearchResults: Bool {
+        !podcastSearchResults.isEmpty
     }
 
     /// Whether a discovery job is currently running
@@ -154,6 +164,57 @@ class DiscoveryViewModel: ObservableObject {
             ToastService.shared.show("Discovery cleared", type: .info)
         } catch {
             ToastService.shared.showError("Failed to clear suggestions: \(error.localizedDescription)")
+        }
+    }
+
+    func clearPodcastSearch() {
+        podcastSearchQuery = ""
+        podcastSearchResults = []
+        podcastSearchError = nil
+        hasPodcastSearchRun = false
+    }
+
+    func searchPodcastEpisodes(limit: Int = 10) async {
+        let trimmed = podcastSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else {
+            podcastSearchResults = []
+            podcastSearchError = nil
+            hasPodcastSearchRun = false
+            return
+        }
+
+        isPodcastSearchLoading = true
+        podcastSearchError = nil
+        hasPodcastSearchRun = true
+        do {
+            let response = try await service.searchPodcastEpisodes(query: trimmed, limit: limit)
+            podcastSearchResults = response.results
+        } catch {
+            podcastSearchResults = []
+            podcastSearchError = error.localizedDescription
+        }
+        isPodcastSearchLoading = false
+    }
+
+    func retryPodcastSearch() async {
+        await searchPodcastEpisodes()
+    }
+
+    func addPodcastEpisode(_ result: DiscoveryPodcastSearchResult) async {
+        guard let url = URL(string: result.episodeURL) else {
+            ToastService.shared.showError("Invalid episode URL")
+            return
+        }
+
+        do {
+            let response = try await contentService.submitContent(url: url, title: result.title)
+            if response.alreadyExists {
+                ToastService.shared.show("Episode already added", type: .info)
+            } else {
+                ToastService.shared.showSuccess("Episode added to inbox")
+            }
+        } catch {
+            ToastService.shared.showError("Failed to add episode: \(error.localizedDescription)")
         }
     }
 

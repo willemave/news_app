@@ -14,12 +14,18 @@ from typing import Literal
 import feedparser
 import httpx
 import trafilatura
-from openai import APIConnectionError, APIError, OpenAI, RateLimitError
+from openai import APIConnectionError, APIError, RateLimitError
 from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.services.feed_detection import extract_feed_links
+from app.services.langfuse_tracing import langfuse_trace_context
+
+try:
+    from langfuse.openai import OpenAI
+except Exception:  # noqa: BLE001
+    from openai import OpenAI
 
 logger = get_logger(__name__)
 
@@ -447,11 +453,20 @@ PAGE CONTENT (truncated):
 """
 
             try:
-                response = client.responses.create(
-                    model=CONTENT_ANALYSIS_MODEL,
-                    input=prompt,
-                    tools=[{"type": "web_search_preview"}],
-                )
+                with langfuse_trace_context(
+                    trace_name="queue.content_analyzer.analyze_url",
+                    metadata={
+                        "source": "queue",
+                        "url": url,
+                        "model_spec": f"openai:{CONTENT_ANALYSIS_MODEL}",
+                    },
+                    tags=["queue", "content_analyzer"],
+                ):
+                    response = client.responses.create(
+                        model=CONTENT_ANALYSIS_MODEL,
+                        input=prompt,
+                        tools=[{"type": "web_search_preview"}],
+                    )
             except (APIError, APIConnectionError, RateLimitError) as exc:
                 logger.error(
                     "Content analysis request failed: %s",

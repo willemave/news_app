@@ -125,6 +125,36 @@ struct DiscoveryDismissResponse: Codable {
     let dismissed: [Int]
 }
 
+struct DiscoveryPodcastSearchResult: Codable, Identifiable {
+    let title: String
+    let episodeURL: String
+    let podcastTitle: String?
+    let source: String?
+    let snippet: String?
+    let feedURL: String?
+    let publishedAt: String?
+    let provider: String?
+    let score: Double?
+
+    var id: String { episodeURL }
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case episodeURL = "episode_url"
+        case podcastTitle = "podcast_title"
+        case source
+        case snippet
+        case feedURL = "feed_url"
+        case publishedAt = "published_at"
+        case provider
+        case score
+    }
+}
+
+struct DiscoveryPodcastSearchResponse: Codable {
+    let results: [DiscoveryPodcastSearchResult]
+}
+
 extension DiscoverySuggestion {
     var displayTitle: String {
         if let title, !title.isEmpty {

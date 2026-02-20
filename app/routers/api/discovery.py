@@ -28,8 +28,11 @@ from app.routers.api.models import (
     DiscoverySubscribeResponse,
     DiscoverySuggestionResponse,
     DiscoverySuggestionsResponse,
+    PodcastEpisodeSearchResponse,
+    PodcastEpisodeSearchResultResponse,
 )
 from app.services.content_submission import submit_user_content
+from app.services.podcast_search import search_podcast_episodes
 from app.services.queue import QueueService, TaskType
 from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
 
@@ -190,6 +193,40 @@ async def get_discovery_history(
         )
 
     return DiscoveryHistoryResponse(runs=run_payloads)
+
+
+@router.get(
+    "/discovery/search/podcasts",
+    response_model=PodcastEpisodeSearchResponse,
+    summary="Search podcast episodes online",
+)
+async def search_discovery_podcast_episodes(
+    q: str = Query(
+        ...,
+        min_length=2,
+        max_length=200,
+        description="Podcast episode search query",
+    ),
+    limit: int = Query(10, ge=1, le=25),
+    _current_user: User = Depends(get_current_user),
+) -> PodcastEpisodeSearchResponse:
+    results = search_podcast_episodes(query=q, limit=limit)
+    return PodcastEpisodeSearchResponse(
+        results=[
+            PodcastEpisodeSearchResultResponse(
+                title=item.title,
+                episode_url=item.episode_url,
+                podcast_title=item.podcast_title,
+                source=item.source,
+                snippet=item.snippet,
+                feed_url=item.feed_url,
+                published_at=item.published_at,
+                provider=item.provider,
+                score=item.score,
+            )
+            for item in results
+        ]
+    )
 
 
 @router.post(

@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.db import init_db
 from app.core.logging import get_logger, setup_logging
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
+from app.services.langfuse_tracing import flush_langfuse_tracing, initialize_langfuse_tracing
 from app.services.queue import TaskQueue, get_queue_service
 
 logger = get_logger(__name__)
@@ -51,6 +52,7 @@ def main():
     # Setup logging
     log_level = "DEBUG" if args.debug else "INFO"
     setup_logging(level=log_level)
+    initialize_langfuse_tracing()
 
     logger.info("=" * 60)
     logger.info("Sequential Task Processor")
@@ -134,6 +136,8 @@ def main():
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
         return 1
+    finally:
+        flush_langfuse_tracing()
 
     return 0
 

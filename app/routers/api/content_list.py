@@ -28,7 +28,13 @@ from app.repositories.content_repository import (
     build_visibility_context,
     sqlite_fts_available,
 )
-from app.routers.api.models import ContentListResponse, ContentSummaryResponse
+from app.routers.api.models import (
+    ContentListResponse,
+    ContentSummaryResponse,
+    PodcastEpisodeSearchResponse,
+    PodcastEpisodeSearchResultResponse,
+)
+from app.services.podcast_search import search_podcast_episodes
 from app.utils.pagination import PaginationCursor
 
 logger = get_logger(__name__)
@@ -484,4 +490,42 @@ def search_contents(
             page_size=len(content_summaries),
             total=total,
         ),
+    )
+
+
+@router.get(
+    "/search/podcasts",
+    response_model=PodcastEpisodeSearchResponse,
+    summary="Search for podcast episodes across the web",
+    description=(
+        "Search external podcast episode pages and return addable episode URLs. "
+        "Uses the same online discovery search infrastructure with provider fallbacks."
+    ),
+)
+def search_podcast_episode_matches(
+    current_user: Annotated[User, Depends(get_current_user)],
+    q: str = Query(
+        ..., min_length=2, max_length=200, description="Podcast search query (min 2 characters)"
+    ),
+    limit: int = Query(10, ge=1, le=25, description="Max episode matches to return"),
+) -> PodcastEpisodeSearchResponse:
+    """Search external podcast episodes for direct add-to-inbox flows."""
+    del current_user  # Require auth for parity with other content search endpoints.
+
+    results = search_podcast_episodes(query=q, limit=limit)
+    return PodcastEpisodeSearchResponse(
+        results=[
+            PodcastEpisodeSearchResultResponse(
+                title=result.title,
+                episode_url=result.episode_url,
+                podcast_title=result.podcast_title,
+                source=result.source,
+                snippet=result.snippet,
+                feed_url=result.feed_url,
+                published_at=result.published_at,
+                provider=result.provider,
+                score=result.score,
+            )
+            for result in results
+        ]
     )

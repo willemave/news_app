@@ -276,6 +276,26 @@ class DiscoveryDismissResponse(BaseModel):
     dismissed: list[int] = Field(default_factory=list)
 
 
+class PodcastEpisodeSearchResultResponse(BaseModel):
+    """Single podcast episode search result."""
+
+    title: str
+    episode_url: str
+    podcast_title: str | None = None
+    source: str | None = None
+    snippet: str | None = None
+    feed_url: str | None = None
+    published_at: str | None = None
+    provider: str | None = None
+    score: float | None = None
+
+
+class PodcastEpisodeSearchResponse(BaseModel):
+    """Response payload for podcast episode search."""
+
+    results: list[PodcastEpisodeSearchResultResponse] = Field(default_factory=list)
+
+
 class DetectedFeed(BaseModel):
     """Detected RSS/Atom feed from content page."""
 

@@ -18,6 +18,10 @@ from PIL import Image
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentType
+from app.services.langfuse_tracing import (
+    extract_google_usage_details,
+    langfuse_generation_context,
+)
 from app.utils.image_paths import (
     get_content_images_dir,
     get_news_thumbnails_dir,
@@ -437,14 +441,26 @@ class ImageGenerationService:
             prompt = _build_news_thumbnail_prompt(content)
             logger.debug("News thumbnail prompt for %s: %s", content_id, prompt[:200])
 
-            response = self.client.models.generate_content(
+            with langfuse_generation_context(
+                name="queue.image_generation.news_thumbnail",
                 model=NEWS_THUMBNAIL_MODEL,
-                contents=prompt,
-                config=GenerateContentConfig(
-                    response_modalities=["IMAGE"],
-                    image_config=ImageConfig(aspect_ratio="1:1"),
-                ),
-            )
+                input_data=prompt,
+                metadata={"source": "queue", "content_id": content_id},
+            ) as generation:
+                response = self.client.models.generate_content(
+                    model=NEWS_THUMBNAIL_MODEL,
+                    contents=prompt,
+                    config=GenerateContentConfig(
+                        response_modalities=["IMAGE"],
+                        image_config=ImageConfig(aspect_ratio="1:1"),
+                    ),
+                )
+                usage_details = extract_google_usage_details(response)
+                if generation is not None:
+                    generation.update(
+                        output="generated_news_thumbnail",
+                        usage_details=usage_details,
+                    )
 
             image_path = get_news_thumbnails_dir() / f"{content_id}.png"
             image_saved = False
@@ -501,17 +517,29 @@ class ImageGenerationService:
             prompt = _build_infographic_prompt(content)
             logger.debug("Infographic prompt for %s: %s", content_id, prompt[:200])
 
-            response = self.client.models.generate_content(
+            with langfuse_generation_context(
+                name="queue.image_generation.infographic",
                 model=INFOGRAPHIC_MODEL,
-                contents=prompt,
-                config=GenerateContentConfig(
-                    response_modalities=["IMAGE"],
-                    image_config=ImageConfig(
-                        aspect_ratio="16:9",
-                        image_size="1K",
+                input_data=prompt,
+                metadata={"source": "queue", "content_id": content_id},
+            ) as generation:
+                response = self.client.models.generate_content(
+                    model=INFOGRAPHIC_MODEL,
+                    contents=prompt,
+                    config=GenerateContentConfig(
+                        response_modalities=["IMAGE"],
+                        image_config=ImageConfig(
+                            aspect_ratio="16:9",
+                            image_size="1K",
+                        ),
                     ),
-                ),
-            )
+                )
+                usage_details = extract_google_usage_details(response)
+                if generation is not None:
+                    generation.update(
+                        output="generated_infographic",
+                        usage_details=usage_details,
+                    )
 
             image_path = get_content_images_dir() / f"{content_id}.png"
             image_saved = False

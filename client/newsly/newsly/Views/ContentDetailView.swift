@@ -10,6 +10,11 @@ import MarkdownUI
 import UIKit
 import os.log
 
+private enum DiscussionTab: String, CaseIterable {
+    case comments = "Comments"
+    case links = "Links"
+}
+
 // MARK: - Design Tokens
 private enum DetailDesign {
     // Spacing
@@ -72,6 +77,8 @@ struct ContentDetailView: View {
     @State private var showDiscussionSheet: Bool = false
     @State private var discussionPayload: ContentDiscussion?
     @State private var isLoadingDiscussion: Bool = false
+    @State private var discussionTab: DiscussionTab = .comments
+    @State private var collapsedCommentIDs: Set<String> = Set()
     // Swipe haptic feedback
     @State private var didTriggerSwipeHaptic: Bool = false
     // Transcript/Full Article collapsed state
@@ -528,7 +535,7 @@ struct ContentDetailView: View {
     }
 
     private func deepDivePrompt(for content: ContentDetail) -> String {
-        "Dig deeper into the key points of \(content.displayTitle). For each main point, explain reasoning, supporting evidence, and practical implications. Keep answers concise and numbered."
+        "Dig deeper into the key points of \(content.displayTitle). For each main point, explain reasoning, supporting evidence, and include a bit more detail explaining the point. Also pull out key ideas from the discussion context when available, and add more insights from the discussion, including notable agreements and disagreements. Keep answers concise and numbered."
     }
 
     private func corroboratePrompt(for content: ContentDetail) -> String {
@@ -627,13 +634,21 @@ struct ContentDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(isInlineNarrationActive(for: content) ? "Stop summary narration" : "Narrate summary here")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                        Text(isInlineNarrationActive(for: content) ? "End spoken playback" : "Stay on this article while it speaks")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Text(
+                            isInlineNarrationActive(for: content)
+                                ? "Stop summary narration"
+                                : "Narrate summary here"
+                        )
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        Text(
+                            isInlineNarrationActive(for: content)
+                                ? "End spoken playback"
+                                : "Stay on this page while it speaks"
+                        )
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                     }
 
                     Spacer()
@@ -728,6 +743,9 @@ struct ContentDetailView: View {
             if inlineNarrationViewModel.isAwaitingAssistant {
                 return "Preparing spoken summary..."
             }
+            if inlineNarrationViewModel.isListening {
+                return "Listening for follow-up..."
+            }
             return "Summary narration is ready."
         case .failed(let message):
             return message
@@ -777,6 +795,7 @@ struct ContentDetailView: View {
         inlineNarrationAutoStopTask?.cancel()
         guard case .connected = inlineNarrationViewModel.connectionState else { return }
         guard inlineNarrationContentId != nil else { return }
+        guard !inlineNarrationViewModel.isListening else { return }
         guard !inlineNarrationViewModel.isAwaitingAssistant else { return }
         guard !inlineNarrationViewModel.isAssistantSpeaking else { return }
         guard !inlineNarrationViewModel.assistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -784,9 +803,12 @@ struct ContentDetailView: View {
         }
 
         inlineNarrationAutoStopTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 900_000_000)
+            try? await Task.sleep(nanoseconds: 45_000_000_000)
             guard !Task.isCancelled else { return }
             guard case .connected = inlineNarrationViewModel.connectionState else { return }
+            guard !inlineNarrationViewModel.isListening else { return }
+            guard !inlineNarrationViewModel.isAssistantSpeaking else { return }
+            guard !inlineNarrationViewModel.isAwaitingAssistant else { return }
             await teardownInlineNarration()
         }
     }
@@ -1033,7 +1055,15 @@ struct ContentDetailView: View {
                     await handleChatButtonTapped(content)
                 }
             }) {
-                minimalActionIcon("brain.head.profile")
+                if isStartingChat {
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundColor(.accentColor)
+                        .frame(width: 44, height: 44)
+                        .symbolEffect(.pulse, options: .repeating)
+                } else {
+                    minimalActionIcon("brain.head.profile")
+                }
             }
             .disabled(isCheckingChatSession)
             .accessibilityIdentifier("content.action.deep_dive")
@@ -1307,18 +1337,6 @@ struct ContentDetailView: View {
             audioPromptCard(for: content)
                 .padding(.horizontal, 20)
 
-            if isStartingChat {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Starting conversation...")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-            }
-
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(.systemBackground))
@@ -1340,6 +1358,8 @@ struct ContentDetailView: View {
             let discussion = try await ContentService.shared.fetchContentDiscussion(id: content.id)
             if discussion.hasRenderableContent {
                 discussionPayload = discussion
+                discussionTab = .comments
+                collapsedCommentIDs = []
                 showDiscussionSheet = true
             } else {
                 openURL(fallbackURL)
@@ -1352,85 +1372,71 @@ struct ContentDetailView: View {
     @ViewBuilder
     private var discussionSheet: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if let discussion = discussionPayload {
-                        if discussion.mode == "discussion_list" {
-                            if discussion.discussionGroups.isEmpty {
-                                Text("No discussion links available.")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            } else {
-                                ForEach(discussion.discussionGroups) { group in
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text(group.label)
-                                            .font(.headline)
-                                        ForEach(group.items) { item in
-                                            if let url = URL(string: item.url) {
-                                                Link(destination: url) {
-                                                    HStack(spacing: 8) {
-                                                        Image(systemName: "arrow.up.right.square")
-                                                        Text(item.title)
-                                                            .multilineTextAlignment(.leading)
+            Group {
+                if let discussion = discussionPayload {
+                    if discussion.mode == "discussion_list" {
+                        // Techmeme-style grouped links — no tabs
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                if discussion.discussionGroups.isEmpty {
+                                    Text("No discussion links available.")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    ForEach(discussion.discussionGroups) { group in
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text(group.label)
+                                                .font(.headline)
+                                            ForEach(group.items) { item in
+                                                if let url = URL(string: item.url) {
+                                                    Link(destination: url) {
+                                                        HStack(spacing: 8) {
+                                                            Image(systemName: "arrow.up.right.square")
+                                                            Text(item.title)
+                                                                .multilineTextAlignment(.leading)
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
+                                        .padding(.bottom, 4)
                                     }
-                                    .padding(.bottom, 4)
                                 }
                             }
-                        } else {
-                            if discussion.comments.isEmpty {
-                                Text("No comments available.")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            } else {
-                                ForEach(discussion.comments) { comment in
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack {
-                                            Text(comment.author ?? "unknown")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                            Spacer()
-                                            if comment.depth > 0 {
-                                                Text("Depth \(comment.depth)")
-                                                    .font(.caption2)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                        }
-                                        Text(comment.compactText ?? comment.text)
-                                            .font(.callout)
-                                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                        }
+                    } else {
+                        // Comments mode — segmented tabs
+                        VStack(spacing: 0) {
+                            if !discussion.links.isEmpty {
+                                Picker("Tab", selection: $discussionTab) {
+                                    ForEach(DiscussionTab.allCases, id: \.self) { tab in
+                                        Text(tab.rawValue).tag(tab)
                                     }
-                                    .padding(12)
-                                    .background(Color(.secondarySystemBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
+                                .pickerStyle(.segmented)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
                             }
 
-                            if !discussion.links.isEmpty {
-                                Divider().padding(.vertical, 8)
-                                Text("Links")
-                                    .font(.headline)
-                                ForEach(discussion.links) { link in
-                                    if let url = URL(string: link.url) {
-                                        Link(destination: url) {
-                                            Text(link.title ?? link.url)
-                                                .font(.callout)
-                                        }
-                                    }
+                            ScrollView {
+                                let commentIndex = buildDiscussionCommentIndex(from: discussion.comments)
+                                switch discussionTab {
+                                case .comments:
+                                    commentsTabContent(commentIndex: commentIndex)
+                                case .links:
+                                    linksTabContent(discussion: discussion, commentsByID: commentIndex.commentsByID)
                                 }
                             }
                         }
-                    } else {
-                        Text("No discussion available.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
                     }
+                } else {
+                    Text("No discussion available.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
             }
             .navigationTitle("Discussion")
             .navigationBarTitleDisplayMode(.inline)
@@ -1440,6 +1446,232 @@ struct ContentDetailView: View {
                 }
             }
         }
+    }
+
+    private struct DiscussionCommentIndex {
+        let orderedComments: [DiscussionComment]
+        let commentsByID: [String: DiscussionComment]
+        let descendantCountByID: [String: Int]
+    }
+
+    /// Build one reusable index for comment rendering.
+    private func buildDiscussionCommentIndex(from comments: [DiscussionComment]) -> DiscussionCommentIndex {
+        guard !comments.isEmpty else {
+            return DiscussionCommentIndex(orderedComments: [], commentsByID: [:], descendantCountByID: [:])
+        }
+
+        var commentsByID: [String: DiscussionComment] = [:]
+        var childrenByParentID: [String: [DiscussionComment]] = [:]
+        var roots: [DiscussionComment] = []
+
+        for comment in comments {
+            commentsByID[comment.commentID] = comment
+            if let parentID = comment.parentID {
+                childrenByParentID[parentID, default: []].append(comment)
+            } else {
+                roots.append(comment)
+            }
+        }
+
+        if roots.isEmpty {
+            roots = comments.filter { $0.depth == 0 }
+        }
+        if roots.isEmpty {
+            roots = comments
+        }
+
+        var orderedComments: [DiscussionComment] = []
+        var stack = Array(roots.reversed())
+        while let current = stack.popLast() {
+            orderedComments.append(current)
+            if let children = childrenByParentID[current.commentID] {
+                for child in children.reversed() {
+                    stack.append(child)
+                }
+            }
+        }
+
+        var descendantCountByID: [String: Int] = [:]
+
+        func computeDescendantCount(for commentID: String) -> Int {
+            if let cached = descendantCountByID[commentID] {
+                return cached
+            }
+
+            let children = childrenByParentID[commentID] ?? []
+            let total = children.reduce(0) { partialResult, child in
+                partialResult + 1 + computeDescendantCount(for: child.commentID)
+            }
+            descendantCountByID[commentID] = total
+            return total
+        }
+
+        for comment in comments {
+            _ = computeDescendantCount(for: comment.commentID)
+        }
+
+        return DiscussionCommentIndex(
+            orderedComments: orderedComments,
+            commentsByID: commentsByID,
+            descendantCountByID: descendantCountByID
+        )
+    }
+
+    /// Whether a comment should be hidden because an ancestor is collapsed.
+    private func isHiddenByCollapse(
+        _ comment: DiscussionComment,
+        commentsByID: [String: DiscussionComment]
+    ) -> Bool {
+        guard !collapsedCommentIDs.isEmpty else { return false }
+        var current = comment
+        while let pid = current.parentID, let parent = commentsByID[pid] {
+            if collapsedCommentIDs.contains(parent.commentID) {
+                return true
+            }
+            current = parent
+        }
+        return false
+    }
+
+    @ViewBuilder
+    private func commentsTabContent(commentIndex: DiscussionCommentIndex) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if commentIndex.orderedComments.isEmpty {
+                Text("No comments available.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 20)
+                    .frame(maxWidth: .infinity)
+            } else {
+                ForEach(commentIndex.orderedComments) { comment in
+                    if !isHiddenByCollapse(comment, commentsByID: commentIndex.commentsByID) {
+                        let indent = CGFloat(min(comment.depth, 5)) * 16
+                        let isCollapsed = collapsedCommentIDs.contains(comment.commentID)
+                        let childCount = commentIndex.descendantCountByID[comment.commentID] ?? 0
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Text(comment.author ?? "unknown")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
+
+                                if isCollapsed && childCount > 0 {
+                                    Text("+\(childCount)")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.orange)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Color.orange.opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
+
+                                Spacer()
+
+                                if childCount > 0 {
+                                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary.opacity(0.6))
+                                }
+                            }
+
+                            if !isCollapsed {
+                                Text(comment.compactText ?? comment.text)
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(12)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(alignment: .leading) {
+                            if comment.depth > 0 {
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .fill(Color.orange)
+                                    .frame(width: 3)
+                                    .padding(.vertical, 4)
+                            }
+                        }
+                        .padding(.leading, indent)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard childCount > 0 else { return }
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                if isCollapsed {
+                                    collapsedCommentIDs.remove(comment.commentID)
+                                } else {
+                                    collapsedCommentIDs.insert(comment.commentID)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+    }
+
+    @ViewBuilder
+    private func linksTabContent(
+        discussion: ContentDiscussion,
+        commentsByID: [String: DiscussionComment]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if discussion.links.isEmpty {
+                Text("No links found.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 20)
+                    .frame(maxWidth: .infinity)
+            } else {
+                ForEach(discussion.links) { link in
+                    if let url = URL(string: link.url) {
+                        Link(destination: url) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(link.title ?? link.url)
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(2)
+
+                                Text(link.url)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+
+                                // Show originating comment snippet
+                                if let commentID = link.commentID,
+                                   let comment = commentsByID[commentID] {
+                                    Text(comment.compactText ?? String(comment.text.prefix(120)))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(2)
+                                        .padding(.top, 2)
+                                }
+
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption2)
+                                    Text(link.source)
+                                        .font(.caption2)
+                                }
+                                .foregroundColor(.accentColor)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
     }
 
     // MARK: - Modern Section Components (Flat, no borders)

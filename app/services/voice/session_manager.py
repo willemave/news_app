@@ -26,6 +26,7 @@ class VoiceSessionState:
     is_onboarding_intro: bool = False
     content_context: str | None = None
     content_title: str | None = None
+    summary_narration: str | None = None
     message_history: list[ModelMessage] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -84,6 +85,7 @@ def configure_voice_session(
     is_onboarding_intro: bool = False,
     content_context: str | None,
     content_title: str | None,
+    summary_narration: str | None = None,
 ) -> VoiceSessionState | None:
     """Attach launch metadata to an in-memory voice session."""
 
@@ -99,6 +101,7 @@ def configure_voice_session(
         state.is_onboarding_intro = is_onboarding_intro
         state.content_context = content_context
         state.content_title = content_title
+        state.summary_narration = summary_narration
         state.updated_at = datetime.now(UTC)
         return state
 

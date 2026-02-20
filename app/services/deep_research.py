@@ -9,13 +9,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
 
-from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
+from openai import APIConnectionError, APIError, RateLimitError
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
+from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_models import DEEP_RESEARCH_MODEL
+
+try:
+    from langfuse.openai import AsyncOpenAI
+except Exception:  # noqa: BLE001
+    from openai import AsyncOpenAI
 
 logger = get_logger(__name__)
 
@@ -320,6 +326,9 @@ async def process_deep_research_message(
     session_id: int,
     message_id: int,
     user_prompt: str,
+    *,
+    source: str = "realtime",
+    task_id: int | None = None,
 ) -> None:
     """Process a deep research message asynchronously.
 
@@ -331,6 +340,8 @@ async def process_deep_research_message(
         session_id: Chat session ID.
         message_id: ChatMessage ID to update on completion.
         user_prompt: The user's research query.
+        source: Request source label (`realtime` or `queue`).
+        task_id: Optional queue task identifier.
     """
     from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
@@ -386,18 +397,31 @@ async def process_deep_research_message(
 
         # Start the deep research
         client = get_deep_research_client()
-        response_id = await client.start_research(user_prompt, context)
+        with langfuse_trace_context(
+            trace_name="chat.deep_research",
+            user_id=session.user_id,
+            session_id=session.id,
+            metadata={
+                "source": source,
+                "model_spec": DEEP_RESEARCH_MODEL,
+                "content_id": session.content_id,
+                "message_id": message_id,
+                "task_id": task_id,
+            },
+            tags=["chat", "deep_research", source],
+        ):
+            response_id = await client.start_research(user_prompt, context)
 
-        logger.info(
-            "[DeepResearch:SUBMITTED] sid=%s mid=%s response_id=%s user_id=%s",
-            session_id,
-            message_id,
-            response_id,
-            session.user_id,
-        )
+            logger.info(
+                "[DeepResearch:SUBMITTED] sid=%s mid=%s response_id=%s user_id=%s",
+                session_id,
+                message_id,
+                response_id,
+                session.user_id,
+            )
 
-        # Wait for completion
-        result = await client.wait_for_completion(response_id)
+            # Wait for completion
+            result = await client.wait_for_completion(response_id)
 
         if result.status in ("succeeded", "completed") and result.output_text:
             # Build the message list with user request and assistant response

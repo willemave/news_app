@@ -13,6 +13,7 @@ from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.services.admin_conversational_agent import search_knowledge, search_web
+from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_models import build_pydantic_model
 
 logger = get_logger(__name__)
@@ -390,8 +391,9 @@ async def stream_voice_agent_turn(
 
     if launch_mode == "dictate_summary":
         summary_instructions = (
-            "The user launched dictate-summary mode. Prefer a concise spoken summary first, "
-            "then offer one optional follow-up question."
+            "The user launched dictate-summary mode. Start with a spoken summary "
+            "that is detailed enough for audio playback (roughly 45 to 90 seconds), "
+            "then invite follow-up questions."
         )
         if turn_instructions:
             turn_instructions = f"{turn_instructions}\n\n{summary_instructions}"
@@ -431,41 +433,51 @@ async def stream_voice_agent_turn(
         )
 
     try:
-        async with agent.run_stream(
-            user_prompt=prompt_text,
-            message_history=message_history,
-            deps=deps,
-            instructions=turn_instructions,
-        ) as stream_result:
-            delta_count = 0
-            async for text_delta in stream_result.stream_text(delta=True, debounce_by=0):
-                if not text_delta:
-                    continue
-                delta_count += 1
-                text_fragments.append(text_delta)
-                await on_text_delta(text_delta)
+        with langfuse_trace_context(
+            trace_name="voice.turn",
+            user_id=user_id,
+            metadata={
+                "source": "realtime",
+                "model_spec": model_spec,
+                "launch_mode": launch_mode,
+            },
+            tags=["realtime", "voice"],
+        ):
+            async with agent.run_stream(
+                user_prompt=prompt_text,
+                message_history=message_history,
+                deps=deps,
+                instructions=turn_instructions,
+            ) as stream_result:
+                delta_count = 0
+                async for text_delta in stream_result.stream_text(delta=True, debounce_by=0):
+                    if not text_delta:
+                        continue
+                    delta_count += 1
+                    text_fragments.append(text_delta)
+                    await on_text_delta(text_delta)
 
-            final_text = "".join(text_fragments).strip()
-            if settings.voice_trace_logging:
-                logger.info(
-                    "Voice turn completed",
-                    extra={
-                        "component": "voice_agent",
-                        "operation": "turn_complete",
-                        "item_id": user_id,
-                        "context_data": {
-                            "delta_count": delta_count,
-                            "assistant_chars": len(final_text),
-                            "assistant_preview": _truncate_for_trace(final_text),
-                            "model_spec": model_spec,
+                final_text = "".join(text_fragments).strip()
+                if settings.voice_trace_logging:
+                    logger.info(
+                        "Voice turn completed",
+                        extra={
+                            "component": "voice_agent",
+                            "operation": "turn_complete",
+                            "item_id": user_id,
+                            "context_data": {
+                                "delta_count": delta_count,
+                                "assistant_chars": len(final_text),
+                                "assistant_preview": _truncate_for_trace(final_text),
+                                "model_spec": model_spec,
+                            },
                         },
-                    },
+                    )
+                return VoiceAgentResult(
+                    assistant_text=final_text,
+                    new_messages=stream_result.new_messages(),
+                    model_spec=model_spec,
                 )
-            return VoiceAgentResult(
-                assistant_text=final_text,
-                new_messages=stream_result.new_messages(),
-                model_spec=model_spec,
-            )
     except Exception:
         logger.exception(
             "Voice turn failed in model stream",

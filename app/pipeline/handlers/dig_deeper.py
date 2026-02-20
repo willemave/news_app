@@ -60,7 +60,7 @@ class DigDeeperHandler:
             )
 
         try:
-            run_dig_deeper_message(session_id, message_id, prompt)
+            run_dig_deeper_message(session_id, message_id, prompt, task_id=task.id)
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "DIG_DEEPER_TASK_ERROR: Failed to process message for content %s",

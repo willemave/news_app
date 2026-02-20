@@ -14,12 +14,11 @@ struct DiscoveryRunSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Run title — SectionHeader style
             VStack(alignment: .leading, spacing: 4) {
-                Text(runTitle(for: run.runCreatedAt))
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-                    .textCase(.uppercase)
+                Text(runTitle(for: run.runCreatedAt).uppercased())
+                    .font(.sectionHeader)
+                    .foregroundStyle(Color.textTertiary)
                     .tracking(0.5)
 
                 if let summary = run.directionSummary, !summary.isEmpty {
@@ -37,26 +36,38 @@ struct DiscoveryRunSection: View {
 
             if !run.feeds.isEmpty {
                 typeSectionHeader(title: "Feeds", icon: "doc.text", color: .blue, count: run.feeds.count)
-                suggestionCards(run.feeds)
+                suggestionCards(run.feeds, type: "feed")
             }
 
             if !run.podcasts.isEmpty {
+                if !run.feeds.isEmpty {
+                    sectionDivider
+                }
                 typeSectionHeader(title: "Podcasts", icon: "waveform", color: .orange, count: run.podcasts.count)
-                suggestionCards(run.podcasts)
+                suggestionCards(run.podcasts, type: "podcast_rss")
             }
 
             if !run.youtube.isEmpty {
+                if !run.feeds.isEmpty || !run.podcasts.isEmpty {
+                    sectionDivider
+                }
                 typeSectionHeader(title: "YouTube", icon: "play.rectangle.fill", color: .red, count: run.youtube.count)
-                suggestionCards(run.youtube)
+                suggestionCards(run.youtube, type: "youtube")
             }
         }
     }
 
     private func typeSectionHeader(title: String, icon: String, color: Color, count: Int) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundColor(.secondary)
+            // Colored icon badge
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.12))
+                    .frame(width: 28, height: 28)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(color)
+            }
 
             Text(title)
                 .font(.subheadline)
@@ -64,9 +75,14 @@ struct DiscoveryRunSection: View {
                 .foregroundColor(.primary)
 
             Text("\(count)")
-                .font(.caption)
+                .font(.caption2)
+                .fontWeight(.medium)
                 .foregroundColor(.secondary)
                 .monospacedDigit()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color(.tertiarySystemFill))
+                .cornerRadius(4)
 
             Spacer()
         }
@@ -75,11 +91,18 @@ struct DiscoveryRunSection: View {
         .padding(.bottom, 12)
     }
 
-    private func suggestionCards(_ suggestions: [DiscoverySuggestion]) -> some View {
-        VStack(spacing: 12) {
+    private var sectionDivider: some View {
+        Divider()
+            .padding(.horizontal, Spacing.screenHorizontal)
+            .padding(.top, 8)
+    }
+
+    private func suggestionCards(_ suggestions: [DiscoverySuggestion], type: String) -> some View {
+        VStack(spacing: 10) {
             ForEach(suggestions) { suggestion in
                 DiscoverySuggestionCard(
                     suggestion: suggestion,
+                    suggestionType: suggestion.suggestionType.isEmpty ? type : suggestion.suggestionType,
                     onSubscribe: { onSubscribe(suggestion) },
                     onAddItem: suggestion.hasItem ? { onAddItem(suggestion) } : nil,
                     onOpen: { onOpen(suggestion) },

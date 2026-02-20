@@ -24,6 +24,7 @@ from app.pipeline.task_context import TaskContext
 from app.pipeline.task_handler import TaskHandler
 from app.pipeline.task_models import TaskEnvelope, TaskResult
 from app.pipeline.worker import get_llm_service
+from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.queue import QueueService, TaskQueue
 
 logger = get_logger(__name__)
@@ -81,37 +82,54 @@ class SequentialTaskProcessor:
         """Process a single task."""
         task_id = task.id
         start_time = time.time()
+        raw_user_id = task.payload.get("user_id")
+        user_id: str | int | None = raw_user_id if isinstance(raw_user_id, (int, str)) else None
+        metadata = {
+            "source": "queue",
+            "queue_name": self.queue_name,
+            "task_id": task.id,
+            "task_type": task.task_type.value,
+            "content_id": task.content_id,
+            "retry_count": task.retry_count,
+        }
 
-        try:
-            logger.info("Processing task %s of type %s", task_id, task.task_type)
-            logger.debug("Task %s data: %s", task_id, task.to_legacy_task_data())
-            result = self.dispatcher.dispatch(task, self.context)
-            if not result.success and not result.error_message:
-                result = TaskResult(
-                    success=False,
-                    error_message=f"{task.task_type.value} returned False",
-                    retry_delay_seconds=result.retry_delay_seconds,
-                    retryable=result.retryable,
+        with langfuse_trace_context(
+            trace_name=f"queue.{task.task_type.value.lower()}",
+            user_id=user_id,
+            session_id=self.worker_id,
+            metadata=metadata,
+            tags=["queue", self.queue_name, task.task_type.value.lower()],
+        ):
+            try:
+                logger.info("Processing task %s of type %s", task_id, task.task_type)
+                logger.debug("Task %s data: %s", task_id, task.to_legacy_task_data())
+                result = self.dispatcher.dispatch(task, self.context)
+                if not result.success and not result.error_message:
+                    result = TaskResult(
+                        success=False,
+                        error_message=f"{task.task_type.value} returned False",
+                        retry_delay_seconds=result.retry_delay_seconds,
+                        retryable=result.retryable,
+                    )
+                elapsed = time.time() - start_time
+                logger.info(
+                    "Task %s completed in %.2fs with result: %s",
+                    task_id,
+                    elapsed,
+                    result.success,
                 )
-            elapsed = time.time() - start_time
-            logger.info(
-                "Task %s completed in %.2fs with result: %s",
-                task_id,
-                elapsed,
-                result.success,
-            )
-            return result
+                return result
 
-        except Exception as exc:  # noqa: BLE001
-            elapsed = time.time() - start_time
-            logger.error(
-                "Error processing task %s after %.2fs: %s",
-                task_id,
-                elapsed,
-                exc,
-                exc_info=True,
-            )
-            return TaskResult.fail(str(exc))
+            except Exception as exc:  # noqa: BLE001
+                elapsed = time.time() - start_time
+                logger.error(
+                    "Error processing task %s after %.2fs: %s",
+                    task_id,
+                    elapsed,
+                    exc,
+                    exc_info=True,
+                )
+                return TaskResult.fail(str(exc))
 
     def run(self, max_tasks: int | None = None) -> None:
         """

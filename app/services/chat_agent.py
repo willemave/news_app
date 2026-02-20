@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.exa_client import exa_search, get_exa_client
+from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_models import (  # noqa: F401 (re-export for API schemas)
     LLMProvider as ChatModelProvider,
 )
@@ -636,18 +637,49 @@ def _run_agent_sync(
     user_prompt: str,
     deps: ChatDeps,
     history: list[ModelMessage],
+    *,
+    trace_name: str,
+    source: str,
+    task_id: int | None = None,
+    message_id: int | None = None,
 ):
     """Run the chat agent synchronously in a worker thread."""
     agent = get_chat_agent(model_spec)
-    return agent.run_sync(user_prompt, deps=deps, message_history=history)
+    metadata = {
+        "source": source,
+        "model_spec": model_spec,
+        "content_id": deps.session.content_id,
+        "task_id": task_id,
+        "message_id": message_id,
+    }
+    tags = ["chat", source]
+    with langfuse_trace_context(
+        trace_name=trace_name,
+        user_id=deps.session.user_id,
+        session_id=deps.session.id,
+        metadata=metadata,
+        tags=tags,
+    ):
+        return agent.run_sync(user_prompt, deps=deps, message_history=history)
 
 
 async def run_chat_turn(
     db: Session,
     session: ChatSession,
     user_prompt: str,
+    *,
+    source: str = "realtime",
+    task_id: int | None = None,
 ) -> ChatRunResult:
-    """Run a chat turn synchronously and persist messages."""
+    """Run a chat turn synchronously and persist messages.
+
+    Args:
+        db: Database session.
+        session: Active chat session.
+        user_prompt: User message text.
+        source: Request source label (`realtime` or `queue`).
+        task_id: Optional queue task identifier.
+    """
     trimmed_prompt = user_prompt.replace("\n", " ")[:500]
     if len(user_prompt) > 500:
         trimmed_prompt = f"{trimmed_prompt}... [truncated]"
@@ -672,7 +704,14 @@ async def run_chat_turn(
     try:
         agent_start = perf_counter()
         result = await run_in_threadpool(
-            _run_agent_sync, session.llm_model, user_prompt, deps, history
+            _run_agent_sync,
+            session.llm_model,
+            user_prompt,
+            deps,
+            history,
+            trace_name="chat.turn.sync",
+            source=source,
+            task_id=task_id,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
         _log_chat_usage(result, session.id, None, "sync")
@@ -718,6 +757,9 @@ async def process_message_async(
     session_id: int,
     message_id: int,
     user_prompt: str,
+    *,
+    source: str = "realtime",
+    task_id: int | None = None,
 ) -> None:
     """Process a chat message asynchronously in the background.
 
@@ -729,6 +771,8 @@ async def process_message_async(
         session_id: Chat session ID.
         message_id: ChatMessage ID to update on completion.
         user_prompt: The user's message text.
+        source: Request source label (`realtime` or `queue`).
+        task_id: Optional queue task identifier.
     """
     from app.core.db import get_session_factory
     from app.services.event_logger import log_event
@@ -796,7 +840,15 @@ async def process_message_async(
         )
         agent_start = perf_counter()
         result = await run_in_threadpool(
-            _run_agent_sync, session.llm_model, user_prompt, deps, history
+            _run_agent_sync,
+            session.llm_model,
+            user_prompt,
+            deps,
+            history,
+            trace_name="chat.turn.async",
+            source=source,
+            task_id=task_id,
+            message_id=message_id,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
         _log_chat_usage(result, session_id, message_id, "async")
@@ -886,8 +938,18 @@ Do not mention tools, system prompts, or implementation details. Just write what
 async def generate_initial_suggestions(
     db: Session,
     session: ChatSession,
+    *,
+    source: str = "realtime",
+    task_id: int | None = None,
 ) -> ChatRunResult | None:
-    """Generate the initial assistant message for article-based sessions."""
+    """Generate the initial assistant message for article-based sessions.
+
+    Args:
+        db: Database session.
+        session: Active chat session.
+        source: Request source label (`realtime` or `queue`).
+        task_id: Optional queue task identifier.
+    """
     total_start = perf_counter()
     logger.info(
         "[InitialSuggestions] started | session_id=%s content_id=%s model=%s",
@@ -911,6 +973,9 @@ async def generate_initial_suggestions(
             INITIAL_QUESTIONS_PROMPT,
             deps,
             [],
+            trace_name="chat.initial_suggestions",
+            source=source,
+            task_id=task_id,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
         _log_chat_usage(result, session.id, None, "initial_suggestions")

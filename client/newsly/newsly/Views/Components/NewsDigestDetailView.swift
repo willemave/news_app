@@ -18,12 +18,6 @@ struct NewsDigestDetailView: View {
                 summarySection(summary: summary)
             }
 
-            // Discussion link below summary
-            if let urlString = metadata.discussionURL,
-               let url = URL(string: urlString) {
-                discussionLink(url: url, aggregatorName: metadata.aggregator?.name)
-            }
-
             if let article = metadata.article {
                 articleSection(article: article)
             }
@@ -35,44 +29,36 @@ struct NewsDigestDetailView: View {
     }
 
     @ViewBuilder
-    private func discussionLink(url: URL, aggregatorName: String?) -> some View {
-        Button(action: {
-            onDiscussionTap?(url)
-        }) {
-            HStack(spacing: 10) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.body)
-                    .foregroundColor(.orange)
-                Text("Join the discussion")
-                    .font(.callout)
-                    .fontWeight(.medium)
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color(.systemBackground))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.orange.opacity(0.28), lineWidth: 1)
-            )
-            .cornerRadius(12)
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
     private func summarySection(summary: NewsSummaryMetadata) -> some View {
         let hasOverview = summary.summary?.isEmpty == false
         let hasKeyPoints = !summary.keyPoints.isEmpty
 
         VStack(alignment: .leading, spacing: 16) {
             if hasOverview || hasKeyPoints {
-                Text("Summary")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                HStack {
+                    Text("Summary")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+
+                    Spacer()
+
+                    if let urlString = metadata.discussionURL,
+                       let url = URL(string: urlString) {
+                        Button(action: {
+                            onDiscussionTap?(url)
+                        }) {
+                            Label("Comments", systemImage: "bubble.left.and.bubble.right")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.orange.opacity(0.1))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
 
             if let overview = summary.summary, !overview.isEmpty {

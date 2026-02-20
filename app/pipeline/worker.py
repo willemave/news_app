@@ -1,5 +1,7 @@
 import asyncio
+import re
 from datetime import UTC, datetime
+from html import unescape
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
@@ -89,6 +91,23 @@ class ContentWorker:
         content.status = ContentStatus.FAILED
         content.error_message = reason
         content.processed_at = datetime.now(UTC)
+
+    @staticmethod
+    def _normalize_rss_content_text(raw_rss_content: str) -> str:
+        """Convert RSS HTML-ish content into compact plain text."""
+        without_scripts = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", raw_rss_content)
+        without_tags = re.sub(r"(?is)<[^>]+>", " ", without_scripts)
+        return re.sub(r"\s+", " ", unescape(without_tags)).strip()
+
+    @classmethod
+    def _get_rss_fallback_text(cls, metadata: dict[str, Any]) -> str:
+        """Return fallback text from RSS payload when present."""
+        rss_content = metadata.get("rss_content")
+        if not isinstance(rss_content, str) or not rss_content.strip():
+            return ""
+
+        normalized = cls._normalize_rss_content_text(rss_content)
+        return normalized if normalized else rss_content.strip()
 
     def process_content(self, content_id: int, worker_id: str) -> bool:
         """
@@ -240,6 +259,46 @@ class ContentWorker:
                 content.url = delegated_url
                 return self._process_article(content)
 
+            existing_metadata = content.metadata or {}
+            gate_page_detected = bool(extracted_data.get("gate_page_detected"))
+            gate_page_reason = extracted_data.get("extraction_error")
+            if gate_page_detected:
+                rss_fallback_text = self._get_rss_fallback_text(existing_metadata)
+                if rss_fallback_text:
+                    logger.warning(
+                        "Access gate detected for content %s; using rss_content fallback",
+                        content.id,
+                        extra={
+                            "component": "content_worker",
+                            "operation": "process_article",
+                            "item_id": str(content.id),
+                            "context_data": {
+                                "url": str(content.url),
+                                "fallback_text_len": len(rss_fallback_text),
+                                "gate_reason": gate_page_reason,
+                            },
+                        },
+                    )
+                    extracted_data["text_content"] = rss_fallback_text
+                    extracted_data["used_rss_fallback"] = True
+                    extracted_data["rss_fallback_length"] = len(rss_fallback_text)
+                    extracted_data["gate_page_reason"] = gate_page_reason
+                    extracted_data["extraction_error"] = None
+                else:
+                    logger.warning(
+                        "Access gate detected for content %s and no rss fallback is available",
+                        content.id,
+                        extra={
+                            "component": "content_worker",
+                            "operation": "process_article",
+                            "item_id": str(content.id),
+                            "context_data": {
+                                "url": str(content.url),
+                                "gate_reason": gate_page_reason,
+                            },
+                        },
+                    )
+
             # Prepare for LLM processing
             try:
                 # Handle async methods from strategies like YouTubeStrategy
@@ -284,7 +343,6 @@ class ContentWorker:
             final_url = extracted_data.get("final_url_after_redirects") or processed_url
             final_url = str(final_url)
 
-            existing_metadata = content.metadata or {}
             subscribe_to_feed = bool(existing_metadata.get("subscribe_to_feed"))
 
             if content.source_url is None:
@@ -300,6 +358,11 @@ class ContentWorker:
                 "content_type": extracted_data.get("content_type", "html"),
                 "source": existing_metadata.get("source"),  # Never overwrite source from scraper
             }
+            if extracted_data.get("used_rss_fallback"):
+                metadata_update["used_rss_fallback"] = True
+                metadata_update["rss_fallback_length"] = extracted_data.get("rss_fallback_length")
+                if extracted_data.get("gate_page_reason"):
+                    metadata_update["gate_page_reason"] = extracted_data.get("gate_page_reason")
             if subscribe_to_feed:
                 metadata_update["subscribe_to_feed"] = True
 

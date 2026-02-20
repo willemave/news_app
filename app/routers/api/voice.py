@@ -45,10 +45,6 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
-AUTO_SUMMARY_SEEDED_PROMPT = (
-    "Give me a concise spoken summary of this content first, then ask one brief follow-up question."
-)
-
 
 def _extract_websocket_bearer_token(websocket: WebSocket) -> str | None:
     """Extract bearer token from websocket headers or query param."""
@@ -135,6 +131,7 @@ async def create_or_resume_voice_session(
         db,
         user_id=current_user.id,
         content_id=payload.content_id,
+        include_summary_narration=payload.launch_mode == "dictate_summary",
     )
     content_context = format_voice_content_context(context)
     chat_session = resolve_or_create_voice_chat_session(
@@ -178,6 +175,7 @@ async def create_or_resume_voice_session(
         is_onboarding_intro=is_onboarding_intro,
         content_context=content_context,
         content_title=context.title if context is not None else None,
+        summary_narration=context.summary_narration if context is not None else None,
     )
     if configured_state is None:
         raise HTTPException(status_code=404, detail="Voice session not found")
@@ -258,11 +256,14 @@ async def voice_websocket(
     orchestrator_started = False
     active_turn_task: asyncio.Task[Any] | None = None
     active_turn_id: str | None = None
+    active_turn_is_intro = False
     auto_summary_requested = bool(
         state.launch_mode == "dictate_summary"
-        and state.content_context
+        and state.summary_narration
         and not state.message_history
     )
+    auto_summary_text = (state.summary_narration or "").strip()
+    read_only_summary_mode = state.launch_mode == "dictate_summary"
     auto_summary_started = False
     receive_task: asyncio.Task[Any] = asyncio.create_task(websocket.receive_json())
 
@@ -271,6 +272,7 @@ async def voice_websocket(
 
     async def start_auto_summary_turn() -> None:
         nonlocal orchestrator, active_turn_task, active_turn_id, auto_summary_started
+        nonlocal active_turn_is_intro
 
         if not auto_summary_requested or auto_summary_started:
             return
@@ -289,11 +291,13 @@ async def voice_websocket(
         turn_id = f"turn_{uuid4().hex}"
         auto_summary_started = True
         active_turn_id = turn_id
+        active_turn_is_intro = False
         log_ws_trace("auto_summary_started", {"turn_id": turn_id})
         active_turn_task = asyncio.create_task(
-            orchestrator.process_text_turn(
+            orchestrator.process_scripted_turn(
                 turn_id,
-                AUTO_SUMMARY_SEEDED_PROMPT,
+                auto_summary_text,
+                model="system:summary_narration",
             )
         )
 
@@ -413,6 +417,7 @@ async def voice_websocket(
                             )
                         )
                         active_turn_id = intro_turn_id
+                        active_turn_is_intro = True
                         set_voice_session_intro_pending(
                             session_id=session_id,
                             user_id=user.id,
@@ -420,6 +425,17 @@ async def voice_websocket(
                         )
                     elif auto_summary_requested:
                         await start_auto_summary_turn()
+                    elif read_only_summary_mode:
+                        is_open = await emit(
+                            {
+                                "type": "error",
+                                "code": "summary_unavailable",
+                                "message": "No processed summary is available to narrate yet.",
+                                "retryable": False,
+                            }
+                        )
+                        if not is_open:
+                            return
                     continue
 
                 if event_type == "session.end":
@@ -446,6 +462,17 @@ async def voice_websocket(
                         return
                     if auto_summary_requested:
                         await start_auto_summary_turn()
+                    elif read_only_summary_mode:
+                        is_open = await emit(
+                            {
+                                "type": "error",
+                                "code": "summary_unavailable",
+                                "message": "No processed summary is available to narrate yet.",
+                                "retryable": False,
+                            }
+                        )
+                        if not is_open:
+                            return
                     continue
 
                 if event_type == "response.cancel":
@@ -458,6 +485,7 @@ async def voice_websocket(
                     await _cancel_task(active_turn_task)
                     active_turn_task = None
                     active_turn_id = None
+                    active_turn_is_intro = False
                     is_open = await emit(
                         {
                             "type": "response.cancelled",
@@ -470,6 +498,19 @@ async def voice_websocket(
                     continue
 
                 if event_type == "audio.frame":
+                    if read_only_summary_mode:
+                        is_open = await emit(
+                            {
+                                "type": "error",
+                                "code": "read_only_mode",
+                                "message": "Microphone input is disabled during summary narration.",
+                                "retryable": False,
+                            }
+                        )
+                        if not is_open:
+                            return
+                        continue
+
                     if orchestrator is None:
                         orchestrator = VoiceConversationOrchestrator(
                             session_id=session_id,
@@ -540,6 +581,19 @@ async def voice_websocket(
                     continue
 
                 if event_type == "audio.commit":
+                    if read_only_summary_mode:
+                        is_open = await emit(
+                            {
+                                "type": "error",
+                                "code": "read_only_mode",
+                                "message": "Microphone input is disabled during summary narration.",
+                                "retryable": False,
+                            }
+                        )
+                        if not is_open:
+                            return
+                        continue
+
                     if orchestrator is None:
                         is_open = await emit(
                             {
@@ -556,13 +610,17 @@ async def voice_websocket(
                     await _cancel_task(active_turn_task)
                     turn_id = f"turn_{uuid4().hex}"
                     active_turn_id = turn_id
+                    active_turn_is_intro = False
                     log_ws_trace("audio_commit_received", {"turn_id": turn_id})
                     active_turn_task = asyncio.create_task(orchestrator.process_turn(turn_id))
                     continue
 
             if active_turn_task is not None and active_turn_task in done:
+                completed_intro_turn = active_turn_is_intro
+                task_completed_successfully = False
                 try:
                     await active_turn_task
+                    task_completed_successfully = True
                     log_ws_trace("turn_task_completed", {})
                 except asyncio.CancelledError:
                     pass
@@ -589,6 +647,16 @@ async def voice_websocket(
                 finally:
                     active_turn_task = None
                     active_turn_id = None
+                    active_turn_is_intro = False
+
+                if (
+                    completed_intro_turn
+                    and task_completed_successfully
+                    and auto_summary_requested
+                    and not auto_summary_started
+                    and not state.is_onboarding_intro
+                ):
+                    await start_auto_summary_turn()
     finally:
         logger.info(
             "Voice websocket closing",

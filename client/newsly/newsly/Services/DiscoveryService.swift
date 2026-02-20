@@ -32,6 +32,17 @@ class DiscoveryService {
         try await client.request(APIEndpoints.discoveryRefresh, method: "POST")
     }
 
+    func searchPodcastEpisodes(
+        query: String,
+        limit: Int = 10
+    ) async throws -> DiscoveryPodcastSearchResponse {
+        let queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        return try await client.request(APIEndpoints.discoveryPodcastSearch, queryItems: queryItems)
+    }
+
     func subscribe(suggestionIds: [Int]) async throws -> DiscoverySubscribeResponse {
         let payload = DiscoverySuggestionIdsPayload(suggestionIds: suggestionIds)
         let body = try JSONEncoder().encode(payload)

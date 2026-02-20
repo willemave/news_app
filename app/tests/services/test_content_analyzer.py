@@ -62,15 +62,45 @@ class TestInferContentTypeAndPlatform:
         assert content_type == ContentType.ARTICLE
         assert platform == "custom"
 
-    def test_spotify_detected_as_podcast(self):
-        """Spotify URLs should be detected as podcast."""
+    def test_spotify_detected_as_article_with_platform(self):
+        """Spotify share URLs should be routed as article with spotify platform."""
         content_type, platform = infer_content_type_and_platform(
             "https://open.spotify.com/episode/abc123",
             provided_type=None,
             platform_hint=None,
         )
-        assert content_type == ContentType.PODCAST
+        assert content_type == ContentType.ARTICLE
         assert platform == "spotify"
+
+    def test_apple_podcasts_detected_as_podcast(self):
+        """Apple Podcasts URLs should remain podcast content."""
+        content_type, platform = infer_content_type_and_platform(
+            "https://podcasts.apple.com/us/podcast/xyz/id1592743188?i=1000745113618",
+            provided_type=None,
+            platform_hint=None,
+        )
+        assert content_type == ContentType.PODCAST
+        assert platform == "apple_podcasts"
+
+    def test_youtube_single_video_detected_as_podcast(self):
+        """Single-video YouTube URLs should map to podcast/video flow."""
+        content_type, platform = infer_content_type_and_platform(
+            "https://www.youtube.com/watch?v=abc123",
+            provided_type=None,
+            platform_hint=None,
+        )
+        assert content_type == ContentType.PODCAST
+        assert platform == "youtube"
+
+    def test_youtube_channel_detected_as_article(self):
+        """Non-video YouTube share URLs should stay in article flow."""
+        content_type, platform = infer_content_type_and_platform(
+            "https://www.youtube.com/@openai",
+            provided_type=None,
+            platform_hint=None,
+        )
+        assert content_type == ContentType.ARTICLE
+        assert platform == "youtube"
 
     def test_path_keyword_detection(self):
         """URLs with podcast keywords in path should be detected as podcast."""

@@ -148,7 +148,7 @@ final class LiveVoiceViewModel: ObservableObject {
 
             let launchMode = route?.launchMode ?? .general
             let sourceSurface = route?.sourceSurface ?? .knowledgeLive
-            let requestIntro = true
+            let requestIntro = launchMode != .dictateSummary
             didReceiveSessionReady = false
             shouldAutoStartListeningOnReady =
                 autoTurnsEnabled && launchMode != .dictateSummary && !requestIntro
@@ -179,7 +179,12 @@ final class LiveVoiceViewModel: ObservableObject {
                     "session_id": sessionResponse.sessionId
                 ]
             )
-            scheduleIntroWatchdog()
+            if launchMode != .dictateSummary {
+                scheduleIntroWatchdog()
+            } else {
+                introWatchdogTask?.cancel()
+                introWatchdogTask = nil
+            }
             connectionState = .connected
             statusMessage = "Connected"
             setAwaitingAssistant(false, reason: "connect complete")
@@ -836,7 +841,7 @@ final class LiveVoiceViewModel: ObservableObject {
                 shouldAutoStartListeningOnReady = false
             }
         } else if reason == "turn.completed" {
-            shouldStart = autoTurnsEnabled && launchMode != .dictateSummary
+            shouldStart = autoTurnsEnabled
         } else {
             shouldStart = false
         }
@@ -854,7 +859,6 @@ final class LiveVoiceViewModel: ObservableObject {
 
     private func autoResumeListening(reason: String) {
         guard autoTurnsEnabled else { return }
-        guard currentRoute?.launchMode != .dictateSummary else { return }
         guard case .connected = connectionState else { return }
         guard !isListening else { return }
         guard !isStartingListening else { return }
@@ -887,6 +891,8 @@ final class LiveVoiceViewModel: ObservableObject {
             guard case .connected = self.connectionState else { return }
             guard !self.isDisconnectRequested else { return }
             guard !self.isListening else { return }
+            let launchMode = self.currentRoute?.launchMode ?? .general
+            guard launchMode != .dictateSummary else { return }
             self.pushDebugEvent("intro watchdog forcing listening start")
             await self.startListening()
         }

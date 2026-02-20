@@ -214,6 +214,115 @@ def test_analyze_url_apple_podcasts_resolves_audio_url(
     assert updated.title == "Example Episode"
 
 
+def test_analyze_url_youtube_single_video_sets_audio_metadata(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    url = "https://www.youtube.com/watch?v=abc123xyz"
+    content = _create_content(db_session, test_user.id, url)
+
+    from app.pipeline.handlers import analyze_url as analyze_module
+
+    analyzer_mock = Mock()
+    monkeypatch.setattr(analyze_module, "get_content_analyzer", lambda: analyzer_mock)
+
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
+
+    task = TaskEnvelope(
+        id=8,
+        task_type=TaskType.ANALYZE_URL,
+        payload={"content_id": content.id},
+    )
+
+    assert handler.handle(task, context).success is True
+    analyzer_mock.analyze_url.assert_not_called()
+
+    updated = db_session.query(Content).filter(Content.id == content.id).first()
+    assert updated is not None
+    assert updated.content_type == ContentType.PODCAST.value
+    assert updated.platform == "youtube"
+    assert updated.content_metadata.get("audio_url") == url
+    assert updated.content_metadata.get("video_url") == url
+    assert updated.content_metadata.get("youtube_video") is True
+
+
+def test_analyze_url_llm_youtube_podcast_sets_fallback_audio_metadata(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    url = "https://www.youtube.com/watch?v=abc123xyz"
+    content = _create_content(db_session, test_user.id, url)
+
+    analysis_output = ContentAnalysisOutput(
+        analysis=ContentAnalysisResult(
+            content_type="podcast",
+            original_url=url,
+            platform="youtube",
+            media_url=None,
+        )
+    )
+
+    stub_analyzer = _patch_analyze_dependencies(monkeypatch, analysis_output)
+
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
+
+    task = TaskEnvelope(
+        id=10,
+        task_type=TaskType.ANALYZE_URL,
+        payload={
+            "content_id": content.id,
+            "instruction": "Classify and extract media metadata.",
+        },
+    )
+
+    assert handler.handle(task, context).success is True
+    stub_analyzer.analyze_url.assert_called_once()
+
+    updated = db_session.query(Content).filter(Content.id == content.id).first()
+    assert updated is not None
+    assert updated.content_type == ContentType.PODCAST.value
+    assert updated.platform == "youtube"
+    assert updated.content_metadata.get("audio_url") == url
+    assert updated.content_metadata.get("video_url") == url
+    assert updated.content_metadata.get("youtube_video") is True
+
+
+def test_analyze_url_spotify_share_stays_article(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    url = "https://open.spotify.com/episode/abc123"
+    content = _create_content(db_session, test_user.id, url)
+
+    from app.pipeline.handlers import analyze_url as analyze_module
+
+    analyzer_mock = Mock()
+    monkeypatch.setattr(analyze_module, "get_content_analyzer", lambda: analyzer_mock)
+
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
+
+    task = TaskEnvelope(
+        id=9,
+        task_type=TaskType.ANALYZE_URL,
+        payload={"content_id": content.id},
+    )
+
+    assert handler.handle(task, context).success is True
+    analyzer_mock.analyze_url.assert_not_called()
+
+    updated = db_session.query(Content).filter(Content.id == content.id).first()
+    assert updated is not None
+    assert updated.content_type == ContentType.ARTICLE.value
+    assert updated.platform == "spotify"
+    assert updated.content_metadata.get("audio_url") is None
+
+
 def test_dig_deeper_task_runs_chat_flow(db_session, test_user, monkeypatch):
     content = _create_content(db_session, test_user.id, "https://example.com/article")
 
@@ -236,7 +345,7 @@ def test_dig_deeper_task_runs_chat_flow(db_session, test_user, monkeypatch):
 
     assert handler.handle(task, context).success is True
     create_mock.assert_called_once_with(db_session, content, test_user.id)
-    run_mock.assert_called_once_with(123, 456, "prompt")
+    run_mock.assert_called_once_with(123, 456, "prompt", task_id=4)
 
 
 def test_analyze_url_subscribe_to_feed_short_circuits_processing(

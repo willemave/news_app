@@ -264,17 +264,58 @@ class VoiceConversationOrchestrator:
                 greetings this should be False so the client treats the turn
                 as a normal turn and auto-starts listening when it completes.
         """
+        return await self._process_static_assistant_turn(
+            turn_id=turn_id,
+            assistant_text=intro_text,
+            model_name="system:intro",
+            is_intro=True,
+            is_onboarding_intro=is_onboarding,
+            persist_turn=False,
+        )
 
-        assistant_text = intro_text.strip()
-        if not assistant_text:
+    async def process_scripted_turn(
+        self,
+        turn_id: str,
+        assistant_text: str,
+        *,
+        model: str = "system:scripted",
+    ) -> TurnOutcome:
+        """Stream a prebuilt assistant response without running STT or LLM."""
+
+        return await self._process_static_assistant_turn(
+            turn_id=turn_id,
+            assistant_text=assistant_text,
+            model_name=model,
+            is_intro=False,
+            is_onboarding_intro=False,
+            persist_turn=True,
+        )
+
+    async def _process_static_assistant_turn(
+        self,
+        *,
+        turn_id: str,
+        assistant_text: str,
+        model_name: str,
+        is_intro: bool,
+        is_onboarding_intro: bool,
+        persist_turn: bool,
+    ) -> TurnOutcome:
+        """Emit one prepared assistant turn through text and TTS channels."""
+
+        normalized_text = assistant_text.strip()
+        if not normalized_text:
             return TurnOutcome(transcript="", assistant_text="", latency_ms=0)
 
+        trace_operation = "intro_turn_started" if is_intro else "scripted_turn_started"
         self._log_trace(
-            "intro_turn_started",
+            trace_operation,
             {
                 "turn_id": turn_id,
-                "intro_chars": len(assistant_text),
-                "is_onboarding": is_onboarding,
+                "assistant_chars": len(normalized_text),
+                "is_intro": is_intro,
+                "is_onboarding": is_onboarding_intro,
+                "model_name": model_name,
             },
         )
         try:
@@ -282,26 +323,30 @@ class VoiceConversationOrchestrator:
             turn_started_event: dict[str, object] = {
                 "type": "turn.started",
                 "turn_id": turn_id,
-                "is_intro": True,
-                "is_onboarding_intro": is_onboarding,
             }
+            if is_intro:
+                turn_started_event["is_intro"] = True
+                turn_started_event["is_onboarding_intro"] = is_onboarding_intro
             await self._emit_event(turn_started_event)
             await self._emit_event(
                 {
                     "type": "assistant.text.delta",
                     "turn_id": turn_id,
-                    "text": assistant_text,
+                    "text": normalized_text,
                 }
             )
             await self._emit_event(
                 {
                     "type": "assistant.text.final",
                     "turn_id": turn_id,
-                    "text": assistant_text,
+                    "text": normalized_text,
                 }
             )
 
-            tts_enabled = await self._stream_text_to_tts(turn_id, assistant_text)
+            tts_enabled = await self._stream_text_to_tts(turn_id, normalized_text)
+            if persist_turn:
+                await self._persist_turn(transcript="", assistant_text=normalized_text)
+
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             await self._emit_event(
                 {
@@ -316,19 +361,24 @@ class VoiceConversationOrchestrator:
                     "turn_id": turn_id,
                     "latency_ms": latency_ms,
                     "transcript_chars": 0,
-                    "response_chars": len(assistant_text),
-                    "model": "system:intro",
+                    "response_chars": len(normalized_text),
+                    "model": model_name,
                 }
             )
             self._log_trace(
-                "intro_turn_completed",
+                "intro_turn_completed" if is_intro else "scripted_turn_completed",
                 {
                     "turn_id": turn_id,
                     "latency_ms": latency_ms,
                     "tts_enabled": tts_enabled,
+                    "model_name": model_name,
                 },
             )
-            return TurnOutcome(transcript="", assistant_text=assistant_text, latency_ms=latency_ms)
+            return TurnOutcome(
+                transcript="",
+                assistant_text=normalized_text,
+                latency_ms=latency_ms,
+            )
         except asyncio.CancelledError:
             await self._emit_event(
                 {
@@ -337,7 +387,10 @@ class VoiceConversationOrchestrator:
                     "reason": "client_cancelled",
                 }
             )
-            self._log_trace("intro_turn_cancelled", {"turn_id": turn_id})
+            self._log_trace(
+                "intro_turn_cancelled" if is_intro else "scripted_turn_cancelled",
+                {"turn_id": turn_id},
+            )
             raise
 
     async def process_turn(self, turn_id: str) -> TurnOutcome:

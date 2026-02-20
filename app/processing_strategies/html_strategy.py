@@ -27,6 +27,30 @@ from app.utils.dates import parse_date_with_tz
 
 logger = get_logger(__name__)
 
+ACCESS_GATE_TITLE_MARKERS: tuple[str, ...] = (
+    "just a moment",
+    "checking your browser",
+    "enable javascript",
+    "verify you are human",
+)
+ACCESS_GATE_TEXT_MARKERS: tuple[str, ...] = (
+    "this site requires javascript to run correctly",
+    "enable javascript and cookies to continue",
+    "turn on javascript",
+    "or unblock scripts",
+    "checking your browser",
+    "verify you are human",
+    "please wait while we verify",
+    "ray id",
+)
+ACCESS_GATE_HTML_MARKERS: tuple[str, ...] = (
+    "cf-challenge",
+    "challenge-error-text",
+    "cf-turnstile",
+    "performance & security by cloudflare",
+)
+ACCESS_GATE_MAX_TEXT_LENGTH = 2500
+
 
 class HtmlProcessorStrategy(UrlProcessorStrategy):
     """
@@ -321,10 +345,38 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
     def _extract_text_from_html(html_content: str) -> str:
         """Lightweight HTML to text extraction for fallback."""
 
-        without_scripts = re.sub(r"(?is)<(script|style).*?>.*?</\\1>", " ", html_content)
+        without_scripts = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", html_content)
         without_tags = re.sub(r"(?is)<[^>]+>", " ", without_scripts)
         text = unescape(without_tags)
         return re.sub(r"\s+", " ", text).strip()
+
+    @classmethod
+    def _detect_access_gate(
+        cls,
+        *,
+        title: str | None,
+        text_content: str | None,
+        html_content: str | None,
+    ) -> str | None:
+        """Detect access-gate/challenge pages that are not real article content."""
+
+        normalized_title = re.sub(r"\s+", " ", title or "").strip().lower()
+        normalized_text = re.sub(r"\s+", " ", text_content or "").strip().lower()
+        normalized_html = (html_content or "").lower()
+        text_len = len(normalized_text)
+        short_payload = 0 < text_len <= ACCESS_GATE_MAX_TEXT_LENGTH
+
+        title_marker_hit = any(marker in normalized_title for marker in ACCESS_GATE_TITLE_MARKERS)
+        text_marker_hit = any(marker in normalized_text for marker in ACCESS_GATE_TEXT_MARKERS)
+        html_marker_hit = any(marker in normalized_html for marker in ACCESS_GATE_HTML_MARKERS)
+
+        if title_marker_hit and (text_marker_hit or html_marker_hit or short_payload):
+            return "access gate detected: challenge/JS wall title"
+        if text_marker_hit and short_payload:
+            return "access gate detected: challenge/JS wall content"
+        if html_marker_hit and short_payload:
+            return "access gate detected: challenge/JS wall html markers"
+        return None
 
     def _fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
         """Use httpx + lightweight parsing when Playwright navigation fails."""
@@ -344,6 +396,17 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         html_content = response.text
         title = self._extract_title_from_html(html_content) or "Untitled"
         text_content = self._extract_text_from_html(html_content)
+        gate_reason = self._detect_access_gate(
+            title=title,
+            text_content=text_content,
+            html_content=html_content,
+        )
+        if gate_reason:
+            logger.warning(
+                "HtmlStrategy: Fallback content appears to be an access gate for %s (%s)",
+                response.url,
+                gate_reason,
+            )
         logger.info(
             "HtmlStrategy: Fallback extraction succeeded for %s (text_length=%s)",
             response.url,
@@ -358,6 +421,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "source": source,
             "final_url_after_redirects": str(response.url),
             "table_markdown": None,
+            "gate_page_detected": bool(gate_reason),
+            "extraction_error": gate_reason,
         }
 
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
@@ -649,6 +714,17 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 publication_date,
                 author,
             )
+            gate_reason = self._detect_access_gate(
+                title=title,
+                text_content=extracted_text,
+                html_content=result.cleaned_html,
+            )
+            if gate_reason:
+                logger.warning(
+                    "HtmlStrategy: Access gate detected for %s (%s)",
+                    final_url,
+                    gate_reason,
+                )
 
             # Extract feed links from HTML for potential feed detection
             feed_links = None
@@ -673,6 +749,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 "final_url_after_redirects": final_url,
                 "table_markdown": table_markdown or None,
                 "feed_links": feed_links,  # For feed detection in worker
+                "gate_page_detected": bool(gate_reason),
+                "extraction_error": gate_reason,
             }
 
         except Exception as e:

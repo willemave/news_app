@@ -2,6 +2,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, PostgresDsn, field_validator
@@ -93,6 +94,17 @@ class Settings(BaseSettings):
     admin_conversational_trace_logging: bool = True
     admin_conversational_trace_max_chars: int = 1200
 
+    # Langfuse tracing
+    langfuse_enabled: bool = True
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_sample_rate: float | None = None
+    langfuse_include_content: bool = True
+    langfuse_include_binary_content: bool = False
+    langfuse_instrumentation_version: Literal[1, 2, 3] = 2
+    langfuse_event_mode: Literal["attributes", "logs"] = "attributes"
+
     # Feed discovery
     discovery_model: str = Field(
         default="anthropic:claude-opus-4-5-20251101",
@@ -109,6 +121,19 @@ class Settings(BaseSettings):
     discovery_min_favorites: int = Field(default=0, ge=0)
     discovery_max_favorites: int = Field(default=20, ge=5, le=50)
     discovery_exa_results: int = Field(default=8, ge=1, le=20)
+
+    # Podcast online search
+    listen_notes_api_key: str | None = None
+    spotify_client_id: str | None = None
+    spotify_client_secret: str | None = None
+    spotify_market: str = "US"
+    podcast_index_api_key: str | None = None
+    podcast_index_api_secret: str | None = None
+    podcast_index_user_agent: str = "newsly/1.0"
+    podcast_search_cache_ttl_seconds: int = Field(default=300, ge=0, le=3600)
+    podcast_search_provider_timeout_seconds: int = Field(default=6, ge=1, le=30)
+    podcast_search_circuit_breaker_failures: int = Field(default=3, ge=1, le=10)
+    podcast_search_circuit_breaker_cooldown_seconds: int = Field(default=120, ge=10, le=1800)
 
     # Twitter (tweet share scraping)
     twitter_auth_token: str | None = None
