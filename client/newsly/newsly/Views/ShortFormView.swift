@@ -165,8 +165,6 @@ struct ShortFormView: View {
 private struct ShortNewsRow: View {
     let item: ContentSummary
 
-    private let topicAccent = Color(red: 0.067, green: 0.322, blue: 0.831) // #1152d4
-
     private var titleWeight: Font.Weight {
         item.isRead ? .regular : .semibold
     }
@@ -185,26 +183,32 @@ private struct ShortNewsRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Metadata line: TOPIC · SOURCE · TIME
+            // Topic label
+            if let topic = item.primaryTopic?.uppercased(), !topic.isEmpty {
+                Text(topic)
+                    .font(.feedMeta)
+                    .tracking(0.5)
+                    .foregroundStyle(Color.topicAccent)
+            }
+
+            // Headline
+            Text(item.displayTitle)
+                .font(.feedHeadline)
+                .fontWeight(titleWeight)
+                .foregroundColor(titleColor)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Source + time metadata below headline
             HStack(spacing: 6) {
-                if let topic = item.primaryTopic?.uppercased(), !topic.isEmpty {
-                    Text(topic)
-                        .font(.feedMeta)
-                        .tracking(0.5)
-                        .foregroundStyle(topicAccent)
-                }
-                if item.primaryTopic != nil, metadataSource != nil {
-                    Text("·")
-                        .font(.feedMeta)
-                        .foregroundStyle(Color.textTertiary)
-                }
                 if let source = metadataSource {
                     Text(source)
                         .font(.feedMeta)
                         .tracking(0.4)
                         .foregroundStyle(Color.textSecondary)
                 }
-                if (item.primaryTopic != nil || metadataSource != nil) && metadataTime != nil {
+                if metadataSource != nil, metadataTime != nil {
                     Text("·")
                         .font(.feedMeta)
                         .foregroundStyle(Color.textTertiary)
@@ -217,15 +221,6 @@ private struct ShortNewsRow: View {
                 }
                 Spacer()
             }
-
-            // Headline
-            Text(item.displayTitle)
-                .font(.feedHeadline)
-                .fontWeight(titleWeight)
-                .foregroundColor(titleColor)
-                .lineLimit(3)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
 
             // Discussion snippet
             if let snippet = item.discussionSnippet {

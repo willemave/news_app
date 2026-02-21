@@ -415,11 +415,17 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else {
-            fatalError("No window available")
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            if let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
+                return keyWindow
+            }
+            if let firstWindow = windowScene.windows.first {
+                return firstWindow
+            }
         }
-        return window
+        authLogger.error("Apple Sign In presentation anchor unavailable")
+        return ASPresentationAnchor()
     }
 
     private func sendToBackend(identityToken: String, email: String?, fullName: PersonNameComponents?) async throws -> AuthSession {

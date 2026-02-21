@@ -127,6 +127,89 @@ NEWS_HEADLINES = [
     "New Breakthrough in Quantum Computing Stability",
     "Security Flaw Discovered in Popular Open Source Library",
     "Federal Reserve Announces Interest Rate Decision",
+    "Apple Unveils Next-Generation M5 Chip Architecture",
+    "EU Passes Comprehensive AI Regulation Framework",
+    "Rust Overtakes Go in Cloud Infrastructure Adoption",
+    "Google DeepMind Achieves Breakthrough in Protein Folding",
+    "GitHub Copilot Now Generates Full Pull Requests Autonomously",
+    "Tesla Robotaxi Fleet Launches in Three US Cities",
+    "Cloudflare Reports Record DDoS Attack Mitigated at 5 Tbps",
+    "YC-Backed Startup Raises $500M for Open Source LLM Training",
+    "Signal Protocol Adopted as Industry Standard for E2E Encryption",
+    "NVIDIA H200 GPU Shortage Drives Cloud Compute Prices Up 40%",
+]
+
+DISCUSSION_COMMENTS = [
+    {
+        "author": "tptacek",
+        "text": (
+            "This is more nuanced than the headline suggests. "
+            "The real impact depends on adoption rates across the industry."
+        ),
+    },
+    {
+        "author": "patio11",
+        "text": (
+            "Having worked in this space, the regulatory angle "
+            "is what most people miss entirely."
+        ),
+    },
+    {
+        "author": "dang",
+        "text": (
+            "We changed the title from the clickbait original. "
+            "Please keep discussion substantive."
+        ),
+    },
+    {
+        "author": "rauchg",
+        "text": (
+            "We've been building toward this at Vercel. "
+            "The DX implications are massive."
+        ),
+    },
+    {
+        "author": "karpathy",
+        "text": (
+            "The architecture is interesting but the real bottleneck "
+            "is data quality, not model size."
+        ),
+    },
+    {
+        "author": "swyx",
+        "text": (
+            "This confirms the trend I wrote about last month. "
+            "The ecosystem is consolidating fast."
+        ),
+    },
+    {
+        "author": "gergely",
+        "text": (
+            "From a pragmatic engineering perspective, "
+            "the migration path is what matters most here."
+        ),
+    },
+    {
+        "author": "id_aa_carmack",
+        "text": (
+            "The latency numbers are impressive but I'd want "
+            "to see sustained throughput benchmarks."
+        ),
+    },
+    {
+        "author": "simonw",
+        "text": (
+            "I built a quick prototype using this "
+            "and the API ergonomics are surprisingly good."
+        ),
+    },
+    {
+        "author": "antirez",
+        "text": (
+            "Simple systems that work beat complex systems "
+            "that don't. This gets that right."
+        ),
+    },
 ]
 
 SUMMARY_FORMATS = ["bulleted", "interleaved_v2", "structured", "interleaved_v1"]
@@ -661,8 +744,19 @@ class NewsGenerator:
             summarization_date=random_datetime(3),
         )
 
+        # Build discussion URL based on platform
+        if platform == "hackernews":
+            discussion_url = f"https://news.ycombinator.com/item?id={news_id}"
+            aggregator_name = "Hacker News"
+        elif platform == "reddit":
+            discussion_url = f"https://reddit.com/r/technology/comments/{news_id}"
+            aggregator_name = "Reddit"
+        else:
+            discussion_url = f"https://techmeme.com/{news_id}"
+            aggregator_name = "Techmeme"
+
         # Generate news metadata
-        metadata = {
+        metadata: dict[str, Any] = {
             "source": source_domain,
             "platform": platform,
             "summary_kind": SUMMARY_KIND_SHORT_NEWS_DIGEST,
@@ -673,16 +767,19 @@ class NewsGenerator:
                 "source_domain": source_domain,
             },
             "aggregator": {
-                "name": "Hacker News" if platform == "hackernews" else "Techmeme",
-                "url": f"https://news.ycombinator.com/item?id={news_id}"
-                if platform == "hackernews"
-                else f"https://techmeme.com/{news_id}",
+                "name": aggregator_name,
+                "url": discussion_url,
                 "external_id": str(news_id),
                 "metadata": {"score": random.randint(50, 500)} if platform == "hackernews" else {},
             },
             "discovery_time": random_datetime(2),
             "summary": summary.model_dump(mode="json", exclude_none=True),
         }
+
+        # Add discussion data for completed items (~70% chance)
+        if status == ContentStatus.COMPLETED.value and random.random() < 0.7:
+            metadata["top_comment"] = random.choice(DISCUSSION_COMMENTS)
+            metadata["discussion_url"] = discussion_url
 
         return {
             "content_type": ContentType.NEWS.value,
@@ -701,7 +798,7 @@ class NewsGenerator:
 def generate_test_data(
     num_articles: int = 10,
     num_podcasts: int = 5,
-    num_news: int = 15,
+    num_news: int = 30,
     include_pending: bool = True,
     article_summary_format: str = "mixed",
     podcast_summary_format: str = "mixed",
@@ -879,7 +976,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate test data for news_app")
     parser.add_argument("--articles", type=int, default=10, help="Number of articles to generate")
     parser.add_argument("--podcasts", type=int, default=5, help="Number of podcasts to generate")
-    parser.add_argument("--news", type=int, default=15, help="Number of news items to generate")
+    parser.add_argument("--news", type=int, default=30, help="Number of news items to generate")
     parser.add_argument(
         "--no-pending",
         action="store_true",

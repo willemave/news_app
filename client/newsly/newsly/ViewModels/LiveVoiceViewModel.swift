@@ -153,8 +153,8 @@ final class LiveVoiceViewModel: ObservableObject {
             let sourceSurface = route?.sourceSurface ?? .knowledgeLive
             let requestIntro = launchMode != .dictateSummary
             didReceiveSessionReady = false
-            shouldAutoStartListeningOnReady =
-                autoTurnsEnabled && launchMode != .dictateSummary && !requestIntro
+            // Auto-start only when no intro turn is expected (dictate summary mode).
+            shouldAutoStartListeningOnReady = autoTurnsEnabled && !requestIntro
             let request = VoiceCreateSessionRequest(
                 sessionId: route?.sessionId,
                 sampleRateHz: 16_000,
@@ -1058,6 +1058,8 @@ final class LiveVoiceViewModel: ObservableObject {
             )
             let sessionResponse = try await sessionService.createSession(request)
             let wsURL = try sessionService.resolveWebSocketURL(path: sessionResponse.websocketPath)
+            sessionId = sessionResponse.sessionId
+            chatSessionId = sessionResponse.chatSessionId
             playbackEngine.start()
             websocketClient.connect(url: wsURL, bearerToken: token)
             try await sendJSON(

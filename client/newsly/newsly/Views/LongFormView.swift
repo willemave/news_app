@@ -31,28 +31,36 @@ struct LongFormView: View {
                     } else {
                         ScrollView {
                             LazyVStack(spacing: CardMetrics.cardSpacing) {
-                                ForEach(viewModel.currentItems(), id: \.id) { content in
-                                    NavigationLink(
-                                        value: ContentDetailRoute(
-                                            summary: content,
-                                            allContentIds: viewModel.currentItems().map(\.id)
-                                        )
-                                    ) {
-                                        LongFormCard(
-                                            content: content,
-                                            onMarkRead: {
-                                                viewModel.markAsRead(content.id)
-                                            },
-                                            onToggleFavorite: {
-                                                Task {
-                                                    await viewModel.toggleFavorite(content.id)
+                                let items = viewModel.currentItems()
+                                ForEach(Array(items.enumerated()), id: \.element.id) { index, content in
+                                    VStack(spacing: 0) {
+                                        NavigationLink(
+                                            value: ContentDetailRoute(
+                                                summary: content,
+                                                allContentIds: items.map(\.id)
+                                            )
+                                        ) {
+                                            LongFormCard(
+                                                content: content,
+                                                onMarkRead: {
+                                                    viewModel.markAsRead(content.id)
+                                                },
+                                                onToggleFavorite: {
+                                                    Task {
+                                                        await viewModel.toggleFavorite(content.id)
+                                                    }
                                                 }
-                                            }
-                                        )
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        if index < items.count - 1 {
+                                            Divider()
+                                                .padding(.top, CardMetrics.cardSpacing / 2)
+                                        }
                                     }
-                                    .buttonStyle(.plain)
                                     .onAppear {
-                                        if content.id == viewModel.currentItems().last?.id {
+                                        if content.id == items.last?.id {
                                             viewModel.loadMoreTrigger.send(())
                                         }
                                     }
@@ -67,8 +75,8 @@ struct LongFormView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 24)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 20)
                         }
                         .refreshable {
                             viewModel.refreshTrigger.send(())

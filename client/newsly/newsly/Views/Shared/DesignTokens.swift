@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - Colors
 
@@ -33,6 +34,15 @@ extension Color {
     static var editorialText: Color { Color(red: 0.067, green: 0.067, blue: 0.067) }     // #111111
     static var editorialSub: Color { Color(red: 0.443, green: 0.443, blue: 0.478) }      // #71717a
     static var editorialBorder: Color { Color(.systemGray5) }
+
+    // Adaptive accent (topic badges, favorites)
+    static var topicAccent: Color {
+        Color(UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark
+                ? UIColor(red: 0.40, green: 0.61, blue: 1.0, alpha: 1.0)   // #669CFF brighter for dark
+                : UIColor(red: 0.067, green: 0.322, blue: 0.831, alpha: 1.0) // #1152d4 original for light
+        })
+    }
 
     // Earthy palette (Live Voice)
     static var earthTerracotta: Color { Color(red: 0.765, green: 0.420, blue: 0.310) }  // #C36B4F
@@ -86,10 +96,10 @@ extension Font {
 // MARK: - Card Metrics
 
 enum CardMetrics {
-    static let heroImageHeight: CGFloat = 264
+    static let heroImageHeight: CGFloat = 180
     static let cardCornerRadius: CGFloat = 8
-    static let cardSpacing: CGFloat = 32
-    static let textOverlapOffset: CGFloat = -64
+    static let cardSpacing: CGFloat = 20
+    static let textOverlapOffset: CGFloat = -40
 }
 
 // MARK: - Text Size

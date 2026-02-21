@@ -11,7 +11,6 @@ struct LongFormCard: View {
     let content: ContentSummary
     var onMarkRead: (() -> Void)?
     var onToggleFavorite: (() -> Void)?
-    private let topicAccent = Color(red: 0.067, green: 0.322, blue: 0.831) // #1152d4
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -46,7 +45,7 @@ struct LongFormCard: View {
                             .foregroundStyle(Color.textTertiary)
                     }
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, 8)
 
                 Text(content.displayTitle)
                     .font(.cardHeadline)
@@ -62,7 +61,7 @@ struct LongFormCard: View {
                         .foregroundStyle(Color.textSecondary)
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
-                        .padding(.bottom, 16)
+                        .padding(.bottom, 12)
                 }
 
                 Divider()
@@ -93,16 +92,16 @@ struct LongFormCard: View {
                         } label: {
                             Image(systemName: content.isFavorited ? "star.fill" : "star")
                                 .font(.system(size: 20))
-                                .foregroundStyle(content.isFavorited ? topicAccent : Color.textTertiary)
+                                .foregroundStyle(content.isFavorited ? Color.topicAccent : Color.textTertiary)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(.top, 8)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 24)
-            .padding(.bottom, 24)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 16)
             .offset(y: CardMetrics.textOverlapOffset)
             .padding(.bottom, CardMetrics.textOverlapOffset)
             .background(
@@ -133,10 +132,10 @@ struct LongFormCard: View {
         Text(badgeLabel)
             .font(.cardBadge)
             .tracking(0.5)
-            .foregroundStyle(topicAccent)
+            .foregroundStyle(Color.topicAccent)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(topicAccent.opacity(0.1))
+            .background(Color.topicAccent.opacity(0.1))
             .clipShape(Capsule())
     }
 

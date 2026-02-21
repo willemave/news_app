@@ -256,6 +256,7 @@ final class OnboardingViewModel: ObservableObject {
         discoveryErrorMessage = status.errorMessage
 
         if status.runStatus == "completed" {
+            onboardingStateStore.clearDiscoveryRun(userId: user.id)
             if let suggestions = status.suggestions {
                 applySuggestions(suggestions)
             }

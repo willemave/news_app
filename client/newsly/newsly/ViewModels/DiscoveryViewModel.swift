@@ -101,8 +101,15 @@ class DiscoveryViewModel: ObservableObject {
     func refreshDiscovery() async {
         do {
             let response = try await service.refresh()
-            // Update local state to show running indicator immediately
+            // Clear stale run cards so the UI reflects the newly queued run.
+            runs = []
+            feeds = []
+            podcasts = []
+            youtube = []
+            runCreatedAt = nil
+            directionSummary = nil
             runStatus = response.status
+            hasLoaded = false
             ToastService.shared.showSuccess("Discovery queued")
         } catch {
             ToastService.shared.showError("Failed to refresh discovery: \(error.localizedDescription)")
@@ -158,9 +165,14 @@ class DiscoveryViewModel: ObservableObject {
     func clearAll() async {
         do {
             _ = try await service.clear()
+            runs = []
             feeds = []
             podcasts = []
             youtube = []
+            runStatus = nil
+            runCreatedAt = nil
+            directionSummary = nil
+            hasLoaded = false
             ToastService.shared.show("Discovery cleared", type: .info)
         } catch {
             ToastService.shared.showError("Failed to clear suggestions: \(error.localizedDescription)")

@@ -201,6 +201,123 @@ class ContentDetailViewModel: ObservableObject {
         }
     }
 
+    private func normalizedText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func uniqueNonEmpty(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        var result: [String] = []
+
+        for value in values {
+            guard let normalized = normalizedText(value) else { continue }
+            let key = normalized.lowercased()
+            if seen.insert(key).inserted {
+                result.append(normalized)
+            }
+        }
+
+        return result
+    }
+
+    private func resolvedShareURLString(for content: ContentDetail) -> String? {
+        if content.contentType == "news",
+           let articleURL = normalizedText(content.newsMetadata?.summary?.articleURL) {
+            return articleURL
+        }
+        return normalizedText(content.url)
+    }
+
+    private func resolvedOverviewText(for content: ContentDetail) -> String? {
+        if let overview = normalizedText(content.structuredSummary?.overview) {
+            return overview
+        }
+        if let hook = normalizedText(content.interleavedSummaryV2?.hook) {
+            return hook
+        }
+        if let hook = normalizedText(content.interleavedSummary?.hook) {
+            return hook
+        }
+        if let editorialSummary = content.editorialSummary,
+           let firstParagraph = editorialSummary.narrativeParagraphs.first,
+           let narrative = normalizedText(firstParagraph) {
+            return narrative
+        }
+        if let newsSummary = normalizedText(content.newsMetadata?.summary?.summary) {
+            return newsSummary
+        }
+        if let summary = normalizedText(content.summary) {
+            return summary
+        }
+        return normalizedText(content.shortSummary)
+    }
+
+    private func resolvedKeyPointTexts(for content: ContentDetail) -> [String] {
+        var points: [String] = []
+
+        if let structuredSummary = content.structuredSummary {
+            points.append(contentsOf: structuredSummary.bulletPoints.map(\.text))
+        }
+        if let interleavedSummaryV2 = content.interleavedSummaryV2 {
+            points.append(contentsOf: interleavedSummaryV2.keyPoints.map(\.text))
+        }
+        if let interleavedSummary = content.interleavedSummary {
+            points.append(contentsOf: interleavedSummary.insights.map(\.insight))
+        }
+        if let bulletedSummary = content.bulletedSummary {
+            points.append(contentsOf: bulletedSummary.points.map(\.text))
+        }
+        if let editorialSummary = content.editorialSummary {
+            points.append(contentsOf: editorialSummary.keyPoints.map(\.point))
+        }
+        points.append(contentsOf: content.bulletPoints.map(\.text))
+
+        if let newsKeyPoints = content.newsMetadata?.summary?.keyPoints {
+            points.append(contentsOf: newsKeyPoints)
+        }
+
+        if points.isEmpty {
+            if let summary = normalizedText(content.summary) {
+                points = [summary]
+            } else if let shortSummary = normalizedText(content.shortSummary) {
+                points = [shortSummary]
+            }
+        }
+
+        return uniqueNonEmpty(points)
+    }
+
+    private func resolvedQuoteTexts(for content: ContentDetail) -> [String] {
+        var quotes: [String] = []
+
+        if let structuredSummary = content.structuredSummary {
+            quotes.append(contentsOf: structuredSummary.quotes.map(\.text))
+        }
+        if let interleavedSummaryV2 = content.interleavedSummaryV2 {
+            quotes.append(contentsOf: interleavedSummaryV2.quotes.map(\.text))
+        }
+        if let interleavedSummary = content.interleavedSummary {
+            quotes.append(
+                contentsOf: interleavedSummary.insights.compactMap { insight in
+                    normalizedText(insight.supportingQuote)
+                }
+            )
+        }
+        if let bulletedSummary = content.bulletedSummary {
+            for point in bulletedSummary.points {
+                quotes.append(contentsOf: point.quotes.map(\.text))
+            }
+        }
+        if let editorialSummary = content.editorialSummary {
+            quotes.append(contentsOf: editorialSummary.quotes.map(\.text))
+        }
+        quotes.append(contentsOf: content.quotes.map(\.text))
+
+        return uniqueNonEmpty(quotes)
+    }
+
     private func buildFullMarkdown() -> String? {
         guard let content = content else { return nil }
 
@@ -209,24 +326,102 @@ class ContentDetailViewModel: ObservableObject {
         // Add metadata
         if let source = content.source { fullText += "Source: \(source)\n" }
         if let pubDate = content.publicationDate { fullText += "Published: \(pubDate)\n" }
-        if !content.url.isEmpty { fullText += "URL: \(content.url)\n" }
+        if let shareURL = resolvedShareURLString(for: content) {
+            fullText += "URL: \(shareURL)\n"
+        }
         fullText += "\n---\n\n"
 
-        // Structured summary
-        if let structuredSummary = content.structuredSummary {
+        let overview = resolvedOverviewText(for: content)
+        let keyPoints = resolvedKeyPointTexts(for: content)
+        let quotes = resolvedQuoteTexts(for: content)
+        let hasTemplateSummaryData =
+            overview != nil
+            || !keyPoints.isEmpty
+            || !quotes.isEmpty
+            || content.bulletedSummary != nil
+            || content.interleavedSummary != nil
+            || content.interleavedSummaryV2 != nil
+            || content.editorialSummary != nil
+
+        if hasTemplateSummaryData {
             fullText += "## Summary\n\n"
-            if !structuredSummary.topics.isEmpty {
-                fullText += "### Key Topics\n" + structuredSummary.topics.map { "- \($0)" }.joined(separator: "\n") + "\n\n"
-            }
-            if !structuredSummary.bulletPoints.isEmpty {
-                fullText += "### Main Points\n" + structuredSummary.bulletPoints.map { "- \($0.text)" }.joined(separator: "\n") + "\n\n"
-            }
-            if !structuredSummary.quotes.isEmpty {
-                fullText += "### Notable Quotes\n" + structuredSummary.quotes.map { "> \($0.text)\n" }.joined() + "\n"
-            }
-            if let overview = structuredSummary.overview {
+
+            if let overview {
                 fullText += "### Overview\n\(overview)\n\n"
             }
+
+            if let editorialSummary = content.editorialSummary,
+               !editorialSummary.narrativeParagraphs.isEmpty {
+                fullText += "### Narrative\n"
+                fullText += editorialSummary.narrativeParagraphs.joined(separator: "\n\n")
+                fullText += "\n\n"
+            }
+
+            if !keyPoints.isEmpty {
+                fullText += "### Key Points\n"
+                fullText += keyPoints.map { "- \($0)" }.joined(separator: "\n")
+                fullText += "\n\n"
+            }
+
+            if let interleavedSummaryV2 = content.interleavedSummaryV2,
+               !interleavedSummaryV2.topics.isEmpty {
+                let topicBlocks = interleavedSummaryV2.topics.compactMap { topic -> String? in
+                    let bullets = topic.bullets
+                        .compactMap { normalizedText($0.text) }
+                        .map { "  - \($0)" }
+                        .joined(separator: "\n")
+                    guard !bullets.isEmpty else { return nil }
+                    return "- \(topic.topic)\n\(bullets)"
+                }
+                if !topicBlocks.isEmpty {
+                    fullText += "### Topic Breakdown\n"
+                    fullText += topicBlocks.joined(separator: "\n")
+                    fullText += "\n\n"
+                }
+            }
+
+            if let interleavedSummary = content.interleavedSummary,
+               !interleavedSummary.insights.isEmpty {
+                let insightLines = interleavedSummary.insights.compactMap { insight -> String? in
+                    guard let text = normalizedText(insight.insight) else { return nil }
+                    if let topic = normalizedText(insight.topic) {
+                        return "- \(topic): \(text)"
+                    }
+                    return "- \(text)"
+                }
+                if !insightLines.isEmpty {
+                    fullText += "### Insights\n"
+                    fullText += insightLines.joined(separator: "\n")
+                    fullText += "\n\n"
+                }
+            }
+
+            if let bulletedSummary = content.bulletedSummary, !bulletedSummary.points.isEmpty {
+                let pointDetails = bulletedSummary.points.compactMap { point -> String? in
+                    guard let text = normalizedText(point.text),
+                          let detail = normalizedText(point.detail) else {
+                        return nil
+                    }
+                    var block = "- \(text)\n  \(detail)"
+                    if let quote = point.quotes.first,
+                       let quoteText = normalizedText(quote.text) {
+                        block += "\n  > \(quoteText)"
+                    }
+                    return block
+                }
+                if !pointDetails.isEmpty {
+                    fullText += "### Point Details\n"
+                    fullText += pointDetails.joined(separator: "\n")
+                    fullText += "\n\n"
+                }
+            }
+
+            if !quotes.isEmpty {
+                fullText += "### Notable Quotes\n"
+                fullText += quotes.map { "> \($0)" }.joined(separator: "\n")
+                fullText += "\n\n"
+            }
+
             fullText += "---\n\n"
         }
 
@@ -245,34 +440,24 @@ class ContentDetailViewModel: ObservableObject {
 
         var sections: [String] = []
         sections.append("# \(content.displayTitle)")
-
-        var keyPoints = content.structuredSummary?.bulletPoints ?? content.bulletPoints
-
-        // For news content, extract key points from newsMetadata
-        if keyPoints.isEmpty, content.contentType == "news",
-           let newsKeyPoints = content.newsMetadata?.summary?.keyPoints, !newsKeyPoints.isEmpty {
-            keyPoints = newsKeyPoints.map { BulletPoint(text: $0, category: nil) }
+        if let overview = resolvedOverviewText(for: content) {
+            sections.append("## Summary\n\(overview)")
         }
 
-        if keyPoints.isEmpty, let summary = content.summary, !summary.isEmpty {
-            keyPoints = [BulletPoint(text: summary, category: nil)]
-        } else if keyPoints.isEmpty, let shortSummary = content.shortSummary, !shortSummary.isEmpty {
-            keyPoints = [BulletPoint(text: shortSummary, category: nil)]
-        }
-
+        let keyPoints = resolvedKeyPointTexts(for: content)
         if !keyPoints.isEmpty {
-            let bullets = keyPoints.map { "- \($0.text)" }.joined(separator: "\n")
+            let bullets = keyPoints.map { "- \($0)" }.joined(separator: "\n")
             sections.append("## Key Points\n\(bullets)")
         }
 
-        let quotes = content.structuredSummary?.quotes ?? content.quotes
+        let quotes = resolvedQuoteTexts(for: content)
         if !quotes.isEmpty {
-            let quoteText = quotes.map { "> \($0.text)" }.joined(separator: "\n")
+            let quoteText = quotes.map { "> \($0)" }.joined(separator: "\n")
             sections.append("## Quotes\n\(quoteText)")
         }
 
-        if !content.url.isEmpty {
-            sections.append("Link: \(content.url)")
+        if let shareURL = resolvedShareURLString(for: content) {
+            sections.append("Link: \(shareURL)")
         }
 
         guard sections.count > 1 else { return nil }
@@ -284,8 +469,15 @@ class ContentDetailViewModel: ObservableObject {
 
         switch option {
         case .light:
-            guard let url = URL(string: content.url) else { return [] }
-            return [content.displayTitle, url]
+            var items: [Any] = [content.displayTitle]
+            if let shareURL = resolvedShareURLString(for: content) {
+                if let url = URL(string: shareURL) {
+                    items.append(url)
+                } else {
+                    items.append(shareURL)
+                }
+            }
+            return items
         case .medium:
             if let mediumText = buildMediumMarkdown() {
                 return [MarkdownItemProvider(markdown: mediumText)]

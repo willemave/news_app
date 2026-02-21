@@ -454,10 +454,13 @@ struct SettingsView: View {
 
         do {
             xConnection = try await XIntegrationService.shared.fetchConnection()
-            let connectionUsername = xConnection?.twitterUsername ?? userUsername
-            serverTwitterUsername = connectionUsername
+            // Prefer the authenticated profile username; only fall back to integration username when empty.
+            let resolvedUsername = userUsername.isEmpty
+                ? (xConnection?.twitterUsername ?? "")
+                : userUsername
+            serverTwitterUsername = resolvedUsername
             if !isTwitterUsernameFieldFocused && !hasUnsavedTwitterUsernameEdits {
-                twitterUsernameDraft = connectionUsername
+                twitterUsernameDraft = resolvedUsername
             }
         } catch {
             xConnection = nil
