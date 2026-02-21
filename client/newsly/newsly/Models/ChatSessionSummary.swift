@@ -33,6 +33,8 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     let hasPendingMessage: Bool?
     let isFavorite: Bool?
     let hasMessages: Bool?
+    let lastMessagePreview: String?
+    let lastMessageRole: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -52,7 +54,36 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         case hasPendingMessage = "has_pending_message"
         case isFavorite = "is_favorite"
         case hasMessages = "has_messages"
+        case lastMessagePreview = "last_message_preview"
+        case lastMessageRole = "last_message_role"
     }
+
+    private static let iso8601WithFractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let utcMicrosecondsFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
+        return formatter
+    }()
+
+    private static let displayDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone.current
+        return formatter
+    }()
 
     /// True if the session has a message currently being processed
     var isProcessing: Bool {
@@ -94,36 +125,11 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
 
     var formattedDate: String {
         let dateString = lastMessageAt ?? createdAt
-
-        // Try ISO8601 with fractional seconds
-        let iso8601WithFractional = ISO8601DateFormatter()
-        iso8601WithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var date = iso8601WithFractional.date(from: dateString)
-
-        // Try ISO8601 without fractional seconds
-        if date == nil {
-            let iso8601 = ISO8601DateFormatter()
-            iso8601.formatOptions = [.withInternetDateTime]
-            date = iso8601.date(from: dateString)
-        }
-
-        // Try basic ISO format
-        if date == nil {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
-            formatter.timeZone = TimeZone(abbreviation: "UTC")
-            date = formatter.date(from: dateString)
-        }
-
-        guard let date = date else {
+        guard let date = Self.parseDate(dateString) else {
             return "Date unknown"
         }
 
-        let displayFormatter = DateFormatter()
-        displayFormatter.dateStyle = .short
-        displayFormatter.timeStyle = .short
-        displayFormatter.timeZone = TimeZone.current
-        return displayFormatter.string(from: date)
+        return Self.displayDateFormatter.string(from: date)
     }
 
     var providerDisplayName: String {
@@ -212,5 +218,15 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         default:
             return "Chat"
         }
+    }
+
+    private static func parseDate(_ dateString: String) -> Date? {
+        if let date = Self.iso8601WithFractionalFormatter.date(from: dateString) {
+            return date
+        }
+        if let date = Self.iso8601Formatter.date(from: dateString) {
+            return date
+        }
+        return Self.utcMicrosecondsFormatter.date(from: dateString)
     }
 }

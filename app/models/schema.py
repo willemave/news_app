@@ -458,6 +458,54 @@ class UserScraperConfig(Base):
     )
 
 
+class UserIntegrationConnection(Base):
+    """OAuth/API connection metadata for external providers per user."""
+
+    __tablename__ = "user_integration_connections"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    provider = Column(String(50), nullable=False, index=True)
+    provider_user_id = Column(String(255), nullable=True)
+    provider_username = Column(String(255), nullable=True)
+    access_token_encrypted = Column(Text, nullable=True)
+    refresh_token_encrypted = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    scopes = Column(JSON, default=list, nullable=True)
+    connection_metadata = Column(JSON, default=dict, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_user_provider_connection"),
+        UniqueConstraint("provider", "provider_user_id", name="uq_provider_provider_user"),
+        Index("idx_user_integration_provider_active", "provider", "is_active"),
+    )
+
+
+class UserIntegrationSyncState(Base):
+    """Provider sync cursor/state for a single user integration connection."""
+
+    __tablename__ = "user_integration_sync_state"
+
+    id = Column(Integer, primary_key=True)
+    connection_id = Column(Integer, nullable=False, index=True)
+    cursor = Column(String(1024), nullable=True)
+    last_synced_item_id = Column(String(255), nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    last_status = Column(String(50), nullable=True)
+    last_error = Column(Text, nullable=True)
+    sync_metadata = Column(JSON, default=dict, nullable=True)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("connection_id", name="uq_user_integration_sync_connection"),
+        Index("idx_user_integration_sync_last_synced", "last_synced_at"),
+    )
+
+
 class ChatSession(Base):
     """Chat session for deep-dive conversations with articles/news."""
 

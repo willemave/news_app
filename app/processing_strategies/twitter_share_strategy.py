@@ -11,12 +11,8 @@ import httpx
 from app.core.logging import get_logger
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 from app.services.http import NonRetryableError
-from app.services.twitter_share import (
-    TweetFetchParams,
-    extract_tweet_id,
-    fetch_tweet_detail,
-    resolve_twitter_credentials,
-)
+from app.services.twitter_share import extract_tweet_id
+from app.services.x_api import fetch_tweet_by_url
 
 logger = get_logger(__name__)
 
@@ -34,6 +30,11 @@ def _parse_tweet_date(date_str: str | None) -> datetime | None:
     if not date_str:
         return None
     try:
+        iso_value = date_str.replace("Z", "+00:00")
+        return datetime.fromisoformat(iso_value)
+    except Exception:
+        pass
+    try:
         return datetime.strptime(date_str, "%a %b %d %H:%M:%S %z %Y")
     except Exception:
         return None
@@ -45,40 +46,26 @@ def _build_thread_text(thread: list[str]) -> str:
 
 
 class TwitterShareProcessorStrategy(UrlProcessorStrategy):
-    """Process tweet URLs by fetching text via Twitter GraphQL."""
+    """Process tweet URLs by fetching text via official X API."""
 
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
         return extract_tweet_id(url) is not None
 
     def download_content(self, url: str) -> TweetContent:
-        tweet_id = extract_tweet_id(url)
-        if not tweet_id:
-            raise NonRetryableError("Invalid tweet URL")
-
-        credentials_result = resolve_twitter_credentials()
-        if not credentials_result.success or not credentials_result.credentials:
-            raise NonRetryableError(credentials_result.error or "Twitter credentials unavailable")
-
-        fetch_result = fetch_tweet_detail(
-            TweetFetchParams(
-                tweet_id=tweet_id,
-                credentials=credentials_result.credentials,
-                include_thread=True,
-            )
-        )
+        fetch_result = fetch_tweet_by_url(url=url)
 
         if not fetch_result.success or not fetch_result.tweet:
-            raise NonRetryableError(fetch_result.error or "TweetDetail request failed")
+            raise NonRetryableError(fetch_result.error or "Tweet lookup failed")
 
-        thread = fetch_result.thread or [fetch_result.tweet]
-        thread_text = _build_thread_text([tweet.text for tweet in thread])
+        tweet = fetch_result.tweet
+        thread_text = _build_thread_text([tweet.text])
         if not thread_text:
             raise NonRetryableError("Tweet thread contained no text to summarize")
 
         author = None
-        if fetch_result.tweet.author_username:
-            author = f"@{fetch_result.tweet.author_username}"
-        publication_date = _parse_tweet_date(fetch_result.tweet.created_at)
+        if tweet.author_username:
+            author = f"@{tweet.author_username}"
+        publication_date = _parse_tweet_date(tweet.created_at)
 
         return TweetContent(text=thread_text, author=author, publication_date=publication_date)
 

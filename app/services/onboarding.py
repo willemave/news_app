@@ -25,6 +25,7 @@ from app.models.schema import (
     OnboardingDiscoveryRun,
     OnboardingDiscoverySuggestion,
 )
+from app.models.user import User
 from app.repositories.content_repository import apply_visibility_filters, build_visibility_context
 from app.routers.api.models import (
     OnboardingAudioDiscoverRequest,
@@ -50,6 +51,7 @@ from app.services.exa_client import ExaSearchResult, exa_search
 from app.services.llm_agents import get_basic_agent
 from app.services.queue import QueueService, TaskType
 from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
+from app.services.x_integration import normalize_twitter_username
 from app.utils.paths import resolve_config_path
 
 logger = get_logger(__name__)
@@ -511,6 +513,11 @@ def complete_onboarding(
     Returns:
         OnboardingCompleteResponse with status and inbox count.
     """
+    normalized_username: str | None = None
+    should_update_twitter_username = request.twitter_username is not None
+    if should_update_twitter_username:
+        normalized_username = normalize_twitter_username(request.twitter_username)
+
     created_types: set[str] = set()
     selections = request.selected_sources
 
@@ -594,6 +601,12 @@ def complete_onboarding(
                 "context_data": {"error": str(exc)},
             },
         )
+
+    if should_update_twitter_username:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user and user.twitter_username != normalized_username:
+            user.twitter_username = normalized_username
+            db.commit()
 
     inbox_count = _estimate_inbox_count(db, user_id)
     inbox_count_estimate = max(inbox_count, 100)

@@ -873,15 +873,7 @@ struct ContentDetailView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                // Compact icon header for content without hero image
-                HStack {
-                    Image(systemName: contentTypeIcon(for: content))
-                        .font(.system(size: 28, weight: .light))
-                        .foregroundColor(.secondary.opacity(0.4))
-                    Spacer()
-                }
-                .padding(.horizontal, DetailDesign.horizontalPadding)
-                .padding(.top, 8)
+                Spacer().frame(height: 8)
             }
 
             // Title and metadata section

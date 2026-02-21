@@ -70,8 +70,7 @@ struct MoreView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("More")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             await submissionsViewModel.load()
             await processingCountService.refreshCount()

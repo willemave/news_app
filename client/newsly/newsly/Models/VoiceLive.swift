@@ -58,6 +58,9 @@ struct VoiceServerEvent: Codable {
     let chatSessionId: Int?
     let launchMode: LiveLaunchMode?
     let turnId: String?
+    let turnIndex: Int?
+    let streamEpoch: Int?
+    let eventIndex: Int?
     let text: String?
     let seq: Int?
     let audioB64: String?
@@ -68,6 +71,8 @@ struct VoiceServerEvent: Codable {
     let latencyMs: Int?
     let ttsEnabled: Bool?
     let reason: String?
+    let rollbackTurnIndex: Int?
+    let continuationHintChars: Int?
     let isIntro: Bool?
     let isOnboardingIntro: Bool?
 
@@ -78,6 +83,9 @@ struct VoiceServerEvent: Codable {
         case chatSessionId = "chat_session_id"
         case launchMode = "launch_mode"
         case turnId = "turn_id"
+        case turnIndex = "turn_index"
+        case streamEpoch = "stream_epoch"
+        case eventIndex = "event_index"
         case text
         case seq
         case audioB64 = "audio_b64"
@@ -88,6 +96,8 @@ struct VoiceServerEvent: Codable {
         case latencyMs = "latency_ms"
         case ttsEnabled = "tts_enabled"
         case reason
+        case rollbackTurnIndex = "rollback_turn_index"
+        case continuationHintChars = "continuation_hint_chars"
         case isIntro = "is_intro"
         case isOnboardingIntro = "is_onboarding_intro"
     }

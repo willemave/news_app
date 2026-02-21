@@ -24,16 +24,15 @@ from app.services.instruction_links import create_contents_from_instruction_link
 from app.services.queue import TaskType
 from app.services.scraper_configs import ensure_inbox_status
 from app.services.twitter_share import (
-    TweetFetchParams,
     canonical_tweet_url,
     extract_tweet_id,
-    fetch_tweet_detail,
-    resolve_twitter_credentials,
 )
 from app.services.url_detection import (
     infer_content_type_and_platform,
     should_use_llm_analysis,
 )
+from app.services.x_api import fetch_tweet_by_id
+from app.services.x_integration import get_x_user_access_token
 
 logger = get_logger(__name__)
 
@@ -55,6 +54,12 @@ def _build_thread_text(tweet_texts: list[str]) -> str:
     """Join tweet/thread text into a single body."""
     cleaned = [text.strip() for text in tweet_texts if isinstance(text, str) and text.strip()]
     return "\n\n".join(cleaned)
+
+
+def _is_nonfatal_tweet_lookup_error(error_message: str) -> bool:
+    """Return True when tweet lookup failures should degrade gracefully."""
+    lowered = error_message.lower()
+    return "x_app_bearer_token is required" in lowered
 
 
 @dataclass(frozen=True)
@@ -167,33 +172,34 @@ class TwitterShareFlow:
         if not tweet_id or not is_self_submission:
             return FlowOutcome(handled=False, success=True)
 
-        credentials_result = resolve_twitter_credentials()
-        if not credentials_result.success or not credentials_result.credentials:
-            error_message = credentials_result.error or "Twitter credentials unavailable"
-            logger.error(
-                "Twitter share fetch failed: %s",
-                error_message,
-                extra={
-                    "component": "twitter_share",
-                    "operation": "resolve_credentials",
-                    "item_id": content.id,
-                },
-            )
-            content.status = ContentStatus.FAILED.value
-            content.error_message = error_message
-            db.commit()
-            return FlowOutcome(handled=True, success=False)
-
         tweet_url = canonical_tweet_url(tweet_id)
-        fetch_result = fetch_tweet_detail(
-            TweetFetchParams(
-                tweet_id=tweet_id,
-                credentials=credentials_result.credentials,
-                include_thread=True,
-            )
-        )
+        submitter_id = metadata.get("submitted_by_user_id")
+        access_token = None
+        if isinstance(submitter_id, int):
+            access_token = get_x_user_access_token(db, user_id=submitter_id)
+
+        fetch_result = fetch_tweet_by_id(tweet_id=tweet_id, access_token=access_token)
         if not fetch_result.success or not fetch_result.tweet:
-            error_message = fetch_result.error or "TweetDetail request failed"
+            error_message = fetch_result.error or "Tweet lookup failed"
+            if _is_nonfatal_tweet_lookup_error(error_message):
+                logger.warning(
+                    "Twitter share enrichment skipped due to missing app auth token",
+                    extra={
+                        "component": "twitter_share",
+                        "operation": "fetch_tweet",
+                        "item_id": content.id,
+                        "context_data": {"error": error_message},
+                    },
+                )
+                metadata["tweet_enrichment"] = {
+                    "status": "skipped",
+                    "reason": "x_app_auth_unavailable",
+                    "error": error_message,
+                }
+                content.content_metadata = metadata
+                db.commit()
+                return FlowOutcome(handled=False, success=True)
+
             logger.error(
                 "Twitter share fetch failed: %s",
                 error_message,
@@ -208,10 +214,10 @@ class TwitterShareFlow:
             db.commit()
             return FlowOutcome(handled=True, success=False)
 
-        thread_tweets = fetch_result.thread or [fetch_result.tweet]
-        thread_text = _build_thread_text([tweet.text for tweet in thread_tweets])
+        tweet = fetch_result.tweet
+        thread_text = _build_thread_text([tweet.text])
         external_urls: list[str] = []
-        for raw_url in fetch_result.external_urls:
+        for raw_url in tweet.external_urls:
             try:
                 external_urls.append(normalize_url(raw_url))
             except Exception:  # noqa: BLE001
@@ -231,13 +237,13 @@ class TwitterShareFlow:
                 "discussion_url": tweet_url,
                 "tweet_id": tweet_id,
                 "tweet_url": tweet_url,
-                "tweet_author": fetch_result.tweet.author_name,
-                "tweet_author_username": fetch_result.tweet.author_username,
-                "tweet_created_at": fetch_result.tweet.created_at,
-                "tweet_like_count": fetch_result.tweet.like_count,
-                "tweet_retweet_count": fetch_result.tweet.retweet_count,
-                "tweet_reply_count": fetch_result.tweet.reply_count,
-                "tweet_text": fetch_result.tweet.text,
+                "tweet_author": tweet.author_name,
+                "tweet_author_username": tweet.author_username,
+                "tweet_created_at": tweet.created_at,
+                "tweet_like_count": tweet.like_count,
+                "tweet_retweet_count": tweet.retweet_count,
+                "tweet_reply_count": tweet.reply_count,
+                "tweet_text": tweet.text,
                 "tweet_thread_text": thread_text,
                 "tweet_external_urls": external_urls,
             }
@@ -259,7 +265,6 @@ class TwitterShareFlow:
         content.content_metadata = metadata
         db.commit()
 
-        submitter_id = metadata.get("submitted_by_user_id")
         submitted_via = metadata.get("submitted_via") or "share_sheet"
         for normalized_url in fanout_urls:
             existing = (
@@ -344,9 +349,12 @@ class UrlAnalysisFlow:
         analysis_instruction: str | None,
     ) -> Any | None:
         """Perform URL analysis with pattern matching or LLM analysis."""
+        platform_hint = metadata.get("platform_hint")
+        if not isinstance(platform_hint, str):
+            platform_hint = None
         use_llm = should_use_llm_analysis(url) or bool(analysis_instruction)
         if not use_llm:
-            detected_type, platform = infer_content_type_and_platform(url, None, None)
+            detected_type, platform = infer_content_type_and_platform(url, None, platform_hint)
             logger.info(
                 "Pattern-based detection for %s: type=%s, platform=%s",
                 content.id,
@@ -386,7 +394,7 @@ class UrlAnalysisFlow:
                 content.id,
                 result.message,
             )
-            detected_type, platform = infer_content_type_and_platform(url, None, None)
+            detected_type, platform = infer_content_type_and_platform(url, None, platform_hint)
             content.content_type = detected_type.value
             if platform:
                 content.platform = platform

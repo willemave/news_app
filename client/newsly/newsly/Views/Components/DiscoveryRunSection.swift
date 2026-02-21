@@ -7,130 +7,156 @@ import SwiftUI
 
 struct DiscoveryRunSection: View {
     let run: DiscoveryRunSuggestions
-    let onSubscribe: (DiscoverySuggestion) -> Void
-    let onAddItem: (DiscoverySuggestion) -> Void
-    let onOpen: (DiscoverySuggestion) -> Void
-    let onDismiss: (DiscoverySuggestion) -> Void
+    let isLatest: Bool
+    let onSelect: (DiscoverySuggestion) -> Void
+
+    private static let briefingDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter
+    }()
+
+    private static let iso8601WithFractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Run title — SectionHeader style
-            VStack(alignment: .leading, spacing: 4) {
-                Text(runTitle(for: run.runCreatedAt).uppercased())
-                    .font(.sectionHeader)
-                    .foregroundStyle(Color.textTertiary)
-                    .tracking(0.5)
+            if isLatest {
+                editorialBriefingHero
+            } else {
+                dateSeparator
+            }
 
-                if let summary = run.directionSummary, !summary.isEmpty {
-                    Text(summary)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                        .padding(.top, 2)
+            // Flat mixed list of all suggestions
+            VStack(spacing: 10) {
+                ForEach(allSuggestions) { suggestion in
+                    DiscoverySuggestionCard(
+                        suggestion: suggestion,
+                        suggestionType: suggestion.suggestionType,
+                        onTap: { onSelect(suggestion) }
+                    )
                 }
             }
             .padding(.horizontal, Spacing.screenHorizontal)
-            .padding(.top, Spacing.sectionTop)
-            .padding(.bottom, 16)
-
-            if !run.feeds.isEmpty {
-                typeSectionHeader(title: "Feeds", icon: "doc.text", color: .blue, count: run.feeds.count)
-                suggestionCards(run.feeds, type: "feed")
-            }
-
-            if !run.podcasts.isEmpty {
-                if !run.feeds.isEmpty {
-                    sectionDivider
-                }
-                typeSectionHeader(title: "Podcasts", icon: "waveform", color: .orange, count: run.podcasts.count)
-                suggestionCards(run.podcasts, type: "podcast_rss")
-            }
-
-            if !run.youtube.isEmpty {
-                if !run.feeds.isEmpty || !run.podcasts.isEmpty {
-                    sectionDivider
-                }
-                typeSectionHeader(title: "YouTube", icon: "play.rectangle.fill", color: .red, count: run.youtube.count)
-                suggestionCards(run.youtube, type: "youtube")
-            }
         }
     }
 
-    private func typeSectionHeader(title: String, icon: String, color: Color, count: Int) -> some View {
-        HStack(spacing: 10) {
-            // Colored icon badge
-            ZStack {
-                Circle()
-                    .fill(color.opacity(0.12))
-                    .frame(width: 28, height: 28)
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(color)
+    // MARK: - Editorial Briefing Hero
+
+    private var editorialBriefingHero: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Uppercase tracking label
+            Text(briefingLabel.uppercased())
+                .font(.editorialMeta)
+                .foregroundColor(.editorialSub)
+                .tracking(1.2)
+                .padding(.horizontal, Spacing.screenHorizontal)
+                .padding(.top, Spacing.sectionTop)
+
+            // Large serif display headline
+            if let summary = run.directionSummary, !summary.isEmpty {
+                // Extract first sentence as headline, rest as body
+                let parts = splitSummary(summary)
+
+                Text(parts.headline)
+                    .font(.editorialDisplay)
+                    .foregroundColor(.editorialText)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Spacing.screenHorizontal)
+                    .padding(.top, 10)
+
+                if let body = parts.body {
+                    HStack(spacing: 12) {
+                        Rectangle()
+                            .fill(Color.editorialBorder)
+                            .frame(width: 2)
+
+                        Text(body)
+                            .font(.editorialBody)
+                            .italic()
+                            .foregroundColor(.editorialSub)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, Spacing.screenHorizontal)
+                    .padding(.top, 12)
+                }
             }
 
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(.primary)
+            // Spacer before cards
+            Spacer().frame(height: 20)
+        }
+    }
 
-            Text("\(count)")
-                .font(.caption2)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-                .monospacedDigit()
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color(.tertiarySystemFill))
-                .cornerRadius(4)
+    // MARK: - Date Separator (non-latest runs)
 
-            Spacer()
+    private var dateSeparator: some View {
+        HStack(spacing: 8) {
+            Rectangle()
+                .fill(Color.editorialBorder)
+                .frame(height: 1)
+
+            Text(runDateLabel.uppercased())
+                .font(.editorialMeta)
+                .foregroundColor(.editorialSub)
+                .tracking(0.8)
+                .fixedSize()
+
+            Rectangle()
+                .fill(Color.editorialBorder)
+                .frame(height: 1)
         }
         .padding(.horizontal, Spacing.screenHorizontal)
-        .padding(.top, 20)
-        .padding(.bottom, 12)
+        .padding(.top, 28)
+        .padding(.bottom, 16)
     }
 
-    private var sectionDivider: some View {
-        Divider()
-            .padding(.horizontal, Spacing.screenHorizontal)
-            .padding(.top, 8)
+    // MARK: - Helpers
+
+    private var allSuggestions: [DiscoverySuggestion] {
+        run.feeds + run.podcasts + run.youtube
     }
 
-    private func suggestionCards(_ suggestions: [DiscoverySuggestion], type: String) -> some View {
-        VStack(spacing: 10) {
-            ForEach(suggestions) { suggestion in
-                DiscoverySuggestionCard(
-                    suggestion: suggestion,
-                    suggestionType: suggestion.suggestionType.isEmpty ? type : suggestion.suggestionType,
-                    onSubscribe: { onSubscribe(suggestion) },
-                    onAddItem: suggestion.hasItem ? { onAddItem(suggestion) } : nil,
-                    onOpen: { onOpen(suggestion) },
-                    onDismiss: { onDismiss(suggestion) }
-                )
-            }
+    private var briefingLabel: String {
+        let dateStr = formatBriefingDate(run.runCreatedAt)
+        return "Daily Briefing \u{00B7} \(dateStr)"
+    }
+
+    private var runDateLabel: String {
+        formatBriefingDate(run.runCreatedAt)
+    }
+
+    private func formatBriefingDate(_ dateString: String) -> String {
+        guard let date = parseDate(dateString) else { return "Recent" }
+        return Self.briefingDateFormatter.string(from: date)
+    }
+
+    private func splitSummary(_ text: String) -> (headline: String, body: String?) {
+        // Split at first sentence boundary
+        let sentenceEnders: [Character] = [".", "!", "?"]
+        if let idx = text.firstIndex(where: { sentenceEnders.contains($0) }) {
+            let headlineEnd = text.index(after: idx)
+            let headline = String(text[text.startIndex..<headlineEnd]).trimmingCharacters(in: .whitespaces)
+            let remaining = String(text[headlineEnd...]).trimmingCharacters(in: .whitespaces)
+            return (headline, remaining.isEmpty ? nil : remaining)
         }
-        .padding(.horizontal, Spacing.screenHorizontal)
-    }
-
-    private func runTitle(for dateString: String) -> String {
-        guard let date = parseDate(dateString) else { return "Discovery" }
-        let calendar = Calendar.current
-        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? date
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        return "Week of \(formatter.string(from: startOfWeek))"
+        return (text, nil)
     }
 
     private func parseDate(_ dateString: String) -> Date? {
-        let iso8601WithFractional = ISO8601DateFormatter()
-        iso8601WithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = iso8601WithFractional.date(from: dateString) {
+        if let date = Self.iso8601WithFractionalFormatter.date(from: dateString) {
             return date
         }
-
-        let iso8601 = ISO8601DateFormatter()
-        iso8601.formatOptions = [.withInternetDateTime]
-        return iso8601.date(from: dateString)
+        return Self.iso8601Formatter.date(from: dateString)
     }
 }

@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-// MARK: - Loading State (Skeleton Cards)
+// MARK: - Loading State (Editorial Skeleton)
 
 struct DiscoveryLoadingStateView: View {
     @State private var shimmer = false
@@ -27,37 +27,45 @@ struct DiscoveryLoadingStateView: View {
     }
 
     private var skeletonCard: some View {
-        HStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(Color(.tertiarySystemFill))
-                .frame(width: 3)
-                .padding(.vertical, 12)
-
-            VStack(alignment: .leading, spacing: 10) {
-                RoundedRectangle(cornerRadius: 4)
+        VStack(alignment: .leading, spacing: 10) {
+            // Metadata bar skeleton
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2)
                     .fill(Color(.tertiarySystemFill))
-                    .frame(height: 14)
-                    .frame(maxWidth: .infinity)
-                    .opacity(shimmer ? 0.4 : 0.8)
+                    .frame(width: 10, height: 10)
+                    .opacity(shimmer ? 0.4 : 0.7)
 
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 2)
                     .fill(Color(.tertiarySystemFill))
-                    .frame(width: 180, height: 10)
+                    .frame(width: 50, height: 8)
                     .opacity(shimmer ? 0.3 : 0.6)
 
-                HStack(spacing: 8) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(.tertiarySystemFill))
-                        .frame(width: 100, height: 10)
-                        .opacity(shimmer ? 0.3 : 0.6)
-                    Spacer()
-                }
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color(.tertiarySystemFill))
+                    .frame(width: 80, height: 8)
+                    .opacity(shimmer ? 0.3 : 0.6)
+
+                Spacer()
             }
-            .padding(.leading, 12)
-            .padding(.trailing, 14)
-            .padding(.vertical, 14)
+
+            // Headline skeleton
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(.tertiarySystemFill))
+                .frame(height: 20)
+                .frame(maxWidth: .infinity)
+                .opacity(shimmer ? 0.4 : 0.8)
+
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(.tertiarySystemFill))
+                .frame(width: 200, height: 20)
+                .opacity(shimmer ? 0.3 : 0.7)
         }
+        .padding(16)
         .background(Color(.secondarySystemGroupedBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.editorialBorder, lineWidth: 1)
+        )
         .cornerRadius(12)
     }
 }
@@ -70,35 +78,29 @@ struct DiscoveryErrorStateView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.red.opacity(0.1))
-                    .frame(width: 56, height: 56)
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(.red.opacity(0.8))
-            }
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 28, weight: .light))
+                .foregroundColor(.editorialSub)
 
             VStack(spacing: 6) {
                 Text("Something went wrong")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
+                    .font(.editorialHeadline)
+                    .foregroundColor(.editorialText)
 
                 Text(error)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.editorialBody)
+                    .foregroundColor(.editorialSub)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
             }
 
             Button(action: onRetry) {
                 Label("Try Again", systemImage: "arrow.clockwise")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.subheadline.weight(.medium))
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .tint(.editorialSub)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
@@ -117,45 +119,27 @@ struct DiscoveryProcessingStateView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.purple.opacity(0.15), .blue.opacity(0.15)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 64, height: 64)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.purple, .blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
+            Image(systemName: "sparkles")
+                .font(.system(size: 32, weight: .light))
+                .foregroundColor(.editorialSub)
 
             VStack(spacing: 8) {
                 Text("Discovering New Content")
-                    .font(.title3)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
+                    .font(.editorialHeadline)
+                    .foregroundColor(.editorialText)
 
                 Text(runStatusDescription)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(.editorialBody)
+                    .foregroundColor(.editorialSub)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
             }
 
-            // Progress dots with pulse on active
+            // Progress dots
             HStack(spacing: 8) {
                 ForEach(0..<4, id: \.self) { index in
                     Circle()
-                        .fill(index <= currentJobStage ? Color.accentColor : Color(.tertiarySystemFill))
+                        .fill(index <= currentJobStage ? Color.editorialText : Color.editorialBorder)
                         .frame(width: 6, height: 6)
                         .scaleEffect(index == currentJobStage ? pulseScale : 1.0)
                 }
@@ -179,44 +163,25 @@ struct DiscoveryEmptyStateView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.purple.opacity(0.12), .blue.opacity(0.12)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 72, height: 72)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 32, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.purple, .blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
+            Image(systemName: "sparkles")
+                .font(.system(size: 32, weight: .light))
+                .foregroundColor(.editorialSub)
 
             VStack(spacing: 8) {
                 Text("Discover New Content")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
+                    .font(.editorialHeadline)
+                    .foregroundColor(.editorialText)
 
                 Text("Get personalized suggestions for feeds, podcasts, and channels based on your reading history.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(.editorialBody)
+                    .foregroundColor(.editorialSub)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
             }
 
             Button(action: onGenerate) {
                 Label("Generate Suggestions", systemImage: "sparkles")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.subheadline.weight(.medium))
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)

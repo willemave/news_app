@@ -18,6 +18,7 @@ class User(Base):
     apple_id = Column(String(255), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     full_name = Column(String(255), nullable=True)
+    twitter_username = Column(String(50), nullable=True, index=True)
     is_admin = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     has_completed_new_user_tutorial = Column(Boolean, default=False, nullable=False)
@@ -49,6 +50,8 @@ class UserResponse(UserBase):
     apple_id: str
     is_admin: bool
     is_active: bool
+    twitter_username: str | None = None
+    has_x_bookmark_sync: bool = False
     has_completed_new_user_tutorial: bool
     has_completed_live_voice_onboarding: bool
     created_at: datetime
@@ -120,3 +123,10 @@ class AdminLoginResponse(BaseModel):
     """Response schema for admin login."""
 
     message: str
+
+
+class UpdateUserProfileRequest(BaseModel):
+    """Request schema for updating the authenticated user's profile."""
+
+    full_name: str | None = Field(default=None, max_length=255)
+    twitter_username: str | None = Field(default=None, max_length=50)

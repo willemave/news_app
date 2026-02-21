@@ -1103,3 +1103,177 @@ def test_voice_websocket_acknowledges_response_cancel_for_active_turn(
         assert cancel_ack["type"] == "response.cancelled"
         assert cancel_ack["reason"] == "client_request"
         assert cancel_ack["turn_id"] == turn_id
+        assert isinstance(cancel_ack.get("rollback_turn_index"), int)
+        assert isinstance(cancel_ack.get("continuation_hint_chars"), int)
+
+
+def test_voice_websocket_suppresses_stale_turn_events_on_turn_replacement(
+    client, test_user, monkeypatch
+) -> None:
+    """Replacing an active turn via audio.commit must not leak stale events from the prior turn."""
+
+    captured_carryover = {"text": ""}
+
+    class ReplacementOrchestrator:
+        def __init__(
+            self,
+            *,
+            session_id: str,
+            user_id: int,
+            emit_event,
+            chat_session_id: int | None = None,
+            launch_mode: str = "general",
+            content_context: str | None = None,
+            sample_rate_hz: int = 16_000,
+        ) -> None:
+            self.emit_event = emit_event
+            self.turn_count = 0
+            _ = (
+                session_id,
+                user_id,
+                chat_session_id,
+                launch_mode,
+                content_context,
+                sample_rate_hz,
+            )
+
+        async def start(self) -> None:
+            return
+
+        async def close(self) -> None:
+            return
+
+        async def handle_audio_frame(self, pcm16_b64: str) -> None:
+            _ = pcm16_b64
+            return
+
+        def set_next_turn_carryover(self, carryover_text: str) -> None:
+            captured_carryover["text"] = carryover_text
+
+        async def process_turn(self, turn_id: str) -> dict[str, Any]:
+            self.turn_count += 1
+            if self.turn_count == 1:
+                await self.emit_event({"type": "turn.started", "turn_id": turn_id})
+                await self.emit_event(
+                    {
+                        "type": "assistant.text.delta",
+                        "turn_id": turn_id,
+                        "text": "Partial weather response",
+                    }
+                )
+                try:
+                    await asyncio.sleep(60)
+                except asyncio.CancelledError:
+                    await self.emit_event(
+                        {
+                            "type": "assistant.text.delta",
+                            "turn_id": turn_id,
+                            "text": " stale tail",
+                        }
+                    )
+                    await self.emit_event(
+                        {
+                            "type": "assistant.text.final",
+                            "turn_id": turn_id,
+                            "text": "Partial weather response stale tail",
+                        }
+                    )
+                    await self.emit_event(
+                        {
+                            "type": "turn.cancelled",
+                            "turn_id": turn_id,
+                            "reason": "barge_in",
+                        }
+                    )
+                    raise
+            await self.emit_event({"type": "turn.started", "turn_id": turn_id})
+            await self.emit_event(
+                {
+                    "type": "assistant.text.final",
+                    "turn_id": turn_id,
+                    "text": "Second turn response",
+                }
+            )
+            await self.emit_event(
+                {
+                    "type": "assistant.audio.final",
+                    "turn_id": turn_id,
+                    "tts_enabled": False,
+                }
+            )
+            await self.emit_event(
+                {
+                    "type": "turn.completed",
+                    "turn_id": turn_id,
+                    "latency_ms": 8,
+                    "transcript_chars": 10,
+                    "response_chars": 20,
+                    "model": "anthropic:claude-haiku-4-5-20251001",
+                }
+            )
+            return {}
+
+    monkeypatch.setattr(voice_router, "VoiceConversationOrchestrator", ReplacementOrchestrator)
+
+    created = client.post("/api/voice/sessions", json={})
+    session_id = created.json()["session_id"]
+    token = create_access_token(test_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.websocket_connect(f"/api/voice/ws/{session_id}", headers=headers) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "session.ready"
+
+        websocket.send_json({"type": "session.start", "session_id": session_id})
+        websocket.send_json(
+            {
+                "type": "audio.frame",
+                "seq": 0,
+                "pcm16_b64": "AA==",
+                "sample_rate_hz": 16000,
+                "channels": 1,
+            }
+        )
+        websocket.send_json({"type": "audio.commit", "seq": 0})
+
+        first_turn_started = websocket.receive_json()
+        assert first_turn_started["type"] == "turn.started"
+        first_turn_id = first_turn_started["turn_id"]
+        first_delta = websocket.receive_json()
+        assert first_delta["type"] == "assistant.text.delta"
+        assert first_delta["turn_id"] == first_turn_id
+
+        websocket.send_json(
+            {
+                "type": "audio.frame",
+                "seq": 1,
+                "pcm16_b64": "AA==",
+                "sample_rate_hz": 16000,
+                "channels": 1,
+            }
+        )
+        websocket.send_json({"type": "audio.commit", "seq": 1})
+
+        observed_after_replacement: list[dict[str, Any]] = []
+        while True:
+            payload = websocket.receive_json()
+            observed_after_replacement.append(payload)
+            if payload["type"] == "turn.completed":
+                break
+
+        assert captured_carryover["text"] == "Partial weather response"
+        assert any(
+            item["type"] == "turn.started" and item["turn_id"] != first_turn_id
+            for item in observed_after_replacement
+        )
+        assert not any(
+            item["turn_id"] == first_turn_id
+            and item["type"] in {"assistant.text.delta", "assistant.text.final", "turn.cancelled"}
+            for item in observed_after_replacement
+            if "turn_id" in item
+        )
+        completed = observed_after_replacement[-1]
+        assert completed["type"] == "turn.completed"
+        assert isinstance(completed.get("turn_index"), int)
+        assert isinstance(completed.get("stream_epoch"), int)
+        assert isinstance(completed.get("event_index"), int)

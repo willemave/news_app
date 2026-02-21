@@ -135,7 +135,11 @@ def _append_share_and_chat_user(
 
 
 def submit_user_content(
-    db: Session, payload: SubmitContentRequest, current_user: User
+    db: Session,
+    payload: SubmitContentRequest,
+    current_user: User,
+    *,
+    submitted_via: str = "share_sheet",
 ) -> ContentSubmissionResponse:
     """Persist and enqueue a user-submitted URL for async analysis.
 
@@ -152,6 +156,7 @@ def submit_user_content(
         Submission response describing the created or existing content.
     """
     raw_url = str(payload.url)
+    submission_channel = submitted_via.strip() or "share_sheet"
     normalized_url = normalize_url(raw_url)
 
     # Check if content already exists (by URL only, regardless of type)
@@ -159,6 +164,7 @@ def submit_user_content(
     crawl_links = payload.crawl_links
     subscribe_to_feed = payload.subscribe_to_feed
     share_and_chat = payload.share_and_chat and not subscribe_to_feed
+    platform_hint = (payload.platform or "").strip().lower() or None
 
     existing = db.query(Content).filter(Content.url == normalized_url).first()
     if existing:
@@ -167,11 +173,16 @@ def submit_user_content(
         if not existing.source_url:
             existing.source_url = raw_url
             source_url_updated = True
+        if platform_hint and not existing.platform:
+            existing.platform = platform_hint
+            source_url_updated = True
         if subscribe_to_feed:
             existing_metadata = dict(existing.content_metadata or {})
             existing_metadata["subscribe_to_feed"] = True
             existing_metadata.setdefault("submitted_by_user_id", current_user.id)
-            existing_metadata.setdefault("submitted_via", "share_sheet")
+            existing_metadata.setdefault("submitted_via", submission_channel)
+            if platform_hint:
+                existing_metadata.setdefault("platform_hint", platform_hint)
             existing.content_metadata = existing_metadata
             db.commit()
         else:
@@ -215,10 +226,12 @@ def submit_user_content(
     metadata = {
         "source": SELF_SUBMISSION_SOURCE,
         "submitted_by_user_id": current_user.id,
-        "submitted_via": "share_sheet",
+        "submitted_via": submission_channel,
     }
     if subscribe_to_feed:
         metadata["subscribe_to_feed"] = True
+    if platform_hint:
+        metadata["platform_hint"] = platform_hint
     if share_and_chat:
         metadata = _append_share_and_chat_user(metadata, current_user.id)
 
@@ -229,7 +242,7 @@ def submit_user_content(
         content_type=ContentType.UNKNOWN.value,
         title=payload.title,
         source=SELF_SUBMISSION_SOURCE,
-        platform=None,
+        platform=platform_hint,
         is_aggregate=False,
         status=ContentStatus.NEW.value,
         classification=ContentClassification.TO_READ.value,

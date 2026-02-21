@@ -22,7 +22,7 @@ struct ShortFormView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 16) {
+            LazyVStack(spacing: 0) {
                 if case .error(let error) = viewModel.state, viewModel.currentItems().isEmpty {
                     ErrorView(message: error.localizedDescription) {
                         viewModel.refreshTrigger.send(())
@@ -34,12 +34,18 @@ struct ShortFormView: View {
                 } else if viewModel.currentItems().isEmpty {
                     shortFormEmptyState
                 } else {
-                    ForEach(viewModel.currentItems(), id: \.id) { item in
+                    let items = viewModel.currentItems()
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        // Day delimiter: show when this item starts a new day
+                        if index == 0 || item.calendarDayKey != items[index - 1].calendarDayKey {
+                            DayDelimiter(item: item, isFirst: index == 0)
+                        }
+
                         ShortNewsRow(item: item)
                             .accessibilityIdentifier("short.row.\(item.id)")
                             .id(item.id)
                             .onTapGesture {
-                                let ids = viewModel.currentItems().map(\.id)
+                                let ids = items.map(\.id)
                                 let route = ContentDetailRoute(
                                     contentId: item.id,
                                     contentType: item.contentTypeEnum ?? .news,
@@ -48,7 +54,7 @@ struct ShortFormView: View {
                                 onSelect(route)
                             }
                             .onAppear {
-                                if item.id == viewModel.currentItems().last?.id {
+                                if item.id == items.last?.id {
                                     viewModel.loadMoreTrigger.send(())
                                 }
                             }
@@ -66,6 +72,7 @@ struct ShortFormView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .buttonStyle(.plain)
+                        .padding(.horizontal, Spacing.screenHorizontal)
                         .padding(.vertical, 8)
                     }
 
@@ -76,8 +83,6 @@ struct ShortFormView: View {
                 }
             }
             .scrollTargetLayout()
-            .padding(.horizontal, Spacing.screenHorizontal)
-            .padding(.top, Spacing.rowVertical)
         }
         .accessibilityIdentifier("short.screen")
         .scrollPosition(id: $topVisibleItemId, anchor: .top)
@@ -155,18 +160,12 @@ struct ShortFormView: View {
     }
 }
 
+// MARK: - Short News Row
+
 private struct ShortNewsRow: View {
     let item: ContentSummary
 
-    private let thumbnailSize: CGFloat = RowMetrics.thumbnailSize
-
-    private var hasImage: Bool {
-        let displayUrl = item.thumbnailUrl ?? item.imageUrl
-        guard let urlString = displayUrl,
-              urlString.count > 1
-        else { return false }
-        return buildImageURL(from: urlString) != nil
-    }
+    private let topicAccent = Color(red: 0.067, green: 0.322, blue: 0.831) // #1152d4
 
     private var titleWeight: Font.Weight {
         item.isRead ? .regular : .semibold
@@ -176,125 +175,129 @@ private struct ShortNewsRow: View {
         item.isRead ? .secondary : .primary
     }
 
-    /// Platform-specific accent color for badges
-    private var platformColor: Color {
-        guard let platform = item.platform?.lowercased() else {
-            return .gray
-        }
-        switch platform {
-        case "hacker news", "hackernews", "hn":
-            return .orange
-        case "reddit":
-            return Color(red: 1.0, green: 0.45, blue: 0.0) // Reddit orange-red
-        case "twitter", "x":
-            return .blue
-        case "lobsters":
-            return .red
-        default:
-            return .gray
-        }
+    private var metadataSource: String? {
+        item.source?.uppercased()
+    }
+
+    private var metadataTime: String? {
+        item.relativeTimeDisplay?.uppercased()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 12) {
-                // Thumbnail only when image exists
-                if hasImage {
-                    thumbnailView
-                        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+            // Metadata line: TOPIC · SOURCE · TIME
+            HStack(spacing: 6) {
+                if let topic = item.primaryTopic?.uppercased(), !topic.isEmpty {
+                    Text(topic)
+                        .font(.feedMeta)
+                        .tracking(0.5)
+                        .foregroundStyle(topicAccent)
                 }
-
-                // Text content
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.displayTitle)
-                        .font(.body)
-                        .fontWeight(titleWeight)
-                        .foregroundColor(titleColor)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-
-                    if let summary = item.shortSummary, !summary.isEmpty {
-                        Text(summary)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    }
-
-                    HStack(spacing: 6) {
-                        if let source = item.source {
-                            Text(source)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        if let time = item.relativeTimeDisplay {
-                            Text("·")
-                                .font(.caption)
-                                .foregroundColor(Color(.quaternaryLabel))
-                            Text(time)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        if let platform = item.platform {
-                            Text(platform)
-                                .font(.caption2)
-                                .foregroundColor(platformColor.opacity(item.isRead ? 0.6 : 0.9))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(platformColor.opacity(item.isRead ? 0.08 : 0.15))
-                                .clipShape(Capsule())
-                        }
-                    }
+                if item.primaryTopic != nil, metadataSource != nil {
+                    Text("·")
+                        .font(.feedMeta)
+                        .foregroundStyle(Color.textTertiary)
                 }
+                if let source = metadataSource {
+                    Text(source)
+                        .font(.feedMeta)
+                        .tracking(0.4)
+                        .foregroundStyle(Color.textSecondary)
+                }
+                if (item.primaryTopic != nil || metadataSource != nil) && metadataTime != nil {
+                    Text("·")
+                        .font(.feedMeta)
+                        .foregroundStyle(Color.textTertiary)
+                }
+                if let time = metadataTime {
+                    Text(time)
+                        .font(.feedMeta)
+                        .tracking(0.4)
+                        .foregroundStyle(Color.textSecondary)
+                }
+                Spacer()
             }
 
-            Divider()
-                .padding(.leading, hasImage ? 72 : 0)
+            // Headline
+            Text(item.displayTitle)
+                .font(.feedHeadline)
+                .fontWeight(titleWeight)
+                .foregroundColor(titleColor)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Discussion snippet
+            if let snippet = item.discussionSnippet {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "bubble.left.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.textTertiary.opacity(0.6))
+                        .padding(.top, 3)
+                    (
+                        Text("\(snippet.author): ")
+                            .font(.feedSnippet.weight(.semibold))
+                            .foregroundStyle(Color.textPrimary.opacity(0.7))
+                        +
+                        Text(snippet.text)
+                            .font(.feedSnippet)
+                            .foregroundStyle(Color.textSecondary)
+                    )
+                        .lineLimit(2)
+                        .lineSpacing(2)
+                }
+                .padding(.top, 2)
+            }
         }
-        .padding(.vertical, 10)
+        .padding(.horizontal, Spacing.rowHorizontal)
+        .padding(.vertical, 16)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("short.row.\(item.id)")
     }
+}
 
-    @ViewBuilder
-    private var thumbnailView: some View {
-        // Prefer thumbnail URL for faster loading, fall back to full image
-        let displayUrl = item.thumbnailUrl ?? item.imageUrl
-        if let imageUrlString = displayUrl,
-           let imageUrl = buildImageURL(from: imageUrlString) {
-            CachedAsyncImage(url: imageUrl) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: thumbnailSize, height: thumbnailSize)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } placeholder: {
-                ProgressView()
-                    .frame(width: thumbnailSize, height: thumbnailSize)
-            }
+// MARK: - Day Delimiter
+
+private struct DayDelimiter: View {
+    let item: ContentSummary
+    let isFirst: Bool
+
+    private var dayLabel: String {
+        guard let date = item.itemDate else { return "" }
+        let calendar = Calendar.current
+
+        if calendar.isDateInToday(date) {
+            return "TODAY"
+        } else if calendar.isDateInYesterday(date) {
+            return "YESTERDAY"
         } else {
-            thumbnailPlaceholder
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            formatter.timeZone = TimeZone.current
+            return formatter.string(from: date).uppercased()
         }
     }
 
-    private var thumbnailPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(Color.secondary.opacity(0.15))
-            .frame(width: thumbnailSize, height: thumbnailSize)
-            .overlay(
-                Image(systemName: "newspaper")
-                    .font(.system(size: 20))
-                    .foregroundColor(.secondary.opacity(0.6))
-            )
-    }
-
-    private func buildImageURL(from urlString: String) -> URL? {
-        if urlString.hasPrefix("http://") || urlString.hasPrefix("https://") {
-            return URL(string: urlString)
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(dayLabel)
+                .font(.system(size: 12, weight: .bold))
+                .tracking(1.0)
+                .foregroundStyle(Color.textTertiary)
+            Spacer()
         }
-        // Use string concatenation instead of appendingPathComponent to preserve path structure
-        let baseURL = AppSettings.shared.baseURL
-        let fullURL = urlString.hasPrefix("/") ? baseURL + urlString : baseURL + "/" + urlString
-        return URL(string: fullURL)
+        .padding(.horizontal, Spacing.rowHorizontal)
+        .padding(.top, isFirst ? 12 : 24)
+        .padding(.bottom, 8)
+        .overlay(alignment: .top) {
+            if !isFirst {
+                Rectangle()
+                    .fill(Color.borderSubtle.opacity(0.4))
+                    .frame(height: 6)
+            }
+        }
     }
 }

@@ -27,9 +27,11 @@ from app.models.user import (
     AppleSignInRequest,
     RefreshTokenRequest,
     TokenResponse,
+    UpdateUserProfileRequest,
     User,
     UserResponse,
 )
+from app.services.x_integration import has_active_x_connection, normalize_twitter_username
 from app.templates import templates
 
 logger = get_logger(__name__)
@@ -60,6 +62,12 @@ router = APIRouter()
 #
 # This implementation is suitable ONLY for single-instance development/MVP.
 admin_sessions = set()
+
+
+def _build_user_response(db: Session, user: User) -> UserResponse:
+    has_sync = has_active_x_connection(db, user.id)
+    response = UserResponse.model_validate(user)
+    return response.model_copy(update={"has_x_bookmark_sync": has_sync})
 
 
 @router.post("/apple", response_model=TokenResponse)
@@ -180,7 +188,7 @@ def apple_signin(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
+        user=_build_user_response(db, user),
         is_new_user=is_new_user,
         openai_api_key=settings.openai_api_key,
     )
@@ -213,7 +221,7 @@ def debug_create_user(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
+        user=_build_user_response(db, user),
         is_new_user=True,
         openai_api_key=settings.openai_api_key,
     )
@@ -303,12 +311,34 @@ def get_current_user_info(
         HTTPException: 401 if token is invalid
     """
     try:
-        return UserResponse.model_validate(current_user)
+        return _build_user_response(db, current_user)
     except ValidationError as exc:
         if not _is_email_validation_error(exc):
             raise
         user = _repair_invalid_email(db, current_user, exc.errors())
-        return UserResponse.model_validate(user)
+        return _build_user_response(db, user)
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_current_user_info(
+    payload: UpdateUserProfileRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> UserResponse:
+    """Update authenticated user's profile fields."""
+    if payload.full_name is not None:
+        cleaned_full_name = payload.full_name.strip()
+        current_user.full_name = cleaned_full_name or None
+
+    if payload.twitter_username is not None:
+        try:
+            current_user.twitter_username = normalize_twitter_username(payload.twitter_username)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db.commit()
+    db.refresh(current_user)
+    return _build_user_response(db, current_user)
 
 
 def _is_email_validation_error(exc: ValidationError) -> bool:

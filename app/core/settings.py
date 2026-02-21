@@ -141,6 +141,19 @@ class Settings(BaseSettings):
     twitter_user_agent: str | None = None
     twitter_query_id_cache: Path | None = None
 
+    # X API (official v2 + OAuth)
+    x_app_bearer_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("X_APP_BEARER_TOKEN", "TWITTER_AUTH_TOKEN"),
+    )
+    x_client_id: str | None = None
+    x_client_secret: str | None = None
+    x_oauth_redirect_uri: str | None = None
+    x_oauth_authorize_url: str = "https://x.com/i/oauth2/authorize"
+    x_oauth_token_url: str = "https://api.x.com/2/oauth2/token"
+    x_token_encryption_key: str | None = None
+    x_bookmark_sync_enabled: bool = False
+
     # PDF extraction (Gemini)
     pdf_gemini_model: str = Field(
         default="gemini-3-flash-preview",

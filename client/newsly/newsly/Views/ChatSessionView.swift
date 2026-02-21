@@ -943,7 +943,9 @@ struct InitialSuggestionsLoadingView: View {
             articleSource: nil,
             hasPendingMessage: false,
             isFavorite: false,
-            hasMessages: true
+            hasMessages: true,
+            lastMessagePreview: nil,
+            lastMessageRole: nil
         ))
     }
 }

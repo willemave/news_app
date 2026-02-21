@@ -28,6 +28,27 @@ extension Color {
     static var statusActive: Color { Color.green.opacity(0.85) }
     static var statusInactive: Color { Color(.tertiaryLabel) }
     static var statusDestructive: Color { Color.red.opacity(0.85) }
+
+    // Editorial colors (Discovery redesign)
+    static var editorialText: Color { Color(red: 0.067, green: 0.067, blue: 0.067) }     // #111111
+    static var editorialSub: Color { Color(red: 0.443, green: 0.443, blue: 0.478) }      // #71717a
+    static var editorialBorder: Color { Color(.systemGray5) }
+
+    // Earthy palette (Live Voice)
+    static var earthTerracotta: Color { Color(red: 0.765, green: 0.420, blue: 0.310) }  // #C36B4F
+    static var earthSage: Color { Color(red: 0.541, green: 0.604, blue: 0.357) }         // #8A9A5B
+    static var earthIvory: Color { Color(red: 0.976, green: 0.969, blue: 0.949) }         // #F9F7F2
+    static var earthClayMuted: Color { Color(red: 0.898, green: 0.827, blue: 0.773) }     // #E5D3C5
+    static var earthStoneDark: Color { Color(red: 0.365, green: 0.341, blue: 0.322) }     // #5D5752
+    static var earthWoodWarm: Color { Color(red: 0.545, green: 0.369, blue: 0.235) }      // #8B5E3C
+
+    // Watercolor palette (Landing & Onboarding)
+    static var watercolorBase: Color { Color(red: 0.973, green: 0.980, blue: 0.988) }           // #f8fafc
+    static var watercolorMistyBlue: Color { Color(red: 0.580, green: 0.680, blue: 0.820) }      // #94ADD1
+    static var watercolorDiffusedPeach: Color { Color(red: 0.960, green: 0.620, blue: 0.580) }   // #F59E94
+    static var watercolorPaleEmerald: Color { Color(red: 0.400, green: 0.820, blue: 0.640) }     // #66D1A3
+    static var watercolorSoftSky: Color { Color(red: 0.500, green: 0.780, blue: 0.960) }         // #80C7F5
+    static var watercolorSlate: Color { Color(red: 0.200, green: 0.255, blue: 0.333) }           // #334155
 }
 
 // MARK: - Typography
@@ -40,6 +61,35 @@ extension Font {
 
     static let sectionHeader = Font.footnote.weight(.semibold)
     static let chipLabel = Font.caption2.weight(.medium)
+
+    // Feed card typography
+    static let feedMeta = Font.system(size: 11, weight: .medium)
+    static let feedHeadline = Font.system(size: 18, weight: .semibold)
+    static let feedSnippet = Font.system(size: 13)
+    static let cardHeadline = Font.system(size: 22, weight: .bold, design: .serif)
+    static let cardDescription = Font.system(size: 14)
+    static let cardBadge = Font.system(size: 10, weight: .semibold)
+    static let cardFooter = Font.system(size: 11, weight: .medium)
+
+    // Editorial typography (Discovery redesign)
+    static let editorialDisplay = Font.system(size: 34, weight: .regular, design: .serif)
+    static let editorialHeadline = Font.system(size: 22, weight: .regular, design: .serif)
+    static let editorialBody = Font.system(size: 15, weight: .regular, design: .serif)
+    static let editorialMeta = Font.system(size: 10, weight: .bold)
+    static let editorialSubMeta = Font.system(size: 10, weight: .regular)
+
+    // Watercolor typography (Landing & Onboarding)
+    static let watercolorDisplay = Font.system(size: 54, weight: .regular, design: .serif)
+    static let watercolorSubtitle = Font.system(size: 17, weight: .light)
+}
+
+// MARK: - Card Metrics
+
+enum CardMetrics {
+    static let heroImageHeight: CGFloat = 264
+    static let cardCornerRadius: CGFloat = 8
+    static let cardSpacing: CGFloat = 32
+    static let textOverlapOffset: CGFloat = -64
 }
 
 // MARK: - Text Size

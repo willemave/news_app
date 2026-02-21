@@ -14,6 +14,17 @@
     <string>$(PRODUCT_NAME)</string>
     <key>CFBundleDisplayName</key>
     <string>WillemNews</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.newsly.oauth</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>newsly</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>

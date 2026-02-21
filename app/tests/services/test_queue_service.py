@@ -51,6 +51,10 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     content_task_id = queue.enqueue(TaskType.SUMMARIZE, content_id=1)
     transcribe_task_id = queue.enqueue(TaskType.TRANSCRIBE, content_id=2)
     onboarding_task_id = queue.enqueue(TaskType.ONBOARDING_DISCOVER, payload={"user_id": 11})
+    integration_task_id = queue.enqueue(
+        TaskType.SYNC_INTEGRATION,
+        payload={"user_id": 11, "provider": "x"},
+    )
     chat_task_id = queue.enqueue(
         TaskType.DIG_DEEPER,
         content_id=3,
@@ -62,7 +66,13 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
         for task in db_session.query(ProcessingTask)
         .filter(
             ProcessingTask.id.in_(
-                [content_task_id, transcribe_task_id, onboarding_task_id, chat_task_id]
+                [
+                    content_task_id,
+                    transcribe_task_id,
+                    onboarding_task_id,
+                    integration_task_id,
+                    chat_task_id,
+                ]
             )
         )
         .all()
@@ -71,6 +81,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     assert tasks[content_task_id].queue_name == TaskQueue.CONTENT.value
     assert tasks[transcribe_task_id].queue_name == TaskQueue.TRANSCRIBE.value
     assert tasks[onboarding_task_id].queue_name == TaskQueue.ONBOARDING.value
+    assert tasks[integration_task_id].queue_name == TaskQueue.ONBOARDING.value
     assert tasks[chat_task_id].queue_name == TaskQueue.CHAT.value
 
 

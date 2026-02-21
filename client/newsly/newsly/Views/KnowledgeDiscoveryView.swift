@@ -9,16 +9,25 @@ struct KnowledgeDiscoveryView: View {
     @ObservedObject var viewModel: DiscoveryViewModel
     let hasNewSuggestions: Bool
     @State private var safariTarget: SafariTarget?
-    @State private var isPodcastSearchExpanded = false
+    @State private var selectedSuggestion: DiscoverySuggestion?
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                podcastSearchSection
-                    .padding(.horizontal, Spacing.screenHorizontal)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
+                // Editorial search bar
+                editorialSearchBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
 
+                // Podcast search results (inline)
+                if isPodcastSearchActive {
+                    podcastSearchResults
+                        .padding(.horizontal, Spacing.screenHorizontal)
+                        .padding(.bottom, 8)
+                }
+
+                // Main content states
                 if viewModel.isLoading && !viewModel.hasSuggestions {
                     DiscoveryLoadingStateView()
                 } else if let error = viewModel.errorMessage, !viewModel.hasSuggestions {
@@ -49,148 +58,97 @@ struct KnowledgeDiscoveryView: View {
         .sheet(item: $safariTarget) { target in
             SafariView(url: target.url)
         }
+        .sheet(item: $selectedSuggestion) { suggestion in
+            SuggestionDetailSheet(
+                suggestion: suggestion,
+                onSubscribe: {
+                    Task { await viewModel.subscribe(suggestion) }
+                },
+                onAddItem: suggestion.hasItem ? {
+                    Task { await viewModel.addItem(from: suggestion) }
+                } : nil,
+                onPreview: {
+                    openSuggestionURL(suggestion)
+                },
+                onDismiss: {
+                    Task { await viewModel.dismiss(suggestion) }
+                }
+            )
+        }
     }
 
-    // MARK: - Podcast Search
+    // MARK: - Search Bar
 
-    private var podcastSearchSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Collapsible header
-            Button {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isPodcastSearchExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.orange.opacity(0.12))
-                            .frame(width: 28, height: 28)
-                        Image(systemName: "waveform.badge.magnifyingglass")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.orange)
-                    }
-
-                    Text("Find Podcast Episodes")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color.textTertiary)
-                        .rotationEffect(.degrees(isPodcastSearchExpanded ? 90 : 0))
-                }
-                .padding(14)
+    private var editorialSearchBar: some View {
+        SearchBar(
+            placeholder: "Search for content...",
+            text: $viewModel.podcastSearchQuery,
+            isLoading: viewModel.isPodcastSearchLoading,
+            onSubmit: {
+                Task { await viewModel.searchPodcastEpisodes() }
+            },
+            onClear: {
+                viewModel.clearPodcastSearch()
             }
-            .buttonStyle(.plain)
+        )
+    }
 
-            if isPodcastSearchExpanded {
-                VStack(alignment: .leading, spacing: 10) {
-                    // Search field — chat-style bar
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.secondary)
+    // MARK: - Podcast Search Results
 
-                        TextField("Search episodes...", text: $viewModel.podcastSearchQuery)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.search)
-                            .onSubmit {
-                                Task { await viewModel.searchPodcastEpisodes() }
+    private var isPodcastSearchActive: Bool {
+        viewModel.isPodcastSearchLoading
+            || viewModel.podcastSearchError != nil
+            || (viewModel.hasPodcastSearchRun && !viewModel.podcastSearchResults.isEmpty)
+            || (viewModel.hasPodcastSearchRun && viewModel.podcastSearchResults.isEmpty && !viewModel.isPodcastSearchLoading)
+    }
+
+    private var podcastSearchResults: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if viewModel.isPodcastSearchLoading {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Searching...")
+                        .font(.editorialSubMeta)
+                        .foregroundColor(.editorialSub)
+                }
+                .padding(.top, 8)
+            } else if let error = viewModel.podcastSearchError {
+                HStack {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.editorialSub)
+                    Spacer()
+                    Button("Retry") {
+                        Task { await viewModel.retryPodcastSearch() }
+                    }
+                    .font(.caption)
+                }
+                .padding(.top, 8)
+            } else if viewModel.hasPodcastSearchRun && viewModel.podcastSearchResults.isEmpty {
+                Text("No episodes found. Try broader keywords.")
+                    .font(.caption)
+                    .foregroundColor(.editorialSub)
+                    .padding(.top, 8)
+            }
+
+            if viewModel.hasPodcastSearchResults {
+                VStack(spacing: 8) {
+                    ForEach(viewModel.podcastSearchResults) { result in
+                        PodcastEpisodeSearchCard(
+                            result: result,
+                            onAdd: {
+                                Task { await viewModel.addPodcastEpisode(result) }
+                            },
+                            onOpen: {
+                                openPodcastSearchResultURL(result)
                             }
-
-                        if !viewModel.podcastSearchQuery.isEmpty {
-                            Button {
-                                viewModel.clearPodcastSearch()
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Color.textTertiary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        // Inline submit
-                        Button {
-                            Task { await viewModel.searchPodcastEpisodes() }
-                        } label: {
-                            if viewModel.isPodcastSearchLoading {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(.system(size: 22))
-                                    .foregroundColor(
-                                        viewModel.podcastSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
-                                            ? .accentColor : Color.textTertiary
-                                    )
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(
-                            viewModel.podcastSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).count < 2
-                                || viewModel.isPodcastSearchLoading
                         )
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.tertiarySystemGroupedBackground))
-                    .cornerRadius(10)
-
-                    // Status messages
-                    if viewModel.isPodcastSearchLoading {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Searching online sources...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    } else if let error = viewModel.podcastSearchError {
-                        HStack {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Button("Retry") {
-                                Task { await viewModel.retryPodcastSearch() }
-                            }
-                            .font(.caption)
-                        }
-                    } else if viewModel.hasPodcastSearchRun && viewModel.podcastSearchResults.isEmpty {
-                        Text("No episodes found. Try broader keywords.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    // Results
-                    if viewModel.hasPodcastSearchResults {
-                        VStack(spacing: 8) {
-                            ForEach(viewModel.podcastSearchResults) { result in
-                                PodcastEpisodeSearchCard(
-                                    result: result,
-                                    onAdd: {
-                                        Task { await viewModel.addPodcastEpisode(result) }
-                                    },
-                                    onOpen: {
-                                        openPodcastSearchResultURL(result)
-                                    }
-                                )
-                            }
-                        }
-                    }
                 }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 14)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.top, 4)
             }
         }
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(12)
     }
 
     // MARK: - Suggestion Content
@@ -209,20 +167,12 @@ struct KnowledgeDiscoveryView: View {
                     .padding(.bottom, 8)
             }
 
-            ForEach(displayRuns) { run in
+            ForEach(Array(displayRuns.enumerated()), id: \.element.id) { index, run in
                 DiscoveryRunSection(
                     run: run,
-                    onSubscribe: { suggestion in
-                        Task { await viewModel.subscribe(suggestion) }
-                    },
-                    onAddItem: { suggestion in
-                        Task { await viewModel.addItem(from: suggestion) }
-                    },
-                    onOpen: { suggestion in
-                        openSuggestionURL(suggestion)
-                    },
-                    onDismiss: { suggestion in
-                        Task { await viewModel.dismiss(suggestion) }
+                    isLatest: index == 0,
+                    onSelect: { suggestion in
+                        selectedSuggestion = suggestion
                     }
                 )
             }
@@ -242,41 +192,26 @@ struct KnowledgeDiscoveryView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.purple, .blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.editorialSub)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Generate More Suggestions")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                    Text("Discover new content based on your interests")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
+                Text("Generate More Suggestions")
+                    .font(.editorialBody)
+                    .foregroundColor(.editorialText)
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color.textTertiary)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.editorialSub)
             }
-            .padding(14)
-            .background(Color(.secondarySystemGroupedBackground))
+            .padding(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-                    .foregroundColor(Color.primary.opacity(0.1))
+                    .stroke(Color.editorialBorder, lineWidth: 1)
             )
-            .cornerRadius(12)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(EditorialCardButtonStyle())
     }
 
     private var runningJobBanner: some View {
@@ -285,13 +220,13 @@ struct KnowledgeDiscoveryView: View {
                 .scaleEffect(0.7)
 
             Text("Discovering...")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.editorialSubMeta)
+                .foregroundColor(.editorialSub)
 
             Spacer()
 
             Text(viewModel.runStatusDescription)
-                .font(.caption2)
+                .font(.editorialSubMeta)
                 .foregroundColor(Color.textTertiary)
         }
         .padding(.horizontal, Spacing.screenHorizontal)
@@ -304,9 +239,9 @@ struct KnowledgeDiscoveryView: View {
                 .fill(Color.accentColor)
                 .frame(width: 6, height: 6)
 
-            Text("New suggestions")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            Text("New suggestions available")
+                .font(.editorialSubMeta)
+                .foregroundColor(.editorialSub)
 
             Spacer()
         }
@@ -348,7 +283,7 @@ struct KnowledgeDiscoveryView: View {
     }
 }
 
-// MARK: - Podcast Episode Card
+// MARK: - Podcast Episode Card (Editorial Style)
 
 private struct PodcastEpisodeSearchCard: View {
     let result: DiscoveryPodcastSearchResult
@@ -356,70 +291,68 @@ private struct PodcastEpisodeSearchCard: View {
     let onOpen: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            // Waveform icon
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.12))
-                    .frame(width: 36, height: 36)
+        VStack(alignment: .leading, spacing: 10) {
+            // Metadata bar
+            HStack(spacing: 6) {
                 Image(systemName: "waveform")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.orange)
-            }
-            .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(result.title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 if let podcastTitle = result.podcastTitle, !podcastTitle.isEmpty {
-                    Text(podcastTitle)
+                    Text(podcastTitle.uppercased())
+                        .font(.editorialMeta)
+                        .foregroundColor(.editorialSub)
+                        .tracking(0.5)
+                        .lineLimit(1)
+                } else {
+                    Text("PODCAST")
+                        .font(.editorialMeta)
+                        .foregroundColor(.editorialSub)
+                        .tracking(0.5)
+                }
+
+                Spacer()
+            }
+
+            // Episode title as headline
+            Text(result.title)
+                .font(.editorialHeadline)
+                .foregroundColor(.editorialText)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Action row
+            HStack(spacing: 10) {
+                Text(result.source ?? host(from: result.episodeURL))
+                    .font(.editorialSubMeta)
+                    .foregroundColor(Color.textTertiary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Button(action: onAdd) {
+                    Label("Add", systemImage: "plus")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.orange)
+
+                Button(action: onOpen) {
+                    Image(systemName: "safari")
                         .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                        .foregroundColor(.editorialSub)
                 }
-
-                if let snippet = result.snippet, !snippet.isEmpty {
-                    Text(snippet)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(spacing: 8) {
-                    Text(result.source ?? host(from: result.episodeURL))
-                        .font(.caption2)
-                        .foregroundColor(Color.textTertiary)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Button(action: onAdd) {
-                        Label("Add", systemImage: "plus")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .tint(.orange)
-
-                    Button(action: onOpen) {
-                        Label("Open", systemImage: "safari")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .controlSize(.small)
-                }
+                .buttonStyle(.plain)
             }
         }
-        .padding(12)
-        .background(Color(.tertiarySystemGroupedBackground))
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.editorialBorder, lineWidth: 1)
+        )
         .cornerRadius(10)
     }
 

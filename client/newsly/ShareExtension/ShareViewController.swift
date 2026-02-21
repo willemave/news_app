@@ -269,11 +269,15 @@ final class ShareViewController: UIViewController {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let body: [String: Any] = [
+        let handler = ShareURLRouting.handler(for: url)
+        var body: [String: Any] = [
             "url": url.absoluteString,
             "crawl_links": linkHandlingMode == .addLinks,
             "share_and_chat": linkHandlingMode == .shareAndChat,
         ]
+        if let platform = handler.platform {
+            body["platform"] = platform
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)

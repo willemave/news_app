@@ -98,6 +98,8 @@ struct AuthenticatedRootView: View {
             appleId: user.appleId,
             email: user.email,
             fullName: user.fullName,
+            twitterUsername: user.twitterUsername,
+            hasXBookmarkSync: user.hasXBookmarkSync,
             isAdmin: user.isAdmin,
             isActive: user.isActive,
             hasCompletedNewUserTutorial: completed,

@@ -20,12 +20,7 @@ from app.services.content_analyzer import (
     InstructionResult,
 )
 from app.services.queue import TaskType
-from app.services.twitter_share import (
-    TweetFetchResult,
-    TweetInfo,
-    TwitterCredentials,
-    TwitterCredentialsResult,
-)
+from app.services.x_api import XTweet, XTweetFetchResult
 
 
 def _build_analysis_output(url: str) -> ContentAnalysisOutput:
@@ -81,31 +76,16 @@ def _patch_analyze_dependencies(monkeypatch, analyzer_output: ContentAnalysisOut
     return stub_analyzer
 
 
-def _build_tweet_fetch_result(external_urls: list[str]) -> TweetFetchResult:
-    tweet = TweetInfo(
+def _build_tweet_fetch_result(external_urls: list[str]) -> XTweetFetchResult:
+    tweet = XTweet(
         id="123",
         text="Main tweet",
         author_username="alice",
         author_name="Alice",
-        created_at="Wed Oct 05 20:17:27 +0000 2022",
-    )
-    thread = [
-        tweet,
-        TweetInfo(
-            id="124",
-            text="Thread follow-up",
-            author_username="alice",
-            author_name="Alice",
-            created_at="Wed Oct 05 20:18:27 +0000 2022",
-            conversation_id="conv1",
-        ),
-    ]
-    return TweetFetchResult(
-        success=True,
-        tweet=tweet,
-        thread=thread,
+        created_at="2026-02-21T10:00:00Z",
         external_urls=external_urls,
     )
+    return XTweetFetchResult(success=True, tweet=tweet)
 
 
 def test_analyze_url_skips_instruction_links_when_crawl_disabled(
@@ -416,19 +396,12 @@ def test_analyze_url_tweet_fanout_creates_additional_content(
 
     monkeypatch.setattr(
         analyze_module,
-        "resolve_twitter_credentials",
-        lambda: TwitterCredentialsResult(
-            success=True,
-            credentials=TwitterCredentials(auth_token="auth", ct0="ct0", user_agent="ua"),
-        ),
-    )
-    monkeypatch.setattr(
-        analyze_module,
-        "fetch_tweet_detail",
-        lambda params: _build_tweet_fetch_result(
+        "fetch_tweet_by_id",
+        lambda tweet_id, access_token=None: _build_tweet_fetch_result(
             ["https://example.com/a", "https://example.com/b"]
         ),
     )
+    monkeypatch.setattr(analyze_module, "get_x_user_access_token", lambda db, user_id: None)
 
     handler = AnalyzeUrlHandler()
     context = _build_context(db_session)
@@ -463,17 +436,10 @@ def test_analyze_url_tweet_only_uses_thread_text(
 
     monkeypatch.setattr(
         analyze_module,
-        "resolve_twitter_credentials",
-        lambda: TwitterCredentialsResult(
-            success=True,
-            credentials=TwitterCredentials(auth_token="auth", ct0="ct0", user_agent="ua"),
-        ),
+        "fetch_tweet_by_id",
+        lambda tweet_id, access_token=None: _build_tweet_fetch_result([]),
     )
-    monkeypatch.setattr(
-        analyze_module,
-        "fetch_tweet_detail",
-        lambda params: _build_tweet_fetch_result([]),
-    )
+    monkeypatch.setattr(analyze_module, "get_x_user_access_token", lambda db, user_id: None)
 
     handler = AnalyzeUrlHandler()
     context = _build_context(db_session)
@@ -490,4 +456,45 @@ def test_analyze_url_tweet_only_uses_thread_text(
     assert updated is not None
     assert updated.url == "https://x.com/i/status/123"
     assert updated.content_metadata.get("tweet_only") is True
-    assert updated.content_metadata.get("tweet_thread_text") == "Main tweet\n\nThread follow-up"
+    assert updated.content_metadata.get("tweet_thread_text") == "Main tweet"
+
+
+def test_analyze_url_tweet_lookup_missing_app_auth_degrades_gracefully(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    content = _create_content(db_session, test_user.id, "https://x.com/user/status/123")
+
+    from app.pipeline.handlers import analyze_url as analyze_module
+
+    monkeypatch.setattr(
+        analyze_module,
+        "fetch_tweet_by_id",
+        lambda tweet_id, access_token=None: XTweetFetchResult(
+            success=False,
+            error="X_APP_BEARER_TOKEN is required for app-authenticated X requests",
+        ),
+    )
+    monkeypatch.setattr(analyze_module, "get_x_user_access_token", lambda db, user_id: None)
+    analyzer_mock = Mock()
+    monkeypatch.setattr(analyze_module, "get_content_analyzer", lambda: analyzer_mock)
+
+    handler = AnalyzeUrlHandler()
+    context = _build_context(db_session)
+
+    task = TaskEnvelope(
+        id=11,
+        task_type=TaskType.ANALYZE_URL,
+        payload={"content_id": content.id},
+    )
+
+    assert handler.handle(task, context).success is True
+
+    updated = db_session.query(Content).filter(Content.id == content.id).first()
+    assert updated is not None
+    assert updated.status != ContentStatus.FAILED.value
+    assert updated.content_metadata.get("tweet_enrichment", {}).get("status") == "skipped"
+    assert updated.content_metadata.get("tweet_enrichment", {}).get("reason") == (
+        "x_app_auth_unavailable"
+    )

@@ -24,7 +24,7 @@ enum OnboardingAudioState: Equatable {
 
 @MainActor
 final class OnboardingViewModel: ObservableObject {
-    @Published var step: OnboardingStep = .intro
+    @Published var step: OnboardingStep = .choice
     @Published var suggestions: OnboardingFastDiscoverResponse?
     @Published var selectedSourceKeys: Set<String> = []
     @Published var selectedSubreddits: Set<String> = []
@@ -45,6 +45,7 @@ final class OnboardingViewModel: ObservableObject {
     @Published var discoveryErrorMessage: String?
     @Published var topicSummary: String?
     @Published var inferredTopics: [String] = []
+    @Published var twitterUsername: String = ""
 
     private let service = OnboardingService.shared
     private let dictationService = VoiceDictationService.shared
@@ -58,6 +59,7 @@ final class OnboardingViewModel: ObservableObject {
 
     init(user: User) {
         self.user = user
+        self.twitterUsername = user.twitterUsername ?? ""
     }
 
     deinit {
@@ -178,7 +180,8 @@ final class OnboardingViewModel: ObservableObject {
                 selectedSources: selectedSources,
                 selectedSubreddits: selectedSubreddits,
                 profileSummary: isPersonalized ? topicSummary : nil,
-                inferredTopics: isPersonalized ? inferredTopics : nil
+                inferredTopics: isPersonalized ? inferredTopics : nil,
+                twitterUsername: normalizedTwitterUsername()
             )
             let response = try await service.complete(request: request)
             completionResponse = response
@@ -286,6 +289,12 @@ final class OnboardingViewModel: ObservableObject {
                 config: nil
             )
         }
+    }
+
+    private func normalizedTwitterUsername() -> String? {
+        let trimmed = twitterUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.hasPrefix("@") ? String(trimmed.dropFirst()) : trimmed
     }
 
     private func handleAudioError(_ error: Error) {

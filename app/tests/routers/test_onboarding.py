@@ -42,6 +42,7 @@ def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, te
             "selected_subreddits": ["MachineLearning"],
             "profile_summary": "AI researcher and writer",
             "inferred_topics": ["AI", "ML"],
+            "twitter_username": "@willem_aw",
         },
     )
 
@@ -60,6 +61,17 @@ def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, te
 
     assert any(call[0] == TaskType.SCRAPE.value for call in calls)
     assert any(call[0] == TaskType.ONBOARDING_DISCOVER.value for call in calls)
+    db_session.refresh(test_user)
+    assert test_user.twitter_username == "willem_aw"
+
+
+def test_onboarding_complete_rejects_invalid_twitter_username(client):
+    response = client.post(
+        "/api/onboarding/complete",
+        json={"twitter_username": "bad username!"},
+    )
+    assert response.status_code == 400
+    assert "Twitter username" in response.json()["detail"]
 
 
 def test_onboarding_tutorial_complete(client, db_session, test_user):

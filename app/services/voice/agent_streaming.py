@@ -357,6 +357,7 @@ async def stream_voice_agent_turn(
     on_text_delta: Callable[[str], Awaitable[None]],
     content_context: str | None = None,
     launch_mode: str = "general",
+    assistant_carryover: str | None = None,
 ) -> VoiceAgentResult:
     """Run one streaming Haiku turn and emit text deltas.
 
@@ -377,6 +378,17 @@ async def stream_voice_agent_turn(
     text_fragments: list[str] = []
     turn_instructions = _build_turn_instructions(user_text)
     prompt_text = user_text.strip()
+    carryover_text = (assistant_carryover or "").strip()
+    if carryover_text:
+        carryover_instructions = (
+            "The previous assistant response was interrupted mid-stream. "
+            "Use this partial response as continuity context when answering this turn.\n"
+            f"<interrupted_assistant_partial>\n{carryover_text}\n</interrupted_assistant_partial>"
+        )
+        if turn_instructions:
+            turn_instructions = f"{turn_instructions}\n\n{carryover_instructions}"
+        else:
+            turn_instructions = carryover_instructions
 
     if content_context:
         contextual_instructions = (
@@ -412,6 +424,8 @@ async def stream_voice_agent_turn(
                 "has_instructions": bool(turn_instructions),
                 "has_content_context": bool(content_context),
                 "launch_mode": launch_mode,
+                "has_assistant_carryover": bool(carryover_text),
+                "assistant_carryover_chars": len(carryover_text),
             },
         },
     )

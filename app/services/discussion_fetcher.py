@@ -28,6 +28,8 @@ URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
 TECHMEME_TOKEN_PATTERN = re.compile(r"/(\d{6})/(p\d+)")
 TECHMEME_ANCHOR_PATTERN = re.compile(r"a(\d{6}p\d+)")
 HN_ITEM_PATTERN = re.compile(r"item\?id=(\d+)")
+TOP_COMMENT_SKIP_AUTHORS = {"AutoModerator", "[deleted]", "automoderator"}
+TOP_COMMENT_SKIP_SUFFIXES = ("-ModTeam",)
 
 
 @dataclass(frozen=True)
@@ -167,6 +169,35 @@ def fetch_and_store_discussion(
         error_message=payload.error_message,
         set_fetched_at=True,
     )
+
+    # Denormalize first non-bot comment into content metadata for feed preview.
+    comments = payload.payload.get("comments", [])
+    top_comment: dict[str, str] | None = None
+    for comment_entry in comments:
+        if not isinstance(comment_entry, dict):
+            continue
+        author = str(comment_entry.get("author") or "unknown")
+        if author in TOP_COMMENT_SKIP_AUTHORS or any(
+            author.endswith(suffix) for suffix in TOP_COMMENT_SKIP_SUFFIXES
+        ):
+            continue
+        text = comment_entry.get("compact_text") or comment_entry.get("text") or ""
+        if text.strip():
+            top_comment = {"author": author, "text": str(text)}
+            break
+
+    did_change_metadata = False
+    if top_comment:
+        if metadata.get("top_comment") != top_comment:
+            metadata["top_comment"] = top_comment
+            did_change_metadata = True
+    elif "top_comment" in metadata:
+        metadata.pop("top_comment", None)
+        did_change_metadata = True
+
+    if did_change_metadata:
+        content.content_metadata = metadata
+        db.commit()
 
     if payload.status == "failed":
         return DiscussionFetchResult(

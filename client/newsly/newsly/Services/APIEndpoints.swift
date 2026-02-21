@@ -58,6 +58,7 @@ enum APIEndpoints {
 
     // MARK: - Auth Endpoints
     static let authDebugNewUser = "/auth/debug/new-user"
+    static let authMe = "/auth/me"
 
     // MARK: - Discovery Endpoints
     static let discoverySuggestions = "/api/discovery/suggestions"
@@ -77,6 +78,11 @@ enum APIEndpoints {
     static let onboardingParseVoice = "/api/onboarding/parse-voice"
     static let onboardingAudioDiscover = "/api/onboarding/audio-discover"
     static let onboardingDiscoveryStatus = "/api/onboarding/discovery-status"
+
+    // MARK: - Integrations
+    static let xIntegrationConnection = "/api/integrations/x/connection"
+    static let xIntegrationOAuthStart = "/api/integrations/x/oauth/start"
+    static let xIntegrationOAuthExchange = "/api/integrations/x/oauth/exchange"
 
     // MARK: - OpenAI Endpoints
     static let openaiRealtimeToken = "/api/openai/realtime/token"

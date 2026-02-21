@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, create_refresh_token
 from app.main import app
+from app.models.schema import UserIntegrationConnection
 from app.models.user import User
 
 client = TestClient(app)
@@ -342,6 +343,137 @@ def test_get_current_user_info(db: Session, monkeypatch):
         assert data["id"] == test_user.id
         assert data["email"] == "testme@icloud.com"
         assert data["full_name"] == "Test Me User"
+        assert data["twitter_username"] is None
+        assert data["has_x_bookmark_sync"] is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_current_user_info_reports_x_connection(db: Session, monkeypatch):
+    """Test /auth/me reports active X sync status."""
+    from app.core.db import get_db_session, get_readonly_db_session
+    from app.core.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "debug", False)
+
+    def override_get_db_session():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
+
+    test_user = User(
+        apple_id="001234.test.xsync",
+        email="xsync@icloud.com",
+        full_name="X Sync User",
+    )
+    db.add(test_user)
+    db.commit()
+    db.refresh(test_user)
+
+    db.add(
+        UserIntegrationConnection(
+            user_id=test_user.id,
+            provider="x",
+            access_token_encrypted="encrypted-token",
+            is_active=True,
+        )
+    )
+    db.commit()
+
+    access_token = create_access_token(test_user.id)
+
+    try:
+        response = client.get("/auth/me", headers={"Authorization": f"Bearer {access_token}"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["has_x_bookmark_sync"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_current_user_info(db: Session, monkeypatch):
+    """Test PATCH /auth/me updates profile fields."""
+    from app.core.db import get_db_session, get_readonly_db_session
+    from app.core.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "debug", False)
+
+    def override_get_db_session():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
+
+    test_user = User(
+        apple_id="001234.test.patchme",
+        email="patchme@icloud.com",
+        full_name="Patch Me",
+    )
+    db.add(test_user)
+    db.commit()
+    db.refresh(test_user)
+
+    access_token = create_access_token(test_user.id)
+
+    try:
+        response = client.patch(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"full_name": "Updated Name", "twitter_username": "@Willem_AW"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["full_name"] == "Updated Name"
+        assert data["twitter_username"] == "willem_aw"
+
+        db.refresh(test_user)
+        assert test_user.full_name == "Updated Name"
+        assert test_user.twitter_username == "willem_aw"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_current_user_info_rejects_invalid_username(db: Session, monkeypatch):
+    """Test PATCH /auth/me validates username formatting."""
+    from app.core.db import get_db_session, get_readonly_db_session
+    from app.core.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "debug", False)
+
+    def override_get_db_session():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
+
+    test_user = User(
+        apple_id="001234.test.invalidusername",
+        email="invalidusername@icloud.com",
+        full_name="Invalid Username",
+    )
+    db.add(test_user)
+    db.commit()
+    db.refresh(test_user)
+    access_token = create_access_token(test_user.id)
+
+    try:
+        response = client.patch(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"twitter_username": "not valid!"},
+        )
+        assert response.status_code == 400
+        assert "Twitter username" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 

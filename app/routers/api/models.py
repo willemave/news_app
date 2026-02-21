@@ -67,6 +67,12 @@ class ContentSummaryResponse(BaseModel):
     thumbnail_url: str | None = Field(
         None, description="URL of 200px thumbnail image for fast loading in list views"
     )
+    primary_topic: str | None = Field(
+        None, description="Primary topic extracted from summary topics or platform name"
+    )
+    top_comment: dict[str, str] | None = Field(
+        None, description="First discussion comment {author, text} for preview"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -86,6 +92,8 @@ class ContentSummaryResponse(BaseModel):
                 "is_read": False,
                 "image_url": "/static/images/content/123.png",
                 "thumbnail_url": "/static/images/thumbnails/123.png",
+                "primary_topic": "AI",
+                "top_comment": {"author": "user123", "text": "Great article!"},
             }
         }
     )
@@ -950,6 +958,7 @@ class OnboardingCompleteRequest(BaseModel):
     selected_subreddits: list[str] = Field(default_factory=list)
     profile_summary: str | None = None
     inferred_topics: list[str] | None = None
+    twitter_username: str | None = Field(default=None, max_length=50)
 
 
 class OnboardingCompleteResponse(BaseModel):
@@ -966,3 +975,46 @@ class OnboardingTutorialResponse(BaseModel):
     """Response for tutorial completion."""
 
     has_completed_new_user_tutorial: bool
+
+
+class XOAuthStartRequest(BaseModel):
+    """Request to begin X OAuth flow."""
+
+    twitter_username: str | None = Field(default=None, max_length=50)
+
+
+class XOAuthStartResponse(BaseModel):
+    """Response payload for X OAuth start."""
+
+    authorize_url: str
+    state: str
+    scopes: list[str] = Field(default_factory=list)
+
+
+class XOAuthExchangeRequest(BaseModel):
+    """Request to exchange an X OAuth authorization code."""
+
+    code: str = Field(..., min_length=1, max_length=4096)
+    state: str = Field(..., min_length=1, max_length=255)
+
+
+class XConnectionResponse(BaseModel):
+    """Current X integration connection state for a user."""
+
+    provider: str
+    connected: bool
+    is_active: bool
+    provider_user_id: str | None = None
+    provider_username: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    last_synced_at: datetime | None = None
+    last_status: str | None = None
+    last_error: str | None = None
+    twitter_username: str | None = None
+
+
+class IntegrationDisconnectResponse(BaseModel):
+    """Response for integration disconnect actions."""
+
+    status: Literal["disconnected"] = "disconnected"
+    provider: str = "x"

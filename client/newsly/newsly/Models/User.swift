@@ -13,6 +13,8 @@ struct User: Codable, Identifiable, Equatable {
     let appleId: String
     let email: String
     let fullName: String?
+    let twitterUsername: String?
+    let hasXBookmarkSync: Bool
     let isAdmin: Bool
     let isActive: Bool
     let hasCompletedNewUserTutorial: Bool
@@ -25,6 +27,8 @@ struct User: Codable, Identifiable, Equatable {
         case appleId = "apple_id"
         case email
         case fullName = "full_name"
+        case twitterUsername = "twitter_username"
+        case hasXBookmarkSync = "has_x_bookmark_sync"
         case isAdmin = "is_admin"
         case isActive = "is_active"
         case hasCompletedNewUserTutorial = "has_completed_new_user_tutorial"
@@ -38,6 +42,8 @@ struct User: Codable, Identifiable, Equatable {
         appleId: String,
         email: String,
         fullName: String?,
+        twitterUsername: String?,
+        hasXBookmarkSync: Bool,
         isAdmin: Bool,
         isActive: Bool,
         hasCompletedNewUserTutorial: Bool,
@@ -49,6 +55,8 @@ struct User: Codable, Identifiable, Equatable {
         self.appleId = appleId
         self.email = email
         self.fullName = fullName
+        self.twitterUsername = twitterUsername
+        self.hasXBookmarkSync = hasXBookmarkSync
         self.isAdmin = isAdmin
         self.isActive = isActive
         self.hasCompletedNewUserTutorial = hasCompletedNewUserTutorial
@@ -63,6 +71,8 @@ struct User: Codable, Identifiable, Equatable {
         appleId = try container.decode(String.self, forKey: .appleId)
         email = try container.decode(String.self, forKey: .email)
         fullName = try container.decodeIfPresent(String.self, forKey: .fullName)
+        twitterUsername = try container.decodeIfPresent(String.self, forKey: .twitterUsername)
+        hasXBookmarkSync = try container.decodeIfPresent(Bool.self, forKey: .hasXBookmarkSync) ?? false
         isAdmin = try container.decode(Bool.self, forKey: .isAdmin)
         isActive = try container.decode(Bool.self, forKey: .isActive)
         hasCompletedNewUserTutorial = try container.decode(Bool.self, forKey: .hasCompletedNewUserTutorial)
@@ -120,5 +130,15 @@ struct AccessTokenResponse: Codable {
         case refreshToken = "refresh_token"
         case tokenType = "token_type"
         case openaiApiKey = "openai_api_key"
+    }
+}
+
+struct UpdateUserProfileRequest: Codable {
+    let fullName: String?
+    let twitterUsername: String?
+
+    enum CodingKeys: String, CodingKey {
+        case fullName = "full_name"
+        case twitterUsername = "twitter_username"
     }
 }

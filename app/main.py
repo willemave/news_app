@@ -13,7 +13,15 @@ from app.core.deps import AdminAuthRequired
 from app.core.logging import setup_logging
 from app.core.settings import get_settings
 from app.routers import admin, api_content, auth, logs
-from app.routers.api import discovery, interactions, onboarding, openai, scraper_configs, voice
+from app.routers.api import (
+    discovery,
+    integrations,
+    interactions,
+    onboarding,
+    openai,
+    scraper_configs,
+    voice,
+)
 from app.services.langfuse_tracing import (
     flush_langfuse_tracing,
     initialize_langfuse_tracing,
@@ -187,6 +195,7 @@ app.include_router(interactions.router, prefix="/api")
 app.include_router(scraper_configs.router, prefix="/api")
 app.include_router(discovery.router, prefix="/api")
 app.include_router(onboarding.router, prefix="/api")
+app.include_router(integrations.router, prefix="/api")
 app.include_router(openai.router, prefix="/api")
 app.include_router(voice.router, prefix="/api")
 

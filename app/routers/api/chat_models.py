@@ -136,6 +136,14 @@ class ChatSessionSummaryDto(BaseModel):
         default=True,
         description="True if session has any messages (false for new favorites)",
     )
+    last_message_preview: str | None = Field(
+        default=None,
+        description="Truncated preview of the most recent message in the session",
+    )
+    last_message_role: str | None = Field(
+        default=None,
+        description="Role of the last message (user or assistant)",
+    )
 
 
 class ChatSessionDetailDto(BaseModel):

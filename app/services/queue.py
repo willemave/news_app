@@ -23,6 +23,7 @@ class TaskType(StrEnum):
     DISCOVER_FEEDS = "discover_feeds"
     ONBOARDING_DISCOVER = "onboarding_discover"
     DIG_DEEPER = "dig_deeper"
+    SYNC_INTEGRATION = "sync_integration"
 
 
 class TaskQueue(StrEnum):
@@ -44,6 +45,7 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.DISCOVER_FEEDS: TaskQueue.CONTENT,
     TaskType.ONBOARDING_DISCOVER: TaskQueue.ONBOARDING,
     TaskType.DIG_DEEPER: TaskQueue.CHAT,
+    TaskType.SYNC_INTEGRATION: TaskQueue.ONBOARDING,
 }
 
 DEDUPABLE_CONTENT_TASK_TYPES: set[TaskType] = {

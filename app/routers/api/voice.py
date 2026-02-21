@@ -45,6 +45,34 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
+TURN_SCOPED_EVENT_TYPES = {
+    "turn.started",
+    "transcript.partial",
+    "transcript.final",
+    "assistant.text.delta",
+    "assistant.text.final",
+    "assistant.audio.chunk",
+    "assistant.audio.final",
+    "turn.completed",
+    "turn.cancelled",
+}
+MAX_INTERRUPTED_CARRYOVER_CHARS = 400
+
+
+def _truncate_carryover_text(
+    raw_text: str,
+    *,
+    max_chars: int = MAX_INTERRUPTED_CARRYOVER_CHARS,
+) -> str:
+    """Bound interrupted assistant carryover text length."""
+
+    trimmed = raw_text.strip()
+    if not trimmed:
+        return ""
+    if len(trimmed) <= max_chars:
+        return trimmed
+    return trimmed[-max_chars:].lstrip()
+
 
 def _extract_websocket_bearer_token(websocket: WebSocket) -> str | None:
     """Extract bearer token from websocket headers or query param."""
@@ -256,7 +284,18 @@ async def voice_websocket(
     orchestrator_started = False
     active_turn_task: asyncio.Task[Any] | None = None
     active_turn_id: str | None = None
+    active_turn_index: int | None = None
     active_turn_is_intro = False
+    active_stream_epoch = 0
+    next_turn_index = 0
+    last_completed_turn_index = 0
+    turn_index_by_id: dict[str, int] = {}
+    turn_epoch_by_id: dict[str, int] = {}
+    turn_event_index_by_id: dict[str, int] = {}
+    assistant_text_by_turn: dict[str, list[str]] = {}
+    pending_assistant_carryover = ""
+    suppress_turn_events_for_turn_id: str | None = None
+    allow_cancelled_event_for_suppressed_turn = False
     auto_summary_requested = bool(
         state.launch_mode == "dictate_summary"
         and state.summary_narration
@@ -268,11 +307,100 @@ async def voice_websocket(
     receive_task: asyncio.Task[Any] = asyncio.create_task(websocket.receive_json())
 
     async def emit(payload: dict[str, Any]) -> bool:
-        return await _send_ws_event(websocket, send_lock, payload)
+        nonlocal last_completed_turn_index
+
+        event_type = str(payload.get("type", ""))
+        event_payload = dict(payload)
+        turn_id = event_payload.get("turn_id")
+        if isinstance(turn_id, str) and turn_id:
+            turn_index = turn_index_by_id.get(turn_id)
+            turn_epoch = turn_epoch_by_id.get(turn_id)
+            if turn_index is not None:
+                event_payload.setdefault("turn_index", turn_index)
+            if turn_epoch is not None:
+                event_payload.setdefault("stream_epoch", turn_epoch)
+
+            if (
+                suppress_turn_events_for_turn_id == turn_id
+                and not (
+                    event_type == "turn.cancelled"
+                    and allow_cancelled_event_for_suppressed_turn
+                )
+            ):
+                log_ws_trace(
+                    "turn_event_suppressed",
+                    {
+                        "turn_id": turn_id,
+                        "event_type": event_type,
+                    },
+                )
+                return True
+
+            if event_type in TURN_SCOPED_EVENT_TYPES:
+                is_stale = (
+                    turn_epoch is None
+                    or active_turn_id is None
+                    or turn_id != active_turn_id
+                    or turn_epoch != active_stream_epoch
+                    or (active_turn_index is not None and turn_index != active_turn_index)
+                )
+                if is_stale:
+                    log_ws_trace(
+                        "stale_turn_event_dropped",
+                        {
+                            "turn_id": turn_id,
+                            "turn_index": turn_index,
+                            "turn_epoch": turn_epoch,
+                            "active_turn_id": active_turn_id,
+                            "active_turn_index": active_turn_index,
+                            "active_stream_epoch": active_stream_epoch,
+                            "event_type": event_type,
+                        },
+                    )
+                    return True
+
+                next_event_index = turn_event_index_by_id.get(turn_id, 0)
+                event_payload["event_index"] = next_event_index
+                turn_event_index_by_id[turn_id] = next_event_index + 1
+
+                if event_type == "assistant.text.delta":
+                    text_delta = str(event_payload.get("text") or "")
+                    if text_delta:
+                        assistant_text_by_turn.setdefault(turn_id, []).append(text_delta)
+                elif event_type == "assistant.text.final":
+                    final_text = str(event_payload.get("text") or "").strip()
+                    if final_text and not assistant_text_by_turn.get(turn_id):
+                        assistant_text_by_turn[turn_id] = [final_text]
+                elif event_type == "turn.completed" and turn_index is not None:
+                    last_completed_turn_index = max(last_completed_turn_index, turn_index)
+                    assistant_text_by_turn.pop(turn_id, None)
+
+        return await _send_ws_event(websocket, send_lock, event_payload)
+
+    def activate_turn(turn_id: str, *, is_intro: bool) -> None:
+        nonlocal active_stream_epoch, next_turn_index, active_turn_id, active_turn_index
+        nonlocal active_turn_is_intro
+
+        active_stream_epoch += 1
+        next_turn_index += 1
+        turn_index_by_id[turn_id] = next_turn_index
+        turn_epoch_by_id[turn_id] = active_stream_epoch
+        turn_event_index_by_id[turn_id] = 0
+        assistant_text_by_turn[turn_id] = []
+        active_turn_id = turn_id
+        active_turn_index = next_turn_index
+        active_turn_is_intro = is_intro
+
+    def collect_turn_carryover(turn_id: str | None) -> str:
+        if not turn_id:
+            return ""
+        text = "".join(assistant_text_by_turn.pop(turn_id, [])).strip()
+        return _truncate_carryover_text(text)
 
     async def start_auto_summary_turn() -> None:
-        nonlocal orchestrator, active_turn_task, active_turn_id, auto_summary_started
-        nonlocal active_turn_is_intro
+        nonlocal orchestrator, active_turn_task, auto_summary_started
+        nonlocal suppress_turn_events_for_turn_id
+        nonlocal allow_cancelled_event_for_suppressed_turn
 
         if not auto_summary_requested or auto_summary_started:
             return
@@ -287,11 +415,14 @@ async def voice_websocket(
                 content_context=state.content_context,
             )
 
+        suppress_turn_events_for_turn_id = active_turn_id
+        allow_cancelled_event_for_suppressed_turn = False
         await _cancel_task(active_turn_task)
+        suppress_turn_events_for_turn_id = None
+        allow_cancelled_event_for_suppressed_turn = False
         turn_id = f"turn_{uuid4().hex}"
+        activate_turn(turn_id, is_intro=False)
         auto_summary_started = True
-        active_turn_id = turn_id
-        active_turn_is_intro = False
         log_ws_trace("auto_summary_started", {"turn_id": turn_id})
         active_turn_task = asyncio.create_task(
             orchestrator.process_scripted_turn(
@@ -394,8 +525,13 @@ async def voice_websocket(
                                 content_context=state.content_context,
                             )
 
+                        suppress_turn_events_for_turn_id = active_turn_id
+                        allow_cancelled_event_for_suppressed_turn = False
                         await _cancel_task(active_turn_task)
+                        suppress_turn_events_for_turn_id = None
+                        allow_cancelled_event_for_suppressed_turn = False
                         intro_turn_id = f"turn_{uuid4().hex}"
+                        activate_turn(intro_turn_id, is_intro=True)
                         intro_text = build_live_intro_text(
                             launch_mode=state.launch_mode,
                             context_title=state.content_title,
@@ -416,8 +552,6 @@ async def voice_websocket(
                                 is_onboarding=state.is_onboarding_intro,
                             )
                         )
-                        active_turn_id = intro_turn_id
-                        active_turn_is_intro = True
                         set_voice_session_intro_pending(
                             session_id=session_id,
                             user_id=user.id,
@@ -477,20 +611,36 @@ async def voice_websocket(
 
                 if event_type == "response.cancel":
                     log_ws_trace("response_cancel_requested", {})
-                    has_active_turn = (
-                        active_turn_task is not None
-                        and not active_turn_task.done()
-                    )
+                    has_active_turn = active_turn_task is not None and not active_turn_task.done()
                     turn_id = active_turn_id if has_active_turn else None
+                    turn_index = active_turn_index if has_active_turn else None
+                    suppress_turn_events_for_turn_id = turn_id if has_active_turn else None
+                    allow_cancelled_event_for_suppressed_turn = has_active_turn
                     await _cancel_task(active_turn_task)
+                    suppress_turn_events_for_turn_id = None
+                    allow_cancelled_event_for_suppressed_turn = False
+                    if has_active_turn:
+                        pending_assistant_carryover = ""
+                        if (
+                            turn_id
+                            and turn_index is not None
+                            and turn_index > last_completed_turn_index
+                        ):
+                            pending_assistant_carryover = collect_turn_carryover(turn_id)
+                    if has_active_turn:
+                        active_stream_epoch += 1
                     active_turn_task = None
                     active_turn_id = None
+                    active_turn_index = None
                     active_turn_is_intro = False
                     is_open = await emit(
                         {
                             "type": "response.cancelled",
                             "turn_id": turn_id,
                             "reason": "client_request" if has_active_turn else "already_completed",
+                            "rollback_turn_index": last_completed_turn_index,
+                            "continuation_hint_chars": len(pending_assistant_carryover),
+                            "stream_epoch": active_stream_epoch,
                         }
                     )
                     if not is_open:
@@ -607,16 +757,36 @@ async def voice_websocket(
                             return
                         continue
 
+                    previous_turn_id = active_turn_id
+                    previous_turn_index = active_turn_index
+                    suppress_turn_events_for_turn_id = previous_turn_id
+                    allow_cancelled_event_for_suppressed_turn = False
                     await _cancel_task(active_turn_task)
+                    suppress_turn_events_for_turn_id = None
+                    allow_cancelled_event_for_suppressed_turn = False
+                    if previous_turn_id and previous_turn_index is not None:
+                        pending_assistant_carryover = ""
+                        if previous_turn_index > last_completed_turn_index:
+                            pending_assistant_carryover = collect_turn_carryover(previous_turn_id)
                     turn_id = f"turn_{uuid4().hex}"
-                    active_turn_id = turn_id
-                    active_turn_is_intro = False
+                    activate_turn(turn_id, is_intro=False)
+                    if pending_assistant_carryover:
+                        orchestrator.set_next_turn_carryover(pending_assistant_carryover)
+                        log_ws_trace(
+                            "assistant_carryover_attached",
+                            {
+                                "turn_id": turn_id,
+                                "carryover_chars": len(pending_assistant_carryover),
+                            },
+                        )
+                        pending_assistant_carryover = ""
                     log_ws_trace("audio_commit_received", {"turn_id": turn_id})
                     active_turn_task = asyncio.create_task(orchestrator.process_turn(turn_id))
                     continue
 
             if active_turn_task is not None and active_turn_task in done:
                 completed_intro_turn = active_turn_is_intro
+                completed_turn_id = active_turn_id
                 task_completed_successfully = False
                 try:
                     await active_turn_task
@@ -647,7 +817,10 @@ async def voice_websocket(
                 finally:
                     active_turn_task = None
                     active_turn_id = None
+                    active_turn_index = None
                     active_turn_is_intro = False
+                    if completed_turn_id:
+                        assistant_text_by_turn.pop(completed_turn_id, None)
 
                 if (
                     completed_intro_turn

@@ -43,6 +43,9 @@ final class LiveVoiceViewModel: ObservableObject {
     private var frameSequence = 0
     private var currentRoute: LiveVoiceRoute?
     private var currentTurnId: String?
+    private var currentTurnIndex: Int?
+    private var currentStreamEpoch: Int?
+    private var lastCompletedTurnIndex = 0
     private var introTurnId: String?
     private var pendingIntroAck = false
     private var introHadAudio = false
@@ -592,6 +595,10 @@ final class LiveVoiceViewModel: ObservableObject {
         if event.type != "transcript.partial" {
             pushDebugEvent("server -> \(event.type)")
         }
+        if shouldIgnoreTurnScopedEvent(event) {
+            pushDebugEvent("ignored stale \(event.type)")
+            return
+        }
         switch event.type {
         case "session.ready":
             didReceiveSessionReady = true
@@ -643,6 +650,9 @@ final class LiveVoiceViewModel: ObservableObject {
                 Task { await sendIntroAck() }
             }
         case "turn.completed":
+            if let turnIndex = event.turnIndex {
+                lastCompletedTurnIndex = max(lastCompletedTurnIndex, turnIndex)
+            }
             if event.turnId == introTurnId {
                 introWatchdogTask?.cancel()
                 introWatchdogTask = nil
@@ -650,6 +660,7 @@ final class LiveVoiceViewModel: ObservableObject {
             statusMessage = isListening ? "Listening..." : "Connected"
             setAwaitingAssistant(false, reason: "turn completed")
             refreshDebugPhase()
+            clearActiveTurnIfMatching(event)
             if pendingIntroAck, event.turnId == introTurnId, !introHadAudio {
                 pendingIntroAck = false
                 Task { await sendIntroAck() }
@@ -658,12 +669,16 @@ final class LiveVoiceViewModel: ObservableObject {
         case "turn.cancelled":
             statusMessage = "Cancelled"
             isAssistantSpeaking = false
+            rollbackInFlightAssistantOutput(rollbackTurnIndex: event.rollbackTurnIndex)
             setAwaitingAssistant(false, reason: "turn cancelled")
             refreshDebugPhase()
+            clearActiveTurnIfMatching(event)
             if !isListening {
                 autoResumeListening(reason: "turn.cancelled")
             }
         case "response.cancelled":
+            rollbackInFlightAssistantOutput(rollbackTurnIndex: event.rollbackTurnIndex)
+            clearActiveTurn()
             setAwaitingAssistant(false, reason: "cancel acknowledged")
             statusMessage = isListening ? "Listening..." : "Connected"
             refreshDebugPhase()
@@ -699,6 +714,8 @@ final class LiveVoiceViewModel: ObservableObject {
             assistantText = ""
             hasBargedInThisTurn = false
             currentTurnId = payload["turn_id"] as? String
+            currentTurnIndex = payload["turn_index"] as? Int
+            currentStreamEpoch = payload["stream_epoch"] as? Int
             debugCurrentTurnId = currentTurnId
             let isIntro = (payload["is_intro"] as? Bool) ?? false
             let isOnboardingIntro = (payload["is_onboarding_intro"] as? Bool) ?? false
@@ -710,6 +727,65 @@ final class LiveVoiceViewModel: ObservableObject {
                 setAwaitingAssistant(true, reason: "turn started")
                 refreshDebugPhase()
             }
+        }
+    }
+
+    private func shouldIgnoreTurnScopedEvent(_ event: VoiceServerEvent) -> Bool {
+        guard isTurnScopedEvent(event.type) else { return false }
+        guard let eventTurnId = event.turnId else { return false }
+        guard let activeTurnId = currentTurnId else { return true }
+        if eventTurnId != activeTurnId {
+            return true
+        }
+        if let activeEpoch = currentStreamEpoch,
+           let eventEpoch = event.streamEpoch,
+           eventEpoch != activeEpoch
+        {
+            return true
+        }
+        if let activeIndex = currentTurnIndex,
+           let eventIndex = event.turnIndex,
+           eventIndex != activeIndex
+        {
+            return true
+        }
+        return false
+    }
+
+    private func isTurnScopedEvent(_ type: String) -> Bool {
+        switch type {
+        case "transcript.final",
+            "assistant.text.delta",
+            "assistant.text.final",
+            "assistant.audio.chunk",
+            "assistant.audio.final",
+            "turn.completed",
+            "turn.cancelled":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func clearActiveTurnIfMatching(_ event: VoiceServerEvent) {
+        guard let eventTurnId = event.turnId else { return }
+        guard eventTurnId == currentTurnId else { return }
+        clearActiveTurn()
+    }
+
+    private func clearActiveTurn() {
+        currentTurnId = nil
+        currentTurnIndex = nil
+        currentStreamEpoch = nil
+    }
+
+    private func rollbackInFlightAssistantOutput(rollbackTurnIndex: Int?) {
+        playbackEngine.flush()
+        assistantText = ""
+        transcriptPartial = ""
+        isAssistantSpeaking = false
+        if let rollbackTurnIndex {
+            lastCompletedTurnIndex = max(lastCompletedTurnIndex, rollbackTurnIndex)
         }
     }
 
@@ -798,6 +874,9 @@ final class LiveVoiceViewModel: ObservableObject {
         transcriptFinal = ""
         assistantText = ""
         currentTurnId = nil
+        currentTurnIndex = nil
+        currentStreamEpoch = nil
+        lastCompletedTurnIndex = 0
         debugCurrentTurnId = nil
         introTurnId = nil
         introHadAudio = false

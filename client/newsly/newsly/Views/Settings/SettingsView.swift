@@ -13,11 +13,22 @@ struct SettingsView: View {
     @State private var showMarkAllDialog = false
     @State private var isProcessingMarkAll = false
     @State private var showingDebugMenu = false
+    @State private var isSavingTwitterUsername = false
+    @State private var isUpdatingXConnection = false
+    @State private var twitterUsernameDraft = ""
+    @State private var serverTwitterUsername = ""
+    @State private var hasUnsavedTwitterUsernameEdits = false
+    @State private var xConnection: XConnectionResponse?
+    @State private var hasLoadedAccountState = false
+    @FocusState private var isTwitterUsernameFieldFocused: Bool
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
                 accountSection
+                SectionDivider()
+
+                xIntegrationSection
                 SectionDivider()
 
                 displayPreferencesSection
@@ -60,6 +71,12 @@ struct SettingsView: View {
             DebugMenuView()
                 .environmentObject(authViewModel)
         }
+        .task {
+            await loadAccountState(force: true)
+        }
+        .onChange(of: authViewModel.authState) { _, _ in
+            Task { await loadAccountState(force: true) }
+        }
     }
 
     // MARK: - Account Section
@@ -87,6 +104,104 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: - X Integration Section
+
+    private var xIntegrationSection: some View {
+        VStack(spacing: 0) {
+            SectionHeader(title: "X Integration")
+
+            if case .authenticated = authViewModel.authState {
+                usernameInputRow
+
+                RowDivider()
+
+                Button {
+                    Task { await saveTwitterUsername() }
+                } label: {
+                    SettingsRow(
+                        icon: "person.text.rectangle",
+                        iconColor: .blue,
+                        title: "Save Username",
+                        subtitle: "Used for bookmark sync and shared tweet metadata"
+                    ) {
+                        if isSavingTwitterUsername {
+                            ProgressView()
+                        } else {
+                            EmptyView()
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isSavingTwitterUsername || isUpdatingXConnection)
+
+                RowDivider()
+
+                if isXConnected {
+                    Button {
+                        Task { await disconnectX() }
+                    } label: {
+                        SettingsRow(
+                            icon: "link.badge.minus",
+                            iconColor: .statusDestructive,
+                            title: "Disconnect X",
+                            subtitle: xConnectionSubtitle
+                        ) {
+                            if isUpdatingXConnection {
+                                ProgressView()
+                            } else {
+                                EmptyView()
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSavingTwitterUsername || isUpdatingXConnection)
+                } else {
+                    Button {
+                        Task { await connectX() }
+                    } label: {
+                        SettingsRow(
+                            icon: "link.badge.plus",
+                            iconColor: .green,
+                            title: "Connect X",
+                            subtitle: "Authorize bookmark sync from your X account"
+                        ) {
+                            if isUpdatingXConnection {
+                                ProgressView()
+                            } else {
+                                EmptyView()
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSavingTwitterUsername || isUpdatingXConnection)
+                }
+            }
+        }
+    }
+
+    private var usernameInputRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Username")
+                .font(.listCaption)
+                .foregroundStyle(Color.textTertiary)
+            TextField("@username", text: $twitterUsernameDraft)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .focused($isTwitterUsernameFieldFocused)
+                .onChange(of: twitterUsernameDraft) { _, newValue in
+                    hasUnsavedTwitterUsernameEdits =
+                        normalizedTwitterUsernameForComparison(newValue)
+                        != normalizedTwitterUsernameForComparison(serverTwitterUsername)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.surfaceSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .padding(.horizontal, Spacing.rowHorizontal)
+        .padding(.vertical, Spacing.rowVertical)
     }
 
     // MARK: - Display Preferences Section
@@ -277,7 +392,156 @@ struct SettingsView: View {
         }
     }
 
+    private var isXConnected: Bool {
+        xConnection?.connected == true
+    }
+
+    private var xConnectionSubtitle: String {
+        if let username = xConnection?.providerUsername, !username.isEmpty {
+            return "@\(username)"
+        }
+        if let lastStatus = xConnection?.lastStatus, !lastStatus.isEmpty {
+            return "Status: \(lastStatus)"
+        }
+        return "Connected"
+    }
+
+    private var authenticatedUser: User? {
+        guard case .authenticated(let user) = authViewModel.authState else {
+            return nil
+        }
+        return user
+    }
+
+    private func normalizedTwitterUsernameDraft() -> String? {
+        let trimmed = twitterUsernameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("@") {
+            return String(trimmed.dropFirst())
+        }
+        return trimmed
+    }
+
+    private func normalizedTwitterUsernameForComparison(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutPrefix = trimmed.hasPrefix("@") ? String(trimmed.dropFirst()) : trimmed
+        return withoutPrefix.lowercased()
+    }
+
+    @MainActor
+    private func loadAccountState(force: Bool) async {
+        guard let user = authenticatedUser else {
+            xConnection = nil
+            twitterUsernameDraft = ""
+            serverTwitterUsername = ""
+            hasUnsavedTwitterUsernameEdits = false
+            hasLoadedAccountState = false
+            return
+        }
+
+        let userUsername = user.twitterUsername ?? ""
+        if !hasLoadedAccountState {
+            serverTwitterUsername = userUsername
+            twitterUsernameDraft = userUsername
+            hasUnsavedTwitterUsernameEdits = false
+            hasLoadedAccountState = true
+        } else if force {
+            serverTwitterUsername = userUsername
+            if !isTwitterUsernameFieldFocused && !hasUnsavedTwitterUsernameEdits {
+                twitterUsernameDraft = userUsername
+            }
+        }
+
+        do {
+            xConnection = try await XIntegrationService.shared.fetchConnection()
+            let connectionUsername = xConnection?.twitterUsername ?? userUsername
+            serverTwitterUsername = connectionUsername
+            if !isTwitterUsernameFieldFocused && !hasUnsavedTwitterUsernameEdits {
+                twitterUsernameDraft = connectionUsername
+            }
+        } catch {
+            xConnection = nil
+            serverTwitterUsername = userUsername
+            if !isTwitterUsernameFieldFocused && !hasUnsavedTwitterUsernameEdits {
+                twitterUsernameDraft = userUsername
+            }
+        }
+        hasUnsavedTwitterUsernameEdits =
+            normalizedTwitterUsernameForComparison(twitterUsernameDraft)
+            != normalizedTwitterUsernameForComparison(serverTwitterUsername)
+    }
+
     // MARK: - Actions
+
+    @MainActor
+    private func saveTwitterUsername() async {
+        guard !isSavingTwitterUsername, authenticatedUser != nil else { return }
+        isSavingTwitterUsername = true
+        defer { isSavingTwitterUsername = false }
+
+        do {
+            let user = try await AuthenticationService.shared.updateCurrentUserProfile(
+                twitterUsername: normalizedTwitterUsernameDraft()
+            )
+            authViewModel.updateUser(user)
+            serverTwitterUsername = user.twitterUsername ?? ""
+            twitterUsernameDraft = serverTwitterUsername
+            hasUnsavedTwitterUsernameEdits = false
+            alertMessage = "Username saved."
+            showingAlert = true
+            await loadAccountState(force: true)
+        } catch {
+            alertMessage = "Failed to save username: \(error.localizedDescription)"
+            showingAlert = true
+        }
+    }
+
+    @MainActor
+    private func connectX() async {
+        guard !isUpdatingXConnection else { return }
+        isUpdatingXConnection = true
+        defer { isUpdatingXConnection = false }
+
+        do {
+            _ = try await XIntegrationService.shared.connectViaOAuth(
+                twitterUsername: normalizedTwitterUsernameDraft()
+            )
+            let user = try await AuthenticationService.shared.getCurrentUser()
+            authViewModel.updateUser(user)
+            serverTwitterUsername = user.twitterUsername ?? ""
+            twitterUsernameDraft = serverTwitterUsername
+            hasUnsavedTwitterUsernameEdits = false
+            await loadAccountState(force: true)
+            alertMessage = "X connected successfully."
+            showingAlert = true
+        } catch {
+            alertMessage = "Failed to connect X: \(error.localizedDescription)"
+            showingAlert = true
+        }
+    }
+
+    @MainActor
+    private func disconnectX() async {
+        guard !isUpdatingXConnection else { return }
+        isUpdatingXConnection = true
+        defer { isUpdatingXConnection = false }
+
+        do {
+            try await XIntegrationService.shared.disconnect()
+            let user = try await AuthenticationService.shared.getCurrentUser()
+            authViewModel.updateUser(user)
+            serverTwitterUsername = user.twitterUsername ?? ""
+            if !hasUnsavedTwitterUsernameEdits {
+                twitterUsernameDraft = serverTwitterUsername
+            }
+            await loadAccountState(force: true)
+            alertMessage = "X disconnected."
+            showingAlert = true
+        } catch {
+            alertMessage = "Failed to disconnect X: \(error.localizedDescription)"
+            showingAlert = true
+        }
+    }
 
     @MainActor
     private func markAllContent(for target: MarkAllTarget) async {

@@ -8,6 +8,11 @@
 import Foundation
 
 struct ContentSummary: Codable, Identifiable {
+    struct TopComment: Codable {
+        let author: String
+        let text: String
+    }
+
     let id: Int
     let contentType: String
     let url: String
@@ -24,6 +29,10 @@ struct ContentSummary: Codable, Identifiable {
     var isFavorited: Bool
     let imageUrl: String?
     let thumbnailUrl: String?
+    let primaryTopic: String?
+    let topComment: TopComment?
+    let newsSummary: String?
+    let newsKeyPoints: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -42,7 +51,66 @@ struct ContentSummary: Codable, Identifiable {
         case isFavorited = "is_favorited"
         case imageUrl = "image_url"
         case thumbnailUrl = "thumbnail_url"
+        case primaryTopic = "primary_topic"
+        case topComment = "top_comment"
+        case newsSummary = "news_summary"
+        case newsKeyPoints = "news_key_points"
     }
+
+    private static let displayDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone.current
+        return formatter
+    }()
+
+    private static let processedDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM-dd-yyyy"
+        formatter.timeZone = TimeZone.current
+        return formatter
+    }()
+
+    private static let relativeFallbackFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        formatter.timeZone = TimeZone.current
+        return formatter
+    }()
+
+    private static let calendarDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone.current
+        return formatter
+    }()
+
+    private static let iso8601WithFractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let utcMicrosecondsFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
+        return formatter
+    }()
+
+    private static let utcSecondsFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
+        return formatter
+    }()
 
     init(
         id: Int,
@@ -60,7 +128,11 @@ struct ContentSummary: Codable, Identifiable {
         isRead: Bool,
         isFavorited: Bool,
         imageUrl: String? = nil,
-        thumbnailUrl: String? = nil
+        thumbnailUrl: String? = nil,
+        primaryTopic: String? = nil,
+        topComment: TopComment? = nil,
+        newsSummary: String? = nil,
+        newsKeyPoints: [String]? = nil
     ) {
         self.id = id
         self.contentType = contentType
@@ -78,6 +150,10 @@ struct ContentSummary: Codable, Identifiable {
         self.isFavorited = isFavorited
         self.imageUrl = imageUrl
         self.thumbnailUrl = thumbnailUrl
+        self.primaryTopic = primaryTopic
+        self.topComment = topComment
+        self.newsSummary = newsSummary
+        self.newsKeyPoints = newsKeyPoints
     }
 
     init(from decoder: Decoder) throws {
@@ -98,7 +174,11 @@ struct ContentSummary: Codable, Identifiable {
             isRead: try container.decode(Bool.self, forKey: .isRead),
             isFavorited: try container.decodeIfPresent(Bool.self, forKey: .isFavorited) ?? false,
             imageUrl: try container.decodeIfPresent(String.self, forKey: .imageUrl),
-            thumbnailUrl: try container.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+            thumbnailUrl: try container.decodeIfPresent(String.self, forKey: .thumbnailUrl),
+            primaryTopic: try container.decodeIfPresent(String.self, forKey: .primaryTopic),
+            topComment: try container.decodeIfPresent(TopComment.self, forKey: .topComment),
+            newsSummary: try container.decodeIfPresent(String.self, forKey: .newsSummary),
+            newsKeyPoints: try container.decodeIfPresent([String].self, forKey: .newsKeyPoints)
         )
     }
 
@@ -120,6 +200,10 @@ struct ContentSummary: Codable, Identifiable {
         try container.encode(isFavorited, forKey: .isFavorited)
         try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try container.encodeIfPresent(thumbnailUrl, forKey: .thumbnailUrl)
+        try container.encodeIfPresent(primaryTopic, forKey: .primaryTopic)
+        try container.encodeIfPresent(topComment, forKey: .topComment)
+        try container.encodeIfPresent(newsSummary, forKey: .newsSummary)
+        try container.encodeIfPresent(newsKeyPoints, forKey: .newsKeyPoints)
     }
 
     var contentTypeEnum: ContentType? {
@@ -137,17 +221,24 @@ struct ContentSummary: Codable, Identifiable {
         return nil
     }
 
+    /// Discussion snippet for feed card preview
+    var discussionSnippet: (author: String, text: String)? {
+        if let comment = topComment {
+            let author = comment.author.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = comment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return (author.isEmpty ? "unknown" : author, text)
+        }
+        return nil
+    }
+
     var formattedDate: String {
         let dateString = processedAt ?? createdAt
         guard let date = parseDate(from: dateString) else {
             return "Date unknown"
         }
-        
-        let displayFormatter = DateFormatter()
-        displayFormatter.dateStyle = .medium
-        displayFormatter.timeStyle = .short
-        displayFormatter.timeZone = TimeZone.current
-        return displayFormatter.string(from: date)
+
+        return Self.displayDateFormatter.string(from: date)
     }
 
     var processedDateDisplay: String? {
@@ -155,10 +246,7 @@ struct ContentSummary: Codable, Identifiable {
             return nil
         }
 
-        let displayFormatter = DateFormatter()
-        displayFormatter.dateFormat = "MM-dd-yyyy"
-        displayFormatter.timeZone = TimeZone.current
-        return displayFormatter.string(from: date)
+        return Self.processedDateFormatter.string(from: date)
     }
 
     /// Relative time display for news items (e.g., "2h ago", "3d ago")
@@ -183,10 +271,7 @@ struct ContentSummary: Codable, Identifiable {
             let days = Int(interval / 86400)
             return "\(days)d ago"
         } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d"
-            formatter.timeZone = TimeZone.current
-            return formatter.string(from: date)
+            return Self.relativeFallbackFormatter.string(from: date)
         }
     }
 
@@ -210,34 +295,40 @@ struct ContentSummary: Codable, Identifiable {
             isRead: isRead ?? self.isRead,
             isFavorited: isFavorited ?? self.isFavorited,
             imageUrl: imageUrl,
-            thumbnailUrl: thumbnailUrl
+            thumbnailUrl: thumbnailUrl,
+            primaryTopic: primaryTopic,
+            topComment: topComment,
+            newsSummary: newsSummary,
+            newsKeyPoints: newsKeyPoints
         )
     }
 
+    /// The underlying Date parsed from the best available date field.
+    var itemDate: Date? {
+        let dateString = publicationDate ?? processedAt ?? createdAt
+        return parseDate(from: dateString)
+    }
+
+    /// Calendar day key for grouping (e.g. "2026-02-19").
+    var calendarDayKey: String {
+        guard let date = itemDate else { return "" }
+        return Self.calendarDayFormatter.string(from: date)
+    }
+
     private func parseDate(from dateString: String) -> Date? {
-        let iso8601WithFractional = ISO8601DateFormatter()
-        iso8601WithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = iso8601WithFractional.date(from: dateString) {
+        if let date = Self.iso8601WithFractionalFormatter.date(from: dateString) {
             return date
         }
 
-        let iso8601 = ISO8601DateFormatter()
-        iso8601.formatOptions = [.withInternetDateTime]
-        if let date = iso8601.date(from: dateString) {
+        if let date = Self.iso8601Formatter.date(from: dateString) {
             return date
         }
 
-        let formatterWithMicroseconds = DateFormatter()
-        formatterWithMicroseconds.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
-        formatterWithMicroseconds.timeZone = TimeZone(abbreviation: "UTC")
-        if let date = formatterWithMicroseconds.date(from: dateString) {
+        if let date = Self.utcMicrosecondsFormatter.date(from: dateString) {
             return date
         }
 
-        let formatterWithoutMicroseconds = DateFormatter()
-        formatterWithoutMicroseconds.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        formatterWithoutMicroseconds.timeZone = TimeZone(abbreviation: "UTC")
-        if let date = formatterWithoutMicroseconds.date(from: dateString) {
+        if let date = Self.utcSecondsFormatter.date(from: dateString) {
             return date
         }
 

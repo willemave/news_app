@@ -8,148 +8,89 @@ import SwiftUI
 struct DiscoverySuggestionCard: View {
     let suggestion: DiscoverySuggestion
     let suggestionType: String
-    let onSubscribe: () -> Void
-    let onAddItem: (() -> Void)?
-    let onOpen: () -> Void
-    let onDismiss: () -> Void
+    let onTap: () -> Void
 
-    var body: some View {
-        HStack(spacing: 0) {
-            // Leading accent strip
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(accentColor)
-                .frame(width: 3)
-                .padding(.vertical, 12)
-
-            VStack(alignment: .leading, spacing: 10) {
-                // Title + dismiss
-                HStack(alignment: .top, spacing: 8) {
-                    Text(suggestion.displayTitle)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer()
-
-                    Button(action: onDismiss) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(Color.textTertiary)
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                // Subtitle
-                if let subtitle = suggestion.displaySubtitle, subtitle != suggestion.rationale {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // Rationale row
-                if let rationale = suggestion.rationale, !rationale.isEmpty {
-                    HStack(spacing: 5) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(accentColor)
-                        Text(rationale)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(accentColor.opacity(0.08))
-                    .cornerRadius(6)
-                }
-
-                // URL + score row
-                HStack(spacing: 0) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "link")
-                            .font(.system(size: 10))
-                        Text(formattedURL(suggestion.primaryURL))
-                            .lineLimit(1)
-                    }
-                    .font(.caption2)
-                    .foregroundColor(Color.textTertiary)
-
-                    Spacer()
-
-                    if let score = suggestion.score, score > 0 {
-                        Text("\(Int(score * 100))% match")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundColor(accentColor)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(accentColor.opacity(0.1))
-                            .cornerRadius(4)
-                    }
-                }
-
-                // Action buttons
-                HStack(spacing: 8) {
-                    if suggestion.canSubscribe {
-                        Button(action: onSubscribe) {
-                            Label("Subscribe", systemImage: "plus")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .tint(accentColor)
-                    }
-
-                    if let onAddItem {
-                        Button(action: onAddItem) {
-                            Label(suggestion.addItemLabel, systemImage: "arrow.down")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-
-                    Button(action: onOpen) {
-                        Label("Open", systemImage: "safari")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .controlSize(.small)
-
-                    Spacer()
-                }
-            }
-            .padding(.leading, 12)
-            .padding(.trailing, 14)
-            .padding(.vertical, 14)
-        }
-        .background(Color(.secondarySystemGroupedBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-        )
-        .cornerRadius(12)
+    private struct SuggestionMetadata {
+        let icon: String
+        let color: Color
+        let sourceName: String
     }
 
-    private var accentColor: Color {
+    private var metadata: SuggestionMetadata {
         switch suggestionType {
         case "feed", "rss":
-            return .blue
+            return SuggestionMetadata(
+                icon: "dot.radiowaves.up.forward",
+                color: .blue,
+                sourceName: "Feed"
+            )
         case "podcast_rss", "podcast":
-            return .orange
+            return SuggestionMetadata(
+                icon: "waveform",
+                color: .orange,
+                sourceName: "Podcast"
+            )
         case "youtube":
-            return .red
+            return SuggestionMetadata(
+                icon: "play.circle.fill",
+                color: .red,
+                sourceName: "YouTube"
+            )
         default:
-            return .blue
+            return SuggestionMetadata(
+                icon: "doc.text",
+                color: .blue,
+                sourceName: "Feed"
+            )
         }
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 10) {
+                // Metadata bar: type icon + source name + dot + URL
+                HStack(spacing: 6) {
+                    Image(systemName: metadata.icon)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(metadata.color)
+
+                    Text(metadata.sourceName.uppercased())
+                        .font(.editorialMeta)
+                        .foregroundColor(.editorialSub)
+                        .tracking(0.5)
+                        .lineLimit(1)
+
+                    Text("\u{00B7}")
+                        .font(.editorialMeta)
+                        .foregroundColor(.editorialSub)
+
+                    Text(formattedURL(suggestion.primaryURL))
+                        .font(.editorialSubMeta)
+                        .foregroundColor(Color.textTertiary)
+                        .lineLimit(1)
+
+                    Spacer()
+                }
+
+                // Serif headline
+                Text(suggestion.displayTitle)
+                    .font(.editorialHeadline)
+                    .foregroundColor(.editorialText)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.editorialBorder, lineWidth: 1)
+            )
+            .cornerRadius(12)
+            .shadow(color: .black.opacity(0.03), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(EditorialCardButtonStyle())
     }
 
     private func formattedURL(_ urlString: String) -> String {
@@ -158,5 +99,15 @@ struct DiscoverySuggestionCard: View {
             return urlString
         }
         return host.replacingOccurrences(of: "www.", with: "")
+    }
+}
+
+// MARK: - Card Button Style (press feedback)
+
+struct EditorialCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }

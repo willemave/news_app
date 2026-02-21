@@ -123,7 +123,10 @@ async def complete_onboarding_flow(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> OnboardingCompleteResponse:
     """Persist onboarding selections and queue crawlers."""
-    return complete_onboarding(db, current_user.id, payload)
+    try:
+        return complete_onboarding(db, current_user.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post(

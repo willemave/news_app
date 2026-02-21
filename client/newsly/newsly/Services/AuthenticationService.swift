@@ -223,6 +223,48 @@ final class AuthenticationService: NSObject {
         }
     }
 
+    /// Update authenticated user profile fields.
+    func updateCurrentUserProfile(
+        fullName: String? = nil,
+        twitterUsername: String? = nil
+    ) async throws -> User {
+        guard let token = KeychainManager.shared.getToken(key: .accessToken) else {
+            throw AuthError.notAuthenticated
+        }
+
+        let url = URL(string: "\(AppSettings.shared.baseURL)\(APIEndpoints.authMe)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let body = UpdateUserProfileRequest(fullName: fullName, twitterUsername: twitterUsername)
+        request.httpBody = try JSONEncoder().encode(body)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AuthError.serverError(statusCode: -1, message: "Invalid HTTP response")
+            }
+
+            switch httpResponse.statusCode {
+            case 200:
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                return try decoder.decode(User.self, from: data)
+            case 401, 403:
+                KeychainManager.shared.deleteToken(key: .accessToken)
+                throw AuthError.notAuthenticated
+            default:
+                let body = String(data: data, encoding: .utf8)
+                throw AuthError.serverError(statusCode: httpResponse.statusCode, message: body)
+            }
+        } catch let urlError as URLError {
+            throw AuthError.networkError(urlError)
+        }
+    }
+
     /// Create a fresh debug user (debug servers only).
     @MainActor
     func createDebugUser() async throws -> AuthSession {

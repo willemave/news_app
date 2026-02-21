@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -87,3 +88,26 @@ async def test_process_intro_turn_emits_turn_cancelled_on_cancellation(
         event.get("type") == "turn.cancelled" and event.get("turn_id") == "turn_intro_1"
         for event in events
     )
+
+
+@pytest.mark.asyncio
+async def test_commit_and_collect_transcript_ignores_stale_finals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """STT finals emitted before commit should be ignored for the current turn."""
+
+    orchestrator = VoiceConversationOrchestrator(
+        session_id="session-test",
+        user_id=123,
+        emit_event=_emit_event,
+    )
+    orchestrator._stt_connection = object()
+    await orchestrator._stt_final_queue.put((time.monotonic() - 1, "stale transcript"))
+
+    async def fake_commit_audio(_connection: object) -> None:
+        await orchestrator._stt_final_queue.put((time.monotonic(), "fresh transcript"))
+
+    monkeypatch.setattr("app.services.voice.orchestrator.commit_audio", fake_commit_audio)
+
+    transcript = await orchestrator._commit_and_collect_transcript(turn_id="turn_1")
+    assert transcript == "fresh transcript"

@@ -57,7 +57,7 @@ struct KnowledgeView: View {
                 contentBody
             }
         }
-        .navigationTitle("Knowledge")
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             // Capture previous threshold before updating (for "New" indicators)
             if lastOpenedTimestamp > 0 {
@@ -79,21 +79,7 @@ struct KnowledgeView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                if selectedTab == .chats {
-                    Menu {
-                        ForEach(ChatModelProvider.allCases, id: \.self) { provider in
-                            Button {
-                                selectedProvider = provider
-                                showingNewChat = true
-                            } label: {
-                                Label(provider.displayName, systemImage: provider.iconName)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "plus.circle")
-                    }
-                    .accessibilityLabel("New Chat")
-                } else if selectedTab == .discover {
+                if selectedTab == .discover {
                     Button {
                         Task { await discoveryViewModel.refreshDiscovery() }
                     } label: {
@@ -239,40 +225,44 @@ struct KnowledgeView: View {
     }
 
     private var sessionListView: some View {
-        List {
-            chatSearchBarRow
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                chatSearchBarRow
+                    .padding(.horizontal, 16)
 
-            ForEach(filteredSessions) { session in
-                Button {
-                    if session.sessionType == "voice_live" {
-                        onSelectSession?(
-                            ChatSessionRoute(
-                                sessionId: session.id,
-                                mode: .live,
-                                contentId: session.contentId
+                ForEach(filteredSessions) { session in
+                    Button {
+                        if session.sessionType == "voice_live" {
+                            onSelectSession?(
+                                ChatSessionRoute(
+                                    sessionId: session.id,
+                                    mode: .live,
+                                    contentId: session.contentId
+                                )
                             )
-                        )
-                    } else {
-                        onSelectSession?(ChatSessionRoute(sessionId: session.id))
+                        } else {
+                            onSelectSession?(ChatSessionRoute(sessionId: session.id))
+                        }
+                    } label: {
+                        ChatSessionCard(session: session)
                     }
-                } label: {
-                    ChatSessionRow(session: session, isNew: isNewSession(session))
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            Task { await viewModel.deleteSessions(ids: [session.id]) }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .listRowInsets(EdgeInsets(
-                    top: 8, leading: Spacing.rowHorizontal,
-                    bottom: 8, trailing: Spacing.rowHorizontal
-                ))
-            }
-            .onDelete { offsets in
-                deleteSessions(at: offsets, from: filteredSessions)
-            }
 
-            if shouldShowNoResults {
-                noResultsRow
+                if shouldShowNoResults {
+                    noResultsRow
+                }
             }
+            .padding(.vertical, 8)
         }
-        .listStyle(.plain)
         .refreshable {
             await viewModel.loadSessions()
         }
@@ -303,40 +293,11 @@ struct KnowledgeView: View {
         return haystacks.contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
-    private func deleteSessions(at offsets: IndexSet, from sessions: [ChatSessionSummary]) {
-        let idsToDelete = offsets.map { sessions[$0].id }
-        Task {
-            await viewModel.deleteSessions(ids: idsToDelete)
-        }
-    }
-
     private var chatSearchBarRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-            TextField("Search chats", text: $chatSearchText)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            if !chatSearchText.isEmpty {
-                Button {
-                    chatSearchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(10)
-        .listRowInsets(EdgeInsets(
-            top: 8, leading: Spacing.rowHorizontal,
-            bottom: 8, trailing: Spacing.rowHorizontal
-        ))
-        .listRowSeparator(.hidden)
+        SearchBar(
+            placeholder: "Search history...",
+            text: $chatSearchText
+        )
     }
 
     private var noResultsRow: some View {
@@ -353,11 +314,6 @@ struct KnowledgeView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Spacing.sectionTop)
-        .listRowInsets(EdgeInsets(
-            top: 8, leading: Spacing.rowHorizontal,
-            bottom: 8, trailing: Spacing.rowHorizontal
-        ))
-        .listRowSeparator(.hidden)
     }
 
     private func loadForSelectedTab() async {
@@ -403,119 +359,119 @@ private enum KnowledgeTab: String, CaseIterable {
     }
 }
 
-// MARK: - Provider Icon
+// MARK: - Session Card
 
-struct ProviderIcon: View {
+struct ChatSessionCard: View {
     let session: ChatSessionSummary
 
-    var body: some View {
-        Group {
-            if let assetName = session.providerIconAsset {
-                Image(assetName)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 18, height: 18)
-            } else {
-                Image(systemName: session.providerIconFallback)
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
+    /// Whether this session was recently active (within last 5 minutes)
+    private var isRecentlyActive: Bool {
+        guard let dateStr = session.lastMessageAt else { return false }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = formatter.date(from: dateStr)
+        if date == nil {
+            formatter.formatOptions = [.withInternetDateTime]
+            date = formatter.date(from: dateStr)
         }
-        .frame(width: 26, height: 26)
-        .background(Color.secondary.opacity(0.1))
-        .cornerRadius(6)
+        guard let date else { return false }
+        return Date().timeIntervalSince(date) < 300
     }
-}
 
-// MARK: - Session Row
+    private enum BadgeStyle {
+        case thinking
+        case ready
+        case none
+    }
 
-struct ChatSessionRow: View {
-    let session: ChatSessionSummary
-    var isNew: Bool = false
+    private var badgeStyle: BadgeStyle {
+        if session.isProcessing { return .thinking }
+        if !session.isProcessing && session.hasAnyMessages && isRecentlyActive { return .ready }
+        return .none
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header row: title + badge + arrow
+            HStack(spacing: 8) {
                 Text(session.displayTitle)
-                    .font(.headline)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.textPrimary)
                     .lineLimit(1)
 
-                // New indicator
-                if isNew {
-                    Text("New")
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.green)
-                        .cornerRadius(4)
-                }
-
-                // Processing indicator
-                if session.isProcessing {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                        Text("Thinking...")
-                            .font(.caption2)
-                    }
-                    .foregroundColor(.blue)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(4)
-                }
-
                 Spacer()
 
-                // Show provider icon for active chats, or "Saved" badge for empty favorites
-                if session.isEmptyFavorite {
-                    Text("Saved")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(4)
-                } else {
-                    ProviderIcon(session: session)
-                }
+                statusBadge
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.textTertiary)
             }
 
-            // For empty favorites, show article summary if available
-            if session.isEmptyFavorite, let summary = session.articleSummary, !summary.isEmpty {
-                Text(summary)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            } else if let subtitle = session.displaySubtitle {
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-
-            HStack(spacing: 6) {
-                // Show different indicator for empty favorites
-                if session.isEmptyFavorite {
-                    Image(systemName: "doc.text")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    if let source = session.articleSource {
-                        Text(source)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                Spacer()
-                Text(session.formattedDate)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            // Preview row
+            previewRow
         }
-        .padding(.vertical, 4)
+        .padding(14)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.borderSubtle, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        switch badgeStyle {
+        case .thinking:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .scaleEffect(0.5)
+                Text("THINKING")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .tracking(0.5)
+            }
+            .foregroundColor(.textTertiary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.secondary.opacity(0.1))
+            .cornerRadius(4)
+
+        case .ready:
+            Text("READY")
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .tracking(0.5)
+                .foregroundColor(.blue)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(4)
+
+        case .none:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var previewRow: some View {
+        if let preview = session.lastMessagePreview, !preview.isEmpty {
+            let role = session.lastMessageRole ?? "assistant"
+            let prefix = role == "user" ? "You: " : "AI: "
+            let prefixColor: Color = role == "user" ? .textPrimary : .blue
+
+            (Text(prefix).foregroundColor(prefixColor).fontWeight(.medium) +
+             Text(preview).foregroundColor(.textSecondary))
+                .font(.system(size: 13))
+                .lineLimit(2)
+        } else if session.isEmptyFavorite, let summary = session.articleSummary, !summary.isEmpty {
+            Text(summary)
+                .font(.system(size: 13))
+                .foregroundColor(.textSecondary)
+                .lineLimit(2)
+        } else if let subtitle = session.displaySubtitle {
+            Text(subtitle)
+                .font(.system(size: 13))
+                .foregroundColor(.textSecondary)
+                .lineLimit(2)
+        }
     }
 }
 

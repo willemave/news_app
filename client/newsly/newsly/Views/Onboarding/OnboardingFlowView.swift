@@ -18,13 +18,21 @@ struct OnboardingFlowView: View {
 
     var body: some View {
         ZStack {
+            WatercolorBackground(energy: 0.15)
+
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(UIColor.systemBackground))
+
             if viewModel.isLoading {
                 Color.black.opacity(0.15)
                     .ignoresSafeArea()
                 LoadingOverlay(message: viewModel.loadingMessage)
+            }
+        }
+        .preferredColorScheme(.light)
+        .onChange(of: viewModel.completionResponse) { _, response in
+            if let response {
+                onFinish(response)
             }
         }
         .task {
@@ -36,7 +44,7 @@ struct OnboardingFlowView: View {
     private var content: some View {
         switch viewModel.step {
         case .intro:
-            introView
+            choiceView
                 .transition(.opacity)
         case .choice:
             choiceView
@@ -50,71 +58,7 @@ struct OnboardingFlowView: View {
         case .suggestions:
             suggestionsView
                 .transition(.opacity)
-                .onChange(of: viewModel.completionResponse) { _, response in
-                    if let response {
-                        onFinish(response)
-                    }
-                }
         }
-    }
-
-    // MARK: - Intro
-
-    private var introView: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .bottom) {
-                AncientScrollRevealView(
-                    obfuscatedSeed: 0xA53F_71D2,
-                    showsPhysics: true
-                ) { _ in }
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
-                        colors: [
-                            Color.black.opacity(0.0),
-                            Color.black.opacity(0.25)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 100)
-                    .allowsHitTesting(false)
-                }
-
-                HStack(spacing: 6) {
-                    Image(systemName: "hand.draw.fill")
-                        .font(.caption2)
-                    Text("Swipe to scatter")
-                        .font(.caption.weight(.medium))
-                }
-                .foregroundStyle(.white.opacity(0.55))
-                .padding(.bottom, 16)
-                .allowsHitTesting(false)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            VStack(spacing: 12) {
-                primaryButton("Get started") {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        viewModel.advanceToChoice()
-                    }
-                }
-
-                Text("Takes about 1 minute")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
-            .background(
-                ZStack {
-                    Color(UIColor.systemBackground).opacity(0.9)
-                    Rectangle().fill(.thinMaterial)
-                }
-                .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: -2)
-            )
-        }
-        .ignoresSafeArea(edges: .top)
     }
 
     // MARK: - Choice
@@ -126,22 +70,27 @@ struct OnboardingFlowView: View {
             VStack(spacing: 24) {
                 ZStack {
                     Circle()
-                        .fill(Color.accentColor.opacity(0.1))
+                        .fill(Color.watercolorSlate.opacity(0.08))
                         .frame(width: 88, height: 88)
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 32, weight: .medium))
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.watercolorSlate)
                 }
 
                 VStack(spacing: 10) {
                     Text("Set up your feeds")
                         .font(.title2.bold())
+                        .foregroundColor(.watercolorSlate)
                     Text("Share what you read and we'll\ncurate the best sources for you.")
                         .font(.callout)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.watercolorSlate.opacity(0.6))
                         .multilineTextAlignment(.center)
                 }
             }
+
+            Spacer()
+
+            twitterUsernameCard
 
             Spacer()
 
@@ -189,28 +138,28 @@ struct OnboardingFlowView: View {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .font(.body.weight(.medium))
-                    .foregroundColor(isPrimary ? .white : .accentColor)
+                    .foregroundColor(isPrimary ? .white : .watercolorSlate)
                     .frame(width: 36, height: 36)
-                    .background(isPrimary ? Color.accentColor : Color.accentColor.opacity(0.12))
+                    .background(isPrimary ? Color.watercolorSlate : Color.watercolorSlate.opacity(0.1))
                     .clipShape(Circle())
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.callout.weight(.semibold))
-                        .foregroundColor(.primary)
+                        .foregroundColor(.watercolorSlate)
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.watercolorSlate.opacity(0.6))
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.watercolorSlate.opacity(0.4))
             }
             .padding(16)
-            .background(Color(.secondarySystemBackground))
+            .background(Color.white.opacity(0.5))
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
@@ -220,45 +169,45 @@ struct OnboardingFlowView: View {
 
     private var audioView: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 8) {
                 Text("Tell us what you read")
                     .font(.title2.bold())
+                    .foregroundColor(.watercolorSlate)
                 Text("Speak naturally about your interests.")
                     .font(.callout)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.watercolorSlate.opacity(0.6))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 24)
+            .padding(.top, 48)
 
             Spacer()
 
-            switch viewModel.audioState {
-            case .idle:
-                audioIdleView
-            case .recording:
-                audioActiveView
-            case .transcribing:
+            if viewModel.audioState == .transcribing {
                 audioProcessingView
-            case .error:
-                audioErrorView
+            } else {
+                OnboardingMicButton(
+                    audioState: viewModel.audioState,
+                    durationSeconds: viewModel.audioDurationSeconds,
+                    onStart: { Task { await viewModel.startAudioCapture() } },
+                    onStop: { Task { await viewModel.stopAudioCaptureAndDiscover() } }
+                )
             }
 
             Spacer()
 
             if viewModel.audioState != .transcribing {
-                Button("Use defaults instead") {
+                Button("Skip") {
                     viewModel.chooseDefaults()
                 }
                 .font(.callout)
-                .foregroundColor(.secondary)
-                .padding(.bottom, 8)
+                .foregroundColor(.watercolorSlate.opacity(0.5))
+                .padding(.bottom, 16)
             }
 
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
                     .foregroundColor(.red)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 8)
             }
         }
         .padding(.horizontal, 24)
@@ -267,108 +216,31 @@ struct OnboardingFlowView: View {
         }
     }
 
-    private var audioIdleView: some View {
-        VStack(spacing: 20) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.1))
-                    .frame(width: 100, height: 100)
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 36, weight: .medium))
-                    .foregroundColor(.accentColor)
-            }
-
-            Text("Tap to start recording")
-                .font(.callout)
-                .foregroundColor(.secondary)
-
-            primaryButton("Start recording") {
-                Task { await viewModel.startAudioCapture() }
-            }
-            .frame(maxWidth: 240)
-        }
-    }
-
-    private var audioActiveView: some View {
-        VStack(spacing: 20) {
-            ZStack {
-                // Pulsing ring
-                Circle()
-                    .stroke(Color.red.opacity(0.2), lineWidth: 3)
-                    .frame(width: 100, height: 100)
-                Circle()
-                    .fill(Color.red.opacity(0.1))
-                    .frame(width: 100, height: 100)
-                Image(systemName: "waveform")
-                    .font(.system(size: 32, weight: .medium))
-                    .foregroundColor(.red)
-            }
-
-            VStack(spacing: 4) {
-                Text("Listening...")
-                    .font(.callout.weight(.medium))
-                Text(formattedAudioDuration)
-                    .font(.title3.monospacedDigit())
-                    .foregroundColor(.secondary)
-            }
-
-            primaryButton("Done") {
-                Task { await viewModel.stopAudioCaptureAndDiscover() }
-            }
-            .frame(maxWidth: 240)
-        }
-    }
-
     private var audioProcessingView: some View {
         VStack(spacing: 16) {
             ProgressView()
                 .scaleEffect(1.2)
+                .tint(.watercolorSlate)
             Text("Processing your interests...")
                 .font(.callout)
-                .foregroundColor(.secondary)
+                .foregroundColor(.watercolorSlate.opacity(0.6))
         }
-    }
-
-    private var audioErrorView: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.1))
-                    .frame(width: 80, height: 80)
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundColor(.orange)
-            }
-
-            Text("Recording failed")
-                .font(.callout.weight(.medium))
-
-            primaryButton("Try again") {
-                Task { await viewModel.startAudioCapture() }
-            }
-            .frame(maxWidth: 240)
-        }
-    }
-
-    private var formattedAudioDuration: String {
-        let minutes = viewModel.audioDurationSeconds / 60
-        let seconds = viewModel.audioDurationSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 
     // MARK: - Loading / Discovery
 
     private var loadingView: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 8) {
                 Text("Finding your feeds")
                     .font(.title2.bold())
+                    .foregroundColor(.watercolorSlate)
                 Text("Searching newsletters, podcasts, and Reddit.")
                     .font(.callout)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.watercolorSlate.opacity(0.6))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 24)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 48)
 
             Spacer()
 
@@ -376,13 +248,18 @@ struct OnboardingFlowView: View {
                 if viewModel.discoveryLanes.isEmpty {
                     ProgressView()
                         .scaleEffect(1.2)
+                        .tint(.watercolorSlate)
                     Text("Preparing search...")
                         .font(.callout)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.watercolorSlate.opacity(0.6))
                 } else {
-                    ForEach(viewModel.discoveryLanes) { lane in
-                        LaneStatusRow(lane: lane)
+                    VStack(spacing: 12) {
+                        ForEach(viewModel.discoveryLanes) { lane in
+                            LaneStatusRow(lane: lane)
+                        }
                     }
+                    .padding(20)
+                    .glassCard(cornerRadius: 20)
                 }
             }
 
@@ -391,7 +268,7 @@ struct OnboardingFlowView: View {
             VStack(spacing: 12) {
                 Text("Usually takes under a minute")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.watercolorSlate.opacity(0.5))
 
                 if let message = viewModel.discoveryErrorMessage {
                     Text(message)
@@ -403,10 +280,11 @@ struct OnboardingFlowView: View {
                     viewModel.chooseDefaults()
                 }
                 .font(.callout)
-                .foregroundColor(.secondary)
+                .foregroundColor(.watercolorSlate.opacity(0.5))
             }
+            .padding(.bottom, 16)
         }
-        .padding(24)
+        .padding(.horizontal, 24)
     }
 
     // MARK: - Suggestions
@@ -418,22 +296,26 @@ struct OnboardingFlowView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Your picks")
                             .font(.title2.bold())
+                            .foregroundColor(.watercolorSlate)
                         Text("Tap to deselect any you don't want.")
                             .font(.callout)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.watercolorSlate.opacity(0.6))
                     }
                     .padding(.bottom, 20)
 
                     if viewModel.substackSuggestions.isEmpty && viewModel.podcastSuggestions.isEmpty && viewModel.subredditSuggestions.isEmpty {
                         Text("No matches found — we'll start you with defaults.")
                             .font(.callout)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.watercolorSlate.opacity(0.6))
                             .padding(.vertical, 20)
                     }
 
+                    twitterUsernameCard
+                        .padding(.bottom, 12)
+
                     if !viewModel.substackSuggestions.isEmpty {
                         suggestionSection(
-                            title: "Newsletters",
+                            title: "NEWSLETTERS",
                             icon: "envelope.open",
                             items: viewModel.substackSuggestions,
                             isSelected: { viewModel.selectedSourceKeys.contains($0.feedURL ?? "") },
@@ -443,7 +325,7 @@ struct OnboardingFlowView: View {
 
                     if !viewModel.podcastSuggestions.isEmpty {
                         suggestionSection(
-                            title: "Podcasts",
+                            title: "PODCASTS",
                             icon: "headphones",
                             items: viewModel.podcastSuggestions,
                             isSelected: { viewModel.selectedSourceKeys.contains($0.feedURL ?? "") },
@@ -453,7 +335,7 @@ struct OnboardingFlowView: View {
 
                     if !viewModel.subredditSuggestions.isEmpty {
                         suggestionSection(
-                            title: "Reddit",
+                            title: "REDDIT",
                             icon: "bubble.left.and.text.bubble.right",
                             items: viewModel.subredditSuggestions,
                             isSelected: { viewModel.selectedSubreddits.contains($0.subreddit ?? "") },
@@ -463,7 +345,7 @@ struct OnboardingFlowView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
-                .padding(.bottom, 16)
+                .padding(.bottom, 100)
             }
 
             // Sticky bottom button
@@ -480,12 +362,8 @@ struct OnboardingFlowView: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 16)
-            .padding(.top, 8)
-            .background(
-                Color(UIColor.systemBackground)
-                    .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: -4)
-            )
+            .padding(.vertical, 16)
+            .glassCard(cornerRadius: 0)
         }
     }
 
@@ -497,37 +375,27 @@ struct OnboardingFlowView: View {
         onToggle: @escaping (OnboardingSuggestion) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.watercolorSlate.opacity(0.5))
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.secondary)
+                    .font(.editorialMeta)
+                    .foregroundColor(.watercolorSlate.opacity(0.5))
+                    .tracking(1.5)
             }
             .padding(.top, 16)
             .padding(.bottom, 4)
 
-            VStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.element.stableKey) { index, suggestion in
-                    SuggestionRow(
-                        title: suggestion.displayTitle,
-                        subtitle: suggestion.rationale,
-                        isSelected: isSelected(suggestion)
-                    ) {
-                        onToggle(suggestion)
-                    }
-
-                    if index < items.count - 1 {
-                        Divider()
-                            .padding(.leading, 36)
-                    }
+            VStack(spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.element.stableKey) { _, suggestion in
+                    SuggestionCard(
+                        suggestion: suggestion,
+                        isSelected: isSelected(suggestion),
+                        onToggle: { onToggle(suggestion) }
+                    )
                 }
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 12)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -540,10 +408,111 @@ struct OnboardingFlowView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .foregroundColor(.white)
-                .background(Color.accentColor)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(Color.watercolorSlate)
+                .clipShape(RoundedRectangle(cornerRadius: 24))
         }
         .buttonStyle(.plain)
+    }
+
+    private var twitterUsernameCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("X USERNAME (OPTIONAL)")
+                .font(.system(size: 9, weight: .medium))
+                .tracking(1.5)
+                .foregroundColor(.watercolorSlate.opacity(0.5))
+
+            TextField("@username", text: $viewModel.twitterUsername)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+// MARK: - Suggestion Card
+
+private struct SuggestionCard: View {
+    let suggestion: OnboardingSuggestion
+    let isSelected: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            VStack(alignment: .leading, spacing: 8) {
+                // Metadata bar
+                HStack(spacing: 6) {
+                    Image(systemName: typeIcon)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(typeAccentColor)
+
+                    Text(sourceLabel.uppercased())
+                        .font(.editorialMeta)
+                        .foregroundColor(.editorialSub)
+                        .tracking(0.5)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.body)
+                        .foregroundColor(isSelected ? .watercolorSlate : Color(.tertiaryLabel))
+                }
+
+                // Headline
+                Text(suggestion.displayTitle)
+                    .font(.editorialHeadline)
+                    .foregroundColor(.watercolorSlate)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+
+                // Rationale
+                if let rationale = suggestion.rationale, !rationale.isEmpty {
+                    Text(rationale)
+                        .font(.caption)
+                        .foregroundColor(.watercolorSlate.opacity(0.6))
+                        .lineLimit(2)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(isSelected ? 0.6 : 0.35))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.editorialBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(EditorialCardButtonStyle())
+    }
+
+    private var typeIcon: String {
+        switch suggestion.suggestionType {
+        case "substack", "newsletter": return "envelope.open"
+        case "podcast_rss", "podcast": return "waveform"
+        case "reddit": return "bubble.left.and.text.bubble.right"
+        default: return "doc.text"
+        }
+    }
+
+    private var typeAccentColor: Color {
+        switch suggestion.suggestionType {
+        case "substack", "newsletter": return .blue
+        case "podcast_rss", "podcast": return .orange
+        case "reddit": return .purple
+        default: return .blue
+        }
+    }
+
+    private var sourceLabel: String {
+        switch suggestion.suggestionType {
+        case "substack", "newsletter": return "Newsletter"
+        case "podcast_rss", "podcast": return "Podcast"
+        case "reddit": return "Reddit"
+        default: return "Feed"
+        }
     }
 }
 
@@ -566,86 +535,41 @@ private struct LaneStatusRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(lane.name)
                     .font(.callout)
+                    .foregroundColor(.watercolorSlate)
                 Text(statusLabel)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.watercolorSlate.opacity(0.6))
             }
             Spacer()
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
 
     private var statusLabel: String {
         switch lane.status {
-        case "processing":
-            return "Searching..."
-        case "completed":
-            return "Done"
-        case "failed":
-            return "Failed"
-        default:
-            return "Queued"
+        case "processing": return "Searching..."
+        case "completed": return "Done"
+        case "failed": return "Failed"
+        default: return "Queued"
         }
     }
 
     private var statusIcon: String {
         switch lane.status {
-        case "processing":
-            return "hourglass"
-        case "completed":
-            return "checkmark"
-        case "failed":
-            return "exclamationmark"
-        default:
-            return "circle"
+        case "processing": return "hourglass"
+        case "completed": return "checkmark"
+        case "failed": return "exclamationmark"
+        default: return "circle"
         }
     }
 
     private var statusColor: Color {
         switch lane.status {
-        case "processing":
-            return .accentColor
-        case "completed":
-            return .green
-        case "failed":
-            return .orange
-        default:
-            return .secondary
+        case "processing": return .watercolorSlate
+        case "completed": return .watercolorPaleEmerald
+        case "failed": return .watercolorDiffusedPeach
+        default: return .watercolorSlate.opacity(0.4)
         }
-    }
-}
-
-// MARK: - Suggestion Row
-
-private struct SuggestionRow: View {
-    let title: String
-    let subtitle: String?
-    let isSelected: Bool
-    let onToggle: () -> Void
-
-    var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 10) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.body)
-                    .foregroundColor(isSelected ? .accentColor : Color(.tertiaryLabel))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.callout.weight(.medium))
-                        .foregroundColor(isSelected ? .primary : .secondary)
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                Spacer()
-            }
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -657,13 +581,13 @@ private struct LoadingOverlay: View {
     var body: some View {
         VStack(spacing: 10) {
             ProgressView()
+                .tint(.watercolorSlate)
             Text(message)
                 .font(.callout)
-                .foregroundColor(.secondary)
+                .foregroundColor(.watercolorSlate.opacity(0.6))
         }
         .padding(20)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .glassCard(cornerRadius: 14)
         .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
     }
 }

@@ -65,6 +65,8 @@ def _session_to_summary(
     has_pending_message: bool = False,
     is_favorite: bool = False,
     has_messages: bool = True,
+    last_message_preview: str | None = None,
+    last_message_role: str | None = None,
 ) -> ChatSessionSummaryDto:
     """Convert database ChatSession to API response."""
     return ChatSessionSummaryDto(
@@ -86,6 +88,8 @@ def _session_to_summary(
         has_pending_message=has_pending_message,
         is_favorite=is_favorite,
         has_messages=has_messages,
+        last_message_preview=last_message_preview,
+        last_message_role=last_message_role,
     )
 
 
@@ -105,6 +109,43 @@ def _resolve_article_title(content: Content) -> str | None:
 def _extract_short_summary(content: Content) -> str | None:
     """Extract short summary from content metadata."""
     return content.short_summary
+
+
+def _extract_last_message_preview(
+    db_message: ChatMessage,
+    max_length: int = 200,
+) -> tuple[str | None, str | None]:
+    """Extract the last user/assistant text and role from a ChatMessage record.
+
+    Returns (preview_text, role) where role is 'user' or 'assistant'.
+    """
+    from pydantic_ai.messages import (
+        ModelMessagesTypeAdapter,
+        ModelRequest,
+        ModelResponse,
+        TextPart,
+        UserPromptPart,
+    )
+
+    try:
+        msg_list = ModelMessagesTypeAdapter.validate_json(db_message.message_list)
+    except Exception:
+        return None, None
+
+    # Walk backwards to find the last text content
+    for model_msg in reversed(msg_list):
+        if isinstance(model_msg, ModelResponse):
+            for part in reversed(model_msg.parts):
+                if isinstance(part, TextPart) and part.content:
+                    text = part.content[:max_length]
+                    return text, "assistant"
+        elif isinstance(model_msg, ModelRequest):
+            for part in reversed(model_msg.parts):
+                if isinstance(part, UserPromptPart) and part.content:
+                    text = str(part.content)[:max_length]
+                    return text, "user"
+
+    return None, None
 
 
 def _extract_messages_for_display(
@@ -242,6 +283,26 @@ async def list_sessions(
         )
         sessions_with_messages = {m.session_id for m in sessions_with_any_messages}
 
+    # Batch-query the most recent message per session for previews
+    last_message_map: dict[int, ChatMessage] = {}
+    if session_ids:
+        # Subquery to get the max message ID per session
+        latest_msg_subq = (
+            db.query(
+                ChatMessage.session_id,
+                func.max(ChatMessage.id).label("max_id"),
+            )
+            .filter(ChatMessage.session_id.in_(session_ids))
+            .group_by(ChatMessage.session_id)
+            .subquery()
+        )
+        latest_messages = (
+            db.query(ChatMessage)
+            .join(latest_msg_subq, ChatMessage.id == latest_msg_subq.c.max_id)
+            .all()
+        )
+        last_message_map = {m.session_id: m for m in latest_messages}
+
     # Get favorite content IDs for this user
     content_ids = [s.content_id for s in sessions if s.content_id]
     favorite_content_ids: set[int] = set()
@@ -276,6 +337,13 @@ async def list_sessions(
         is_favorite = session.content_id in favorite_content_ids if session.content_id else False
         has_messages = session.id in sessions_with_messages
 
+        # Extract last message preview
+        last_preview: str | None = None
+        last_role: str | None = None
+        last_msg = last_message_map.get(session.id)
+        if last_msg:
+            last_preview, last_role = _extract_last_message_preview(last_msg)
+
         result.append(
             _session_to_summary(
                 session,
@@ -286,6 +354,8 @@ async def list_sessions(
                 has_pending_message=has_pending,
                 is_favorite=is_favorite,
                 has_messages=has_messages,
+                last_message_preview=last_preview,
+                last_message_role=last_role,
             )
         )
 

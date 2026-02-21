@@ -102,6 +102,27 @@ def build_content_summary_response(
         classification = news_fields["classification"] or classification
         discussion_url = news_discussion_url
 
+    # Extract primary topic: first topic from summary, fallback to platform for news.
+    primary_topic = None
+    topics = domain_content.topics
+    if topics:
+        candidate = str(topics[0]).strip()
+        if candidate:
+            primary_topic = candidate
+    if primary_topic is None and domain_content.content_type == ContentType.NEWS:
+        platform = (domain_content.platform or content.platform or "").strip()
+        if platform:
+            primary_topic = platform
+
+    # Extract top comment from denormalized metadata.
+    raw_top_comment = (domain_content.metadata or {}).get("top_comment")
+    top_comment: dict[str, str] | None = None
+    if isinstance(raw_top_comment, dict):
+        author = str(raw_top_comment.get("author") or "unknown").strip() or "unknown"
+        text = str(raw_top_comment.get("text") or "").strip()
+        if text:
+            top_comment = {"author": author, "text": text}
+
     return ContentSummaryResponse(
         id=domain_content.id,
         content_type=domain_content.content_type.value,
@@ -132,6 +153,8 @@ def build_content_summary_response(
         else None,
         image_url=image_url,
         thumbnail_url=thumbnail_url,
+        primary_topic=primary_topic,
+        top_comment=top_comment,
     )
 
 

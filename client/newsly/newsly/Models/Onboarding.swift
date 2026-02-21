@@ -220,12 +220,14 @@ struct OnboardingCompleteRequest: Codable {
     let selectedSubreddits: [String]
     let profileSummary: String?
     let inferredTopics: [String]?
+    let twitterUsername: String?
 
     enum CodingKeys: String, CodingKey {
         case selectedSources = "selected_sources"
         case selectedSubreddits = "selected_subreddits"
         case profileSummary = "profile_summary"
         case inferredTopics = "inferred_topics"
+        case twitterUsername = "twitter_username"
     }
 }
 

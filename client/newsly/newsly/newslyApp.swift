@@ -25,7 +25,7 @@ struct newslyApp: App {
                     AuthenticatedRootView(user: user)
                         .environmentObject(authViewModel)
                 case .unauthenticated:
-                    AuthenticationView()
+                    LandingView()
                         .environmentObject(authViewModel)
                 case .loading:
                     LoadingView()

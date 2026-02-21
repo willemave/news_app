@@ -29,63 +29,47 @@ struct LongFormView: View {
                     if viewModel.currentItems().isEmpty {
                         longFormEmptyState
                     } else {
-                        List {
-                            ForEach(viewModel.currentItems(), id: \.id) { content in
-                                VStack(spacing: 0) {
+                        ScrollView {
+                            LazyVStack(spacing: CardMetrics.cardSpacing) {
+                                ForEach(viewModel.currentItems(), id: \.id) { content in
                                     NavigationLink(
                                         value: ContentDetailRoute(
                                             summary: content,
                                             allContentIds: viewModel.currentItems().map(\.id)
                                         )
                                     ) {
-                                        ContentCard(content: content)
-                                    }
-
-                                    downloadMoreRow(for: content)
-                                }
-                                .appListRow()
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    if !content.isRead {
-                                        Button {
-                                            viewModel.markAsRead(content.id)
-                                        } label: {
-                                            Label("Mark as Read", systemImage: "checkmark.circle.fill")
-                                        }
-                                        .tint(.green)
-                                    }
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    Button {
-                                        Task {
-                                            await viewModel.toggleFavorite(content.id)
-                                        }
-                                    } label: {
-                                        Label(
-                                            content.isFavorited ? "Unfavorite" : "Favorite",
-                                            systemImage: content.isFavorited ? "star.slash" : "star"
+                                        LongFormCard(
+                                            content: content,
+                                            onMarkRead: {
+                                                viewModel.markAsRead(content.id)
+                                            },
+                                            onToggleFavorite: {
+                                                Task {
+                                                    await viewModel.toggleFavorite(content.id)
+                                                }
+                                            }
                                         )
                                     }
-                                    .tint(content.isFavorited ? .gray : .yellow)
+                                    .buttonStyle(.plain)
+                                    .onAppear {
+                                        if content.id == viewModel.currentItems().last?.id {
+                                            viewModel.loadMoreTrigger.send(())
+                                        }
+                                    }
                                 }
-                                .onAppear {
-                                    if content.id == viewModel.currentItems().last?.id {
-                                        viewModel.loadMoreTrigger.send(())
+
+                                if viewModel.state == .loadingMore {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView()
+                                            .padding()
+                                        Spacer()
                                     }
                                 }
                             }
-
-                            if viewModel.state == .loadingMore {
-                                HStack {
-                                    Spacer()
-                                    ProgressView()
-                                        .padding()
-                                    Spacer()
-                                }
-                                .appListRow()
-                            }
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 24)
                         }
-                        .listStyle(.plain)
-                        .navigationBarHidden(true)
                         .refreshable {
                             viewModel.refreshTrigger.send(())
                             await processingCountService.refreshCount()
@@ -137,20 +121,6 @@ struct LongFormView: View {
                     .background(Color(.systemBackground))
                     .cornerRadius(12)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func downloadMoreRow(for content: ContentSummary) -> some View {
-        if content.contentTypeEnum == .article || content.contentTypeEnum == .podcast {
-            HStack {
-                DownloadMoreMenu(title: "Download more") { count in
-                    Task { await viewModel.downloadMoreFromSeries(contentId: content.id, count: count) }
-                }
-                Spacer()
-            }
-            .padding(.horizontal, Spacing.rowHorizontal)
-            .padding(.vertical, 8)
         }
     }
 

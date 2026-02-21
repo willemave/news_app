@@ -30,6 +30,8 @@ from app.services.voice.session_manager import append_message_history, get_messa
 logger = get_logger(__name__)
 
 EventEmitter = Callable[[dict[str, Any]], Awaitable[bool | None]]
+MAX_ASSISTANT_CARRYOVER_CHARS = 400
+STT_FINAL_STALE_TOLERANCE_SECONDS = 0.05
 
 
 def _truncate_for_trace(text: str | None) -> str:
@@ -133,12 +135,13 @@ class VoiceConversationOrchestrator:
         self._emit_event = emit_event
         self._stt_connection = None
         self._stt_partial_queue: asyncio.Queue[str] = asyncio.Queue()
-        self._stt_final_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._stt_final_queue: asyncio.Queue[tuple[float, str]] = asyncio.Queue()
         self._stt_error_queue: asyncio.Queue[str] = asyncio.Queue()
         self._last_partial_text = ""
         self._pending_audio_frames = 0
         self._pending_audio_bytes = 0
         self._audio_diag_frame_counter = 0
+        self._pending_assistant_carryover = ""
 
     def _trace_enabled(self) -> bool:
         settings = get_settings()
@@ -170,7 +173,7 @@ class VoiceConversationOrchestrator:
         def on_final(text: str) -> None:
             if not text:
                 return
-            loop.call_soon_threadsafe(self._stt_final_queue.put_nowait, text)
+            loop.call_soon_threadsafe(self._stt_final_queue.put_nowait, (time.monotonic(), text))
 
         def on_error(message: str) -> None:
             loop.call_soon_threadsafe(self._stt_error_queue.put_nowait, message or "stt_error")
@@ -405,6 +408,8 @@ class VoiceConversationOrchestrator:
 
         start_time = time.perf_counter()
         await self._clear_stt_queue(self._stt_final_queue)
+        await self._clear_stt_queue(self._stt_partial_queue)
+        self._last_partial_text = ""
         await self._emit_event({"type": "turn.started", "turn_id": turn_id})
         self._log_trace(
             "turn_started_audio",
@@ -415,7 +420,7 @@ class VoiceConversationOrchestrator:
             },
         )
 
-        transcript = await self._commit_and_collect_transcript()
+        transcript = await self._commit_and_collect_transcript(turn_id=turn_id)
         self._pending_audio_frames = 0
         self._pending_audio_bytes = 0
         if not transcript:
@@ -454,6 +459,7 @@ class VoiceConversationOrchestrator:
             turn_id=turn_id,
             transcript=transcript,
             start_time=start_time,
+            assistant_carryover=self._consume_next_turn_carryover(),
         )
 
     async def process_text_turn(self, turn_id: str, user_text: str) -> TurnOutcome:
@@ -494,6 +500,7 @@ class VoiceConversationOrchestrator:
             turn_id=turn_id,
             transcript=transcript,
             start_time=start_time,
+            assistant_carryover=self._consume_next_turn_carryover(),
         )
 
     async def _run_agent_turn(
@@ -502,6 +509,7 @@ class VoiceConversationOrchestrator:
         turn_id: str,
         transcript: str,
         start_time: float,
+        assistant_carryover: str | None = None,
     ) -> TurnOutcome:
         """Execute one agent+TTS turn for a prepared transcript."""
 
@@ -581,6 +589,7 @@ class VoiceConversationOrchestrator:
                 on_text_delta=on_text_delta,
                 content_context=self.content_context,
                 launch_mode=self.launch_mode,
+                assistant_carryover=assistant_carryover,
             )
             remaining_text = speech_chunker.flush_remaining()
             if remaining_text and tts_task is not None and tts_chars_sent < max_tts_chars:
@@ -803,7 +812,7 @@ class VoiceConversationOrchestrator:
                 },
             )
 
-    async def _commit_and_collect_transcript(self) -> str:
+    async def _commit_and_collect_transcript(self, *, turn_id: str) -> str:
         if self._stt_connection is None:
             raise RuntimeError("STT connection is not initialized")
 
@@ -812,22 +821,38 @@ class VoiceConversationOrchestrator:
         self._log_trace(
             "stt_commit_sent",
             {
+                "turn_id": turn_id,
                 "commit_timeout_seconds": commit_timeout,
                 "pending_audio_frames": self._pending_audio_frames,
                 "pending_audio_bytes": self._pending_audio_bytes,
             },
         )
+        commit_sent_at = time.monotonic()
         await commit_audio(self._stt_connection)
         deadline = time.monotonic() + commit_timeout
 
         while time.monotonic() < deadline:
-            await self._emit_pending_stt_partials()
+            await self._emit_pending_stt_partials(turn_id=turn_id)
             await self._raise_pending_stt_errors()
 
             timeout = min(0.25, max(0.05, deadline - time.monotonic()))
             try:
-                transcript = await asyncio.wait_for(self._stt_final_queue.get(), timeout=timeout)
+                transcript_received_at, transcript = await asyncio.wait_for(
+                    self._stt_final_queue.get(),
+                    timeout=timeout,
+                )
             except TimeoutError:
+                continue
+
+            if transcript_received_at + STT_FINAL_STALE_TOLERANCE_SECONDS < commit_sent_at:
+                self._log_trace(
+                    "stt_commit_result_ignored_stale",
+                    {
+                        "turn_id": turn_id,
+                        "commit_sent_at": round(commit_sent_at, 6),
+                        "transcript_received_at": round(transcript_received_at, 6),
+                    },
+                )
                 continue
 
             text = transcript.strip()
@@ -835,16 +860,20 @@ class VoiceConversationOrchestrator:
                 self._log_trace(
                     "stt_commit_result",
                     {
+                        "turn_id": turn_id,
                         "transcript_chars": len(text),
                         "transcript_preview": _truncate_for_trace(text),
                     },
                 )
                 return text
 
-        self._log_trace("stt_commit_timeout", {"commit_timeout_seconds": commit_timeout})
+        self._log_trace(
+            "stt_commit_timeout",
+            {"turn_id": turn_id, "commit_timeout_seconds": commit_timeout},
+        )
         return ""
 
-    async def _emit_pending_stt_partials(self) -> None:
+    async def _emit_pending_stt_partials(self, turn_id: str | None = None) -> None:
         while True:
             try:
                 partial_text = self._stt_partial_queue.get_nowait().strip()
@@ -853,7 +882,10 @@ class VoiceConversationOrchestrator:
             if not partial_text or partial_text == self._last_partial_text:
                 continue
             self._last_partial_text = partial_text
-            await self._emit_event({"type": "transcript.partial", "text": partial_text})
+            payload: dict[str, Any] = {"type": "transcript.partial", "text": partial_text}
+            if turn_id:
+                payload["turn_id"] = turn_id
+            await self._emit_event(payload)
 
     async def _raise_pending_stt_errors(self) -> None:
         try:
@@ -900,12 +932,30 @@ class VoiceConversationOrchestrator:
             )
             seq += 1
 
-    async def _clear_stt_queue(self, target_queue: asyncio.Queue[str]) -> None:
+    async def _clear_stt_queue(self, target_queue: asyncio.Queue[Any]) -> None:
         while True:
             try:
                 target_queue.get_nowait()
             except asyncio.QueueEmpty:
                 return
+
+    def set_next_turn_carryover(self, carryover_text: str) -> None:
+        """Attach interrupted assistant context to the next agent turn."""
+
+        normalized = carryover_text.strip()
+        if not normalized:
+            self._pending_assistant_carryover = ""
+            return
+        if len(normalized) > MAX_ASSISTANT_CARRYOVER_CHARS:
+            normalized = normalized[-MAX_ASSISTANT_CARRYOVER_CHARS:]
+        self._pending_assistant_carryover = normalized
+
+    def _consume_next_turn_carryover(self) -> str | None:
+        carryover = self._pending_assistant_carryover.strip()
+        self._pending_assistant_carryover = ""
+        if not carryover:
+            return None
+        return carryover
 
     def _queue_text_iterator(self, text_queue: queue.Queue[str | None]) -> Iterator[str]:
         while True:

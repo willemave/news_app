@@ -19,6 +19,7 @@ from app.pipeline.handlers.onboarding_discover import OnboardingDiscoverHandler
 from app.pipeline.handlers.process_content import ProcessContentHandler
 from app.pipeline.handlers.scrape import ScrapeHandler
 from app.pipeline.handlers.summarize import SummarizeHandler
+from app.pipeline.handlers.sync_integration import SyncIntegrationHandler
 from app.pipeline.handlers.transcribe import TranscribeHandler
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_handler import TaskHandler
@@ -76,6 +77,7 @@ class SequentialTaskProcessor:
             DiscoverFeedsHandler(),
             OnboardingDiscoverHandler(),
             DigDeeperHandler(),
+            SyncIntegrationHandler(),
         ]
 
     def process_task(self, task: TaskEnvelope) -> TaskResult:

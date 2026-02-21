@@ -28,6 +28,7 @@ enum SharedContainer {
 }
 
 enum ShareURLHandlerKind: String {
+    case xShare = "x_share"
     case youtubeSingleVideo = "youtube_single_video"
     case youtubeShare = "youtube_share"
     case applePodcastShare = "apple_podcast_share"
@@ -69,12 +70,23 @@ enum ShareURLRouting {
         "youtu.be"
     ]
 
+    private static let xShareHosts: Set<String> = [
+        "x.com",
+        "twitter.com",
+        "mobile.x.com",
+        "mobile.twitter.com"
+    ]
+
     static func handler(for url: URL) -> ShareURLHandlerMatch {
         guard
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
             let host = normalizedHost(components.host)
         else {
             return ShareURLHandlerMatch(kind: .generic, platform: nil)
+        }
+
+        if isXStatusURL(components: components, host: host) {
+            return ShareURLHandlerMatch(kind: .xShare, platform: "twitter")
         }
 
         if isYouTubeSingleVideo(components: components, host: host) {
@@ -184,8 +196,26 @@ enum ShareURLRouting {
         })
     }
 
+    private static func isXStatusURL(components: URLComponents, host: String) -> Bool {
+        guard xShareHosts.contains(host) else { return false }
+        let pathParts = components.path
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .map { $0.lowercased() }
+        guard !pathParts.isEmpty else { return false }
+
+        if pathParts.count >= 2 && pathParts[0] == "i" && pathParts[1] == "status" {
+            return true
+        }
+        if let statusIndex = pathParts.firstIndex(of: "status"), statusIndex + 1 < pathParts.count {
+            return true
+        }
+        return false
+    }
+
     private static func handlerPriority(for kind: ShareURLHandlerKind) -> Int {
         switch kind {
+        case .xShare:
+            return 380
         case .youtubeSingleVideo:
             return 400
         case .applePodcastShare:
