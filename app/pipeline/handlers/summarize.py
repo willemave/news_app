@@ -186,7 +186,11 @@ class SummarizeHandler:
                     content.url,
                     content.status,
                 )
-                metadata = content.content_metadata or {}
+                metadata = (
+                    content.content_metadata
+                    if isinstance(content.content_metadata, dict)
+                    else {}
+                )
                 terminal_statuses = {
                     ContentStatus.FAILED.value,
                     ContentStatus.SKIPPED.value,
@@ -208,12 +212,19 @@ class SummarizeHandler:
                     )
                     return TaskResult.ok()
 
+                def _load_latest_metadata() -> dict[str, Any]:
+                    db.refresh(content)
+                    latest_metadata = content.content_metadata
+                    if not isinstance(latest_metadata, dict):
+                        return {}
+                    return dict(latest_metadata)
+
                 def _persist_failure(
                     reason: str,
                     *,
                     status: ContentStatus = ContentStatus.FAILED,
                 ) -> None:
-                    metadata = dict(content.content_metadata or {})
+                    metadata = _load_latest_metadata()
                     metadata.pop("summary", None)
                     existing_errors = metadata.get("processing_errors")
                     processing_errors = (
@@ -235,7 +246,7 @@ class SummarizeHandler:
                     db.commit()
 
                 def _persist_retryable_failure(reason: str) -> None:
-                    metadata = dict(content.content_metadata or {})
+                    metadata = _load_latest_metadata()
                     existing_errors = metadata.get("processing_errors")
                     processing_errors = (
                         existing_errors.copy() if isinstance(existing_errors, list) else []
@@ -394,7 +405,7 @@ class SummarizeHandler:
                     return TaskResult.fail(str(exc), retryable=False)
 
                 if summary is not None:
-                    metadata = dict(content.content_metadata or {})
+                    metadata = _load_latest_metadata()
                     share_and_chat_user_ids = _extract_share_and_chat_user_ids(metadata)
                     summary_dict = (
                         summary.model_dump(mode="json", by_alias=True)

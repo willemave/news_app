@@ -59,6 +59,10 @@ def test_reddit_scraper_uses_praw(monkeypatch: pytest.MonkeyPatch, mocker: Mocke
     assert len(items) == 1
     item = items[0]
     assert item["url"] == "https://example.com/story"
+    assert (
+        item["metadata"]["discussion_url"]
+        == "https://www.reddit.com/r/artificial/comments/abc123/story"
+    )
     assert item["metadata"]["aggregator"]["metadata"]["score"] == 42
 
     mock_reddit.subreddit.assert_called_once_with("artificial")
@@ -69,5 +73,14 @@ def test_reddit_scraper_uses_praw(monkeypatch: pytest.MonkeyPatch, mocker: Mocke
 def test_is_external_url_allows_front_media() -> None:
     scraper = RedditUnifiedScraper()
     assert scraper._is_external_url("https://i.redd.it/image.jpg", allow_reddit_media=True) is True
-    assert scraper._is_external_url("https://www.reddit.com/gallery/abc123", allow_reddit_media=True) is True
-    assert scraper._is_external_url("https://www.reddit.com/r/test/comments/abc123", allow_reddit_media=True) is False
+    assert (
+        scraper._is_external_url("https://www.reddit.com/gallery/abc123", allow_reddit_media=True)
+        is True
+    )
+    assert (
+        scraper._is_external_url(
+            "https://www.reddit.com/r/test/comments/abc123",
+            allow_reddit_media=True,
+        )
+        is False
+    )

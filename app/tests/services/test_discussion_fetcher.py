@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentDiscussion
 from app.services import discussion_fetcher
-from app.services.discussion_fetcher import DiscussionPayload, fetch_and_store_discussion
+from app.services.discussion_fetcher import (
+    DiscussionFetchError,
+    DiscussionPayload,
+    fetch_and_store_discussion,
+)
 
 
 class _FakeResponse:
@@ -14,6 +20,51 @@ class _FakeResponse:
 
     def raise_for_status(self) -> None:
         return
+
+
+class _FakeAuthor:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _FakeComment:
+    def __init__(
+        self,
+        *,
+        comment_id: str,
+        body: str,
+        author: str,
+        created_utc: int,
+        replies: list[_FakeComment] | None = None,
+    ) -> None:
+        self.id = comment_id
+        self.body = body
+        self.author = _FakeAuthor(author)
+        self.created_utc = created_utc
+        self.replies = _FakeCommentForest(replies or [])
+
+
+class _FakeCommentForest(list):
+    def replace_more(self, limit: int = 0) -> None:
+        return None
+
+
+class _FakeSubmission:
+    def __init__(self, *, title: str, num_comments: int, comments: list[_FakeComment]) -> None:
+        self.title = title
+        self.num_comments = num_comments
+        self.comment_sort: str | None = None
+        self.comments = _FakeCommentForest(comments)
+
+
+class _FakeRedditClient:
+    def __init__(self, submission: _FakeSubmission) -> None:
+        self._submission = submission
+        self.requested_ids: list[str] = []
+
+    def submission(self, *, id: str):  # noqa: A002 - mimic praw API
+        self.requested_ids.append(id)
+        return self._submission
 
 
 def _create_news_content(db_session, *, metadata: dict[str, object]) -> Content:
@@ -164,6 +215,93 @@ def test_fetch_and_store_discussion_hn_persists_comments(db_session, monkeypatch
     assert row is not None
     assert row.discussion_data["mode"] == "comments"
     assert row.discussion_data["comments"][0]["author"] == "alice"
+
+
+def test_build_reddit_payload_uses_authenticated_reddit_client(monkeypatch) -> None:
+    reply = _FakeComment(
+        comment_id="r1",
+        body="Reply body",
+        author="bob",
+        created_utc=1_700_000_001,
+        replies=[],
+    )
+    root = _FakeComment(
+        comment_id="c1",
+        body="Root body",
+        author="alice",
+        created_utc=1_700_000_000,
+        replies=[reply],
+    )
+    fake_submission = _FakeSubmission(title="Thread title", num_comments=2, comments=[root])
+    fake_client = _FakeRedditClient(fake_submission)
+
+    monkeypatch.setattr(discussion_fetcher, "_get_reddit_client", lambda: fake_client)
+
+    payload = discussion_fetcher._build_reddit_payload(
+        "https://reddit.com/r/test/comments/abc123/thread/",
+        comment_cap=10,
+    )
+
+    assert fake_client.requested_ids == ["abc123"]
+    assert payload.status == "completed"
+    assert payload.payload["source_url"] == "https://www.reddit.com/r/test/comments/abc123/thread/"
+    assert payload.payload["comments"][0]["comment_id"] == "c1"
+    assert payload.payload["comments"][1]["parent_id"] == "c1"
+    assert payload.payload["stats"]["declared_comment_count"] == 2
+
+
+def test_build_reddit_payload_marks_http_403_as_non_retryable(monkeypatch) -> None:
+    class _ForbiddenResponseError(Exception):
+        def __init__(self) -> None:
+            self.response = type("Response", (), {"status_code": 403})()
+            super().__init__("forbidden")
+
+    class _FailingClient:
+        def submission(self, *, id: str):  # noqa: A002 - mimic praw API
+            raise _ForbiddenResponseError()
+
+    monkeypatch.setattr(discussion_fetcher, "_get_reddit_client", lambda: _FailingClient())
+
+    with pytest.raises(DiscussionFetchError) as exc:
+        discussion_fetcher._build_reddit_payload(
+            "https://reddit.com/r/test/comments/abc123/thread/",
+            comment_cap=10,
+        )
+
+    assert exc.value.retryable is False
+
+
+def test_fetch_and_store_discussion_propagates_non_retryable_fetch_errors(
+    db_session,
+    monkeypatch,
+) -> None:
+    content = _create_news_content(
+        db_session,
+        metadata={
+            "platform": "reddit",
+            "discussion_url": "https://reddit.com/r/test/comments/abc123/thread/",
+        },
+    )
+
+    monkeypatch.setattr(
+        discussion_fetcher,
+        "_build_reddit_payload",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            DiscussionFetchError("blocked", retryable=False)
+        ),
+    )
+
+    result = fetch_and_store_discussion(db_session, content.id)
+
+    assert result.success is False
+    assert result.retryable is False
+    row = (
+        db_session.query(ContentDiscussion)
+        .filter(ContentDiscussion.content_id == content.id)
+        .first()
+    )
+    assert row is not None
+    assert row.status == "failed"
 
 
 def test_fetch_and_store_discussion_unsupported_platform_is_partial(db_session) -> None:

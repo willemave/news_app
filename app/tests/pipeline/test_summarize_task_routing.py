@@ -3,6 +3,8 @@
 from contextlib import contextmanager
 from unittest.mock import Mock
 
+from sqlalchemy.orm import sessionmaker
+
 from app.constants import SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE, SUMMARY_VERSION_V1
 from app.models.metadata import EditorialNarrativeSummary, NewsSummary
 from app.models.schema import Content
@@ -157,6 +159,67 @@ def test_summarize_article_falls_back_to_content_to_summarize(db_session) -> Non
     assert handler.handle(task, context).success is True
     llm_service.summarize_content.assert_called_once()
     assert llm_service.summarize_content.call_args[0][0] == "Fallback content"
+
+
+def test_summarize_preserves_top_comment_from_concurrent_discussion_update(db_session) -> None:
+    content = _create_content(db_session, "article")
+
+    class ConcurrentUpdatingSummarizer:
+        def summarize_content(
+            self,
+            content: str,
+            content_type: str,
+            content_id: int,
+            max_bullet_points: int,
+            max_quotes: int,
+            provider_override: str | None = None,
+        ) -> dict[str, object]:
+            external_session_factory = sessionmaker(
+                autocommit=False,
+                autoflush=False,
+                bind=db_session.get_bind(),
+            )
+            external_session = external_session_factory()
+            try:
+                external_content = (
+                    external_session.query(Content).filter(Content.id == content_id).first()
+                )
+                assert external_content is not None
+                external_metadata = dict(external_content.content_metadata or {})
+                external_metadata["top_comment"] = {
+                    "author": "alice",
+                    "text": "Great write-up",
+                }
+                external_content.content_metadata = external_metadata
+                external_session.commit()
+            finally:
+                external_session.close()
+
+            return {
+                "title": "Article Title",
+                "overview": "Summary",
+                "bullet_points": [],
+            }
+
+    queue_service = Mock()
+    handler = SummarizeHandler()
+    context = _build_context(db_session, queue_service, ConcurrentUpdatingSummarizer())
+
+    task = TaskEnvelope(
+        id=31,
+        task_type=TaskType.SUMMARIZE,
+        content_id=content.id,
+    )
+
+    result = handler.handle(task, context)
+
+    assert result.success is True
+    db_session.refresh(content)
+    assert content.content_metadata.get("top_comment") == {
+        "author": "alice",
+        "text": "Great write-up",
+    }
+    assert isinstance(content.content_metadata.get("summary"), dict)
 
 
 def test_summarize_no_text_marks_content_skipped_without_retry(db_session) -> None:

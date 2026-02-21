@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict, deque
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import unescape
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
+import praw
+import prawcore
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
@@ -28,8 +31,20 @@ URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
 TECHMEME_TOKEN_PATTERN = re.compile(r"/(\d{6})/(p\d+)")
 TECHMEME_ANCHOR_PATTERN = re.compile(r"a(\d{6}p\d+)")
 HN_ITEM_PATTERN = re.compile(r"item\?id=(\d+)")
+REDDIT_COMMENTS_PATTERN = re.compile(r"/comments/([a-z0-9]+)/?", re.IGNORECASE)
 TOP_COMMENT_SKIP_AUTHORS = {"AutoModerator", "[deleted]", "automoderator"}
 TOP_COMMENT_SKIP_SUFFIXES = ("-ModTeam",)
+REDDIT_DEFAULT_USER_AGENT = "news_app.discussion/1.0 (by u/anonymous)"
+
+_reddit_client: praw.Reddit | None = None
+
+
+class DiscussionFetchError(Exception):
+    """Error wrapper with retryability hints for discussion fetches."""
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 @dataclass(frozen=True)
@@ -119,6 +134,46 @@ def fetch_and_store_discussion(
             status="failed",
             error_message=error_message,
             retryable=True,
+        )
+    except DiscussionFetchError as exc:
+        error_message = f"Discussion fetch failed: {exc}"
+        logger.error(
+            "Discussion fetch failed for content %s",
+            content_id,
+            extra={
+                "component": "discussion_fetcher",
+                "operation": "fetch_and_store_discussion",
+                "item_id": str(content_id),
+                "context_data": {
+                    "platform": platform,
+                    "discussion_url": discussion_url,
+                    "retryable": exc.retryable,
+                    "error": str(exc),
+                },
+            },
+        )
+        _upsert_content_discussion(
+            db,
+            content_id=content_id,
+            platform=platform,
+            status="failed",
+            discussion_data={
+                "mode": "none",
+                "source_url": discussion_url,
+                "comments": [],
+                "compact_comments": [],
+                "discussion_groups": [],
+                "links": [],
+                "stats": {},
+            },
+            error_message=error_message,
+            set_fetched_at=False,
+        )
+        return DiscussionFetchResult(
+            success=False,
+            status="failed",
+            error_message=error_message,
+            retryable=exc.retryable,
         )
     except Exception as exc:  # noqa: BLE001
         error_message = f"Discussion fetch failed: {exc}"
@@ -401,101 +456,85 @@ def _build_hackernews_payload(discussion_url: str, comment_cap: int) -> Discussi
 
 
 def _build_reddit_payload(discussion_url: str, comment_cap: int) -> DiscussionPayload:
-    reddit_json_url = _normalize_reddit_json_url(discussion_url, comment_cap)
-    if not reddit_json_url:
+    canonical_url = _normalize_reddit_discussion_url(discussion_url) or discussion_url
+    submission_id = _extract_reddit_submission_id(canonical_url)
+    if not submission_id:
         return DiscussionPayload(
             status="partial",
             mode="comments",
             payload={
                 "mode": "comments",
-                "source_url": discussion_url,
+                "source_url": canonical_url,
                 "discussion_groups": [],
                 "comments": [],
                 "compact_comments": [],
                 "links": [],
                 "stats": {"cap": comment_cap, "fetched_count": 0, "cap_reached": False},
             },
-            error_message="Unable to normalize Reddit discussion URL",
+            error_message="Unable to parse Reddit submission id",
         )
 
-    timeout = httpx.Timeout(timeout=settings.http_timeout_seconds, connect=10.0)
-    user_agent = settings.reddit_user_agent or "news_app.discussion/1.0"
-
-    with httpx.Client(timeout=timeout, headers={"User-Agent": user_agent}) as client:
-        response = client.get(reddit_json_url)
-        response.raise_for_status()
-        payload = response.json()
+    client = _get_reddit_client()
+    if client is None:
+        raise DiscussionFetchError(
+            "Reddit API credentials not configured",
+            retryable=False,
+        )
 
     comments: list[dict[str, Any]] = []
     cap_reached = False
     total_seen = 0
 
-    if not isinstance(payload, list) or len(payload) < 2:
-        return DiscussionPayload(
-            status="partial",
-            mode="comments",
-            payload={
-                "mode": "comments",
-                "source_url": discussion_url,
-                "discussion_groups": [],
-                "comments": [],
-                "compact_comments": [],
-                "links": [],
-                "stats": {"cap": comment_cap, "fetched_count": 0, "cap_reached": False},
-            },
-            error_message="Unexpected Reddit payload format",
-        )
+    try:
+        submission = client.submission(id=submission_id)
+        _ = submission.title  # Force fetch to surface API/auth errors.
+        submission.comment_sort = "top"
+        submission.comments.replace_more(limit=0)
+    except Exception as exc:  # noqa: BLE001
+        raise DiscussionFetchError(
+            f"Reddit API request failed: {exc}",
+            retryable=_is_retryable_reddit_error(exc),
+        ) from exc
 
-    listing = payload[1]
-    children = (
-        listing.get("data", {}).get("children", []) if isinstance(listing, dict) else []
-    )
-
-    def walk(nodes: list[dict[str, Any]], depth: int, parent_id: str | None) -> None:
+    def walk(nodes: Iterable[Any], depth: int, parent_id: str | None) -> None:
         nonlocal cap_reached, total_seen
         for node in nodes:
             if len(comments) >= comment_cap:
                 cap_reached = True
                 return
 
-            if not isinstance(node, dict):
-                continue
-            if node.get("kind") != "t1":
-                continue
-
-            data = node.get("data", {})
-            if not isinstance(data, dict):
+            if _is_reddit_more_comments(node):
                 continue
 
             total_seen += 1
-            body = data.get("body") or data.get("body_html") or ""
+            body = getattr(node, "body", None) or getattr(node, "body_html", "") or ""
             text = _clean_html_text(str(body))
-            if not text:
-                continue
+            comment_id = str(getattr(node, "id", "") or "").strip()
 
-            comment_id = str(data.get("id") or "")
-            comments.append(
-                {
-                    "comment_id": comment_id,
-                    "parent_id": parent_id,
-                    "author": data.get("author") or "unknown",
-                    "text": text,
-                    "compact_text": _compact_text(text),
-                    "depth": depth,
-                    "created_at": _unix_to_iso(data.get("created_utc")),
-                    "source_url": discussion_url,
-                }
-            )
+            if text and comment_id:
+                author_obj = getattr(node, "author", None)
+                author = getattr(author_obj, "name", None) or "unknown"
+                comments.append(
+                    {
+                        "comment_id": comment_id,
+                        "parent_id": parent_id,
+                        "author": author,
+                        "text": text,
+                        "compact_text": _compact_text(text),
+                        "depth": depth,
+                        "created_at": _unix_to_iso(getattr(node, "created_utc", None)),
+                        "source_url": canonical_url,
+                    }
+                )
 
-            replies = data.get("replies")
-            if isinstance(replies, dict):
-                reply_children = replies.get("data", {}).get("children", [])
-                if isinstance(reply_children, list):
-                    walk(reply_children, depth + 1, comment_id)
-                    if cap_reached:
-                        return
+            replies = getattr(node, "replies", None)
+            if replies:
+                next_parent_id = comment_id or parent_id
+                walk(replies, depth + 1, next_parent_id)
+                if cap_reached:
+                    return
 
-    walk(children if isinstance(children, list) else [], depth=0, parent_id=None)
+    walk(submission.comments, depth=0, parent_id=None)
 
     links = _extract_links_from_comments(comments)
     status = "completed" if comments else "partial"
@@ -504,7 +543,7 @@ def _build_reddit_payload(discussion_url: str, comment_cap: int) -> DiscussionPa
         mode="comments",
         payload={
             "mode": "comments",
-            "source_url": discussion_url,
+            "source_url": canonical_url,
             "discussion_groups": [],
             "comments": comments,
             "compact_comments": [item["compact_text"] for item in comments],
@@ -514,6 +553,7 @@ def _build_reddit_payload(discussion_url: str, comment_cap: int) -> DiscussionPa
                 "fetched_count": len(comments),
                 "cap_reached": cap_reached,
                 "total_seen": total_seen,
+                "declared_comment_count": getattr(submission, "num_comments", None),
             },
         },
         error_message=None if comments else "No Reddit comments found",
@@ -710,24 +750,90 @@ def _dedupe_group_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
     return deduped
 
 
-def _normalize_reddit_json_url(url: str, cap: int) -> str | None:
+def _get_reddit_client() -> praw.Reddit | None:
+    global _reddit_client
+    if _reddit_client is not None:
+        return _reddit_client
+
+    client_id = settings.reddit_client_id
+    client_secret = settings.reddit_client_secret
+    if not client_id or not client_secret:
+        return None
+
+    reddit_kwargs: dict[str, Any] = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "user_agent": settings.reddit_user_agent or REDDIT_DEFAULT_USER_AGENT,
+        "check_for_updates": False,
+        "timeout": settings.http_timeout_seconds,
+    }
+
+    if (
+        not settings.reddit_read_only
+        and settings.reddit_username
+        and settings.reddit_password
+    ):
+        reddit_kwargs["username"] = settings.reddit_username
+        reddit_kwargs["password"] = settings.reddit_password
+
+    client = praw.Reddit(**reddit_kwargs)
+    client.read_only = settings.reddit_read_only or not (
+        settings.reddit_username and settings.reddit_password
+    )
+    _reddit_client = client
+    return _reddit_client
+
+
+def _is_retryable_reddit_error(exc: Exception) -> bool:
+    if isinstance(exc, prawcore.exceptions.TooManyRequests):
+        return True
+
+    if isinstance(
+        exc,
+        (
+            prawcore.exceptions.Forbidden,
+            prawcore.exceptions.NotFound,
+            prawcore.exceptions.BadRequest,
+            prawcore.exceptions.OAuthException,
+        ),
+    ):
+        return False
+
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if isinstance(status_code, int):
+        if status_code == 429 or status_code >= 500:
+            return True
+        if 400 <= status_code < 500:
+            return False
+
+    message = str(exc).lower()
+    return "blocked by network security" not in message
+
+
+def _is_reddit_more_comments(node: Any) -> bool:
+    return node.__class__.__name__ == "MoreComments"
+
+
+def _normalize_reddit_discussion_url(url: str) -> str | None:
     normalized = normalize_http_url(url)
     if not normalized:
         return None
 
     parsed = urlparse(normalized)
-    path = parsed.path
-    if not path.endswith(".json"):
-        path = path.rstrip("/") + ".json"
+    host = parsed.netloc.lower()
+    if host in {"reddit.com", "old.reddit.com", "www.reddit.com"}:
+        rebuilt = parsed._replace(scheme="https", netloc="www.reddit.com")
+        return urlunparse(rebuilt)
+    return normalized
 
-    query = parse_qs(parsed.query)
-    query.setdefault("raw_json", ["1"])
-    query.setdefault("limit", [str(min(cap, 500))])
-    query.setdefault("depth", ["10"])
 
-    encoded_query = urlencode(query, doseq=True)
-    rebuilt = parsed._replace(path=path, query=encoded_query)
-    return urlunparse(rebuilt)
+def _extract_reddit_submission_id(url: str) -> str | None:
+    parsed = urlparse(url)
+    match = REDDIT_COMMENTS_PATTERN.search(parsed.path)
+    if not match:
+        return None
+    return match.group(1).lower()
 
 
 def _extract_discussion_url(metadata: dict[str, Any]) -> str | None:

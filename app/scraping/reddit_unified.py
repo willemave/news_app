@@ -206,7 +206,7 @@ class RedditUnifiedScraper(BaseScraper):
                     continue
 
                 normalized_url = self._normalize_url(submission.url)
-                discussion_url = f"https://reddit.com{submission.permalink}"
+                discussion_url = f"https://www.reddit.com{submission.permalink}"
 
                 try:
                     source_domain = urlparse(normalized_url).netloc or None
