@@ -19,12 +19,6 @@ struct MoreView: View {
                 )
 
                 menuRow(
-                    destination: FavoritesView(),
-                    icon: "star",
-                    title: "Favorites"
-                )
-
-                menuRow(
                     destination: RecentlyReadView(),
                     icon: "clock",
                     title: "Recently Read"

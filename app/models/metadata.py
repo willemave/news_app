@@ -749,6 +749,12 @@ class NewsMetadata(BaseContentMetadata):
         default_factory=lambda: datetime.now(UTC),
         description="When the item was discovered",
     )
+    top_comment: dict[str, str] | None = Field(
+        None, description="First non-bot discussion comment {author, text} for feed preview"
+    )
+    comment_count: int | None = Field(
+        None, ge=0, description="Discussion comment count denormalized by discussion fetcher"
+    )
 
 
 # Processing result from app/domain/content.py

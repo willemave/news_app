@@ -151,6 +151,8 @@ struct KnowledgeView: View {
                 }
             )
             .accessibilityIdentifier("knowledge.live")
+        case .favorites:
+            FavoritesView(showNavigationTitle: false)
         }
     }
 
@@ -322,7 +324,7 @@ struct KnowledgeView: View {
             await viewModel.loadSessions()
         case .discover:
             await discoveryViewModel.loadSuggestions()
-        case .live:
+        case .live, .favorites:
             return
         }
     }
@@ -346,6 +348,7 @@ private enum KnowledgeTab: String, CaseIterable {
     case discover
     case chats
     case live
+    case favorites
 
     var title: String {
         switch self {
@@ -355,6 +358,8 @@ private enum KnowledgeTab: String, CaseIterable {
             return "Chats"
         case .live:
             return "Live"
+        case .favorites:
+            return "Favorites"
         }
     }
 }

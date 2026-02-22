@@ -67,7 +67,9 @@ class RobustHttpClient:
         error_message: str,
         headers: dict[str, str],
         timeout: float,
+        method: str,
         stream: bool,
+        follow_redirects: bool = True,
     ) -> httpx.Response | None:
         message = error_message.lower()
         if (
@@ -98,11 +100,29 @@ class RobustHttpClient:
             },
         )
         client = self._get_client()
-        if stream:
-            response = client.stream("GET", retry_url, headers=headers, timeout=timeout)
+        if method == "HEAD":
+            response = client.head(
+                retry_url,
+                headers=headers,
+                timeout=timeout,
+                follow_redirects=follow_redirects,
+            )
+        elif stream:
+            response = client.stream(
+                "GET",
+                retry_url,
+                headers=headers,
+                timeout=timeout,
+                follow_redirects=follow_redirects,
+            )
             response.__enter__()
         else:
-            response = client.get(retry_url, headers=headers, timeout=timeout)
+            response = client.get(
+                retry_url,
+                headers=headers,
+                timeout=timeout,
+                follow_redirects=follow_redirects,
+            )
         response.raise_for_status()
         return response
 
@@ -112,6 +132,7 @@ class RobustHttpClient:
         headers: dict[str, str] | None = None,
         timeout: float | None = None,
         stream: bool = False,
+        follow_redirects: bool = True,
     ) -> httpx.Response:
         """
         Performs a synchronous GET request.
@@ -121,6 +142,7 @@ class RobustHttpClient:
             headers: Optional headers to include in the request, overriding defaults.
             timeout: Optional timeout for this specific request, overriding default.
             stream: Whether to stream the response content.
+            follow_redirects: Whether this request should follow redirects.
 
         Returns:
             An httpx.Response object.
@@ -142,11 +164,20 @@ class RobustHttpClient:
         try:
             if stream:
                 response = client.stream(
-                    "GET", url, headers=request_headers, timeout=effective_timeout
+                    "GET",
+                    url,
+                    headers=request_headers,
+                    timeout=effective_timeout,
+                    follow_redirects=follow_redirects,
                 )
                 response.__enter__()  # Enter the context manager
             else:
-                response = client.get(url, headers=request_headers, timeout=effective_timeout)
+                response = client.get(
+                    url,
+                    headers=request_headers,
+                    timeout=effective_timeout,
+                    follow_redirects=follow_redirects,
+                )
 
             response.raise_for_status()  # Raise an exception for 4XX or 5XX status codes
             logger.info(f"GET request to {url} successful, status: {response.status_code}")
@@ -183,7 +214,9 @@ class RobustHttpClient:
                         error_message=str(e),
                         headers=request_headers,
                         timeout=effective_timeout,
+                        method="GET",
                         stream=stream,
+                        follow_redirects=follow_redirects,
                     )
                     if retry_response is not None:
                         return retry_response
@@ -273,6 +306,7 @@ class RobustHttpClient:
                         error_message=str(e),
                         headers=request_headers,
                         timeout=effective_timeout,
+                        method="HEAD",
                         stream=False,
                     )
                     if retry_response is not None:

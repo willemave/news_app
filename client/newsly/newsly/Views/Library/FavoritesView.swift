@@ -6,8 +6,14 @@
 import SwiftUI
 
 struct FavoritesView: View {
+    let showNavigationTitle: Bool
+
     @StateObject private var viewModel = ContentListViewModel(defaultReadFilter: "all")
     @State private var showingFilters = false
+
+    init(showNavigationTitle: Bool = true) {
+        self.showNavigationTitle = showNavigationTitle
+    }
 
     var body: some View {
         Group {
@@ -24,7 +30,7 @@ struct FavoritesView: View {
             }
         }
         .background(Color.surfacePrimary)
-        .navigationTitle("Favorites")
+        .navigationTitle(showNavigationTitle ? "Favorites" : "")
         .task { await viewModel.loadFavorites() }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

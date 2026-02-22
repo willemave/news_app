@@ -2,11 +2,10 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -32,6 +31,7 @@ def db():
     finally:
         session.close()
         Base.metadata.drop_all(bind=engine)
+        engine.dispose()
 
 
 @pytest.fixture
@@ -43,8 +43,11 @@ def test_db():
         poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=engine)
-    yield engine
-    Base.metadata.drop_all(bind=engine)
+    try:
+        yield engine
+    finally:
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
 
 
 @pytest.fixture
@@ -98,36 +101,11 @@ def client(db_session, test_user):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
-def async_client(db_session, test_user):
-    """Create an async test client with database and auth overrides."""
-    from app.core.db import get_db_session, get_readonly_db_session
-    from app.core.deps import get_current_user
-
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    def override_get_current_user():
-        return test_user
-
-    app.dependency_overrides[get_db_session] = override_get_db
-    app.dependency_overrides[get_readonly_db_session] = override_get_db
-    app.dependency_overrides[get_current_user] = override_get_current_user
-
-    ac = AsyncClient(app=app, base_url="http://test")
-    yield ac
-
-    app.dependency_overrides.clear()
-
-
 # Content fixtures
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
-def load_fixture(fixture_name: str) -> Dict[str, Any]:
+def load_fixture(fixture_name: str) -> dict[str, Any]:
     """Load a fixture from the fixtures directory.
 
     Args:
@@ -142,7 +120,7 @@ def load_fixture(fixture_name: str) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def content_samples() -> Dict[str, Dict[str, Any]]:
+def content_samples() -> dict[str, dict[str, Any]]:
     """Load all content samples from fixtures.
 
     Returns:
@@ -157,36 +135,36 @@ def content_samples() -> Dict[str, Dict[str, Any]]:
 
 
 @pytest.fixture
-def sample_article_long(content_samples: Dict[str, Any]) -> Dict[str, Any]:
+def sample_article_long(content_samples: dict[str, Any]) -> dict[str, Any]:
     """Get a long-form article sample."""
     return content_samples["article_long_form"]
 
 
 @pytest.fixture
-def sample_article_short(content_samples: Dict[str, Any]) -> Dict[str, Any]:
+def sample_article_short(content_samples: dict[str, Any]) -> dict[str, Any]:
     """Get a short technical article sample."""
     return content_samples["article_short_technical"]
 
 
 @pytest.fixture
-def sample_podcast(content_samples: Dict[str, Any]) -> Dict[str, Any]:
+def sample_podcast(content_samples: dict[str, Any]) -> dict[str, Any]:
     """Get a podcast episode sample with full processing."""
     return content_samples["podcast_interview"]
 
 
 @pytest.fixture
-def sample_unprocessed_article(content_samples: Dict[str, Any]) -> Dict[str, Any]:
+def sample_unprocessed_article(content_samples: dict[str, Any]) -> dict[str, Any]:
     """Get an unprocessed article (for testing processing pipeline)."""
     return content_samples["raw_content_unprocessed"]
 
 
 @pytest.fixture
-def sample_unprocessed_podcast(content_samples: Dict[str, Any]) -> Dict[str, Any]:
+def sample_unprocessed_podcast(content_samples: dict[str, Any]) -> dict[str, Any]:
     """Get a podcast with transcript but no summary (for testing summarization)."""
     return content_samples["podcast_raw_transcript"]
 
 
-def _parse_datetime(date_str: Optional[str]) -> Optional[datetime]:
+def _parse_datetime(date_str: str | None) -> datetime | None:
     """Parse ISO format date string to datetime object.
 
     Args:
@@ -210,7 +188,7 @@ def _parse_datetime(date_str: Optional[str]) -> Optional[datetime]:
             return datetime.strptime(date_str, "%Y-%m-%d")
 
 
-def create_content_from_fixture(fixture_data: Dict[str, Any]) -> Content:
+def create_content_from_fixture(fixture_data: dict[str, Any]) -> Content:
     """Create a Content model instance from fixture data.
 
     Args:
@@ -240,7 +218,7 @@ def create_sample_content(db_session):
     Usage:
         content = create_sample_content(sample_article_long)
     """
-    def _create(fixture_data: Dict[str, Any]) -> Content:
+    def _create(fixture_data: dict[str, Any]) -> Content:
         content = create_content_from_fixture(fixture_data)
         db_session.add(content)
         db_session.commit()
