@@ -46,6 +46,9 @@ def _extract_news_summary(domain_content: ContentData) -> dict[str, Any]:
     metadata = domain_content.metadata or {}
     article_meta = metadata.get("article", {})
     aggregator_meta = metadata.get("aggregator", {})
+    aggregator_metadata = (
+        aggregator_meta.get("metadata", {}) if isinstance(aggregator_meta, dict) else {}
+    )
     summary_meta = metadata.get("summary", {})
     discussion_url = metadata.get("discussion_url") or aggregator_meta.get("url")
     news_article_url = str(domain_content.url) if domain_content.url else article_meta.get("url")
@@ -53,12 +56,27 @@ def _extract_news_summary(domain_content: ContentData) -> dict[str, Any]:
     key_points = summary_meta.get("key_points")
     news_key_points = key_points if isinstance(key_points, list) and key_points else None
 
+    # Extract comment count: scrapers write comments_count, discussion fetcher
+    # denormalizes to comment_count.
+    comment_count: int | None = None
+    for raw in (
+        aggregator_metadata.get("comments_count"),
+        metadata.get("comment_count"),
+    ):
+        if raw is not None:
+            try:
+                comment_count = int(raw)
+            except (TypeError, ValueError):
+                continue
+            break
+
     return {
         "news_article_url": news_article_url,
         "news_discussion_url": discussion_url,
         "news_key_points": news_key_points,
         "news_summary_text": domain_content.summary,
         "classification": summary_meta.get("classification"),
+        "comment_count": comment_count,
     }
 
 
@@ -92,6 +110,7 @@ def build_content_summary_response(
     news_key_points = None
     news_summary_text = domain_content.short_summary
     discussion_url = (domain_content.metadata or {}).get("discussion_url")
+    comment_count: int | None = None
 
     if domain_content.content_type == ContentType.NEWS:
         news_fields = _extract_news_summary(domain_content)
@@ -100,6 +119,7 @@ def build_content_summary_response(
         news_key_points = news_fields["news_key_points"]
         news_summary_text = news_fields["news_summary_text"]
         classification = news_fields["classification"] or classification
+        comment_count = news_fields["comment_count"]
         discussion_url = news_discussion_url
 
     # Extract primary topic: first topic from summary, fallback to platform for news.
@@ -155,6 +175,7 @@ def build_content_summary_response(
         thumbnail_url=thumbnail_url,
         primary_topic=primary_topic,
         top_comment=top_comment,
+        comment_count=comment_count,
     )
 
 

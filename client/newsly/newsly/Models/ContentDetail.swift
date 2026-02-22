@@ -77,9 +77,26 @@ struct ContentDetail: Codable, Identifiable {
     var contentTypeEnum: ContentType? {
         ContentType(rawValue: contentType)
     }
+
+    var apiContentType: APIContentType? {
+        APIContentType(rawValue: contentType)
+    }
+
+    var apiStatus: APIContentStatus? {
+        APIContentStatus(rawValue: status)
+    }
+
+    var apiSummaryKind: APISummaryKind? {
+        APISummaryKind(rawValue: resolvedSummaryKind ?? "")
+    }
+
+    var apiSummaryVersion: APISummaryVersion? {
+        guard let resolvedSummaryVersion else { return nil }
+        return APISummaryVersion(rawValue: resolvedSummaryVersion)
+    }
     
     var articleMetadata: ArticleMetadata? {
-        guard contentType == "article" else { return nil }
+        guard apiContentType == .article else { return nil }
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -91,7 +108,7 @@ struct ContentDetail: Codable, Identifiable {
     }
     
     var podcastMetadata: PodcastMetadata? {
-        guard contentType == "podcast" else { return nil }
+        guard apiContentType == .podcast else { return nil }
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -103,7 +120,7 @@ struct ContentDetail: Codable, Identifiable {
     }
 
     var newsMetadata: NewsMetadata? {
-        guard contentType == "news" else { return nil }
+        guard apiContentType == .news else { return nil }
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

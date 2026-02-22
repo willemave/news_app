@@ -31,6 +31,7 @@ struct ContentSummary: Codable, Identifiable {
     let thumbnailUrl: String?
     let primaryTopic: String?
     let topComment: TopComment?
+    let commentCount: Int?
     let newsSummary: String?
     let newsKeyPoints: [String]?
 
@@ -53,6 +54,7 @@ struct ContentSummary: Codable, Identifiable {
         case thumbnailUrl = "thumbnail_url"
         case primaryTopic = "primary_topic"
         case topComment = "top_comment"
+        case commentCount = "comment_count"
         case newsSummary = "news_summary"
         case newsKeyPoints = "news_key_points"
     }
@@ -131,6 +133,7 @@ struct ContentSummary: Codable, Identifiable {
         thumbnailUrl: String? = nil,
         primaryTopic: String? = nil,
         topComment: TopComment? = nil,
+        commentCount: Int? = nil,
         newsSummary: String? = nil,
         newsKeyPoints: [String]? = nil
     ) {
@@ -152,6 +155,7 @@ struct ContentSummary: Codable, Identifiable {
         self.thumbnailUrl = thumbnailUrl
         self.primaryTopic = primaryTopic
         self.topComment = topComment
+        self.commentCount = commentCount
         self.newsSummary = newsSummary
         self.newsKeyPoints = newsKeyPoints
     }
@@ -177,6 +181,7 @@ struct ContentSummary: Codable, Identifiable {
             thumbnailUrl: try container.decodeIfPresent(String.self, forKey: .thumbnailUrl),
             primaryTopic: try container.decodeIfPresent(String.self, forKey: .primaryTopic),
             topComment: try container.decodeIfPresent(TopComment.self, forKey: .topComment),
+            commentCount: try container.decodeIfPresent(Int.self, forKey: .commentCount),
             newsSummary: try container.decodeIfPresent(String.self, forKey: .newsSummary),
             newsKeyPoints: try container.decodeIfPresent([String].self, forKey: .newsKeyPoints)
         )
@@ -202,12 +207,21 @@ struct ContentSummary: Codable, Identifiable {
         try container.encodeIfPresent(thumbnailUrl, forKey: .thumbnailUrl)
         try container.encodeIfPresent(primaryTopic, forKey: .primaryTopic)
         try container.encodeIfPresent(topComment, forKey: .topComment)
+        try container.encodeIfPresent(commentCount, forKey: .commentCount)
         try container.encodeIfPresent(newsSummary, forKey: .newsSummary)
         try container.encodeIfPresent(newsKeyPoints, forKey: .newsKeyPoints)
     }
 
     var contentTypeEnum: ContentType? {
         ContentType(rawValue: contentType)
+    }
+
+    var apiContentType: APIContentType? {
+        APIContentType(rawValue: contentType)
+    }
+
+    var apiStatus: APIContentStatus? {
+        APIContentStatus(rawValue: status)
     }
 
     var displayTitle: String {
@@ -230,6 +244,12 @@ struct ContentSummary: Codable, Identifiable {
             return (author.isEmpty ? "unknown" : author, text)
         }
         return nil
+    }
+
+    /// Display string for comment count (e.g., "42 comments")
+    var commentCountDisplay: String? {
+        guard let count = commentCount, count > 0 else { return nil }
+        return count == 1 ? "1 COMMENT" : "\(count) COMMENTS"
     }
 
     var formattedDate: String {
@@ -298,6 +318,7 @@ struct ContentSummary: Codable, Identifiable {
             thumbnailUrl: thumbnailUrl,
             primaryTopic: primaryTopic,
             topComment: topComment,
+            commentCount: commentCount,
             newsSummary: newsSummary,
             newsKeyPoints: newsKeyPoints
         )

@@ -4,21 +4,16 @@ set -euo pipefail
 # Lightweight helper to push local `.env.racknerd` to remote, then mirror to `.env`.
 # Defaults mirror push_app.sh.
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/common.sh"
+
 REMOTE_HOST="willem@192.3.250.10"
 REMOTE_DIR="/opt/news_app"
 OWNER_GROUP="newsapp:newsapp"
 SOURCE_ENV_FILE=".env.racknerd"
 REMOTE_STAGING_DIR="/tmp/news_app_env_sync"
 REMOTE_PORT="22"
-
-require_option_value() {
-  local option_name="$1"
-  local option_value="${2:-}"
-  if [[ -z "$option_value" || "$option_value" == -* ]]; then
-    echo "Option $option_name requires a value" >&2
-    exit 1
-  fi
-}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -67,30 +62,12 @@ USAGE
   esac
 done
 
-if [[ "$OWNER_GROUP" == *:* ]]; then
-  SERVICE_USER="${OWNER_GROUP%%:*}"
-  SERVICE_GROUP="${OWNER_GROUP##*:}"
-else
-  SERVICE_USER="$OWNER_GROUP"
-  SERVICE_GROUP="$OWNER_GROUP"
-fi
-
-if [[ ! -f "$SOURCE_ENV_FILE" ]]; then
-  echo "Local source env file not found: $SOURCE_ENV_FILE" >&2
-  exit 1
-fi
-
-SSH_OPTS=(-p "$REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-
-echo "→ Preparing remote staging dir on $REMOTE_HOST:$REMOTE_STAGING_DIR"
-ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" "mkdir -p '$REMOTE_STAGING_DIR' && chmod 700 '$REMOTE_STAGING_DIR'"
-
-echo "→ Uploading $SOURCE_ENV_FILE to $REMOTE_HOST:$REMOTE_STAGING_DIR/.env.racknerd"
-rsync -az --progress -e "ssh -p $REMOTE_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new" \
-  "$SOURCE_ENV_FILE" "$REMOTE_HOST:$REMOTE_STAGING_DIR/.env.racknerd"
-
-echo "→ Promoting remote env files in $REMOTE_DIR"
-PROMOTE_ENV_CMD=$(printf "bash -lc %q" "sudo mkdir -p '$REMOTE_DIR' && sudo cp '$REMOTE_STAGING_DIR/.env.racknerd' '$REMOTE_DIR/.env.racknerd' && sudo cp '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env' && sudo chown '$SERVICE_USER:$SERVICE_GROUP' '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env' && sudo chmod 600 '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env'")
-ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" "$PROMOTE_ENV_CMD"
+deploy_sync_env_file \
+  "$REMOTE_HOST" \
+  "$REMOTE_DIR" \
+  "$OWNER_GROUP" \
+  "$SOURCE_ENV_FILE" \
+  "$REMOTE_STAGING_DIR" \
+  "$REMOTE_PORT"
 
 echo "✅ Remote .env.racknerd and .env updated"

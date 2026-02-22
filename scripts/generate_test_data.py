@@ -8,7 +8,7 @@ This script creates realistic test data that exercises all fields in the metadat
 Features:
 - Generates articles, podcasts, and news items with complete metadata
 - Creates structured summaries with bullet points, quotes, topics, questions, and counter-arguments
-- Mimics the structure from app/tests/fixtures/content_samples.json
+- Mimics the structure from tests/fixtures/content_samples.json
 - Supports flexible configuration via command-line arguments
 - Includes items in various states (new, processing, completed) by default
 

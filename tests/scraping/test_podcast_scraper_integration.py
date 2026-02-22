@@ -237,10 +237,10 @@ class TestPodcastProcessingFlow:
     """Test the complete flow from scraping to processing."""
     
     @patch('app.pipeline.worker.get_db')
-    @patch('app.pipeline.worker.get_queue_service')
+    @patch('app.pipeline.worker.get_task_queue_gateway')
     def test_process_content_queues_download_audio(
         self,
-        mock_queue_service,
+        mock_queue_gateway,
         mock_get_db
     ):
         """Test that PROCESS_CONTENT for podcast queues DOWNLOAD_AUDIO."""
@@ -259,9 +259,9 @@ class TestPodcastProcessingFlow:
         mock_get_db.return_value.__enter__.return_value = mock_db
         mock_db.query.return_value.filter.return_value.first.return_value = mock_content
         
-        # Mock queue service
-        queue_service = Mock()
-        mock_queue_service.return_value = queue_service
+        # Mock queue gateway
+        queue_gateway = Mock()
+        mock_queue_gateway.return_value = queue_gateway
         
         # Import and create worker
         from app.pipeline.worker import ContentWorker
@@ -274,7 +274,7 @@ class TestPodcastProcessingFlow:
         assert success is True
         
         # Verify DOWNLOAD_AUDIO task was queued
-        queue_service.enqueue.assert_called_once_with(
+        queue_gateway.enqueue.assert_called_once_with(
             TaskType.DOWNLOAD_AUDIO,
             content_id=100
         )

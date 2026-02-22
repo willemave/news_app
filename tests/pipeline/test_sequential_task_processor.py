@@ -13,9 +13,10 @@ from app.services.queue import TaskType
 def processor():
     """Create a processor instance for testing."""
     with (
-        patch("app.pipeline.sequential_task_processor.QueueService"),
+        patch("app.pipeline.sequential_task_processor.QueueService") as mock_queue_service_cls,
         patch("app.pipeline.sequential_task_processor.get_llm_service"),
     ):
+        mock_queue_service_cls._normalize_queue_name.return_value = "content"
         instance = SequentialTaskProcessor()
         instance.queue_service = Mock()
         instance.llm_service = Mock()
@@ -29,7 +30,7 @@ class TestSequentialTaskProcessor:
     def test_init(self, processor):
         """Test processor initialization."""
         assert processor.running is True
-        assert processor.worker_id == "sequential-processor"
+        assert processor.worker_id == "content-processor-1"
         assert processor.queue_service is not None
         assert processor.llm_service is not None
 

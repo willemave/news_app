@@ -9,17 +9,13 @@ import Foundation
 import SwiftUI
 
 @MainActor
-class ContentListViewModel: ObservableObject {
+class ContentListViewModel: CursorPaginatedViewModel {
     @Published var contents: [ContentSummary] = []
     @Published var availableDates: [String] = []
     @Published var contentTypes: [String] = []
     @Published var isLoading = false
     @Published var isLoadingMore = false
     @Published var errorMessage: String?
-
-    // Pagination state
-    @Published var nextCursor: String?
-    @Published var hasMore: Bool = false
 
     // Track if we're in favorites mode
     private var isFavoritesMode: Bool = false
@@ -53,6 +49,7 @@ class ContentListViewModel: ObservableObject {
 
     init(defaultReadFilter: String = "unread") {
         _selectedReadFilter = Published(initialValue: defaultReadFilter)
+        super.init()
     }
     
     func loadContent() async {
@@ -62,8 +59,7 @@ class ContentListViewModel: ObservableObject {
         // Reset pagination and special modes when loading fresh content
         isFavoritesMode = false
         isRecentlyReadMode = false
-        nextCursor = nil
-        hasMore = false
+        resetPagination()
 
         do {
             let response: ContentListResponse
@@ -88,8 +84,7 @@ class ContentListViewModel: ObservableObject {
             contents = response.contents
             availableDates = response.availableDates
             contentTypes = response.contentTypes
-            nextCursor = response.nextCursor
-            hasMore = response.hasMore
+            applyPagination(response)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -147,8 +142,7 @@ class ContentListViewModel: ObservableObject {
             }
 
             contents.append(contentsOf: items)
-            nextCursor = response.nextCursor
-            hasMore = response.hasMore
+            applyPagination(response)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -164,12 +158,12 @@ class ContentListViewModel: ObservableObject {
                 let current = contents[index]
                 contents[index] = current.updating(isRead: true)
 
-                switch current.contentType {
-                case "article":
+                switch current.apiContentType {
+                case .article?:
                     unreadCountService.decrementArticleCount()
-                case "podcast":
+                case .podcast?:
                     unreadCountService.decrementPodcastCount()
-                case "news":
+                case .news?:
                     unreadCountService.decrementNewsCount()
                 default:
                     break
@@ -218,8 +212,7 @@ class ContentListViewModel: ObservableObject {
         // Set favorites mode and reset pagination
         isFavoritesMode = true
         isRecentlyReadMode = false
-        nextCursor = nil
-        hasMore = false
+        resetPagination()
 
         do {
             let response = try await contentService.fetchFavoritesList(cursor: nil)
@@ -236,8 +229,7 @@ class ContentListViewModel: ObservableObject {
             contents = items
             availableDates = response.availableDates
             contentTypes = response.contentTypes
-            nextCursor = response.nextCursor
-            hasMore = response.hasMore
+            applyPagination(response)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -252,8 +244,7 @@ class ContentListViewModel: ObservableObject {
         // Set recently read mode and reset pagination
         isFavoritesMode = false
         isRecentlyReadMode = true
-        nextCursor = nil
-        hasMore = false
+        resetPagination()
 
         do {
             let response = try await contentService.fetchRecentlyReadList(cursor: nil)
@@ -261,8 +252,7 @@ class ContentListViewModel: ObservableObject {
             contents = response.contents
             availableDates = response.availableDates
             contentTypes = response.contentTypes
-            nextCursor = response.nextCursor
-            hasMore = response.hasMore
+            applyPagination(response)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -272,8 +262,7 @@ class ContentListViewModel: ObservableObject {
 
     func refresh() async {
         // Reset pagination and reload
-        nextCursor = nil
-        hasMore = false
+        resetPagination()
         await loadContent()
     }
 

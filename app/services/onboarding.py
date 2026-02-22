@@ -48,8 +48,9 @@ from app.routers.api.models import (
 from app.scraping.atom_unified import load_atom_feeds
 from app.scraping.substack_unified import load_substack_feeds
 from app.services.exa_client import ExaSearchResult, exa_search
+from app.services.gateways.task_queue_gateway import get_task_queue_gateway
 from app.services.llm_agents import get_basic_agent
-from app.services.queue import QueueService, TaskType
+from app.services.queue import TaskType
 from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
 from app.services.x_integration import normalize_twitter_username
 from app.utils.paths import resolve_config_path
@@ -391,7 +392,8 @@ async def start_audio_discovery(
 
     db.commit()
 
-    QueueService().enqueue(
+    queue_gateway = get_task_queue_gateway()
+    queue_gateway.enqueue(
         TaskType.ONBOARDING_DISCOVER,
         payload={"user_id": user_id, "run_id": run.id},
     )
@@ -573,14 +575,15 @@ def complete_onboarding(
 
     sources_to_scrape = _resolve_scraper_sources(created_types)
     task_id = None
+    queue_gateway = get_task_queue_gateway()
     if sources_to_scrape:
-        task_id = QueueService().enqueue(
+        task_id = queue_gateway.enqueue(
             TaskType.SCRAPE,
             payload={"sources": sources_to_scrape},
         )
 
     if request.profile_summary:
-        QueueService().enqueue(
+        queue_gateway.enqueue(
             TaskType.ONBOARDING_DISCOVER,
             payload={
                 "user_id": user_id,

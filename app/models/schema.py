@@ -20,6 +20,7 @@ from sqlalchemy.orm import validates
 from app.core.db import Base
 from app.core.logging import get_logger
 from app.models.metadata import ContentStatus, StructuredSummary, validate_content_metadata
+from app.models.summary_contracts import is_structured_summary_payload
 from app.models.user import User  # noqa: F401
 from app.utils.summary_utils import extract_short_summary
 
@@ -122,10 +123,8 @@ class Content(Base):
         if not summary:
             return None
 
-        # Check if it's already a structured summary
-        if isinstance(summary, dict) and (
-            summary_kind == "long_structured" or "bullet_points" in summary
-        ):
+        # Parse canonical structured summaries while preserving legacy payload tolerance.
+        if isinstance(summary, dict) and is_structured_summary_payload(summary, summary_kind):
             try:
                 return StructuredSummary(**summary)
             except Exception as e:

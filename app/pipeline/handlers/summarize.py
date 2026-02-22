@@ -481,7 +481,7 @@ class SummarizeHandler:
                         )
 
                     if content.content_type != ContentType.NEWS.value:
-                        context.queue_service.enqueue(
+                        context.queue.enqueue(
                             task_type=TaskType.GENERATE_IMAGE,
                             content_id=content_id,
                         )

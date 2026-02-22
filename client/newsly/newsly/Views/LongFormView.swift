@@ -33,32 +33,25 @@ struct LongFormView: View {
                             LazyVStack(spacing: CardMetrics.cardSpacing) {
                                 let items = viewModel.currentItems()
                                 ForEach(Array(items.enumerated()), id: \.element.id) { index, content in
-                                    VStack(spacing: 0) {
-                                        NavigationLink(
-                                            value: ContentDetailRoute(
-                                                summary: content,
-                                                allContentIds: items.map(\.id)
-                                            )
-                                        ) {
-                                            LongFormCard(
-                                                content: content,
-                                                onMarkRead: {
-                                                    viewModel.markAsRead(content.id)
-                                                },
-                                                onToggleFavorite: {
-                                                    Task {
-                                                        await viewModel.toggleFavorite(content.id)
-                                                    }
+                                    NavigationLink(
+                                        value: ContentDetailRoute(
+                                            summary: content,
+                                            allContentIds: items.map(\.id)
+                                        )
+                                    ) {
+                                        LongFormCard(
+                                            content: content,
+                                            onMarkRead: {
+                                                viewModel.markAsRead(content.id)
+                                            },
+                                            onToggleFavorite: {
+                                                Task {
+                                                    await viewModel.toggleFavorite(content.id)
                                                 }
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-
-                                        if index < items.count - 1 {
-                                            Divider()
-                                                .padding(.top, CardMetrics.cardSpacing / 2)
-                                        }
+                                            }
+                                        )
                                     }
+                                    .buttonStyle(.plain)
                                     .onAppear {
                                         if content.id == items.last?.id {
                                             viewModel.loadMoreTrigger.send(())
@@ -126,10 +119,11 @@ struct LongFormView: View {
                     .ignoresSafeArea()
                 ProgressView("Marking content")
                     .padding(16)
-                    .background(Color(.systemBackground))
+                    .background(Color.surfacePrimary)
                     .cornerRadius(12)
             }
         }
+        .screenContainer()
     }
 
     @ViewBuilder

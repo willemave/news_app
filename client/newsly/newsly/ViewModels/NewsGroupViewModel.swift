@@ -9,15 +9,11 @@ import Foundation
 import SwiftUI
 
 @MainActor
-class NewsGroupViewModel: ObservableObject {
+class NewsGroupViewModel: CursorPaginatedViewModel {
     @Published var newsGroups: [NewsGroup] = []
     @Published var isLoading = false
     @Published var isLoadingMore = false
     @Published var errorMessage: String?
-
-    // Pagination state
-    @Published var nextCursor: String?
-    @Published var hasMore: Bool = false
 
     private let contentService = ContentService.shared
     private let unreadCountService = UnreadCountService.shared
@@ -39,8 +35,7 @@ class NewsGroupViewModel: ObservableObject {
     func loadNewsGroups(preserveReadGroups: Bool = false) async {
         isLoading = true
         errorMessage = nil
-        nextCursor = nil
-        hasMore = false
+        resetPagination()
 
         if !preserveReadGroups {
             sessionReadGroupIds.removeAll()
@@ -78,8 +73,7 @@ class NewsGroupViewModel: ObservableObject {
             }
 
             newsGroups = fetchedGroups
-            nextCursor = response.nextCursor
-            hasMore = response.hasMore
+            applyPagination(response)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -113,8 +107,7 @@ class NewsGroupViewModel: ObservableObject {
                 newGroups = response.contents.grouped(by: groupSize)
             }
             newsGroups.append(contentsOf: newGroups)
-            nextCursor = response.nextCursor
-            hasMore = response.hasMore
+            applyPagination(response)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -206,8 +199,7 @@ class NewsGroupViewModel: ObservableObject {
     }
 
     func refresh() async {
-        nextCursor = nil
-        hasMore = false
+        resetPagination()
         await loadNewsGroups(preserveReadGroups: true)
     }
 

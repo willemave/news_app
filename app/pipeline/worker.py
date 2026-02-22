@@ -11,10 +11,13 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
 from app.models.metadata import ContentData, ContentStatus, ContentType
+from app.models.metadata_state import normalize_metadata_shape, update_processing_state
 from app.models.schema import Content
 from app.pipeline.checkout import get_checkout_manager
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
+from app.pipeline.workflows.content_processing_workflow import ContentProcessingWorkflow
 from app.processing_strategies.registry import get_strategy_registry
+from app.services.gateways.task_queue_gateway import get_task_queue_gateway
 from app.services.http import NonRetryableError, get_http_service
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 from app.services.queue import TaskType, get_queue_service
@@ -37,9 +40,11 @@ class ContentWorker:
         self.checkout_manager = get_checkout_manager()
         self.http_service = get_http_service()
         self.queue_service = get_queue_service()
+        self.queue_gateway = get_task_queue_gateway()
         self.strategy_registry = get_strategy_registry()
         self.podcast_download_worker = PodcastDownloadWorker()
         self.podcast_transcribe_worker = PodcastTranscribeWorker()
+        self.processing_workflow = ContentProcessingWorkflow()
 
     def _mark_article_extraction_failure(
         self,
@@ -119,7 +124,6 @@ class ContentWorker:
         logger.info(f"Worker {worker_id} processing content {content_id}")
 
         try:
-            terminal_statuses = {ContentStatus.FAILED, ContentStatus.SKIPPED}
             enqueue_summarize_task = False
             state_persisted = False
 
@@ -146,17 +150,22 @@ class ContentWorker:
                 )
                 success = False
 
-            if (
-                success
-                and content.content_type in {ContentType.ARTICLE, ContentType.NEWS}
-                and content.status == ContentStatus.PROCESSING
-            ):
-                summary_payload = content.metadata.get("content_to_summarize")
-                if isinstance(summary_payload, str):
-                    enqueue_summarize_task = bool(summary_payload.strip())
+            transition = self.processing_workflow.infer_transition(content=content, success=success)
+            content.metadata = update_processing_state(
+                normalize_metadata_shape(content.metadata),
+                workflow_from=transition.from_status.value,
+                workflow_to=transition.to_status.value,
+                workflow_transition=transition.reason,
+            )
+
+            if not success and content.status not in self.processing_workflow.TERMINAL_STATUSES:
+                content.status = ContentStatus.FAILED
+
+            if success:
+                enqueue_summarize_task = self.processing_workflow.should_enqueue_summarize(content)
 
             # Update database when processing succeeded or content was marked failed/skipped.
-            if success or content.status in terminal_statuses:
+            if success or content.status in self.processing_workflow.TERMINAL_STATUSES:
                 with get_db() as db:
                     db_content = db.query(Content).filter(Content.id == content_id).first()
                     if db_content:
@@ -171,7 +180,7 @@ class ContentWorker:
                             raise
 
             if enqueue_summarize_task and state_persisted and content.id is not None:
-                self.queue_service.enqueue(TaskType.SUMMARIZE, content_id=content.id)
+                self.queue_gateway.enqueue(TaskType.SUMMARIZE, content_id=content.id)
                 logger.info(
                     "Enqueued SUMMARIZE task for content %s (%s)",
                     content.id,
@@ -726,7 +735,7 @@ class ContentWorker:
                     db.commit()
 
             # Queue download task
-            self.queue_service.enqueue(TaskType.DOWNLOAD_AUDIO, content_id=content.id)
+            self.queue_gateway.enqueue(TaskType.DOWNLOAD_AUDIO, content_id=content.id)
 
             logger.info(f"Queued download task for podcast {content.url}")
 

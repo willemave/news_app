@@ -215,11 +215,15 @@ class ContentService {
     }
     
     func fetchContentDetail(id: Int) async throws -> ContentDetail {
-        return try await client.request(APIEndpoints.contentDetail(id: id))
+        let endpoint = APIRequestDescriptor<ContentDetail>(path: APIEndpoints.contentDetail(id: id))
+        return try await client.request(endpoint)
     }
 
     func fetchContentDiscussion(id: Int) async throws -> ContentDiscussion {
-        return try await client.request(APIEndpoints.contentDiscussion(id: id))
+        let endpoint = APIRequestDescriptor<ContentDiscussion>(
+            path: APIEndpoints.contentDiscussion(id: id)
+        )
+        return try await client.request(endpoint)
     }
 
     func trackContentInteraction(

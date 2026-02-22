@@ -5,8 +5,9 @@ Merges functionality from app/schemas/metadata.py and app/domain/content.py.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
-from enum import StrEnum
+from html import unescape
 from typing import Any
 
 from pydantic import (
@@ -27,29 +28,12 @@ from app.constants import (
     SUMMARY_VERSION_V1,
     SUMMARY_VERSION_V2,
 )
+from app.models.contracts import (
+    ContentClassification,  # noqa: F401 - backward-compatible re-export
+    ContentStatus,
+    ContentType,
+)
 from app.utils.summary_utils import extract_short_summary, extract_summary_text
-
-
-# Enums from app/domain/content.py
-class ContentType(StrEnum):
-    ARTICLE = "article"
-    PODCAST = "podcast"
-    NEWS = "news"
-    UNKNOWN = "unknown"  # URL pending LLM analysis to determine type
-
-
-class ContentStatus(StrEnum):
-    NEW = "new"
-    PENDING = "pending"  # Legacy status still in database
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-
-
-class ContentClassification(StrEnum):
-    TO_READ = "to_read"
-    SKIP = "skip"
 
 
 # Structured summary components from app/schemas/metadata.py
@@ -501,6 +485,24 @@ class NewsArticleMetadata(BaseModel):
     title: str | None = Field(None, max_length=500)
     source_domain: str | None = Field(None, max_length=200)
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        """Normalize noisy titles and enforce max length defensively."""
+        if value is None:
+            return None
+        title = str(value)
+        # Drop script/style blocks and strip HTML tags to avoid persisting page markup as title.
+        title = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", title)
+        title = re.sub(r"(?is)<[^>]+>", " ", title)
+        title = unescape(title)
+        title = re.sub(r"\s+", " ", title).strip()
+        if not title:
+            return None
+        if len(title) > 500:
+            return title[:500]
+        return title
+
 
 class NewsAggregatorMetadata(BaseModel):
     """Context about the upstream aggregator (HN, Techmeme, Twitter)."""
@@ -833,7 +835,7 @@ class ContentData(BaseModel):
                     raise ValueError(f"Invalid podcast metadata: {e}") from e
             elif content_type == ContentType.NEWS:
                 try:
-                    NewsMetadata(**v)
+                    return NewsMetadata(**v).model_dump(mode="json", exclude_none=True)
                 except Exception as e:
                     raise ValueError(f"Invalid news metadata: {e}") from e
         return v

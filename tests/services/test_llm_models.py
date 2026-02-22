@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
-from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.openai import OpenAIChatModel
 
 from app.services import llm_models
 
@@ -22,7 +22,7 @@ def test_build_pydantic_model_openai(monkeypatch: pytest.MonkeyPatch) -> None:
 
     model, model_settings = llm_models.build_pydantic_model("gpt-5-mini")
 
-    assert isinstance(model, OpenAIModel)
+    assert isinstance(model, OpenAIChatModel)
     assert model_settings is None
 
 

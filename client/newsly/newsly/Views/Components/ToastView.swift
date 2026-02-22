@@ -22,7 +22,7 @@ struct ToastView: View {
             Spacer()
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.surfaceSecondary)
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
         .padding(.horizontal)

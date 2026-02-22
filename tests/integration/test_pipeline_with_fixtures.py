@@ -31,9 +31,20 @@ def db_session():
 
 def create_content_in_db(db, fixture_data: Dict[str, Any]) -> Content:
     """Create content from fixture in the database."""
-    from app.tests.conftest import create_content_from_fixture
-
-    content = create_content_from_fixture(fixture_data)
+    publication_date = fixture_data.get("publication_date")
+    parsed_publication_date = datetime.fromisoformat(publication_date) if publication_date else None
+    content = Content(
+        id=fixture_data.get("id"),
+        content_type=fixture_data["content_type"],
+        url=fixture_data["url"],
+        title=fixture_data["title"],
+        source=fixture_data["source"],
+        status=fixture_data["status"],
+        platform=fixture_data.get("platform"),
+        classification=fixture_data.get("classification"),
+        publication_date=parsed_publication_date,
+        content_metadata=fixture_data.get("content_metadata", {}),
+    )
     db.add(content)
     db.commit()
     db.refresh(content)
@@ -57,7 +68,7 @@ class TestPipelineWithRealData:
             patch("app.pipeline.worker.get_http_service") as mock_http,
             patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
             patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
-            patch("app.pipeline.worker.get_queue_service") as mock_queue,
+            patch("app.pipeline.worker.get_task_queue_gateway") as mock_queue_gateway,
         ):
             # Setup strategy mock
             mock_strategy = Mock()
@@ -90,7 +101,7 @@ class TestPipelineWithRealData:
             db_session.refresh(content)
             assert content.status == ContentStatus.PROCESSING.value
             assert content.content_metadata.get("content") == sample_unprocessed_article["content_metadata"]["content"]
-            mock_queue.return_value.enqueue.assert_called_with(
+            mock_queue_gateway.return_value.enqueue.assert_called_with(
                 TaskType.SUMMARIZE, content_id=content.id
             )
 
@@ -107,7 +118,7 @@ class TestPipelineWithRealData:
         # Mock dependencies
         with (
             patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
-            patch("app.pipeline.worker.get_queue_service") as mock_queue,
+            patch("app.pipeline.worker.get_task_queue_gateway") as mock_queue_gateway,
             patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
             patch("app.pipeline.worker.PodcastTranscribeWorker") as mock_transcribe,
         ):
@@ -118,7 +129,7 @@ class TestPipelineWithRealData:
             # For podcasts with transcript, we should summarize it
             db_session.refresh(content)
 
-            mock_queue.return_value.enqueue.assert_called_with(
+            mock_queue_gateway.return_value.enqueue.assert_called_with(
                 TaskType.DOWNLOAD_AUDIO, content_id=content.id
             )
 

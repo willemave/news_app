@@ -70,7 +70,7 @@ struct PlaceholderCard: View {
             }
             .padding(.bottom, 8)
         }
-        .background(Color(.systemBackground))
+        .background(Color.surfaceSecondary)
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
         .scaleEffect(scale)

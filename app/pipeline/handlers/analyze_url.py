@@ -11,15 +11,18 @@ from sqlalchemy.exc import IntegrityError
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.logging import get_logger
 from app.models.metadata import ContentClassification, ContentStatus, ContentType
+from app.models.metadata_state import normalize_metadata_shape, update_processing_state
 from app.models.schema import Content, ProcessingTask
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
+from app.pipeline.workflows.analyze_url_workflow import AnalyzeUrlWorkflow
 from app.services.apple_podcasts import resolve_apple_podcast_episode
-from app.services.content_analyzer import AnalysisError, get_content_analyzer
+from app.services.content_analyzer import AnalysisError
 from app.services.content_submission import normalize_url
 from app.services.feed_detection import detect_feeds_from_html
 from app.services.feed_subscription import subscribe_to_detected_feed
-from app.services.http import get_http_service
+from app.services.gateways.http_gateway import get_http_gateway
+from app.services.gateways.llm_gateway import get_llm_gateway
 from app.services.instruction_links import create_contents_from_instruction_links
 from app.services.queue import TaskType
 from app.services.scraper_configs import ensure_inbox_status
@@ -82,14 +85,15 @@ class FeedSubscriptionFlow:
         subscribe_to_feed: bool,
     ) -> FlowOutcome:
         """Process feed subscription and short-circuit if requested."""
+        metadata = normalize_metadata_shape(metadata)
         if not subscribe_to_feed:
             return FlowOutcome(handled=False, success=True)
 
         html_content: str | None = None
         fetch_status = "no_feed_found"
         try:
-            http_service = get_http_service()
-            body, _headers = http_service.fetch_content(url)
+            http_gateway = get_http_gateway()
+            body, _headers = http_gateway.fetch_content(url)
             if isinstance(body, str):
                 html_content = body
         except Exception as exc:  # noqa: BLE001
@@ -119,11 +123,11 @@ class FeedSubscriptionFlow:
                 detected_feed = feed_data.get("detected_feed")
                 all_detected_feeds = feed_data.get("all_detected_feeds")
 
-        metadata["subscribe_to_feed"] = True
+        processing_updates: dict[str, object] = {"subscribe_to_feed": True}
         if detected_feed:
-            metadata["detected_feed"] = detected_feed
+            processing_updates["detected_feed"] = detected_feed
             if all_detected_feeds:
-                metadata["all_detected_feeds"] = all_detected_feeds
+                processing_updates["all_detected_feeds"] = all_detected_feeds
 
             created, fetch_status = subscribe_to_detected_feed(
                 db,
@@ -131,14 +135,15 @@ class FeedSubscriptionFlow:
                 detected_feed,
                 display_name=detected_feed.get("title"),
             )
-            metadata["feed_subscription"] = {
+            processing_updates["feed_subscription"] = {
                 "status": fetch_status,
                 "feed_url": detected_feed.get("url"),
                 "feed_type": detected_feed.get("type"),
                 "created": created,
             }
         else:
-            metadata["feed_subscription"] = {"status": fetch_status}
+            processing_updates["feed_subscription"] = {"status": fetch_status}
+        metadata = update_processing_state(metadata, **processing_updates)
 
         content.content_metadata = metadata
         content.status = ContentStatus.SKIPPED.value
@@ -162,9 +167,10 @@ class TwitterShareFlow:
         content: Content,
         metadata: dict[str, Any],
         url: str,
-        queue_service,
+        task_queue_gateway,
     ) -> FlowOutcome:
         """Process tweet URLs and enqueue follow-up tasks."""
+        metadata = normalize_metadata_shape(metadata)
         tweet_id = extract_tweet_id(str(url))
         is_self_submission = content.source == SELF_SUBMISSION_SOURCE or bool(
             metadata.get("submitted_by_user_id")
@@ -191,11 +197,14 @@ class TwitterShareFlow:
                         "context_data": {"error": error_message},
                     },
                 )
-                metadata["tweet_enrichment"] = {
-                    "status": "skipped",
-                    "reason": "x_app_auth_unavailable",
-                    "error": error_message,
-                }
+                metadata = update_processing_state(
+                    metadata,
+                    tweet_enrichment={
+                        "status": "skipped",
+                        "reason": "x_app_auth_unavailable",
+                        "error": error_message,
+                    },
+                )
                 content.content_metadata = metadata
                 db.commit()
                 return FlowOutcome(handled=False, success=True)
@@ -260,7 +269,7 @@ class TwitterShareFlow:
             fanout_urls = external_urls[1:]
         else:
             content.url = tweet_url
-            metadata["tweet_only"] = True
+            metadata = update_processing_state(metadata, tweet_only=True)
 
         content.content_metadata = metadata
         db.commit()
@@ -321,7 +330,7 @@ class TwitterShareFlow:
                 )
                 db.commit()
 
-            queue_service.enqueue(TaskType.ANALYZE_URL, content_id=new_content.id)
+            task_queue_gateway.enqueue(TaskType.ANALYZE_URL, content_id=new_content.id)
 
         logger.info(
             "Twitter share processed for content %s (external_urls=%s)",
@@ -349,6 +358,7 @@ class UrlAnalysisFlow:
         analysis_instruction: str | None,
     ) -> Any | None:
         """Perform URL analysis with pattern matching or LLM analysis."""
+        metadata = normalize_metadata_shape(metadata)
         platform_hint = metadata.get("platform_hint")
         if not isinstance(platform_hint, str):
             platform_hint = None
@@ -385,8 +395,8 @@ class UrlAnalysisFlow:
             db.commit()
             return None
 
-        analyzer = get_content_analyzer()
-        result = analyzer.analyze_url(url, instruction=analysis_instruction)
+        llm_gateway = get_llm_gateway()
+        result = llm_gateway.analyze_url(url, instruction=analysis_instruction)
 
         if isinstance(result, AnalysisError):
             logger.warning(
@@ -493,6 +503,13 @@ class AnalyzeUrlHandler:
         self._analysis_flow = UrlAnalysisFlow()
         self._instruction_fanout = InstructionLinkFanout()
         self._payload_cleaner = InstructionPayloadCleaner()
+        self._workflow = AnalyzeUrlWorkflow(
+            feed_flow=self._feed_flow,
+            twitter_flow=self._twitter_flow,
+            analysis_flow=self._analysis_flow,
+            instruction_fanout=self._instruction_fanout,
+            payload_cleaner=self._payload_cleaner,
+        )
 
     def handle(self, task: TaskEnvelope, context: TaskContext) -> TaskResult:
         """Analyze URL to determine content type, then enqueue processing."""
@@ -505,61 +522,20 @@ class AnalyzeUrlHandler:
         logger.info("Analyzing URL for content %s", content_id)
 
         try:
-            with context.db_factory() as db:
-                content = db.query(Content).filter(Content.id == content_id).first()
-                if not content:
-                    logger.error("Content %s not found for URL analysis", content_id)
-                    return TaskResult.fail("Content not found")
+            payload = task.payload or {}
+            instruction = payload.get("instruction")
+            crawl_links = bool(payload.get("crawl_links"))
+            subscribe_to_feed = bool(payload.get("subscribe_to_feed"))
+            analysis_instruction = _build_analysis_instruction(instruction, crawl_links)
 
-                url = content.url
-                metadata = dict(content.content_metadata or {})
-
-                payload = task.payload or {}
-                instruction = payload.get("instruction")
-                crawl_links = bool(payload.get("crawl_links"))
-                subscribe_to_feed = bool(payload.get("subscribe_to_feed"))
-                analysis_instruction = _build_analysis_instruction(instruction, crawl_links)
-
-                feed_result = self._feed_flow.run(
-                    db,
-                    content,
-                    metadata,
-                    str(url),
-                    subscribe_to_feed,
-                )
-                if feed_result.handled:
-                    return TaskResult.ok() if feed_result.success else TaskResult.fail()
-
-                twitter_result = self._twitter_flow.run(
-                    db,
-                    content,
-                    metadata,
-                    str(url),
-                    context.queue_service,
-                )
-                if twitter_result.handled and not twitter_result.success:
-                    return TaskResult.fail("Twitter share processing failed")
-
-                analysis_result = None
-                if not twitter_result.handled:
-                    analysis_result = self._analysis_flow.run(
-                        db,
-                        content,
-                        metadata,
-                        str(url),
-                        analysis_instruction,
-                    )
-
-                if crawl_links and analysis_result and analysis_result.instruction:
-                    self._instruction_fanout.run(db, content, analysis_result)
-
-                if instruction and task.id:
-                    self._payload_cleaner.run(db, task.id)
-
-            context.queue_service.enqueue(TaskType.PROCESS_CONTENT, content_id=content_id)
-            logger.info("Enqueued PROCESS_CONTENT for content %s", content_id)
-
-            return TaskResult.ok()
+            return self._workflow.run(
+                task=task,
+                context=context,
+                analysis_instruction=analysis_instruction,
+                instruction=instruction,
+                crawl_links=crawl_links,
+                subscribe_to_feed=subscribe_to_feed,
+            )
 
         except Exception as exc:  # noqa: BLE001
             logger.exception(

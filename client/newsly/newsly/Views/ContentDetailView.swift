@@ -616,7 +616,7 @@ struct ContentDetailView: View {
                     Spacer()
                 }
                 .padding(10)
-                .background(Color(.secondarySystemBackground))
+                .background(Color.surfaceSecondary)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
@@ -654,7 +654,7 @@ struct ContentDetailView: View {
                     Spacer()
                 }
                 .padding(10)
-                .background(Color(.secondarySystemBackground))
+                .background(Color.surfaceSecondary)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
@@ -693,7 +693,7 @@ struct ContentDetailView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.surfaceSecondary)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .accessibilityIdentifier("content.inline_narration_status")
     }
@@ -1144,7 +1144,7 @@ struct ContentDetailView: View {
                 }
             }
             .padding(10)
-            .background(Color(.secondarySystemBackground))
+            .background(Color.surfaceSecondary)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
@@ -1207,7 +1207,7 @@ struct ContentDetailView: View {
             .padding(.bottom, 20)
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(.systemBackground))
+        .background(Color.surfacePrimary)
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -1263,7 +1263,7 @@ struct ContentDetailView: View {
             .padding(.bottom, 20)
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(.systemBackground))
+        .background(Color.surfacePrimary)
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -1331,7 +1331,7 @@ struct ContentDetailView: View {
 
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(.systemBackground))
+        .background(Color.surfacePrimary)
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -1575,7 +1575,7 @@ struct ContentDetailView: View {
                             }
                         }
                         .padding(12)
-                        .background(Color(.secondarySystemBackground))
+                        .background(Color.surfaceSecondary)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(alignment: .leading) {
                             if comment.depth > 0 {
@@ -1655,7 +1655,7 @@ struct ContentDetailView: View {
                             }
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.secondarySystemBackground))
+                            .background(Color.surfaceSecondary)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                     }
@@ -1673,7 +1673,7 @@ struct ContentDetailView: View {
             .padding(DetailDesign.cardPadding)
             .background(
                 RoundedRectangle(cornerRadius: DetailDesign.cardRadius)
-                    .fill(Color(.systemBackground))
+                    .fill(Color.surfaceSecondary)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DetailDesign.cardRadius)
@@ -1729,7 +1729,7 @@ struct ContentDetailView: View {
                     .padding(.bottom, DetailDesign.cardPadding)
             }
         }
-        .background(Color(.secondarySystemBackground))
+        .background(Color.surfaceSecondary)
         .clipShape(RoundedRectangle(cornerRadius: DetailDesign.cardRadius))
     }
 

@@ -236,7 +236,7 @@ class RedditUnifiedScraper(BaseScraper):
                             and submission.author.name,
                             "metadata": {
                                 "score": submission.score,
-                                "comments": submission.num_comments,
+                                "comments_count": submission.num_comments,
                                 "upvote_ratio": submission.upvote_ratio,
                                 "subreddit": submission.subreddit.display_name,
                                 "over_18": submission.over_18,
@@ -254,7 +254,7 @@ class RedditUnifiedScraper(BaseScraper):
                                 "comments_url": discussion_url,
                                 "metadata": {
                                     "score": submission.score,
-                                    "comments": submission.num_comments,
+                                    "comments_count": submission.num_comments,
                                     "upvote_ratio": submission.upvote_ratio,
                                     "reddit_id": submission.id,
                                 },

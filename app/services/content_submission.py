@@ -10,6 +10,7 @@ from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.logging import get_logger
 from app.models.content_submission import ContentSubmissionResponse, SubmitContentRequest
 from app.models.metadata import ContentClassification, ContentStatus, ContentType
+from app.models.metadata_state import normalize_metadata_shape, update_processing_state
 from app.models.schema import Content, ProcessingTask
 from app.models.user import User
 from app.services import read_status
@@ -111,7 +112,7 @@ def _append_share_and_chat_user(
     Returns:
         Updated metadata dictionary.
     """
-    updated = dict(metadata or {})
+    updated = normalize_metadata_shape(dict(metadata or {}))
     raw_users = updated.get("share_and_chat_user_ids")
     user_ids: list[int] = []
 
@@ -130,8 +131,7 @@ def _append_share_and_chat_user(
     if user_id not in user_ids:
         user_ids.append(user_id)
 
-    updated["share_and_chat_user_ids"] = user_ids
-    return updated
+    return update_processing_state(updated, share_and_chat_user_ids=user_ids)
 
 
 def submit_user_content(
@@ -177,8 +177,11 @@ def submit_user_content(
             existing.platform = platform_hint
             source_url_updated = True
         if subscribe_to_feed:
-            existing_metadata = dict(existing.content_metadata or {})
-            existing_metadata["subscribe_to_feed"] = True
+            existing_metadata = normalize_metadata_shape(dict(existing.content_metadata or {}))
+            existing_metadata = update_processing_state(
+                existing_metadata,
+                subscribe_to_feed=True,
+            )
             existing_metadata.setdefault("submitted_by_user_id", current_user.id)
             existing_metadata.setdefault("submitted_via", submission_channel)
             if platform_hint:
@@ -223,15 +226,18 @@ def submit_user_content(
         )
 
     # Build initial metadata
-    metadata = {
+    metadata: dict[str, object] = {
         "source": SELF_SUBMISSION_SOURCE,
-        "submitted_by_user_id": current_user.id,
-        "submitted_via": submission_channel,
     }
+    metadata = update_processing_state(
+        metadata,
+        submitted_by_user_id=current_user.id,
+        submitted_via=submission_channel,
+    )
     if subscribe_to_feed:
-        metadata["subscribe_to_feed"] = True
+        metadata = update_processing_state(metadata, subscribe_to_feed=True)
     if platform_hint:
-        metadata["platform_hint"] = platform_hint
+        metadata = update_processing_state(metadata, platform_hint=platform_hint)
     if share_and_chat:
         metadata = _append_share_and_chat_user(metadata, current_user.id)
 

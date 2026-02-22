@@ -3,18 +3,22 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
-from app.domain.converters import content_to_domain
-from app.models.metadata import ContentStatus, ContentType
+from app.models.metadata import ContentType
 from app.models.pagination import PaginationMetadata
-from app.models.schema import Content, ContentFavorites, ContentReadStatus
+from app.models.schema import Content
 from app.models.user import User
-from app.routers.api.models import ContentListResponse, ContentSummaryResponse
+from app.presenters.content_presenter import (
+    build_content_summary_response,
+    build_domain_content,
+    resolve_image_urls,
+)
+from app.repositories.content_feed_query import apply_created_at_cursor, build_user_feed_query
+from app.routers.api.models import ContentListResponse
 from app.utils.pagination import PaginationCursor
 
 logger = get_logger(__name__)
@@ -119,35 +123,11 @@ async def get_favorites(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Query favorited content with user-scoped joins
-    query = (
-        db.query(Content, ContentReadStatus.id)
-        .join(
-            ContentFavorites,
-            and_(
-                ContentFavorites.content_id == Content.id,
-                ContentFavorites.user_id == current_user.id,
-            ),
-        )
-        .outerjoin(
-            ContentReadStatus,
-            and_(
-                ContentReadStatus.content_id == Content.id,
-                ContentReadStatus.user_id == current_user.id,
-            ),
-        )
-        .filter(Content.status == ContentStatus.COMPLETED.value)
-        .filter((Content.classification != "skip") | (Content.classification.is_(None)))
-    )
+    query = build_user_feed_query(db, current_user.id, mode="favorites")
 
     # Apply cursor pagination
     if last_id and last_created_at:
-        query = query.filter(
-            or_(
-                Content.created_at < last_created_at,
-                and_(Content.created_at == last_created_at, Content.id < last_id),
-            )
-        )
+        query = apply_created_at_cursor(query, last_created_at, last_id)
 
     # Order by created_at DESC, id DESC for stable pagination
     query = query.order_by(Content.created_at.desc(), Content.id.desc())
@@ -162,39 +142,18 @@ async def get_favorites(
 
     # Convert to response format
     content_summaries = []
-    for c, read_id in contents:
+    for c, read_id, _favorite_id in contents:
         try:
-            domain_content = content_to_domain(c)
-
-            # Get classification from metadata
-            classification = None
-            if domain_content.structured_summary:
-                classification = domain_content.structured_summary.get("classification")
-            discussion_url = (domain_content.metadata or {}).get("discussion_url")
-
+            domain_content = build_domain_content(c)
+            image_url, thumbnail_url = resolve_image_urls(domain_content)
             content_summaries.append(
-                ContentSummaryResponse(
-                    id=domain_content.id,
-                    content_type=domain_content.content_type.value,
-                    url=str(domain_content.url),
-                    source_url=domain_content.source_url,
-                    title=domain_content.display_title,
-                    source=domain_content.source,
-                    status=domain_content.status.value,
-                    discussion_url=discussion_url,
-                    short_summary=domain_content.short_summary,
-                    created_at=domain_content.created_at.isoformat()
-                    if domain_content.created_at
-                    else "",
-                    processed_at=domain_content.processed_at.isoformat()
-                    if domain_content.processed_at
-                    else None,
-                    classification=classification,
-                    publication_date=domain_content.publication_date.isoformat()
-                    if domain_content.publication_date
-                    else None,
-                    is_read=read_id is not None,
-                    is_favorited=True,  # All items in this list are favorited
+                build_content_summary_response(
+                    content=c,
+                    domain_content=domain_content,
+                    is_read=bool(read_id),
+                    is_favorited=True,
+                    image_url=image_url,
+                    thumbnail_url=thumbnail_url,
                 )
             )
         except Exception as e:

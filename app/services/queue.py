@@ -1,36 +1,14 @@
 from datetime import UTC, datetime, timedelta
-from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import and_, func, or_
 
 from app.core.db import get_db
 from app.core.logging import get_logger
+from app.models.contracts import TaskQueue, TaskStatus, TaskType
 from app.models.schema import ProcessingTask
 
 logger = get_logger(__name__)
-
-
-class TaskType(StrEnum):
-    SCRAPE = "scrape"
-    ANALYZE_URL = "analyze_url"  # Analyze URL to determine content type
-    PROCESS_CONTENT = "process_content"
-    DOWNLOAD_AUDIO = "download_audio"
-    TRANSCRIBE = "transcribe"
-    SUMMARIZE = "summarize"
-    FETCH_DISCUSSION = "fetch_discussion"
-    GENERATE_IMAGE = "generate_image"
-    DISCOVER_FEEDS = "discover_feeds"
-    ONBOARDING_DISCOVER = "onboarding_discover"
-    DIG_DEEPER = "dig_deeper"
-    SYNC_INTEGRATION = "sync_integration"
-
-
-class TaskQueue(StrEnum):
-    CONTENT = "content"
-    TRANSCRIBE = "transcribe"
-    ONBOARDING = "onboarding"
-    CHAT = "chat"
 
 
 TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
@@ -54,13 +32,6 @@ DEDUPABLE_CONTENT_TASK_TYPES: set[TaskType] = {
     TaskType.FETCH_DISCUSSION,
     TaskType.GENERATE_IMAGE,
 }
-
-
-class TaskStatus(StrEnum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
 
 
 class QueueService:
@@ -99,6 +70,8 @@ class QueueService:
         cursor_key: tuple[str | None, str | None],
     ) -> int:
         """Select a retry bucket using round-robin to reduce starvation."""
+        if not available_retry_counts:
+            return 0
         if len(available_retry_counts) == 1:
             return available_retry_counts[0]
 
@@ -242,7 +215,10 @@ class QueueService:
                 if task_row is None:
                     return None
 
-                task_id = int(task_row[0])
+                raw_task_id = getattr(task_row, "id", None)
+                if raw_task_id is None:
+                    raw_task_id = task_row[0]
+                task_id = int(raw_task_id)
                 claimed = (
                     db.query(ProcessingTask)
                     .filter(

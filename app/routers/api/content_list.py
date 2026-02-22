@@ -4,16 +4,16 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, and_, cast, func, or_
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.core.timing import timed
-from app.models.metadata import ContentStatus, ContentType
+from app.models.metadata import ContentType
 from app.models.pagination import PaginationMetadata
-from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
+from app.models.schema import Content, ContentReadStatus
 from app.models.user import User
 from app.presenters.content_presenter import (
     build_content_summary_response,
@@ -21,11 +21,10 @@ from app.presenters.content_presenter import (
     is_ready_for_list,
     resolve_image_urls,
 )
+from app.repositories.content_feed_query import apply_created_at_cursor, build_user_feed_query
 from app.repositories.content_repository import (
     apply_sqlite_fts_filter,
-    apply_visibility_filters,
     build_fts_match_query,
-    build_visibility_context,
     sqlite_fts_available,
 )
 from app.routers.api.models import (
@@ -111,20 +110,19 @@ def list_contents(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    context = build_visibility_context(current_user.id)
-
     # Get available dates for the dropdown (only on first page)
-    # Optimized: Skip expensive JSON extraction since inbox items are always summarized
-    # and news items are always completed before becoming visible
+    # Keep available-date visibility aligned with the inbox feed query semantics.
     available_dates = []
     if not cursor:
         lookback_start = datetime.now(UTC) - timedelta(days=AVAILABLE_DATES_LOOKBACK_DAYS)
-        available_dates_query = db.query(func.date(Content.created_at).label("date")).filter(
-            Content.created_at >= lookback_start
-        )
+        available_dates_query = build_user_feed_query(
+            db,
+            current_user.id,
+            mode="inbox",
+        ).with_entities(func.date(Content.created_at).label("date"))
+        available_dates_query = available_dates_query.filter(Content.created_at >= lookback_start)
         available_dates_query = (
-            apply_visibility_filters(available_dates_query, context)
-            .distinct()
+            available_dates_query.distinct()
             .order_by(func.date(Content.created_at).desc())
             .limit(90)
         )
@@ -138,38 +136,7 @@ def list_contents(
                         available_dates.append(row.date.strftime("%Y-%m-%d"))
 
     # Base visible content query with user-scoped flags
-    query = (
-        db.query(
-            Content,
-            ContentReadStatus.id.label("is_read"),
-            ContentFavorites.id.label("is_favorited"),
-        )
-        .outerjoin(
-            ContentReadStatus,
-            and_(
-                ContentReadStatus.content_id == Content.id,
-                ContentReadStatus.user_id == current_user.id,
-            ),
-        )
-        .outerjoin(
-            ContentFavorites,
-            and_(
-                ContentFavorites.content_id == Content.id,
-                ContentFavorites.user_id == current_user.id,
-            ),
-        )
-        .outerjoin(
-            ContentStatusEntry,
-            and_(
-                ContentStatusEntry.content_id == Content.id,
-                ContentStatusEntry.user_id == current_user.id,
-                ContentStatusEntry.status == "inbox",
-            ),
-        )
-    )
-    query = query.filter(Content.status == ContentStatus.COMPLETED.value)
-    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
-    query = query.filter(ContentStatusEntry.id.is_not(None))
+    query = build_user_feed_query(db, current_user.id, mode="inbox")
 
     # Apply content type filter - support multiple types
     if content_type:
@@ -196,13 +163,7 @@ def list_contents(
 
     # Apply cursor pagination
     if last_id and last_created_at:
-        # Use keyset pagination: WHERE (created_at, id) < (last_created_at, last_id)
-        query = query.filter(
-            or_(
-                Content.created_at < last_created_at,
-                and_(Content.created_at == last_created_at, Content.id < last_id),
-            )
-        )
+        query = apply_created_at_cursor(query, last_created_at, last_id)
 
     # Order by created_at DESC, id DESC for stable pagination
     query = query.order_by(Content.created_at.desc(), Content.id.desc())
@@ -342,44 +303,8 @@ def search_contents(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Base query aligning with list endpoint visibility rules
-    query = (
-        db.query(
-            Content,
-            ContentReadStatus.id.label("is_read"),
-            ContentFavorites.id.label("is_favorited"),
-        )
-        .outerjoin(
-            ContentReadStatus,
-            and_(
-                ContentReadStatus.content_id == Content.id,
-                ContentReadStatus.user_id == current_user.id,
-            ),
-        )
-        .outerjoin(
-            ContentFavorites,
-            and_(
-                ContentFavorites.content_id == Content.id,
-                ContentFavorites.user_id == current_user.id,
-            ),
-        )
-        .outerjoin(
-            ContentStatusEntry,
-            and_(
-                ContentStatusEntry.content_id == Content.id,
-                ContentStatusEntry.user_id == current_user.id,
-                ContentStatusEntry.status == "inbox",
-            ),
-        )
-    )
-    query = query.filter(Content.status == ContentStatus.COMPLETED.value)
-    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
-    query = query.filter(
-        or_(
-            Content.content_type == ContentType.NEWS.value,
-            ContentStatusEntry.id.is_not(None),
-        )
-    )
+    # Reuse canonical feed query builder for visibility/read/favorite semantics.
+    query = build_user_feed_query(db, current_user.id, mode="inbox")
 
     if type and type != "all":
         query = query.filter(Content.content_type == type)
@@ -412,12 +337,7 @@ def search_contents(
 
     # Apply cursor pagination if cursor is provided, otherwise use offset (deprecated)
     if cursor and last_id and last_created_at:
-        search_query = search_query.filter(
-            or_(
-                Content.created_at < last_created_at,
-                and_(Content.created_at == last_created_at, Content.id < last_id),
-            )
-        )
+        search_query = apply_created_at_cursor(search_query, last_created_at, last_id)
     elif not cursor and offset > 0:
         # Use offset only if no cursor provided (backwards compatibility)
         search_query = search_query.offset(offset)

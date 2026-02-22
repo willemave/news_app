@@ -14,7 +14,9 @@ from tenacity import RetryCallState, retry, stop_after_attempt, wait_exponential
 
 from app.constants import TWEET_MODELS, TWEET_SUGGESTION_MODEL
 from app.core.logging import get_logger
+from app.models.contracts import SummaryKind, SummaryVersion
 from app.models.metadata import ContentData, ContentType
+from app.models.summary_contracts import parse_summary_version, resolve_summary_kind
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import resolve_model
 from app.services.llm_prompts import get_tweet_generation_prompt, length_to_char_range
@@ -134,21 +136,27 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
     counter_arguments: list[str] = []
 
     summary_data = content.metadata.get("summary")
-    summary_kind = content.metadata.get("summary_kind")
-    summary_version = content.metadata.get("summary_version")
+    summary_kind = resolve_summary_kind(summary_data, content.metadata.get("summary_kind"))
+    summary_version = parse_summary_version(content.metadata.get("summary_version"))
     if isinstance(summary_data, dict):
         # Check if it's a StructuredSummary, InterleavedSummary, or NewsSummary
-        if summary_kind == "long_structured" or "overview" in summary_data:
+        if summary_kind == SummaryKind.LONG_STRUCTURED:
             summary = summary_data.get("overview", "")
-        elif summary_kind == "long_interleaved":
+        elif summary_kind == SummaryKind.LONG_INTERLEAVED:
             summary = summary_data.get("hook") or summary_data.get("takeaway", "")
-        elif summary_kind == "long_editorial_narrative":
+        elif summary_kind == SummaryKind.LONG_EDITORIAL_NARRATIVE:
             summary = summary_data.get("editorial_narrative", "")
-        elif summary_kind == "short_news_digest" or "summary" in summary_data:
+        elif summary_kind == SummaryKind.SHORT_NEWS_DIGEST:
+            summary = summary_data.get("summary", "")
+        elif "summary" in summary_data:
+            # Legacy fallback when `summary_kind` was not persisted.
             summary = summary_data.get("summary", "")
 
         # Get bullet points / key points
-        if summary_kind == "long_interleaved" and summary_version == 2:
+        if (
+            summary_kind == SummaryKind.LONG_INTERLEAVED
+            and summary_version == SummaryVersion.V2
+        ):
             bullet_points = summary_data.get("key_points", [])
         else:
             bullet_points = summary_data.get("key_points") or summary_data.get("bullet_points", [])
@@ -160,12 +168,12 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
                 elif isinstance(point, str):
                     key_points.append(point)
         else:
-            if summary_kind == "long_interleaved":
+            if summary_kind == SummaryKind.LONG_INTERLEAVED:
                 insights = summary_data.get("insights", [])
                 for insight in insights[:5]:
                     if isinstance(insight, dict):
                         key_points.append(insight.get("insight", ""))
-            elif summary_kind == "long_editorial_narrative":
+            elif summary_kind == SummaryKind.LONG_EDITORIAL_NARRATIVE:
                 editorial_points = summary_data.get("key_points", [])
                 for point in editorial_points[:5]:
                     if isinstance(point, dict):
@@ -181,7 +189,7 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
                         quotes.append(quote_text)
                 elif isinstance(quote, str):
                     quotes.append(quote)
-        elif summary_kind == "long_interleaved":
+        elif summary_kind == SummaryKind.LONG_INTERLEAVED:
             insights = summary_data.get("insights", [])
             for insight in insights[:3]:
                 if isinstance(insight, dict):

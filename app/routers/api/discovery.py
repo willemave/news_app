@@ -32,8 +32,9 @@ from app.routers.api.models import (
     PodcastEpisodeSearchResultResponse,
 )
 from app.services.content_submission import submit_user_content
+from app.services.gateways.task_queue_gateway import get_task_queue_gateway
 from app.services.podcast_search import search_podcast_episodes
-from app.services.queue import QueueService, TaskType
+from app.services.queue import TaskType
 from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
 
 logger = get_logger(__name__)
@@ -248,7 +249,7 @@ async def refresh_discovery(
     if favorite_count < settings.discovery_min_favorites:
         raise HTTPException(status_code=400, detail="Not enough favorites to run discovery")
 
-    task_id = QueueService().enqueue(
+    task_id = get_task_queue_gateway().enqueue(
         TaskType.DISCOVER_FEEDS,
         payload={"user_id": current_user.id, "trigger": "manual"},
     )

@@ -72,7 +72,7 @@ Build and run on a simulator or device. The app connects to your local server at
 ### Development
 
 ```bash
-pytest app/tests/ -v    # Run tests
+pytest tests/ -v    # Run tests
 ruff check .            # Lint
 ruff format .           # Format
 alembic revision -m "description"  # New migration

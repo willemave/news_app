@@ -616,7 +616,7 @@ struct ChatSessionView: View {
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemBackground))
+            .background(Color.surfaceSecondary)
             .cornerRadius(12)
             .padding(.horizontal)
 
@@ -667,7 +667,7 @@ struct ChatSessionView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(Color(.systemBackground))
+                .background(Color.surfaceSecondary)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
                         .stroke(viewModel.isRecording ? Color.red.opacity(0.6) : Color(.separator), lineWidth: 1)
@@ -720,7 +720,7 @@ struct ChatSessionView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color(.systemBackground))
+        .background(Color.surfaceSecondary)
         .overlay(
             Rectangle()
                 .frame(height: 0.33)
@@ -791,7 +791,7 @@ struct MessageBubble: View {
     }
 
     private var bubbleBackground: Color {
-        message.isUser ? Color.accentColor : Color(.systemBackground)
+        message.isUser ? Color.accentColor : Color.surfaceSecondary
     }
 
     private var textColor: UIColor {
@@ -848,7 +848,7 @@ struct ThinkingBubbleView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .background(Color(.systemBackground))
+                .background(Color.surfaceSecondary)
                 .cornerRadius(16)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)

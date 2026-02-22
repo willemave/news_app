@@ -87,7 +87,7 @@ final class ShortNewsListViewModel: BaseContentListViewModel {
                 logger.info("[ShortNewsList] Received contentMarkedAsRead notification | contentId=\(contentId) type=\(contentType, privacy: .public)")
 
                 // Only update if it's news content
-                guard contentType == "news" else {
+                guard APIContentType(rawValue: contentType) == .news else {
                     logger.debug("[ShortNewsList] Ignoring non-news content | contentId=\(contentId) type=\(contentType, privacy: .public)")
                     return
                 }

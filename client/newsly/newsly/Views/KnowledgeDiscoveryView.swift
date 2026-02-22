@@ -48,7 +48,7 @@ struct KnowledgeDiscoveryView: View {
                 }
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.surfacePrimary)
         .onAppear {
             Task { await viewModel.loadSuggestions() }
         }
@@ -348,7 +348,7 @@ private struct PodcastEpisodeSearchCard: View {
             }
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.surfaceSecondary)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.editorialBorder, lineWidth: 1)

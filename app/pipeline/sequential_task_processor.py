@@ -25,6 +25,7 @@ from app.pipeline.task_context import TaskContext
 from app.pipeline.task_handler import TaskHandler
 from app.pipeline.task_models import TaskEnvelope, TaskResult
 from app.pipeline.worker import get_llm_service
+from app.services.gateways.task_queue_gateway import TaskQueueGateway
 from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.queue import QueueService, TaskQueue
 
@@ -41,6 +42,7 @@ class SequentialTaskProcessor:
     ) -> None:
         logger.debug("Initializing SequentialTaskProcessor...")
         self.queue_service = QueueService()
+        self.queue_gateway = TaskQueueGateway(queue_service=self.queue_service)
         logger.debug("QueueService initialized")
         self.llm_service = get_llm_service()
         logger.debug("Shared summarization service initialized")
@@ -60,6 +62,7 @@ class SequentialTaskProcessor:
             settings=self.settings,
             llm_service=self.llm_service,
             worker_id=self.worker_id,
+            queue_gateway=self.queue_gateway,
         )
         self.dispatcher = TaskDispatcher(self._build_handlers())
 

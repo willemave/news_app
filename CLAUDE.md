@@ -48,7 +48,7 @@ Errors at level ERROR+ are automatically written to JSONL files in `logs/errors/
 
 ## 4. Testing Requirements
 
-* **Write tests for all new functionality** in `app/tests/` using idiomatic pytest.
+* **Write tests for all new functionality** in `tests/` using idiomatic pytest.
 * **Scripts in `scripts/` do not require tests** unless explicitly requested.
 * Test structure mirrors app structure: `tests/routers/`, `tests/services/`, etc.
 * Test file naming: `test_<module_name>.py`.
@@ -59,7 +59,7 @@ Errors at level ERROR+ are automatically written to JSONL files in `logs/errors/
 * Use pytest fixtures for setup/teardown.
 * **TestClient** from FastAPI for endpoint testing.
 * Mock external dependencies with `pytest-mock` or `unittest.mock`.
-* **Run tests**: `pytest app/tests/ -v`
+* **Run tests**: `pytest tests/ -v`
 * **Test data**: Use factories or fixtures, never production data.
 
 ---
@@ -104,7 +104,7 @@ alembic revision -m "..."  # Create migration
 ```bash
 ruff check .               # Lint
 ruff format .              # Format
-pytest app/tests/ -v       # Run tests
+pytest tests/ -v       # Run tests
 ```
 
 ### Running the App

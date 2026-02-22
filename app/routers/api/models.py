@@ -11,6 +11,13 @@ from app.models.content_submission import (  # noqa: F401
     ContentSubmissionResponse,
     SubmitContentRequest,
 )
+from app.models.contracts import (
+    ContentClassification,
+    ContentStatus,
+    ContentType,
+    SummaryKind,
+    SummaryVersion,
+)
 from app.models.pagination import PaginationMetadata
 
 
@@ -18,7 +25,7 @@ class ContentSummaryResponse(BaseModel):
     """Summary information for a content item in list view."""
 
     id: int = Field(..., description="Unique identifier")
-    content_type: str = Field(..., description="Type of content (article/podcast/news)")
+    content_type: ContentType = Field(..., description="Type of content (article/podcast/news)")
     url: str = Field(..., description="Canonical URL of the content")
     source_url: str | None = Field(None, description="Original scraped/submitted URL")
     discussion_url: str | None = Field(
@@ -31,7 +38,7 @@ class ContentSummaryResponse(BaseModel):
     platform: str | None = Field(
         None, description="Content platform (e.g., twitter, substack, youtube)"
     )
-    status: str = Field(..., description="Processing status")
+    status: ContentStatus = Field(..., description="Processing status")
     short_summary: str | None = Field(
         None,
         description=(
@@ -40,7 +47,9 @@ class ContentSummaryResponse(BaseModel):
     )
     created_at: str = Field(..., description="ISO timestamp when content was created")
     processed_at: str | None = Field(None, description="ISO timestamp when content was processed")
-    classification: str | None = Field(None, description="Content classification (to_read/skip)")
+    classification: ContentClassification | None = Field(
+        None, description="Content classification (to_read/skip)"
+    )
     publication_date: str | None = Field(
         None, description="ISO timestamp of when content was published"
     )
@@ -73,6 +82,9 @@ class ContentSummaryResponse(BaseModel):
     top_comment: dict[str, str] | None = Field(
         None, description="First discussion comment {author, text} for preview"
     )
+    comment_count: int | None = Field(
+        None, description="Discussion comment count from aggregator or discussion fetcher"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -104,7 +116,9 @@ class ContentListResponse(BaseModel):
 
     contents: list[ContentSummaryResponse] = Field(..., description="List of content items")
     available_dates: list[str] = Field(..., description="List of available dates (YYYY-MM-DD)")
-    content_types: list[str] = Field(..., description="Available content types for filtering")
+    content_types: list[ContentType] = Field(
+        ..., description="Available content types for filtering"
+    )
     meta: PaginationMetadata = Field(..., description="Pagination metadata for the response")
 
     model_config = ConfigDict(
@@ -142,11 +156,13 @@ class SubmissionStatusResponse(BaseModel):
     """Status information for a user-submitted content item."""
 
     id: int = Field(..., description="Unique identifier")
-    content_type: str = Field(..., description="Type of content (article/podcast/news/unknown)")
+    content_type: ContentType = Field(
+        ..., description="Type of content (article/podcast/news/unknown)"
+    )
     url: str = Field(..., description="Canonical URL of the content")
     source_url: str | None = Field(None, description="Original submitted URL")
     title: str | None = Field(None, description="Content title (if detected)")
-    status: str = Field(..., description="Processing status")
+    status: ContentStatus = Field(..., description="Processing status")
     error_message: str | None = Field(None, description="Failure reason when status=failed/skipped")
     created_at: str = Field(..., description="ISO timestamp when content was created")
     processed_at: str | None = Field(None, description="ISO timestamp when content was processed")
@@ -382,7 +398,7 @@ class ContentDetailResponse(BaseModel):
     """Detailed response for a single content item."""
 
     id: int = Field(..., description="Unique identifier")
-    content_type: str = Field(..., description="Type of content (article/podcast/news)")
+    content_type: ContentType = Field(..., description="Type of content (article/podcast/news)")
     url: str = Field(..., description="Canonical URL of the content")
     source_url: str | None = Field(None, description="Original scraped/submitted URL")
     discussion_url: str | None = Field(
@@ -393,7 +409,7 @@ class ContentDetailResponse(BaseModel):
         ..., description="Display title (prefers summary title over content title)"
     )
     source: str | None = Field(None, description="Content source")
-    status: str = Field(..., description="Processing status")
+    status: ContentStatus = Field(..., description="Processing status")
     error_message: str | None = Field(None, description="Error message if processing failed")
     retry_count: int = Field(..., description="Number of retry attempts")
     metadata: dict[str, Any] = Field(..., description="Content-specific metadata")
@@ -412,10 +428,10 @@ class ContentDetailResponse(BaseModel):
     # Additional useful properties from ContentData
     summary: str | None = Field(None, description="Summary text")
     short_summary: str | None = Field(None, description="Short version of summary for list view")
-    summary_kind: str | None = Field(
+    summary_kind: SummaryKind | None = Field(
         None, description="Summary kind discriminator (e.g., long_interleaved)"
     )
-    summary_version: int | None = Field(
+    summary_version: SummaryVersion | None = Field(
         None, description="Summary schema version for the current summary kind"
     )
     structured_summary: dict[str, Any] | None = Field(

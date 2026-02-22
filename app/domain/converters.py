@@ -5,6 +5,7 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
+from app.models.metadata_state import merge_runtime_metadata, normalize_metadata_shape
 from app.models.schema import Content as DBContent
 from app.utils.summary_metadata import infer_summary_kind_version
 from app.utils.url_utils import is_http_url
@@ -38,7 +39,8 @@ def _select_http_url(raw_url: str, metadata: dict[str, Any], content_type: str) 
 def content_to_domain(db_content: DBContent) -> ContentData:
     """Convert database Content to domain ContentData."""
     try:
-        metadata = dict(db_content.content_metadata or {})
+        stored_metadata = normalize_metadata_shape(dict(db_content.content_metadata or {}))
+        metadata = merge_runtime_metadata(stored_metadata)
 
         if db_content.platform and metadata.get("platform") is None:
             metadata["platform"] = db_content.platform
@@ -120,10 +122,11 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
             existing.source_url = new_url
         # Serialize metadata to ensure datetime objects are handled
         dumped_data = content_data.model_dump(mode="json")
-        md = dumped_data["metadata"] or {}
+        md = normalize_metadata_shape(dumped_data["metadata"] or {})
+        runtime_md = merge_runtime_metadata(md)
         # Keep DB columns for platform/source in sync with metadata if provided
-        plat = md.get("platform")
-        src = md.get("source")
+        plat = runtime_md.get("platform")
+        src = runtime_md.get("source")
         if isinstance(plat, str) and plat.strip():
             existing.platform = plat.strip().lower()
         if isinstance(src, str) and src.strip():
@@ -131,7 +134,7 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
         existing.content_metadata = md
 
         # Sync classification from summary metadata to DB column for filtering
-        summary = md.get("summary")
+        summary = runtime_md.get("summary")
         if isinstance(summary, dict):
             classification = summary.get("classification")
             if classification in ("to_read", "skip"):
@@ -146,9 +149,10 @@ def domain_to_content(content_data: ContentData, existing: DBContent | None = No
     else:
         # Create new
         dumped = content_data.model_dump(mode="json")
-        md = dumped.get("metadata") or {}
-        plat = md.get("platform")
-        src = md.get("source")
+        md = normalize_metadata_shape(dumped.get("metadata") or {})
+        runtime_md = merge_runtime_metadata(md)
+        plat = runtime_md.get("platform")
+        src = runtime_md.get("source")
         return DBContent(
             content_type=content_data.content_type.value,
             url=str(content_data.url),

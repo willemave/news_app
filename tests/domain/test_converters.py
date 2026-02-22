@@ -338,7 +338,10 @@ class TestConverterEdgeCases:
         assert db_content.url == "https://example.com/minimal"
         assert db_content.title is None
         assert db_content.status == ContentStatus.NEW.value
-        assert db_content.content_metadata == {}
+        assert db_content.content_metadata.get("domain") == {}
+        assert db_content.content_metadata.get("processing") == {}
+        # Legacy compatibility field persisted by metadata adapter.
+        assert db_content.content_metadata.get("content_type") == "html"
         assert db_content.retry_count == 0
         assert db_content.error_message is None
     

@@ -11,10 +11,28 @@ import UIKit
 // MARK: - Colors
 
 extension Color {
-    // Surface colors
-    static var surfacePrimary: Color { Color(.systemBackground) }
-    static var surfaceSecondary: Color { Color(.secondarySystemBackground) }
-    static var surfaceTertiary: Color { Color(.tertiarySystemBackground) }
+    // Surface colors — ascending elevation: primary (page) → secondary (cards) → tertiary (nested)
+    static var surfacePrimary: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.055, green: 0.055, blue: 0.063, alpha: 1.0)  // #0E0E10
+                : UIColor(red: 0.929, green: 0.929, blue: 0.941, alpha: 1.0)  // #EDEDF0
+        })
+    }
+    static var surfaceSecondary: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.086, green: 0.086, blue: 0.098, alpha: 1.0)  // #161619
+                : UIColor(red: 0.969, green: 0.969, blue: 0.976, alpha: 1.0)  // #F7F7F9
+        })
+    }
+    static var surfaceTertiary: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.133, green: 0.133, blue: 0.145, alpha: 1.0)  // #222225
+                : UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)        // #FFFFFF
+        })
+    }
 
     // Text colors
     static var textPrimary: Color { Color(.label) }
@@ -41,6 +59,24 @@ extension Color {
             traitCollection.userInterfaceStyle == .dark
                 ? UIColor(red: 0.40, green: 0.61, blue: 1.0, alpha: 1.0)   // #669CFF brighter for dark
                 : UIColor(red: 0.067, green: 0.322, blue: 0.831, alpha: 1.0) // #1152d4 original for light
+        })
+    }
+
+    // Platform label color (news feed metadata — muted blue, related to topicAccent family)
+    static var platformLabel: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.55, green: 0.70, blue: 0.95, alpha: 1.0)  // #8CB3F2
+                : UIColor(red: 0.20, green: 0.40, blue: 0.70, alpha: 1.0)  // #3366B3
+        })
+    }
+
+    // Day section delimiter text (distinct grey, not textTertiary)
+    static var sectionDelimiter: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.50, green: 0.50, blue: 0.53, alpha: 1.0)  // #808087
+                : UIColor(red: 0.45, green: 0.45, blue: 0.48, alpha: 1.0)  // #73737A
         })
     }
 
@@ -76,7 +112,7 @@ extension Font {
     static let feedMeta = Font.system(size: 11, weight: .medium)
     static let feedHeadline = Font.system(size: 18, weight: .semibold)
     static let feedSnippet = Font.system(size: 13)
-    static let cardHeadline = Font.system(size: 22, weight: .bold, design: .serif)
+    static let cardHeadline = Font.system(size: 22, weight: .bold)
     static let cardDescription = Font.system(size: 14)
     static let cardBadge = Font.system(size: 10, weight: .semibold)
     static let cardFooter = Font.system(size: 11, weight: .medium)

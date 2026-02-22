@@ -12,7 +12,8 @@ from app.models.metadata import ContentClassification, ContentStatus, ContentTyp
 from app.models.schema import Content
 from app.services.content_analyzer import InstructionLink
 from app.services.content_submission import normalize_url
-from app.services.queue import QueueService, TaskType
+from app.services.gateways.task_queue_gateway import get_task_queue_gateway
+from app.services.queue import TaskType
 from app.services.scraper_configs import ensure_inbox_status
 
 logger = get_logger(__name__)
@@ -141,10 +142,10 @@ def create_contents_from_instruction_links(
         return []
 
     if enqueue_task is None:
-        queue_service = QueueService()
+        queue_gateway = get_task_queue_gateway()
 
         def enqueue_task(content_id: int) -> None:
-            queue_service.enqueue(
+            queue_gateway.enqueue(
                 task_type=TaskType.ANALYZE_URL,
                 content_id=content_id,
                 payload={"content_id": content_id},

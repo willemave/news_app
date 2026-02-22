@@ -54,7 +54,7 @@ struct ArticleCardView: View {
             }
             .padding(20)
         }
-        .background(Color(.systemBackground))
+        .background(Color.surfaceSecondary)
         .cornerRadius(cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: cardCornerRadius)

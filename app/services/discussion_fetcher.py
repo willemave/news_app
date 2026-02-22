@@ -36,6 +36,23 @@ TOP_COMMENT_SKIP_AUTHORS = {"AutoModerator", "[deleted]", "automoderator"}
 TOP_COMMENT_SKIP_SUFFIXES = ("-ModTeam",)
 REDDIT_DEFAULT_USER_AGENT = "news_app.discussion/1.0 (by u/anonymous)"
 
+SOCIAL_DOMAINS: frozenset[str] = frozenset(
+    {
+        "x.com",
+        "twitter.com",
+        "news.ycombinator.com",
+        "reddit.com",
+        "www.reddit.com",
+        "old.reddit.com",
+        "threads.net",
+        "www.threads.net",
+        "bsky.app",
+        "mastodon.social",
+        "linkedin.com",
+        "www.linkedin.com",
+    }
+)
+
 _reddit_client: praw.Reddit | None = None
 
 
@@ -241,6 +258,15 @@ def fetch_and_store_discussion(
             top_comment = {"author": author, "text": str(text)}
             break
 
+    # Denormalize comment count into metadata for feed preview.
+    stats = payload.payload.get("stats", {})
+    if payload.mode == "comments":
+        comment_count = stats.get("declared_comment_count")
+    elif payload.mode == "discussion_list":
+        comment_count = len(comments) if comments else None
+    else:
+        comment_count = None
+
     did_change_metadata = False
     if top_comment:
         if metadata.get("top_comment") != top_comment:
@@ -248,6 +274,14 @@ def fetch_and_store_discussion(
             did_change_metadata = True
     elif "top_comment" in metadata:
         metadata.pop("top_comment", None)
+        did_change_metadata = True
+
+    if comment_count is not None:
+        if metadata.get("comment_count") != comment_count:
+            metadata["comment_count"] = comment_count
+            did_change_metadata = True
+    elif "comment_count" in metadata:
+        metadata.pop("comment_count", None)
         did_change_metadata = True
 
     if did_change_metadata:
@@ -280,45 +314,7 @@ def _build_discussion_payload(
     source_url = discussion_url or ""
 
     if _is_techmeme(platform, discussion_url):
-        if not source_url:
-            return DiscussionPayload(
-                status="partial",
-                mode="discussion_list",
-                payload={
-                    "mode": "discussion_list",
-                    "source_url": None,
-                    "discussion_groups": [],
-                    "comments": [],
-                    "compact_comments": [],
-                    "links": [],
-                    "stats": {
-                        "group_count": 0,
-                        "item_count": 0,
-                    },
-                },
-                error_message="Missing Techmeme discussion URL",
-            )
-
-        groups = _fetch_techmeme_discussion_groups(source_url, metadata)
-        all_links = _build_group_links(groups)
-        status = "completed" if groups else "partial"
-        return DiscussionPayload(
-            status=status,
-            mode="discussion_list",
-            payload={
-                "mode": "discussion_list",
-                "source_url": source_url,
-                "discussion_groups": groups,
-                "comments": [],
-                "compact_comments": [],
-                "links": all_links,
-                "stats": {
-                    "group_count": len(groups),
-                    "item_count": sum(len(group.get("items", [])) for group in groups),
-                },
-            },
-            error_message=None if groups else "No Techmeme discussion groups found",
-        )
+        return _build_techmeme_payload(source_url, metadata)
 
     if _is_hackernews(platform, discussion_url):
         return _build_hackernews_payload(source_url, comment_cap)
@@ -326,6 +322,11 @@ def _build_discussion_payload(
     if _is_reddit(platform, discussion_url):
         return _build_reddit_payload(source_url, comment_cap)
 
+    return _unsupported_payload(source_url, platform)
+
+
+def _unsupported_payload(source_url: str, platform: str) -> DiscussionPayload:
+    """Return a partial payload for unsupported discussion platforms."""
     return DiscussionPayload(
         status="partial",
         mode="none",
@@ -339,6 +340,57 @@ def _build_discussion_payload(
             "stats": {},
         },
         error_message=f"Unsupported discussion platform: {platform or 'unknown'}",
+    )
+
+
+def _build_techmeme_payload(
+    source_url: str,
+    metadata: dict[str, Any],
+) -> DiscussionPayload:
+    """Build discussion payload for Techmeme.
+
+    Fetches grouped discussion links and converts social/forum links into
+    comment entries so the top_comment denormalization loop picks them up.
+    """
+    if not source_url:
+        return DiscussionPayload(
+            status="partial",
+            mode="discussion_list",
+            payload={
+                "mode": "discussion_list",
+                "source_url": None,
+                "discussion_groups": [],
+                "comments": [],
+                "compact_comments": [],
+                "links": [],
+                "stats": {
+                    "group_count": 0,
+                    "item_count": 0,
+                },
+            },
+            error_message="Missing Techmeme discussion URL",
+        )
+
+    groups = _fetch_techmeme_discussion_groups(source_url, metadata)
+    all_links = _build_group_links(groups)
+    social_comments = _extract_social_comments_from_groups(groups)
+    status = "completed" if groups else "partial"
+    return DiscussionPayload(
+        status=status,
+        mode="discussion_list",
+        payload={
+            "mode": "discussion_list",
+            "source_url": source_url,
+            "discussion_groups": groups,
+            "comments": social_comments,
+            "compact_comments": [c["compact_text"] for c in social_comments],
+            "links": all_links,
+            "stats": {
+                "group_count": len(groups),
+                "item_count": sum(len(group.get("items", [])) for group in groups),
+            },
+        },
+        error_message=None if groups else "No Techmeme discussion groups found",
     )
 
 
@@ -362,6 +414,7 @@ def _build_hackernews_payload(discussion_url: str, comment_cap: int) -> Discussi
 
     timeout = httpx.Timeout(timeout=settings.http_timeout_seconds, connect=10.0)
     comments: list[dict[str, Any]] = []
+    url_titles: dict[str, str] = {}
     fetched_count = 0
     cap_reached = False
     total_seen = 0
@@ -409,7 +462,9 @@ def _build_hackernews_payload(discussion_url: str, comment_cap: int) -> Discussi
             if comment_item.get("deleted") or comment_item.get("dead"):
                 continue
 
-            text = _clean_html_text(str(comment_item.get("text") or ""))
+            raw_html = str(comment_item.get("text") or "")
+            url_titles.update(_extract_anchor_titles_from_html(raw_html))
+            text = _clean_html_text(raw_html)
             if not text:
                 continue
 
@@ -431,7 +486,7 @@ def _build_hackernews_payload(discussion_url: str, comment_cap: int) -> Discussi
                 with_id = int(child_id)
                 queue.append((with_id, depth + 1, int(comment_item.get("id") or comment_id)))
 
-    links = _extract_links_from_comments(comments)
+    links = _extract_links_from_comments(comments, url_titles=url_titles)
     status = "completed" if comments else "partial"
     return DiscussionPayload(
         status=status,
@@ -482,6 +537,7 @@ def _build_reddit_payload(discussion_url: str, comment_cap: int) -> DiscussionPa
         )
 
     comments: list[dict[str, Any]] = []
+    url_titles: dict[str, str] = {}
     cap_reached = False
     total_seen = 0
 
@@ -507,7 +563,10 @@ def _build_reddit_payload(discussion_url: str, comment_cap: int) -> DiscussionPa
                 continue
 
             total_seen += 1
-            body = getattr(node, "body", None) or getattr(node, "body_html", "") or ""
+            body_html = getattr(node, "body_html", None) or ""
+            if body_html:
+                url_titles.update(_extract_anchor_titles_from_html(str(body_html)))
+            body = getattr(node, "body", None) or body_html or ""
             text = _clean_html_text(str(body))
             comment_id = str(getattr(node, "id", "") or "").strip()
 
@@ -536,7 +595,7 @@ def _build_reddit_payload(discussion_url: str, comment_cap: int) -> DiscussionPa
 
     walk(submission.comments, depth=0, parent_id=None)
 
-    links = _extract_links_from_comments(comments)
+    links = _extract_links_from_comments(comments, url_titles=url_titles)
     status = "completed" if comments else "partial"
     return DiscussionPayload(
         status=status,
@@ -686,7 +745,53 @@ def _build_group_links(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return entries
 
 
-def _extract_links_from_comments(comments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _is_social_url(url: str) -> bool:
+    """Return True if the URL belongs to a known social/forum domain."""
+    host = urlparse(url).netloc.lower()
+    return any(host == domain or host.endswith("." + domain) for domain in SOCIAL_DOMAINS)
+
+
+def _extract_social_comments_from_groups(
+    groups: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Convert social/forum links from Techmeme groups into comment entries.
+
+    This allows the top_comment denormalization loop to pick up a representative
+    social comment for Techmeme items that would otherwise have no comments.
+    """
+    comments: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for group in groups:
+        for item in group.get("items", []):
+            if not isinstance(item, dict):
+                continue
+            url = item.get("url") or ""
+            if not url or url in seen_urls:
+                continue
+            if not _is_social_url(url):
+                continue
+            seen_urls.add(url)
+            domain = urlparse(url).netloc.lower().removeprefix("www.")
+            title = item.get("title") or url
+            comments.append(
+                {
+                    "comment_id": f"tm_{len(comments)}",
+                    "parent_id": None,
+                    "author": domain,
+                    "text": title,
+                    "compact_text": _compact_text(title),
+                    "depth": 0,
+                    "created_at": None,
+                    "source_url": url,
+                }
+            )
+    return comments
+
+
+def _extract_links_from_comments(
+    comments: list[dict[str, Any]],
+    url_titles: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     links: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -698,13 +803,14 @@ def _extract_links_from_comments(comments: list[dict[str, Any]]) -> list[dict[st
             if not normalized_url or normalized_url in seen:
                 continue
             seen.add(normalized_url)
-            links.append(
-                {
-                    "url": normalized_url,
-                    "source": "comment",
-                    "comment_id": comment_id,
-                }
-            )
+            entry: dict[str, Any] = {
+                "url": normalized_url,
+                "source": "comment",
+                "comment_id": comment_id,
+            }
+            if url_titles and normalized_url in url_titles:
+                entry["title"] = url_titles[normalized_url]
+            links.append(entry)
 
     return links
 
@@ -713,6 +819,67 @@ def _extract_urls(text: str) -> list[str]:
     if not text:
         return []
     return URL_PATTERN.findall(text)
+
+
+_TRIVIAL_ANCHOR_TEXTS = frozenset(
+    {
+        "here",
+        "link",
+        "click here",
+        "this",
+        "source",
+        "this link",
+        "more",
+        "read more",
+        "article",
+        "url",
+    }
+)
+
+
+def _is_url_like_text(text: str, url: str) -> bool:
+    """Return True if anchor text is essentially just the URL itself."""
+    stripped = text.strip().rstrip("/")
+    url_stripped = url.strip().rstrip("/")
+    if stripped == url_stripped:
+        return True
+    # Also match when anchor text is URL without scheme.
+    for prefix in ("https://", "http://"):
+        if url_stripped.startswith(prefix) and stripped == url_stripped[len(prefix) :]:
+            return True
+        without_scheme = url_stripped[len(prefix) :]
+        if (
+            url_stripped.startswith(prefix)
+            and without_scheme.startswith("www.")
+            and stripped == without_scheme[4:]
+        ):
+            return True
+    return False
+
+
+def _extract_anchor_titles_from_html(html: str) -> dict[str, str]:
+    """Extract {normalized_url: anchor_text} from <a> tags in HTML.
+
+    Skips anchors with trivial text (e.g. "here", "link") or text that is
+    just the URL itself.
+    """
+    if not html:
+        return {}
+    soup = BeautifulSoup(html, "html.parser")
+    titles: dict[str, str] = {}
+    for anchor in soup.find_all("a", href=True):
+        href = anchor.get("href") or ""
+        text = anchor.get_text(" ", strip=True)
+        if not href or not text:
+            continue
+        if text.lower() in _TRIVIAL_ANCHOR_TEXTS:
+            continue
+        if _is_url_like_text(text, href):
+            continue
+        normalized = normalize_http_url(href)
+        if normalized and normalized not in titles:
+            titles[normalized] = text
+    return titles
 
 
 def _compact_text(text: str, max_chars: int = 400) -> str:

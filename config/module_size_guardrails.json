@@ -1,0 +1,8 @@
+{
+  "app/routers/api/models.py": 1100,
+  "app/models/metadata.py": 1150,
+  "app/services/onboarding.py": 2350,
+  "app/pipeline/worker.py": 950,
+  "client/newsly/newsly/Services/APIClient.swift": 560,
+  "client/newsly/newsly/Views/ShortFormView.swift": 340
+}

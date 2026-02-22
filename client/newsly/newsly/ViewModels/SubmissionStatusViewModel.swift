@@ -11,14 +11,11 @@ import os.log
 private let logger = Logger(subsystem: "com.newsly", category: "SubmissionStatusViewModel")
 
 @MainActor
-final class SubmissionStatusViewModel: ObservableObject {
+final class SubmissionStatusViewModel: CursorPaginatedViewModel {
     @Published var submissions: [SubmissionStatusItem] = []
     @Published var isLoading = false
     @Published var isLoadingMore = false
     @Published var errorMessage: String?
-
-    private var nextCursor: String?
-    private var hasMore = false
 
     func load() async {
         guard !isLoading else { return }
@@ -29,8 +26,7 @@ final class SubmissionStatusViewModel: ObservableObject {
         do {
             let response = try await ContentService.shared.fetchSubmissionStatusList()
             submissions = response.submissions
-            nextCursor = response.nextCursor
-            hasMore = response.hasMore
+            applyPagination(nextCursor: response.nextCursor, hasMore: response.hasMore)
         } catch {
             logger.error("[SubmissionStatusViewModel] load failed | error=\(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -45,8 +41,7 @@ final class SubmissionStatusViewModel: ObservableObject {
         do {
             let response = try await ContentService.shared.fetchSubmissionStatusList(cursor: cursor)
             submissions.append(contentsOf: response.submissions)
-            nextCursor = response.nextCursor
-            hasMore = response.hasMore
+            applyPagination(nextCursor: response.nextCursor, hasMore: response.hasMore)
         } catch {
             logger.error("[SubmissionStatusViewModel] loadMore failed | error=\(error.localizedDescription)")
         }

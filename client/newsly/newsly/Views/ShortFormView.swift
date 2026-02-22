@@ -85,6 +85,7 @@ struct ShortFormView: View {
             .scrollTargetLayout()
         }
         .accessibilityIdentifier("short.screen")
+        .screenContainer()
         .scrollPosition(id: $topVisibleItemId, anchor: .top)
         .onChange(of: topVisibleItemId) { _, _ in
             markItemsAboveAsRead()
@@ -173,18 +174,43 @@ private struct ShortNewsRow: View {
         item.isRead ? .secondary : .primary
     }
 
-    private var metadataSource: String? {
-        item.source?.uppercased()
+    private var hasPlatform: Bool {
+        item.platform?.isEmpty == false
     }
 
-    private var metadataTime: String? {
-        item.relativeTimeDisplay?.uppercased()
+    /// True topic (not a platform-name fallback).
+    private var realTopic: String? {
+        guard let topic = item.primaryTopic, !topic.isEmpty else { return nil }
+        // The presenter falls back to platform name when no real topic exists.
+        if let platform = item.platform, topic.caseInsensitiveCompare(platform) == .orderedSame {
+            return nil
+        }
+        return topic.uppercased()
+    }
+
+    /// Metadata parts for the line below the headline: platform, source, comments, time.
+    private var metadataParts: [String] {
+        var parts: [String] = []
+        if let platform = item.platform, !platform.isEmpty {
+            parts.append(platform.uppercased())
+        }
+        if let source = item.source, !source.isEmpty,
+           source.caseInsensitiveCompare(item.platform ?? "") != .orderedSame {
+            parts.append(source.uppercased())
+        }
+        if let comments = item.commentCountDisplay {
+            parts.append(comments)
+        }
+        if let time = item.relativeTimeDisplay {
+            parts.append(time.uppercased())
+        }
+        return parts
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Topic label
-            if let topic = item.primaryTopic?.uppercased(), !topic.isEmpty {
+            // Topic label (only real topics, not platform fallback)
+            if let topic = realTopic {
                 Text(topic)
                     .font(.feedMeta)
                     .tracking(0.5)
@@ -200,26 +226,23 @@ private struct ShortNewsRow: View {
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // Source + time metadata below headline
-            HStack(spacing: 6) {
-                if let source = metadataSource {
-                    Text(source)
-                        .font(.feedMeta)
-                        .tracking(0.4)
-                        .foregroundStyle(Color.textSecondary)
+            // Platform · source · time metadata below headline
+            let parts = metadataParts
+            if !parts.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
+                        if index > 0 {
+                            Text("·")
+                                .font(.feedMeta)
+                                .foregroundStyle(Color.textTertiary)
+                        }
+                        Text(part)
+                            .font(.feedMeta)
+                            .tracking(0.4)
+                            .foregroundStyle(index == 0 && hasPlatform ? Color.platformLabel : Color.textSecondary)
+                    }
+                    Spacer()
                 }
-                if metadataSource != nil, metadataTime != nil {
-                    Text("·")
-                        .font(.feedMeta)
-                        .foregroundStyle(Color.textTertiary)
-                }
-                if let time = metadataTime {
-                    Text(time)
-                        .font(.feedMeta)
-                        .tracking(0.4)
-                        .foregroundStyle(Color.textSecondary)
-                }
-                Spacer()
             }
 
             // Discussion snippet
@@ -281,7 +304,7 @@ private struct DayDelimiter: View {
             Text(dayLabel)
                 .font(.system(size: 12, weight: .bold))
                 .tracking(1.0)
-                .foregroundStyle(Color.textTertiary)
+                .foregroundStyle(Color.sectionDelimiter)
             Spacer()
         }
         .padding(.horizontal, Spacing.rowHorizontal)

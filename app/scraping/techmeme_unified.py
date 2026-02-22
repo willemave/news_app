@@ -221,6 +221,7 @@ class TechmemeScraper(BaseScraper):
                 "metadata": {
                     "summary_text": summary_text,
                     "related_links": related_items,
+                    "comments_count": len(related_items),
                     "feed_name": feed_name,
                     "source_name": source_name,
                 },

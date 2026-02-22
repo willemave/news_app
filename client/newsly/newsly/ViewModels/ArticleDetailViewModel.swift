@@ -24,7 +24,7 @@ class ArticleDetailViewModel: ObservableObject {
         
         do {
             let content = try await contentService.fetchContentDetail(id: id)
-            if content.contentType == "article" {
+            if content.apiContentType == .article {
                 self.article = content
                 self.articleMetadata = content.articleMetadata
             } else {

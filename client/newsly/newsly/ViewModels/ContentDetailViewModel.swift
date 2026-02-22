@@ -80,13 +80,13 @@ class ContentDetailViewModel: ObservableObject {
                 )
 
                 // Update unread count based on content type
-                if fetched.contentType == "article" {
+                if fetched.apiContentType == .article {
                     logger.debug("[ContentDetail] Decrementing article count | contentId=\(self.contentId)")
                     unreadCountService.decrementArticleCount()
-                } else if fetched.contentType == "podcast" {
+                } else if fetched.apiContentType == .podcast {
                     logger.debug("[ContentDetail] Decrementing podcast count | contentId=\(self.contentId)")
                     unreadCountService.decrementPodcastCount()
-                } else if fetched.contentType == "news" {
+                } else if fetched.apiContentType == .news {
                     logger.debug("[ContentDetail] Decrementing news count | contentId=\(self.contentId)")
                     unreadCountService.decrementNewsCount()
                 }
@@ -223,7 +223,7 @@ class ContentDetailViewModel: ObservableObject {
     }
 
     private func resolvedShareURLString(for content: ContentDetail) -> String? {
-        if content.contentType == "news",
+        if content.apiContentType == .news,
            let articleURL = normalizedText(content.newsMetadata?.summary?.articleURL) {
             return articleURL
         }
@@ -426,10 +426,10 @@ class ContentDetailViewModel: ObservableObject {
         }
 
         // Full content / transcript
-        if content.contentType == "podcast", let podcastMetadata = content.podcastMetadata, let transcript = podcastMetadata.transcript {
+        if content.apiContentType == .podcast, let podcastMetadata = content.podcastMetadata, let transcript = podcastMetadata.transcript {
             fullText += "## Full Transcript\n\n" + transcript
         } else if let fullMarkdown = content.fullMarkdown {
-            fullText += (content.contentType == "podcast" ? "## Transcript\n\n" : "## Full Article\n\n")
+            fullText += (content.apiContentType == .podcast ? "## Transcript\n\n" : "## Full Article\n\n")
             fullText += fullMarkdown
         }
         return fullText

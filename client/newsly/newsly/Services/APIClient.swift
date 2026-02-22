@@ -40,6 +40,25 @@ enum APIError: LocalizedError {
     }
 }
 
+struct APIRequestDescriptor<Response: Decodable> {
+    let path: String
+    let method: String
+    let body: Data?
+    let queryItems: [URLQueryItem]?
+
+    init(
+        path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        queryItems: [URLQueryItem]? = nil
+    ) {
+        self.path = path
+        self.method = method
+        self.body = body
+        self.queryItems = queryItems
+    }
+}
+
 class APIClient {
     static let shared = APIClient()
     private let session: URLSession
@@ -49,112 +68,38 @@ class APIClient {
         self.session = URLSession.shared
         self.decoder = JSONDecoder()
     }
+
+    func request<T: Decodable>(
+        _ descriptor: APIRequestDescriptor<T>,
+        allowRefresh: Bool = true
+    ) async throws -> T {
+        try await request(
+            descriptor.path,
+            method: descriptor.method,
+            body: descriptor.body,
+            queryItems: descriptor.queryItems,
+            allowRefresh: allowRefresh
+        )
+    }
     
     func request<T: Decodable>(_ endpoint: String,
                                method: String = "GET",
                                body: Data? = nil,
                                queryItems: [URLQueryItem]? = nil,
                                allowRefresh: Bool = true) async throws -> T {
-        guard var components = URLComponents(string: AppSettings.shared.baseURL + endpoint) else {
-            throw APIError.invalidURL
-        }
-
-        if let queryItems = queryItems {
-            components.queryItems = queryItems
-        }
-
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        // Ensure we send a token or attempt refresh before issuing the request
-        if let accessToken = try await fetchAccessTokenOrRefresh(endpoint: endpoint) {
-            request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        }
-        let sentAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
-
-        if let body = body {
-            request.httpBody = body
-        }
+        let (data, _) = try await executeRequest(
+            endpoint: endpoint,
+            method: method,
+            body: body,
+            queryItems: queryItems,
+            allowRefresh: allowRefresh,
+            authFailureReason: "request_no_refresh_remaining"
+        )
 
         do {
-            let (data, response) = try await session.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw APIError.unknown
-            }
-
-            // Handle likely auth failures (always 401; some 403) - try refresh once
-            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                let detail = extractErrorDetail(from: data)
-                guard shouldTreatAsAuthFailure(
-                    statusCode: httpResponse.statusCode,
-                    response: httpResponse,
-                    detail: detail,
-                    sentAuthHeader: sentAuthHeader
-                ) else {
-                    logger.error(
-                        "[APIClient] Non-auth HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode) detail=\((detail ?? "n/a"), privacy: .public)"
-                    )
-                    throw APIError.httpError(statusCode: httpResponse.statusCode)
-                }
-
-                guard allowRefresh else {
-                    notifyAuthenticationRequired(
-                        endpoint: endpoint,
-                        statusCode: httpResponse.statusCode,
-                        detail: detail,
-                        sentAuthHeader: sentAuthHeader,
-                        reason: "request_no_refresh_remaining"
-                    )
-                    throw APIError.unauthorized
-                }
-                do {
-                    _ = try await AuthenticationService.shared.refreshAccessToken()
-                    // Retry request with new token
-                    return try await self.request(
-                        endpoint,
-                        method: method,
-                        body: body,
-                        queryItems: queryItems,
-                        allowRefresh: false
-                    )
-                } catch let authError as AuthError {
-                    switch authError {
-                    case .refreshTokenExpired, .noRefreshToken:
-                        notifyAuthenticationRequired(
-                            endpoint: endpoint,
-                            statusCode: httpResponse.statusCode,
-                            detail: detail,
-                            sentAuthHeader: sentAuthHeader,
-                            reason: "refresh_token_unavailable_or_expired"
-                        )
-                        throw APIError.unauthorized
-                    default:
-                        throw APIError.networkError(authError)
-                    }
-                } catch {
-                    throw APIError.networkError(error)
-                }
-            }
-
-            guard (200...299).contains(httpResponse.statusCode) else {
-                throw APIError.httpError(statusCode: httpResponse.statusCode)
-            }
-
-            do {
-                return try decoder.decode(T.self, from: data)
-            } catch {
-                throw APIError.decodingError(error)
-            }
-        } catch let error as APIError {
-            throw error
+            return try decoder.decode(T.self, from: data)
         } catch {
-            throw APIError.networkError(error)
+            throw APIError.decodingError(error)
         }
     }
     
@@ -162,88 +107,14 @@ class APIClient {
                      method: String = "POST",
                      body: Data? = nil,
                      allowRefresh: Bool = true) async throws {
-        guard let url = URL(string: AppSettings.shared.baseURL + endpoint) else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        // Ensure we send a token or attempt refresh before issuing the request
-        if let accessToken = try await fetchAccessTokenOrRefresh(endpoint: endpoint) {
-            request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        }
-        let sentAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
-
-        if let body = body {
-            request.httpBody = body
-        }
-
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw APIError.unknown
-            }
-
-            // Handle likely auth failures (always 401; some 403) - try refresh once
-            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                let detail = extractErrorDetail(from: data)
-                guard shouldTreatAsAuthFailure(
-                    statusCode: httpResponse.statusCode,
-                    response: httpResponse,
-                    detail: detail,
-                    sentAuthHeader: sentAuthHeader
-                ) else {
-                    logger.error(
-                        "[APIClient] Non-auth HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode) detail=\((detail ?? "n/a"), privacy: .public)"
-                    )
-                    throw APIError.httpError(statusCode: httpResponse.statusCode)
-                }
-
-                guard allowRefresh else {
-                    notifyAuthenticationRequired(
-                        endpoint: endpoint,
-                        statusCode: httpResponse.statusCode,
-                        detail: detail,
-                        sentAuthHeader: sentAuthHeader,
-                        reason: "request_void_no_refresh_remaining"
-                    )
-                    throw APIError.unauthorized
-                }
-                do {
-                    _ = try await AuthenticationService.shared.refreshAccessToken()
-                    return try await self.requestVoid(endpoint, method: method, body: body, allowRefresh: false)
-                } catch let authError as AuthError {
-                    switch authError {
-                    case .refreshTokenExpired, .noRefreshToken:
-                        notifyAuthenticationRequired(
-                            endpoint: endpoint,
-                            statusCode: httpResponse.statusCode,
-                            detail: detail,
-                            sentAuthHeader: sentAuthHeader,
-                            reason: "refresh_token_unavailable_or_expired"
-                        )
-                        throw APIError.unauthorized
-                    default:
-                        throw APIError.networkError(authError)
-                    }
-                } catch {
-                    throw APIError.networkError(error)
-                }
-            }
-
-            guard (200...299).contains(httpResponse.statusCode) else {
-                logger.error("[APIClient] HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)")
-                throw APIError.httpError(statusCode: httpResponse.statusCode)
-            }
-        } catch let error as APIError {
-            throw error
-        } catch {
-            logger.error("[APIClient] Network error | endpoint=\(endpoint, privacy: .public) error=\(error.localizedDescription)")
-            throw APIError.networkError(error)
-        }
+        _ = try await executeRequest(
+            endpoint: endpoint,
+            method: method,
+            body: body,
+            queryItems: nil,
+            allowRefresh: allowRefresh,
+            authFailureReason: "request_void_no_refresh_remaining"
+        )
     }
     
     func requestRaw(_ endpoint: String,
@@ -251,14 +122,39 @@ class APIClient {
                     body: Data? = nil,
                     queryItems: [URLQueryItem]? = nil,
                     allowRefresh: Bool = true) async throws -> [String: Any] {
+        let (data, _) = try await executeRequest(
+            endpoint: endpoint,
+            method: method,
+            body: body,
+            queryItems: queryItems,
+            allowRefresh: allowRefresh,
+            authFailureReason: "request_raw_no_refresh_remaining"
+        )
+
+        guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+            throw APIError.decodingError(
+                NSError(
+                    domain: "APIClient",
+                    code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: "Invalid JSON response"]
+                )
+            )
+        }
+        return json
+    }
+
+    private func buildRequest(
+        endpoint: String,
+        method: String,
+        body: Data?,
+        queryItems: [URLQueryItem]?
+    ) async throws -> (request: URLRequest, sentAuthHeader: Bool) {
         guard var components = URLComponents(string: AppSettings.shared.baseURL + endpoint) else {
             throw APIError.invalidURL
         }
-
-        if let queryItems = queryItems {
+        if let queryItems {
             components.queryItems = queryItems
         }
-
         guard let url = components.url else {
             throw APIError.invalidURL
         }
@@ -267,24 +163,37 @@ class APIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Ensure we send a token or attempt refresh before issuing the request
         if let accessToken = try await fetchAccessTokenOrRefresh(endpoint: endpoint) {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
-        let sentAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
-
-        if let body = body {
+        if let body {
             request.httpBody = body
         }
+        let sentAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
+        return (request, sentAuthHeader)
+    }
+
+    private func executeRequest(
+        endpoint: String,
+        method: String,
+        body: Data?,
+        queryItems: [URLQueryItem]?,
+        allowRefresh: Bool,
+        authFailureReason: String
+    ) async throws -> (Data, HTTPURLResponse) {
+        let (request, sentAuthHeader) = try await buildRequest(
+            endpoint: endpoint,
+            method: method,
+            body: body,
+            queryItems: queryItems
+        )
 
         do {
             let (data, response) = try await session.data(for: request)
-
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.unknown
             }
 
-            // Handle likely auth failures (always 401; some 403) - try refresh once
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                 let detail = extractErrorDetail(from: data)
                 guard shouldTreatAsAuthFailure(
@@ -305,19 +214,20 @@ class APIClient {
                         statusCode: httpResponse.statusCode,
                         detail: detail,
                         sentAuthHeader: sentAuthHeader,
-                        reason: "request_raw_no_refresh_remaining"
+                        reason: authFailureReason
                     )
                     throw APIError.unauthorized
                 }
+
                 do {
                     _ = try await AuthenticationService.shared.refreshAccessToken()
-                    // Retry request with new token
-                    return try await self.requestRaw(
-                        endpoint,
+                    return try await executeRequest(
+                        endpoint: endpoint,
                         method: method,
                         body: body,
                         queryItems: queryItems,
-                        allowRefresh: false
+                        allowRefresh: false,
+                        authFailureReason: authFailureReason
                     )
                 } catch let authError as AuthError {
                     switch authError {
@@ -342,11 +252,7 @@ class APIClient {
                 throw APIError.httpError(statusCode: httpResponse.statusCode)
             }
 
-            guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-                throw APIError.decodingError(NSError(domain: "APIClient", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON response"]))
-            }
-
-            return json
+            return (data, httpResponse)
         } catch let error as APIError {
             throw error
         } catch {

@@ -27,8 +27,8 @@ struct LongFormCard: View {
                     LinearGradient(
                         stops: [
                             .init(color: .clear, location: 0.0),
-                            .init(color: Color.surfacePrimary.opacity(0.35), location: 0.62),
-                            .init(color: Color.surfacePrimary, location: 1.0),
+                            .init(color: Color.surfaceSecondary.opacity(0.35), location: 0.62),
+                            .init(color: Color.surfaceSecondary, location: 1.0),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -108,8 +108,8 @@ struct LongFormCard: View {
                 LinearGradient(
                     stops: [
                         .init(color: .clear, location: 0),
-                        .init(color: Color.surfacePrimary, location: 0.25),
-                        .init(color: Color.surfacePrimary, location: 1.0),
+                        .init(color: Color.surfaceSecondary, location: 0.25),
+                        .init(color: Color.surfaceSecondary, location: 1.0),
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -118,7 +118,7 @@ struct LongFormCard: View {
                 .padding(.bottom, CardMetrics.textOverlapOffset)
             )
         }
-        .background(Color.surfacePrimary)
+        .background(Color.surfaceSecondary)
         .clipShape(RoundedRectangle(cornerRadius: CardMetrics.cardCornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: CardMetrics.cardCornerRadius, style: .continuous)

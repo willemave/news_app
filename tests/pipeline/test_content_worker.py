@@ -22,6 +22,7 @@ def mock_dependencies():
         patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
         patch("app.pipeline.worker.get_http_service") as mock_http,
         patch("app.pipeline.worker.get_queue_service") as mock_queue,
+        patch("app.pipeline.worker.get_task_queue_gateway") as mock_queue_gateway,
         patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
         patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
         patch("app.pipeline.worker.PodcastTranscribeWorker") as mock_transcribe,
@@ -31,6 +32,7 @@ def mock_dependencies():
             "checkout": mock_checkout,
             "http": mock_http,
             "queue": mock_queue,
+            "queue_gateway": mock_queue_gateway,
             "registry": mock_registry,
             "download": mock_download,
             "transcribe": mock_transcribe,
@@ -124,7 +126,7 @@ class TestContentWorker:
         mock_strategy.download_content.assert_called_once_with("https://example.com/article")
         mock_strategy.extract_data.assert_called_once()
         # Verify SUMMARIZE task was enqueued (summarization happens asynchronously)
-        worker.queue_service.enqueue.assert_called_with(TaskType.SUMMARIZE, content_id=123)
+        worker.queue_gateway.enqueue.assert_called_with(TaskType.SUMMARIZE, content_id=123)
         mock_db.commit.assert_called()
         # Content is stored in metadata for the SUMMARIZE task
         assert content_data.metadata.get("content") is not None
@@ -290,7 +292,7 @@ class TestContentWorker:
         # Content is stored in metadata for SUMMARIZE task
         assert content_data.metadata.get("content") is not None
         # SUMMARIZE task is enqueued
-        worker.queue_service.enqueue.assert_called_with(TaskType.SUMMARIZE, content_id=501)
+        worker.queue_gateway.enqueue.assert_called_with(TaskType.SUMMARIZE, content_id=501)
 
     def test_process_article_sync_extraction_error(self, mock_dependencies):
         """Test article processing with extraction error."""
@@ -402,7 +404,7 @@ class TestContentWorker:
         assert "summary" not in content_data.metadata
         assert content_data.metadata.get("content") is None
         # No SUMMARIZE task should be enqueued for extraction failures
-        worker.queue_service.enqueue.assert_not_called()
+        worker.queue_gateway.enqueue.assert_not_called()
         mock_domain_to_content.assert_called_once_with(content_data, mock_content)
         # Commit is called to persist the failed status
         mock_db.commit.assert_called()
@@ -439,8 +441,8 @@ class TestContentWorker:
         worker.podcast_download_worker.process_download_task.return_value = True
         worker.podcast_transcribe_worker.process_transcribe_task.return_value = True
 
-        # Mock queue service for task creation
-        worker.queue_service.enqueue.side_effect = [1, 2]  # Return task IDs
+        # Mock queue gateway for task creation
+        worker.queue_gateway.enqueue.side_effect = [1, 2]  # Return task IDs
 
         with patch("app.pipeline.worker.content_to_domain") as mock_converter:
             mock_converter.return_value = content_data
@@ -449,8 +451,8 @@ class TestContentWorker:
 
         assert result is True
         # Should have created download task (since file_path is not in metadata)
-        assert worker.queue_service.enqueue.call_count == 1
-        worker.queue_service.enqueue.assert_called_with(TaskType.DOWNLOAD_AUDIO, content_id=456)
+        assert worker.queue_gateway.enqueue.call_count == 1
+        worker.queue_gateway.enqueue.assert_called_with(TaskType.DOWNLOAD_AUDIO, content_id=456)
 
     def test_process_unknown_content_type(self, mock_dependencies):
         """Test processing with unknown content type."""

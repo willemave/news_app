@@ -45,7 +45,7 @@ struct SearchView: View {
                         ForEach(viewModel.results, id: \.id) { item in
                             NavigationLink(destination: ContentDetailView(contentId: item.id)) {
                                 HStack(spacing: 12) {
-                                    Image(systemName: item.contentType == "podcast" ? "waveform" : "doc.text")
+                                    Image(systemName: item.apiContentType == .podcast ? "waveform" : "doc.text")
                                         .foregroundStyle(Color.textSecondary)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(item.displayTitle)

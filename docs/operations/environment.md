@@ -87,7 +87,7 @@ alembic revision -m "..."  # Create migration
 ```bash
 ruff check .               # Lint
 ruff format .              # Format
-pytest app/tests/ -v       # Run tests
+pytest tests/ -v       # Run tests
 ```
 
 ### Running the App

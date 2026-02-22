@@ -10,12 +10,17 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
-from app.domain.converters import content_to_domain
-from app.models.metadata import ContentStatus, ContentType
+from app.models.metadata import ContentType
 from app.models.pagination import PaginationMetadata
-from app.models.schema import Content, ContentFavorites, ContentReadStatus
+from app.models.schema import Content, ContentReadStatus
 from app.models.user import User
-from app.routers.api.models import BulkMarkReadRequest, ContentListResponse, ContentSummaryResponse
+from app.presenters.content_presenter import (
+    build_content_summary_response,
+    build_domain_content,
+    resolve_image_urls,
+)
+from app.repositories.content_feed_query import build_user_feed_query
+from app.routers.api.models import BulkMarkReadRequest, ContentListResponse
 from app.utils.pagination import PaginationCursor
 
 logger = get_logger(__name__)
@@ -244,30 +249,9 @@ async def get_recently_read(
             )
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Query content joined with read status, ordered by read time
-    query = (
-        db.query(Content, ContentReadStatus.read_at, ContentFavorites.id)
-        .join(
-            ContentReadStatus,
-            and_(
-                Content.id == ContentReadStatus.content_id,
-                ContentReadStatus.user_id == current_user.id,
-            ),
-        )
-        .outerjoin(
-            ContentFavorites,
-            and_(
-                Content.id == ContentFavorites.content_id,
-                ContentFavorites.user_id == current_user.id,
-            ),
-        )
+    query = build_user_feed_query(db, current_user.id, mode="recently_read").add_columns(
+        ContentReadStatus.read_at.label("read_at")
     )
-
-    # Apply same visibility filters as other endpoints
-    query = query.filter(Content.status == ContentStatus.COMPLETED.value)
-
-    # Filter out "skip" classification articles
-    query = query.filter((Content.classification != "skip") | (Content.classification.is_(None)))
 
     # Apply cursor pagination if provided
     if last_id and last_read_at:
@@ -291,79 +275,24 @@ async def get_recently_read(
         results = results[:limit]  # Trim to requested limit
 
     # Extract content and read_at from results
-    contents = []
-    for c, read_at, favorite_id in results:
-        contents.append((c, read_at, favorite_id))
-
     # Convert to response format
     content_summaries = []
-    for c, _read_at, favorite_id in contents:
+    rows = []
+    for c, is_read, is_favorited, read_at in results:
+        rows.append((c, is_read, is_favorited, read_at))
+
+    for c, is_read, is_favorited, _read_at in rows:
         try:
-            domain_content = content_to_domain(c)
-
-            # Get classification from metadata
-            classification = None
-            if domain_content.structured_summary:
-                classification = domain_content.structured_summary.get("classification")
-
-            news_article_url = None
-            news_discussion_url = None
-            news_key_points = None
-            news_summary_text = domain_content.short_summary
-            discussion_url = (domain_content.metadata or {}).get("discussion_url")
-
-            if domain_content.content_type == ContentType.NEWS:
-                article_meta = (domain_content.metadata or {}).get("article", {})
-                aggregator_meta = (domain_content.metadata or {}).get("aggregator", {})
-                discussion_url = (domain_content.metadata or {}).get(
-                    "discussion_url"
-                ) or aggregator_meta.get("url")
-                summary_meta = (domain_content.metadata or {}).get("summary", {})
-                key_points = summary_meta.get("key_points")
-
-                news_article_url = (
-                    str(domain_content.url) if domain_content.url else article_meta.get("url")
-                )
-                news_discussion_url = discussion_url
-                discussion_url = news_discussion_url
-                if isinstance(key_points, list) and key_points:
-                    news_key_points = key_points
-                classification = summary_meta.get("classification") or classification
-                news_summary_text = (
-                    summary_meta.get("summary")
-                    or summary_meta.get("hook")
-                    or summary_meta.get("takeaway")
-                    or domain_content.summary
-                )
-
+            domain_content = build_domain_content(c)
+            image_url, thumbnail_url = resolve_image_urls(domain_content)
             content_summaries.append(
-                ContentSummaryResponse(
-                    id=domain_content.id,
-                    content_type=domain_content.content_type.value,
-                    url=str(domain_content.url),
-                    source_url=domain_content.source_url,
-                    title=domain_content.display_title,
-                    source=domain_content.source,
-                    platform=domain_content.platform or c.platform,
-                    status=domain_content.status.value,
-                    short_summary=news_summary_text,
-                    created_at=domain_content.created_at.isoformat()
-                    if domain_content.created_at
-                    else "",
-                    processed_at=domain_content.processed_at.isoformat()
-                    if domain_content.processed_at
-                    else None,
-                    classification=classification,
-                    publication_date=domain_content.publication_date.isoformat()
-                    if domain_content.publication_date
-                    else None,
-                    is_read=True,
-                    is_favorited=bool(favorite_id),
-                    discussion_url=discussion_url,
-                    news_article_url=news_article_url,
-                    news_discussion_url=news_discussion_url,
-                    news_key_points=news_key_points,
-                    news_summary=news_summary_text,
+                build_content_summary_response(
+                    content=c,
+                    domain_content=domain_content,
+                    is_read=bool(is_read),
+                    is_favorited=bool(is_favorited),
+                    image_url=image_url,
+                    thumbnail_url=thumbnail_url,
                 )
             )
         except Exception as e:
@@ -387,7 +316,7 @@ async def get_recently_read(
     # Generate next cursor if there are more results
     next_cursor = None
     if has_more and content_summaries:
-        last_item_content, last_item_read_at, _favorite_id = contents[-1]
+        last_item_content, _is_read, _is_favorited, last_item_read_at = rows[-1]
         next_cursor = PaginationCursor.encode_cursor(
             last_id=last_item_content.id,
             last_created_at=last_item_content.created_at,

@@ -339,8 +339,8 @@ def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrat
         assert extracted_data["text_content"] == "Article about Pfeilstorch"
         assert extracted_data["content_type"] == "html"
         assert extracted_data["final_url_after_redirects"] == url
-        # Should not have extraction_error since the extraction itself succeeded
-        assert "extraction_error" not in extracted_data
+        # Extraction succeeded; error marker should be empty.
+        assert extracted_data.get("extraction_error") is None
 
 
 def test_prepare_for_llm(html_strategy: HtmlProcessorStrategy):

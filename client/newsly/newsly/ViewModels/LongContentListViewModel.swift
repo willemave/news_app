@@ -53,7 +53,9 @@ final class LongContentListViewModel: BaseContentListViewModel {
                 logger.info("[LongContentList] Received contentMarkedAsRead notification | contentId=\(contentId) type=\(contentType, privacy: .public)")
 
                 // Only update if it's article or podcast content
-                guard contentType == "article" || contentType == "podcast" else {
+                guard let apiType = APIContentType(rawValue: contentType),
+                      apiType == .article || apiType == .podcast
+                else {
                     logger.debug("[LongContentList] Ignoring non-article/podcast content | contentId=\(contentId) type=\(contentType, privacy: .public)")
                     return
                 }

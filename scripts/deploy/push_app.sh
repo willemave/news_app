@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/common.sh"
+
 # SSH connection multiplexing for persistent connection
 SSH_CONTROL_PATH="/tmp/ssh-news-deploy-$$"
 
@@ -36,6 +40,7 @@ establish_ssh_connection() {
 #       --programs "a b c"          Supervisor program names (default: news_app_server news_app_workers_content news_app_workers_transcribe news_app_workers_onboarding news_app_workers_chat news_app_scrapers news_app_queue_watchdog)
 #       --promote-user USER         Run remote promote step as this user (default: root)
 #       --extra-exclude PATTERN     Additional rsync exclude (can repeat)
+#       --source-env FILE           Source env file for --env-only (default: .env.racknerd)
 #       --dry-run                   Show what would be done by rsync
 #       --env-only                  Only sync .env.racknerd (skip full app sync)
 #
@@ -74,6 +79,7 @@ ENV_REFRESHED=false
 FORCE_ENV=false
 REMOVE_REMOTE_VENV_REASON=""
 ENV_ONLY=false
+SOURCE_ENV_FILE=".env.racknerd"
 
 EXCLUDES=(
   ".git/"
@@ -96,15 +102,6 @@ EXCLUDES=(
   "client/"   # iOS client not needed on server
   ".env"      # deploy uses .env.racknerd instead of local dev env
 )
-
-require_option_value() {
-  local option_name="$1"
-  local option_value="${2:-}"
-  if [[ -z "$option_value" || "$option_value" == -* ]]; then
-    echo "Option $option_name requires a value" >&2
-    exit 1
-  fi
-}
 
 validate_supervisor_state() {
   local -a expected_programs=("$@")
@@ -238,6 +235,11 @@ while [[ $# -gt 0 ]]; do
       EXCLUDES+=("$2")
       shift 2
       ;;
+    --source-env)
+      require_option_value "$1" "${2:-}"
+      SOURCE_ENV_FILE="$2"
+      shift 2
+      ;;
     --dry-run) DRY_RUN=true; shift ;;
     --env-only) ENV_ONLY=true; shift ;;
     -\?|--help|-h)
@@ -272,36 +274,24 @@ if "$DEBUG"; then
   echo "DEBUG: RSYNC_DELETE=$RSYNC_DELETE DO_INSTALL=$DO_INSTALL PY_VER=$PY_VER RESTART_SUP=$RESTART_SUP"
 fi
 
-if [[ "$OWNER_GROUP" == *:* ]]; then
-  SERVICE_USER="${OWNER_GROUP%%:*}"
-  SERVICE_GROUP="${OWNER_GROUP##*:}"
-else
-  SERVICE_USER="$OWNER_GROUP"
-  SERVICE_GROUP="$OWNER_GROUP"
-fi
-
-if [[ -z "$SERVICE_USER" || -z "$SERVICE_GROUP" ]]; then
-  echo "Unable to determine service user/group from owner group: $OWNER_GROUP" >&2
-  exit 1
-fi
+split_owner_group "$OWNER_GROUP"
+SERVICE_USER="$DEPLOY_SERVICE_USER"
+SERVICE_GROUP="$DEPLOY_SERVICE_GROUP"
 
 # Establish persistent SSH connection and authenticate sudo once
 establish_ssh_connection
 
 # Handle --env-only: just sync .env.racknerd and copy to .env
 if "$ENV_ONLY"; then
-  echo "→ Syncing only .env.racknerd to $REMOTE_HOST:$REMOTE_DIR"
-  if [[ ! -f ".env.racknerd" ]]; then
-    echo "Error: .env.racknerd not found in $REPO_ROOT" >&2
-    exit 1
-  fi
-  # Sync to staging first (willem has write access there)
-  ssh -S "$SSH_CONTROL_PATH" "$REMOTE_HOST" "mkdir -p '$REMOTE_STAGING'"
-  rsync -az -e "ssh -S $SSH_CONTROL_PATH" .env.racknerd "$REMOTE_HOST:$REMOTE_STAGING/.env.racknerd"
-
-  echo "→ Copying .env.racknerd to app dir and .env via sudo"
-  CP_ENV_CMD=$(printf "bash -lc %q" "sudo cp '$REMOTE_STAGING/.env.racknerd' '$REMOTE_DIR/.env.racknerd' && sudo cp '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env' && sudo chown '$SERVICE_USER:$SERVICE_GROUP' '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env' && sudo chmod 600 '$REMOTE_DIR/.env.racknerd' '$REMOTE_DIR/.env'")
-  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$CP_ENV_CMD"
+  echo "→ Syncing only $SOURCE_ENV_FILE to $REMOTE_HOST:$REMOTE_DIR"
+  deploy_sync_env_file \
+    "$REMOTE_HOST" \
+    "$REMOTE_DIR" \
+    "$OWNER_GROUP" \
+    "$SOURCE_ENV_FILE" \
+    "$REMOTE_STAGING" \
+    "22" \
+    "$SSH_CONTROL_PATH"
 
   if "$RESTART_SUP"; then
     echo "→ Restarting supervisor programs"

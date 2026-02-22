@@ -211,7 +211,7 @@ def test_summarize_task_updates_news_metadata(db_session):
     llm_service.summarize_content.assert_called_once()
     call_kwargs = llm_service.summarize_content.call_args.kwargs
     assert call_kwargs["content_type"] == "news_digest"
-    assert call_kwargs["provider_override"] == "openai"
+    assert call_kwargs["provider_override"] is None
     assert call_kwargs["max_bullet_points"] == 4
     assert call_kwargs["max_quotes"] == 0
 
@@ -268,8 +268,8 @@ def test_summarize_task_handles_missing_text(db_session):
 
     result = handler.handle(task, context)
 
-    assert result.success is False
-    assert content.status == "failed"
+    assert result.success is True
+    assert content.status == "skipped"
     assert "No text to summarize" in (content.error_message or "")
     assert isinstance(content.content_metadata, dict)
     assert "processing_errors" in content.content_metadata

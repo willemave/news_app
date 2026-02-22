@@ -8,6 +8,13 @@ This plan is based on full folder-level review docs in `docs/research/codebase/*
 - Interface/type consistency across backend and iOS
 - Refactor cost vs. impact
 
+## Execution Status (February 21, 2026)
+- Milestone A completed: canonical backend enum contracts added, API models normalized to enums, OpenAPI export + generated iOS contracts wired.
+- Milestone B completed: analyze/process workflow orchestration extracted, metadata state helpers added and used in converters/pipeline flows.
+- Milestone C completed: gateway layer introduced (HTTP/LLM/queue), core pipeline/router call paths migrated, shared feed query builder adopted across list/favorites/recently-read/search.
+- Milestone D completed: iOS cursor pagination base viewmodel added and adopted by legacy lists, API client request pipeline unified, deploy script surface consolidated with shared helpers + operations command index.
+- Cross-cutting completion: duplicate test modules removed, module-size guardrails added, and targeted backend/iOS build validation executed.
+
 ## 1) Canonical Domain Contracts and Type System (Highest)
 Why this is first:
 - The same concepts (`content_type`, `status`, `summary_kind`, `summary_version`) are represented as raw strings in many places (`app/models/schema.py`, `app/routers/api/models.py`, iOS models/services), causing drift and branching logic.
@@ -171,4 +178,3 @@ Success criteria:
   - Milestone B: pipeline/workflow + metadata separation
   - Milestone C: gateway consolidation + router/query unification
   - Milestone D: iOS architecture convergence + operational cleanup
-
