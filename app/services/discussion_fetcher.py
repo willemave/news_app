@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.schema import Content, ContentDiscussion
+from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.utils.url_utils import normalize_http_url
 
 logger = get_logger(__name__)
@@ -116,7 +117,8 @@ def fetch_and_store_discussion(
             retryable=False,
         )
 
-    metadata = dict(content.content_metadata or {})
+    base_metadata = dict(content.content_metadata or {})
+    metadata = dict(base_metadata)
     discussion_url = _extract_discussion_url(metadata)
     platform = _normalize_platform(metadata.get("platform") or content.platform)
 
@@ -285,7 +287,12 @@ def fetch_and_store_discussion(
         did_change_metadata = True
 
     if did_change_metadata:
-        content.content_metadata = metadata
+        content.content_metadata = refresh_merge_content_metadata(
+            db,
+            content_id=content_id,
+            base_metadata=base_metadata,
+            updated_metadata=metadata,
+        )
         db.commit()
 
     if payload.status == "failed":

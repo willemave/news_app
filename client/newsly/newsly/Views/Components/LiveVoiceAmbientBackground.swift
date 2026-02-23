@@ -9,9 +9,13 @@ struct LiveVoiceAmbientBackground: View {
     let energy: Float
     let isActive: Bool
 
+    @Environment(\.colorScheme) private var colorScheme
+
     private var normalizedEnergy: Double {
         Double(min(1, max(0, energy)))
     }
+
+    private var isDark: Bool { colorScheme == .dark }
 
     var body: some View {
         TimelineView(.animation) { timeline in
@@ -22,6 +26,7 @@ struct LiveVoiceAmbientBackground: View {
             .blur(radius: 60 - CGFloat(normalizedEnergy) * 20)
             .drawingGroup()
         }
+        .background(isDark ? Color.black : Color.clear)
         .ignoresSafeArea()
         .opacity(isActive ? 1 : 0)
         .animation(.easeInOut(duration: 0.8), value: isActive)
@@ -66,7 +71,9 @@ struct LiveVoiceAmbientBackground: View {
             )
 
             // Opacity increases with energy — blobs become more vivid
-            let opacity = 0.4 + e * 0.45
+            // Boost slightly in dark mode so blobs stand out against black
+            let baseOpacity = isDark ? 0.55 : 0.4
+            let opacity = baseOpacity + e * 0.45
 
             context.fill(
                 Ellipse().path(in: rect),

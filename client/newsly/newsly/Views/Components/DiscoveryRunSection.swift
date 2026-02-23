@@ -56,40 +56,32 @@ struct DiscoveryRunSection: View {
         VStack(alignment: .leading, spacing: 0) {
             // Uppercase tracking label
             Text(briefingLabel.uppercased())
-                .font(.editorialMeta)
-                .foregroundColor(.editorialSub)
-                .tracking(1.2)
+                .font(.feedMeta)
+                .foregroundColor(.textSecondary)
+                .tracking(0.8)
                 .padding(.horizontal, Spacing.screenHorizontal)
                 .padding(.top, Spacing.sectionTop)
 
-            // Large serif display headline
+            // Summary headline
             if let summary = run.directionSummary, !summary.isEmpty {
-                // Extract first sentence as headline, rest as body
                 let parts = splitSummary(summary)
 
                 Text(parts.headline)
-                    .font(.editorialDisplay)
-                    .foregroundColor(.editorialText)
+                    .font(.cardHeadline)
+                    .foregroundColor(.textPrimary)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, Spacing.screenHorizontal)
                     .padding(.top, 10)
 
                 if let body = parts.body {
-                    HStack(spacing: 12) {
-                        Rectangle()
-                            .fill(Color.editorialBorder)
-                            .frame(width: 2)
-
-                        Text(body)
-                            .font(.editorialBody)
-                            .italic()
-                            .foregroundColor(.editorialSub)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, Spacing.screenHorizontal)
-                    .padding(.top, 12)
+                    Text(body)
+                        .font(.subheadline)
+                        .foregroundColor(.textSecondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Spacing.screenHorizontal)
+                        .padding(.top, 8)
                 }
             }
 

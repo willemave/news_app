@@ -18,6 +18,7 @@ from app.pipeline.task_models import TaskEnvelope, TaskResult
 from app.pipeline.workflows.analyze_url_workflow import AnalyzeUrlWorkflow
 from app.services.apple_podcasts import resolve_apple_podcast_episode
 from app.services.content_analyzer import AnalysisError
+from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.content_submission import normalize_url
 from app.services.feed_detection import detect_feeds_from_html
 from app.services.feed_subscription import subscribe_to_detected_feed
@@ -85,7 +86,8 @@ class FeedSubscriptionFlow:
         subscribe_to_feed: bool,
     ) -> FlowOutcome:
         """Process feed subscription and short-circuit if requested."""
-        metadata = normalize_metadata_shape(metadata)
+        base_metadata = normalize_metadata_shape(metadata)
+        metadata = dict(base_metadata)
         if not subscribe_to_feed:
             return FlowOutcome(handled=False, success=True)
 
@@ -145,7 +147,12 @@ class FeedSubscriptionFlow:
             processing_updates["feed_subscription"] = {"status": fetch_status}
         metadata = update_processing_state(metadata, **processing_updates)
 
-        content.content_metadata = metadata
+        content.content_metadata = refresh_merge_content_metadata(
+            db,
+            content_id=content.id,
+            base_metadata=base_metadata,
+            updated_metadata=metadata,
+        )
         content.status = ContentStatus.SKIPPED.value
         content.processed_at = datetime.now(UTC)
         db.commit()
@@ -170,7 +177,8 @@ class TwitterShareFlow:
         task_queue_gateway,
     ) -> FlowOutcome:
         """Process tweet URLs and enqueue follow-up tasks."""
-        metadata = normalize_metadata_shape(metadata)
+        base_metadata = normalize_metadata_shape(metadata)
+        metadata = dict(base_metadata)
         tweet_id = extract_tweet_id(str(url))
         is_self_submission = content.source == SELF_SUBMISSION_SOURCE or bool(
             metadata.get("submitted_by_user_id")
@@ -205,7 +213,12 @@ class TwitterShareFlow:
                         "error": error_message,
                     },
                 )
-                content.content_metadata = metadata
+                content.content_metadata = refresh_merge_content_metadata(
+                    db,
+                    content_id=content.id,
+                    base_metadata=base_metadata,
+                    updated_metadata=metadata,
+                )
                 db.commit()
                 return FlowOutcome(handled=False, success=True)
 
@@ -271,7 +284,12 @@ class TwitterShareFlow:
             content.url = tweet_url
             metadata = update_processing_state(metadata, tweet_only=True)
 
-        content.content_metadata = metadata
+        content.content_metadata = refresh_merge_content_metadata(
+            db,
+            content_id=content.id,
+            base_metadata=base_metadata,
+            updated_metadata=metadata,
+        )
         db.commit()
 
         submitted_via = metadata.get("submitted_via") or "share_sheet"
@@ -358,7 +376,8 @@ class UrlAnalysisFlow:
         analysis_instruction: str | None,
     ) -> Any | None:
         """Perform URL analysis with pattern matching or LLM analysis."""
-        metadata = normalize_metadata_shape(metadata)
+        base_metadata = normalize_metadata_shape(metadata)
+        metadata = dict(base_metadata)
         platform_hint = metadata.get("platform_hint")
         if not isinstance(platform_hint, str):
             platform_hint = None
@@ -391,7 +410,12 @@ class UrlAnalysisFlow:
                 metadata.setdefault("video_url", url)
                 metadata.setdefault("youtube_video", True)
 
-            content.content_metadata = metadata
+            content.content_metadata = refresh_merge_content_metadata(
+                db,
+                content_id=content.id,
+                base_metadata=base_metadata,
+                updated_metadata=metadata,
+            )
             db.commit()
             return None
 
@@ -456,7 +480,12 @@ class UrlAnalysisFlow:
                 content.platform,
             )
 
-        content.content_metadata = metadata
+        content.content_metadata = refresh_merge_content_metadata(
+            db,
+            content_id=content.id,
+            base_metadata=base_metadata,
+            updated_metadata=metadata,
+        )
         db.commit()
         return result if not isinstance(result, AnalysisError) else None
 

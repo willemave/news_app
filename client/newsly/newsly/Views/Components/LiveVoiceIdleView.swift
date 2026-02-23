@@ -10,6 +10,7 @@ struct LiveVoiceIdleView: View {
     let statusMessage: String
     let onConnect: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isPressed = false
 
     private var isConnecting: Bool {
@@ -49,8 +50,18 @@ struct LiveVoiceIdleView: View {
                         )
                     )
                     .frame(width: 128, height: 128)
-                    .shadow(color: Color.earthStoneDark.opacity(0.25), radius: 12, x: 8, y: 8)
-                    .shadow(color: Color.white.opacity(0.8), radius: 12, x: -8, y: -8)
+                    .shadow(
+                        color: colorScheme == .dark
+                            ? Color.black.opacity(0.5)
+                            : Color.earthStoneDark.opacity(0.25),
+                        radius: 12, x: 8, y: 8
+                    )
+                    .shadow(
+                        color: colorScheme == .dark
+                            ? Color.white.opacity(0.08)
+                            : Color.white.opacity(0.8),
+                        radius: 12, x: -8, y: -8
+                    )
 
                 if isConnecting {
                     ProgressView()

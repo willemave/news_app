@@ -92,7 +92,7 @@ python scripts/add_user_scraper_config.py --user-id 1 --list
 
 ### Daily Operation
 ```bash
-# 1. Scrape new content (scheduled: hourly)
+# 1. Scrape new content (scheduled: every 15 minutes)
 python scripts/run_scrapers.py
 
 # 2. Bootstrap new content to user inboxes
@@ -210,8 +210,8 @@ with get_db() as db:
 
 ```bash
 # Crontab example
-# Scrape every hour
-0 * * * * cd /opt/newsly && python scripts/run_scrapers.py >> /var/log/newsly/scrapers.log 2>&1
+# Scrape every 15 minutes
+*/15 * * * * cd /opt/newsly && python scripts/run_scrapers.py >> /var/log/newsly/scrapers.log 2>&1
 
 # Bootstrap 5 minutes after scraping (daily content)
 5 * * * * cd /opt/newsly && ./scripts/bootstrap_feeds.sh --days 1 >> /var/log/newsly/bootstrap.log 2>&1

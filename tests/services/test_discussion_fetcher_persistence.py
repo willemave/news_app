@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy.orm import sessionmaker
 
-from app.models.schema import ContentDiscussion
+from app.models.schema import Content, ContentDiscussion
 from app.services import discussion_fetcher
 from app.services.discussion_fetcher import (
     DiscussionFetchError,
@@ -350,3 +351,77 @@ def test_fetch_and_store_denormalizes_comment_count_for_techmeme(
     db_session.refresh(content)
     assert content.content_metadata["comment_count"] == 2
     assert content.content_metadata["top_comment"]["author"] == "news.ycombinator.com"
+
+
+def test_fetch_and_store_discussion_preserves_concurrent_metadata_updates(
+    db_session,
+    monkeypatch,
+) -> None:
+    content = create_news_content(
+        db_session,
+        metadata={
+            "platform": "hackernews",
+            "discussion_url": "https://news.ycombinator.com/item?id=123",
+            "workflow_transition": "initial",
+        },
+    )
+
+    external_session_factory = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db_session.get_bind(),
+    )
+    external_session = external_session_factory()
+    try:
+        external_content = external_session.query(Content).filter(Content.id == content.id).first()
+        assert external_content is not None
+        metadata = dict(external_content.content_metadata or {})
+        metadata["workflow_transition"] = "analyze_url.complete"
+        metadata["external_flag"] = True
+        external_content.content_metadata = metadata
+        external_session.commit()
+    finally:
+        external_session.close()
+
+    monkeypatch.setattr(
+        discussion_fetcher,
+        "_build_hackernews_payload",
+        lambda *args, **kwargs: DiscussionPayload(
+            status="completed",
+            mode="comments",
+            payload={
+                "mode": "comments",
+                "source_url": "https://news.ycombinator.com/item?id=123",
+                "discussion_groups": [],
+                "comments": [
+                    {
+                        "comment_id": "c1",
+                        "parent_id": None,
+                        "author": "alice",
+                        "text": "Great post",
+                        "compact_text": "Great post",
+                        "depth": 0,
+                        "created_at": None,
+                        "source_url": "https://news.ycombinator.com/item?id=123",
+                    }
+                ],
+                "compact_comments": ["Great post"],
+                "links": [],
+                "stats": {
+                    "cap": 500,
+                    "fetched_count": 1,
+                    "cap_reached": False,
+                    "declared_comment_count": 42,
+                },
+            },
+        ),
+    )
+
+    result = fetch_and_store_discussion(db_session, content.id)
+    assert result.success is True
+
+    db_session.refresh(content)
+    assert content.content_metadata["workflow_transition"] == "analyze_url.complete"
+    assert content.content_metadata["external_flag"] is True
+    assert content.content_metadata["top_comment"]["author"] == "alice"
+    assert content.content_metadata["comment_count"] == 42

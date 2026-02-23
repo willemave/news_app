@@ -22,7 +22,7 @@ struct EmptyStateView: View {
 
             VStack(spacing: 4) {
                 Text(title)
-                    .font(.headline)
+                    .font(.listTitle.weight(.semibold))
                     .foregroundStyle(Color.textPrimary)
 
                 Text(subtitle)
@@ -35,7 +35,7 @@ struct EmptyStateView: View {
             if let actionTitle, let action {
                 Button(action: action) {
                     Text(actionTitle)
-                        .font(.subheadline.weight(.medium))
+                        .font(.listSubtitle.weight(.medium))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

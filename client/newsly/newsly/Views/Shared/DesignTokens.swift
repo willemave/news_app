@@ -48,9 +48,21 @@ extension Color {
     static var statusInactive: Color { Color(.tertiaryLabel) }
     static var statusDestructive: Color { Color.red.opacity(0.85) }
 
-    // Editorial colors (Discovery redesign)
-    static var editorialText: Color { Color(red: 0.067, green: 0.067, blue: 0.067) }     // #111111
-    static var editorialSub: Color { Color(red: 0.443, green: 0.443, blue: 0.478) }      // #71717a
+    // Editorial colors (Discovery redesign) — adaptive for dark mode
+    static var editorialText: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.93, green: 0.93, blue: 0.94, alpha: 1.0)   // #EDEDED
+                : UIColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0) // #111111
+        })
+    }
+    static var editorialSub: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.62, green: 0.62, blue: 0.65, alpha: 1.0)   // #9E9EA6
+                : UIColor(red: 0.443, green: 0.443, blue: 0.478, alpha: 1.0) // #71717A
+        })
+    }
     static var editorialBorder: Color { Color(.systemGray5) }
 
     // Adaptive accent (topic badges, favorites)
@@ -80,13 +92,49 @@ extension Color {
         })
     }
 
-    // Earthy palette (Live Voice)
-    static var earthTerracotta: Color { Color(red: 0.765, green: 0.420, blue: 0.310) }  // #C36B4F
-    static var earthSage: Color { Color(red: 0.541, green: 0.604, blue: 0.357) }         // #8A9A5B
-    static var earthIvory: Color { Color(red: 0.976, green: 0.969, blue: 0.949) }         // #F9F7F2
-    static var earthClayMuted: Color { Color(red: 0.898, green: 0.827, blue: 0.773) }     // #E5D3C5
-    static var earthStoneDark: Color { Color(red: 0.365, green: 0.341, blue: 0.322) }     // #5D5752
-    static var earthWoodWarm: Color { Color(red: 0.545, green: 0.369, blue: 0.235) }      // #8B5E3C
+    // Earthy palette (Live Voice) — adaptive for dark mode
+    static var earthTerracotta: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.831, green: 0.514, blue: 0.416, alpha: 1.0)  // #D4836A
+                : UIColor(red: 0.765, green: 0.420, blue: 0.310, alpha: 1.0)  // #C36B4F
+        })
+    }
+    static var earthSage: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.616, green: 0.678, blue: 0.431, alpha: 1.0)  // #9DAD6E
+                : UIColor(red: 0.541, green: 0.604, blue: 0.357, alpha: 1.0)  // #8A9A5B
+        })
+    }
+    static var earthIvory: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.102, green: 0.098, blue: 0.090, alpha: 1.0)  // #1A1917
+                : UIColor(red: 0.976, green: 0.969, blue: 0.949, alpha: 1.0)  // #F9F7F2
+        })
+    }
+    static var earthClayMuted: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.239, green: 0.208, blue: 0.188, alpha: 1.0)  // #3D3530
+                : UIColor(red: 0.898, green: 0.827, blue: 0.773, alpha: 1.0)  // #E5D3C5
+        })
+    }
+    static var earthStoneDark: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.710, green: 0.686, blue: 0.659, alpha: 1.0)  // #B5AFA8
+                : UIColor(red: 0.365, green: 0.341, blue: 0.322, alpha: 1.0)  // #5D5752
+        })
+    }
+    static var earthWoodWarm: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.651, green: 0.478, blue: 0.333, alpha: 1.0)  // #A67A55
+                : UIColor(red: 0.545, green: 0.369, blue: 0.235, alpha: 1.0)  // #8B5E3C
+        })
+    }
 
     // Watercolor palette (Landing & Onboarding)
     static var watercolorBase: Color { Color(red: 0.973, green: 0.980, blue: 0.988) }           // #f8fafc
@@ -118,11 +166,11 @@ extension Font {
     static let cardFooter = Font.system(size: 11, weight: .medium)
 
     // Editorial typography (Discovery redesign)
-    static let editorialDisplay = Font.system(size: 34, weight: .regular, design: .serif)
-    static let editorialHeadline = Font.system(size: 22, weight: .regular, design: .serif)
-    static let editorialBody = Font.system(size: 15, weight: .regular, design: .serif)
-    static let editorialMeta = Font.system(size: 10, weight: .bold)
-    static let editorialSubMeta = Font.system(size: 10, weight: .regular)
+    static let editorialDisplay = Font.system(.largeTitle, design: .serif)
+    static let editorialHeadline = Font.system(.title3, design: .serif)
+    static let editorialBody = Font.system(.body, design: .serif)
+    static let editorialMeta = Font.caption2.weight(.bold)
+    static let editorialSubMeta = Font.caption2
 
     // Watercolor typography (Landing & Onboarding)
     static let watercolorDisplay = Font.system(size: 54, weight: .regular, design: .serif)

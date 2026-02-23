@@ -13,6 +13,7 @@ struct KnowledgeView: View {
 
     @StateObject private var viewModel = ChatSessionsViewModel()
     @StateObject private var discoveryViewModel = DiscoveryViewModel()
+    @ObservedObject private var settings = AppSettings.shared
     @State private var showingNewChat = false
     @State private var selectedProvider: ChatModelProvider = .anthropic
     @State private var pendingNavigationRoute: ChatSessionRoute?
@@ -26,6 +27,14 @@ struct KnowledgeView: View {
     /// Captured threshold for showing "new" items (frozen on appear)
     @State private var newItemThreshold: Date = .distantPast
     @State private var discoveryNewThreshold: Date = .distantPast
+
+    private var contentTextSize: DynamicTypeSize {
+        ContentTextSize(index: settings.contentTextSizeIndex).dynamicTypeSize
+    }
+
+    private var appTextSize: DynamicTypeSize {
+        AppTextSize(index: settings.appTextSizeIndex).dynamicTypeSize
+    }
 
     init(
         onSelectSession: ((ChatSessionRoute) -> Void)? = nil,
@@ -119,6 +128,7 @@ struct KnowledgeView: View {
                     pendingNavigationRoute = ChatSessionRoute(sessionId: session.id)
                 }
             )
+            .dynamicTypeSize(appTextSize)
             .presentationDetents([.height(380)])
             .presentationDragIndicator(.hidden)
             .presentationCornerRadius(24)
@@ -130,11 +140,13 @@ struct KnowledgeView: View {
         switch selectedTab {
         case .chats:
             chatSessionsBody
+                .dynamicTypeSize(appTextSize)
         case .discover:
             KnowledgeDiscoveryView(
                 viewModel: discoveryViewModel,
                 hasNewSuggestions: hasNewDiscoverySuggestions
             )
+            .dynamicTypeSize(contentTextSize)
         case .live:
             KnowledgeLiveView(
                 initialRoute: LiveVoiceRoute(
@@ -153,6 +165,7 @@ struct KnowledgeView: View {
             .accessibilityIdentifier("knowledge.live")
         case .favorites:
             FavoritesView(showNavigationTitle: false)
+                .dynamicTypeSize(appTextSize)
         }
     }
 
@@ -400,7 +413,7 @@ struct ChatSessionCard: View {
             // Header row: title + badge + arrow
             HStack(spacing: 8) {
                 Text(session.displayTitle)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.listTitle.weight(.semibold))
                     .foregroundColor(.textPrimary)
                     .lineLimit(1)
 
@@ -431,7 +444,7 @@ struct ChatSessionCard: View {
                 ProgressView()
                     .scaleEffect(0.5)
                 Text("THINKING")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.listMono.weight(.semibold))
                     .tracking(0.5)
             }
             .foregroundColor(.textTertiary)
@@ -442,7 +455,7 @@ struct ChatSessionCard: View {
 
         case .ready:
             Text("READY")
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .font(.listMono.weight(.semibold))
                 .tracking(0.5)
                 .foregroundColor(.blue)
                 .padding(.horizontal, 8)
@@ -464,16 +477,16 @@ struct ChatSessionCard: View {
 
             (Text(prefix).foregroundColor(prefixColor).fontWeight(.medium) +
              Text(preview).foregroundColor(.textSecondary))
-                .font(.system(size: 13))
+                .font(.listSubtitle)
                 .lineLimit(2)
         } else if session.isEmptyFavorite, let summary = session.articleSummary, !summary.isEmpty {
             Text(summary)
-                .font(.system(size: 13))
+                .font(.listSubtitle)
                 .foregroundColor(.textSecondary)
                 .lineLimit(2)
         } else if let subtitle = session.displaySubtitle {
             Text(subtitle)
-                .font(.system(size: 13))
+                .font(.listSubtitle)
                 .foregroundColor(.textSecondary)
                 .lineLimit(2)
         }
@@ -527,11 +540,10 @@ struct NewChatSheet: View {
 
                 VStack(spacing: 2) {
                     Text(provider.displayName)
-                        .font(.title3)
-                        .fontWeight(.semibold)
+                        .font(.listTitle.weight(.semibold))
 
                     Text(provider.tagline)
-                        .font(.caption)
+                        .font(.listCaption)
                         .foregroundColor(.secondary)
                 }
             }
@@ -543,12 +555,14 @@ struct NewChatSheet: View {
                 ZStack(alignment: .topLeading) {
                     if initialMessage.isEmpty {
                         Text("What would you like to explore?")
+                            .font(.listSubtitle)
                             .foregroundColor(Color(.placeholderText))
                             .padding(.horizontal, 16)
                             .padding(.vertical, 14)
                     }
 
                     TextEditor(text: $initialMessage)
+                        .font(.listSubtitle)
                         .scrollContentBackground(.hidden)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
@@ -561,9 +575,9 @@ struct NewChatSheet: View {
                 if let error = errorMessage {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .font(.caption)
+                            .font(.listCaption)
                         Text(error)
-                            .font(.caption)
+                            .font(.listCaption)
                     }
                     .foregroundColor(.red)
                 }
@@ -572,10 +586,10 @@ struct NewChatSheet: View {
 
             HStack(spacing: 6) {
                 Image(systemName: "star")
-                    .font(.caption2)
+                    .font(.chipLabel)
                     .foregroundColor(.orange)
                 Text("Favorite articles to chat about them with full context.")
-                    .font(.caption)
+                    .font(.listCaption)
                     .foregroundColor(.secondary)
             }
             .padding(.top, 10)
@@ -600,7 +614,7 @@ struct NewChatSheet: View {
                              ? "Start Chat"
                              : "Send")
                     }
-                    .font(.headline)
+                    .font(.listSubtitle.weight(.semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
@@ -613,7 +627,7 @@ struct NewChatSheet: View {
                     isPresented = false
                 } label: {
                     Text("Cancel")
-                        .font(.subheadline)
+                        .font(.listSubtitle)
                         .foregroundColor(.secondary)
                 }
                 .padding(.bottom, 8)

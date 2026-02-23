@@ -128,9 +128,9 @@ stdout_logfile=/var/log/news_app/workers-chat.log
 stderr_logfile=/var/log/news_app/workers-chat.err.log
 environment=ENVIRONMENT="production"
 
-; Scrapers are one-shot; run them periodically (default: every 4h = 14400s)
+; Scrapers are one-shot; run them periodically (default: every 15m = 900s)
 [program:news_app_scrapers]
-command=/bin/bash -lc 'while true; do /opt/news_app/scripts/start_scrapers.sh --show-stats; sleep ${SCRAPER_INTERVAL_SECONDS:-14400}; done'
+command=/bin/bash -lc 'while true; do /opt/news_app/scripts/start_scrapers.sh --show-stats; sleep ${SCRAPER_INTERVAL_SECONDS:-900}; done'
 directory=/opt/news_app
 user=newsapp
 autostart=true
@@ -138,7 +138,7 @@ autorestart=true
 stopsignal=INT
 stdout_logfile=/var/log/news_app/scrapers.log
 stderr_logfile=/var/log/news_app/scrapers.err.log
-environment=ENVIRONMENT="production",SCRAPER_INTERVAL_SECONDS="14400"
+environment=ENVIRONMENT="production",SCRAPER_INTERVAL_SECONDS="900"
 
 [program:news_app_queue_watchdog]
 command=/bin/bash -lc "/opt/news_app/scripts/start_queue_watchdog.sh"
@@ -267,8 +267,8 @@ sudo certbot renew --dry-run
 - For one-off scrapes instead of the loop, disable `news_app_scrapers` and use cron, e.g.:
 
 ```bash
-# Every 4 hours via cron
-( sudo crontab -u newsapp -l 2>/dev/null; echo "0 */4 * * * cd /opt/news_app && /bin/bash -lc './scripts/start_scrapers.sh --show-stats' >> /var/log/news_app/scrapers-cron.log 2>&1" ) | sudo crontab -u newsapp -
+# Every 15 minutes via cron
+( sudo crontab -u newsapp -l 2>/dev/null; echo "*/15 * * * * cd /opt/news_app && /bin/bash -lc './scripts/start_scrapers.sh --show-stats' >> /var/log/news_app/scrapers-cron.log 2>&1" ) | sudo crontab -u newsapp -
 ```
 
 ---

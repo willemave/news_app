@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-// MARK: - Loading State (Editorial Skeleton)
+// MARK: - Loading State (Skeleton)
 
 struct DiscoveryLoadingStateView: View {
     @State private var shimmer = false
@@ -28,6 +28,18 @@ struct DiscoveryLoadingStateView: View {
 
     private var skeletonCard: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Headline skeleton
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(.tertiarySystemFill))
+                .frame(height: 18)
+                .frame(maxWidth: .infinity)
+                .opacity(shimmer ? 0.4 : 0.8)
+
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(.tertiarySystemFill))
+                .frame(width: 200, height: 18)
+                .opacity(shimmer ? 0.3 : 0.7)
+
             // Metadata bar skeleton
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 2)
@@ -47,18 +59,6 @@ struct DiscoveryLoadingStateView: View {
 
                 Spacer()
             }
-
-            // Headline skeleton
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color(.tertiarySystemFill))
-                .frame(height: 20)
-                .frame(maxWidth: .infinity)
-                .opacity(shimmer ? 0.4 : 0.8)
-
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color(.tertiarySystemFill))
-                .frame(width: 200, height: 20)
-                .opacity(shimmer ? 0.3 : 0.7)
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground))
@@ -80,27 +80,26 @@ struct DiscoveryErrorStateView: View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 28, weight: .light))
-                .foregroundColor(.editorialSub)
+                .foregroundColor(.textSecondary)
 
             VStack(spacing: 6) {
                 Text("Something went wrong")
-                    .font(.editorialHeadline)
-                    .foregroundColor(.editorialText)
+                    .font(.listTitle.weight(.semibold))
+                    .foregroundColor(.textPrimary)
 
                 Text(error)
-                    .font(.editorialBody)
-                    .foregroundColor(.editorialSub)
+                    .font(.listSubtitle)
+                    .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
             }
 
             Button(action: onRetry) {
                 Label("Try Again", systemImage: "arrow.clockwise")
-                    .font(.subheadline.weight(.medium))
+                    .font(.listSubtitle.weight(.medium))
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .tint(.editorialSub)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
@@ -121,16 +120,16 @@ struct DiscoveryProcessingStateView: View {
         VStack(spacing: 24) {
             Image(systemName: "sparkles")
                 .font(.system(size: 32, weight: .light))
-                .foregroundColor(.editorialSub)
+                .foregroundColor(.textSecondary)
 
             VStack(spacing: 8) {
                 Text("Discovering New Content")
-                    .font(.editorialHeadline)
-                    .foregroundColor(.editorialText)
+                    .font(.listTitle.weight(.semibold))
+                    .foregroundColor(.textPrimary)
 
                 Text(runStatusDescription)
-                    .font(.editorialBody)
-                    .foregroundColor(.editorialSub)
+                    .font(.listSubtitle)
+                    .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
             }
@@ -139,7 +138,7 @@ struct DiscoveryProcessingStateView: View {
             HStack(spacing: 8) {
                 ForEach(0..<4, id: \.self) { index in
                     Circle()
-                        .fill(index <= currentJobStage ? Color.editorialText : Color.editorialBorder)
+                        .fill(index <= currentJobStage ? Color.textPrimary : Color.editorialBorder)
                         .frame(width: 6, height: 6)
                         .scaleEffect(index == currentJobStage ? pulseScale : 1.0)
                 }
@@ -165,23 +164,23 @@ struct DiscoveryEmptyStateView: View {
         VStack(spacing: 24) {
             Image(systemName: "sparkles")
                 .font(.system(size: 32, weight: .light))
-                .foregroundColor(.editorialSub)
+                .foregroundColor(.textSecondary)
 
             VStack(spacing: 8) {
                 Text("Discover New Content")
-                    .font(.editorialHeadline)
-                    .foregroundColor(.editorialText)
+                    .font(.listTitle.weight(.semibold))
+                    .foregroundColor(.textPrimary)
 
                 Text("Get personalized suggestions for feeds, podcasts, and channels based on your reading history.")
-                    .font(.editorialBody)
-                    .foregroundColor(.editorialSub)
+                    .font(.listSubtitle)
+                    .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
             }
 
             Button(action: onGenerate) {
                 Label("Generate Suggestions", systemImage: "sparkles")
-                    .font(.subheadline.weight(.medium))
+                    .font(.listSubtitle.weight(.medium))
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)

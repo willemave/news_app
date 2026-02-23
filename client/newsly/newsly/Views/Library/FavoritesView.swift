@@ -9,7 +9,6 @@ struct FavoritesView: View {
     let showNavigationTitle: Bool
 
     @StateObject private var viewModel = ContentListViewModel(defaultReadFilter: "all")
-    @State private var showingFilters = false
 
     init(showNavigationTitle: Bool = true) {
         self.showNavigationTitle = showNavigationTitle
@@ -32,29 +31,6 @@ struct FavoritesView: View {
         .background(Color.surfacePrimary)
         .navigationTitle(showNavigationTitle ? "Favorites" : "")
         .task { await viewModel.loadFavorites() }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showingFilters = true
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                }
-                .accessibilityLabel("Filters")
-            }
-        }
-        .sheet(isPresented: $showingFilters) {
-            FilterSheet(
-                selectedContentType: $viewModel.selectedContentType,
-                selectedDate: $viewModel.selectedDate,
-                selectedReadFilter: $viewModel.selectedReadFilter,
-                isPresented: $showingFilters,
-                contentTypes: viewModel.contentTypes,
-                availableDates: viewModel.availableDates
-            )
-            .onDisappear {
-                Task { await viewModel.loadFavorites() }
-            }
-        }
     }
 
     // MARK: - Empty State
@@ -164,8 +140,6 @@ private struct FavoriteRow: View {
             }
 
             Spacer(minLength: 8)
-
-            NavigationChevron()
         }
         .appRow(.regular)
     }

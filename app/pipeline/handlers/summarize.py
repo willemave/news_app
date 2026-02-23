@@ -27,6 +27,7 @@ from app.models.metadata import (
 from app.models.schema import Content
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
+from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.dig_deeper import enqueue_dig_deeper_task
 from app.services.queue import TaskType
 
@@ -224,7 +225,8 @@ class SummarizeHandler:
                     *,
                     status: ContentStatus = ContentStatus.FAILED,
                 ) -> None:
-                    metadata = _load_latest_metadata()
+                    base_metadata = _load_latest_metadata()
+                    metadata = dict(base_metadata)
                     metadata.pop("summary", None)
                     existing_errors = metadata.get("processing_errors")
                     processing_errors = (
@@ -239,14 +241,20 @@ class SummarizeHandler:
                     )
                     metadata["processing_errors"] = processing_errors
 
-                    content.content_metadata = metadata
+                    content.content_metadata = refresh_merge_content_metadata(
+                        db,
+                        content_id=content.id,
+                        base_metadata=base_metadata,
+                        updated_metadata=metadata,
+                    )
                     content.status = status.value
                     content.error_message = reason[:500]
                     content.processed_at = datetime.now(UTC)
                     db.commit()
 
                 def _persist_retryable_failure(reason: str) -> None:
-                    metadata = _load_latest_metadata()
+                    base_metadata = _load_latest_metadata()
+                    metadata = dict(base_metadata)
                     existing_errors = metadata.get("processing_errors")
                     processing_errors = (
                         existing_errors.copy() if isinstance(existing_errors, list) else []
@@ -261,7 +269,12 @@ class SummarizeHandler:
                     )
                     metadata["processing_errors"] = processing_errors
 
-                    content.content_metadata = metadata
+                    content.content_metadata = refresh_merge_content_metadata(
+                        db,
+                        content_id=content.id,
+                        base_metadata=base_metadata,
+                        updated_metadata=metadata,
+                    )
                     content.status = ContentStatus.PROCESSING.value
                     content.error_message = reason[:500]
                     db.commit()
@@ -405,7 +418,8 @@ class SummarizeHandler:
                     return TaskResult.fail(str(exc), retryable=False)
 
                 if summary is not None:
-                    metadata = _load_latest_metadata()
+                    base_metadata = _load_latest_metadata()
+                    metadata = dict(base_metadata)
                     share_and_chat_user_ids = _extract_share_and_chat_user_ids(metadata)
                     summary_dict = (
                         summary.model_dump(mode="json", by_alias=True)
@@ -466,7 +480,12 @@ class SummarizeHandler:
                     if share_and_chat_user_ids:
                         metadata.pop("share_and_chat_user_ids", None)
 
-                    content.content_metadata = metadata
+                    content.content_metadata = refresh_merge_content_metadata(
+                        db,
+                        content_id=content.id,
+                        base_metadata=base_metadata,
+                        updated_metadata=metadata,
+                    )
                     content.status = ContentStatus.COMPLETED.value
                     content.processed_at = datetime.now(UTC)
                     db.commit()

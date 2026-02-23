@@ -109,26 +109,26 @@ struct KnowledgeDiscoveryView: View {
                     ProgressView()
                         .controlSize(.small)
                     Text("Searching...")
-                        .font(.editorialSubMeta)
-                        .foregroundColor(.editorialSub)
+                        .font(.listCaption)
+                        .foregroundColor(.textSecondary)
                 }
                 .padding(.top, 8)
             } else if let error = viewModel.podcastSearchError {
                 HStack {
                     Text(error)
-                        .font(.caption)
-                        .foregroundColor(.editorialSub)
+                        .font(.listCaption)
+                        .foregroundColor(.textSecondary)
                     Spacer()
                     Button("Retry") {
                         Task { await viewModel.retryPodcastSearch() }
                     }
-                    .font(.caption)
+                    .font(.listCaption)
                 }
                 .padding(.top, 8)
             } else if viewModel.hasPodcastSearchRun && viewModel.podcastSearchResults.isEmpty {
                 Text("No episodes found. Try broader keywords.")
-                    .font(.caption)
-                    .foregroundColor(.editorialSub)
+                    .font(.listCaption)
+                    .foregroundColor(.textSecondary)
                     .padding(.top, 8)
             }
 
@@ -193,17 +193,17 @@ struct KnowledgeDiscoveryView: View {
             HStack(spacing: 10) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.editorialSub)
+                    .foregroundColor(.textSecondary)
 
                 Text("Generate More Suggestions")
-                    .font(.editorialBody)
-                    .foregroundColor(.editorialText)
+                    .font(.listTitle)
+                    .foregroundColor(.textPrimary)
 
                 Spacer()
 
                 Image(systemName: "arrow.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.editorialSub)
+                    .foregroundColor(.textTertiary)
             }
             .padding(16)
             .overlay(
@@ -220,13 +220,13 @@ struct KnowledgeDiscoveryView: View {
                 .scaleEffect(0.7)
 
             Text("Discovering...")
-                .font(.editorialSubMeta)
-                .foregroundColor(.editorialSub)
+                .font(.listCaption)
+                .foregroundColor(.textSecondary)
 
             Spacer()
 
             Text(viewModel.runStatusDescription)
-                .font(.editorialSubMeta)
+                .font(.listCaption)
                 .foregroundColor(Color.textTertiary)
         }
         .padding(.horizontal, Spacing.screenHorizontal)
@@ -240,8 +240,8 @@ struct KnowledgeDiscoveryView: View {
                 .frame(width: 6, height: 6)
 
             Text("New suggestions available")
-                .font(.editorialSubMeta)
-                .foregroundColor(.editorialSub)
+                .font(.listCaption)
+                .foregroundColor(.textSecondary)
 
             Spacer()
         }
@@ -291,7 +291,15 @@ private struct PodcastEpisodeSearchCard: View {
     let onOpen: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            // Episode title as headline
+            Text(result.title)
+                .font(.feedHeadline)
+                .foregroundColor(.textPrimary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
             // Metadata bar
             HStack(spacing: 6) {
                 Image(systemName: "waveform")
@@ -300,40 +308,31 @@ private struct PodcastEpisodeSearchCard: View {
 
                 if let podcastTitle = result.podcastTitle, !podcastTitle.isEmpty {
                     Text(podcastTitle.uppercased())
-                        .font(.editorialMeta)
-                        .foregroundColor(.editorialSub)
-                        .tracking(0.5)
+                        .font(.feedMeta)
+                        .foregroundColor(.textSecondary)
+                        .tracking(0.4)
                         .lineLimit(1)
                 } else {
                     Text("PODCAST")
-                        .font(.editorialMeta)
-                        .foregroundColor(.editorialSub)
-                        .tracking(0.5)
+                        .font(.feedMeta)
+                        .foregroundColor(.textSecondary)
+                        .tracking(0.4)
                 }
 
-                Spacer()
-            }
+                Text("\u{00B7}")
+                    .font(.feedMeta)
+                    .foregroundColor(.textTertiary)
 
-            // Episode title as headline
-            Text(result.title)
-                .font(.editorialHeadline)
-                .foregroundColor(.editorialText)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // Action row
-            HStack(spacing: 10) {
                 Text(result.source ?? host(from: result.episodeURL))
-                    .font(.editorialSubMeta)
-                    .foregroundColor(Color.textTertiary)
+                    .font(.feedMeta)
+                    .foregroundColor(.textTertiary)
                     .lineLimit(1)
 
                 Spacer()
 
                 Button(action: onAdd) {
                     Label("Add", systemImage: "plus")
-                        .font(.caption.weight(.medium))
+                        .font(.chipLabel)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -341,8 +340,8 @@ private struct PodcastEpisodeSearchCard: View {
 
                 Button(action: onOpen) {
                     Image(systemName: "safari")
-                        .font(.caption)
-                        .foregroundColor(.editorialSub)
+                        .font(.listCaption)
+                        .foregroundColor(.textSecondary)
                 }
                 .buttonStyle(.plain)
             }

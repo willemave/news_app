@@ -9,6 +9,7 @@ struct KnowledgeLiveView: View {
     let initialRoute: LiveVoiceRoute?
     let onOpenChatSession: ((Int) -> Void)?
 
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var settings = AppSettings.shared
     @StateObject private var viewModel = LiveVoiceViewModel()
     @State private var hasAutoConnected = false
@@ -69,7 +70,10 @@ struct KnowledgeLiveView: View {
         ZStack {
             Color.earthIvory
             RadialGradient(
-                colors: [Color.earthTerracotta.opacity(0.08), Color.clear],
+                colors: [
+                    Color.earthTerracotta.opacity(colorScheme == .dark ? 0.15 : 0.08),
+                    Color.clear,
+                ],
                 center: .center,
                 startRadius: 10,
                 endRadius: 300

@@ -100,7 +100,7 @@ RUN mkdir -p /data /logs
 ENV PYTHONPATH=/app \
     PATH="/app/.venv/bin:${PATH}" \
     SERVICE_TYPE=scrapers \
-    SCRAPER_CRON_SCHEDULE="0 */4 * * *" \
+    SCRAPER_CRON_SCHEDULE="*/15 * * * *" \
     SCRAPER_RUN_ON_START="true"
 
 HEALTHCHECK --interval=120s --timeout=30s --start-period=60s --retries=3 \

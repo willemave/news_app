@@ -9,6 +9,7 @@ from app.models.metadata import ContentType
 from app.models.schema import Content
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
+from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.queue import TaskType
 
 logger = get_logger(__name__)
@@ -51,12 +52,18 @@ class GenerateImageHandler:
                 result = image_service.generate_image(domain_content)
 
                 if result.success:
-                    metadata = dict(content.content_metadata or {})
+                    base_metadata = dict(content.content_metadata or {})
+                    metadata = dict(base_metadata)
                     metadata["image_generated_at"] = datetime.now(UTC).isoformat()
                     metadata["image_url"] = build_content_image_url(content_id)
                     if result.thumbnail_path:
                         metadata["thumbnail_url"] = build_thumbnail_url(content_id)
-                    content.content_metadata = metadata
+                    content.content_metadata = refresh_merge_content_metadata(
+                        db,
+                        content_id=content.id,
+                        base_metadata=base_metadata,
+                        updated_metadata=metadata,
+                    )
                     db.commit()
 
                     logger.info(

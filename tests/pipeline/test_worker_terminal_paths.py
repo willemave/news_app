@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
@@ -127,3 +128,64 @@ def test_process_content_handles_integrity_error_from_worker(monkeypatch, db_ses
     db_session.refresh(incoming)
     assert incoming.status == ContentStatus.SKIPPED.value
     assert incoming.content_metadata["canonical_content_id"] == existing.id
+
+
+def test_process_content_preserves_concurrent_discussion_preview(
+    monkeypatch,
+    db_session,
+) -> None:
+    _patch_worker_db(monkeypatch, db_session)
+
+    incoming = Content(
+        content_type=ContentType.ARTICLE.value,
+        url="https://example.com/discussion-preview",
+        status=ContentStatus.NEW.value,
+        content_metadata={"source": "example.com"},
+    )
+    db_session.add(incoming)
+    db_session.commit()
+    db_session.refresh(incoming)
+
+    def _process_with_concurrent_discussion_update(worker, content):  # noqa: ANN001
+        external_session_factory = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=db_session.get_bind(),
+        )
+        external_session = external_session_factory()
+        try:
+            external_content = (
+                external_session.query(Content).filter(Content.id == content.id).first()
+            )
+            assert external_content is not None
+            latest_metadata = dict(external_content.content_metadata or {})
+            latest_metadata["top_comment"] = {
+                "author": "alice",
+                "text": "Great write-up",
+            }
+            latest_metadata["comment_count"] = 12
+            external_content.content_metadata = latest_metadata
+            external_session.commit()
+        finally:
+            external_session.close()
+
+        content.status = ContentStatus.PROCESSING
+        content.metadata["content_to_summarize"] = "test payload"
+        return True
+
+    monkeypatch.setattr(
+        ContentWorker,
+        "_process_article",
+        _process_with_concurrent_discussion_update,
+    )
+
+    worker = ContentWorker()
+    handled = worker.process_content(incoming.id, "test-worker")
+
+    assert handled is True
+    db_session.refresh(incoming)
+    assert incoming.content_metadata.get("top_comment") == {
+        "author": "alice",
+        "text": "Great write-up",
+    }
+    assert incoming.content_metadata.get("comment_count") == 12

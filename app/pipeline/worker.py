@@ -11,12 +11,16 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
 from app.models.metadata import ContentData, ContentStatus, ContentType
-from app.models.metadata_state import normalize_metadata_shape, update_processing_state
+from app.models.metadata_state import (
+    normalize_metadata_shape,
+    update_processing_state,
+)
 from app.models.schema import Content
 from app.pipeline.checkout import get_checkout_manager
 from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
 from app.pipeline.workflows.content_processing_workflow import ContentProcessingWorkflow
 from app.processing_strategies.registry import get_strategy_registry
+from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.gateways.task_queue_gateway import get_task_queue_gateway
 from app.services.http import NonRetryableError, get_http_service
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
@@ -26,6 +30,7 @@ from app.utils.url_utils import is_http_url, normalize_http_url
 
 logger = get_logger(__name__)
 settings = get_settings()
+DISCUSSION_PREVIEW_METADATA_KEYS: tuple[str, ...] = ("top_comment", "comment_count")
 
 
 def get_llm_service() -> ContentSummarizer:
@@ -126,6 +131,7 @@ class ContentWorker:
         try:
             enqueue_summarize_task = False
             state_persisted = False
+            starting_metadata: dict[str, Any] = {}
 
             # Get content from database
             with get_db() as db:
@@ -136,6 +142,7 @@ class ContentWorker:
                     return False
 
                 content = content_to_domain(db_content)
+                starting_metadata = dict(content.metadata or {})
 
             # Process based on type
             if content.content_type in {ContentType.ARTICLE, ContentType.NEWS}:
@@ -169,6 +176,14 @@ class ContentWorker:
                 with get_db() as db:
                     db_content = db.query(Content).filter(Content.id == content_id).first()
                     if db_content:
+                        content.metadata = refresh_merge_content_metadata(
+                            db,
+                            content_id=content.id,
+                            base_metadata=starting_metadata,
+                            updated_metadata=content.metadata,
+                            latest_metadata=db_content.content_metadata,
+                            preserve_latest_keys=DISCUSSION_PREVIEW_METADATA_KEYS,
+                        )
                         domain_to_content(content, db_content)
                         try:
                             db.commit()

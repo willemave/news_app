@@ -41,6 +41,7 @@ establish_ssh_connection() {
 #       --promote-user USER         Run remote promote step as this user (default: root)
 #       --extra-exclude PATTERN     Additional rsync exclude (can repeat)
 #       --source-env FILE           Source env file for --env-only (default: .env.racknerd)
+#       --no-crontab                Skip installing remote crontab from REMOTE_DIR/crontab
 #       --dry-run                   Show what would be done by rsync
 #       --env-only                  Only sync .env.racknerd (skip full app sync)
 #
@@ -80,6 +81,7 @@ FORCE_ENV=false
 REMOVE_REMOTE_VENV_REASON=""
 ENV_ONLY=false
 SOURCE_ENV_FILE=".env.racknerd"
+INSTALL_CRONTAB=true
 
 EXCLUDES=(
   ".git/"
@@ -240,6 +242,7 @@ while [[ $# -gt 0 ]]; do
       SOURCE_ENV_FILE="$2"
       shift 2
       ;;
+    --no-crontab) INSTALL_CRONTAB=false; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --env-only) ENV_ONLY=true; shift ;;
     -\?|--help|-h)
@@ -451,6 +454,16 @@ ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "sudo -u %q -H bash -lc 
 echo "→ Copying .env.racknerd to .env via sudo cp"
 CP_ENV_CMD=$(printf "bash -lc %q" "cd '$REMOTE_DIR' && if [[ -f .env.racknerd ]]; then sudo cp .env.racknerd .env && sudo chown '$SERVICE_USER:$SERVICE_GROUP' .env && sudo chmod 600 .env; else echo 'Warning: .env.racknerd missing; skipping copy' >&2; fi")
 ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$CP_ENV_CMD"
+
+if "$INSTALL_CRONTAB"; then
+  echo "→ Installing crontab for $SERVICE_USER from $REMOTE_DIR/crontab"
+  printf -v REMOTE_CRON_CMD 'set -euo pipefail; CRON_FILE=%q; TARGET_USER=%q; if [[ ! -f "$CRON_FILE" ]]; then echo "Crontab file missing: $CRON_FILE" >&2; exit 1; fi; sudo crontab -u "$TARGET_USER" "$CRON_FILE"; echo "Installed crontab for $TARGET_USER from $CRON_FILE"' \
+    "$REMOTE_DIR/crontab" \
+    "$SERVICE_USER"
+  ssh -S "$SSH_CONTROL_PATH" -tt "$REMOTE_HOST" "$(printf "bash -lc %q" "$REMOTE_CRON_CMD")"
+else
+  echo "→ Skipping crontab installation (--no-crontab)"
+fi
 
 if "$RESTART_SUP"; then
   echo "→ Reloading Supervisor configuration"

@@ -127,21 +127,7 @@ class ContentListViewModel: CursorPaginatedViewModel {
             }
 
             // Append new contents to existing list
-            var items = response.contents
-
-            // Apply read filter locally for favorites only (not recently read - all items are read by definition)
-            if isFavoritesMode {
-                switch selectedReadFilter {
-                case "unread":
-                    items = items.filter { !$0.isRead }
-                case "read":
-                    items = items.filter { $0.isRead }
-                default:
-                    break
-                }
-            }
-
-            contents.append(contentsOf: items)
+            contents.append(contentsOf: response.contents)
             applyPagination(response)
         } catch {
             errorMessage = error.localizedDescription
@@ -216,17 +202,7 @@ class ContentListViewModel: CursorPaginatedViewModel {
 
         do {
             let response = try await contentService.fetchFavoritesList(cursor: nil)
-            var items = response.contents
-            // Apply read filter locally for favorites
-            switch selectedReadFilter {
-            case "unread":
-                items = items.filter { !$0.isRead }
-            case "read":
-                items = items.filter { $0.isRead }
-            default:
-                break
-            }
-            contents = items
+            contents = response.contents
             availableDates = response.availableDates
             contentTypes = response.contentTypes
             applyPagination(response)

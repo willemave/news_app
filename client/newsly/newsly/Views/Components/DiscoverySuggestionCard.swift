@@ -47,7 +47,15 @@ struct DiscoverySuggestionCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                // Headline
+                Text(suggestion.displayTitle)
+                    .font(.feedHeadline)
+                    .foregroundColor(.textPrimary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 // Metadata bar: type icon + source name + dot + URL
                 HStack(spacing: 6) {
                     Image(systemName: metadata.icon)
@@ -55,30 +63,22 @@ struct DiscoverySuggestionCard: View {
                         .foregroundColor(metadata.color)
 
                     Text(metadata.sourceName.uppercased())
-                        .font(.editorialMeta)
-                        .foregroundColor(.editorialSub)
-                        .tracking(0.5)
+                        .font(.feedMeta)
+                        .tracking(0.4)
+                        .foregroundColor(.textSecondary)
                         .lineLimit(1)
 
                     Text("\u{00B7}")
-                        .font(.editorialMeta)
-                        .foregroundColor(.editorialSub)
+                        .font(.feedMeta)
+                        .foregroundColor(.textTertiary)
 
                     Text(formattedURL(suggestion.primaryURL))
-                        .font(.editorialSubMeta)
-                        .foregroundColor(Color.textTertiary)
+                        .font(.feedMeta)
+                        .foregroundColor(.textTertiary)
                         .lineLimit(1)
 
                     Spacer()
                 }
-
-                // Serif headline
-                Text(suggestion.displayTitle)
-                    .font(.editorialHeadline)
-                    .foregroundColor(.editorialText)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
