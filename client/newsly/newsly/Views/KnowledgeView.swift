@@ -86,32 +86,6 @@ struct KnowledgeView: View {
             }
             Task { await loadForSelectedTab() }
         }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if selectedTab == .discover {
-                    Button {
-                        Task { await discoveryViewModel.refreshDiscovery() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .accessibilityLabel("Refresh Discovery")
-                }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if selectedTab == .discover {
-                    Menu {
-                        Button(role: .destructive) {
-                            Task { await discoveryViewModel.clearAll() }
-                        } label: {
-                            Label("Clear Suggestions", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                    .accessibilityLabel("Discovery Options")
-                }
-            }
-        }
         .sheet(isPresented: $showingNewChat, onDismiss: {
             // Navigate after sheet dismisses to avoid conflicts
             if let route = pendingNavigationRoute {

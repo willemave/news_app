@@ -1,19 +1,22 @@
 //
-//  OnboardingFlowView.swift
+//  DiscoveryPersonalizeSheet.swift
 //  newsly
 //
-//  Created by Assistant on 1/17/26.
+//  Voice personalization sheet presented from the Discover tab.
 //
 
 import SwiftUI
 
-struct OnboardingFlowView: View {
-    @StateObject private var viewModel: OnboardingViewModel
-    private let onFinish: (OnboardingCompleteResponse) -> Void
+struct DiscoveryPersonalizeSheet: View {
+    @StateObject private var viewModel: DiscoveryPersonalizeViewModel
+    @Environment(\.dismiss) private var dismiss
+    private let onComplete: () -> Void
 
-    init(user: User, onFinish: @escaping (OnboardingCompleteResponse) -> Void) {
-        _viewModel = StateObject(wrappedValue: OnboardingViewModel(user: user))
-        self.onFinish = onFinish
+    init(userId: Int, onComplete: @escaping () -> Void) {
+        _viewModel = StateObject(
+            wrappedValue: DiscoveryPersonalizeViewModel(userId: userId)
+        )
+        self.onComplete = onComplete
     }
 
     var body: some View {
@@ -30,25 +33,21 @@ struct OnboardingFlowView: View {
             }
         }
         .preferredColorScheme(.light)
-        .onChange(of: viewModel.completionResponse) { _, response in
-            if let response {
-                onFinish(response)
+        .onAppear {
+            viewModel.onComplete = { [dismiss, onComplete] in
+                dismiss()
+                onComplete()
             }
+            Task { await viewModel.resumeDiscoveryIfNeeded() }
         }
-        .task {
-            await viewModel.resumeDiscoveryIfNeeded()
+        .onDisappear {
+            viewModel.cancelPersonalization()
         }
     }
 
     @ViewBuilder
     private var content: some View {
         switch viewModel.step {
-        case .intro:
-            choiceView
-                .transition(.opacity)
-        case .choice:
-            choiceView
-                .transition(.opacity)
         case .audio:
             audioView
                 .transition(.opacity)
@@ -61,119 +60,14 @@ struct OnboardingFlowView: View {
         }
     }
 
-    // MARK: - Choice
-
-    private var choiceView: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(Color.watercolorSlate.opacity(0.08))
-                        .frame(width: 88, height: 88)
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 32, weight: .medium))
-                        .foregroundColor(.watercolorSlate)
-                }
-
-                VStack(spacing: 10) {
-                    Text("Set up your feeds")
-                        .font(.title2.bold())
-                        .foregroundColor(.watercolorSlate)
-                    Text("Share what you read and we'll\ncurate the best sources for you.")
-                        .font(.callout)
-                        .foregroundColor(.watercolorSlate.opacity(0.6))
-                        .multilineTextAlignment(.center)
-                }
-            }
-
-            Spacer()
-
-            VStack(spacing: 10) {
-                choiceCard(
-                    icon: "mic.fill",
-                    title: "Personalize with voice",
-                    subtitle: "Tell us your interests in 30 seconds",
-                    isPrimary: true
-                ) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        viewModel.startPersonalized()
-                    }
-                }
-
-                choiceCard(
-                    icon: "wand.and.stars",
-                    title: "Start with defaults",
-                    subtitle: "We'll pick popular tech & news feeds",
-                    isPrimary: false
-                ) {
-                    viewModel.chooseDefaults()
-                }
-            }
-
-            if let error = viewModel.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .padding(.top, 8)
-            }
-        }
-        .padding(24)
-        .padding(.bottom, 8)
-    }
-
-    private func choiceCard(
-        icon: String,
-        title: String,
-        subtitle: String,
-        isPrimary: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.body.weight(.medium))
-                    .foregroundColor(isPrimary ? .white : .watercolorSlate)
-                    .frame(width: 36, height: 36)
-                    .background(isPrimary ? Color.watercolorSlate : Color.watercolorSlate.opacity(0.1))
-                    .clipShape(Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.callout.weight(.semibold))
-                        .foregroundColor(.watercolorSlate)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.watercolorSlate.opacity(0.6))
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.watercolorSlate.opacity(0.4))
-            }
-            .padding(16)
-            .background(Color.white.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Audio
+    // MARK: - Audio Step
 
     private var audioView: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text("Tell us what you read")
-                    .font(.title2.bold())
-                    .foregroundColor(.watercolorSlate)
-                Text("Speak naturally about your interests.")
-                    .font(.callout)
-                    .foregroundColor(.watercolorSlate.opacity(0.6))
-            }
-            .padding(.top, 48)
+            sheetHeader(
+                title: "Personalize your feeds",
+                subtitle: "Tell us your interests in 30 seconds."
+            )
 
             Spacer()
 
@@ -190,14 +84,21 @@ struct OnboardingFlowView: View {
 
             Spacer()
 
-            if viewModel.audioState != .transcribing {
+            VStack(spacing: 12) {
                 Button("Skip") {
-                    viewModel.chooseDefaults()
+                    viewModel.skipToDefaults()
                 }
                 .font(.callout)
                 .foregroundColor(.watercolorSlate.opacity(0.5))
-                .padding(.bottom, 16)
+
+                Button("Cancel") {
+                    viewModel.cancelPersonalization()
+                    dismiss()
+                }
+                .font(.callout)
+                .foregroundColor(.watercolorSlate.opacity(0.4))
             }
+            .padding(.bottom, 16)
 
             if let error = viewModel.errorMessage {
                 Text(error)
@@ -223,20 +124,14 @@ struct OnboardingFlowView: View {
         }
     }
 
-    // MARK: - Loading / Discovery
+    // MARK: - Loading Step
 
     private var loadingView: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text("Finding your feeds")
-                    .font(.title2.bold())
-                    .foregroundColor(.watercolorSlate)
-                Text("Searching newsletters, podcasts, and Reddit.")
-                    .font(.callout)
-                    .foregroundColor(.watercolorSlate.opacity(0.6))
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 48)
+            sheetHeader(
+                title: "Finding your feeds",
+                subtitle: "Searching newsletters, podcasts, and Reddit."
+            )
 
             Spacer()
 
@@ -272,18 +167,19 @@ struct OnboardingFlowView: View {
                         .foregroundColor(.orange)
                 }
 
-                Button("Use defaults instead") {
-                    viewModel.chooseDefaults()
+                Button("Cancel") {
+                    viewModel.cancelPersonalization()
+                    dismiss()
                 }
                 .font(.callout)
-                .foregroundColor(.watercolorSlate.opacity(0.5))
+                .foregroundColor(.watercolorSlate.opacity(0.4))
             }
             .padding(.bottom, 16)
         }
         .padding(.horizontal, 24)
     }
 
-    // MARK: - Suggestions
+    // MARK: - Suggestions Step
 
     private var suggestionsView: some View {
         VStack(spacing: 0) {
@@ -299,15 +195,15 @@ struct OnboardingFlowView: View {
                     }
                     .padding(.bottom, 20)
 
-                    if viewModel.substackSuggestions.isEmpty && viewModel.podcastSuggestions.isEmpty && viewModel.subredditSuggestions.isEmpty {
-                        Text("No matches found — we'll start you with defaults.")
+                    if viewModel.substackSuggestions.isEmpty
+                        && viewModel.podcastSuggestions.isEmpty
+                        && viewModel.subredditSuggestions.isEmpty
+                    {
+                        Text("No matches found — we'll add popular defaults.")
                             .font(.callout)
                             .foregroundColor(.watercolorSlate.opacity(0.6))
                             .padding(.vertical, 20)
                     }
-
-                    twitterUsernameCard
-                        .padding(.bottom, 12)
 
                     if !viewModel.substackSuggestions.isEmpty {
                         suggestionSection(
@@ -344,12 +240,28 @@ struct OnboardingFlowView: View {
                 .padding(.bottom, 100)
             }
 
-            // Sticky bottom button
+            // Sticky bottom
             VStack(spacing: 8) {
-                primaryButton("Start reading") {
-                    Task { await viewModel.completeOnboarding() }
+                Button {
+                    Task { await viewModel.completePersonalization() }
+                } label: {
+                    Text("Add to my feeds")
+                        .font(.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .foregroundColor(.white)
+                        .background(Color.watercolorSlate)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
                 }
+                .buttonStyle(.plain)
                 .disabled(viewModel.isLoading)
+
+                Button("Cancel") {
+                    viewModel.cancelPersonalization()
+                    dismiss()
+                }
+                .font(.callout)
+                .foregroundColor(.watercolorSlate.opacity(0.4))
 
                 if let error = viewModel.errorMessage {
                     Text(error)
@@ -361,6 +273,20 @@ struct OnboardingFlowView: View {
             .padding(.vertical, 16)
             .glassCard(cornerRadius: 0)
         }
+    }
+
+    // MARK: - Shared Helpers
+
+    private func sheetHeader(title: String, subtitle: String) -> some View {
+        VStack(spacing: 8) {
+            Text(title)
+                .font(.title2.bold())
+                .foregroundColor(.watercolorSlate)
+            Text(subtitle)
+                .font(.callout)
+                .foregroundColor(.watercolorSlate.opacity(0.6))
+        }
+        .padding(.top, 48)
     }
 
     private func suggestionSection(
@@ -392,38 +318,6 @@ struct OnboardingFlowView: View {
                     )
                 }
             }
-        }
-    }
-
-    // MARK: - Shared Components
-
-    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.callout.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .foregroundColor(.white)
-                .background(Color.watercolorSlate)
-                .clipShape(RoundedRectangle(cornerRadius: 24))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var twitterUsernameCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("X USERNAME (OPTIONAL)")
-                .font(.system(size: 9, weight: .medium))
-                .tracking(1.5)
-                .foregroundColor(.watercolorSlate.opacity(0.5))
-
-            TextField("@username", text: $viewModel.twitterUsername)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
 }

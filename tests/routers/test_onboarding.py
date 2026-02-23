@@ -330,3 +330,60 @@ def test_onboarding_complete_seeds_news(client, db_session, monkeypatch, test_us
         .all()
     )
     assert {entry.content_id for entry in seeded} >= {item.id for item in news_items}
+
+
+def test_onboarding_complete_seeds_selected_feed_content(
+    client,
+    db_session,
+    monkeypatch,
+    test_user,
+):
+    monkeypatch.setattr("app.services.onboarding._load_curated_defaults", lambda: {})
+
+    selected_feed_url = "https://example.substack.com/feed"
+    matching_items = [
+        Content(
+            url="https://example.substack.com/p/article",
+            content_type=ContentType.ARTICLE.value,
+            status=ContentStatus.COMPLETED.value,
+            content_metadata={"feed_url": selected_feed_url},
+        ),
+        Content(
+            url="https://example.substack.com/p/podcast",
+            content_type=ContentType.PODCAST.value,
+            status=ContentStatus.COMPLETED.value,
+            content_metadata={"feed_url": selected_feed_url},
+        ),
+    ]
+    non_matching_item = Content(
+        url="https://other.example.com/p/article",
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.COMPLETED.value,
+        content_metadata={"feed_url": "https://other.example.com/feed"},
+    )
+    db_session.add_all([*matching_items, non_matching_item])
+    db_session.commit()
+
+    response = client.post(
+        "/api/onboarding/complete",
+        json={
+            "selected_sources": [
+                {
+                    "suggestion_type": "substack",
+                    "title": "Example Substack",
+                    "feed_url": selected_feed_url,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 200
+
+    seeded_ids = {
+        entry.content_id
+        for entry in db_session.query(ContentStatusEntry)
+        .filter(ContentStatusEntry.user_id == test_user.id)
+        .filter(ContentStatusEntry.status == "inbox")
+        .all()
+    }
+    assert {item.id for item in matching_items} <= seeded_ids
+    assert non_matching_item.id not in seeded_ids

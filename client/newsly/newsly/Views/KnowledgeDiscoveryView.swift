@@ -8,17 +8,23 @@ import SwiftUI
 struct KnowledgeDiscoveryView: View {
     @ObservedObject var viewModel: DiscoveryViewModel
     let hasNewSuggestions: Bool
+    @EnvironmentObject private var authViewModel: AuthenticationViewModel
     @State private var safariTarget: SafariTarget?
     @State private var selectedSuggestion: DiscoverySuggestion?
+    @State private var showPersonalizeSheet = false
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                // Editorial search bar
-                editorialSearchBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
+                // Editorial search bar + action buttons
+                VStack(spacing: 8) {
+                    editorialSearchBar
+
+                    discoveryActionBar
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
 
                 // Podcast search results (inline)
                 if isPodcastSearchActive {
@@ -58,6 +64,13 @@ struct KnowledgeDiscoveryView: View {
         .sheet(item: $safariTarget) { target in
             SafariView(url: target.url)
         }
+        .sheet(isPresented: $showPersonalizeSheet) {
+            if let userId = currentUserId {
+                DiscoveryPersonalizeSheet(userId: userId) {
+                    Task { await viewModel.loadSuggestions(force: true) }
+                }
+            }
+        }
         .sheet(item: $selectedSuggestion) { suggestion in
             SuggestionDetailSheet(
                 suggestion: suggestion,
@@ -74,6 +87,36 @@ struct KnowledgeDiscoveryView: View {
                     Task { await viewModel.dismiss(suggestion) }
                 }
             )
+        }
+    }
+
+    // MARK: - Action Bar
+
+    private var discoveryActionBar: some View {
+        HStack(spacing: 12) {
+            Spacer()
+
+            Button {
+                Task { await viewModel.refreshDiscovery() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.textSecondary)
+            }
+            .accessibilityLabel("Refresh Discovery")
+
+            Menu {
+                Button(role: .destructive) {
+                    Task { await viewModel.clearAll() }
+                } label: {
+                    Label("Clear Suggestions", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.textSecondary)
+            }
+            .accessibilityLabel("Discovery Options")
         }
     }
 
@@ -180,8 +223,14 @@ struct KnowledgeDiscoveryView: View {
             if !viewModel.isJobRunning {
                 generateMoreCard
                     .padding(.top, 32)
-                    .padding(.bottom, 40)
                     .padding(.horizontal, Spacing.screenHorizontal)
+
+                if currentUserId != nil {
+                    personalizeCard
+                        .padding(.top, 12)
+                        .padding(.bottom, 40)
+                        .padding(.horizontal, Spacing.screenHorizontal)
+                }
             }
         }
     }
@@ -212,6 +261,46 @@ struct KnowledgeDiscoveryView: View {
             )
         }
         .buttonStyle(EditorialCardButtonStyle())
+    }
+
+    private var personalizeCard: some View {
+        Button {
+            showPersonalizeSheet = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.textSecondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Personalize this discovery")
+                        .font(.listTitle)
+                        .foregroundColor(.textPrimary)
+                    Text("Tell us your interests with voice")
+                        .font(.listCaption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.textTertiary)
+            }
+            .padding(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.editorialBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(EditorialCardButtonStyle())
+    }
+
+    private var currentUserId: Int? {
+        if case .authenticated(let user) = authViewModel.authState {
+            return user.id
+        }
+        return nil
     }
 
     private var runningJobBanner: some View {

@@ -97,6 +97,7 @@ DEFAULT_SOURCE_LIMITS = {
     "reddit": 8,
 }
 NEWS_SEED_LIMIT = 100
+FEED_CONTENT_SEED_LIMIT = 30
 
 SCRAPER_SOURCE_BY_TYPE = {
     "substack": "Substack",
@@ -600,6 +601,19 @@ def complete_onboarding(
             extra={
                 "component": "onboarding",
                 "operation": "seed_news",
+                "item_id": str(user_id),
+                "context_data": {"error": str(exc)},
+            },
+        )
+
+    try:
+        _seed_default_feed_content_for_user(db, user_id, selections)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Failed to seed feed content for onboarding",
+            extra={
+                "component": "onboarding",
+                "operation": "seed_feed_content",
                 "item_id": str(user_id),
                 "context_data": {"error": str(exc)},
             },
@@ -2041,6 +2055,73 @@ def _seed_recent_news_for_user(db: Session, user_id: int, limit: int = NEWS_SEED
     )
     db.commit()
     return len(news_ids)
+
+
+def _seed_default_feed_content_for_user(
+    db: Session,
+    user_id: int,
+    selections: list[OnboardingSelectedSource],
+    limit: int = FEED_CONTENT_SEED_LIMIT,
+) -> int:
+    """Seed existing article/podcast content from selected feeds into user inbox.
+
+    Args:
+        db: Database session.
+        user_id: Current user id.
+        selections: Onboarding source selections (with feed_url).
+        limit: Maximum number of items to seed.
+
+    Returns:
+        Number of content items seeded.
+    """
+    if user_id <= 0 or limit <= 0 or not selections:
+        return 0
+
+    feed_urls = list(
+        {
+            selection.feed_url.strip()
+            for selection in selections
+            if selection.feed_url and selection.feed_url.strip()
+        }
+    )
+    if not feed_urls:
+        return 0
+
+    existing = select(ContentStatusEntry.content_id).where(
+        ContentStatusEntry.user_id == user_id,
+    )
+
+    content_ids = (
+        db.query(Content.id)
+        .filter(
+            Content.content_metadata["feed_url"].as_string().in_(feed_urls),
+            Content.status == ContentStatus.COMPLETED.value,
+            Content.content_type.in_(
+                [ContentType.ARTICLE.value, ContentType.PODCAST.value]
+            ),
+            (Content.classification != "skip") | (Content.classification.is_(None)),
+        )
+        .filter(~Content.id.in_(existing))
+        .order_by(Content.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    if not content_ids:
+        return 0
+
+    db.bulk_save_objects(
+        [
+            ContentStatusEntry(
+                user_id=user_id,
+                content_id=content_id,
+                status="inbox",
+            )
+            for (content_id,) in content_ids
+        ]
+    )
+    db.commit()
+    return len(content_ids)
 
 
 def _get_tutorial_flag(db: Session, user_id: int) -> bool:
