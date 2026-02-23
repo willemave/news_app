@@ -13,45 +13,21 @@ struct KnowledgeDiscoveryView: View {
     @State private var selectedSuggestion: DiscoverySuggestion?
     @State private var showPersonalizeSheet = false
 
+    private var isEmptyState: Bool {
+        !viewModel.hasSuggestions
+            && !viewModel.isLoading
+            && viewModel.errorMessage == nil
+            && !viewModel.isJobRunning
+    }
+
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                // Editorial search bar + action buttons
-                VStack(spacing: 8) {
-                    editorialSearchBar
-
-                    discoveryActionBar
+        Group {
+            if isEmptyState {
+                DiscoveryEmptyStateView {
+                    Task { await viewModel.refreshDiscovery() }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
-
-                // Podcast search results (inline)
-                if isPodcastSearchActive {
-                    podcastSearchResults
-                        .padding(.horizontal, Spacing.screenHorizontal)
-                        .padding(.bottom, 8)
-                }
-
-                // Main content states
-                if viewModel.isLoading && !viewModel.hasSuggestions {
-                    DiscoveryLoadingStateView()
-                } else if let error = viewModel.errorMessage, !viewModel.hasSuggestions {
-                    DiscoveryErrorStateView(error: error) {
-                        Task { await viewModel.loadSuggestions(force: true) }
-                    }
-                } else if !viewModel.hasSuggestions && viewModel.isJobRunning {
-                    DiscoveryProcessingStateView(
-                        runStatusDescription: viewModel.runStatusDescription,
-                        currentJobStage: viewModel.currentJobStage
-                    )
-                } else if !viewModel.hasSuggestions {
-                    DiscoveryEmptyStateView {
-                        Task { await viewModel.refreshDiscovery() }
-                    }
-                } else {
-                    suggestionContent
-                }
+            } else {
+                scrollContent
             }
         }
         .background(Color.surfacePrimary)
@@ -87,6 +63,47 @@ struct KnowledgeDiscoveryView: View {
                     Task { await viewModel.dismiss(suggestion) }
                 }
             )
+        }
+    }
+
+    // MARK: - Scroll Content
+
+    private var scrollContent: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                // Editorial search bar + action buttons
+                VStack(spacing: 8) {
+                    editorialSearchBar
+
+                    discoveryActionBar
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+                // Podcast search results (inline)
+                if isPodcastSearchActive {
+                    podcastSearchResults
+                        .padding(.horizontal, Spacing.screenHorizontal)
+                        .padding(.bottom, 8)
+                }
+
+                // Main content states
+                if viewModel.isLoading && !viewModel.hasSuggestions {
+                    DiscoveryLoadingStateView()
+                } else if let error = viewModel.errorMessage, !viewModel.hasSuggestions {
+                    DiscoveryErrorStateView(error: error) {
+                        Task { await viewModel.loadSuggestions(force: true) }
+                    }
+                } else if !viewModel.hasSuggestions && viewModel.isJobRunning {
+                    DiscoveryProcessingStateView(
+                        runStatusDescription: viewModel.runStatusDescription,
+                        currentJobStage: viewModel.currentJobStage
+                    )
+                } else {
+                    suggestionContent
+                }
+            }
         }
     }
 

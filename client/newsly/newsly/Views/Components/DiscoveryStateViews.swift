@@ -161,21 +161,21 @@ struct DiscoveryEmptyStateView: View {
     let onGenerate: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 20) {
             Image(systemName: "sparkles")
-                .font(.system(size: 32, weight: .light))
-                .foregroundColor(.textSecondary)
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(Color.accentColor.opacity(0.7))
 
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text("Discover New Content")
                     .font(.listTitle.weight(.semibold))
-                    .foregroundColor(.textPrimary)
+                    .foregroundStyle(Color.textPrimary)
 
                 Text("Get personalized suggestions for feeds, podcasts, and channels based on your reading history.")
                     .font(.listSubtitle)
-                    .foregroundColor(.textSecondary)
+                    .foregroundStyle(Color.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                    .frame(maxWidth: 280)
             }
 
             Button(action: onGenerate) {
@@ -186,8 +186,7 @@ struct DiscoveryEmptyStateView: View {
             .controlSize(.regular)
             .padding(.top, 4)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 100)
-        .padding(.bottom, 200)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.surfacePrimary)
     }
 }

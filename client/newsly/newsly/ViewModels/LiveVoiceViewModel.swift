@@ -911,7 +911,6 @@ final class LiveVoiceViewModel: ObservableObject {
         guard !isStoppingListening else { return }
         guard !pendingIntroAck else { return }
         guard !isDisconnectRequested else { return }
-        let launchMode = currentRoute?.launchMode ?? .general
 
         let shouldStart: Bool
         if reason == "session.ready" {

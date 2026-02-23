@@ -143,6 +143,10 @@ struct KnowledgeView: View {
         }
     }
 
+    private var chatSessions: [ChatSessionSummary] {
+        viewModel.sessions.filter { $0.sessionType != "voice_live" }
+    }
+
     @ViewBuilder
     private var chatSessionsBody: some View {
         if viewModel.isLoading && viewModel.sessions.isEmpty {
@@ -151,7 +155,7 @@ struct KnowledgeView: View {
             ErrorView(message: error) {
                 Task { await viewModel.loadSessions() }
             }
-        } else if viewModel.sessions.isEmpty {
+        } else if chatSessions.isEmpty {
             emptyStateView
         } else {
             sessionListView
@@ -184,14 +188,33 @@ struct KnowledgeView: View {
     }
 
     private var emptyStateView: some View {
-        EmptyStateView(
-            icon: "books.vertical",
-            title: "Your Knowledge Base",
-            subtitle: "Save articles to build your knowledge base. Tap the brain on any article to add it here and start exploring with AI.",
-            actionTitle: "New Chat"
-        ) {
-            showingNewChat = true
+        VStack(spacing: 20) {
+            Image(systemName: "brain.head.profile")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(Color.accentColor.opacity(0.7))
+
+            VStack(spacing: 6) {
+                Text("No chats yet")
+                    .font(.listTitle.weight(.semibold))
+                    .foregroundStyle(Color.textPrimary)
+
+                Text("Open any article and tap the")
+                    .font(.listSubtitle)
+                    .foregroundStyle(Color.textSecondary)
+                +
+                Text(" \(Image(systemName: "brain.head.profile")) ")
+                    .font(.listSubtitle)
+                    .foregroundStyle(Color.accentColor)
+                +
+                Text("icon to start a conversation about it.")
+                    .font(.listSubtitle)
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 280)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.surfacePrimary)
     }
 
     /// Parse a date string to Date
@@ -258,10 +281,9 @@ struct KnowledgeView: View {
     }
 
     private var filteredSessions: [ChatSessionSummary] {
-        let nonLiveSessions = viewModel.sessions.filter { $0.sessionType != "voice_live" }
         let trimmedQuery = chatSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return nonLiveSessions }
-        return nonLiveSessions.filter { session in
+        guard !trimmedQuery.isEmpty else { return chatSessions }
+        return chatSessions.filter { session in
             sessionMatchesSearch(session, query: trimmedQuery)
         }
     }

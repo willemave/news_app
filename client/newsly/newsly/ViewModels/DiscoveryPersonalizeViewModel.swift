@@ -56,7 +56,8 @@ final class DiscoveryPersonalizeViewModel: ObservableObject {
     deinit {
         pollingTask?.cancel()
         audioTimer?.invalidate()
-        dictationService.cancel()
+        let service = dictationService
+        Task { @MainActor in service.cancel() }
     }
 
     // MARK: - Computed Helpers

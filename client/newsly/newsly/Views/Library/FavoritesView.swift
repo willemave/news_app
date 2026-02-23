@@ -36,11 +36,25 @@ struct FavoritesView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        SettingsEmptyStateView(
-            icon: "star",
-            title: "No Favorites",
-            subtitle: "Swipe right on articles or podcasts to add them to your favorites"
-        )
+        VStack(spacing: 20) {
+            Image(systemName: "star")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(Color.accentColor.opacity(0.7))
+
+            VStack(spacing: 6) {
+                Text("No favorites yet")
+                    .font(.listTitle.weight(.semibold))
+                    .foregroundStyle(Color.textPrimary)
+
+                Text("Swipe right on articles or podcasts to add them to your favorites.")
+                    .font(.listSubtitle)
+                    .foregroundStyle(Color.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.surfacePrimary)
     }
 
     // MARK: - Content List
