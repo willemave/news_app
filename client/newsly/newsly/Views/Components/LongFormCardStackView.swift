@@ -15,7 +15,6 @@ struct LongFormCardStackView: View {
     @ObservedObject var viewModel: LongContentListViewModel
     let onSelect: (ContentDetailRoute) -> Void
 
-    @ObservedObject private var settings = AppSettings.shared
     @StateObject private var keyPointsLoader = CardStackKeyPointsLoader()
 
     @State private var currentIndex: Int = 0
@@ -43,11 +42,8 @@ struct LongFormCardStackView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
-            viewModel.setReadFilter(settings.showReadContent ? .all : .unread)
+            viewModel.setReadFilter(.all)
             viewModel.refreshTrigger.send(())
-        }
-        .onChange(of: settings.showReadContent) { _, showRead in
-            viewModel.setReadFilter(showRead ? .all : .unread)
         }
         .onChange(of: items.count) { oldCount, newCount in
             if newCount > 0 && currentIndex >= newCount {

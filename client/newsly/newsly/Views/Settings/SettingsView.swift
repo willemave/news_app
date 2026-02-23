@@ -210,16 +210,6 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             SectionHeader(title: "Display")
 
-            SettingsToggleRow(
-                icon: "eye",
-                iconColor: .blue,
-                title: "Show Read Articles",
-                subtitle: "Display both read and unread",
-                isOn: $settings.showReadContent
-            )
-
-            RowDivider()
-
             textSizeRow
         }
     }

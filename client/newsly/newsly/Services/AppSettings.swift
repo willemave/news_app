@@ -15,7 +15,6 @@ class AppSettings: ObservableObject {
     @AppStorage("serverHost", store: SharedContainer.userDefaults) var serverHost: String = "localhost"
     @AppStorage("serverPort", store: SharedContainer.userDefaults) var serverPort: String = "8000"
     @AppStorage("useHTTPS", store: SharedContainer.userDefaults) var useHTTPS: Bool = false
-    @AppStorage("showReadContent", store: SharedContainer.userDefaults) var showReadContent: Bool = false
     @AppStorage("appTextSizeIndex", store: SharedContainer.userDefaults) var appTextSizeIndex: Int = 1
     @AppStorage("contentTextSizeIndex", store: SharedContainer.userDefaults) var contentTextSizeIndex: Int = 2
     @AppStorage("useLongFormCardStack", store: SharedContainer.userDefaults) var useLongFormCardStack: Bool = true

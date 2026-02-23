@@ -11,7 +11,6 @@ struct LongFormView: View {
     @ObservedObject var viewModel: LongContentListViewModel
     let onSelect: (ContentDetailRoute) -> Void
 
-    @ObservedObject private var settings = AppSettings.shared
     @StateObject private var processingCountService = ProcessingCountService.shared
     @State private var showMarkAllConfirmation = false
     @State private var isProcessingBulk = false
@@ -104,14 +103,11 @@ struct LongFormView: View {
                 }
             }
             .onAppear {
-                viewModel.setReadFilter(settings.showReadContent ? .all : .unread)
+                viewModel.setReadFilter(.all)
                 viewModel.refreshTrigger.send(())
                 Task {
                     await processingCountService.refreshCount()
                 }
-            }
-            .onChange(of: settings.showReadContent) { _, showRead in
-                viewModel.setReadFilter(showRead ? .all : .unread)
             }
 
             if isProcessingBulk {
