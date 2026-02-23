@@ -128,11 +128,7 @@ class ContentDetailViewModel: ObservableObject {
         guard !items.isEmpty else { return }
 
         let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
-
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootViewController = windowScene.windows.first?.rootViewController {
-            rootViewController.present(activityVC, animated: true)
-        }
+        presentActivityViewControllerWhenReady(activityVC)
     }
     
     func toggleFavorite() async {
@@ -509,11 +505,71 @@ class ContentDetailViewModel: ObservableObject {
         // Prepare share sheet with custom provider
         let activityVC = UIActivityViewController(activityItems: [itemProvider], applicationActivities: nil)
         activityVC.excludedActivityTypes = [.assignToContact, .saveToCameraRoll, .addToReadingList, .postToFacebook, .postToTwitter]
+        presentActivityViewControllerWhenReady(activityVC)
+    }
 
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let root = windowScene.windows.first?.rootViewController {
-            root.present(activityVC, animated: true)
+    private func presentActivityViewControllerWhenReady(
+        _ activityViewController: UIActivityViewController,
+        attempt: Int = 0
+    ) {
+        let maxAttempts = 8
+        let retryDelaySeconds = 0.08
+
+        guard let rootViewController = activeRootViewController() else { return }
+
+        let topViewController = topVisibleViewController(from: rootViewController)
+            ?? rootViewController
+
+        // The share options bottom sheet is dismissed right before sharing. Retry until
+        // UIKit finishes the dismissal, then present from the current top controller.
+        if rootViewController.presentedViewController?.isBeingDismissed == true
+            || topViewController.isBeingPresented
+            || topViewController.isBeingDismissed {
+            guard attempt < maxAttempts else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelaySeconds) { [weak self] in
+                self?.presentActivityViewControllerWhenReady(
+                    activityViewController,
+                    attempt: attempt + 1
+                )
+            }
+            return
         }
+
+        topViewController.present(activityViewController, animated: true)
+    }
+
+    private func activeRootViewController() -> UIViewController? {
+        let activeWindowScenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+
+        let activeWindow = activeWindowScenes
+            .flatMap(\.windows)
+            .first(where: { $0.isKeyWindow })
+            ?? activeWindowScenes
+                .flatMap(\.windows)
+                .first(where: { !$0.isHidden })
+
+        return activeWindow?.rootViewController
+    }
+
+    private func topVisibleViewController(from root: UIViewController?) -> UIViewController? {
+        guard let root else { return nil }
+
+        if let navigationController = root as? UINavigationController {
+            return topVisibleViewController(from: navigationController.visibleViewController)
+        }
+
+        if let tabBarController = root as? UITabBarController {
+            return topVisibleViewController(from: tabBarController.selectedViewController)
+        }
+
+        if let presentedViewController = root.presentedViewController,
+           !presentedViewController.isBeingDismissed {
+            return topVisibleViewController(from: presentedViewController)
+        }
+
+        return root
     }
 }
 

@@ -148,7 +148,7 @@ extension Color {
 // MARK: - Typography
 
 extension Font {
-    static let listTitle = Font.body.weight(.medium)
+    static let listTitle = Font.body
     static let listSubtitle = Font.subheadline
     static let listCaption = Font.caption
     static let listMono = Font.system(.caption, design: .monospaced)
@@ -157,8 +157,8 @@ extension Font {
     static let chipLabel = Font.caption2.weight(.medium)
 
     // Feed card typography
-    static let feedMeta = Font.system(size: 11, weight: .medium)
-    static let feedHeadline = Font.system(size: 18, weight: .semibold)
+    static let feedMeta = Font.system(size: 11, weight: .regular)
+    static let feedHeadline = Font.system(size: 18, weight: .regular)
     static let feedSnippet = Font.system(size: 13)
     static let cardHeadline = Font.system(size: 22, weight: .bold)
     static let cardDescription = Font.system(size: 14)

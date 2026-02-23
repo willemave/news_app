@@ -167,7 +167,7 @@ private struct ShortNewsRow: View {
     let item: ContentSummary
 
     private var titleWeight: Font.Weight {
-        item.isRead ? .regular : .semibold
+        .regular
     }
 
     private var titleColor: Color {
@@ -199,7 +199,7 @@ private struct ShortNewsRow: View {
             parts.append(source.uppercased())
         }
         if let comments = item.commentCountDisplay {
-            parts.append(comments)
+            parts.append("💬 \(comments)")
         }
         if let time = item.relativeTimeDisplay {
             parts.append(time.uppercased())
