@@ -192,6 +192,8 @@ When asked to build, run, or debug the iOS app, use the `$ios-debugger-agent` sk
 
 **Keep all replies short, technical, and complete.**
 
+**Never commit or push unless explicitly asked.** Do not auto-commit after completing a task.
+
 **Always run `ruff check` on touched Python files (or the repo) after a set of changes, and fix violations before final handoff whenever possible.**
 
 For detailed documentation on:

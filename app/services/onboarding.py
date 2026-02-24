@@ -619,11 +619,12 @@ def complete_onboarding(
             },
         )
 
-    if should_update_twitter_username:
-        user = db.query(User).filter(User.id == user_id).first()
-        if user and user.twitter_username != normalized_username:
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        if should_update_twitter_username and user.twitter_username != normalized_username:
             user.twitter_username = normalized_username
-            db.commit()
+        user.has_completed_onboarding = True
+        db.commit()
 
     inbox_count = _estimate_inbox_count(db, user_id)
     inbox_count_estimate = max(inbox_count, 100)
@@ -633,6 +634,7 @@ def complete_onboarding(
         task_id=task_id,
         inbox_count_estimate=inbox_count_estimate,
         longform_status="loading",
+        has_completed_onboarding=True,
         has_completed_new_user_tutorial=_get_tutorial_flag(db, user_id),
     )
 

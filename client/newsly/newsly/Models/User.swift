@@ -17,6 +17,7 @@ struct User: Codable, Identifiable, Equatable {
     let hasXBookmarkSync: Bool
     let isAdmin: Bool
     let isActive: Bool
+    let hasCompletedOnboarding: Bool
     let hasCompletedNewUserTutorial: Bool
     let hasCompletedLiveVoiceOnboarding: Bool
     let createdAt: Date
@@ -31,6 +32,7 @@ struct User: Codable, Identifiable, Equatable {
         case hasXBookmarkSync = "has_x_bookmark_sync"
         case isAdmin = "is_admin"
         case isActive = "is_active"
+        case hasCompletedOnboarding = "has_completed_onboarding"
         case hasCompletedNewUserTutorial = "has_completed_new_user_tutorial"
         case hasCompletedLiveVoiceOnboarding = "has_completed_live_voice_onboarding"
         case createdAt = "created_at"
@@ -46,6 +48,7 @@ struct User: Codable, Identifiable, Equatable {
         hasXBookmarkSync: Bool,
         isAdmin: Bool,
         isActive: Bool,
+        hasCompletedOnboarding: Bool,
         hasCompletedNewUserTutorial: Bool,
         hasCompletedLiveVoiceOnboarding: Bool,
         createdAt: Date,
@@ -59,6 +62,7 @@ struct User: Codable, Identifiable, Equatable {
         self.hasXBookmarkSync = hasXBookmarkSync
         self.isAdmin = isAdmin
         self.isActive = isActive
+        self.hasCompletedOnboarding = hasCompletedOnboarding
         self.hasCompletedNewUserTutorial = hasCompletedNewUserTutorial
         self.hasCompletedLiveVoiceOnboarding = hasCompletedLiveVoiceOnboarding
         self.createdAt = createdAt
@@ -75,6 +79,7 @@ struct User: Codable, Identifiable, Equatable {
         hasXBookmarkSync = try container.decodeIfPresent(Bool.self, forKey: .hasXBookmarkSync) ?? false
         isAdmin = try container.decode(Bool.self, forKey: .isAdmin)
         isActive = try container.decode(Bool.self, forKey: .isActive)
+        hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? true
         hasCompletedNewUserTutorial = try container.decode(Bool.self, forKey: .hasCompletedNewUserTutorial)
         hasCompletedLiveVoiceOnboarding = try container.decodeIfPresent(
             Bool.self,

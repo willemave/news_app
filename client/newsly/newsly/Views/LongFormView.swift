@@ -103,7 +103,7 @@ struct LongFormView: View {
                 }
             }
             .onAppear {
-                viewModel.setReadFilter(.all)
+                viewModel.setReadFilter(.unread)
                 viewModel.refreshTrigger.send(())
                 Task {
                     await processingCountService.refreshCount()

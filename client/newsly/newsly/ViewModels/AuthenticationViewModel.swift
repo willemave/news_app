@@ -23,10 +23,8 @@ enum AuthState: Equatable {
 final class AuthenticationViewModel: ObservableObject {
     @Published var authState: AuthState = .loading
     @Published var errorMessage: String?
-    @Published var lastSignInWasNewUser = false
 
     private let authService = AuthenticationService.shared
-    private let onboardingStateStore = OnboardingStateStore.shared
     private var lastKnownUser: User?
 
     init() {
@@ -57,7 +55,6 @@ final class AuthenticationViewModel: ObservableObject {
     /// Check if user is already authenticated on app launch
     func checkAuthStatus() {
         authState = .loading
-        lastSignInWasNewUser = false
 
         let hasRefreshToken = KeychainManager.shared.getToken(key: .refreshToken) != nil
         let hasAccessToken = KeychainManager.shared.getToken(key: .accessToken) != nil
@@ -90,10 +87,6 @@ final class AuthenticationViewModel: ObservableObject {
             do {
                 let session = try await authService.signInWithApple()
                 lastKnownUser = session.user
-                lastSignInWasNewUser = session.isNewUser
-                if session.isNewUser {
-                    onboardingStateStore.setPending(userId: session.user.id)
-                }
                 authState = .authenticated(session.user)
             } catch {
                 errorMessage = error.localizedDescription
@@ -106,7 +99,6 @@ final class AuthenticationViewModel: ObservableObject {
     func logout() {
         authService.logout()
         lastKnownUser = nil
-        lastSignInWasNewUser = false
         authState = .unauthenticated
     }
 

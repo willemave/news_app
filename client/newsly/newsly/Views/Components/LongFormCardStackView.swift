@@ -42,7 +42,7 @@ struct LongFormCardStackView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
-            viewModel.setReadFilter(.all)
+            viewModel.setReadFilter(.unread)
             viewModel.refreshTrigger.send(())
         }
         .onChange(of: items.count) { oldCount, newCount in

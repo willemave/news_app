@@ -66,12 +66,23 @@ def _is_nonfatal_tweet_lookup_error(error_message: str) -> bool:
     return "x_app_bearer_token is required" in lowered
 
 
+def _build_x_app_auth_error(error_message: str) -> str:
+    """Build a clear operator-facing error when X app auth is missing."""
+    return (
+        "X app-authenticated tweet lookup is unavailable. Configure "
+        "X_APP_BEARER_TOKEN (or TWITTER_AUTH_TOKEN) in the runtime environment. "
+        f"Details: {error_message}"
+    )
+
+
 @dataclass(frozen=True)
 class FlowOutcome:
     """Result for optional analyze-url flows."""
 
     handled: bool
     success: bool
+    error_message: str | None = None
+    retryable: bool = True
 
 
 class FeedSubscriptionFlow:
@@ -196,21 +207,22 @@ class TwitterShareFlow:
         if not fetch_result.success or not fetch_result.tweet:
             error_message = fetch_result.error or "Tweet lookup failed"
             if _is_nonfatal_tweet_lookup_error(error_message):
+                setup_error = _build_x_app_auth_error(error_message)
                 logger.warning(
-                    "Twitter share enrichment skipped due to missing app auth token",
+                    "Twitter share enrichment failed due to missing app auth token",
                     extra={
                         "component": "twitter_share",
                         "operation": "fetch_tweet",
                         "item_id": content.id,
-                        "context_data": {"error": error_message},
+                        "context_data": {"error": setup_error},
                     },
                 )
                 metadata = update_processing_state(
                     metadata,
                     tweet_enrichment={
-                        "status": "skipped",
+                        "status": "failed",
                         "reason": "x_app_auth_unavailable",
-                        "error": error_message,
+                        "error": setup_error,
                     },
                 )
                 content.content_metadata = refresh_merge_content_metadata(
@@ -219,8 +231,16 @@ class TwitterShareFlow:
                     base_metadata=base_metadata,
                     updated_metadata=metadata,
                 )
+                content.status = ContentStatus.FAILED.value
+                content.error_message = setup_error
+                content.processed_at = datetime.now(UTC)
                 db.commit()
-                return FlowOutcome(handled=False, success=True)
+                return FlowOutcome(
+                    handled=True,
+                    success=False,
+                    error_message=setup_error,
+                    retryable=False,
+                )
 
             logger.error(
                 "Twitter share fetch failed: %s",
@@ -234,7 +254,7 @@ class TwitterShareFlow:
             content.status = ContentStatus.FAILED.value
             content.error_message = error_message
             db.commit()
-            return FlowOutcome(handled=True, success=False)
+            return FlowOutcome(handled=True, success=False, error_message=error_message)
 
         tweet = fetch_result.tweet
         thread_text = _build_thread_text([tweet.text])

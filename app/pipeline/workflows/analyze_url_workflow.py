@@ -131,7 +131,10 @@ class AnalyzeUrlWorkflow:
                 context.queue,
             )
             if twitter_result.handled and not twitter_result.success:
-                return TaskResult.fail("Twitter share processing failed")
+                return TaskResult.fail(
+                    twitter_result.error_message or "Twitter share processing failed",
+                    retryable=twitter_result.retryable,
+                )
 
             analysis_result = None
             if not twitter_result.handled:
@@ -143,7 +146,12 @@ class AnalyzeUrlWorkflow:
                     analysis_instruction,
                 )
 
-            if crawl_links and analysis_result and analysis_result.instruction:
+            if (
+                crawl_links
+                and not twitter_result.handled
+                and analysis_result
+                and analysis_result.instruction
+            ):
                 self._instruction_fanout.run(db, content, analysis_result)
 
             if instruction and task.id:

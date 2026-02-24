@@ -20,7 +20,6 @@ struct AuthenticatedRootView: View {
 
     @State private var presentationState: AuthenticatedPresentationState = .deciding
 
-    private let onboardingStateStore = OnboardingStateStore.shared
     private let onboardingService = OnboardingService.shared
 
     var body: some View {
@@ -30,7 +29,14 @@ struct AuthenticatedRootView: View {
                 LoadingView()
             case .onboarding:
                 OnboardingFlowView(user: user) { response in
-                    onboardingStateStore.clearPending(userId: user.id)
+                    // Refresh user from server to pick up updated has_completed_onboarding
+                    Task {
+                        if let updatedUser = try? await AuthenticationService.shared.getCurrentUser() {
+                            authViewModel.updateUser(updatedUser)
+                        } else {
+                            authViewModel.updateUser(updatedUserOnboardingFlag(true))
+                        }
+                    }
                     if !response.hasCompletedNewUserTutorial {
                         presentationState = .tutorial
                     } else {
@@ -53,10 +59,10 @@ struct AuthenticatedRootView: View {
         .onAppear {
             updatePresentation()
         }
-        .onChange(of: authViewModel.lastSignInWasNewUser) { _, _ in
+        .onChange(of: user.id) { _, _ in
             updatePresentation()
         }
-        .onChange(of: user.id) { _, _ in
+        .onChange(of: user.hasCompletedOnboarding) { _, _ in
             updatePresentation()
         }
         .onChange(of: user.hasCompletedNewUserTutorial) { _, _ in
@@ -65,10 +71,8 @@ struct AuthenticatedRootView: View {
     }
 
     private func updatePresentation() {
-        let needsOnboarding = authViewModel.lastSignInWasNewUser || onboardingStateStore.needsOnboarding(userId: user.id)
-        if needsOnboarding {
+        if !user.hasCompletedOnboarding {
             presentationState = .onboarding
-            authViewModel.lastSignInWasNewUser = false
             return
         }
 
@@ -92,6 +96,24 @@ struct AuthenticatedRootView: View {
         }
     }
 
+    private func updatedUserOnboardingFlag(_ completed: Bool) -> User {
+        User(
+            id: user.id,
+            appleId: user.appleId,
+            email: user.email,
+            fullName: user.fullName,
+            twitterUsername: user.twitterUsername,
+            hasXBookmarkSync: user.hasXBookmarkSync,
+            isAdmin: user.isAdmin,
+            isActive: user.isActive,
+            hasCompletedOnboarding: completed,
+            hasCompletedNewUserTutorial: user.hasCompletedNewUserTutorial,
+            hasCompletedLiveVoiceOnboarding: user.hasCompletedLiveVoiceOnboarding,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        )
+    }
+
     private func updatedUserTutorialFlag(_ completed: Bool) -> User {
         User(
             id: user.id,
@@ -102,6 +124,7 @@ struct AuthenticatedRootView: View {
             hasXBookmarkSync: user.hasXBookmarkSync,
             isAdmin: user.isAdmin,
             isActive: user.isActive,
+            hasCompletedOnboarding: user.hasCompletedOnboarding,
             hasCompletedNewUserTutorial: completed,
             hasCompletedLiveVoiceOnboarding: user.hasCompletedLiveVoiceOnboarding,
             createdAt: user.createdAt,

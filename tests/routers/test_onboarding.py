@@ -55,6 +55,7 @@ def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, te
     data = response.json()
     assert data["status"] == "queued"
     assert data["task_id"] == 42
+    assert data["has_completed_onboarding"] is True
 
     configs = (
         db_session.query(UserScraperConfig).filter(UserScraperConfig.user_id == test_user.id).all()
@@ -68,6 +69,7 @@ def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, te
     assert any(call[0] == TaskType.ONBOARDING_DISCOVER.value for call in calls)
     db_session.refresh(test_user)
     assert test_user.twitter_username == "willem_aw"
+    assert test_user.has_completed_onboarding is True
 
 
 def test_onboarding_complete_rejects_invalid_twitter_username(client):

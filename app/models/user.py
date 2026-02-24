@@ -22,6 +22,7 @@ class User(Base):
     is_admin = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     has_completed_new_user_tutorial = Column(Boolean, default=False, nullable=False)
+    has_completed_onboarding = Column(Boolean, default=False, nullable=False)
     has_completed_live_voice_onboarding = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
@@ -52,6 +53,7 @@ class UserResponse(UserBase):
     is_active: bool
     twitter_username: str | None = None
     has_x_bookmark_sync: bool = False
+    has_completed_onboarding: bool
     has_completed_new_user_tutorial: bool
     has_completed_live_voice_onboarding: bool
     created_at: datetime

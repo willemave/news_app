@@ -11,7 +11,6 @@ struct DebugMenuView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authViewModel: AuthenticationViewModel
     @ObservedObject private var appSettings = AppSettings.shared
-    private let onboardingStateStore = OnboardingStateStore.shared
     @State private var showingTokenInput = false
     @State private var forceOnboardingAfterTokenSave = false
     @State private var accessToken = ""
@@ -230,11 +229,10 @@ struct DebugMenuView: View {
                 let user = try await AuthenticationService.shared.getCurrentUser()
                 await MainActor.run {
                     if forceOnboardingAfterTokenSave {
-                        onboardingStateStore.clearDiscoveryRun(userId: user.id)
-                        onboardingStateStore.setPending(userId: user.id)
-                        authViewModel.lastSignInWasNewUser = true
+                        triggerForcedOnboarding(user: user)
+                    } else {
+                        authViewModel.authState = .authenticated(user)
                     }
-                    authViewModel.authState = .authenticated(user)
                     forceOnboardingAfterTokenSave = false
                 }
             } catch {
@@ -258,8 +256,7 @@ struct DebugMenuView: View {
             do {
                 let session = try await AuthenticationService.shared.createDebugUser()
                 if let previousUserId {
-                    onboardingStateStore.clearPending(userId: previousUserId)
-                    onboardingStateStore.clearDiscoveryRun(userId: previousUserId)
+                    OnboardingStateStore.shared.clearDiscoveryRun(userId: previousUserId)
                 }
                 await MainActor.run {
                     triggerForcedOnboarding(user: session.user)
@@ -301,10 +298,26 @@ struct DebugMenuView: View {
 
     @MainActor
     private func triggerForcedOnboarding(user: User) {
-        onboardingStateStore.clearDiscoveryRun(userId: user.id)
-        onboardingStateStore.setPending(userId: user.id)
-        authViewModel.lastSignInWasNewUser = true
-        authViewModel.authState = .authenticated(user)
+        OnboardingStateStore.shared.clearDiscoveryRun(userId: user.id)
+        authViewModel.authState = .authenticated(userWithResetOnboardingFlags(user))
+    }
+
+    private func userWithResetOnboardingFlags(_ user: User) -> User {
+        User(
+            id: user.id,
+            appleId: user.appleId,
+            email: user.email,
+            fullName: user.fullName,
+            twitterUsername: user.twitterUsername,
+            hasXBookmarkSync: user.hasXBookmarkSync,
+            isAdmin: user.isAdmin,
+            isActive: user.isActive,
+            hasCompletedOnboarding: false,
+            hasCompletedNewUserTutorial: false,
+            hasCompletedLiveVoiceOnboarding: user.hasCompletedLiveVoiceOnboarding,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        )
     }
 
     private func resetAuth() {

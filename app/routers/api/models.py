@@ -984,6 +984,7 @@ class OnboardingCompleteResponse(BaseModel):
     task_id: int | None = None
     inbox_count_estimate: int
     longform_status: str
+    has_completed_onboarding: bool
     has_completed_new_user_tutorial: bool
 
 
