@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """
 Generate test data for the news_app database.
 
@@ -38,11 +39,21 @@ from __future__ import annotations
 import os
 import random
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 # Add parent directory so we can import from app
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VENV_PYTHON = os.path.join(PROJECT_ROOT, ".venv", "bin", "python")
+
+if os.path.exists(VENV_PYTHON):
+    current_executable = os.path.realpath(sys.executable)
+    target_executable = VENV_PYTHON
+    target_realpath = os.path.realpath(target_executable)
+    if current_executable != target_realpath:
+        os.execv(target_executable, [target_executable, __file__, *sys.argv[1:]])
+
+sys.path.insert(0, PROJECT_ROOT)
 
 from sqlalchemy.orm import Session
 
@@ -213,12 +224,33 @@ DISCUSSION_COMMENTS = [
 ]
 
 SUMMARY_FORMATS = ["bulleted", "interleaved_v2", "structured", "interleaved_v1"]
+UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
+
+
+def utc_now_naive() -> datetime:
+    """Return the current UTC timestamp without tzinfo for DB writes."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def random_datetime(days_back: int = 30) -> datetime:
     """Generate a random datetime within the last N days."""
     delta = timedelta(days=random.randint(0, days_back))
-    return datetime.now(UTC).replace(tzinfo=None) - delta
+    return utc_now_naive() - delta
+
+
+def random_datetime_for_day_offset(day_offset: int) -> datetime:
+    """Generate a random timestamp within one UTC day offset from today."""
+    base_day = (utc_now_naive() - timedelta(days=max(day_offset, 0))).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    return base_day + timedelta(
+        hours=random.randint(0, 23),
+        minutes=random.randint(0, 59),
+        seconds=random.randint(0, 59),
+    )
 
 
 def generate_bullet_points(count: int = 4) -> list[dict[str, str]]:
@@ -722,6 +754,7 @@ class NewsGenerator:
     def generate(
         url_base: str = "https://example.com/news",
         status: str = ContentStatus.COMPLETED.value,
+        day_offset: int = 0,
     ) -> dict[str, Any]:
         """Generate a complete news item with metadata."""
         news_id = random.randint(1000, 999999)
@@ -729,6 +762,13 @@ class NewsGenerator:
         headline = random.choice(NEWS_HEADLINES)
         platform = random.choice(NEWS_PLATFORMS)
         source_domain = "example.com"
+        created_at = random_datetime_for_day_offset(day_offset)
+        processed_at = None
+        if status == ContentStatus.COMPLETED.value:
+            processed_at = min(
+                created_at + timedelta(minutes=random.randint(5, 180)),
+                utc_now_naive(),
+            )
 
         # Generate news summary
         summary = NewsSummary(
@@ -741,7 +781,7 @@ class NewsGenerator:
             ],
             summary="Breaking news with significant implications for tech and broader markets.",
             classification="to_read" if random.random() > 0.3 else "skip",
-            summarization_date=random_datetime(3),
+            summarization_date=processed_at or created_at,
         )
 
         # Build discussion URL based on platform
@@ -772,7 +812,7 @@ class NewsGenerator:
                 "external_id": str(news_id),
                 "metadata": {"score": random.randint(50, 500)} if platform == "hackernews" else {},
             },
-            "discovery_time": random_datetime(2),
+            "discovery_time": created_at,
             "summary": summary.model_dump(mode="json", exclude_none=True),
         }
 
@@ -790,8 +830,9 @@ class NewsGenerator:
             "status": status,
             "classification": summary.classification,
             "content_metadata": metadata,
-            "publication_date": random_datetime(7),
-            "processed_at": random_datetime(2) if status == ContentStatus.COMPLETED.value else None,
+            "created_at": created_at,
+            "publication_date": created_at - timedelta(minutes=random.randint(15, 360)),
+            "processed_at": processed_at,
         }
 
 
@@ -802,6 +843,7 @@ def generate_test_data(
     include_pending: bool = True,
     article_summary_format: str = "mixed",
     podcast_summary_format: str = "mixed",
+    news_days_back: int = 5,
 ) -> list[dict[str, Any]]:
     """
     Generate a mix of test data across all content types.
@@ -811,6 +853,7 @@ def generate_test_data(
         num_podcasts: Number of podcasts to generate
         num_news: Number of news items to generate
         include_pending: Include some items in pending/processing states
+        news_days_back: Spread generated news across this many recent UTC days
 
     Returns:
         List of content dictionaries ready for database insertion
@@ -841,7 +884,12 @@ def generate_test_data(
             status = random.choice([ContentStatus.NEW.value, ContentStatus.PROCESSING.value])
         else:
             status = ContentStatus.COMPLETED.value
-        data.append(NewsGenerator.generate(status=status))
+        data.append(
+            NewsGenerator.generate(
+                status=status,
+                day_offset=i % max(news_days_back, 1),
+            )
+        )
 
     return data
 
@@ -903,9 +951,16 @@ def insert_test_data(
         session.flush()  # Get the ID
         inserted_ids.append(content.id)
 
-        # Add generated content to users' inboxes so it is visible in list endpoints.
-        # Short-form news also requires a content_status inbox row.
-        if item["content_type"] in ("article", "podcast", "news") and user_ids:
+        # SQLite can reuse primary keys for rows that were deleted earlier.
+        # If the local dev DB contains orphaned status rows for an old content ID,
+        # clear them before creating inbox entries for the new content row.
+        session.query(ContentStatusEntry).filter(
+            ContentStatusEntry.content_id == content.id
+        ).delete(synchronize_session=False)
+
+        # Add longform content to users' inboxes so it is visible in list endpoints.
+        # News items are visible through the feed query without a content_status row.
+        if item["content_type"] in ("article", "podcast") and user_ids:
             for user_id in user_ids:
                 session.add(
                     ContentStatusEntry(
@@ -978,6 +1033,12 @@ def main():
     parser.add_argument("--podcasts", type=int, default=5, help="Number of podcasts to generate")
     parser.add_argument("--news", type=int, default=30, help="Number of news items to generate")
     parser.add_argument(
+        "--news-days-back",
+        type=int,
+        default=5,
+        help="Spread generated news across this many recent UTC days",
+    )
+    parser.add_argument(
         "--no-pending",
         action="store_true",
         help="Don't include items in pending/processing states",
@@ -1015,6 +1076,7 @@ def main():
     print(f"  - {args.articles} articles")
     print(f"  - {args.podcasts} podcasts")
     print(f"  - {args.news} news items")
+    print(f"  - News spread across {args.news_days_back} day(s)")
 
     data = generate_test_data(
         num_articles=args.articles,
@@ -1023,6 +1085,7 @@ def main():
         include_pending=not args.no_pending,
         article_summary_format=args.article_summary_format,
         podcast_summary_format=args.podcast_summary_format,
+        news_days_back=args.news_days_back,
     )
 
     if args.dry_run:

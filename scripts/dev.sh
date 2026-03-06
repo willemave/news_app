@@ -39,20 +39,51 @@ usage() {
 
 kill_services() {
     echo -e "${YELLOW}Stopping dev services...${NC}"
+    kill_orphan_services() {
+        local killed_any=0
+        pkill -f "uvicorn app.main:app" 2>/dev/null && { echo "  Killed server (orphan)"; killed_any=1; } || true
+        pkill -f "run_workers.py" 2>/dev/null && { echo "  Killed workers (orphan)"; killed_any=1; } || true
+        pkill -f "run_scrapers.py" 2>/dev/null && { echo "  Killed scrapers (orphan)"; killed_any=1; } || true
+        pkill -f "tail -f .*/logs/dev\\.log" 2>/dev/null && { echo "  Killed log tail"; killed_any=1; } || true
+        [ "$killed_any" -eq 0 ] && echo "  No orphan services found"
+    }
+
     if [ -f "$PID_FILE" ]; then
         while read -r pid name; do
-            if kill -0 "$pid" 2>/dev/null; then
+            [ -z "$pid" ] && continue
+            [[ "$pid" =~ ^[0-9]+$ ]] || continue
+
+            local cmdline
+            cmdline="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+
+            if [[ "$cmdline" == *"scripts/dev.sh"* ]]; then
                 echo "  Stopping $name (PID $pid)"
-                kill "$pid" 2>/dev/null || true
+                kill -TERM -- "-$pid" 2>/dev/null || true
+                kill -TERM "$pid" 2>/dev/null || true
             fi
         done < "$PID_FILE"
+
+        # Escalate if wrappers are still present.
+        sleep 1
+        while read -r pid _; do
+            [ -z "$pid" ] && continue
+            [[ "$pid" =~ ^[0-9]+$ ]] || continue
+
+            local cmdline
+            cmdline="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+
+            if [[ "$cmdline" == *"scripts/dev.sh"* ]] && kill -0 "$pid" 2>/dev/null; then
+                kill -KILL -- "-$pid" 2>/dev/null || true
+                kill -KILL "$pid" 2>/dev/null || true
+            fi
+        done < "$PID_FILE"
+
+        kill_orphan_services
         rm -f "$PID_FILE"
         echo -e "${GREEN}Done${NC}"
     else
         echo "No PID file found. Checking for orphan processes..."
-        pkill -f "uvicorn app.main:app" 2>/dev/null && echo "  Killed server" || true
-        pkill -f "run_workers.py" 2>/dev/null && echo "  Killed workers" || true
-        pkill -f "run_scrapers.py" 2>/dev/null && echo "  Killed scrapers" || true
+        kill_orphan_services
     fi
 }
 
