@@ -7,6 +7,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     Index,
@@ -215,6 +216,33 @@ class ContentFavorites(Base):
 
     __table_args__ = (
         Index("idx_content_favorites_user_content", "user_id", "content_id", unique=True),
+    )
+
+
+class DailyNewsDigest(Base):
+    """Per-user daily news roll-up summary."""
+
+    __tablename__ = "daily_news_digests"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    local_date = Column(Date, nullable=False, index=True)
+    timezone = Column(String(100), nullable=False, default="UTC")
+    title = Column(String(240), nullable=False)
+    summary = Column(Text, nullable=False)
+    key_points = Column(JSON, default=list, nullable=False)
+    source_content_ids = Column(JSON, default=list, nullable=False)
+    source_count = Column(Integer, nullable=False, default=0)
+    llm_model = Column(String(120), nullable=False)
+    generated_at = Column(DateTime, nullable=False, default=_utcnow)
+    read_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "local_date", name="uq_daily_news_digests_user_date"),
+        Index("idx_daily_news_digests_user_local_date", "user_id", "local_date"),
+        Index("idx_daily_news_digests_user_read_at", "user_id", "read_at"),
     )
 
 

@@ -47,6 +47,7 @@ class TaskType(StrEnum):
     ONBOARDING_DISCOVER = "onboarding_discover"
     DIG_DEEPER = "dig_deeper"
     SYNC_INTEGRATION = "sync_integration"
+    GENERATE_DAILY_NEWS_DIGEST = "generate_daily_news_digest"
 
 
 class TaskQueue(StrEnum):
@@ -82,4 +83,3 @@ class SummaryVersion(IntEnum):
 
     V1 = 1
     V2 = 2
-

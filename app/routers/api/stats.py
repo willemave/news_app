@@ -10,7 +10,13 @@ from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
+from app.models.schema import (
+    Content,
+    ContentFavorites,
+    ContentReadStatus,
+    ContentStatusEntry,
+    DailyNewsDigest,
+)
 from app.models.user import User
 from app.repositories.content_repository import apply_visibility_filters, build_visibility_context
 from app.routers.api.models import (
@@ -50,8 +56,20 @@ def get_unread_counts(
         if content_type in counts:
             counts[content_type] = count
 
+    with timed("query unread_daily_news_digests"):
+        unread_daily_digest_count = (
+            db.query(func.count(DailyNewsDigest.id))
+            .filter(DailyNewsDigest.user_id == current_user.id)
+            .filter(DailyNewsDigest.read_at.is_(None))
+            .scalar()
+            or 0
+        )
+
     return UnreadCountsResponse(
-        article=counts["article"], podcast=counts["podcast"], news=counts["news"]
+        article=counts["article"],
+        podcast=counts["podcast"],
+        news=counts["news"],
+        daily_news_digest=unread_daily_digest_count,
     )
 
 

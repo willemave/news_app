@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
+from app.models.schema import (
+    Content,
+    ContentFavorites,
+    ContentReadStatus,
+    ContentStatusEntry,
+    DailyNewsDigest,
+)
 from app.models.user import User
 
 
@@ -259,6 +267,7 @@ def test_unread_counts_require_inbox_for_news(client, db_session, test_user) -> 
     assert response.status_code == 200
     payload = response.json()
     assert payload["news"] == 0
+    assert payload["daily_news_digest"] == 0
 
     _add_inbox_status(db_session, test_user.id, news_item.id)
     db_session.commit()
@@ -267,3 +276,26 @@ def test_unread_counts_require_inbox_for_news(client, db_session, test_user) -> 
     assert response.status_code == 200
     payload = response.json()
     assert payload["news"] == 1
+    assert payload["daily_news_digest"] == 0
+
+    db_session.add(
+        DailyNewsDigest(
+            user_id=test_user.id,
+            local_date=datetime(2026, 2, 28).date(),
+            timezone="UTC",
+            title="Digest",
+            summary="Digest summary",
+            key_points=[],
+            source_content_ids=[],
+            source_count=0,
+            llm_model="google-gla:gemini-3-flash-preview",
+            generated_at=datetime(2026, 3, 1, 3, 0, 0),
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/api/content/stats/unread-counts")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["news"] == 1
+    assert payload["daily_news_digest"] == 1

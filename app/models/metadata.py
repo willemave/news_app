@@ -450,7 +450,7 @@ class NewsSummary(BaseModel):
     key_points: list[str] = Field(
         default_factory=list,
         min_length=0,
-        max_length=6,
+        max_length=10,
         description="Headline-ready bullet points summarizing the article",
     )
     summary: str | None = Field(

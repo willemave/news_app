@@ -13,6 +13,7 @@ organized into logical sub-routers:
 - submission: User content submissions
 - chat: Deep-dive chat sessions with articles
 - stats: User stats (unread and processing counts)
+- daily_news_digests: Daily roll-up digest cards
 """
 
 from fastapi import APIRouter
@@ -22,6 +23,7 @@ from app.routers.api import (
     content_actions,
     content_detail,
     content_list,
+    daily_news_digests,
     favorites,
     read_status,
     scraper_configs,
@@ -38,6 +40,7 @@ router = APIRouter(
 # Include all sub-routers
 # Content listing and discovery
 router.include_router(content_list.router)
+router.include_router(daily_news_digests.router)
 
 # User stats
 router.include_router(stats.router)

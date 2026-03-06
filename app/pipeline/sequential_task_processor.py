@@ -14,6 +14,7 @@ from app.pipeline.handlers.dig_deeper import DigDeeperHandler
 from app.pipeline.handlers.discover_feeds import DiscoverFeedsHandler
 from app.pipeline.handlers.download_audio import DownloadAudioHandler
 from app.pipeline.handlers.fetch_discussion import FetchDiscussionHandler
+from app.pipeline.handlers.generate_daily_news_digest import GenerateDailyNewsDigestHandler
 from app.pipeline.handlers.generate_image import GenerateImageHandler
 from app.pipeline.handlers.onboarding_discover import OnboardingDiscoverHandler
 from app.pipeline.handlers.process_content import ProcessContentHandler
@@ -77,6 +78,7 @@ class SequentialTaskProcessor:
             SummarizeHandler(),
             FetchDiscussionHandler(),
             GenerateImageHandler(),
+            GenerateDailyNewsDigestHandler(),
             DiscoverFeedsHandler(),
             OnboardingDiscoverHandler(),
             DigDeeperHandler(),

@@ -47,6 +47,9 @@ SUMMARY_KIND_SHORT_NEWS_DIGEST = "short_news_digest"
 SUMMARY_VERSION_V1 = 1
 SUMMARY_VERSION_V2 = 2
 
+# Daily digest synthesis model
+DAILY_NEWS_DIGEST_MODEL = "google-gla:gemini-3-flash-preview"
+
 
 # Worker ID format: {worker_type}_{instance_id}_{pid}
 def generate_worker_id(worker_type: str, instance_id: str = "1") -> str:

@@ -152,6 +152,40 @@ class ContentListResponse(BaseModel):
     )
 
 
+class DailyNewsDigestResponse(BaseModel):
+    """Summary information for one daily news digest card."""
+
+    id: int = Field(..., description="Unique digest identifier")
+    local_date: str = Field(..., description="Digest local date (YYYY-MM-DD)")
+    timezone: str = Field(..., description="IANA timezone used for local-day grouping")
+    title: str = Field(..., description="Daily digest headline")
+    summary: str = Field(..., description="Succinct daily roll-up summary")
+    key_points: list[str] = Field(default_factory=list, description="Optional digest bullet points")
+    source_count: int = Field(..., ge=0, description="Number of source news items included")
+    source_content_ids: list[int] = Field(
+        default_factory=list,
+        description="Source news content IDs used for synthesis",
+    )
+    is_read: bool = Field(False, description="Whether this digest card is marked read")
+    read_at: str | None = Field(None, description="ISO timestamp when digest was marked read")
+    generated_at: str = Field(..., description="ISO timestamp when digest was generated")
+
+
+class DailyNewsDigestListResponse(BaseModel):
+    """Paginated response for daily digest list."""
+
+    digests: list[DailyNewsDigestResponse] = Field(default_factory=list)
+    meta: PaginationMetadata = Field(..., description="Pagination metadata for the response")
+
+
+class DailyNewsDigestVoiceSummaryResponse(BaseModel):
+    """Voice narration payload for one daily digest."""
+
+    digest_id: int = Field(..., description="Digest identifier")
+    title: str = Field(..., description="Digest title")
+    narration_text: str = Field(..., description="Plain-text narration script for voice playback")
+
+
 class SubmissionStatusResponse(BaseModel):
     """Status information for a user-submitted content item."""
 
@@ -638,6 +672,10 @@ class UnreadCountsResponse(BaseModel):
     article: int = Field(..., description="Number of unread articles")
     podcast: int = Field(..., description="Number of unread podcasts")
     news: int = Field(..., description="Number of unread news items")
+    daily_news_digest: int = Field(
+        0,
+        description="Number of unread daily news digest cards",
+    )
 
 
 class ProcessingCountResponse(BaseModel):
