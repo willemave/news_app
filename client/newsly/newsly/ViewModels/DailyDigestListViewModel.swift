@@ -103,6 +103,10 @@ final class DailyDigestListViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    func fetchVoiceSummaryAudio(id: Int) async throws -> Data {
+        try await repository.fetchVoiceSummaryAudio(id: id)
+    }
+
     func fetchVoiceSummary(id: Int) async throws -> DailyNewsDigestVoiceSummaryResponse {
         try await repository.fetchVoiceSummary(id: id)
     }

@@ -7,7 +7,7 @@ import json
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.routers.api.models import (
     DailyNewsDigestVoiceSummaryResponse,
 )
 from app.services.daily_news_digest import MAX_DAILY_DIGEST_BULLETS
+from app.services.voice.narration_tts import get_digest_narration_tts_service
 
 router = APIRouter()
 
@@ -84,6 +85,36 @@ def _build_digest_response(digest: DailyNewsDigest) -> DailyNewsDigestResponse:
         read_at=_isoformat_utc(digest.read_at),
         generated_at=_isoformat_utc(digest.generated_at) or "",
     )
+
+
+def _get_user_digest_or_404(
+    *,
+    db: Session,
+    user_id: int,
+    digest_id: int,
+) -> DailyNewsDigest:
+    digest = (
+        db.query(DailyNewsDigest)
+        .filter(DailyNewsDigest.id == digest_id, DailyNewsDigest.user_id == user_id)
+        .first()
+    )
+    if digest is None:
+        raise HTTPException(status_code=404, detail="Daily digest not found")
+    return digest
+
+
+def _build_digest_narration_text(digest: DailyNewsDigest) -> str:
+    points = digest.key_points if isinstance(digest.key_points, list) else []
+    cleaned_points = [point.strip() for point in points if isinstance(point, str) and point.strip()]
+
+    narration_parts: list[str] = []
+    if cleaned_points:
+        narration_parts.append("Key points:")
+        narration_parts.extend(cleaned_points[:MAX_DAILY_DIGEST_BULLETS])
+    elif digest.summary.strip():
+        narration_parts.append(digest.summary.strip())
+
+    return " ".join(part for part in narration_parts if part)
 
 
 @router.get(
@@ -170,14 +201,7 @@ def mark_daily_digest_read(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
     """Mark a single daily digest row as read."""
-    digest = (
-        db.query(DailyNewsDigest)
-        .filter(DailyNewsDigest.id == digest_id, DailyNewsDigest.user_id == current_user.id)
-        .first()
-    )
-    if digest is None:
-        raise HTTPException(status_code=404, detail="Daily digest not found")
-
+    digest = _get_user_digest_or_404(db=db, user_id=current_user.id, digest_id=digest_id)
     digest.read_at = datetime.now(UTC).replace(tzinfo=None)
     db.commit()
     return {
@@ -198,14 +222,7 @@ def mark_daily_digest_unread(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
     """Mark a single daily digest row as unread."""
-    digest = (
-        db.query(DailyNewsDigest)
-        .filter(DailyNewsDigest.id == digest_id, DailyNewsDigest.user_id == current_user.id)
-        .first()
-    )
-    if digest is None:
-        raise HTTPException(status_code=404, detail="Daily digest not found")
-
+    digest = _get_user_digest_or_404(db=db, user_id=current_user.id, digest_id=digest_id)
     digest.read_at = None
     db.commit()
     return {
@@ -227,27 +244,43 @@ def get_daily_digest_voice_summary(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> DailyNewsDigestVoiceSummaryResponse:
     """Return narration script text for one digest."""
-    digest = (
-        db.query(DailyNewsDigest)
-        .filter(DailyNewsDigest.id == digest_id, DailyNewsDigest.user_id == current_user.id)
-        .first()
-    )
-    if digest is None:
-        raise HTTPException(status_code=404, detail="Daily digest not found")
-
-    points = digest.key_points if isinstance(digest.key_points, list) else []
-    cleaned_points = [point.strip() for point in points if isinstance(point, str) and point.strip()]
-
-    narration_parts = [f"Daily news roll-up for {digest.local_date.isoformat()}."]
-    if cleaned_points:
-        narration_parts.append("Key points:")
-        narration_parts.extend(cleaned_points[:MAX_DAILY_DIGEST_BULLETS])
-    elif digest.summary.strip():
-        narration_parts.append(digest.summary.strip())
-
-    narration_text = " ".join(part for part in narration_parts if part)
+    digest = _get_user_digest_or_404(db=db, user_id=current_user.id, digest_id=digest_id)
+    narration_text = _build_digest_narration_text(digest)
     return DailyNewsDigestVoiceSummaryResponse(
         digest_id=digest.id,
         title=digest.title,
         narration_text=narration_text,
+    )
+
+
+@router.get(
+    "/daily-digests/{digest_id}/voice-summary/audio",
+    summary="Get narration audio for one daily digest",
+)
+def get_daily_digest_voice_summary_audio(
+    digest_id: Annotated[int, Path(..., gt=0)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    """Return MP3 narration audio for one digest."""
+    digest = _get_user_digest_or_404(db=db, user_id=current_user.id, digest_id=digest_id)
+    narration_text = _build_digest_narration_text(digest)
+
+    try:
+        audio_bytes = get_digest_narration_tts_service().synthesize_mp3(
+            text=narration_text,
+            item_id=digest.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return Response(
+        content=audio_bytes,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'inline; filename="daily-digest-{digest.id}.mp3"',
+        },
     )

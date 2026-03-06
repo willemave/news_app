@@ -15,6 +15,7 @@ protocol DailyNewsDigestRepositoryType {
 
     func markRead(id: Int) -> AnyPublisher<Void, Error>
     func markUnread(id: Int) -> AnyPublisher<Void, Error>
+    func fetchVoiceSummaryAudio(id: Int) async throws -> Data
     func fetchVoiceSummary(id: Int) async throws -> DailyNewsDigestVoiceSummaryResponse
 }
 
@@ -53,6 +54,13 @@ final class DailyNewsDigestRepository: DailyNewsDigestRepositoryType {
 
     func markUnread(id: Int) -> AnyPublisher<Void, Error> {
         client.publisherVoid(APIEndpoints.markDailyDigestUnread(id: id), method: "DELETE")
+    }
+
+    func fetchVoiceSummaryAudio(id: Int) async throws -> Data {
+        try await client.requestData(
+            APIEndpoints.dailyDigestVoiceSummaryAudio(id: id),
+            accept: "audio/mpeg"
+        )
     }
 
     func fetchVoiceSummary(id: Int) async throws -> DailyNewsDigestVoiceSummaryResponse {

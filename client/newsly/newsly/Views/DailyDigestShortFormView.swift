@@ -8,6 +8,7 @@ import SwiftUI
 struct DailyDigestShortFormView: View {
     @ObservedObject var viewModel: DailyDigestListViewModel
     @StateObject private var narrationService = DigestNarrationService.shared
+    @AppStorage("daily_digest_narration_playback_rate") private var narrationPlaybackRate = 1.0
     @State private var loadingVoiceDigestIds: Set<Int> = []
     @State private var voiceErrorMessage: String?
 
@@ -37,6 +38,11 @@ struct DailyDigestShortFormView: View {
                             digest: digest,
                             isSpeaking: narrationService.isSpeaking && narrationService.speakingDigestId == digest.id,
                             isLoadingVoice: loadingVoiceDigestIds.contains(digest.id),
+                            playbackRate: narrationPlaybackRate,
+                            onSelectPlaybackRate: { rate in
+                                narrationPlaybackRate = rate
+                                narrationService.setPlaybackRate(Float(rate))
+                            },
                             onToggleRead: { toggleRead(for: digest) },
                             onVoiceSummary: { handleVoiceSummary(for: digest) }
                         )
@@ -89,6 +95,7 @@ struct DailyDigestShortFormView: View {
     }
 
     private func handleVoiceSummary(for digest: DailyNewsDigest) {
+        narrationService.setPlaybackRate(Float(narrationPlaybackRate))
         if narrationService.isSpeaking && narrationService.speakingDigestId == digest.id {
             narrationService.stop()
             return
@@ -98,10 +105,19 @@ struct DailyDigestShortFormView: View {
         Task {
             defer { loadingVoiceDigestIds.remove(digest.id) }
             do {
-                let response = try await viewModel.fetchVoiceSummary(id: digest.id)
-                narrationService.speak(text: response.narrationText, digestId: digest.id)
+                if narrationService.playCachedAudio(for: digest.id) {
+                    return
+                }
+
+                let audioData = try await viewModel.fetchVoiceSummaryAudio(id: digest.id)
+                try narrationService.playAudio(audioData, digestId: digest.id)
             } catch {
-                voiceErrorMessage = "Failed to load voice summary: \(error.localizedDescription)"
+                do {
+                    let response = try await viewModel.fetchVoiceSummary(id: digest.id)
+                    narrationService.speak(text: response.narrationText, digestId: digest.id)
+                } catch {
+                    voiceErrorMessage = "Failed to load voice summary: \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -113,6 +129,8 @@ private struct DailyDigestCard: View {
     let digest: DailyNewsDigest
     let isSpeaking: Bool
     let isLoadingVoice: Bool
+    let playbackRate: Double
+    let onSelectPlaybackRate: (Double) -> Void
     let onToggleRead: () -> Void
     let onVoiceSummary: () -> Void
 
@@ -121,9 +139,9 @@ private struct DailyDigestCard: View {
             // Date header
             HStack(alignment: .firstTextBaseline) {
                 Text(digest.displayDateLabel.uppercased())
-                    .font(.system(size: 12, weight: .bold))
-                    .tracking(1.0)
-                    .foregroundStyle(digest.isRead ? Color.textTertiary : Color.textSecondary)
+                    .font(.system(size: 16, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(digest.isRead ? Color.textTertiary : Color.textPrimary)
 
                 Spacer()
 
@@ -180,11 +198,24 @@ private struct DailyDigestCard: View {
                             .frame(width: 16, height: 16)
                     } else {
                         Label(
-                            isSpeaking ? "Stop" : "Listen",
+                            voiceSummaryButtonTitle,
                             systemImage: isSpeaking ? "speaker.slash.fill" : "speaker.wave.2.fill"
                         )
                         .font(.caption.weight(.medium))
                         .foregroundStyle(isSpeaking ? Color.accentColor : Color.textSecondary)
+                    }
+                }
+                .contextMenu {
+                    ForEach(DigestNarrationService.supportedPlaybackRates, id: \.self) { rate in
+                        Button {
+                            onSelectPlaybackRate(Double(rate))
+                        } label: {
+                            if abs(Double(rate) - playbackRate) < 0.001 {
+                                Label(playbackRateLabel(for: Double(rate)), systemImage: "checkmark")
+                            } else {
+                                Text(playbackRateLabel(for: Double(rate)))
+                            }
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -198,5 +229,14 @@ private struct DailyDigestCard: View {
                 .fill(Color.borderSubtle.opacity(0.4))
                 .frame(height: 6)
         }
+    }
+
+    private var voiceSummaryButtonTitle: String {
+        let action = isSpeaking ? "Stop" : "Listen"
+        return "\(action) \(playbackRateLabel(for: playbackRate))"
+    }
+
+    private func playbackRateLabel(for rate: Double) -> String {
+        "\(rate.formatted(.number.precision(.fractionLength(0...2))))x"
     }
 }

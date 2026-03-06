@@ -92,6 +92,7 @@ class APIClient {
             method: method,
             body: body,
             queryItems: queryItems,
+            accept: nil,
             allowRefresh: allowRefresh,
             authFailureReason: "request_no_refresh_remaining"
         )
@@ -101,6 +102,26 @@ class APIClient {
         } catch {
             throw APIError.decodingError(error)
         }
+    }
+
+    func requestData(
+        _ endpoint: String,
+        method: String = "GET",
+        body: Data? = nil,
+        queryItems: [URLQueryItem]? = nil,
+        accept: String? = nil,
+        allowRefresh: Bool = true
+    ) async throws -> Data {
+        let (data, _) = try await executeRequest(
+            endpoint: endpoint,
+            method: method,
+            body: body,
+            queryItems: queryItems,
+            accept: accept,
+            allowRefresh: allowRefresh,
+            authFailureReason: "request_data_no_refresh_remaining"
+        )
+        return data
     }
     
     func requestVoid(_ endpoint: String,
@@ -112,6 +133,7 @@ class APIClient {
             method: method,
             body: body,
             queryItems: nil,
+            accept: nil,
             allowRefresh: allowRefresh,
             authFailureReason: "request_void_no_refresh_remaining"
         )
@@ -127,6 +149,7 @@ class APIClient {
             method: method,
             body: body,
             queryItems: queryItems,
+            accept: nil,
             allowRefresh: allowRefresh,
             authFailureReason: "request_raw_no_refresh_remaining"
         )
@@ -147,7 +170,8 @@ class APIClient {
         endpoint: String,
         method: String,
         body: Data?,
-        queryItems: [URLQueryItem]?
+        queryItems: [URLQueryItem]?,
+        accept: String?
     ) async throws -> (request: URLRequest, sentAuthHeader: Bool) {
         guard var components = URLComponents(string: AppSettings.shared.baseURL + endpoint) else {
             throw APIError.invalidURL
@@ -162,6 +186,9 @@ class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let accept {
+            request.setValue(accept, forHTTPHeaderField: "Accept")
+        }
 
         if let accessToken = try await fetchAccessTokenOrRefresh(endpoint: endpoint) {
             request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -178,6 +205,7 @@ class APIClient {
         method: String,
         body: Data?,
         queryItems: [URLQueryItem]?,
+        accept: String?,
         allowRefresh: Bool,
         authFailureReason: String
     ) async throws -> (Data, HTTPURLResponse) {
@@ -185,7 +213,8 @@ class APIClient {
             endpoint: endpoint,
             method: method,
             body: body,
-            queryItems: queryItems
+            queryItems: queryItems,
+            accept: accept
         )
 
         do {
@@ -226,6 +255,7 @@ class APIClient {
                         method: method,
                         body: body,
                         queryItems: queryItems,
+                        accept: accept,
                         allowRefresh: false,
                         authFailureReason: authFailureReason
                     )

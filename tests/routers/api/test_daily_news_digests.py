@@ -108,8 +108,94 @@ def test_daily_digest_voice_summary(client, db_session, test_user) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["digest_id"] == digest.id
+    assert "2026-02-28" not in payload["narration_text"]
     assert "Daily summary body." not in payload["narration_text"]
     assert "Point 1" in payload["narration_text"]
+
+
+def test_daily_digest_voice_summary_audio(
+    client,
+    db_session,
+    test_user,
+    monkeypatch,
+) -> None:
+    digest = _create_digest(
+        user_id=test_user.id,
+        local_date="2026-02-28",
+        title="2026-02-28",
+    )
+    db_session.add(digest)
+    db_session.commit()
+    db_session.refresh(digest)
+
+    captured: dict[str, object] = {}
+
+    class _FakeTtsService:
+        def synthesize_mp3(self, *, text: str, item_id: int | None = None) -> bytes:
+            captured["text"] = text
+            captured["item_id"] = item_id
+            return b"fake-mp3-bytes"
+
+    monkeypatch.setattr(
+        "app.routers.api.daily_news_digests.get_digest_narration_tts_service",
+        lambda: _FakeTtsService(),
+    )
+
+    response = client.get(f"/api/content/daily-digests/{digest.id}/voice-summary/audio")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("audio/mpeg")
+    assert response.content == b"fake-mp3-bytes"
+    assert captured["item_id"] == digest.id
+    assert "Point 1" in str(captured["text"])
+
+
+def test_daily_digest_voice_summary_audio_returns_404_for_other_user(
+    client,
+    db_session,
+    test_user,
+) -> None:
+    other_user = User(
+        apple_id="daily_digest_audio_other_user",
+        email="digest-audio-other@example.com",
+        full_name="Digest Audio Other",
+        is_active=True,
+    )
+    db_session.add(other_user)
+    db_session.commit()
+    db_session.refresh(other_user)
+
+    other_digest = _create_digest(user_id=other_user.id, local_date="2026-02-28")
+    db_session.add(other_digest)
+    db_session.commit()
+    db_session.refresh(other_digest)
+
+    response = client.get(f"/api/content/daily-digests/{other_digest.id}/voice-summary/audio")
+    assert response.status_code == 404
+
+
+def test_daily_digest_voice_summary_audio_returns_503_when_tts_unavailable(
+    client,
+    db_session,
+    test_user,
+    monkeypatch,
+) -> None:
+    digest = _create_digest(user_id=test_user.id, local_date="2026-02-28")
+    db_session.add(digest)
+    db_session.commit()
+    db_session.refresh(digest)
+
+    class _FailingTtsService:
+        def synthesize_mp3(self, *, text: str, item_id: int | None = None) -> bytes:
+            raise ValueError("ElevenLabs API key is not configured")
+
+    monkeypatch.setattr(
+        "app.routers.api.daily_news_digests.get_digest_narration_tts_service",
+        lambda: _FailingTtsService(),
+    )
+
+    response = client.get(f"/api/content/daily-digests/{digest.id}/voice-summary/audio")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "ElevenLabs API key is not configured"
 
 
 def test_daily_digest_endpoints_are_user_scoped(client, db_session, test_user) -> None:

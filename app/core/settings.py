@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     elevenlabs_tts_voice_id: str | None = "JBFqnCBsd6RMkjVDRZzb"
     elevenlabs_tts_model: str | None = "eleven_multilingual_v2"
     elevenlabs_tts_output_format: str | None = "pcm_16000"
+    elevenlabs_digest_tts_model: str = "eleven_turbo_v2_5"
+    elevenlabs_digest_tts_output_format: str = "mp3_44100_128"
+    elevenlabs_digest_tts_speed: float = Field(default=1.0, ge=0.7, le=1.2)
     elevenlabs_agent_id: str = "agent_4701khf4v6jef3vskb8sd2a30m36"
     elevenlabs_agent_text_only: bool = True
     elevenlabs_agent_turn_timeout_seconds: int = 25
