@@ -14,6 +14,7 @@ struct User: Codable, Identifiable, Equatable {
     let email: String
     let fullName: String?
     let twitterUsername: String?
+    let newsDigestTimezone: String
     let hasXBookmarkSync: Bool
     let isAdmin: Bool
     let isActive: Bool
@@ -29,6 +30,7 @@ struct User: Codable, Identifiable, Equatable {
         case email
         case fullName = "full_name"
         case twitterUsername = "twitter_username"
+        case newsDigestTimezone = "news_digest_timezone"
         case hasXBookmarkSync = "has_x_bookmark_sync"
         case isAdmin = "is_admin"
         case isActive = "is_active"
@@ -45,6 +47,7 @@ struct User: Codable, Identifiable, Equatable {
         email: String,
         fullName: String?,
         twitterUsername: String?,
+        newsDigestTimezone: String,
         hasXBookmarkSync: Bool,
         isAdmin: Bool,
         isActive: Bool,
@@ -59,6 +62,7 @@ struct User: Codable, Identifiable, Equatable {
         self.email = email
         self.fullName = fullName
         self.twitterUsername = twitterUsername
+        self.newsDigestTimezone = newsDigestTimezone
         self.hasXBookmarkSync = hasXBookmarkSync
         self.isAdmin = isAdmin
         self.isActive = isActive
@@ -76,6 +80,7 @@ struct User: Codable, Identifiable, Equatable {
         email = try container.decode(String.self, forKey: .email)
         fullName = try container.decodeIfPresent(String.self, forKey: .fullName)
         twitterUsername = try container.decodeIfPresent(String.self, forKey: .twitterUsername)
+        newsDigestTimezone = try container.decodeIfPresent(String.self, forKey: .newsDigestTimezone) ?? "UTC"
         hasXBookmarkSync = try container.decodeIfPresent(Bool.self, forKey: .hasXBookmarkSync) ?? false
         isAdmin = try container.decode(Bool.self, forKey: .isAdmin)
         isActive = try container.decode(Bool.self, forKey: .isActive)
@@ -97,7 +102,6 @@ struct TokenResponse: Codable {
     let tokenType: String
     let user: User
     let isNewUser: Bool
-    let openaiApiKey: String?
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
@@ -105,7 +109,6 @@ struct TokenResponse: Codable {
         case tokenType = "token_type"
         case user
         case isNewUser = "is_new_user"
-        case openaiApiKey = "openai_api_key"
     }
 }
 
@@ -128,22 +131,22 @@ struct AccessTokenResponse: Codable {
     let accessToken: String
     let refreshToken: String
     let tokenType: String
-    let openaiApiKey: String?
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case refreshToken = "refresh_token"
         case tokenType = "token_type"
-        case openaiApiKey = "openai_api_key"
     }
 }
 
 struct UpdateUserProfileRequest: Codable {
     let fullName: String?
     let twitterUsername: String?
+    let newsDigestTimezone: String?
 
     enum CodingKeys: String, CodingKey {
         case fullName = "full_name"
         case twitterUsername = "twitter_username"
+        case newsDigestTimezone = "news_digest_timezone"
     }
 }

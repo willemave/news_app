@@ -121,20 +121,7 @@ final class AuthenticationService: NSObject {
                 KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
                 // Also save to shared UserDefaults for extension access
                 SharedContainer.userDefaults.set(tokenResponse.accessToken, forKey: "accessToken")
-
-                // Update OpenAI API key if provided
-                if let openaiApiKey = tokenResponse.openaiApiKey {
-                    print("🔑 [Refresh] OpenAI API key received from server (length: \(openaiApiKey.count))")
-                    KeychainManager.shared.saveToken(openaiApiKey, key: .openaiApiKey)
-                    // Verify the save
-                    if let verified = KeychainManager.shared.getToken(key: .openaiApiKey) {
-                        print("🔑 [Refresh] OpenAI API key verified in keychain (length: \(verified.count))")
-                    } else {
-                        print("❌ [Refresh] OpenAI API key FAILED to save to keychain!")
-                    }
-                } else {
-                    print("⚠️ [Refresh] No OpenAI API key in token response")
-                }
+                KeychainManager.shared.deleteLegacyToken(named: "openaiApiKey")
 
                 print("✅ Token refresh successful - both tokens rotated")
 
@@ -226,7 +213,8 @@ final class AuthenticationService: NSObject {
     /// Update authenticated user profile fields.
     func updateCurrentUserProfile(
         fullName: String? = nil,
-        twitterUsername: String? = nil
+        twitterUsername: String? = nil,
+        newsDigestTimezone: String? = nil
     ) async throws -> User {
         guard let token = KeychainManager.shared.getToken(key: .accessToken) else {
             throw AuthError.notAuthenticated
@@ -238,7 +226,11 @@ final class AuthenticationService: NSObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let body = UpdateUserProfileRequest(fullName: fullName, twitterUsername: twitterUsername)
+        let body = UpdateUserProfileRequest(
+            fullName: fullName,
+            twitterUsername: twitterUsername,
+            newsDigestTimezone: newsDigestTimezone
+        )
         request.httpBody = try JSONEncoder().encode(body)
 
         do {
@@ -495,18 +487,7 @@ private func persistSessionTokens(_ tokenResponse: TokenResponse) {
     KeychainManager.shared.saveToken(String(tokenResponse.user.id), key: .userId)
     // Also save to shared UserDefaults for extension access
     SharedContainer.userDefaults.set(tokenResponse.accessToken, forKey: "accessToken")
-
-    if let openaiApiKey = tokenResponse.openaiApiKey {
-        print("🔑 [Auth] OpenAI API key received from server (length: \(openaiApiKey.count))")
-        KeychainManager.shared.saveToken(openaiApiKey, key: .openaiApiKey)
-        if let verified = KeychainManager.shared.getToken(key: .openaiApiKey) {
-            print("🔑 [Auth] OpenAI API key verified in keychain (length: \(verified.count))")
-        } else {
-            print("❌ [Auth] OpenAI API key FAILED to save to keychain!")
-        }
-    } else {
-        print("⚠️ [Auth] No OpenAI API key in token response from server")
-    }
+    KeychainManager.shared.deleteLegacyToken(named: "openaiApiKey")
 }
 
 private actor RefreshCoordinator {

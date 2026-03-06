@@ -21,6 +21,7 @@ protocol SpeechTranscribing: AnyObject {
     var onStateChange: ((SpeechTranscriptionState) -> Void)? { get set }
     var onStopReason: ((SpeechStopReason) -> Void)? { get set }
 
+    var isAvailable: Bool { get }
     var isRecording: Bool { get }
     var isTranscribing: Bool { get }
 
@@ -28,4 +29,13 @@ protocol SpeechTranscribing: AnyObject {
     func stop() async throws -> String
     func cancel()
     func reset()
+}
+
+extension SpeechTranscribing {
+    var isAvailable: Bool {
+        let accessToken = KeychainManager.shared.getToken(key: .accessToken)
+        let refreshToken = KeychainManager.shared.getToken(key: .refreshToken)
+        let hasAuthToken = !(accessToken?.isEmpty ?? true) || !(refreshToken?.isEmpty ?? true)
+        return hasAuthToken && AppSettings.shared.backendTranscriptionAvailable
+    }
 }

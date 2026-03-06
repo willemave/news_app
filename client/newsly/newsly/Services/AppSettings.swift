@@ -34,6 +34,7 @@ class AppSettings: ObservableObject {
     @AppStorage("fastNewsMode", store: SharedContainer.userDefaults) var fastNewsMode: String = FastNewsMode.newsList.rawValue
     @AppStorage("useLongFormCardStack", store: SharedContainer.userDefaults) var useLongFormCardStack: Bool = true
     @AppStorage("showLiveVoiceDebugText", store: SharedContainer.userDefaults) var showLiveVoiceDebugText: Bool = false
+    @AppStorage("backendTranscriptionAvailable", store: SharedContainer.userDefaults) var backendTranscriptionAvailable: Bool = false
     private var normalizedHost: String {
 #if targetEnvironment(simulator)
         if serverHost.caseInsensitiveCompare("localhost") == .orderedSame {

@@ -96,6 +96,7 @@ enum APIEndpoints {
 
     // MARK: - OpenAI Endpoints
     static let openaiRealtimeToken = "/api/openai/realtime/token"
+    static let openaiTranscriptions = "/api/openai/transcriptions"
 
     // MARK: - Voice Endpoints
     static let voiceSessions = "/api/voice/sessions"

@@ -70,6 +70,7 @@ final class AuthenticationViewModel: ObservableObject {
                 let user = try await authService.getCurrentUser()
                 lastKnownUser = user
                 authState = .authenticated(user)
+                await syncNewsDigestTimezoneIfNeeded(for: user)
             } catch let authError as AuthError {
                 await handleAuthFailure(authError, hasRefreshToken: hasRefreshToken)
             } catch {
@@ -88,6 +89,7 @@ final class AuthenticationViewModel: ObservableObject {
                 let session = try await authService.signInWithApple()
                 lastKnownUser = session.user
                 authState = .authenticated(session.user)
+                await syncNewsDigestTimezoneIfNeeded(for: session.user)
             } catch {
                 errorMessage = error.localizedDescription
                 authState = .unauthenticated
@@ -148,6 +150,7 @@ final class AuthenticationViewModel: ObservableObject {
             let user = try await authService.getCurrentUser()
             lastKnownUser = user
             authState = .authenticated(user)
+            await syncNewsDigestTimezoneIfNeeded(for: user)
             print("✅ User authenticated successfully after refresh")
         } catch let authError as AuthError {
             switch authError {
@@ -175,6 +178,24 @@ final class AuthenticationViewModel: ObservableObject {
         } catch {
             authService.logout()
             authState = .unauthenticated
+        }
+    }
+
+    private func syncNewsDigestTimezoneIfNeeded(for user: User) async {
+        let deviceTimezone = TimeZone.current.identifier
+        guard !deviceTimezone.isEmpty else { return }
+        guard user.newsDigestTimezone != deviceTimezone else { return }
+
+        do {
+            let updatedUser = try await authService.updateCurrentUserProfile(
+                newsDigestTimezone: deviceTimezone
+            )
+            lastKnownUser = updatedUser
+            authState = .authenticated(updatedUser)
+        } catch {
+            authViewModelLogger.warning(
+                "[AuthState] Failed to sync digest timezone | current=\(user.newsDigestTimezone, privacy: .public) target=\(deviceTimezone, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 }

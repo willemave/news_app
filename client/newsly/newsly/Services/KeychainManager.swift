@@ -22,7 +22,6 @@ final class KeychainManager {
         case accessToken = "accessToken"
         case refreshToken = "refreshToken"
         case userId = "userId"
-        case openaiApiKey = "openaiApiKey"
     }
 
     /// Optional configuration for shared keychain access (e.g., extensions).
@@ -86,10 +85,19 @@ final class KeychainManager {
 
     /// Delete a specific token from the keychain
     func deleteToken(key: KeychainKey) {
+        deleteToken(account: key.rawValue)
+    }
+
+    /// Delete a legacy token entry by account name.
+    func deleteLegacyToken(named account: String) {
+        deleteToken(account: account)
+    }
+
+    private func deleteToken(account: String) {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: key.rawValue
+            kSecAttrAccount as String: account
         ]
 
         if let accessGroup {
@@ -104,6 +112,6 @@ final class KeychainManager {
         deleteToken(key: .accessToken)
         deleteToken(key: .refreshToken)
         deleteToken(key: .userId)
-        deleteToken(key: .openaiApiKey)
+        deleteLegacyToken(named: "openaiApiKey")
     }
 }

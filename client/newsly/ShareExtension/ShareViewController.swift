@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 fileprivate enum LinkHandlingMode: String, CaseIterable {
     case addContent
     case addLinks
-    case shareAndChat
+    case addFeed
 
     var title: String {
         switch self {
@@ -19,8 +19,8 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
             return "Add content"
         case .addLinks:
             return "Add links"
-        case .shareAndChat:
-            return "Add & chat"
+        case .addFeed:
+            return "Add feed"
         }
     }
 
@@ -30,8 +30,8 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
             return "Summarize the shared page in Newsly."
         case .addLinks:
             return "Also crawl important links found on the page."
-        case .shareAndChat:
-            return "Add the link and open a chat summary."
+        case .addFeed:
+            return "Subscribe to this site's feed in Newsly."
         }
     }
 }
@@ -273,7 +273,8 @@ final class ShareViewController: UIViewController {
         var body: [String: Any] = [
             "url": url.absoluteString,
             "crawl_links": linkHandlingMode == .addLinks,
-            "share_and_chat": linkHandlingMode == .shareAndChat,
+            "share_and_chat": false,
+            "subscribe_to_feed": linkHandlingMode == .addFeed,
         ]
         if let platform = handler.platform {
             body["platform"] = platform

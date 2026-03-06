@@ -3,7 +3,7 @@
 //  VoiceDictationService.swift
 //  newsly
 //
-//  Voice dictation service using OpenAI's gpt-4o-transcribe.
+//  Voice dictation service using authenticated backend transcription APIs.
 //
 
 import AVFoundation
@@ -24,7 +24,7 @@ private enum SilenceDetectionConfig {
 
 /// Error types for voice dictation.
 enum VoiceDictationError: LocalizedError {
-    case noAPIKey
+    case notAuthenticated
     case recordingFailed
     case transcriptionFailed(String)
     case noMicrophoneAccess
@@ -32,8 +32,8 @@ enum VoiceDictationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noAPIKey:
-            return "OpenAI API key not configured"
+        case .notAuthenticated:
+            return "You must be signed in to use voice dictation."
         case .recordingFailed:
             return "Failed to record audio"
         case .transcriptionFailed(let message):
@@ -46,7 +46,7 @@ enum VoiceDictationError: LocalizedError {
     }
 }
 
-/// Service for voice dictation using OpenAI's gpt-4o-transcribe.
+/// Service for voice dictation using the authenticated backend transcription API.
 @MainActor
 final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribing {
     static let shared = VoiceDictationService()
@@ -76,26 +76,7 @@ final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribin
     private var silenceThresholdDb =
         SilenceDetectionConfig.minimumSpeechThresholdDb - SilenceDetectionConfig.silenceHysteresisDb
     private var isFinalizing = false
-
-    private var openAIAPIKey: String? {
-        // Try multiple sources for the API key:
-        // 1. Keychain (received from server during auth)
-        if let key = KeychainManager.shared.getToken(key: .openaiApiKey),
-           !key.isEmpty {
-            return key
-        }
-        // 2. Info.plist (from build settings/xcconfig) - fallback for development
-        if let key = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
-           !key.isEmpty, !key.hasPrefix("$(") {
-            return key
-        }
-        // 3. Environment variable (set in Xcode scheme for development)
-        if let key = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
-           !key.isEmpty {
-            return key
-        }
-        return nil
-    }
+    private let openAIService = OpenAIService.shared
 
     private override init() {
         super.init()
@@ -139,8 +120,8 @@ final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribin
 
     /// Start recording audio.
     func startRecording() async throws {
-        guard openAIAPIKey != nil else {
-            throw VoiceDictationError.noAPIKey
+        guard isAvailable else {
+            throw VoiceDictationError.notAuthenticated
         }
 
         let hasPermission = await requestMicrophonePermission()
@@ -367,65 +348,22 @@ final class VoiceDictationService: NSObject, ObservableObject, SpeechTranscribin
     }
 
     private func transcribeAudio(fileURL: URL) async throws -> String {
-        guard let apiKey = openAIAPIKey else {
-            throw VoiceDictationError.noAPIKey
+        do {
+            let transcriptionResponse = try await openAIService.transcribeAudio(fileURL: fileURL)
+            logger.info("Transcription successful: \(transcriptionResponse.text.prefix(50))...")
+            return transcriptionResponse.text
+        } catch let error as OpenAIServiceError {
+            switch error {
+            case .notAuthenticated:
+                throw VoiceDictationError.notAuthenticated
+            case .invalidResponse, .serverError:
+                throw VoiceDictationError.transcriptionFailed(error.localizedDescription)
+            }
+        } catch let apiError as APIError {
+            throw VoiceDictationError.transcriptionFailed(apiError.localizedDescription)
+        } catch {
+            throw VoiceDictationError.transcriptionFailed(error.localizedDescription)
         }
-
-        let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let boundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-        // Build multipart form data
-        var body = Data()
-
-        // Add model field
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n".data(using: .utf8)!)
-        body.append("gpt-4o-transcribe\r\n".data(using: .utf8)!)
-
-        // Add audio file
-        let audioData = try Data(contentsOf: fileURL)
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
-        body.append(audioData)
-        body.append("\r\n".data(using: .utf8)!)
-
-        // Close boundary
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-
-        request.httpBody = body
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw VoiceDictationError.transcriptionFailed("Invalid response")
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            logger.error("Transcription failed: \(errorMessage)")
-            throw VoiceDictationError.transcriptionFailed(errorMessage)
-        }
-
-        // Parse response
-        struct TranscriptionResponse: Codable {
-            let text: String
-        }
-
-        let decoder = JSONDecoder()
-        let transcriptionResponse = try decoder.decode(TranscriptionResponse.self, from: data)
-
-        // Clean up recording file
-        try? FileManager.default.removeItem(at: fileURL)
-
-        logger.info("Transcription successful: \(transcriptionResponse.text.prefix(50))...")
-        return transcriptionResponse.text
     }
 }
 

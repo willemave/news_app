@@ -49,35 +49,28 @@ final class TweetSuggestionsViewModel: ObservableObject {
         self.contentId = contentId
         lastCreativity = creativity
 
-        // Check voice dictation availability, refresh token if needed
+        // Check voice dictation availability and refresh the session if needed
         await checkAndRefreshVoiceDictation()
 
         await generateSuggestions()
     }
 
-    /// Check voice dictation availability and attempt token refresh if key is missing.
+    /// Check voice dictation availability and attempt token refresh if auth is stale.
     private func checkAndRefreshVoiceDictation() async {
-        // First check - maybe key is already available
-        if isVoiceDictationAvailable {
-            voiceDictationAvailable = true
-            return
-        }
-
-        // Key is missing - try a token refresh to get it from the server
-        // This helps users who authenticated before the feature was added
-        logger.info("🎤 OpenAI key missing, attempting token refresh...")
-
         do {
-            _ = try await AuthenticationService.shared.refreshAccessToken()
-            // Check again after refresh
-            voiceDictationAvailable = isVoiceDictationAvailable
+            if !hasVoiceAuthToken {
+                logger.info("🎤 Voice dictation unavailable, attempting session refresh...")
+                _ = try await AuthenticationService.shared.refreshAccessToken()
+            }
+            voiceDictationAvailable = await OpenAIService.shared.refreshTranscriptionAvailability()
             if voiceDictationAvailable {
-                logger.info("🎤 Token refresh provided OpenAI key - voice dictation now available!")
+                logger.info("🎤 Voice dictation available")
             } else {
-                logger.warning("🎤 Token refresh completed but OpenAI key still not available")
+                logger.warning("🎤 Voice dictation unavailable because backend transcription is disabled")
             }
         } catch {
             logger.warning("🎤 Token refresh failed: \(error.localizedDescription)")
+            AppSettings.shared.backendTranscriptionAvailable = false
             voiceDictationAvailable = false
         }
     }
@@ -245,37 +238,16 @@ final class TweetSuggestionsViewModel: ObservableObject {
 
     /// Check if voice dictation is available.
     var isVoiceDictationAvailable: Bool {
-        logger.debug("🎤 Checking voice dictation availability...")
+        transcriptionService.isAvailable
+    }
 
-        // Check Keychain (received from server during auth)
-        if let key = KeychainManager.shared.getToken(key: .openaiApiKey),
-           !key.isEmpty {
-            logger.info("🎤 Voice dictation AVAILABLE via Keychain (length: \(key.count))")
+    private var hasVoiceAuthToken: Bool {
+        if let accessToken = KeychainManager.shared.getToken(key: .accessToken), !accessToken.isEmpty {
             return true
-        } else {
-            logger.debug("🎤 No OpenAI key in Keychain")
         }
-
-        // Check Info.plist (fallback for development)
-        if let key = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
-           !key.isEmpty, !key.hasPrefix("$(") {
-            logger.info("🎤 Voice dictation AVAILABLE via Info.plist (length: \(key.count))")
+        if let refreshToken = KeychainManager.shared.getToken(key: .refreshToken), !refreshToken.isEmpty {
             return true
-        } else {
-            let plistValue = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String
-            logger.debug("🎤 Info.plist OPENAI_API_KEY: \(plistValue ?? "nil")")
         }
-
-        // Check environment variable (fallback for development)
-        if let key = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
-           !key.isEmpty {
-            logger.info("🎤 Voice dictation AVAILABLE via environment (length: \(key.count))")
-            return true
-        } else {
-            logger.debug("🎤 No OPENAI_API_KEY environment variable")
-        }
-
-        logger.warning("🎤 Voice dictation NOT AVAILABLE - no API key found in any source")
         return false
     }
 }

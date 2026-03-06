@@ -259,20 +259,16 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     // MARK: - Voice Dictation
 
-    /// Check voice dictation availability and attempt token refresh if key is missing.
+    /// Check voice dictation availability and attempt token refresh if auth is stale.
     func checkAndRefreshVoiceDictation() async {
-        // First check - maybe key is already available
-        if isVoiceDictationAvailable {
-            voiceDictationAvailable = true
-            return
-        }
-
-        // Key is missing - try a token refresh to get it from the server
         do {
-            _ = try await AuthenticationService.shared.refreshAccessToken()
-            voiceDictationAvailable = isVoiceDictationAvailable
+            if !hasVoiceAuthToken {
+                _ = try await AuthenticationService.shared.refreshAccessToken()
+            }
+            voiceDictationAvailable = await OpenAIService.shared.refreshTranscriptionAvailability()
         } catch {
             logger.debug("Token refresh for voice dictation failed: \(error.localizedDescription)")
+            AppSettings.shared.backendTranscriptionAvailable = false
             voiceDictationAvailable = false
         }
     }
@@ -315,20 +311,14 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     /// Check if voice dictation is available.
     private var isVoiceDictationAvailable: Bool {
-        let accessToken = KeychainManager.shared.getToken(key: .accessToken)
-        if let token = accessToken, !token.isEmpty {
+        transcriptionService.isAvailable
+    }
+
+    private var hasVoiceAuthToken: Bool {
+        if let accessToken = KeychainManager.shared.getToken(key: .accessToken), !accessToken.isEmpty {
             return true
         }
-        if let key = KeychainManager.shared.getToken(key: .openaiApiKey),
-           !key.isEmpty {
-            return true
-        }
-        if let key = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
-           !key.isEmpty, !key.hasPrefix("$(") {
-            return true
-        }
-        if let key = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
-           !key.isEmpty {
+        if let refreshToken = KeychainManager.shared.getToken(key: .refreshToken), !refreshToken.isEmpty {
             return true
         }
         return false
