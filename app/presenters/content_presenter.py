@@ -82,11 +82,10 @@ def _extract_news_summary(domain_content: ContentData) -> dict[str, Any]:
 
 def is_ready_for_list(domain_content: ContentData, image_url: str | None) -> bool:
     """Return True when content has enough data to appear in list views."""
+    _ = image_url
     if domain_content.content_type != ContentType.ARTICLE:
         return True
-    if not domain_content.bullet_points:
-        return False
-    return bool(image_url)
+    return bool(domain_content.structured_summary and domain_content.bullet_points)
 
 
 def build_content_summary_response(

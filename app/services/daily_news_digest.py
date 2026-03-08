@@ -23,8 +23,11 @@ logger = get_logger(__name__)
 DAILY_DIGEST_GENERATION_HOUR = 3
 MAX_POINTS_PER_SOURCE = 5
 MAX_DAILY_DIGEST_BULLETS = 10
+MIN_HIGH_VOLUME_DIGEST_BULLETS = 5
+HIGH_VOLUME_DIGEST_SOURCE_COUNT = 10
 ROLLUP_PROMPT_TOKEN_BUDGET = 900_000
 ROLLUP_ESTIMATED_CHARS_PER_TOKEN = 4
+STABLE_DAILY_NEWS_DIGEST_MODEL = "google-gla:gemini-flash-latest"
 
 
 @dataclass(frozen=True)
@@ -308,6 +311,7 @@ def _synthesize_daily_rollup(
     summarizer: ContentSummarizer,
     local_date: date,
     sources: list[DailyDigestSourceItem],
+    model_spec: str = DAILY_NEWS_DIGEST_MODEL,
 ) -> tuple[DailyNewsRollupSummary, str]:
     """Generate a daily news digest with Google Flash.
 
@@ -324,7 +328,7 @@ def _synthesize_daily_rollup(
     """
     prompt_sources = _select_rollup_prompt_sources(local_date=local_date, sources=sources)
     prompt_input = _build_rollup_prompt_input(local_date, prompt_sources)
-    _, resolved_model = resolve_model(None, DAILY_NEWS_DIGEST_MODEL)
+    _, resolved_model = resolve_model(None, model_spec)
     model_hint = resolved_model.split(":", 1)[1] if ":" in resolved_model else resolved_model
     summary = summarizer.summarize_content(
         prompt_input,
@@ -350,6 +354,61 @@ def _synthesize_daily_rollup(
     if not isinstance(summary, DailyNewsRollupSummary):
         raise ValueError("Daily digest synthesis returned unexpected summary payload")
     return summary, resolved_model
+
+
+def _clean_rollup_key_points(raw_points: list[str]) -> list[str]:
+    """Normalize stored digest key points."""
+    cleaned_points = [
+        point.strip()
+        for point in raw_points
+        if isinstance(point, str) and point.strip()
+    ]
+    return cleaned_points[:MAX_DAILY_DIGEST_BULLETS]
+
+
+def _validate_rollup_summary(
+    summary: DailyNewsRollupSummary,
+    *,
+    source_count: int,
+) -> tuple[str, str, list[str]]:
+    """Validate a daily rollup before persisting it."""
+    title = (summary.title or "").strip()
+    if not title:
+        raise ValueError("Daily digest title was empty")
+
+    summary_text = (summary.summary or "").strip()
+    if not summary_text:
+        raise ValueError("Daily digest summary was empty")
+
+    key_points = _clean_rollup_key_points(summary.key_points)
+    if (
+        source_count >= HIGH_VOLUME_DIGEST_SOURCE_COUNT
+        and len(key_points) < MIN_HIGH_VOLUME_DIGEST_BULLETS
+    ):
+        raise ValueError(
+            "Daily digest produced too few key points for a high-volume day"
+        )
+
+    return title, summary_text, key_points
+
+
+def digest_requires_regeneration(
+    digest: DailyNewsDigest,
+    *,
+    min_high_volume_bullets: int = MIN_HIGH_VOLUME_DIGEST_BULLETS,
+    high_volume_source_count: int = HIGH_VOLUME_DIGEST_SOURCE_COUNT,
+) -> bool:
+    """Return True when a stored digest is too sparse to keep."""
+    title = (digest.title or "").strip()
+    summary_text = (digest.summary or "").strip()
+    key_points = _clean_rollup_key_points(digest.key_points or [])
+
+    if not title or not summary_text:
+        return True
+    return (
+        int(digest.source_count or 0) >= high_volume_source_count
+        and len(key_points) < min_high_volume_bullets
+    )
 
 
 def _daily_digest_title(local_date: date, generated_title: str | None = None) -> str:
@@ -446,16 +505,51 @@ def upsert_daily_news_digest_for_user_day(
         summary = _fallback_rollup(local_date)
         resolved_model = DAILY_NEWS_DIGEST_MODEL
 
-    key_points = [
-        point.strip()
-        for point in summary.key_points
-        if isinstance(point, str) and point.strip()
-    ]
-    summary_text = _daily_digest_summary_text(
-        key_points=key_points,
-        fallback_text=summary.summary,
-    )
-    title = _daily_digest_title(local_date, summary.title)
+    if sources:
+        try:
+            title, summary_text, key_points = _validate_rollup_summary(
+                summary,
+                source_count=len(sources),
+            )
+        except ValueError as primary_error:
+            if resolved_model == STABLE_DAILY_NEWS_DIGEST_MODEL:
+                raise
+            logger.warning(
+                "Daily digest validation failed for user %s on %s with model %s; retrying "
+                "with stable model %s",
+                user_id,
+                local_date.isoformat(),
+                resolved_model,
+                STABLE_DAILY_NEWS_DIGEST_MODEL,
+                extra={
+                    "component": "daily_news_digest",
+                    "operation": "validate_rollup",
+                    "context_data": {
+                        "user_id": user_id,
+                        "local_date": local_date.isoformat(),
+                        "source_count": len(sources),
+                        "resolved_model": resolved_model,
+                        "error": str(primary_error),
+                    },
+                },
+            )
+            summary, resolved_model = _synthesize_daily_rollup(
+                summarizer=effective_summarizer,
+                local_date=local_date,
+                sources=sources,
+                model_spec=STABLE_DAILY_NEWS_DIGEST_MODEL,
+            )
+            title, summary_text, key_points = _validate_rollup_summary(
+                summary,
+                source_count=len(sources),
+            )
+    else:
+        key_points = []
+        summary_text = _daily_digest_summary_text(
+            key_points=key_points,
+            fallback_text=summary.summary,
+        )
+        title = _daily_digest_title(local_date, summary.title)
 
     digest = existing or DailyNewsDigest(user_id=user_id, local_date=local_date)
     digest.timezone = timezone_name

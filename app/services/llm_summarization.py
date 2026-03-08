@@ -155,7 +155,7 @@ def _clip_payload(payload: str, max_chars: int) -> tuple[str, bool]:
 DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "news": "openai:gpt-5.2",
     "news_digest": "openai:gpt-5.2",
-    "daily_news_rollup": "google-gla:gemini-flash-latest",
+    "daily_news_rollup": "google:gemini-3-flash-preview",
     "article": "openai:gpt-5.2",
     "podcast": "openai:gpt-5.2",
     "interleaved": "openai:gpt-5.2",
@@ -163,7 +163,7 @@ DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "editorial_narrative": "openai:gpt-5.2",
 }
 
-FALLBACK_SUMMARIZATION_MODEL = "google-gla:gemini-2.5-flash-preview-09-2025"
+FALLBACK_SUMMARIZATION_MODEL = "google:gemini-2.5-flash"
 CROSS_PROVIDER_FALLBACK_MODELS: tuple[str, ...] = (
     "openai:gpt-4o",
 )

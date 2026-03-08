@@ -120,7 +120,14 @@ def build_pydantic_model(model_spec: str) -> tuple[Model | str, GoogleModelSetti
             if provider_prefix
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
-        model = GoogleModel(model_to_use, provider=GoogleProvider(api_key=settings.google_api_key))
+        provider_kwargs: dict[str, str | bool] = {"vertexai": True}
+        if settings.google_cloud_project:
+            provider_kwargs["project"] = settings.google_cloud_project
+            provider_kwargs["location"] = settings.google_cloud_location
+        else:
+            provider_kwargs["api_key"] = settings.google_api_key
+
+        model = GoogleModel(model_to_use, provider=GoogleProvider(**provider_kwargs))
         # Configure thinking for Google models – suppress thought traces and
         # explicitly lower thinking depth on Gemini 3 to reduce latency.
         thinking_config: dict[str, object] = {"include_thoughts": False}

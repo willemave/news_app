@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry
-from app.utils.image_paths import get_content_images_dir
 
 
 def _build_summary(title: str) -> dict[str, object]:
@@ -35,7 +34,7 @@ def _add_inbox_status(db_session, user_id: int, content_id: int) -> None:
     )
 
 
-def test_list_filters_articles_without_keypoints_or_image(
+def test_list_filters_articles_without_keypoints_or_summary(
     client,
     db_session,
     test_user,
@@ -79,27 +78,13 @@ def test_list_filters_articles_without_keypoints_or_image(
     _add_inbox_status(db_session, test_user.id, missing_image.id)
     db_session.commit()
 
-    images_dir = get_content_images_dir()
-    images_dir.mkdir(parents=True, exist_ok=True)
-    ready_image = images_dir / f"{ready_article.id}.png"
-    missing_summary_image = images_dir / f"{missing_summary.id}.png"
+    response = client.get("/api/content/", params={"content_type": "article"})
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()["contents"]}
 
-    try:
-        ready_image.write_bytes(b"fake-png")
-        missing_summary_image.write_bytes(b"fake-png")
-
-        response = client.get("/api/content/", params={"content_type": "article"})
-        assert response.status_code == 200
-        ids = {item["id"] for item in response.json()["contents"]}
-
-        assert ready_article.id in ids
-        assert missing_summary.id not in ids
-        assert missing_image.id not in ids
-    finally:
-        if ready_image.exists():
-            ready_image.unlink()
-        if missing_summary_image.exists():
-            missing_summary_image.unlink()
+    assert ready_article.id in ids
+    assert missing_summary.id not in ids
+    assert missing_image.id in ids
 
 
 def test_list_hides_news_images_even_when_metadata_has_urls(

@@ -146,14 +146,12 @@ AUDIO_PLAN_SYSTEM_PROMPT = (
     "Return structured output only."
 )
 
-
 class _ProfileOutput(BaseModel):
     """LLM output for onboarding profile creation."""
 
     profile_summary: str
     inferred_topics: list[str] = Field(default_factory=list)
     candidate_sources: list[str] = Field(default_factory=list)
-
 
 class _DiscoverSuggestion(BaseModel):
     """LLM output suggestion seed."""

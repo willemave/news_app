@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import (
@@ -11,6 +11,7 @@ from app.models.schema import (
     ContentReadStatus,
     ContentStatusEntry,
     DailyNewsDigest,
+    ProcessingTask,
 )
 from app.models.user import User
 
@@ -21,6 +22,24 @@ def _add_inbox_status(db_session, user_id: int, content_id: int) -> None:
             user_id=user_id,
             content_id=content_id,
             status="inbox",
+        )
+    )
+
+
+def _add_active_task(
+    db_session,
+    *,
+    content_id: int,
+    task_type: str = "process_content",
+    status: str = "pending",
+) -> None:
+    db_session.add(
+        ProcessingTask(
+            task_type=task_type,
+            content_id=content_id,
+            status=status,
+            queue_name="content",
+            payload={},
         )
     )
 
@@ -120,6 +139,14 @@ def test_processing_count_includes_news_and_new_status(client, db_session, test_
     _add_inbox_status(db_session, test_user.id, completed_article.id)
     _add_inbox_status(db_session, test_user.id, queued_news.id)
     _add_inbox_status(db_session, other_user.id, pending_article_no_inbox.id)
+    _add_active_task(db_session, content_id=pending_article.id)
+    _add_active_task(db_session, content_id=pending_youtube.id)
+    _add_active_task(db_session, content_id=pending_news.id)
+    _add_active_task(db_session, content_id=pending_youtube_news.id)
+    _add_active_task(db_session, content_id=queued_news.id)
+    _add_active_task(db_session, content_id=pending_article_no_inbox.id)
+    processing_podcast.checked_out_by = "content-processor-1"
+    processing_podcast.checked_out_at = datetime.now(UTC).replace(tzinfo=None)
     db_session.commit()
 
     response = client.get("/api/content/stats/processing-count")
@@ -129,6 +156,39 @@ def test_processing_count_includes_news_and_new_status(client, db_session, test_
     assert payload["long_form_count"] == 3
     assert payload["news_count"] == 3
     assert payload["processing_count"] == 6
+
+
+def test_processing_count_excludes_orphaned_stale_rows(client, db_session, test_user) -> None:
+    stale_processing = Content(
+        url="https://example.com/stale-processing",
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.PROCESSING.value,
+        created_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=5),
+        content_metadata={},
+    )
+    stale_pending = Content(
+        url="https://example.com/stale-pending",
+        content_type=ContentType.PODCAST.value,
+        status=ContentStatus.PENDING.value,
+        created_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=3),
+        content_metadata={},
+    )
+    db_session.add_all([stale_processing, stale_pending])
+    db_session.commit()
+    db_session.refresh(stale_processing)
+    db_session.refresh(stale_pending)
+
+    _add_inbox_status(db_session, test_user.id, stale_processing.id)
+    _add_inbox_status(db_session, test_user.id, stale_pending.id)
+    db_session.commit()
+
+    response = client.get("/api/content/stats/processing-count")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["long_form_count"] == 0
+    assert payload["news_count"] == 0
+    assert payload["processing_count"] == 0
 
 
 def test_long_form_stats_counts(client, db_session, test_user) -> None:
@@ -225,6 +285,9 @@ def test_long_form_stats_counts(client, db_session, test_user) -> None:
     _add_inbox_status(db_session, test_user.id, processing_article.id)
     _add_inbox_status(db_session, test_user.id, pending_podcast.id)
     _add_inbox_status(db_session, other_user.id, completed_other_user.id)
+    _add_active_task(db_session, content_id=pending_podcast.id)
+    processing_article.checked_out_by = "content-processor-2"
+    processing_article.checked_out_at = datetime.now(UTC).replace(tzinfo=None)
     db_session.commit()
 
     db_session.add(
@@ -288,7 +351,7 @@ def test_unread_counts_require_inbox_for_news(client, db_session, test_user) -> 
             key_points=[],
             source_content_ids=[],
             source_count=0,
-            llm_model="google-gla:gemini-flash-latest",
+            llm_model="google:gemini-3-flash-preview",
             generated_at=datetime(2026, 3, 1, 3, 0, 0),
         )
     )

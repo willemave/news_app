@@ -8,8 +8,10 @@ from unittest.mock import Mock
 from app.models.metadata import DailyNewsRollupSummary
 from app.models.schema import Content, DailyNewsDigest
 from app.services.daily_news_digest import (
+    MAX_DAILY_DIGEST_BULLETS,
     DailyDigestSourceItem,
     _select_rollup_prompt_sources,
+    digest_requires_regeneration,
     enqueue_daily_news_digest_task,
     upsert_daily_news_digest_for_user_day,
 )
@@ -27,6 +29,63 @@ class _StubSummarizer:
                 "A tight day with continued AI infrastructure demand "
                 "and incremental policy movement."
             ),
+        )
+
+
+class _RetryingSummarizer:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def summarize_content(self, *_args, **kwargs):
+        self.calls.append(kwargs)
+        if len(self.calls) == 1:
+            return DailyNewsRollupSummary(
+                title="Sparse first pass",
+                key_points=[
+                    "AI infrastructure demand remained high.",
+                    "Regulators advanced new disclosure requirements.",
+                    "Payments startups raised fresh capital.",
+                ],
+                summary="",
+            )
+        return DailyNewsRollupSummary(
+            title="AI, regulation, and payments shaped the day",
+            key_points=[
+                "AI infrastructure demand remained high across cloud providers.",
+                "Regulators advanced new disclosure requirements for major platforms.",
+                "Payments startups raised fresh capital to expand internationally.",
+                "Defense and policy stories remained active across multiple regions.",
+                "Enterprise software launches focused on agentic workflow automation.",
+                "Retail and commerce funding continued despite tighter markets.",
+            ],
+            summary=(
+                "The day combined AI infrastructure momentum, regulatory movement, and "
+                "steady payments and enterprise funding activity."
+            ),
+        )
+
+
+class _ManyBulletsSummarizer:
+    def summarize_content(self, *_args, **_kwargs):
+        return DailyNewsRollupSummary(
+            title="A crowded news day",
+            key_points=[f"Point {index}" for index in range(1, 15)],
+            summary="A valid daily digest summary.",
+        )
+
+
+class _HighVolumeValidSummarizer:
+    def summarize_content(self, *_args, **_kwargs):
+        return DailyNewsRollupSummary(
+            title="AI, policy, and payments led the day",
+            key_points=[
+                "AI infrastructure spending stayed elevated across hyperscalers.",
+                "Regulators advanced disclosure and safety requirements.",
+                "Payments and commerce startups continued raising capital.",
+                "Defense and geopolitical developments remained active.",
+                "Enterprise software launches emphasized workflow automation.",
+            ],
+            summary="A strong daily digest summary for a high-volume news day.",
         )
 
 
@@ -105,6 +164,132 @@ def test_upsert_daily_news_digest_for_user_day_builds_row(db_session, test_user)
     assert len(digest.source_content_ids) == 2
 
 
+def test_upsert_daily_news_digest_for_user_day_retries_sparse_rollup(
+    db_session,
+    test_user,
+) -> None:
+    db_session.add_all(
+        [
+            _build_news_content(
+                url=f"https://example.com/news-{index}",
+                title=f"News {index}",
+                created_at=datetime(2026, 2, 28, 8, 0, 0),
+                key_points=[f"Point {index}"],
+            )
+            for index in range(1, 11)
+        ]
+    )
+    db_session.commit()
+
+    summarizer = _RetryingSummarizer()
+    result = upsert_daily_news_digest_for_user_day(
+        db_session,
+        user_id=test_user.id,
+        local_date=datetime(2026, 2, 28).date(),
+        timezone_name="UTC",
+        summarizer=summarizer,
+    )
+
+    digest = (
+        db_session.query(DailyNewsDigest)
+        .filter(DailyNewsDigest.user_id == test_user.id, DailyNewsDigest.id == result.digest_id)
+        .first()
+    )
+    assert digest is not None
+    assert len(summarizer.calls) == 2
+    assert summarizer.calls[1]["model_hint"] == "gemini-flash-latest"
+    assert digest.title == "AI, regulation, and payments shaped the day"
+    assert digest.summary.startswith("The day combined AI infrastructure momentum")
+    assert len(digest.key_points) == 6
+
+
+def test_upsert_daily_news_digest_caps_key_points(
+    db_session,
+    test_user,
+) -> None:
+    db_session.add_all(
+        [
+            _build_news_content(
+                url="https://example.com/news-1",
+                title="News One",
+                created_at=datetime(2026, 2, 28, 9, 0, 0),
+                key_points=["Point one"],
+            ),
+            _build_news_content(
+                url="https://example.com/news-2",
+                title="News Two",
+                created_at=datetime(2026, 2, 28, 10, 0, 0),
+                key_points=["Point two"],
+            ),
+        ]
+    )
+    db_session.commit()
+
+    result = upsert_daily_news_digest_for_user_day(
+        db_session,
+        user_id=test_user.id,
+        local_date=datetime(2026, 2, 28).date(),
+        timezone_name="UTC",
+        summarizer=_ManyBulletsSummarizer(),
+    )
+
+    digest = (
+        db_session.query(DailyNewsDigest)
+        .filter(DailyNewsDigest.user_id == test_user.id, DailyNewsDigest.id == result.digest_id)
+        .first()
+    )
+    assert digest is not None
+    assert len(digest.key_points) == MAX_DAILY_DIGEST_BULLETS
+
+
+def test_force_regenerate_updates_existing_sparse_digest(
+    db_session,
+    test_user,
+) -> None:
+    db_session.add_all(
+        [
+            _build_news_content(
+                url=f"https://example.com/news-{index}",
+                title=f"News {index}",
+                created_at=datetime(2026, 2, 28, 8, 0, 0),
+                key_points=[f"Point {index}"],
+            )
+            for index in range(1, 11)
+        ]
+    )
+    existing_digest = DailyNewsDigest(
+        user_id=test_user.id,
+        local_date=datetime(2026, 2, 28).date(),
+        timezone="UTC",
+        title="2026-02-28",
+        summary="",
+        key_points=["Only one", "Only two", "Only three"],
+        source_content_ids=[],
+        source_count=75,
+        llm_model="google-gla:gemini-3-flash-preview",
+        generated_at=datetime(2026, 3, 1, 3, 0, 0),
+    )
+    db_session.add(existing_digest)
+    db_session.commit()
+    db_session.refresh(existing_digest)
+
+    assert digest_requires_regeneration(existing_digest) is True
+
+    result = upsert_daily_news_digest_for_user_day(
+        db_session,
+        user_id=test_user.id,
+        local_date=datetime(2026, 2, 28).date(),
+        timezone_name="UTC",
+        summarizer=_HighVolumeValidSummarizer(),
+        force_regenerate=True,
+    )
+
+    db_session.refresh(existing_digest)
+    assert result.digest_id == existing_digest.id
+    assert existing_digest.title == "AI, policy, and payments led the day"
+    assert existing_digest.summary == "A strong daily digest summary for a high-volume news day."
+
+
 def test_select_rollup_prompt_sources_trims_only_when_budget_requires() -> None:
     sources = [
         DailyDigestSourceItem(
@@ -162,7 +347,7 @@ def test_enqueue_daily_news_digest_task_force_regenerate_ignores_existing_digest
         key_points=[],
         source_content_ids=[],
         source_count=0,
-        llm_model="google-gla:gemini-flash-latest",
+        llm_model="google:gemini-3-flash-preview",
         generated_at=datetime(2026, 3, 1, 3, 0, 0),
     )
     db_session.add(existing_digest)
@@ -198,7 +383,7 @@ def test_enqueue_daily_news_digest_task_skips_existing_digest_without_force(
         key_points=[],
         source_content_ids=[],
         source_count=0,
-        llm_model="google-gla:gemini-flash-latest",
+        llm_model="google:gemini-3-flash-preview",
         generated_at=datetime(2026, 3, 1, 3, 0, 0),
     )
     db_session.add(existing_digest)

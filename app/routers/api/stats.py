@@ -1,5 +1,6 @@
 """User-scoped content statistics endpoints."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
+from app.core.settings import get_settings
 from app.core.timing import timed
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import (
@@ -16,6 +18,7 @@ from app.models.schema import (
     ContentReadStatus,
     ContentStatusEntry,
     DailyNewsDigest,
+    ProcessingTask,
 )
 from app.models.user import User
 from app.repositories.content_repository import apply_visibility_filters, build_visibility_context
@@ -26,6 +29,29 @@ from app.routers.api.models import (
 )
 
 router = APIRouter(prefix="/stats")
+settings = get_settings()
+
+
+def _build_active_processing_filter(now_utc: datetime):
+    """Return a SQL filter for content with real in-flight processing."""
+    active_task_exists = exists(
+        select(ProcessingTask.id).where(
+            ProcessingTask.content_id == Content.id,
+            ProcessingTask.status.in_(
+                [
+                    ContentStatus.PENDING.value,
+                    ContentStatus.PROCESSING.value,
+                ]
+            ),
+        )
+    )
+    fresh_checkout = and_(
+        Content.checked_out_by.is_not(None),
+        Content.checked_out_at.is_not(None),
+        Content.checked_out_at
+        >= now_utc - timedelta(minutes=settings.checkout_timeout_minutes),
+    )
+    return or_(active_task_exists, fresh_checkout)
 
 
 @router.get(
@@ -93,6 +119,8 @@ def get_processing_count(
         ContentStatus.PENDING.value,
         ContentStatus.PROCESSING.value,
     }
+    now_utc = datetime.now(UTC).replace(tzinfo=None)
+    active_processing_filter = _build_active_processing_filter(now_utc)
 
     base_query = (
         db.query(func.count(Content.id))
@@ -100,6 +128,7 @@ def get_processing_count(
         .filter(ContentStatusEntry.user_id == current_user.id)
         .filter(ContentStatusEntry.status == "inbox")
         .filter(Content.status.in_(processing_statuses))
+        .filter(active_processing_filter)
     )
 
     with timed("query processing_count"):
@@ -141,6 +170,8 @@ def get_long_form_stats(
 ) -> LongFormStatsResponse:
     """Return long-form content stats for the authenticated user."""
     long_form_types = {ContentType.ARTICLE.value, ContentType.PODCAST.value}
+    now_utc = datetime.now(UTC).replace(tzinfo=None)
+    active_processing_filter = _build_active_processing_filter(now_utc)
     inbox_filter = (
         ContentStatusEntry.user_id == current_user.id,
         ContentStatusEntry.status == "inbox",
@@ -215,6 +246,7 @@ def get_long_form_stats(
             .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
             .filter(*inbox_filter)
             .filter(Content.status.in_(processing_statuses))
+            .filter(active_processing_filter)
             .scalar()
             or 0
         )
