@@ -5,23 +5,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
+from app.application.commands import toggle_favorite as toggle_favorite_command
+from app.application.queries import get_favorites as get_favorites_query
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
-from app.core.logging import get_logger
-from app.models.metadata import ContentType
-from app.models.pagination import PaginationMetadata
 from app.models.schema import Content
 from app.models.user import User
-from app.presenters.content_presenter import (
-    build_content_summary_response,
-    build_domain_content,
-    resolve_image_urls,
-)
-from app.repositories.content_feed_query import apply_created_at_cursor, build_user_feed_query
 from app.routers.api.models import ContentListResponse
-from app.utils.pagination import PaginationCursor
-
-logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -42,20 +32,7 @@ async def toggle_favorite(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Toggle favorite status for content."""
-    from app.services import favorites
-
-    # Check if content exists
-    content = db.query(Content).filter(Content.id == content_id).first()
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    # Toggle favorite
-    is_favorited, _ = favorites.toggle_favorite(db, content_id, current_user.id)
-    return {
-        "status": "success",
-        "content_id": content_id,
-        "is_favorited": is_favorited,
-    }
+    return toggle_favorite_command.execute(db, user_id=current_user.id, content_id=content_id)
 
 
 @router.delete(
@@ -74,15 +51,13 @@ async def unfavorite_content(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Remove content from favorites."""
-    from app.services import favorites
-
-    # Check if content exists
     content = db.query(Content).filter(Content.id == content_id).first()
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    # Remove from favorites
-    removed = favorites.remove_favorite(db, content_id, current_user.id)
+    from app.repositories import favorites_repository
+
+    removed = favorites_repository.remove_favorite(db, content_id, current_user.id)
     return {
         "status": "success" if removed else "not_found",
         "content_id": content_id,
@@ -111,86 +86,9 @@ async def get_favorites(
     ),
 ) -> ContentListResponse:
     """Get all favorited content with cursor-based pagination."""
-    # Decode cursor if provided
-    last_id = None
-    last_created_at = None
-    if cursor:
-        try:
-            cursor_data = PaginationCursor.decode_cursor(cursor)
-            # No filter validation needed for favorites (no filters)
-            last_id = cursor_data["last_id"]
-            last_created_at = cursor_data["last_created_at"]
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-
-    query = build_user_feed_query(db, current_user.id, mode="favorites")
-
-    # Apply cursor pagination
-    if last_id and last_created_at:
-        query = apply_created_at_cursor(query, last_created_at, last_id)
-
-    # Order by created_at DESC, id DESC for stable pagination
-    query = query.order_by(Content.created_at.desc(), Content.id.desc())
-
-    # Fetch limit + 1 to determine if there are more results
-    contents = query.limit(limit + 1).all()
-
-    # Check if there are more results
-    has_more = len(contents) > limit
-    if has_more:
-        contents = contents[:limit]  # Trim to requested limit
-
-    # Convert to response format
-    content_summaries = []
-    for c, read_id, _favorite_id in contents:
-        try:
-            domain_content = build_domain_content(c)
-            image_url, thumbnail_url = resolve_image_urls(domain_content)
-            content_summaries.append(
-                build_content_summary_response(
-                    content=c,
-                    domain_content=domain_content,
-                    is_read=bool(read_id),
-                    is_favorited=True,
-                    image_url=image_url,
-                    thumbnail_url=thumbnail_url,
-                )
-            )
-        except Exception as e:
-            logger.warning(
-                "Skipping content %s due to validation error: %s",
-                c.id,
-                e,
-                extra={
-                    "component": "favorites",
-                    "operation": "list_favorites",
-                    "item_id": c.id,
-                    "context_data": {"content_id": c.id},
-                },
-            )
-            continue
-
-    # Get content types for filter
-    content_types = [ct.value for ct in ContentType]
-
-    # Generate next cursor if there are more results
-    next_cursor = None
-    if has_more and content_summaries:
-        last_item = contents[-1][0]  # Use original DB object
-        next_cursor = PaginationCursor.encode_cursor(
-            last_id=last_item.id,
-            last_created_at=last_item.created_at,
-            filters={},  # No filters for favorites
-        )
-
-    return ContentListResponse(
-        contents=content_summaries,
-        available_dates=[],  # Not needed for favorites list
-        content_types=content_types,
-        meta=PaginationMetadata(
-            next_cursor=next_cursor,
-            has_more=has_more,
-            page_size=len(content_summaries),
-            total=len(content_summaries),
-        ),
+    return get_favorites_query.execute(
+        db,
+        user_id=current_user.id,
+        cursor=cursor,
+        limit=limit,
     )

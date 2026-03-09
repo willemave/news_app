@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.orm import Session
 
+from app.application.commands import submit_content as submit_content_command
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
@@ -20,7 +21,6 @@ from app.routers.api.models import (
     SubmissionStatusResponse,
     SubmitContentRequest,
 )
-from app.services.content_submission import submit_user_content
 from app.utils.pagination import PaginationCursor
 
 router = APIRouter()
@@ -41,7 +41,11 @@ async def submit_content(
 ) -> ContentSubmissionResponse:
     """Create or reuse content for a user-submitted URL and enqueue processing."""
     try:
-        result = submit_user_content(db, payload, current_user)
+        result = submit_content_command.execute(
+            db,
+            payload=payload,
+            current_user=current_user,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

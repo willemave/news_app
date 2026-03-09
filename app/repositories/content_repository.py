@@ -1,11 +1,11 @@
 """Repository helpers for content visibility and flags."""
 
-import re
 from dataclasses import dataclass
 
 from sqlalchemy import and_, column, exists, select, table, text
 from sqlalchemy.orm import Session
 
+from app.infrastructure.db.search.base import get_search_backend
 from app.models.metadata import ContentStatus
 from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
 
@@ -79,23 +79,9 @@ def get_visible_content_query(db: Session, context: VisibilityContext, include_f
     return apply_visibility_filters(query, context)
 
 
-def build_fts_match_query(raw_query: str) -> str | None:
-    """Build a safe FTS match query from raw user input."""
-    tokens = re.findall(r"[A-Za-z0-9_]+", raw_query.lower())
-    if not tokens:
-        return None
-    return " ".join(f"{token}*" for token in tokens)
-
-
 def sqlite_fts_available(db: Session) -> bool:
-    """Return True when SQLite FTS is available in this database."""
-    bind = db.get_bind()
-    if bind.dialect.name != "sqlite":
-        return False
-    result = db.execute(
-        text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='content_fts'")
-    ).first()
-    return result is not None
+    """Compatibility wrapper for the active search backend."""
+    return get_search_backend(db).supports_full_text()
 
 
 def apply_sqlite_fts_filter(query, match_query: str):

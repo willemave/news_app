@@ -6,17 +6,13 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
+from app.application.queries import get_content_detail as get_content_detail_query
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
 from app.models.schema import Content, ContentDiscussion
 from app.models.user import User
-from app.presenters.content_presenter import (
-    build_content_detail_response,
-    build_domain_content,
-    can_subscribe_for_feed,
-)
-from app.repositories.content_repository import build_visibility_context
+from app.presenters.content_presenter import build_domain_content
 from app.routers.api.models import (
     ChatGPTUrlResponse,
     ContentDetailResponse,
@@ -48,47 +44,12 @@ def get_content_detail(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDetailResponse:
     """Get detailed view of a specific content item."""
-    context = build_visibility_context(current_user.id)
-
     with timed("query content_detail"):
-        row = (
-            db.query(
-                Content,
-                context.is_read.label("is_read"),
-                context.is_favorited.label("is_favorited"),
-            )
-            .filter(Content.id == content_id)
-            .first()
+        return get_content_detail_query.execute(
+            db,
+            user_id=current_user.id,
+            content_id=content_id,
         )
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    content, is_read, is_favorited = row
-
-    # Convert to domain object to validate metadata
-    try:
-        domain_content = build_domain_content(content)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to process content metadata: {str(e)}"
-        ) from e
-
-    detected_feed_data = (domain_content.metadata or {}).get("detected_feed")
-    can_subscribe = False
-    if can_subscribe_for_feed(domain_content, detected_feed_data):
-        from app.services.feed_subscription import can_subscribe_to_feed
-
-        can_subscribe = can_subscribe_to_feed(db, current_user.id, detected_feed_data)
-
-    return build_content_detail_response(
-        content=content,
-        domain_content=domain_content,
-        is_read=bool(is_read),
-        is_favorited=bool(is_favorited),
-        detected_feed_data=detected_feed_data,
-        can_subscribe=can_subscribe,
-    )
 
 
 def _build_discussion_response(

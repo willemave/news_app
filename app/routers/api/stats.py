@@ -1,27 +1,14 @@
 """User-scoped content statistics endpoints."""
 
-from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.application.queries import get_stats
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
-from app.core.settings import get_settings
-from app.core.timing import timed
-from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import (
-    Content,
-    ContentFavorites,
-    ContentReadStatus,
-    ContentStatusEntry,
-    DailyNewsDigest,
-    ProcessingTask,
-)
 from app.models.user import User
-from app.repositories.content_repository import apply_visibility_filters, build_visibility_context
 from app.routers.api.models import (
     LongFormStatsResponse,
     ProcessingCountResponse,
@@ -29,29 +16,6 @@ from app.routers.api.models import (
 )
 
 router = APIRouter(prefix="/stats")
-settings = get_settings()
-
-
-def _build_active_processing_filter(now_utc: datetime):
-    """Return a SQL filter for content with real in-flight processing."""
-    active_task_exists = exists(
-        select(ProcessingTask.id).where(
-            ProcessingTask.content_id == Content.id,
-            ProcessingTask.status.in_(
-                [
-                    ContentStatus.PENDING.value,
-                    ContentStatus.PROCESSING.value,
-                ]
-            ),
-        )
-    )
-    fresh_checkout = and_(
-        Content.checked_out_by.is_not(None),
-        Content.checked_out_at.is_not(None),
-        Content.checked_out_at
-        >= now_utc - timedelta(minutes=settings.checkout_timeout_minutes),
-    )
-    return or_(active_task_exists, fresh_checkout)
 
 
 @router.get(
@@ -69,34 +33,7 @@ def get_unread_counts(
     Optimized to use NOT EXISTS instead of NOT IN for much better performance
     with large read lists (30x faster: ~20ms vs ~650ms).
     """
-    context = build_visibility_context(current_user.id)
-
-    with timed("query unread_counts"):
-        count_query = db.query(Content.content_type, func.count(Content.id))
-        count_query = apply_visibility_filters(count_query, context)
-        count_query = count_query.filter(~context.is_read).group_by(Content.content_type)
-        results = count_query.all()
-
-    counts = {"article": 0, "podcast": 0, "news": 0}
-    for content_type, count in results:
-        if content_type in counts:
-            counts[content_type] = count
-
-    with timed("query unread_daily_news_digests"):
-        unread_daily_digest_count = (
-            db.query(func.count(DailyNewsDigest.id))
-            .filter(DailyNewsDigest.user_id == current_user.id)
-            .filter(DailyNewsDigest.read_at.is_(None))
-            .scalar()
-            or 0
-        )
-
-    return UnreadCountsResponse(
-        article=counts["article"],
-        podcast=counts["podcast"],
-        news=counts["news"],
-        daily_news_digest=unread_daily_digest_count,
-    )
+    return get_stats.get_unread_counts(db, user_id=current_user.id)
 
 
 @router.get(
@@ -113,46 +50,7 @@ def get_processing_count(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ProcessingCountResponse:
     """Return processing counts for long-form, news, and total."""
-    long_form_types = {ContentType.ARTICLE.value, ContentType.PODCAST.value}
-    processing_statuses = {
-        ContentStatus.NEW.value,
-        ContentStatus.PENDING.value,
-        ContentStatus.PROCESSING.value,
-    }
-    now_utc = datetime.now(UTC).replace(tzinfo=None)
-    active_processing_filter = _build_active_processing_filter(now_utc)
-
-    base_query = (
-        db.query(func.count(Content.id))
-        .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
-        .filter(ContentStatusEntry.user_id == current_user.id)
-        .filter(ContentStatusEntry.status == "inbox")
-        .filter(Content.status.in_(processing_statuses))
-        .filter(active_processing_filter)
-    )
-
-    with timed("query processing_count"):
-        long_form_count = (
-            base_query.filter(
-                or_(
-                    Content.content_type.in_(long_form_types),
-                    and_(
-                        Content.platform == "youtube",
-                        Content.content_type != ContentType.NEWS.value,
-                    ),
-                )
-            ).scalar()
-            or 0
-        )
-        news_count = (
-            base_query.filter(Content.content_type == ContentType.NEWS.value).scalar() or 0
-        )
-
-    return ProcessingCountResponse(
-        processing_count=long_form_count + news_count,
-        long_form_count=long_form_count,
-        news_count=news_count,
-    )
+    return get_stats.get_processing_count(db, user_id=current_user.id)
 
 
 @router.get(
@@ -169,92 +67,4 @@ def get_long_form_stats(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> LongFormStatsResponse:
     """Return long-form content stats for the authenticated user."""
-    long_form_types = {ContentType.ARTICLE.value, ContentType.PODCAST.value}
-    now_utc = datetime.now(UTC).replace(tzinfo=None)
-    active_processing_filter = _build_active_processing_filter(now_utc)
-    inbox_filter = (
-        ContentStatusEntry.user_id == current_user.id,
-        ContentStatusEntry.status == "inbox",
-        or_(
-            Content.content_type.in_(long_form_types),
-            and_(Content.platform == "youtube", Content.content_type != ContentType.NEWS.value),
-        ),
-    )
-    completed_filter = (
-        Content.status == ContentStatus.COMPLETED.value,
-        (Content.classification != "skip") | (Content.classification.is_(None)),
-    )
-
-    read_exists = exists(
-        select(ContentReadStatus.id).where(
-            ContentReadStatus.user_id == current_user.id,
-            ContentReadStatus.content_id == Content.id,
-        )
-    )
-    favorite_exists = exists(
-        select(ContentFavorites.id).where(
-            ContentFavorites.user_id == current_user.id,
-            ContentFavorites.content_id == Content.id,
-        )
-    )
-
-    processing_statuses = [
-        ContentStatus.NEW.value,
-        ContentStatus.PENDING.value,
-        ContentStatus.PROCESSING.value,
-    ]
-
-    with timed("query long_form_stats"):
-        total_count = (
-            db.query(func.count(Content.id))
-            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
-            .filter(*inbox_filter)
-            .filter(*completed_filter)
-            .scalar()
-            or 0
-        )
-        read_count = (
-            db.query(func.count(Content.id))
-            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
-            .filter(*inbox_filter)
-            .filter(*completed_filter)
-            .filter(read_exists)
-            .scalar()
-            or 0
-        )
-        unread_count = (
-            db.query(func.count(Content.id))
-            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
-            .filter(*inbox_filter)
-            .filter(*completed_filter)
-            .filter(~read_exists)
-            .scalar()
-            or 0
-        )
-        favorited_count = (
-            db.query(func.count(Content.id))
-            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
-            .filter(*inbox_filter)
-            .filter(*completed_filter)
-            .filter(favorite_exists)
-            .scalar()
-            or 0
-        )
-
-        processing_count = (
-            db.query(func.count(Content.id))
-            .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
-            .filter(*inbox_filter)
-            .filter(Content.status.in_(processing_statuses))
-            .filter(active_processing_filter)
-            .scalar()
-            or 0
-        )
-
-    return LongFormStatsResponse(
-        total_count=total_count,
-        unread_count=unread_count,
-        read_count=read_count,
-        favorited_count=favorited_count,
-        processing_count=processing_count,
-    )
+    return get_stats.get_long_form_stats(db, user_id=current_user.id)

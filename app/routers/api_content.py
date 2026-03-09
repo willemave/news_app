@@ -1,22 +1,19 @@
-"""API endpoints for content with OpenAPI documentation.
+"""API endpoints for content with OpenAPI documentation."""
 
-This module provides backward compatibility by importing the refactored
-router structure from app.routers.api. All endpoint implementations have
-been moved to specialized modules:
+from fastapi import APIRouter
 
-- app.routers.api.models: Pydantic request/response models
-- app.routers.api.content_list: List, search, unread counts
-- app.routers.api.content_detail: Content detail and chat URLs
-- app.routers.api.read_status: Read/unread operations
-- app.routers.api.favorites: Favorites management
-- app.routers.api.content_actions: Content transformations
-
-This file now serves as a thin compatibility layer for existing imports.
-"""
-
-from app.routers.api import router
-
-# Re-export models for backward compatibility
+from app.routers.api import (
+    chat,
+    content_actions,
+    content_detail,
+    content_list,
+    daily_news_digests,
+    favorites,
+    read_status,
+    scraper_configs,
+    stats,
+    submission,
+)
 from app.routers.api.models import (
     BulkMarkReadRequest,
     ChatGPTUrlResponse,
@@ -32,6 +29,22 @@ from app.routers.api.models import (
     RecordContentInteractionResponse,
     UnreadCountsResponse,
 )
+
+router = APIRouter(
+    tags=["content"],
+    responses={404: {"description": "Not found"}},
+)
+
+router.include_router(content_list.router)
+router.include_router(daily_news_digests.router)
+router.include_router(stats.router)
+router.include_router(content_detail.router)
+router.include_router(read_status.router)
+router.include_router(favorites.router)
+router.include_router(content_actions.router)
+router.include_router(scraper_configs.router)
+router.include_router(submission.router)
+router.include_router(chat.router)
 
 __all__ = [
     "router",
