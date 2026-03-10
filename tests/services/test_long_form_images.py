@@ -156,7 +156,7 @@ def test_enqueue_skips_when_active_generate_image_task_exists(db_session, test_u
                 task_type=TaskType.GENERATE_IMAGE.value,
                 content_id=content.id,
                 status=TaskStatus.PENDING.value,
-                queue_name="content",
+                queue_name="image",
             ),
         ]
     )
@@ -209,19 +209,19 @@ def test_cancel_ineligible_pending_generate_image_tasks_preserves_visible_pendin
                 task_type=TaskType.GENERATE_IMAGE.value,
                 content_id=eligible_content.id,
                 status=TaskStatus.PENDING.value,
-                queue_name="content",
+                queue_name="image",
             ),
             ProcessingTask(
                 task_type=TaskType.GENERATE_IMAGE.value,
                 content_id=ineligible_content.id,
                 status=TaskStatus.PENDING.value,
-                queue_name="content",
+                queue_name="image",
             ),
             ProcessingTask(
                 task_type=TaskType.GENERATE_IMAGE.value,
                 content_id=ineligible_content.id,
                 status=TaskStatus.PROCESSING.value,
-                queue_name="content",
+                queue_name="image",
             ),
         ]
     )

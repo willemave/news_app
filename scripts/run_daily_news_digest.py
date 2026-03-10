@@ -1,8 +1,8 @@
-"""Enqueue daily per-user news digest jobs for users at local 03:00.
+"""Enqueue daily per-user news digest jobs when local 03:00 falls within a lookback window.
 
-Suggested cron (hourly):
-0 * * * * cd /opt/news_app && /opt/news_app/.venv/bin/python \
-scripts/run_daily_news_digest.py >> /var/log/news_app/daily-news-digest.log 2>&1
+Suggested cron (every 6 hours):
+0 */6 * * * cd /opt/news_app && /opt/news_app/.venv/bin/python \
+scripts/run_daily_news_digest.py --hours 6 >> /var/log/news_app/daily-news-digest.log 2>&1
 """
 
 from __future__ import annotations
@@ -46,6 +46,13 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Log what would be enqueued without writing queue tasks.",
     )
+    parser.add_argument(
+        "--hours",
+        type=int,
+        choices=(6, 12, 24),
+        default=6,
+        help="Look back this many hours for each user's local 03:00 digest schedule.",
+    )
     return parser.parse_args()
 
 
@@ -79,6 +86,7 @@ def main() -> None:
             target_date = resolve_target_local_date_for_generation(
                 timezone_name,
                 now_utc=now_utc,
+                window_hours=args.hours,
             )
             if target_date is None:
                 continue
@@ -109,7 +117,7 @@ def main() -> None:
     logger.info(
         (
             "Daily digest enqueue summary considered=%s due_now=%s "
-            "task_ready=%s existing_digest=%s dry_run=%s now_utc=%s"
+            "task_ready=%s existing_digest=%s dry_run=%s now_utc=%s window_hours=%s"
         ),
         users_considered,
         users_due_now,
@@ -117,6 +125,7 @@ def main() -> None:
         existing_digest_count,
         args.dry_run,
         now_utc.isoformat(),
+        args.hours,
     )
 
 

@@ -323,6 +323,52 @@ def move_transcribe_tasks(
     print(f"Moved tasks: {len(rows)}")
 
 
+def move_tasks_between_queues(
+    session: Session,
+    *,
+    from_queue: str,
+    to_queue: str,
+    statuses: list[str],
+    task_type: str | None,
+    dry_run: bool,
+    force: bool,
+) -> None:
+    """Move tasks from one queue partition to another."""
+    if from_queue == to_queue:
+        raise SystemExit("--from-queue and --to-queue must differ")
+
+    query = (
+        session.query(ProcessingTask)
+        .filter(ProcessingTask.queue_name == from_queue)
+        .filter(ProcessingTask.status.in_(statuses))
+    )
+    if task_type:
+        query = query.filter(ProcessingTask.task_type == task_type)
+
+    rows = query.order_by(ProcessingTask.id.asc()).all()
+
+    print(f"Tasks to move from {from_queue} to {to_queue}: {len(rows)}")
+    for row in rows[:20]:
+        print(
+            f"id={row.id} status={row.status} queue={row.queue_name} "
+            f"type={row.task_type} content={row.content_id}"
+        )
+    if len(rows) > 20:
+        print(f"... plus {len(rows) - 20} more")
+
+    if dry_run:
+        print("Dry run only; no changes applied.")
+        return
+
+    if not force:
+        raise SystemExit("Refusing to move tasks without --yes")
+
+    for row in rows:
+        row.queue_name = to_queue
+    session.commit()
+    print(f"Moved tasks: {len(rows)}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the queue-control CLI parser."""
     parser = argparse.ArgumentParser(
@@ -432,6 +478,37 @@ def build_parser() -> argparse.ArgumentParser:
     move_parser.add_argument("--dry-run", action="store_true", help="Preview only")
     move_parser.add_argument("--yes", action="store_true", help="Apply changes")
 
+    move_queue_parser = subparsers.add_parser(
+        "move-queue",
+        help="Move tasks between queue partitions",
+    )
+    move_queue_parser.add_argument(
+        "--from-queue",
+        required=True,
+        choices=[queue.value for queue in TaskQueue],
+        help="Current queue partition",
+    )
+    move_queue_parser.add_argument(
+        "--to-queue",
+        required=True,
+        choices=[queue.value for queue in TaskQueue],
+        help="Destination queue partition",
+    )
+    move_queue_parser.add_argument(
+        "--status",
+        dest="statuses",
+        action="append",
+        choices=[status.value for status in TaskStatus],
+        help="Statuses to move (default: pending)",
+    )
+    move_queue_parser.add_argument(
+        "--task-type",
+        choices=[task_type.value for task_type in TaskType],
+        help="Only move tasks for this task type",
+    )
+    move_queue_parser.add_argument("--dry-run", action="store_true", help="Preview only")
+    move_queue_parser.add_argument("--yes", action="store_true", help="Apply changes")
+
     return parser
 
 
@@ -488,6 +565,18 @@ def main(argv: list[str] | None = None) -> int:
                         args.statuses
                         or [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
                     ),
+                    dry_run=bool(args.dry_run),
+                    force=bool(args.yes),
+                )
+                return 0
+
+            if args.command == "move-queue":
+                move_tasks_between_queues(
+                    session,
+                    from_queue=args.from_queue,
+                    to_queue=args.to_queue,
+                    statuses=list(args.statuses or [TaskStatus.PENDING.value]),
+                    task_type=args.task_type,
                     dry_run=bool(args.dry_run),
                     force=bool(args.yes),
                 )

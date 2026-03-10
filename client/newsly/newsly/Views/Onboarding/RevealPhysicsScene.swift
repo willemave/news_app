@@ -9,6 +9,32 @@ import CoreGraphics
 import SpriteKit
 import UIKit
 
+struct GlyphPhraseCycler {
+    private let characters: [Character]
+    private var index: Int = 0
+
+    init(phrase: String) {
+        let fallbackPhrase = phrase.isEmpty ? "Newsly" : phrase
+        self.characters = Array(fallbackPhrase)
+    }
+
+    mutating func nextCharacter(skipSpaces: Bool) -> Character {
+        guard !characters.isEmpty else { return " " }
+
+        let maxSteps = characters.count
+        for _ in 0..<maxSteps {
+            let character = characters[index]
+            index = (index + 1) % characters.count
+            if skipSpaces && character.isWhitespace {
+                continue
+            }
+            return character
+        }
+
+        return " "
+    }
+}
+
 enum SwipeImpulseModel {
     static func normalizedImpulse(distance: CGFloat, influenceRadius: CGFloat) -> CGFloat {
         guard influenceRadius > 0 else { return 0 }

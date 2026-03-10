@@ -181,16 +181,24 @@ private struct DailyDigestCard: View {
 
             // Key points
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(digest.keyPoints.enumerated()), id: \.offset) { _, point in
-                    HStack(alignment: .top, spacing: 10) {
-                        Text("–")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.textSecondary)
-                        Text(point)
-                            .font(.subheadline)
-                            .foregroundStyle(digest.isRead ? Color.textSecondary : .primary)
-                            .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
+                if digest.cleanedKeyPoints.isEmpty {
+                    Text(digest.cleanedSummary.isEmpty ? "Summary unavailable." : digest.cleanedSummary)
+                        .font(.subheadline)
+                        .foregroundStyle(digest.isRead ? Color.textSecondary : .primary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(Array(digest.cleanedKeyPoints.enumerated()), id: \.offset) { _, point in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text("–")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Color.textSecondary)
+                            Text(point)
+                                .font(.subheadline)
+                                .foregroundStyle(digest.isRead ? Color.textSecondary : .primary)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }
@@ -247,7 +255,7 @@ private struct DailyDigestCard: View {
                 .buttonStyle(.plain)
                 .disabled(isLoadingVoice)
 
-                if !digest.keyPoints.isEmpty {
+                if digest.showsDigDeeperAction {
                     Button(action: onDigDeeper) {
                         if isStartingDigDeeper {
                             ProgressView()

@@ -152,23 +152,39 @@ def resolve_target_local_date_for_generation(
     *,
     now_utc: datetime | None = None,
     generation_hour: int = DAILY_DIGEST_GENERATION_HOUR,
+    window_hours: int = 1,
 ) -> date | None:
-    """Return the digest local date to generate for the current local hour.
+    """Return the digest local date to generate within a recent lookback window.
 
     Args:
         timezone_name: User timezone.
         now_utc: Current UTC timestamp (for tests).
         generation_hour: Hour-of-day in local time to generate digests.
+        window_hours: Lookback window used to decide whether the local generation
+            time occurred recently enough to enqueue this run.
 
     Returns:
-        ``local_today - 1`` when local hour matches generation hour; otherwise ``None``.
+        The digest date scheduled within the lookback window, otherwise ``None``.
     """
     now_utc = now_utc or datetime.now(UTC)
     timezone = ZoneInfo(normalize_timezone(timezone_name))
     local_now = now_utc.astimezone(timezone)
-    if local_now.hour != generation_hour:
-        return None
-    return local_now.date() - timedelta(days=1)
+    local_window_start = local_now - timedelta(hours=window_hours)
+
+    candidate_dates = [
+        local_now.date(),
+        (local_now - timedelta(days=1)).date(),
+    ]
+    for candidate_date in candidate_dates:
+        scheduled_local = datetime.combine(
+            candidate_date,
+            time(hour=generation_hour),
+            tzinfo=timezone,
+        )
+        if local_window_start < scheduled_local <= local_now:
+            return candidate_date - timedelta(days=1)
+
+    return None
 
 
 

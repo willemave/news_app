@@ -19,7 +19,7 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.TRANSCRIBE: TaskQueue.TRANSCRIBE,
     TaskType.SUMMARIZE: TaskQueue.CONTENT,
     TaskType.FETCH_DISCUSSION: TaskQueue.CONTENT,
-    TaskType.GENERATE_IMAGE: TaskQueue.CONTENT,
+    TaskType.GENERATE_IMAGE: TaskQueue.IMAGE,
     TaskType.GENERATE_DAILY_NEWS_DIGEST: TaskQueue.CONTENT,
     TaskType.DISCOVER_FEEDS: TaskQueue.CONTENT,
     TaskType.ONBOARDING_DISCOVER: TaskQueue.ONBOARDING,

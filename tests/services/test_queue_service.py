@@ -49,6 +49,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     queue = _patch_db(monkeypatch, db_session)
 
     content_task_id = queue.enqueue(TaskType.SUMMARIZE, content_id=1)
+    image_task_id = queue.enqueue(TaskType.GENERATE_IMAGE, content_id=9)
     transcribe_task_id = queue.enqueue(TaskType.TRANSCRIBE, content_id=2)
     onboarding_task_id = queue.enqueue(TaskType.ONBOARDING_DISCOVER, payload={"user_id": 11})
     integration_task_id = queue.enqueue(
@@ -72,6 +73,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
             ProcessingTask.id.in_(
                 [
                     content_task_id,
+                    image_task_id,
                     transcribe_task_id,
                     onboarding_task_id,
                     integration_task_id,
@@ -84,6 +86,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     }
 
     assert tasks[content_task_id].queue_name == TaskQueue.CONTENT.value
+    assert tasks[image_task_id].queue_name == TaskQueue.IMAGE.value
     assert tasks[transcribe_task_id].queue_name == TaskQueue.TRANSCRIBE.value
     assert tasks[onboarding_task_id].queue_name == TaskQueue.ONBOARDING.value
     assert tasks[integration_task_id].queue_name == TaskQueue.ONBOARDING.value
@@ -204,7 +207,7 @@ def test_get_queue_stats_reports_pending_by_queue(db_session, monkeypatch):
                 task_type=TaskType.GENERATE_IMAGE.value,
                 status=TaskStatus.PENDING.value,
                 payload={},
-                queue_name=TaskQueue.CONTENT.value,
+                queue_name=TaskQueue.IMAGE.value,
             ),
             ProcessingTask(
                 task_type=TaskType.ONBOARDING_DISCOVER.value,
@@ -224,10 +227,12 @@ def test_get_queue_stats_reports_pending_by_queue(db_session, monkeypatch):
 
     stats = queue.get_queue_stats()
 
-    assert stats["pending_by_queue"][TaskQueue.CONTENT.value] == 2
+    assert stats["pending_by_queue"][TaskQueue.CONTENT.value] == 1
+    assert stats["pending_by_queue"][TaskQueue.IMAGE.value] == 1
     assert stats["pending_by_queue"][TaskQueue.ONBOARDING.value] == 1
     assert TaskQueue.CHAT.value not in stats["pending_by_queue"]
     assert stats["pending_by_queue_type"][TaskQueue.CONTENT.value][TaskType.SUMMARIZE.value] == 1
+    assert stats["pending_by_queue_type"][TaskQueue.IMAGE.value][TaskType.GENERATE_IMAGE.value] == 1
     assert (
         stats["pending_by_queue_type"][TaskQueue.ONBOARDING.value][
             TaskType.ONBOARDING_DISCOVER.value

@@ -54,6 +54,7 @@ class TaskQueue(StrEnum):
     """Queue partitions used by workers."""
 
     CONTENT = "content"
+    IMAGE = "image"
     TRANSCRIBE = "transcribe"
     ONBOARDING = "onboarding"
     CHAT = "chat"

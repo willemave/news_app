@@ -13,6 +13,7 @@ from app.services.daily_news_digest import (
     _select_rollup_prompt_sources,
     digest_requires_regeneration,
     enqueue_daily_news_digest_task,
+    resolve_target_local_date_for_generation,
     upsert_daily_news_digest_for_user_day,
 )
 
@@ -397,3 +398,46 @@ def test_enqueue_daily_news_digest_task_skips_existing_digest_without_force(
     )
 
     assert task_id is None
+
+
+def test_resolve_target_local_date_for_generation_matches_recent_window() -> None:
+    target_date = resolve_target_local_date_for_generation(
+        "UTC",
+        now_utc=datetime.fromisoformat("2026-03-09T06:00:00+00:00"),
+        window_hours=6,
+    )
+
+    assert target_date is not None
+    assert target_date.isoformat() == "2026-03-08"
+
+
+def test_resolve_target_local_date_for_generation_skips_old_schedule_outside_window() -> None:
+    target_date = resolve_target_local_date_for_generation(
+        "UTC",
+        now_utc=datetime.fromisoformat("2026-03-09T12:00:00+00:00"),
+        window_hours=6,
+    )
+
+    assert target_date is None
+
+
+def test_resolve_target_local_date_for_generation_allows_24_hour_catchup() -> None:
+    target_date = resolve_target_local_date_for_generation(
+        "UTC",
+        now_utc=datetime.fromisoformat("2026-03-09T02:00:00+00:00"),
+        window_hours=24,
+    )
+
+    assert target_date is not None
+    assert target_date.isoformat() == "2026-03-07"
+
+
+def test_resolve_target_local_date_for_generation_handles_non_utc_timezone() -> None:
+    target_date = resolve_target_local_date_for_generation(
+        "America/Los_Angeles",
+        now_utc=datetime.fromisoformat("2026-03-09T11:00:00+00:00"),
+        window_hours=6,
+    )
+
+    assert target_date is not None
+    assert target_date.isoformat() == "2026-03-08"

@@ -61,6 +61,18 @@ struct DailyNewsDigest: Codable, Identifiable {
         }
         return Self.dayLabelFormatter.string(from: date)
     }
+
+    var cleanedSummary: String {
+        summary.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var cleanedKeyPoints: [String] {
+        keyPoints.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    var showsDigDeeperAction: Bool {
+        sourceCount > 0 && (!cleanedKeyPoints.isEmpty || !cleanedSummary.isEmpty)
+    }
 }
 
 struct DailyNewsDigestListResponse: Codable {
