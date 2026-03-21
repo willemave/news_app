@@ -7,7 +7,7 @@ import json
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
@@ -28,13 +28,11 @@ from app.routers.api.chat_models import (
 from app.routers.api.models import (
     DailyNewsDigestListResponse,
     DailyNewsDigestResponse,
-    DailyNewsDigestVoiceSummaryResponse,
 )
 from app.services.chat_agent import process_message_async
 from app.services.daily_digest_chat import start_daily_digest_chat
 from app.services.daily_news_digest import MAX_DAILY_DIGEST_BULLETS
 from app.services.event_logger import log_event
-from app.services.voice.narration_tts import get_digest_narration_tts_service
 
 router = APIRouter()
 
@@ -244,59 +242,6 @@ def mark_daily_digest_unread(
         "is_read": False,
         "read_at": None,
     }
-
-
-@router.get(
-    "/daily-digests/{digest_id}/voice-summary",
-    response_model=DailyNewsDigestVoiceSummaryResponse,
-    summary="Get narration text for one daily digest",
-)
-def get_daily_digest_voice_summary(
-    digest_id: Annotated[int, Path(..., gt=0)],
-    db: Annotated[Session, Depends(get_readonly_db_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> DailyNewsDigestVoiceSummaryResponse:
-    """Return narration script text for one digest."""
-    digest = _get_user_digest_or_404(db=db, user_id=current_user.id, digest_id=digest_id)
-    narration_text = _build_digest_narration_text(digest)
-    return DailyNewsDigestVoiceSummaryResponse(
-        digest_id=digest.id,
-        title=digest.title,
-        narration_text=narration_text,
-    )
-
-
-@router.get(
-    "/daily-digests/{digest_id}/voice-summary/audio",
-    summary="Get narration audio for one daily digest",
-)
-def get_daily_digest_voice_summary_audio(
-    digest_id: Annotated[int, Path(..., gt=0)],
-    db: Annotated[Session, Depends(get_readonly_db_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> Response:
-    """Return MP3 narration audio for one digest."""
-    digest = _get_user_digest_or_404(db=db, user_id=current_user.id, digest_id=digest_id)
-    narration_text = _build_digest_narration_text(digest)
-
-    try:
-        audio_bytes = get_digest_narration_tts_service().synthesize_mp3(
-            text=narration_text,
-            item_id=digest.id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    return Response(
-        content=audio_bytes,
-        media_type="audio/mpeg",
-        headers={
-            "Cache-Control": "no-store",
-            "Content-Disposition": f'inline; filename="daily-digest-{digest.id}.mp3"',
-        },
-    )
 
 
 @router.post(

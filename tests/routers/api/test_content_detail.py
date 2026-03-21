@@ -62,3 +62,75 @@ def test_chat_url_without_user_prompt(client, create_sample_content, sample_arti
 
     assert "USER PROMPT:" not in decoded_prompt
     assert expected_title in decoded_prompt
+
+
+def test_content_narration_returns_article_summary(
+    client,
+    create_sample_content,
+    sample_article_long,
+):
+    """Unified narration endpoint should return narration text for articles."""
+
+    content = create_sample_content(sample_article_long)
+
+    response = client.get(f"/api/content/narration/content/{content.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["target_type"] == "content"
+    assert payload["target_id"] == content.id
+    assert payload["title"]
+    assert "Here is the full summary for" in payload["narration_text"]
+
+
+def test_content_narration_returns_podcast_summary(
+    client,
+    create_sample_content,
+    sample_podcast,
+):
+    """Unified narration endpoint should also work for podcasts."""
+
+    content = create_sample_content(sample_podcast)
+
+    response = client.get(f"/api/content/narration/content/{content.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["target_type"] == "content"
+    assert payload["target_id"] == content.id
+    assert payload["title"]
+    assert payload["narration_text"]
+
+
+def test_content_narration_returns_audio_bytes(
+    client,
+    create_sample_content,
+    sample_article_long,
+    monkeypatch,
+):
+    """Unified narration endpoint should stream audio when audio is requested."""
+
+    content = create_sample_content(sample_article_long)
+    captured: dict[str, object] = {}
+
+    class _FakeTtsService:
+        def synthesize_mp3(self, *, text: str, item_id: int | None = None) -> bytes:
+            captured["text"] = text
+            captured["item_id"] = item_id
+            return b"fake-content-mp3"
+
+    monkeypatch.setattr(
+        "app.routers.api.narration.get_digest_narration_tts_service",
+        lambda: _FakeTtsService(),
+    )
+
+    response = client.get(
+        f"/api/content/narration/content/{content.id}",
+        headers={"Accept": "audio/mpeg"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("audio/mpeg")
+    assert response.content == b"fake-content-mp3"
+    assert captured["item_id"] == content.id
+    assert "Here is the full summary for" in str(captured["text"])

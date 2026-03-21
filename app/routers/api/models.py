@@ -182,11 +182,15 @@ class DailyNewsDigestListResponse(BaseModel):
     meta: PaginationMetadata = Field(..., description="Pagination metadata for the response")
 
 
-class DailyNewsDigestVoiceSummaryResponse(BaseModel):
-    """Voice narration payload for one daily digest."""
+class NarrationResponse(BaseModel):
+    """Unified narration payload for any supported narration target."""
 
-    digest_id: int = Field(..., description="Digest identifier")
-    title: str = Field(..., description="Digest title")
+    target_type: Literal["content", "daily-digest"] = Field(
+        ...,
+        description="Narration target family",
+    )
+    target_id: int = Field(..., description="Target identifier within the target family")
+    title: str = Field(..., description="Resolved title for spoken playback")
     narration_text: str = Field(..., description="Plain-text narration script for voice playback")
 
 

@@ -190,7 +190,7 @@ def _extract_spoken_points(summary_payload: object, metadata: dict[str, object])
     return deduped
 
 
-def _build_summary_narration(content: Content, *, title: str) -> str:
+def build_summary_narration(content: Content, *, title: str) -> str:
     """Build deterministic spoken summary text for dictate-summary mode."""
 
     metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
@@ -287,7 +287,7 @@ def load_voice_content_context(
         summary=_extract_summary(content),
         transcript_excerpt=_extract_transcript_excerpt(content),
         summary_narration=(
-            _build_summary_narration(content, title=title) if include_summary_narration else None
+            build_summary_narration(content, title=title) if include_summary_narration else None
         ),
     )
 

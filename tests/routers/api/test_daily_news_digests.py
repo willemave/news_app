@@ -122,10 +122,11 @@ def test_daily_digest_voice_summary(client, db_session, test_user) -> None:
     db_session.commit()
     db_session.refresh(digest)
 
-    response = client.get(f"/api/content/daily-digests/{digest.id}/voice-summary")
+    response = client.get(f"/api/content/narration/daily-digest/{digest.id}")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["digest_id"] == digest.id
+    assert payload["target_type"] == "daily-digest"
+    assert payload["target_id"] == digest.id
     assert "2026-02-28" not in payload["narration_text"]
     assert "Daily summary body." not in payload["narration_text"]
     assert "Point 1" in payload["narration_text"]
@@ -155,11 +156,14 @@ def test_daily_digest_voice_summary_audio(
             return b"fake-mp3-bytes"
 
     monkeypatch.setattr(
-        "app.routers.api.daily_news_digests.get_digest_narration_tts_service",
+        "app.routers.api.narration.get_digest_narration_tts_service",
         lambda: _FakeTtsService(),
     )
 
-    response = client.get(f"/api/content/daily-digests/{digest.id}/voice-summary/audio")
+    response = client.get(
+        f"/api/content/narration/daily-digest/{digest.id}",
+        headers={"Accept": "audio/mpeg"},
+    )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("audio/mpeg")
     assert response.content == b"fake-mp3-bytes"
@@ -187,7 +191,10 @@ def test_daily_digest_voice_summary_audio_returns_404_for_other_user(
     db_session.commit()
     db_session.refresh(other_digest)
 
-    response = client.get(f"/api/content/daily-digests/{other_digest.id}/voice-summary/audio")
+    response = client.get(
+        f"/api/content/narration/daily-digest/{other_digest.id}",
+        headers={"Accept": "audio/mpeg"},
+    )
     assert response.status_code == 404
 
 
@@ -207,11 +214,14 @@ def test_daily_digest_voice_summary_audio_returns_503_when_tts_unavailable(
             raise ValueError("ElevenLabs API key is not configured")
 
     monkeypatch.setattr(
-        "app.routers.api.daily_news_digests.get_digest_narration_tts_service",
+        "app.routers.api.narration.get_digest_narration_tts_service",
         lambda: _FailingTtsService(),
     )
 
-    response = client.get(f"/api/content/daily-digests/{digest.id}/voice-summary/audio")
+    response = client.get(
+        f"/api/content/narration/daily-digest/{digest.id}",
+        headers={"Accept": "audio/mpeg"},
+    )
     assert response.status_code == 503
     assert response.json()["detail"] == "ElevenLabs API key is not configured"
 
