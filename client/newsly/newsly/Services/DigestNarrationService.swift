@@ -7,19 +7,21 @@ import AVFoundation
 import Foundation
 
 @MainActor
-final class DigestNarrationService: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDelegate, @preconcurrency AVSpeechSynthesizerDelegate {
-    static let shared = DigestNarrationService()
-    static let supportedPlaybackRates: [Float] = [1.0, 1.25, 1.5, 1.75, 2.0]
+final class NarrationPlaybackService: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDelegate, @preconcurrency AVSpeechSynthesizerDelegate {
+    static let shared = NarrationPlaybackService()
+    nonisolated static let defaultPlaybackRate: Float = 1.0
+    nonisolated static let longPressPlaybackRate: Float = 1.5
 
     @Published private(set) var isSpeaking = false
-    @Published private(set) var playbackRate: Float = 1.0
-    @Published private(set) var speakingDigestId: Int?
+    @Published private(set) var playbackRate: Float = defaultPlaybackRate
+    @Published private(set) var speakingTarget: NarrationTarget?
 
     private let synthesizer = AVSpeechSynthesizer()
     private var audioPlayer: AVAudioPlayer?
-    private var cachedAudioByDigestId: [Int: Data] = [:]
-    private var cacheOrder: [Int] = []
-    private let maxCachedDigests = 12
+    private var cachedAudioByTarget: [NarrationTarget: Data] = [:]
+    private var cachedTextByTarget: [NarrationTarget: String] = [:]
+    private var cacheOrder: [NarrationTarget] = []
+    private let maxCachedTargets = 12
 
     private override init() {
         super.init()
@@ -34,28 +36,56 @@ final class DigestNarrationService: NSObject, ObservableObject, @preconcurrency 
         }
     }
 
-    func playCachedAudio(for digestId: Int) -> Bool {
-        guard let audioData = cachedAudioByDigestId[digestId] else { return false }
+    func playNarration(
+        for target: NarrationTarget,
+        rate: Float = defaultPlaybackRate,
+        fetchAudio: () async throws -> Data,
+        fetchNarrationText: () async throws -> String
+    ) async throws {
+        stop()
+        setPlaybackRate(rate)
+
+        if playCachedAudio(for: target) {
+            return
+        }
+
         do {
-            try playAudio(audioData, digestId: digestId)
+            let audioData = try await fetchAudio()
+            try playAudio(audioData, for: target)
+        } catch {
+            let narrationText: String
+            if let cachedText = cachedTextByTarget[target] {
+                narrationText = cachedText
+            } else {
+                narrationText = try await fetchNarrationText()
+                cacheText(narrationText, for: target)
+            }
+            speak(text: narrationText, for: target)
+        }
+    }
+
+    func playCachedAudio(for target: NarrationTarget) -> Bool {
+        guard let audioData = cachedAudioByTarget[target] else { return false }
+        do {
+            try playAudio(audioData, for: target)
             return true
         } catch {
-            removeCachedAudio(for: digestId)
+            removeCachedAudio(for: target)
             return false
         }
     }
 
-    func playAudio(_ audioData: Data, digestId: Int) throws {
+    func playAudio(_ audioData: Data, for target: NarrationTarget) throws {
         guard !audioData.isEmpty else {
             throw NSError(
-                domain: "DigestNarrationService",
+                domain: "NarrationPlaybackService",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Digest narration audio was empty."]
+                userInfo: [NSLocalizedDescriptionKey: "Narration audio was empty."]
             )
         }
 
         stop()
-        cacheAudio(audioData, for: digestId)
+        cacheAudio(audioData, for: target)
         do {
             try configurePlaybackSession()
 
@@ -66,16 +96,16 @@ final class DigestNarrationService: NSObject, ObservableObject, @preconcurrency 
             player.prepareToPlay()
             guard player.play() else {
                 throw NSError(
-                    domain: "DigestNarrationService",
+                    domain: "NarrationPlaybackService",
                     code: 1,
                     userInfo: [
-                        NSLocalizedDescriptionKey: "Failed to start digest narration audio playback."
+                        NSLocalizedDescriptionKey: "Failed to start narration audio playback."
                     ]
                 )
             }
 
             audioPlayer = player
-            speakingDigestId = digestId
+            speakingTarget = target
             isSpeaking = true
         } catch {
             resetPlaybackState()
@@ -83,11 +113,12 @@ final class DigestNarrationService: NSObject, ObservableObject, @preconcurrency 
         }
     }
 
-    func speak(text: String, digestId: Int) {
+    func speak(text: String, for target: NarrationTarget) {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
 
         stop()
+        cacheText(normalized, for: target)
 
         let utterance = AVSpeechUtterance(string: normalized)
         utterance.rate = min(
@@ -98,7 +129,7 @@ final class DigestNarrationService: NSObject, ObservableObject, @preconcurrency 
         utterance.volume = 1.0
         utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.identifier)
 
-        speakingDigestId = digestId
+        speakingTarget = target
         isSpeaking = true
         synthesizer.speak(utterance)
     }
@@ -144,19 +175,29 @@ final class DigestNarrationService: NSObject, ObservableObject, @preconcurrency 
         resetPlaybackState()
     }
 
-    private func cacheAudio(_ audioData: Data, for digestId: Int) {
-        cachedAudioByDigestId[digestId] = audioData
-        cacheOrder.removeAll { $0 == digestId }
-        cacheOrder.append(digestId)
-        while cacheOrder.count > maxCachedDigests {
-            let evictedDigestId = cacheOrder.removeFirst()
-            cachedAudioByDigestId.removeValue(forKey: evictedDigestId)
+    private func cacheAudio(_ audioData: Data, for target: NarrationTarget) {
+        cachedAudioByTarget[target] = audioData
+        touchCache(target)
+    }
+
+    private func cacheText(_ text: String, for target: NarrationTarget) {
+        cachedTextByTarget[target] = text
+        touchCache(target)
+    }
+
+    private func touchCache(_ target: NarrationTarget) {
+        cacheOrder.removeAll { $0 == target }
+        cacheOrder.append(target)
+        while cacheOrder.count > maxCachedTargets {
+            let evictedTarget = cacheOrder.removeFirst()
+            cachedAudioByTarget.removeValue(forKey: evictedTarget)
+            cachedTextByTarget.removeValue(forKey: evictedTarget)
         }
     }
 
-    private func removeCachedAudio(for digestId: Int) {
-        cachedAudioByDigestId.removeValue(forKey: digestId)
-        cacheOrder.removeAll { $0 == digestId }
+    private func removeCachedAudio(for target: NarrationTarget) {
+        cachedAudioByTarget.removeValue(forKey: target)
+        cacheOrder.removeAll { $0 == target }
     }
 
     private func configurePlaybackSession() throws {
@@ -168,7 +209,7 @@ final class DigestNarrationService: NSObject, ObservableObject, @preconcurrency 
     private func resetPlaybackState() {
         audioPlayer = nil
         isSpeaking = false
-        speakingDigestId = nil
+        speakingTarget = nil
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: [.notifyOthersOnDeactivation]

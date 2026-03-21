@@ -15,6 +15,29 @@ private enum DiscussionTab: String, CaseIterable {
     case links = "Links"
 }
 
+private enum DetailSheetDestination: String, Identifiable {
+    case share
+    case download
+    case tweet
+    case discussion
+    case chat
+
+    var id: String { rawValue }
+}
+
+private struct DetailImageAsset: Identifiable {
+    let imageURL: URL
+    let thumbnailURL: URL?
+
+    var id: String { imageURL.absoluteString }
+}
+
+private struct ViewAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
 // MARK: - Design Tokens
 private enum DetailDesign {
     // Spacing
@@ -50,25 +73,17 @@ struct ContentDetailView: View {
     @State private var navigationDirection: Int = 0 // +1 next, -1 previous
     // Convert button state
     @State private var isConverting: Bool = false
-    // Tweet suggestions sheet state
-    @State private var showTweetSheet: Bool = false
-    // Chat sheet state
-    @State private var showChatOptionsSheet: Bool = false
+    // Modal presentation state
+    @State private var activeSheet: DetailSheetDestination?
     @State private var isCheckingChatSession: Bool = false
     @State private var isStartingChat: Bool = false
     @State private var chatError: String?
-    @StateObject private var inlineNarrationViewModel = LiveVoiceViewModel()
-    @State private var inlineNarrationContentId: Int?
-    @State private var inlineNarrationAutoStopTask: Task<Void, Never>?
-    // Share / download sheet options
-    @State private var showShareOptions: Bool = false
-    @State private var showDownloadSheet: Bool = false
+    @StateObject private var narrationPlaybackService = NarrationPlaybackService.shared
+    @State private var loadingNarrationTargets: Set<NarrationTarget> = []
+    @State private var activeAlert: ViewAlert?
     // Full image viewer
-    @State private var showFullImage: Bool = false
-    @State private var fullImageURL: URL?
-    @State private var fullThumbnailURL: URL?
+    @State private var selectedImageAsset: DetailImageAsset?
     // Discussion sheet
-    @State private var showDiscussionSheet: Bool = false
     @State private var discussionPayload: ContentDiscussion?
     @State private var isLoadingDiscussion: Bool = false
     @State private var discussionTab: DiscussionTab = .comments
@@ -116,12 +131,6 @@ struct ContentDetailView: View {
                         Divider()
                             .padding(.horizontal, DetailDesign.horizontalPadding)
                             .padding(.top, 6)
-
-                        if shouldShowInlineNarrationStatus(for: content) {
-                            inlineNarrationStatusRow(for: content)
-                                .padding(.horizontal, DetailDesign.horizontalPadding)
-                                .padding(.top, 10)
-                        }
 
                         // Chat status banner (inline, under header)
                         if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
@@ -382,10 +391,9 @@ struct ContentDetailView: View {
         }
         .onChange(of: viewModel.content?.id) { _, newValue in
             guard let id = newValue, let content = viewModel.content else { return }
-            if let activeContentId = inlineNarrationContentId, activeContentId != id {
-                Task {
-                    await teardownInlineNarration()
-                }
+            if case .content(let activeContentId)? = narrationPlaybackService.speakingTarget,
+               activeContentId != id {
+                narrationPlaybackService.stop()
             }
             if let type = content.contentTypeEnum {
                 readingStateStore.setCurrent(contentId: id, type: type)
@@ -418,68 +426,65 @@ struct ContentDetailView: View {
                 await viewModel.loadContent()
             }
         }
-        .onChange(of: inlineNarrationViewModel.connectionState) { _, newValue in
-            if case .idle = newValue {
-                inlineNarrationAutoStopTask?.cancel()
-                inlineNarrationContentId = nil
-            }
-            scheduleInlineNarrationAutoStopIfNeeded()
-        }
-        .onChange(of: inlineNarrationViewModel.isAwaitingAssistant) { _, _ in
-            scheduleInlineNarrationAutoStopIfNeeded()
-        }
-        .onChange(of: inlineNarrationViewModel.isAssistantSpeaking) { _, _ in
-            scheduleInlineNarrationAutoStopIfNeeded()
-        }
-        .onChange(of: inlineNarrationViewModel.assistantText) { _, _ in
-            scheduleInlineNarrationAutoStopIfNeeded()
-        }
         .onDisappear {
-            Task { await teardownInlineNarration() }
+            if let contentId = viewModel.content?.id,
+               narrationPlaybackService.speakingTarget == .content(contentId) {
+                narrationPlaybackService.stop()
+            }
             readingStateStore.clear()
         }
-        .sheet(isPresented: $showShareOptions) {
-            shareSheet
-                .presentationDetents([.height(340)])
-                .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(24)
+        .alert(item: $activeAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .cancel(Text("OK"))
+            )
         }
-        .sheet(isPresented: $showDownloadSheet) {
-            downloadSheet
-                .presentationDetents([.height(320)])
-                .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(24)
-        }
-        .sheet(isPresented: $showTweetSheet) {
-            if let content = viewModel.content {
-                TweetSuggestionsSheet(contentId: content.id)
-            }
-        }
-        .sheet(isPresented: $showDiscussionSheet) {
-            discussionSheet
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showChatOptionsSheet, onDismiss: {
+        .sheet(item: $activeSheet, onDismiss: {
             chatError = nil
         }) {
-            if let content = viewModel.content {
-                chatSheet(content: content)
-                    .presentationDetents([.height(380)])
+            switch $0 {
+            case .share:
+                shareSheet
+                    .presentationDetents([.height(340)])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(24)
+
+            case .download:
+                downloadSheet
+                    .presentationDetents([.height(320)])
+                    .presentationDragIndicator(.hidden)
+                    .presentationCornerRadius(24)
+
+            case .tweet:
+                if let content = viewModel.content {
+                    TweetSuggestionsSheet(contentId: content.id)
+                }
+
+            case .discussion:
+                discussionSheet
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+
+            case .chat:
+                if let content = viewModel.content {
+                    chatSheet(content: content)
+                        .presentationDetents([.height(380)])
+                        .presentationDragIndicator(.hidden)
+                        .presentationCornerRadius(24)
+                }
             }
         }
     }
 
     // MARK: - Chat Helpers
     @MainActor
-    private func handleChatButtonTapped(_ content: ContentDetail) async {
+    private func handleChatButtonTapped() async {
         guard !isCheckingChatSession else { return }
         isCheckingChatSession = true
         defer { isCheckingChatSession = false }
         chatError = nil
-        showChatOptionsSheet = true
+        activeSheet = .chat
     }
 
     private func startChatWithPrompt(_ prompt: String, contentId: Int) async {
@@ -491,7 +496,7 @@ struct ContentDetailView: View {
         do {
             let session = try await ChatService.shared.startArticleChat(contentId: contentId)
             _ = try await ChatService.shared.sendMessageAsync(sessionId: session.id, message: prompt)
-            showChatOptionsSheet = false
+            activeSheet = nil
             openChatSession(sessionId: session.id, contentId: contentId)
         } catch {
             chatError = error.localizedDescription
@@ -525,7 +530,7 @@ struct ContentDetailView: View {
                 message: prompt
             )
 
-            showChatOptionsSheet = false
+            activeSheet = nil
             openChatSession(sessionId: session.id, contentId: contentId)
         } catch {
             chatError = error.localizedDescription
@@ -547,9 +552,21 @@ struct ContentDetailView: View {
     @ViewBuilder
     private func audioPromptCard(for content: ContentDetail) -> some View {
         VStack(spacing: 10) {
-            Button {
-                Task { await toggleInlineSummaryNarration(for: content) }
-            } label: {
+            NarrationPressButton(
+                isDisabled: isNarrationLoading(for: content),
+                accessibilityLabel: narrationAccessibilityLabel(for: content),
+                onTap: {
+                    Task { await handleSummaryNarration(for: content) }
+                },
+                onLongPress: {
+                    Task {
+                        await handleSummaryNarration(
+                            for: content,
+                            rate: NarrationPlaybackService.longPressPlaybackRate
+                        )
+                    }
+                }
+            ) {
                 HStack(spacing: 12) {
                     Image(systemName: "text.quote")
                         .font(.system(size: 16, weight: .medium))
@@ -560,7 +577,7 @@ struct ContentDetailView: View {
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text(
-                            isInlineNarrationActive(for: content)
+                            isNarrationActive(for: content)
                                 ? "Stop summary narration"
                                 : "Narrate summary here"
                         )
@@ -568,9 +585,9 @@ struct ContentDetailView: View {
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
                         Text(
-                            isInlineNarrationActive(for: content)
+                            isNarrationActive(for: content)
                                 ? "End spoken playback"
-                                : "Stay on this page while it speaks"
+                                : "Tap for normal speed or long press for 1.5x"
                         )
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -582,159 +599,80 @@ struct ContentDetailView: View {
                 .background(Color.surfaceSecondary)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.plain)
             .accessibilityIdentifier("content.dictate_summary_live")
         }
     }
 
-    private func shouldShowInlineNarrationStatus(for content: ContentDetail) -> Bool {
-        guard inlineNarrationContentId == content.id else { return false }
-        switch inlineNarrationViewModel.connectionState {
-        case .idle:
-            return false
-        case .connecting, .connected, .failed:
-            return true
-        }
+    private func supportsSummaryNarration(for content: ContentDetail) -> Bool {
+        guard let type = content.contentTypeEnum else { return false }
+        return type == .article || type == .news || type == .podcast
+    }
+
+    private func narrationTarget(for content: ContentDetail) -> NarrationTarget {
+        .content(content.id)
     }
 
     @ViewBuilder
-    private func inlineNarrationStatusRow(for content: ContentDetail) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: inlineNarrationViewModel.isAssistantSpeaking ? "speaker.wave.3.fill" : "speaker.wave.2.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.blue)
-
-            Text(inlineNarrationStatusText(for: content))
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
-
-            Spacer()
-
-            Button("Stop") {
-                Task { await stopInlineSummaryNarration() }
-            }
-            .font(.footnote.weight(.semibold))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.surfaceSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityIdentifier("content.inline_narration_status")
-    }
-
-    @ViewBuilder
-    private func inlineNarrationActionIcon(for content: ContentDetail) -> some View {
-        switch inlineNarrationViewModel.connectionState {
-        case .connecting where inlineNarrationContentId == content.id:
+    private func narrationActionIcon(for content: ContentDetail) -> some View {
+        if isNarrationLoading(for: content) {
             ProgressView()
                 .scaleEffect(0.8)
                 .frame(width: 44, height: 44)
-        case .connected where inlineNarrationContentId == content.id:
-            minimalActionIcon("stop.circle.fill", color: .blue)
-        case .failed where inlineNarrationContentId == content.id:
-            minimalActionIcon("speaker.slash", color: .red)
-        default:
+        } else if isNarrationActive(for: content) {
+            minimalActionIcon("speaker.wave.3.fill", color: .blue)
+        } else {
             minimalActionIcon("speaker.wave.2", color: .secondary)
         }
     }
 
-    private func inlineNarrationAccessibilityLabel(for content: ContentDetail) -> String {
-        if isInlineNarrationActive(for: content) {
+    private func narrationAccessibilityLabel(for content: ContentDetail) -> String {
+        if isNarrationActive(for: content) {
             return "Stop summary narration"
         }
         return "Narrate summary"
     }
 
-    private func isInlineNarrationActive(for content: ContentDetail) -> Bool {
-        guard inlineNarrationContentId == content.id else { return false }
-        switch inlineNarrationViewModel.connectionState {
-        case .connecting, .connected:
-            return true
-        case .idle, .failed:
-            return false
-        }
+    private func isNarrationActive(for content: ContentDetail) -> Bool {
+        narrationPlaybackService.isSpeaking
+            && narrationPlaybackService.speakingTarget == narrationTarget(for: content)
     }
 
-    private func inlineNarrationStatusText(for content: ContentDetail) -> String {
-        guard inlineNarrationContentId == content.id else { return "" }
-        switch inlineNarrationViewModel.connectionState {
-        case .connecting:
-            return "Starting spoken summary..."
-        case .connected:
-            if inlineNarrationViewModel.isAssistantSpeaking {
-                return "Narrating summary..."
-            }
-            if inlineNarrationViewModel.isAwaitingAssistant {
-                return "Preparing spoken summary..."
-            }
-            if inlineNarrationViewModel.isListening {
-                return "Listening for follow-up..."
-            }
-            return "Summary narration is ready."
-        case .failed(let message):
-            return message
-        case .idle:
-            return ""
-        }
+    private func isNarrationLoading(for content: ContentDetail) -> Bool {
+        loadingNarrationTargets.contains(narrationTarget(for: content))
     }
 
     @MainActor
-    private func toggleInlineSummaryNarration(for content: ContentDetail) async {
-        if isInlineNarrationActive(for: content) {
-            await stopInlineSummaryNarration()
-            return
-        }
-        await startInlineSummaryNarration(for: content)
-    }
-
-    @MainActor
-    private func startInlineSummaryNarration(for content: ContentDetail) async {
-        inlineNarrationAutoStopTask?.cancel()
-        if inlineNarrationContentId != content.id {
-            await teardownInlineNarration()
-        }
-        inlineNarrationContentId = content.id
-        let route = LiveVoiceRoute(
-            contentId: content.id,
-            launchMode: .dictateSummary,
-            sourceSurface: .contentDetail,
-            autoConnect: true
-        )
-        await inlineNarrationViewModel.connect(route: route)
-    }
-
-    @MainActor
-    private func stopInlineSummaryNarration() async {
-        await teardownInlineNarration()
-    }
-
-    @MainActor
-    private func teardownInlineNarration() async {
-        inlineNarrationAutoStopTask?.cancel()
-        await inlineNarrationViewModel.disconnect()
-        inlineNarrationContentId = nil
-    }
-
-    private func scheduleInlineNarrationAutoStopIfNeeded() {
-        inlineNarrationAutoStopTask?.cancel()
-        guard case .connected = inlineNarrationViewModel.connectionState else { return }
-        guard inlineNarrationContentId != nil else { return }
-        guard !inlineNarrationViewModel.isListening else { return }
-        guard !inlineNarrationViewModel.isAwaitingAssistant else { return }
-        guard !inlineNarrationViewModel.isAssistantSpeaking else { return }
-        guard !inlineNarrationViewModel.assistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    private func handleSummaryNarration(
+        for content: ContentDetail,
+        rate: Float = NarrationPlaybackService.defaultPlaybackRate
+    ) async {
+        let target = narrationTarget(for: content)
+        if isNarrationActive(for: content),
+           abs(narrationPlaybackService.playbackRate - rate) < 0.001 {
+            narrationPlaybackService.stop()
             return
         }
 
-        inlineNarrationAutoStopTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 45_000_000_000)
-            guard !Task.isCancelled else { return }
-            guard case .connected = inlineNarrationViewModel.connectionState else { return }
-            guard !inlineNarrationViewModel.isListening else { return }
-            guard !inlineNarrationViewModel.isAssistantSpeaking else { return }
-            guard !inlineNarrationViewModel.isAwaitingAssistant else { return }
-            await teardownInlineNarration()
+        loadingNarrationTargets.insert(target)
+        defer { loadingNarrationTargets.remove(target) }
+
+        do {
+            try await narrationPlaybackService.playNarration(
+                for: target,
+                rate: rate,
+                fetchAudio: {
+                    try await NarrationService.shared.fetchNarrationAudio(for: target)
+                },
+                fetchNarrationText: {
+                    let response = try await NarrationService.shared.fetchNarration(for: target)
+                    return response.narrationText
+                }
+            )
+        } catch {
+            activeAlert = ViewAlert(
+                title: "Narration",
+                message: "Failed to load narration: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -748,9 +686,10 @@ struct ContentDetailView: View {
                content.contentTypeEnum != .news,
                let imageUrl = buildImageURL(from: imageUrlString) {
                 Button {
-                    fullImageURL = imageUrl
-                    fullThumbnailURL = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
-                    showFullImage = true
+                    selectedImageAsset = DetailImageAsset(
+                        imageURL: imageUrl,
+                        thumbnailURL: content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
+                    )
                 } label: {
                     let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
                     GeometryReader { geo in
@@ -820,10 +759,8 @@ struct ContentDetailView: View {
             .padding(.top, 16)
             .padding(.bottom, 6)
         }
-        .fullScreenCover(isPresented: $showFullImage) {
-            if let url = fullImageURL {
-                FullImageView(imageURL: url, thumbnailURL: fullThumbnailURL, isPresented: $showFullImage)
-            }
+        .fullScreenCover(item: $selectedImageAsset) { asset in
+            FullImageView(imageURL: asset.imageURL, thumbnailURL: asset.thumbnailURL)
         }
     }
 
@@ -872,7 +809,7 @@ struct ContentDetailView: View {
             Spacer()
 
             // Share
-            Button(action: { showShareOptions = true }) {
+            Button(action: { activeSheet = .share }) {
                 minimalActionIcon("square.and.arrow.up")
             }
             .accessibilityIdentifier("content.action.share")
@@ -881,7 +818,7 @@ struct ContentDetailView: View {
             if content.contentTypeEnum == .article || content.contentTypeEnum == .podcast {
                 Spacer()
 
-                Button { showDownloadSheet = true } label: {
+                Button { activeSheet = .download } label: {
                     minimalActionIcon("tray.and.arrow.down")
                 }
                 .accessibilityIdentifier("content.action.download_more")
@@ -923,16 +860,27 @@ struct ContentDetailView: View {
             }
             .accessibilityIdentifier("content.action.favorite")
 
-            if content.contentTypeEnum == .article || content.contentTypeEnum == .news {
+            if supportsSummaryNarration(for: content) {
                 Spacer()
 
-                Button {
-                    Task { await toggleInlineSummaryNarration(for: content) }
-                } label: {
-                    inlineNarrationActionIcon(for: content)
+                NarrationPressButton(
+                    isDisabled: isNarrationLoading(for: content),
+                    accessibilityLabel: narrationAccessibilityLabel(for: content),
+                    onTap: {
+                        Task { await handleSummaryNarration(for: content) }
+                    },
+                    onLongPress: {
+                        Task {
+                            await handleSummaryNarration(
+                                for: content,
+                                rate: NarrationPlaybackService.longPressPlaybackRate
+                            )
+                        }
+                    }
+                ) {
+                    narrationActionIcon(for: content)
                 }
                 .accessibilityIdentifier("content.action.narrate_summary")
-                .accessibilityLabel(inlineNarrationAccessibilityLabel(for: content))
             }
 
             Spacer()
@@ -944,7 +892,7 @@ struct ContentDetailView: View {
                         openChatSession(sessionId: activeSession.id, contentId: content.id)
                         return
                     }
-                    await handleChatButtonTapped(content)
+                    await handleChatButtonTapped()
                 }
             }) {
                 if isStartingChat {
@@ -1055,7 +1003,7 @@ struct ContentDetailView: View {
     @ViewBuilder
     private var shareSheet: some View {
         VStack(spacing: 0) {
-            sheetHeader(title: "Share") { showShareOptions = false }
+            sheetHeader(title: "Share") { activeSheet = nil }
 
             VStack(spacing: 8) {
                 sheetOptionRow(
@@ -1063,7 +1011,7 @@ struct ContentDetailView: View {
                     title: "Title + link",
                     subtitle: "Headline and URL only",
                     action: {
-                        showShareOptions = false
+                        activeSheet = nil
                         viewModel.shareContent(option: .light)
                     }
                 )
@@ -1072,7 +1020,7 @@ struct ContentDetailView: View {
                     title: "Key points",
                     subtitle: "Summary, top quotes, and link",
                     action: {
-                        showShareOptions = false
+                        activeSheet = nil
                         viewModel.shareContent(option: .medium)
                     }
                 )
@@ -1081,7 +1029,7 @@ struct ContentDetailView: View {
                     title: "Full content",
                     subtitle: "Complete article or transcript",
                     action: {
-                        showShareOptions = false
+                        activeSheet = nil
                         viewModel.shareContent(option: .full)
                     }
                 )
@@ -1097,9 +1045,9 @@ struct ContentDetailView: View {
                 title: "Tweet suggestions",
                 subtitle: "Generate tweet-ready snippets",
                 action: {
-                    showShareOptions = false
+                    activeSheet = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        showTweetSheet = true
+                        activeSheet = .tweet
                     }
                 }
             )
@@ -1115,7 +1063,7 @@ struct ContentDetailView: View {
     @ViewBuilder
     private var downloadSheet: some View {
         VStack(spacing: 0) {
-            sheetHeader(title: "Load more from series") { showDownloadSheet = false }
+            sheetHeader(title: "Load more from series") { activeSheet = nil }
 
             VStack(spacing: 8) {
                 sheetOptionRow(
@@ -1124,7 +1072,7 @@ struct ContentDetailView: View {
                     title: "3 episodes",
                     subtitle: "Quick catch-up",
                     action: {
-                        showDownloadSheet = false
+                        activeSheet = nil
                         Task { await viewModel.downloadMoreFromSeries(count: 3) }
                     }
                 )
@@ -1134,7 +1082,7 @@ struct ContentDetailView: View {
                     title: "5 episodes",
                     subtitle: "Recent backlog",
                     action: {
-                        showDownloadSheet = false
+                        activeSheet = nil
                         Task { await viewModel.downloadMoreFromSeries(count: 5) }
                     }
                 )
@@ -1144,7 +1092,7 @@ struct ContentDetailView: View {
                     title: "10 episodes",
                     subtitle: "Deep dive into the series",
                     action: {
-                        showDownloadSheet = false
+                        activeSheet = nil
                         Task { await viewModel.downloadMoreFromSeries(count: 10) }
                     }
                 )
@@ -1154,7 +1102,7 @@ struct ContentDetailView: View {
                     title: "20 episodes",
                     subtitle: "Full archive pull",
                     action: {
-                        showDownloadSheet = false
+                        activeSheet = nil
                         Task { await viewModel.downloadMoreFromSeries(count: 20) }
                     }
                 )
@@ -1171,7 +1119,7 @@ struct ContentDetailView: View {
     @ViewBuilder
     private func chatSheet(content: ContentDetail) -> some View {
         VStack(spacing: 0) {
-            sheetHeader(title: "AI Chat") { showChatOptionsSheet = false }
+            sheetHeader(title: "AI Chat") { activeSheet = nil }
 
             VStack(spacing: 8) {
                 if let chatError {
@@ -1226,8 +1174,10 @@ struct ContentDetailView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
 
-            audioPromptCard(for: content)
-                .padding(.horizontal, 20)
+            if supportsSummaryNarration(for: content) {
+                audioPromptCard(for: content)
+                    .padding(.horizontal, 20)
+            }
 
         }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -1252,7 +1202,7 @@ struct ContentDetailView: View {
                 discussionPayload = discussion
                 discussionTab = .comments
                 collapsedCommentIDs = []
-                showDiscussionSheet = true
+                activeSheet = .discussion
             } else {
                 openURL(fallbackURL)
             }
@@ -1263,7 +1213,7 @@ struct ContentDetailView: View {
 
     @ViewBuilder
     private var discussionSheet: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if let discussion = discussionPayload {
                     if discussion.mode == "discussion_list" {
@@ -1334,7 +1284,7 @@ struct ContentDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { showDiscussionSheet = false }
+                    Button("Done") { activeSheet = nil }
                 }
             }
         }

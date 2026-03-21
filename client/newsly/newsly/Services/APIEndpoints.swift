@@ -30,11 +30,8 @@ enum APIEndpoints {
     static func markDailyDigestUnread(id: Int) -> String {
         return "/api/content/daily-digests/\(id)/mark-unread"
     }
-    static func dailyDigestVoiceSummary(id: Int) -> String {
-        return "/api/content/daily-digests/\(id)/voice-summary"
-    }
-    static func dailyDigestVoiceSummaryAudio(id: Int) -> String {
-        return "/api/content/daily-digests/\(id)/voice-summary/audio"
+    static func narration(_ target: NarrationTarget) -> String {
+        return "/api/content/narration/\(target.pathComponent)/\(target.id)"
     }
     static func dailyDigestDigDeeper(id: Int) -> String {
         return "/api/content/daily-digests/\(id)/dig-deeper"

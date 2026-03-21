@@ -115,15 +115,3 @@ struct DailyNewsDigestListResponse: Codable {
     var nextCursor: String? { meta.nextCursor }
     var hasMore: Bool { meta.hasMore }
 }
-
-struct DailyNewsDigestVoiceSummaryResponse: Codable {
-    let digestId: Int
-    let title: String
-    let narrationText: String
-
-    enum CodingKeys: String, CodingKey {
-        case digestId = "digest_id"
-        case title
-        case narrationText = "narration_text"
-    }
-}

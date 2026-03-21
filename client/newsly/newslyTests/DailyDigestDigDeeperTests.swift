@@ -197,14 +197,6 @@ private final class FakeDailyNewsDigestRepository: DailyNewsDigestRepositoryType
         fatalError("unused in test")
     }
 
-    func fetchVoiceSummaryAudio(id: Int) async throws -> Data {
-        fatalError("unused in test")
-    }
-
-    func fetchVoiceSummary(id: Int) async throws -> DailyNewsDigestVoiceSummaryResponse {
-        fatalError("unused in test")
-    }
-
     func startDigDeeperChat(id: Int) async throws -> StartDailyDigestChatResponse {
         startedIds.append(id)
         try await Task.sleep(nanoseconds: 5_000_000)

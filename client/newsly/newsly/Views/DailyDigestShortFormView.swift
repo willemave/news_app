@@ -8,9 +8,8 @@ import SwiftUI
 struct DailyDigestShortFormView: View {
     @ObservedObject var viewModel: DailyDigestListViewModel
     let onOpenChatSession: (ChatSessionRoute) -> Void
-    @StateObject private var narrationService = DigestNarrationService.shared
-    @AppStorage("daily_digest_narration_playback_rate") private var narrationPlaybackRate = 1.0
-    @State private var loadingVoiceDigestIds: Set<Int> = []
+    @StateObject private var narrationPlaybackService = NarrationPlaybackService.shared
+    @State private var loadingNarrationTargets: Set<NarrationTarget> = []
     @State private var activeAlert: ViewAlert?
 
     private struct ViewAlert: Identifiable {
@@ -56,18 +55,19 @@ struct DailyDigestShortFormView: View {
                             DailyDigestCard(
                                 digest: digest,
                                 isToday: isToday,
-                                    isSpeaking: narrationService.isSpeaking && narrationService.speakingDigestId == digest.id,
-                                    isLoadingVoice: loadingVoiceDigestIds.contains(digest.id),
-                                    isStartingDigDeeper: viewModel.isStartingDigDeeperChat(for: digest.id),
-                                    playbackRate: narrationPlaybackRate,
-                                    onSelectPlaybackRate: { rate in
-                                        narrationPlaybackRate = rate
-                                        narrationService.setPlaybackRate(Float(rate))
-                                    },
-                                    onToggleRead: { toggleRead(for: digest) },
-                                    onVoiceSummary: { handleVoiceSummary(for: digest) },
-                                    onDigDeeper: { handleDigDeeper(for: digest) }
-                                )
+                                isSpeaking: isNarrationActive(for: digest),
+                                isLoadingVoice: isNarrationLoading(for: digest),
+                                isStartingDigDeeper: viewModel.isStartingDigDeeperChat(for: digest.id),
+                                onToggleRead: { toggleRead(for: digest) },
+                                onVoiceSummary: { handleVoiceSummary(for: digest) },
+                                onVoiceSummaryLongPress: {
+                                    handleVoiceSummary(
+                                        for: digest,
+                                        rate: NarrationPlaybackService.longPressPlaybackRate
+                                    )
+                                },
+                                onDigDeeper: { handleDigDeeper(for: digest) }
+                            )
                             .onAppear {
                                 if digest.id == viewModel.currentItems().last?.id {
                                     viewModel.loadMoreTrigger.send(())
@@ -115,27 +115,32 @@ struct DailyDigestShortFormView: View {
         }
     }
 
-    private func handleVoiceSummary(for digest: DailyNewsDigest) {
-        narrationService.setPlaybackRate(Float(narrationPlaybackRate))
-        if narrationService.isSpeaking && narrationService.speakingDigestId == digest.id {
-            narrationService.stop()
+    private func handleVoiceSummary(
+        for digest: DailyNewsDigest,
+        rate: Float = NarrationPlaybackService.defaultPlaybackRate
+    ) {
+        let target = narrationTarget(for: digest)
+        if isNarrationActive(for: digest),
+           abs(narrationPlaybackService.playbackRate - rate) < 0.001 {
+            narrationPlaybackService.stop()
             return
         }
 
-        loadingVoiceDigestIds.insert(digest.id)
-        Task {
-            defer { loadingVoiceDigestIds.remove(digest.id) }
+        loadingNarrationTargets.insert(target)
+        Task { @MainActor in
+            defer { loadingNarrationTargets.remove(target) }
             do {
-                if narrationService.playCachedAudio(for: digest.id) {
-                    return
-                }
-
-                let audioData = try await viewModel.fetchVoiceSummaryAudio(id: digest.id)
-                try narrationService.playAudio(audioData, digestId: digest.id)
-            } catch {
-                do {
-                let response = try await viewModel.fetchVoiceSummary(id: digest.id)
-                narrationService.speak(text: response.narrationText, digestId: digest.id)
+                try await narrationPlaybackService.playNarration(
+                    for: target,
+                    rate: rate,
+                    fetchAudio: {
+                        try await NarrationService.shared.fetchNarrationAudio(for: target)
+                    },
+                    fetchNarrationText: {
+                        let response = try await NarrationService.shared.fetchNarration(for: target)
+                        return response.narrationText
+                    }
+                )
             } catch {
                 activeAlert = ViewAlert(
                     title: "Voice Summary",
@@ -144,12 +149,23 @@ struct DailyDigestShortFormView: View {
             }
         }
     }
+
+    private func narrationTarget(for digest: DailyNewsDigest) -> NarrationTarget {
+        .dailyDigest(digest.id)
+    }
+
+    private func isNarrationActive(for digest: DailyNewsDigest) -> Bool {
+        narrationPlaybackService.isSpeaking && narrationPlaybackService.speakingTarget == narrationTarget(for: digest)
+    }
+
+    private func isNarrationLoading(for digest: DailyNewsDigest) -> Bool {
+        loadingNarrationTargets.contains(narrationTarget(for: digest))
     }
 
     private func handleDigDeeper(for digest: DailyNewsDigest) {
         guard !viewModel.isStartingDigDeeperChat(for: digest.id) else { return }
 
-        Task {
+        Task { @MainActor in
             do {
                 let route = try await viewModel.startDigDeeperChat(id: digest.id)
                 onOpenChatSession(route)
@@ -172,10 +188,9 @@ private struct DailyDigestCard: View {
     let isSpeaking: Bool
     let isLoadingVoice: Bool
     let isStartingDigDeeper: Bool
-    let playbackRate: Double
-    let onSelectPlaybackRate: (Double) -> Void
     let onToggleRead: () -> Void
     let onVoiceSummary: () -> Void
+    let onVoiceSummaryLongPress: () -> Void
     let onDigDeeper: () -> Void
 
     var body: some View {
@@ -256,35 +271,31 @@ private struct DailyDigestCard: View {
                 .buttonStyle(.plain)
                 .padding(.trailing, 16)
 
-                Button(action: onVoiceSummary) {
-                    if isLoadingVoice {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                            .frame(width: 16, height: 16)
-                    } else {
-                        Label(
-                            voiceSummaryButtonTitle,
-                            systemImage: isSpeaking ? "speaker.slash.fill" : "speaker.wave.2.fill"
-                        )
-                        .font(.terracottaBodySmall)
-                        .foregroundStyle(isSpeaking ? Color.terracottaPrimary : Color.onSurfaceSecondary)
-                    }
-                }
-                .contextMenu {
-                    ForEach(DigestNarrationService.supportedPlaybackRates, id: \.self) { rate in
-                        Button {
-                            onSelectPlaybackRate(Double(rate))
-                        } label: {
-                            if abs(Double(rate) - playbackRate) < 0.001 {
-                                Label(playbackRateLabel(for: Double(rate)), systemImage: "checkmark")
-                            } else {
-                                Text(playbackRateLabel(for: Double(rate)))
-                            }
+                NarrationPressButton(
+                    isDisabled: isLoadingVoice,
+                    accessibilityLabel: isSpeaking ? "Stop narration" : "Play narration",
+                    onTap: onVoiceSummary,
+                    onLongPress: onVoiceSummaryLongPress
+                ) {
+                    Group {
+                        if isLoadingVoice {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .frame(width: 16, height: 16)
+                        } else {
+                            Label(
+                                voiceSummaryButtonTitle,
+                                systemImage: isSpeaking ? "speaker.wave.3.fill" : "speaker.wave.2.fill"
+                            )
+                            .font(.terracottaBodySmall)
+                            .foregroundStyle(
+                                isSpeaking
+                                    ? Color.terracottaPrimary
+                                    : Color.onSurfaceSecondary
+                            )
                         }
                     }
                 }
-                .buttonStyle(.plain)
-                .disabled(isLoadingVoice)
 
                 if digest.showsDigDeeperAction {
                     Button(action: onDigDeeper) {
@@ -322,11 +333,6 @@ private struct DailyDigestCard: View {
     }
 
     private var voiceSummaryButtonTitle: String {
-        let action = isSpeaking ? "Stop" : "Listen"
-        return "\(action) \(playbackRateLabel(for: playbackRate))"
-    }
-
-    private func playbackRateLabel(for rate: Double) -> String {
-        "\(rate.formatted(.number.precision(.fractionLength(0...2))))x"
+        isSpeaking ? "Stop" : "Listen"
     }
 }
