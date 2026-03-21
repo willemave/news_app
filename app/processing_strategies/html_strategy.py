@@ -9,6 +9,7 @@ from html import unescape
 from typing import Any
 
 import httpx
+import trafilatura
 from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
@@ -23,6 +24,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
+from app.services.exa_client import exa_get_contents
 from app.utils.dates import parse_date_with_tz
 
 logger = get_logger(__name__)
@@ -50,6 +52,17 @@ ACCESS_GATE_HTML_MARKERS: tuple[str, ...] = (
     "performance & security by cloudflare",
 )
 ACCESS_GATE_MAX_TEXT_LENGTH = 2500
+DISCUSSION_ONLY_MAX_TEXT_LENGTH = 8000
+DISCUSSION_LEDE_MARKERS: tuple[str, ...] = (
+    "#### discussion about this post",
+    "discussion about this post",
+    "commentsrestacks",
+)
+DISCUSSION_TAIL_MARKERS: tuple[str, ...] = (
+    "\n#### Discussion about this post",
+    "\n### Discussion about this post",
+    " #### Discussion about this post",
+)
 
 
 class HtmlProcessorStrategy(UrlProcessorStrategy):
@@ -406,8 +419,140 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             return "access gate detected: challenge/JS wall html markers"
         return None
 
-    def _fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
-        """Use httpx + lightweight parsing when Playwright navigation fails."""
+    @staticmethod
+    def _looks_like_discussion_url(url: str) -> bool:
+        """Return True when the submitted URL explicitly targets a discussion page."""
+
+        normalized_url = url.lower().rstrip("/")
+        return "/comment/" in normalized_url or normalized_url.endswith("/comments")
+
+    @classmethod
+    def _detect_discussion_only_extraction(
+        cls,
+        *,
+        url: str,
+        text_content: str | None,
+    ) -> str | None:
+        """Detect when extraction captured a comment thread instead of the article body."""
+
+        if cls._looks_like_discussion_url(url):
+            return None
+
+        normalized_text = re.sub(r"\s+", " ", text_content or "").strip().lower()
+        if not normalized_text:
+            return None
+
+        starts_with_discussion = any(
+            normalized_text.startswith(marker) for marker in DISCUSSION_LEDE_MARKERS
+        )
+        if not starts_with_discussion:
+            return None
+
+        javascript_wall_hit = any(marker in normalized_text for marker in ACCESS_GATE_TEXT_MARKERS)
+        if javascript_wall_hit:
+            return "malformed extraction: discussion/comments block with javascript wall"
+        if len(normalized_text) <= DISCUSSION_ONLY_MAX_TEXT_LENGTH:
+            return "malformed extraction: discussion/comments block without article body"
+        return None
+
+    @classmethod
+    def _detect_extraction_issue(
+        cls,
+        *,
+        url: str,
+        title: str | None,
+        text_content: str | None,
+        html_content: str | None,
+    ) -> str | None:
+        """Return a reason when extracted content looks malformed."""
+
+        gate_reason = cls._detect_access_gate(
+            title=title,
+            text_content=text_content,
+            html_content=html_content,
+        )
+        if gate_reason:
+            return gate_reason
+
+        return cls._detect_discussion_only_extraction(
+            url=url,
+            text_content=text_content,
+        )
+
+    @classmethod
+    def _trim_discussion_tail(cls, url: str, text_content: str | None) -> str:
+        """Remove trailing discussion sections from article text when possible."""
+
+        if cls._looks_like_discussion_url(url) or not text_content:
+            return text_content or ""
+
+        trimmed_text = text_content
+        for marker in DISCUSSION_TAIL_MARKERS:
+            marker_index = trimmed_text.find(marker)
+            if marker_index != -1:
+                trimmed_text = trimmed_text[:marker_index].rstrip()
+                break
+
+        return trimmed_text
+
+    def _exa_fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
+        """Use Exa contents as the first fallback after crawl4ai extraction fails."""
+
+        results = exa_get_contents(
+            [url],
+            max_characters=None,
+            livecrawl="always",
+        )
+        if not results:
+            return None
+
+        result = results[0]
+        final_url = result.url or url
+        title = result.title or "Untitled"
+        text_content = self._trim_discussion_tail(final_url, result.text)
+        extraction_issue = self._detect_extraction_issue(
+            url=final_url,
+            title=title,
+            text_content=text_content,
+            html_content=None,
+        )
+        if extraction_issue:
+            logger.warning(
+                "HtmlStrategy: Exa fallback content still appears malformed for %s (%s)",
+                final_url,
+                extraction_issue,
+            )
+            return None
+
+        try:
+            from urllib.parse import urlparse
+
+            host = urlparse(final_url).netloc or source
+        except Exception:
+            host = source
+
+        logger.info(
+            "HtmlStrategy: Exa fallback extraction succeeded for %s (text_length=%s)",
+            final_url,
+            len(text_content),
+        )
+        return {
+            "title": title,
+            "author": None,
+            "publication_date": parse_date_with_tz(result.published_date)
+            if result.published_date
+            else None,
+            "text_content": text_content,
+            "content_type": "html",
+            "source": host,
+            "final_url_after_redirects": final_url,
+            "table_markdown": None,
+            "gate_page_detected": False,
+            "extraction_error": None,
+        }
+
+    def _http_fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
+        """Use httpx + trafilatura when crawl and Exa extraction fail."""
 
         headers = {
             "User-Agent": (
@@ -423,35 +568,56 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
         html_content = response.text
         title = self._extract_title_from_html(html_content) or "Untitled"
-        text_content = self._extract_text_from_html(html_content)
-        gate_reason = self._detect_access_gate(
+        text_content = trafilatura.extract(html_content, include_links=True) or ""
+        if not text_content:
+            text_content = self._extract_text_from_html(html_content)
+
+        extraction_issue = self._detect_extraction_issue(
+            url=str(response.url),
             title=title,
             text_content=text_content,
             html_content=html_content,
         )
-        if gate_reason:
+        if extraction_issue:
             logger.warning(
-                "HtmlStrategy: Fallback content appears to be an access gate for %s (%s)",
+                "HtmlStrategy: Fallback content still appears malformed for %s (%s)",
                 response.url,
-                gate_reason,
+                extraction_issue,
             )
         logger.info(
             "HtmlStrategy: Fallback extraction succeeded for %s (text_length=%s)",
             response.url,
             len(text_content),
         )
+        try:
+            from urllib.parse import urlparse
+
+            host = urlparse(str(response.url)).netloc or source
+        except Exception:
+            host = source
         return {
             "title": title,
             "author": None,
             "publication_date": None,
             "text_content": text_content,
             "content_type": "html",
-            "source": source,
+            "source": host,
             "final_url_after_redirects": str(response.url),
             "table_markdown": None,
-            "gate_page_detected": bool(gate_reason),
-            "extraction_error": gate_reason,
+            "gate_page_detected": bool(
+                extraction_issue and extraction_issue.startswith("access gate detected")
+            ),
+            "extraction_error": extraction_issue,
         }
+
+    def _fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
+        """Try Exa first, then plain HTTP/trafilatura as the final fallback."""
+
+        exa_data = self._exa_fallback_fetch(url, source)
+        if exa_data:
+            return exa_data
+
+        return self._http_fallback_fetch(url, source)
 
     def extract_data(self, content: str, url: str) -> dict[str, Any]:
         """
@@ -742,17 +908,26 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 publication_date,
                 author,
             )
-            gate_reason = self._detect_access_gate(
+            extraction_issue = self._detect_extraction_issue(
+                url=final_url,
                 title=title,
                 text_content=extracted_text,
                 html_content=result.cleaned_html,
             )
-            if gate_reason:
+            if extraction_issue:
                 logger.warning(
-                    "HtmlStrategy: Access gate detected for %s (%s)",
+                    "HtmlStrategy: Suspect extraction detected for %s (%s)",
                     final_url,
-                    gate_reason,
+                    extraction_issue,
                 )
+                fallback_data = self._fallback_fetch(final_url, source)
+                if fallback_data and not fallback_data.get("extraction_error"):
+                    logger.info(
+                        "HtmlStrategy: Using fallback extraction for %s "
+                        "after malformed crawl4ai output",
+                        final_url,
+                    )
+                    return fallback_data
 
             # Extract feed links from HTML for potential feed detection
             feed_links = None
@@ -777,8 +952,10 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 "final_url_after_redirects": final_url,
                 "table_markdown": table_markdown or None,
                 "feed_links": feed_links,  # For feed detection in worker
-                "gate_page_detected": bool(gate_reason),
-                "extraction_error": gate_reason,
+                "gate_page_detected": bool(
+                    extraction_issue and extraction_issue.startswith("access gate detected")
+                ),
+                "extraction_error": extraction_issue,
             }
 
         except Exception as e:

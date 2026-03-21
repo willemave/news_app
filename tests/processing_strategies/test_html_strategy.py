@@ -5,6 +5,7 @@ import pytest
 
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.html_strategy import HtmlProcessorStrategy
+from app.services.exa_client import ExaContentResult
 
 SAMPLE_HTML_CONTENT = """
 <html>
@@ -341,6 +342,108 @@ def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrat
         assert extracted_data["final_url_after_redirects"] == url
         # Extraction succeeded; error marker should be empty.
         assert extracted_data.get("extraction_error") is None
+
+
+def test_extract_data_uses_fallback_for_discussion_only_extraction(
+    html_strategy: HtmlProcessorStrategy,
+):
+    """Malformed Substack comment-thread payloads should fall back to Exa first."""
+    url = "https://www.notboring.co/p/world-models"
+
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.metadata = {"title": "World Models: Computing the Uncomputable"}
+    mock_result.url = url
+    mock_result.cleaned_html = "<html><body>Discussion payload</body></html>"
+
+    mock_markdown = MagicMock()
+    mock_markdown.raw_markdown = (
+        "#### Discussion about this post\n"
+        "CommentsRestacks\n"
+        "The Man U thought experiment is a great framing.\n"
+        "This site requires JavaScript to run correctly. Please turn on JavaScript."
+    )
+    mock_result.markdown = mock_markdown
+
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+    mock_crawler.__aexit__ = AsyncMock(return_value=None)
+
+    with (
+        patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
+        patch(
+            "app.processing_strategies.html_strategy.exa_get_contents",
+            return_value=[
+                ExaContentResult(
+                    title="World Models: Computing the Uncomputable",
+                    url=url,
+                    text=(
+                        "Full article body\n\n#### Discussion about this post\n"
+                        "CommentsRestacks\nThread replies"
+                    ),
+                )
+            ],
+        ),
+    ):
+        extracted_data = html_strategy.extract_data("", url)
+
+    assert extracted_data["title"] == "World Models: Computing the Uncomputable"
+    assert extracted_data["text_content"] == "Full article body"
+    assert extracted_data["final_url_after_redirects"] == url
+    assert extracted_data["extraction_error"] is None
+    html_strategy.http_client.get.assert_not_called()
+
+
+def test_extract_data_uses_http_fallback_when_exa_fallback_fails(
+    html_strategy: HtmlProcessorStrategy,
+):
+    """HTTP fallback should run only after Exa fallback returns nothing useful."""
+    url = "https://www.notboring.co/p/world-models"
+
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.metadata = {"title": "World Models: Computing the Uncomputable"}
+    mock_result.url = url
+    mock_result.cleaned_html = "<html><body>Discussion payload</body></html>"
+
+    mock_markdown = MagicMock()
+    mock_markdown.raw_markdown = (
+        "#### Discussion about this post\n"
+        "CommentsRestacks\n"
+        "The Man U thought experiment is a great framing.\n"
+        "This site requires JavaScript to run correctly. Please turn on JavaScript."
+    )
+    mock_result.markdown = mock_markdown
+
+    mock_crawler = AsyncMock()
+    mock_crawler.arun = AsyncMock(return_value=mock_result)
+    mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+    mock_crawler.__aexit__ = AsyncMock(return_value=None)
+
+    mock_response = MagicMock()
+    mock_response.text = (
+        "<html><head><title>World Models: Computing the Uncomputable</title></head>"
+        "<body><article>Full article body</article></body></html>"
+    )
+    mock_response.url = url
+    html_strategy.http_client.get.return_value = mock_response
+
+    with (
+        patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
+        patch("app.processing_strategies.html_strategy.exa_get_contents", return_value=[]),
+        patch(
+            "app.processing_strategies.html_strategy.trafilatura.extract",
+            return_value="Full article body",
+        ),
+    ):
+        extracted_data = html_strategy.extract_data("", url)
+
+    assert extracted_data["title"] == "World Models: Computing the Uncomputable"
+    assert extracted_data["text_content"] == "Full article body"
+    assert extracted_data["final_url_after_redirects"] == url
+    assert extracted_data["extraction_error"] is None
+    html_strategy.http_client.get.assert_called_once()
 
 
 def test_prepare_for_llm(html_strategy: HtmlProcessorStrategy):

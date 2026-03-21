@@ -271,7 +271,9 @@ def exa_search(
 def exa_get_contents(
     urls: list[str],
     *,
-    max_characters: int = 4000,
+    max_characters: int | None = 4000,
+    livecrawl: str | None = None,
+    max_age_hours: int | None = None,
 ) -> list[ExaContentResult]:
     """Fetch content for already-selected URLs via Exa's contents API."""
 
@@ -286,10 +288,17 @@ def exa_get_contents(
 
     try:
         logger.info("[Exa] Fetching contents for %d URLs", len(clean_urls))
-        response = client.get_contents(
-            clean_urls,
-            text={"max_characters": max_characters},
-        )
+        request_kwargs: dict[str, object] = {}
+        if max_characters is None:
+            request_kwargs["text"] = True
+        else:
+            request_kwargs["text"] = {"max_characters": max_characters}
+        if livecrawl:
+            request_kwargs["livecrawl"] = livecrawl
+        if max_age_hours is not None:
+            request_kwargs["max_age_hours"] = max_age_hours
+
+        response = client.get_contents(clean_urls, **request_kwargs)
 
         results: list[ExaContentResult] = []
         for result in response.results:
