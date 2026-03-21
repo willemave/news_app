@@ -31,32 +31,17 @@ struct LongFormView: View {
                     } else {
                         ScrollView {
                             LazyVStack(spacing: CardMetrics.cardSpacing) {
+                                // Editorial header
+                                Text("Longread")
+                                    .font(.terracottaDisplayLarge)
+                                    .foregroundStyle(Color.onSurface)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
                                 let items = viewModel.currentItems()
-                                ForEach(Array(items.enumerated()), id: \.element.id) { index, content in
-                                    NavigationLink(
-                                        value: ContentDetailRoute(
-                                            summary: content,
-                                            allContentIds: items.map(\.id)
-                                        )
-                                    ) {
-                                        LongFormCard(
-                                            content: content,
-                                            onMarkRead: {
-                                                viewModel.markAsRead(content.id)
-                                            },
-                                            onToggleFavorite: {
-                                                Task {
-                                                    await viewModel.toggleFavorite(content.id)
-                                                }
-                                            }
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .onAppear {
-                                        if content.id == items.last?.id {
-                                            viewModel.loadMoreTrigger.send(())
-                                        }
-                                    }
+                                let groups = bentoGroups(from: items)
+                                ForEach(groups.indices, id: \.self) { groupIndex in
+                                    let group = groups[groupIndex]
+                                    bentoGroupView(group: group, allItems: items)
                                 }
 
                                 if viewModel.state == .loadingMore {
@@ -72,7 +57,7 @@ struct LongFormView: View {
                             .padding(.vertical, 20)
                         }
                         .refreshable {
-                            await refreshUnreadFeed()
+                            await refreshLongFormSurface(forceReload: true)
                         }
                         .simultaneousGesture(
                             LongPressGesture(minimumDuration: 0.8).onEnded { _ in
@@ -104,7 +89,7 @@ struct LongFormView: View {
             }
             .onAppear {
                 Task {
-                    await refreshUnreadFeed()
+                    await refreshLongFormSurface(forceReload: false)
                 }
             }
 
@@ -118,6 +103,82 @@ struct LongFormView: View {
             }
         }
         .screenContainer()
+    }
+
+    // MARK: - Bento Grid Layout
+
+    private struct BentoGroup {
+        enum Layout {
+            case hero(ContentSummary)
+            case pair(ContentSummary, ContentSummary)
+            case single(ContentSummary)
+        }
+        let layout: Layout
+    }
+
+    private func bentoGroups(from items: [ContentSummary]) -> [BentoGroup] {
+        var groups: [BentoGroup] = []
+        var index = 0
+        while index < items.count {
+            // Hero card
+            groups.append(BentoGroup(layout: .hero(items[index])))
+            index += 1
+            // Side pair (if two more items available)
+            if index + 1 < items.count {
+                groups.append(BentoGroup(layout: .pair(items[index], items[index + 1])))
+                index += 2
+            } else if index < items.count {
+                groups.append(BentoGroup(layout: .single(items[index])))
+                index += 1
+            }
+        }
+        return groups
+    }
+
+    @ViewBuilder
+    private func bentoGroupView(group: BentoGroup, allItems: [ContentSummary]) -> some View {
+        switch group.layout {
+        case .hero(let content):
+            cardLink(content: content, variant: .hero, allItems: allItems)
+
+        case .pair(let left, let right):
+            HStack(spacing: 12) {
+                cardLink(content: left, variant: .compact, allItems: allItems)
+                cardLink(content: right, variant: .compact, allItems: allItems)
+            }
+
+        case .single(let content):
+            cardLink(content: content, variant: .compact, allItems: allItems)
+        }
+    }
+
+    @ViewBuilder
+    private func cardLink(content: ContentSummary, variant: LongFormCard.Variant, allItems: [ContentSummary]) -> some View {
+        NavigationLink(
+            value: ContentDetailRoute(
+                summary: content,
+                allContentIds: allItems.map(\.id)
+            )
+        ) {
+            LongFormCard(
+                content: content,
+                variant: variant,
+                onMarkRead: {
+                    viewModel.markAsRead(content.id)
+                },
+                onToggleFavorite: {
+                    Task {
+                        await viewModel.toggleFavorite(content.id)
+                    }
+                }
+            )
+        }
+        .buttonStyle(.plain)
+        .onAppear {
+            if content.id == allItems.last?.id {
+                viewModel.loadMoreTrigger.send(())
+            }
+        }
     }
 
     @ViewBuilder
@@ -150,15 +211,15 @@ struct LongFormView: View {
     }
 
     @MainActor
-    private func refreshUnreadFeed() async {
+    private func refreshLongFormSurface(forceReload: Bool) async {
         async let statsRefresh: Void = longFormStatsService.refreshStats()
         async let processingRefresh: Void = processingCountService.refreshCount()
         _ = await (statsRefresh, processingRefresh)
 
-        let previousFilter = viewModel.currentReadFilter()
-        viewModel.setReadFilter(.unread)
-        if previousFilter == .unread {
-            viewModel.refreshTrigger.send(())
+        if forceReload {
+            viewModel.refreshUnreadFeed()
+        } else {
+            viewModel.ensureUnreadFeedLoaded()
         }
     }
 }

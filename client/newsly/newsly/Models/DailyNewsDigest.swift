@@ -73,6 +73,18 @@ struct DailyNewsDigest: Codable, Identifiable {
         return Self.dayLabelFormatter.string(from: date)
     }
 
+    var displayTimeLabel: String {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = parser.date(from: generatedAt)
+        if date == nil {
+            parser.formatOptions = [.withInternetDateTime]
+            date = parser.date(from: generatedAt)
+        }
+        guard let date else { return "" }
+        return Self.coverageLabelFormatter.string(from: date)
+    }
+
     var displayCoverageLabel: String? {
         guard let date = localDateValue, Calendar.current.isDateInToday(date) else {
             return nil

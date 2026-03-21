@@ -660,20 +660,21 @@ struct ChatSessionView: View {
                 HStack(spacing: 8) {
                     TextField("Message", text: $viewModel.inputText, axis: .vertical)
                         .textFieldStyle(.plain)
+                        .font(.terracottaBodyMedium)
                         .lineLimit(1...5)
                         .focused($isInputFocused)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(Color.surfaceSecondary)
+                .background(Color.surfaceContainerHighest)
+                .clipShape(Capsule())
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    Capsule()
                         .stroke(
-                            viewModel.isRecording ? Color.red.opacity(0.6) : Color(.separator),
+                            viewModel.isRecording ? Color.red.opacity(0.6) : Color.outlineVariant.opacity(0.3),
                             lineWidth: 1
                         )
                 )
-                .cornerRadius(20)
                 .frame(maxWidth: .infinity)
 
                 HoldToTalkMicButton(
@@ -699,15 +700,15 @@ struct ChatSessionView: View {
                     Group {
                         if viewModel.isSending {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: sendButtonDisabled ? .secondary : .accentColor))
+                                .progressViewStyle(CircularProgressViewStyle(tint: sendButtonDisabled ? .secondary : .white))
                         } else {
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 16, weight: .medium))
                         }
                     }
-                    .foregroundColor(sendButtonDisabled ? .secondary : .accentColor)
+                    .foregroundColor(sendButtonDisabled ? Color.onSurfaceSecondary : .white)
                     .frame(width: 34, height: 34, alignment: .center)
-                    .background(sendButtonDisabled ? Color.clear : Color.accentColor.opacity(0.1))
+                    .background(sendButtonDisabled ? Color.surfaceContainer : Color.chatUserBubble)
                     .clipShape(Circle())
                 }
                 .disabled(sendButtonDisabled)
@@ -720,26 +721,26 @@ struct ChatSessionView: View {
                             ProgressView()
                                 .scaleEffect(0.7)
                             Text("Transcribing...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.terracottaBodySmall)
+                                .foregroundColor(.onSurfaceSecondary)
                         }
                     }
 
                     if viewModel.isRecording {
                         HStack(spacing: 6) {
                             Image(systemName: "waveform")
-                                .font(.caption)
+                                .font(.terracottaBodySmall)
                                 .foregroundColor(.red)
                             Text("Listening...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.terracottaBodySmall)
+                                .foregroundColor(.onSurfaceSecondary)
                         }
                     }
 
                     if !viewModel.activeTranscript.isEmpty {
                         Text(viewModel.activeTranscript)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .font(.terracottaBodySmall)
+                            .foregroundColor(.onSurfaceSecondary)
                             .lineLimit(2)
                     }
                 }
@@ -748,13 +749,17 @@ struct ChatSessionView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
-        .padding(.bottom, 92)
-        .background(Color.surfaceSecondary)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.33)
-                .foregroundColor(Color(.separator)),
-            alignment: .top
+        .padding(.bottom, 8)
+        .background(
+            LinearGradient(
+                stops: [
+                    .init(color: Color.surfacePrimary.opacity(0), location: 0),
+                    .init(color: Color.surfacePrimary, location: 0.15),
+                    .init(color: Color.surfacePrimary, location: 1.0),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         )
     }
 
@@ -782,9 +787,20 @@ struct MessageBubble: View {
             if message.isProcessSummary {
                 ProcessSummaryRow(message: message)
             } else {
-                HStack {
+                HStack(alignment: .top, spacing: 8) {
                     if message.isUser {
-                        Spacer(minLength: 60)
+                        Spacer(minLength: 40)
+                    } else {
+                        // AI identity avatar
+                        Circle()
+                            .fill(Color.chatAccent)
+                            .frame(width: 24, height: 24)
+                            .overlay(
+                                Image(systemName: "brain.head.profile")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.white)
+                            )
+                            .padding(.top, 2)
                     }
 
                     VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
@@ -792,11 +808,11 @@ struct MessageBubble: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                             .background(bubbleBackground)
-                            .cornerRadius(16)
+                            .clipShape(bubbleShape)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16)
+                                bubbleShape
                                     .stroke(
-                                        message.isUser ? Color.clear : Color(.separator),
+                                        message.isUser ? Color.clear : Color.outlineVariant.opacity(0.20),
                                         lineWidth: 0.5
                                     )
                             )
@@ -804,7 +820,7 @@ struct MessageBubble: View {
                         if !message.formattedTime.isEmpty {
                             Text(message.formattedTime)
                                 .font(.caption2)
-                                .foregroundColor(Color(.tertiaryLabel))
+                                .foregroundColor(Color.onSurfaceSecondary)
                                 .padding(.horizontal, 4)
                         }
                     }
@@ -823,17 +839,29 @@ struct MessageBubble: View {
                             Label("Copy", systemImage: "doc.on.doc")
                         }
                     }
+
+                    if !message.isUser {
+                        Spacer(minLength: 20)
+                    }
                 }
             }
         }
     }
 
     private var bubbleBackground: Color {
-        message.isUser ? Color.accentColor : Color.surfaceSecondary
+        message.isUser ? Color.chatUserBubble : Color.surfaceContainer
     }
 
     private var textColor: UIColor {
-        message.isUser ? .white : .label
+        message.isUser ? .white : UIColor(Color.onSurface)
+    }
+
+    private var bubbleShape: UnevenRoundedRectangle {
+        if message.isUser {
+            UnevenRoundedRectangle(topLeadingRadius: 16, bottomLeadingRadius: 16, bottomTrailingRadius: 16, topTrailingRadius: 4)
+        } else {
+            UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 16, bottomTrailingRadius: 16, topTrailingRadius: 16)
+        }
     }
 
     private var messageContent: some View {
@@ -865,7 +893,7 @@ struct MessageBubble: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+        .frame(maxWidth: message.isUser ? nil : .infinity, alignment: message.isUser ? .trailing : .leading)
     }
 }
 
@@ -882,11 +910,11 @@ struct ProcessSummaryRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            .font(.caption)
-            .foregroundColor(Color(.secondaryLabel))
+            .font(.terracottaBodySmall)
+            .foregroundColor(Color.onSurfaceSecondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.surfaceSecondary.opacity(0.8))
+            .background(Color.surfaceContainer.opacity(0.8))
             .clipShape(Capsule())
             Spacer(minLength: 0)
         }
@@ -989,32 +1017,30 @@ struct AssistantFeedOptionsSection: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         Button {
                             Task { await actionModel.subscribe(option) }
                         } label: {
                             if actionModel.isSubscribing(option) {
                                 ProgressView()
                                     .controlSize(.small)
-                                    .frame(maxWidth: .infinity)
                             } else {
-                                Label(
-                                    actionModel.isSubscribed(option) ? "Subscribed" : "Subscribe",
-                                    systemImage: actionModel.isSubscribed(option) ? "checkmark.circle.fill" : "plus"
-                                )
-                                .frame(maxWidth: .infinity)
+                                Image(systemName: actionModel.isSubscribed(option) ? "checkmark.circle.fill" : "plus.circle.fill")
+                                    .font(.system(size: 20))
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .foregroundStyle(actionModel.isSubscribed(option) ? Color.onSurfaceSecondary : Color.chatUserBubble)
                         .disabled(actionModel.isSubscribed(option) || actionModel.isSubscribing(option))
 
                         Button {
                             onPreview(option)
                         } label: {
-                            Label("Preview", systemImage: "safari")
-                                .frame(maxWidth: .infinity)
+                            Image(systemName: "safari")
+                                .font(.system(size: 20))
                         }
-                        .buttonStyle(.bordered)
+                        .foregroundStyle(Color.onSurfaceSecondary)
+
+                        Spacer()
                     }
                 }
                 .padding(12)
@@ -1040,12 +1066,22 @@ struct ThinkingBubbleView: View {
     }
 
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(Color.chatAccent)
+                .frame(width: 24, height: 24)
+                .overlay(
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white)
+                )
+                .padding(.top, 2)
+
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     ForEach(0..<3) { index in
                         Circle()
-                            .fill(Color(.tertiaryLabel))
+                            .fill(Color.chatAccent.opacity(0.5))
                             .frame(width: 6, height: 6)
                             .offset(y: isAnimating ? -2 : 2)
                             .animation(
@@ -1058,16 +1094,12 @@ struct ThinkingBubbleView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .background(Color.surfaceSecondary)
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color(.separator), lineWidth: 0.5)
-                )
+                .background(Color.surfaceContainer)
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 16, bottomTrailingRadius: 16, topTrailingRadius: 16))
 
                 Text(formattedDuration)
                     .font(.caption2)
-                    .foregroundColor(Color(.tertiaryLabel))
+                    .foregroundColor(Color.onSurfaceSecondary)
                     .monospacedDigit()
                     .padding(.horizontal, 4)
             }
@@ -1090,7 +1122,7 @@ struct InitialSuggestionsLoadingView: View {
             ZStack {
                 // Background circle with pulse
                 Circle()
-                    .fill(Color.blue.opacity(0.08))
+                    .fill(Color.chatAccent.opacity(0.08))
                     .frame(width: 80, height: 80)
                     .scaleEffect(pulseScale)
 
@@ -1098,7 +1130,7 @@ struct InitialSuggestionsLoadingView: View {
                 HStack(spacing: 6) {
                     ForEach(0..<3) { index in
                         Circle()
-                            .fill(Color.blue.opacity(0.7))
+                            .fill(Color.chatAccent.opacity(0.7))
                             .frame(width: 10, height: 10)
                             .offset(y: dotOffset)
                             .animation(

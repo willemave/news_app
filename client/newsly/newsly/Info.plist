@@ -125,5 +125,13 @@
     <!-- Microphone access for voice dictation -->
     <key>NSMicrophoneUsageDescription</key>
     <string>Newsly uses the microphone to transcribe your voice for tweet customization.</string>
+    <!-- Custom fonts -->
+    <key>UIAppFonts</key>
+    <array>
+        <string>Newsreader.ttf</string>
+        <string>Newsreader-Italic.ttf</string>
+        <string>Inter.ttf</string>
+        <string>Inter-Italic.ttf</string>
+    </array>
 </dict>
 </plist>

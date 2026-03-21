@@ -9,13 +9,20 @@ import SwiftUI
 
 struct LongFormCard: View {
     let content: ContentSummary
+    var variant: Variant = .hero
     var onMarkRead: (() -> Void)?
     var onToggleFavorite: (() -> Void)?
 
+    enum Variant {
+        case hero
+        case compact
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Image section with gradient overlay
             Color.clear
-                .frame(height: CardMetrics.heroImageHeight)
+                .frame(height: variant == .hero ? 220 : 160)
                 .overlay {
                     GeometryReader { geo in
                         heroImage
@@ -36,72 +43,74 @@ struct LongFormCard: View {
                 }
 
             VStack(alignment: .leading, spacing: 0) {
+                // Badge + metadata
                 HStack(spacing: 8) {
                     badgeView
 
                     if let relativeTime = content.relativeTimeDisplay {
                         Text(relativeTime)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.textTertiary)
+                            .font(.terracottaBodySmall)
+                            .foregroundStyle(Color.onSurfaceSecondary)
                     }
                 }
                 .padding(.bottom, 8)
 
+                // Headline
                 Text(content.displayTitle)
-                    .font(.cardHeadline)
-                    .foregroundColor(content.isRead ? .secondary : Color.textPrimary)
-                    .lineLimit(3)
+                    .font(variant == .hero ? .terracottaHeadlineLarge : .terracottaHeadlineSmall)
+                    .foregroundColor(content.isRead ? Color.onSurfaceSecondary : Color.onSurface)
+                    .lineLimit(variant == .hero ? 3 : 2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 8)
 
+                // Description (hero only gets more lines)
                 if let summary = summaryText {
                     Text(summary)
-                        .font(.cardDescription)
-                        .foregroundStyle(Color.textSecondary)
-                        .lineLimit(3)
+                        .font(variant == .hero ? .terracottaBodyMedium : .terracottaBodySmall)
+                        .foregroundStyle(Color.onSurfaceSecondary)
+                        .lineLimit(variant == .hero ? 3 : 2)
                         .multilineTextAlignment(.leading)
                         .padding(.bottom, 12)
                 }
 
-                Divider()
-                    .foregroundStyle(Color.borderSubtle.opacity(0.5))
-                    .padding(.top, 4)
+                // Footer: source + actions (hero variant only)
+                if variant == .hero {
+                    HStack {
+                        Text(sourceLabel)
+                            .font(.terracottaBodySmall)
+                            .tracking(0.5)
+                            .foregroundStyle(Color.onSurfaceSecondary)
+                            .lineLimit(1)
 
-                HStack {
-                    Text(sourceLabel)
-                        .font(.cardFooter)
-                        .tracking(0.5)
-                        .foregroundStyle(Color.textTertiary)
-                        .lineLimit(1)
+                        Spacer()
 
-                    Spacer()
+                        HStack(spacing: 12) {
+                            Button {
+                                onMarkRead?()
+                            } label: {
+                                Image(systemName: content.isRead ? "checkmark.circle.fill" : "checkmark.circle")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(content.isRead ? Color.onSurfaceSecondary.opacity(0.5) : Color.onSurfaceSecondary)
+                            }
+                            .buttonStyle(.plain)
 
-                    HStack(spacing: 12) {
-                        Button {
-                            onMarkRead?()
-                        } label: {
-                            Image(systemName: content.isRead ? "checkmark.circle.fill" : "checkmark.circle")
-                                .font(.system(size: 20))
-                                .foregroundStyle(content.isRead ? Color.textTertiary.opacity(0.5) : Color.textTertiary)
+                            Button {
+                                onToggleFavorite?()
+                            } label: {
+                                Image(systemName: content.isFavorited ? "star.fill" : "star")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(content.isFavorited ? Color.terracottaPrimary : Color.onSurfaceSecondary)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            onToggleFavorite?()
-                        } label: {
-                            Image(systemName: content.isFavorited ? "star.fill" : "star")
-                                .font(.system(size: 20))
-                                .foregroundStyle(content.isFavorited ? Color.topicAccent : Color.textTertiary)
-                        }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 8)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 14)
             .offset(y: CardMetrics.textOverlapOffset)
             .padding(.bottom, CardMetrics.textOverlapOffset)
             .background(
@@ -120,22 +129,18 @@ struct LongFormCard: View {
         }
         .background(Color.surfaceSecondary)
         .clipShape(RoundedRectangle(cornerRadius: CardMetrics.cardCornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: CardMetrics.cardCornerRadius, style: .continuous)
-                .stroke(Color.borderSubtle.opacity(0.5), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 3)
+        .shadow(color: Color.onSurface.opacity(0.06), radius: 32, x: 0, y: 8)
     }
 
     @ViewBuilder
     private var badgeView: some View {
         Text(badgeLabel)
-            .font(.cardBadge)
+            .font(.terracottaCategoryPill)
             .tracking(0.5)
-            .foregroundStyle(Color.topicAccent)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color.topicAccent.opacity(0.1))
+            .foregroundStyle(Color.terracottaPrimary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Color.terracottaPrimary.opacity(0.1))
             .clipShape(Capsule())
     }
 
@@ -157,14 +162,14 @@ struct LongFormCard: View {
 
     private var placeholderGradient: some View {
         LinearGradient(
-            colors: [Color.surfaceSecondary, Color.surfaceTertiary],
+            colors: [Color.surfaceContainer, Color.surfaceContainerHigh],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
         .overlay(
             Image(systemName: contentTypeIcon)
                 .font(.system(size: 40))
-                .foregroundStyle(Color.textTertiary.opacity(0.4))
+                .foregroundStyle(Color.onSurfaceSecondary.opacity(0.3))
         )
     }
 

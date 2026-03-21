@@ -6,16 +6,20 @@ from datetime import datetime
 from unittest.mock import Mock
 
 from app.models.metadata import DailyNewsRollupSummary
-from app.models.schema import Content, DailyNewsDigest, ProcessingTask
+from app.models.schema import Content, ContentDiscussion, DailyNewsDigest, ProcessingTask
 from app.services.daily_news_digest import (
     MAX_DAILY_DIGEST_BULLETS,
     DailyDigestSourceItem,
+    _build_rollup_source_block,
+    _extract_discussion_comment_quotes,
     _select_rollup_prompt_sources,
+    collect_daily_news_sources,
     digest_requires_regeneration,
     enqueue_daily_news_digest_task,
     resolve_daily_digest_generation_target,
     upsert_daily_news_digest_for_user_day,
 )
+from app.services.llm_prompts import generate_summary_prompt
 
 
 class _StubSummarizer:
@@ -426,6 +430,7 @@ def test_select_rollup_prompt_sources_trims_only_when_budget_requires() -> None:
                 "A" * 320,
                 "B" * 320,
             ],
+            comment_quotes=[],
         )
         for index in range(1, 6)
     ]
@@ -447,6 +452,7 @@ def test_select_rollup_prompt_sources_keeps_all_sources_when_under_budget() -> N
             content_id=index,
             title=f"Story {index}",
             key_points=["Short signal"],
+            comment_quotes=[],
         )
         for index in range(1, 4)
     ]
@@ -458,6 +464,106 @@ def test_select_rollup_prompt_sources_keeps_all_sources_when_under_budget() -> N
     )
 
     assert selected == sources
+
+
+def test_extract_discussion_comment_quotes_prefers_high_signal_comments() -> None:
+    quotes = _extract_discussion_comment_quotes(
+        {
+            "comments": [
+                {
+                    "author": "alice",
+                    "depth": 0,
+                    "text": (
+                        "The real story is distribution: every team can demo an agent, "
+                        "but only a few can make it reliable enough for production."
+                    ),
+                },
+                {
+                    "author": "bob",
+                    "depth": 2,
+                    "text": "nice",
+                },
+                {
+                    "author": "carol",
+                    "depth": 0,
+                    "text": (
+                        "If the margin comes from inference arbitrage, that disappears fast "
+                        "once the model providers cut prices again."
+                    ),
+                },
+            ]
+        }
+    )
+
+    assert len(quotes) == 2
+    assert quotes[0].startswith('"The real story is distribution:')
+    assert quotes[0].endswith('- alice')
+    assert quotes[1].endswith('- carol')
+
+
+def test_collect_daily_news_sources_includes_comment_quotes(db_session, test_user) -> None:
+    story = _build_news_content(
+        url="https://example.com/news-1",
+        title="News One",
+        created_at=datetime(2026, 2, 28, 9, 0, 0),
+        key_points=["Point one", "Point two"],
+    )
+    db_session.add(story)
+    db_session.commit()
+
+    db_session.add(
+        ContentDiscussion(
+            content_id=story.id,
+            platform="hackernews",
+            status="completed",
+            discussion_data={
+                "comments": [
+                    {
+                        "author": "alice",
+                        "depth": 0,
+                        "text": (
+                            "This looks like a feature race on the surface, but the moat is "
+                            "really who can turn these workflows into something dependable."
+                        ),
+                    }
+                ]
+            },
+        )
+    )
+    db_session.commit()
+
+    sources = collect_daily_news_sources(
+        db_session,
+        user_id=test_user.id,
+        local_date=datetime(2026, 2, 28).date(),
+        timezone_name="UTC",
+    )
+
+    assert len(sources) == 1
+    assert len(sources[0].comment_quotes) == 1
+    assert sources[0].comment_quotes[0].endswith("- alice")
+
+
+def test_build_rollup_source_block_includes_comment_quotes() -> None:
+    block = _build_rollup_source_block(
+        1,
+        DailyDigestSourceItem(
+            content_id=1,
+            title="Story 1",
+            key_points=["Main signal"],
+            comment_quotes=['"Interesting comment" - alice'],
+        ),
+    )
+
+    assert "Comment quotes:" in block
+    assert '- "Interesting comment" - alice' in block
+
+
+def test_daily_rollup_prompt_allows_sparse_inline_comment_quotes() -> None:
+    system_prompt, _ = generate_summary_prompt("daily_news_rollup", 10, 0)
+
+    assert "append one extra line inside that same key_points string" in system_prompt
+    assert "Do not emit a separate quotes field." in system_prompt
 
 
 def test_enqueue_daily_news_digest_task_force_regenerate_ignores_existing_digest(

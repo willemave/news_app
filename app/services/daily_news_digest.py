@@ -17,7 +17,7 @@ from app.constants import (
 )
 from app.core.logging import get_logger
 from app.models.metadata import DailyNewsRollupSummary
-from app.models.schema import Content, DailyNewsDigest, ProcessingTask
+from app.models.schema import Content, ContentDiscussion, DailyNewsDigest, ProcessingTask
 from app.repositories.content_feed_query import build_user_feed_query
 from app.services.llm_models import resolve_model
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
@@ -33,6 +33,9 @@ HIGH_VOLUME_DIGEST_SOURCE_COUNT = 10
 ROLLUP_PROMPT_TOKEN_BUDGET = 900_000
 ROLLUP_ESTIMATED_CHARS_PER_TOKEN = 4
 STABLE_DAILY_NEWS_DIGEST_MODEL = "google-gla:gemini-flash-latest"
+MAX_COMMENT_QUOTES_PER_SOURCE = 2
+MIN_COMMENT_QUOTE_CHARS = 40
+MAX_COMMENT_QUOTE_CHARS = 220
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,7 @@ class DailyDigestSourceItem:
     content_id: int
     title: str
     key_points: list[str]
+    comment_quotes: list[str]
 
 
 @dataclass(frozen=True)
@@ -164,6 +168,74 @@ def _extract_source_title(content: Content, metadata: dict[str, Any]) -> str:
             return title.strip()
 
     return f"News item #{content.id}"
+
+
+def _truncate_comment_quote(text: str, max_chars: int = MAX_COMMENT_QUOTE_CHARS) -> str:
+    """Normalize and truncate one discussion quote."""
+    normalized = " ".join(text.split()).strip()
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[: max_chars - 3].rstrip() + "..."
+
+
+def _format_comment_quote(text: str, author: str | None = None) -> str:
+    """Format one comment snippet for roll-up prompt context."""
+    formatted = f'"{text}"'
+    clean_author = (author or "").strip()
+    if clean_author and clean_author.lower() != "unknown":
+        return f"{formatted} - {clean_author}"
+    return formatted
+
+
+def _extract_discussion_comment_quotes(discussion_data: dict[str, Any]) -> list[str]:
+    """Extract a few high-signal discussion quotes for roll-up prompt context."""
+    comments = discussion_data.get("comments")
+    if not isinstance(comments, list):
+        return []
+
+    scored_quotes: list[tuple[int, int, str]] = []
+    seen_texts: set[str] = set()
+
+    for index, raw_comment in enumerate(comments):
+        if not isinstance(raw_comment, dict):
+            continue
+
+        raw_text = raw_comment.get("text")
+        if not isinstance(raw_text, str):
+            continue
+
+        normalized_text = " ".join(raw_text.split()).strip()
+        if (
+            len(normalized_text) < MIN_COMMENT_QUOTE_CHARS
+            or "http://" in normalized_text
+            or "https://" in normalized_text
+        ):
+            continue
+
+        dedupe_key = normalized_text.casefold()
+        if dedupe_key in seen_texts:
+            continue
+        seen_texts.add(dedupe_key)
+
+        depth = raw_comment.get("depth")
+        depth_value = depth if isinstance(depth, int) and depth >= 0 else 0
+        score = 0
+        score += max(0, 3 - min(depth_value, 3))
+        score += min(len(normalized_text), 180) // 45
+        if any(char.isdigit() for char in normalized_text):
+            score += 1
+        if "?" in normalized_text:
+            score += 1
+        if ":" in normalized_text or ";" in normalized_text:
+            score += 1
+
+        quote_text = _truncate_comment_quote(normalized_text)
+        author = raw_comment.get("author")
+        author_text = author if isinstance(author, str) else None
+        scored_quotes.append((score, -index, _format_comment_quote(quote_text, author_text)))
+
+    scored_quotes.sort(reverse=True)
+    return [quote for _, _, quote in scored_quotes[:MAX_COMMENT_QUOTES_PER_SOURCE]]
 
 
 
@@ -301,6 +373,17 @@ def collect_daily_news_sources(
         query = query.limit(max_items)
 
     rows = query.all()
+    content_ids = [row[0].id for row in rows if getattr(row[0], "id", None) is not None]
+    discussions_by_content_id: dict[int, ContentDiscussion] = {}
+    if content_ids:
+        discussion_rows = (
+            db.query(ContentDiscussion)
+            .filter(ContentDiscussion.content_id.in_(content_ids))
+            .all()
+        )
+        discussions_by_content_id = {
+            row.content_id: row for row in discussion_rows if isinstance(row.content_id, int)
+        }
 
     sources: list[DailyDigestSourceItem] = []
     for row in rows:
@@ -308,8 +391,20 @@ def collect_daily_news_sources(
         metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
         title = _extract_source_title(content, metadata)
         points = _extract_summary_points(metadata)
+        discussion = discussions_by_content_id.get(content.id)
+        discussion_data = (
+            discussion.discussion_data
+            if discussion is not None and isinstance(discussion.discussion_data, dict)
+            else {}
+        )
+        comment_quotes = _extract_discussion_comment_quotes(discussion_data)
         sources.append(
-            DailyDigestSourceItem(content_id=content.id, title=title, key_points=points)
+            DailyDigestSourceItem(
+                content_id=content.id,
+                title=title,
+                key_points=points,
+                comment_quotes=comment_quotes,
+            )
         )
 
     return sources
@@ -334,6 +429,9 @@ def _build_rollup_source_block(index: int, source: DailyDigestSourceItem) -> str
         lines.extend(f"- {point}" for point in source.key_points)
     else:
         lines.append("Signals: (none)")
+    if source.comment_quotes:
+        lines.append("Comment quotes:")
+        lines.extend(f"- {quote}" for quote in source.comment_quotes)
     return "\n".join(lines)
 
 
@@ -349,7 +447,7 @@ def _select_rollup_prompt_sources(
         [
             f"Digest date: {local_date.isoformat()}",
             "",
-            "Synthesize a daily news rollup from the following source stories:",
+            "Synthesize a daily news rollup from the following source stories and comment quotes:",
         ]
     )
     used_tokens = _estimate_tokens(static_text)
@@ -382,7 +480,7 @@ def _build_rollup_prompt_input(local_date: date, sources: list[DailyDigestSource
     lines: list[str] = [
         f"Digest date: {local_date.isoformat()}",
         "",
-        "Synthesize a daily news rollup from the following source stories:",
+        "Synthesize a daily news rollup from the following source stories and comment quotes:",
     ]
 
     if not sources:

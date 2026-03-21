@@ -39,23 +39,9 @@ final class TabCoordinatorViewModel: ObservableObject {
 
     func handleTabChange(to newTab: RootTab) {
         guard newTab != previousTab else { return }
-
-        switch previousTab {
-        case .shortNews:
-            let fastNewsMode = FastNewsMode(rawValue: AppSettings.shared.fastNewsMode) ?? .newsList
-            if fastNewsMode == .dailyDigest {
-                dailyDigestVM.startInitialLoad()
-            } else {
-                shortNewsVM.clearReadTrigger.send(())
-                shortNewsVM.startInitialLoad()
-            }
-        case .longContent:
-            longContentVM.clearReadTrigger.send(())
-            longContentVM.startInitialLoad()
-        case .knowledge, .more:
-            break
-        }
-
+        // Keep the outgoing tab stable during the system tab selection transition.
+        // Clearing/reloading it here causes visible flashes when switching between
+        // the long-form and fast-news roots.
         previousTab = newTab
         ensureTabLoaded(newTab)
     }
@@ -67,7 +53,7 @@ final class TabCoordinatorViewModel: ObservableObject {
     private func ensureTabLoaded(_ tab: RootTab) {
         switch tab {
         case .shortNews:
-            let fastNewsMode = FastNewsMode(rawValue: AppSettings.shared.fastNewsMode) ?? .newsList
+            let fastNewsMode = FastNewsMode(rawValue: AppSettings.shared.fastNewsMode) ?? .dailyDigest
             if fastNewsMode == .dailyDigest {
                 if dailyDigestVM.currentItems().isEmpty {
                     dailyDigestVM.refreshTrigger.send(())

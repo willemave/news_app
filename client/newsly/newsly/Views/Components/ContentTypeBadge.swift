@@ -9,37 +9,15 @@ import SwiftUI
 
 struct ContentTypeBadge: View {
     let contentType: ContentType
-    
+
     var body: some View {
         Text(contentType.displayName)
-            .font(.caption)
-            .fontWeight(.medium)
-            .padding(.horizontal, 8)
+            .font(.terracottaCategoryPill)
+            .tracking(0.5)
+            .padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundColor(foregroundColor)
+            .background(Color.terracottaPrimary.opacity(0.1))
+            .foregroundColor(Color.terracottaPrimary)
             .clipShape(Capsule())
-    }
-    
-    private var backgroundColor: Color {
-        switch contentType {
-        case .article:
-            return Color.blue.opacity(0.1)
-        case .podcast:
-            return Color.purple.opacity(0.1)
-        case .news:
-            return Color.green.opacity(0.1)
-        }
-    }
-    
-    private var foregroundColor: Color {
-        switch contentType {
-        case .article:
-            return .blue
-        case .podcast:
-            return .purple
-        case .news:
-            return .green
-        }
     }
 }

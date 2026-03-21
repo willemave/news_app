@@ -11,30 +11,108 @@ import UIKit
 // MARK: - Colors
 
 extension Color {
-    // Surface colors — ascending elevation: primary (page) → secondary (cards) → tertiary (nested)
+    // Terracotta surface colors — warm cream/charcoal palette
     static var surfacePrimary: Color {
         Color(UIColor { tc in
             tc.userInterfaceStyle == .dark
-                ? UIColor(red: 0.055, green: 0.055, blue: 0.063, alpha: 1.0)  // #0E0E10
-                : UIColor(red: 0.929, green: 0.929, blue: 0.941, alpha: 1.0)  // #EDEDF0
+                ? UIColor(red: 0.102, green: 0.094, blue: 0.082, alpha: 1.0)  // #1a1815
+                : UIColor(red: 0.992, green: 0.976, blue: 0.957, alpha: 1.0)  // #fdf9f4
         })
     }
     static var surfaceSecondary: Color {
         Color(UIColor { tc in
             tc.userInterfaceStyle == .dark
-                ? UIColor(red: 0.086, green: 0.086, blue: 0.098, alpha: 1.0)  // #161619
-                : UIColor(red: 0.969, green: 0.969, blue: 0.976, alpha: 1.0)  // #F7F7F9
+                ? UIColor(red: 0.141, green: 0.133, blue: 0.125, alpha: 1.0)  // #242220
+                : UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)        // #ffffff
         })
     }
     static var surfaceTertiary: Color {
         Color(UIColor { tc in
             tc.userInterfaceStyle == .dark
-                ? UIColor(red: 0.133, green: 0.133, blue: 0.145, alpha: 1.0)  // #222225
-                : UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)        // #FFFFFF
+                ? UIColor(red: 0.180, green: 0.169, blue: 0.157, alpha: 1.0)  // #2e2b28
+                : UIColor(red: 0.969, green: 0.953, blue: 0.933, alpha: 1.0)  // #f7f3ee
+        })
+    }
+    static var surfaceContainer: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.208, green: 0.196, blue: 0.188, alpha: 1.0)  // #353230
+                : UIColor(red: 0.945, green: 0.929, blue: 0.910, alpha: 1.0)  // #f1ede8
+        })
+    }
+    static var surfaceContainerHigh: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.239, green: 0.227, blue: 0.216, alpha: 1.0)  // #3d3a37
+                : UIColor(red: 0.922, green: 0.910, blue: 0.890, alpha: 1.0)  // #ebe8e3
+        })
+    }
+    static var surfaceContainerHighest: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.271, green: 0.259, blue: 0.251, alpha: 1.0)  // #454240
+                : UIColor(red: 0.902, green: 0.886, blue: 0.867, alpha: 1.0)  // #e6e2dd
         })
     }
 
-    // Text colors
+    // Terracotta accent colors
+    static var terracottaPrimary: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.831, green: 0.514, blue: 0.416, alpha: 1.0)  // #d4836a
+                : UIColor(red: 0.439, green: 0.169, blue: 0.098, alpha: 1.0)  // #702b19
+        })
+    }
+    static var terracottaDark: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.765, green: 0.420, blue: 0.310, alpha: 1.0)  // #c36b4f
+                : UIColor(red: 0.353, green: 0.133, blue: 0.078, alpha: 1.0)  // #5a2214
+        })
+    }
+
+    // Terracotta text colors
+    static var onSurface: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.929, green: 0.925, blue: 0.910, alpha: 1.0)  // #edece8
+                : UIColor(red: 0.110, green: 0.110, blue: 0.098, alpha: 1.0)  // #1c1c19
+        })
+    }
+    static var onSurfaceSecondary: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.639, green: 0.616, blue: 0.588, alpha: 1.0)  // #a39d96
+                : UIColor(red: 0.302, green: 0.271, blue: 0.247, alpha: 1.0)  // #4d453f
+        })
+    }
+
+    // Chat-specific colors (warm brown/ink, not orange)
+    static var chatUserBubble: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.376, green: 0.318, blue: 0.282, alpha: 1.0)  // #604f47
+                : UIColor(red: 0.224, green: 0.165, blue: 0.125, alpha: 1.0)  // #392a20
+        })
+    }
+    static var chatAccent: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.729, green: 0.667, blue: 0.620, alpha: 1.0)  // #baaa9e
+                : UIColor(red: 0.376, green: 0.310, blue: 0.263, alpha: 1.0)  // #604f43
+        })
+    }
+
+    // Terracotta outline
+    static var outlineVariant: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.290, green: 0.263, blue: 0.251, alpha: 1.0)  // #4a4340
+                : UIColor(red: 0.855, green: 0.757, blue: 0.733, alpha: 1.0)  // #dac1bb
+        })
+    }
+
+    // Text colors (keep existing for backward compat)
     static var textPrimary: Color { Color(.label) }
     static var textSecondary: Color { Color(.secondaryLabel) }
     static var textTertiary: Color { Color(.tertiaryLabel) }
@@ -175,13 +253,27 @@ extension Font {
     // Watercolor typography (Landing & Onboarding)
     static let watercolorDisplay = Font.system(size: 54, weight: .regular, design: .serif)
     static let watercolorSubtitle = Font.system(size: 17, weight: .light)
+
+    // Terracotta typography — Newsreader (serif) for headlines/display
+    static let terracottaDisplayLarge = Font.custom("Newsreader", size: 44)
+    static let terracottaHeadlineLarge = Font.custom("Newsreader", size: 28)
+    static let terracottaHeadlineMedium = Font.custom("Newsreader", size: 22).weight(.semibold)
+    static let terracottaHeadlineSmall = Font.custom("Newsreader", size: 18)
+    static let terracottaHeadlineItalic = Font.custom("Newsreader-Italic", size: 18)
+
+    // Terracotta typography — Inter (sans-serif) for body/labels/UI
+    static let terracottaBodyLarge = Font.custom("Inter", size: 16)
+    static let terracottaBodyMedium = Font.custom("Inter", size: 14)
+    static let terracottaBodySmall = Font.custom("Inter", size: 12)
+    static let terracottaLabelSmall = Font.custom("Inter", size: 9).weight(.bold)
+    static let terracottaCategoryPill = Font.custom("Inter", size: 10).weight(.semibold)
 }
 
 // MARK: - Card Metrics
 
 enum CardMetrics {
     static let heroImageHeight: CGFloat = 180
-    static let cardCornerRadius: CGFloat = 8
+    static let cardCornerRadius: CGFloat = 24
     static let cardSpacing: CGFloat = 20
     static let textOverlapOffset: CGFloat = -40
 }

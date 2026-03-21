@@ -10,11 +10,11 @@ import SwiftUI
 
 extension Theme {
     /// A compact markdown theme optimized for chat bubbles.
-    /// Based on `.gitHub` but with smaller headings, tighter spacing,
-    /// subtle blockquotes, and rounded code blocks.
+    /// Uses Newsreader serif for body text and terracotta accent for strong text.
     static let chat = Theme()
         // MARK: - Text styles
         .text {
+            FontFamily(.custom("Newsreader"))
             ForegroundColor(.primary)
             FontSize(.em(1.0))
         }
@@ -23,6 +23,7 @@ extension Theme {
         }
         .strong {
             FontWeight(.semibold)
+            ForegroundColor(Color.chatAccent)
         }
         .code {
             FontFamilyVariant(.monospaced)
@@ -91,7 +92,7 @@ extension Theme {
         .blockquote { configuration in
             HStack(spacing: 0) {
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color(light: Color(UIColor.systemGray4), dark: Color(UIColor.systemGray3)))
+                    .fill(Color.outlineVariant)
                     .frame(width: 3)
                 configuration.label
                     .markdownTextStyle {

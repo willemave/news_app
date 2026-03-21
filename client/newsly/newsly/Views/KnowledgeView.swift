@@ -26,6 +26,13 @@ struct KnowledgeView: View {
         AppTextSize(index: settings.appTextSizeIndex).dynamicTypeSize
     }
 
+    private var greetingText: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour < 12 { return "Good morning," }
+        if hour < 17 { return "Good afternoon," }
+        return "Good evening,"
+    }
+
     init(
         prefersHistoryView: Binding<Bool> = .constant(false),
         onSelectSession: ((ChatSessionRoute) -> Void)? = nil,
@@ -40,17 +47,22 @@ struct KnowledgeView: View {
         contentView
             .dynamicTypeSize(appTextSize)
             .background(Color.surfacePrimary.ignoresSafeArea())
-            .navigationTitle(prefersHistoryView ? "Knowledge" : "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if prefersHistoryView {
+                    ToolbarItem(placement: .principal) {
+                        greetingHeader
+                    }
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            showingNewChat = true
-                        } label: {
-                            Image(systemName: "square.and.pencil")
+                        HStack(spacing: 12) {
+                            Button {
+                                showingNewChat = true
+                            } label: {
+                                Image(systemName: "square.and.pencil")
+                                    .foregroundStyle(Color.terracottaPrimary)
+                            }
+                            .accessibilityIdentifier("knowledge.new_chat")
                         }
-                        .accessibilityIdentifier("knowledge.new_chat")
                     }
                 }
             }
@@ -83,6 +95,25 @@ struct KnowledgeView: View {
             }
     }
 
+    // MARK: - Greeting Header
+
+    private var greetingHeader: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(Color.chatAccent.opacity(0.15))
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.chatAccent)
+                )
+
+            Text(greetingText)
+                .font(.terracottaHeadlineItalic)
+                .foregroundStyle(Color.chatAccent)
+        }
+    }
+
     @ViewBuilder
     private var contentView: some View {
         if prefersHistoryView {
@@ -103,16 +134,16 @@ struct KnowledgeView: View {
         VStack(spacing: 20) {
             Image(systemName: "brain.head.profile")
                 .font(.system(size: 48, weight: .light))
-                .foregroundStyle(Color.accentColor.opacity(0.7))
+                .foregroundStyle(Color.terracottaPrimary.opacity(0.7))
 
             VStack(spacing: 6) {
                 Text("No chats yet")
-                    .font(.listTitle.weight(.semibold))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.terracottaHeadlineMedium)
+                    .foregroundStyle(Color.onSurface)
 
                 Text("Start a new chat here or open an article to jump into a contextual session.")
-                    .font(.listSubtitle)
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.terracottaBodyMedium)
+                    .foregroundStyle(Color.onSurfaceSecondary)
             }
             .multilineTextAlignment(.center)
             .frame(maxWidth: 280)
@@ -223,13 +254,13 @@ struct KnowledgeView: View {
         VStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: Spacing.iconSize))
-                .foregroundStyle(Color.textSecondary)
+                .foregroundStyle(Color.onSurfaceSecondary)
             Text("No matching chats")
-                .font(.listSubtitle)
+                .font(.terracottaHeadlineSmall)
                 .fontWeight(.semibold)
             Text("Try a different keyword.")
-                .font(.listCaption)
-                .foregroundStyle(Color.textTertiary)
+                .font(.terracottaBodySmall)
+                .foregroundStyle(Color.onSurfaceSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Spacing.sectionTop)
@@ -298,8 +329,8 @@ struct ChatSessionCard: View {
             // Header row: title + badge + arrow
             HStack(spacing: 8) {
                 Text(session.displayTitle)
-                    .font(.listTitle.weight(.semibold))
-                    .foregroundColor(.textPrimary)
+                    .font(.terracottaHeadlineSmall)
+                    .foregroundColor(.onSurface)
                     .lineLimit(1)
 
                 Spacer()
@@ -308,16 +339,18 @@ struct ChatSessionCard: View {
 
                 Image(systemName: "arrow.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.textTertiary)
+                    .foregroundColor(.onSurfaceSecondary)
             }
 
             // Preview row
             previewRow
         }
         .padding(14)
+        .background(Color.surfaceSecondary)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.borderSubtle, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.outlineVariant.opacity(0.3), lineWidth: 1)
         )
     }
 
@@ -329,23 +362,23 @@ struct ChatSessionCard: View {
                 ProgressView()
                     .scaleEffect(0.5)
                 Text("THINKING")
-                    .font(.listMono.weight(.semibold))
+                    .font(.terracottaLabelSmall)
                     .tracking(0.5)
             }
-            .foregroundColor(.textTertiary)
+            .foregroundColor(.onSurfaceSecondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Color.secondary.opacity(0.1))
+            .background(Color.surfaceContainer)
             .cornerRadius(4)
 
         case .ready:
             Text("READY")
-                .font(.listMono.weight(.semibold))
+                .font(.terracottaLabelSmall)
                 .tracking(0.5)
-                .foregroundColor(.blue)
+                .foregroundColor(.terracottaPrimary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Color.blue.opacity(0.1))
+                .background(Color.terracottaPrimary.opacity(0.1))
                 .cornerRadius(4)
 
         case .none:
@@ -358,21 +391,21 @@ struct ChatSessionCard: View {
         if let preview = session.lastMessagePreview, !preview.isEmpty {
             let role = session.lastMessageRole ?? "assistant"
             let prefix = role == "user" ? "You: " : "AI: "
-            let prefixColor: Color = role == "user" ? .textPrimary : .blue
+            let prefixColor: Color = role == "user" ? .onSurface : .terracottaPrimary
 
             (Text(prefix).foregroundColor(prefixColor).fontWeight(.medium) +
-             Text(preview).foregroundColor(.textSecondary))
-                .font(.listSubtitle)
+             Text(preview).foregroundColor(.onSurfaceSecondary))
+                .font(.terracottaBodyMedium)
                 .lineLimit(2)
         } else if session.isEmptyFavorite, let summary = session.articleSummary, !summary.isEmpty {
             Text(summary)
-                .font(.listSubtitle)
-                .foregroundColor(.textSecondary)
+                .font(.terracottaBodyMedium)
+                .foregroundColor(.onSurfaceSecondary)
                 .lineLimit(2)
         } else if let subtitle = session.displaySubtitle {
             Text(subtitle)
-                .font(.listSubtitle)
-                .foregroundColor(.textSecondary)
+                .font(.terracottaBodyMedium)
+                .foregroundColor(.onSurfaceSecondary)
                 .lineLimit(2)
         }
     }
@@ -392,20 +425,11 @@ struct NewChatSheet: View {
 
     private let chatService = ChatService.shared
 
-    private var providerColor: Color {
-        switch provider.accentColor {
-        case "green": return .green
-        case "orange": return .orange
-        case "purple": return .purple
-        default: return .blue
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // Drag indicator
             RoundedRectangle(cornerRadius: 2.5)
-                .fill(Color(.tertiaryLabel))
+                .fill(Color.outlineVariant)
                 .frame(width: 36, height: 5)
                 .padding(.top, 8)
 
@@ -414,7 +438,7 @@ struct NewChatSheet: View {
                 // Provider icon
                 ZStack {
                     Circle()
-                        .fill(providerColor.opacity(0.15))
+                        .fill(Color.terracottaPrimary.opacity(0.15))
                         .frame(width: 56, height: 56)
 
                     Image(provider.iconAsset)
@@ -425,11 +449,11 @@ struct NewChatSheet: View {
 
                 VStack(spacing: 2) {
                     Text(provider.displayName)
-                        .font(.listTitle.weight(.semibold))
+                        .font(.terracottaHeadlineMedium)
 
                     Text(provider.tagline)
-                        .font(.listCaption)
-                        .foregroundColor(.secondary)
+                        .font(.terracottaBodySmall)
+                        .foregroundColor(.onSurfaceSecondary)
                 }
             }
             .padding(.top, 16)
@@ -440,29 +464,29 @@ struct NewChatSheet: View {
                 ZStack(alignment: .topLeading) {
                     if initialMessage.isEmpty {
                         Text("What would you like to explore?")
-                            .font(.listSubtitle)
+                            .font(.terracottaBodyMedium)
                             .foregroundColor(Color(.placeholderText))
                             .padding(.horizontal, 16)
                             .padding(.vertical, 14)
                     }
 
                     TextEditor(text: $initialMessage)
-                        .font(.listSubtitle)
+                        .font(.terracottaBodyMedium)
                         .scrollContentBackground(.hidden)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         .focused($isTextFieldFocused)
                 }
                 .frame(height: 100)
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(12)
+                .background(Color.surfaceContainer)
+                .cornerRadius(16)
 
                 if let error = errorMessage {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .font(.listCaption)
+                            .font(.terracottaBodySmall)
                         Text(error)
-                            .font(.listCaption)
+                            .font(.terracottaBodySmall)
                     }
                     .foregroundColor(.red)
                 }
@@ -472,10 +496,10 @@ struct NewChatSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: "star")
                     .font(.chipLabel)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.terracottaPrimary)
                 Text("Favorite articles to chat about them with full context.")
-                    .font(.listCaption)
-                    .foregroundColor(.secondary)
+                    .font(.terracottaBodySmall)
+                    .foregroundColor(.onSurfaceSecondary)
             }
             .padding(.top, 10)
             .padding(.horizontal, Spacing.screenHorizontal)
@@ -499,12 +523,13 @@ struct NewChatSheet: View {
                              ? "Start Chat"
                              : "Send")
                     }
-                    .font(.listSubtitle.weight(.semibold))
+                    .font(.terracottaBodyLarge)
+                    .fontWeight(.semibold)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(providerColor)
-                    .cornerRadius(12)
+                    .background(Color.terracottaPrimary)
+                    .cornerRadius(25)
                 }
                 .disabled(isCreating)
 
@@ -512,14 +537,15 @@ struct NewChatSheet: View {
                     isPresented = false
                 } label: {
                     Text("Cancel")
-                        .font(.listSubtitle)
-                        .foregroundColor(.secondary)
+                        .font(.terracottaBodyMedium)
+                        .foregroundColor(.onSurfaceSecondary)
                 }
                 .padding(.bottom, 8)
             }
             .padding(.horizontal, Spacing.screenHorizontal)
             .padding(.bottom, 16)
         }
+        .background(Color.surfacePrimary)
         .onAppear {
             isTextFieldFocused = true
         }

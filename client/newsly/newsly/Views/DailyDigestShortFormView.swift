@@ -40,27 +40,42 @@ struct DailyDigestShortFormView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .containerRelativeFrame(.vertical)
                 } else {
-                    ForEach(viewModel.currentItems()) { digest in
-                        DailyDigestCard(
-                            digest: digest,
-                            isSpeaking: narrationService.isSpeaking && narrationService.speakingDigestId == digest.id,
-                            isLoadingVoice: loadingVoiceDigestIds.contains(digest.id),
-                            isStartingDigDeeper: viewModel.isStartingDigDeeperChat(for: digest.id),
-                            playbackRate: narrationPlaybackRate,
-                            onSelectPlaybackRate: { rate in
-                                narrationPlaybackRate = rate
-                                narrationService.setPlaybackRate(Float(rate))
-                            },
-                            onToggleRead: { toggleRead(for: digest) },
-                            onVoiceSummary: { handleVoiceSummary(for: digest) },
-                            onDigDeeper: { handleDigDeeper(for: digest) }
-                        )
-                        .onAppear {
-                            if digest.id == viewModel.currentItems().last?.id {
-                                viewModel.loadMoreTrigger.send(())
+                    // Large serif header
+                    Text("Digest")
+                        .font(.terracottaDisplayLarge)
+                        .foregroundStyle(Color.onSurface)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.screenHorizontal)
+                        .padding(.top, 16)
+                        .padding(.bottom, 24)
+
+                    // Digest items — each card has its own date/time rule
+                    VStack(spacing: 28) {
+                        ForEach(viewModel.currentItems()) { digest in
+                            let isToday = digest.localDateValue.map { Calendar.current.isDateInToday($0) } ?? false
+                            DailyDigestCard(
+                                digest: digest,
+                                isToday: isToday,
+                                    isSpeaking: narrationService.isSpeaking && narrationService.speakingDigestId == digest.id,
+                                    isLoadingVoice: loadingVoiceDigestIds.contains(digest.id),
+                                    isStartingDigDeeper: viewModel.isStartingDigDeeperChat(for: digest.id),
+                                    playbackRate: narrationPlaybackRate,
+                                    onSelectPlaybackRate: { rate in
+                                        narrationPlaybackRate = rate
+                                        narrationService.setPlaybackRate(Float(rate))
+                                    },
+                                    onToggleRead: { toggleRead(for: digest) },
+                                    onVoiceSummary: { handleVoiceSummary(for: digest) },
+                                    onDigDeeper: { handleDigDeeper(for: digest) }
+                                )
+                            .onAppear {
+                                if digest.id == viewModel.currentItems().last?.id {
+                                    viewModel.loadMoreTrigger.send(())
+                                }
                             }
                         }
                     }
+                    .padding(.horizontal, Spacing.screenHorizontal)
 
                     if viewModel.state == .loadingMore {
                         ProgressView()
@@ -89,6 +104,8 @@ struct DailyDigestShortFormView: View {
             )
         }
     }
+
+    // MARK: - Actions
 
     private func toggleRead(for digest: DailyNewsDigest) {
         if digest.isRead {
@@ -147,10 +164,11 @@ struct DailyDigestShortFormView: View {
     }
 }
 
-// MARK: - Daily Digest Card
+// MARK: - Daily Digest Card (Timeline Style)
 
 private struct DailyDigestCard: View {
     let digest: DailyNewsDigest
+    let isToday: Bool
     let isSpeaking: Bool
     let isLoadingVoice: Bool
     let isStartingDigDeeper: Bool
@@ -161,62 +179,68 @@ private struct DailyDigestCard: View {
     let onDigDeeper: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Date header
-            HStack(alignment: .firstTextBaseline) {
-                Text(digest.displayDateLabel.uppercased())
-                    .font(.system(size: 16, weight: .bold))
-                    .tracking(0.8)
-                    .foregroundStyle(digest.isRead ? Color.textTertiary : Color.textPrimary)
+        VStack(alignment: .leading, spacing: 12) {
+            // Date + time with extending rule
+            HStack(spacing: 10) {
+                HStack(spacing: 5) {
+                    Text(shortDateLabel.uppercased())
+                        .foregroundStyle(isToday ? Color.terracottaPrimary : Color.onSurfaceSecondary)
 
-                Spacer()
+                    if !digest.displayTimeLabel.isEmpty {
+                        Text("·")
+                            .foregroundStyle(Color.onSurfaceSecondary)
+                        Text(digest.displayTimeLabel.uppercased())
+                            .foregroundStyle(Color.onSurfaceSecondary)
+                    }
 
-                if !digest.isRead {
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 7, height: 7)
+                    if let coverageLabel = digest.displayCoverageLabel {
+                        Text(coverageLabel)
+                            .font(.terracottaCategoryPill)
+                            .foregroundStyle(Color.terracottaPrimary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(Color.terracottaPrimary.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
                 }
-            }
-            .padding(.bottom, 14)
+                .font(.terracottaCategoryPill)
+                .tracking(1.2)
 
-            if let coverageLabel = digest.displayCoverageLabel {
-                Text(coverageLabel)
-                    .font(.caption)
-                    .foregroundStyle(Color.textSecondary)
-                    .padding(.bottom, 14)
+                Rectangle()
+                    .fill(Color.outlineVariant.opacity(0.5))
+                    .frame(height: 1)
             }
 
             // Key points
-            VStack(alignment: .leading, spacing: 12) {
-                if digest.cleanedKeyPoints.isEmpty {
-                    Text(digest.cleanedSummary.isEmpty ? "Summary unavailable." : digest.cleanedSummary)
-                        .font(.subheadline)
-                        .foregroundStyle(digest.isRead ? Color.textSecondary : .primary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
+            if digest.cleanedKeyPoints.isEmpty {
+                Text(digest.cleanedSummary.isEmpty ? "Summary unavailable." : digest.cleanedSummary)
+                    .font(.terracottaHeadlineSmall)
+                    .foregroundStyle(digest.isRead ? Color.onSurfaceSecondary : Color.onSurface)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(digest.cleanedKeyPoints.enumerated()), id: \.offset) { _, point in
-                        HStack(alignment: .top, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text("–")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(Color.textSecondary)
+                                .font(.terracottaHeadlineSmall)
+                                .foregroundStyle(Color.onSurfaceSecondary)
                             Text(point)
-                                .font(.subheadline)
-                                .foregroundStyle(digest.isRead ? Color.textSecondary : .primary)
+                                .font(.terracottaHeadlineSmall)
+                                .foregroundStyle(digest.isRead ? Color.onSurfaceSecondary : Color.onSurface)
                                 .lineSpacing(3)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
             }
-            .padding(.bottom, 16)
 
             // Actions row
             HStack(spacing: 0) {
                 if digest.sourceCount > 0 {
                     Text("\(digest.sourceCount) sources")
-                        .font(.feedMeta)
-                        .foregroundStyle(Color.textSecondary)
+                        .font(.terracottaBodySmall)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                 }
 
                 Spacer()
@@ -226,8 +250,8 @@ private struct DailyDigestCard: View {
                         digest.isRead ? "Mark Unread" : "Mark Read",
                         systemImage: digest.isRead ? "envelope.badge" : "checkmark.circle"
                     )
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.terracottaBodySmall)
+                    .foregroundStyle(Color.onSurfaceSecondary)
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 16)
@@ -242,8 +266,8 @@ private struct DailyDigestCard: View {
                             voiceSummaryButtonTitle,
                             systemImage: isSpeaking ? "speaker.slash.fill" : "speaker.wave.2.fill"
                         )
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(isSpeaking ? Color.accentColor : Color.textSecondary)
+                        .font(.terracottaBodySmall)
+                        .foregroundStyle(isSpeaking ? Color.terracottaPrimary : Color.onSurfaceSecondary)
                     }
                 }
                 .contextMenu {
@@ -270,8 +294,8 @@ private struct DailyDigestCard: View {
                                 .frame(width: 16, height: 16)
                         } else {
                             Label("Dig Deeper", systemImage: "brain.head.profile")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(Color.textSecondary)
+                                .font(.terracottaBodySmall)
+                                .foregroundStyle(Color.onSurfaceSecondary)
                         }
                     }
                     .buttonStyle(.plain)
@@ -280,13 +304,21 @@ private struct DailyDigestCard: View {
                 }
             }
         }
-        .padding(.horizontal, Spacing.rowHorizontal)
-        .padding(.vertical, 20)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.borderSubtle.opacity(0.4))
-                .frame(height: 6)
-        }
+    }
+
+    private static let shortFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        f.timeZone = TimeZone.current
+        return f
+    }()
+
+    private var shortDateLabel: String {
+        guard let date = digest.localDateValue else { return digest.localDate }
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return "Today" }
+        if cal.isDateInYesterday(date) { return "Yesterday" }
+        return Self.shortFormatter.string(from: date)
     }
 
     private var voiceSummaryButtonTitle: String {

@@ -26,7 +26,45 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        UITabBar.appearance().isHidden = true
+        // Style the system tab bar with terracotta theme
+        let terracotta = UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.831, green: 0.514, blue: 0.416, alpha: 1.0)
+                : UIColor(red: 0.439, green: 0.169, blue: 0.098, alpha: 1.0)
+        }
+        let unselected = UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.639, green: 0.616, blue: 0.588, alpha: 1.0)
+                : UIColor(red: 0.396, green: 0.365, blue: 0.337, alpha: 1.0)
+        }
+        let surface = UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.102, green: 0.094, blue: 0.082, alpha: 1.0)
+                : UIColor(red: 0.992, green: 0.976, blue: 0.957, alpha: 1.0)
+        }
+
+        let itemAppearance = UITabBarItemAppearance()
+        itemAppearance.selected.iconColor = terracotta
+        itemAppearance.selected.titleTextAttributes = [.foregroundColor: terracotta]
+        itemAppearance.normal.iconColor = unselected
+        itemAppearance.normal.titleTextAttributes = [.foregroundColor: unselected]
+
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+        appearance.backgroundColor = surface.withAlphaComponent(0.9)
+        appearance.stackedLayoutAppearance = itemAppearance
+        appearance.inlineLayoutAppearance = itemAppearance
+        appearance.compactInlineLayoutAppearance = itemAppearance
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+
+        // Style navigation bar with warm tones
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithDefaultBackground()
+        navAppearance.backgroundColor = surface.withAlphaComponent(0.9)
+        UINavigationBar.appearance().standardAppearance = navAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+        UINavigationBar.appearance().tintColor = terracotta
 
         let contentRepository = ContentRepository()
         let readRepository = ReadStatusRepository()
@@ -66,7 +104,7 @@ struct ContentView: View {
     }
 
     private var shortBadge: String? {
-        let mode = FastNewsMode(rawValue: settings.fastNewsMode) ?? .newsList
+        let mode = FastNewsMode(rawValue: settings.fastNewsMode) ?? .dailyDigest
         let count = mode == .dailyDigest
             ? unreadCountService.dailyNewsDigestCount
             : unreadCountService.newsCount
@@ -100,9 +138,13 @@ struct ContentView: View {
                 )
             }
             .tag(RootTab.longContent)
+            .tabItem {
+                Label("Long Form", systemImage: "doc.richtext")
+            }
+            .badge(longBadge != nil ? Int(longBadge!) ?? 0 : 0)
 
             NavigationStack(path: $shortFormPath) {
-                if (FastNewsMode(rawValue: settings.fastNewsMode) ?? .newsList) == .dailyDigest {
+                if (FastNewsMode(rawValue: settings.fastNewsMode) ?? .dailyDigest) == .dailyDigest {
                     DailyDigestShortFormView(
                         viewModel: tabCoordinator.dailyDigestVM,
                         onOpenChatSession: { route in
@@ -131,6 +173,10 @@ struct ContentView: View {
                 }
             }
             .tag(RootTab.shortNews)
+            .tabItem {
+                Label("Fast News", systemImage: "bolt.fill")
+            }
+            .badge(shortBadge != nil ? Int(shortBadge!) ?? 0 : 0)
 
             NavigationStack(path: $knowledgePath) {
                 KnowledgeView(
@@ -153,16 +199,20 @@ struct ContentView: View {
                 )
             }
             .tag(RootTab.knowledge)
+            .tabItem {
+                Label("Knowledge", systemImage: "books.vertical.fill")
+            }
 
             NavigationStack {
                 MoreView(submissionsViewModel: submissionStatusViewModel)
             }
             .tag(RootTab.more)
+            .tabItem {
+                Label("More", systemImage: "ellipsis.circle.fill")
+            }
+            .badge(moreBadge != nil ? Int(moreBadge!) ?? 0 : 0)
         }
-        .toolbar(.hidden, for: .tabBar)
-        .safeAreaInset(edge: .bottom) {
-            customTabBar
-        }
+        .tint(Color.terracottaPrimary)
         .dynamicTypeSize(AppTextSize(index: settings.appTextSizeIndex).dynamicTypeSize)
         .environmentObject(readingStateStore)
         .onAppear {
@@ -192,7 +242,7 @@ struct ContentView: View {
 
     private func restoreIfNeeded() {
         let isNews = readingStateStore.current?.contentType == .news
-        let isDailyDigestMode = (FastNewsMode(rawValue: settings.fastNewsMode) ?? .newsList) == .dailyDigest
+        let isDailyDigestMode = (FastNewsMode(rawValue: settings.fastNewsMode) ?? .dailyDigest) == .dailyDigest
         if isNews && isDailyDigestMode {
             return
         }
@@ -266,110 +316,6 @@ struct ContentView: View {
         knowledgePrefersHistory = false
         knowledgePath = NavigationPath()
         knowledgePath.append(ChatSessionRoute(sessionId: sessionId))
-    }
-
-    private var customTabBar: some View {
-        CustomBottomNavigationBar(
-            selectedTab: $tabCoordinator.selectedTab,
-            longBadge: longBadge,
-            shortBadge: shortBadge,
-            knowledgeBadge: knowledgeBadge,
-            moreBadge: moreBadge
-        )
-    }
-}
-
-private struct CustomBottomNavigationBar: View {
-    @Binding var selectedTab: RootTab
-    let longBadge: String?
-    let shortBadge: String?
-    let knowledgeBadge: String?
-    let moreBadge: String?
-    private let barHeight: CGFloat = 72
-
-    var body: some View {
-        HStack(spacing: 4) {
-            tabButton(
-                tab: .longContent,
-                title: "Long Form",
-                systemImage: "doc.richtext",
-                badge: longBadge,
-                accessibilityId: "tab.long"
-            )
-            tabButton(
-                tab: .shortNews,
-                title: "Fast News",
-                systemImage: "bolt.fill",
-                badge: shortBadge,
-                accessibilityId: "tab.short"
-            )
-            tabButton(
-                tab: .knowledge,
-                title: "Knowledge",
-                systemImage: "books.vertical.fill",
-                badge: knowledgeBadge,
-                accessibilityId: "tab.knowledge"
-            )
-            tabButton(
-                tab: .more,
-                title: "More",
-                systemImage: "ellipsis.circle.fill",
-                badge: moreBadge,
-                accessibilityId: "tab.more"
-            )
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, minHeight: barHeight)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .overlay(
-            Capsule()
-                .stroke(Color.white.opacity(0.72), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
-        .padding(.horizontal, 18)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
-    }
-
-    private func tabButton(
-        tab: RootTab,
-        title: String,
-        systemImage: String,
-        badge: String?,
-        accessibilityId: String
-    ) -> some View {
-        Button {
-            selectedTab = tab
-        } label: {
-            VStack(spacing: 5) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.primary)
-
-                    if let badge, !badge.isEmpty {
-                        Text(badge)
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, badge == "●" ? 4 : 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(Color.red))
-                            .offset(x: 10, y: -8)
-                    }
-                }
-
-                Text(title)
-                    .font(.caption.weight(selectedTab == tab ? .semibold : .regular))
-                    .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(accessibilityId)
     }
 }
 

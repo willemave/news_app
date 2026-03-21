@@ -107,7 +107,8 @@ Return a JSON object with exactly these fields:
   "title": "Descriptive headline (max 110 characters) capturing the day's main themes",
   "summary": "Required 2-sentence overview explaining the day at a glance (≤ 500 characters).",
   "key_points": [
-    "One bullet for a distinct major topic, story cluster, or consequential development"
+    "One bullet for a distinct major topic, story cluster, or consequential development",
+    "A bullet may optionally use a second line for one short comment quote, for example: Main point.\\n\\"Quote\\" - commenter"
   ]
 }
 
@@ -117,9 +118,13 @@ Guidelines:
 - Merge near-duplicate stories into one broader bullet when they tell the same story.
 - Stop adding bullets when additional bullets would be redundant.
 - Prefer concrete entities, numbers, dates, and implications over vague phrasing.
+- Most bullets should stay as a single sentence.
+- When a provided comment quote materially sharpens a point, you may append one extra line inside that same key_points string.
+- Use at most one quote per bullet, and only on a few bullets where it clearly improves the summary.
+- Keep quote lines short, high-signal, and verbatim to the provided comment context; do not invent commenters or wording.
 - Treat minor promotional, meta, or duplicative items as supporting context unless they materially change the day.
 - Keep each bullet self-contained, concrete, and free of markdown or numbering.
-- Never include article URLs, classifications, quotes, topics, or extra fields.
+- Never include article URLs, classifications, topics, or extra fields. Do not emit a separate quotes field.
 """
 
         user_message = "Daily News Rollup Context:\n\n{content}"
