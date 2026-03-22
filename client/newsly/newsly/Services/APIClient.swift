@@ -63,10 +63,19 @@ class APIClient {
     static let shared = APIClient()
     private let session: URLSession
     private let decoder: JSONDecoder
-    
-    private init() {
-        self.session = URLSession.shared
-        self.decoder = JSONDecoder()
+    private let tokenStore: AuthTokenStore
+    private let tokenRefresher: TokenRefreshing
+
+    init(
+        session: URLSession = .shared,
+        decoder: JSONDecoder = JSONDecoder(),
+        tokenStore: AuthTokenStore = KeychainManager.shared,
+        tokenRefresher: TokenRefreshing = TokenRefreshService.shared
+    ) {
+        self.session = session
+        self.decoder = decoder
+        self.tokenStore = tokenStore
+        self.tokenRefresher = tokenRefresher
     }
 
     func request<T: Decodable>(
@@ -249,7 +258,7 @@ class APIClient {
                 }
 
                 do {
-                    _ = try await AuthenticationService.shared.refreshAccessToken()
+                    _ = try await tokenRefresher.refreshAccessToken()
                     return try await executeRequest(
                         endpoint: endpoint,
                         method: method,
@@ -398,17 +407,17 @@ class APIClient {
     /// Get an access token if present; otherwise attempt a refresh.
     /// Returns nil for truly unauthenticated flows (e.g., public endpoints).
     private func fetchAccessTokenOrRefresh(endpoint: String) async throws -> String? {
-        if let token = KeychainManager.shared.getToken(key: .accessToken) {
+        if let token = tokenStore.getToken(key: .accessToken) {
             return token
         }
 
         // If we have a refresh token, attempt to refresh and return the new access token.
-        guard KeychainManager.shared.getToken(key: .refreshToken) != nil else {
+        guard tokenStore.getToken(key: .refreshToken) != nil else {
             return nil
         }
 
         do {
-            let refreshed = try await AuthenticationService.shared.refreshAccessToken()
+            let refreshed = try await tokenRefresher.refreshAccessToken()
             return refreshed
         } catch let authError as AuthError {
             switch authError {
@@ -495,8 +504,8 @@ class APIClient {
         sentAuthHeader: Bool,
         reason: String
     ) {
-        let hasAccessToken = KeychainManager.shared.getToken(key: .accessToken) != nil
-        let hasRefreshToken = KeychainManager.shared.getToken(key: .refreshToken) != nil
+        let hasAccessToken = tokenStore.getToken(key: .accessToken) != nil
+        let hasRefreshToken = tokenStore.getToken(key: .refreshToken) != nil
         let statusText = statusCode.map(String.init) ?? "n/a"
         let detailText = detail ?? "n/a"
 

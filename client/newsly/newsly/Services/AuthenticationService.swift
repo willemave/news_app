@@ -21,7 +21,6 @@ final class AuthenticationService: NSObject {
     }
 
     private var currentNonce: String?
-    private let refreshCoordinator = RefreshCoordinator(cooldownSeconds: 10)
 
     /// Sign in with Apple
     @MainActor
@@ -56,114 +55,7 @@ final class AuthenticationService: NSObject {
     /// - Saves both tokens (replaces old refresh token)
     /// - This allows active users to stay logged in indefinitely
     func refreshAccessToken() async throws -> String {
-        if let task = await refreshCoordinator.activeTask() {
-            return try await task.value
-        }
-
-        if let cached = await refreshCoordinator.cachedToken(
-            accessToken: KeychainManager.shared.getToken(key: .accessToken)
-        ) {
-            return cached
-        }
-
-        let task = Task { [weak self] () throws -> String in
-            defer {
-                Task { [weak self] in
-                    await self?.refreshCoordinator.clearTask()
-                }
-            }
-            guard let self else { throw AuthError.refreshFailed }
-            let token = try await self.performRefreshAccessToken()
-            await self.refreshCoordinator.markSuccess()
-            return token
-        }
-
-        await refreshCoordinator.setTask(task)
-        return try await task.value
-    }
-
-    private func performRefreshAccessToken() async throws -> String {
-        print("🔄 Starting token refresh...")
-
-        guard let refreshToken = KeychainManager.shared.getToken(key: .refreshToken) else {
-            print("❌ No refresh token found in keychain")
-            throw AuthError.noRefreshToken
-        }
-
-        print("📤 Sending refresh request to backend...")
-        let url = URL(string: "\(AppSettings.shared.baseURL)/auth/refresh")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body = RefreshTokenRequest(refreshToken: refreshToken)
-        request.httpBody = try? JSONEncoder().encode(body)
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ Invalid response from server")
-                throw AuthError.serverError(statusCode: -1, message: "Invalid HTTP response")
-            }
-
-            print("📥 Refresh response status: \(httpResponse.statusCode)")
-
-            switch httpResponse.statusCode {
-            case 200:
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-
-                let tokenResponse = try decoder.decode(AccessTokenResponse.self, from: data)
-
-                // Save new access token AND new refresh token (token rotation)
-                KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
-                KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
-                // Also save to shared UserDefaults for extension access
-                SharedContainer.userDefaults.set(tokenResponse.accessToken, forKey: "accessToken")
-                KeychainManager.shared.deleteLegacyToken(named: "openaiApiKey")
-
-                print("✅ Token refresh successful - both tokens rotated")
-
-                return tokenResponse.accessToken
-
-            case 401, 403:
-                // Refresh token is no longer valid; clear stored tokens so we do not loop
-                KeychainManager.shared.deleteToken(key: .accessToken)
-                KeychainManager.shared.deleteToken(key: .refreshToken)
-                SharedContainer.userDefaults.removeObject(forKey: "accessToken")
-
-                if let errorBody = String(data: data, encoding: .utf8) {
-                    print("❌ Refresh token expired/invalid: \(errorBody)")
-                    authLogger.error(
-                        "[AuthRefresh] Invalid refresh token | status=\(httpResponse.statusCode) detail=\(errorBody, privacy: .public)"
-                    )
-                }
-                throw AuthError.refreshTokenExpired
-
-            default:
-                let errorBody = String(data: data, encoding: .utf8)
-                print("❌ Refresh failed with status \(httpResponse.statusCode): \(errorBody ?? "<no body>")")
-                if let errorBody {
-                    authLogger.error(
-                        "[AuthRefresh] Refresh failed | status=\(httpResponse.statusCode) detail=\(errorBody, privacy: .public)"
-                    )
-                } else {
-                    authLogger.error("[AuthRefresh] Refresh failed | status=\(httpResponse.statusCode)")
-                }
-                throw AuthError.serverError(statusCode: httpResponse.statusCode, message: errorBody)
-            }
-        } catch let urlError as URLError {
-            print("❌ Token refresh network error: \(urlError)")
-            authLogger.error("[AuthRefresh] Network error | code=\(urlError.errorCode) description=\(urlError.localizedDescription, privacy: .public)")
-            throw AuthError.networkError(urlError)
-        } catch let authError as AuthError {
-            throw authError
-        } catch {
-            print("❌ Token refresh error: \(error)")
-            authLogger.error("[AuthRefresh] Unexpected error | description=\(error.localizedDescription, privacy: .public)")
-            throw AuthError.refreshFailed
-        }
+        try await TokenRefreshService.shared.refreshAccessToken()
     }
 
     /// Logout user (clear all tokens)
@@ -334,37 +226,6 @@ final class AuthenticationService: NSObject {
     }
 }
 
-// MARK: - Errors
-
-enum AuthError: Error, LocalizedError {
-    case notAuthenticated
-    case noRefreshToken
-    case refreshTokenExpired
-    case refreshFailed
-    case serverError(statusCode: Int, message: String?)
-    case networkError(Error)
-    case appleSignInFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .notAuthenticated:
-            return "Not authenticated"
-        case .noRefreshToken:
-            return "No refresh token available"
-        case .refreshTokenExpired:
-            return "Refresh token expired"
-        case .refreshFailed:
-            return "Failed to refresh token"
-        case .serverError(let statusCode, let message):
-            return "Server error \(statusCode): \(message ?? "Unknown")"
-        case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
-        case .appleSignInFailed:
-            return "Apple Sign In failed"
-        }
-    }
-}
-
 // MARK: - Apple Sign In Delegate
 
 @MainActor
@@ -487,43 +348,5 @@ private func persistSessionTokens(_ tokenResponse: TokenResponse) {
     KeychainManager.shared.saveToken(tokenResponse.accessToken, key: .accessToken)
     KeychainManager.shared.saveToken(tokenResponse.refreshToken, key: .refreshToken)
     KeychainManager.shared.saveToken(String(tokenResponse.user.id), key: .userId)
-    // Also save to shared UserDefaults for extension access
-    SharedContainer.userDefaults.set(tokenResponse.accessToken, forKey: "accessToken")
     KeychainManager.shared.deleteLegacyToken(named: "openaiApiKey")
-}
-
-private actor RefreshCoordinator {
-    private var refreshTask: Task<String, Error>?
-    private var lastSuccessfulRefresh: Date?
-    private let cooldownSeconds: TimeInterval
-
-    init(cooldownSeconds: TimeInterval) {
-        self.cooldownSeconds = cooldownSeconds
-    }
-
-    func activeTask() -> Task<String, Error>? {
-        refreshTask
-    }
-
-    func setTask(_ task: Task<String, Error>) {
-        refreshTask = task
-    }
-
-    func clearTask() {
-        refreshTask = nil
-    }
-
-    func markSuccess() {
-        lastSuccessfulRefresh = Date()
-    }
-
-    func cachedToken(accessToken: String?) -> String? {
-        guard let lastSuccessfulRefresh,
-              Date().timeIntervalSince(lastSuccessfulRefresh) < cooldownSeconds,
-              let token = accessToken,
-              !token.isEmpty else {
-            return nil
-        }
-        return token
-    }
 }

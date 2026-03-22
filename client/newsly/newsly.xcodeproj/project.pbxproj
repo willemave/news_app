@@ -67,6 +67,7 @@
 		E637D39E2EF99E2B004CD1F1 /* Exceptions for "newsly" folder in "ShareExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Services/APIClient.swift,
 				Services/AppSettings.swift,
 				Services/KeychainManager.swift,
 				Shared/SharedContainer.swift,
@@ -409,6 +410,7 @@
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShareExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NewslySharedKeychainAccessGroup = "$(DEVELOPMENT_TEAM).com.newsly.shared-keychain";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -440,6 +442,7 @@
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShareExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NewslySharedKeychainAccessGroup = "$(DEVELOPMENT_TEAM).com.newsly.shared-keychain";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -596,6 +599,7 @@
 				INFOPLIST_FILE = newsly/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = willemnews;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
+				INFOPLIST_KEY_NewslySharedKeychainAccessGroup = "$(DEVELOPMENT_TEAM).com.newsly.shared-keychain";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -626,6 +630,7 @@
 				INFOPLIST_FILE = newsly/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = willemnews;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
+				INFOPLIST_KEY_NewslySharedKeychainAccessGroup = "$(DEVELOPMENT_TEAM).com.newsly.shared-keychain";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

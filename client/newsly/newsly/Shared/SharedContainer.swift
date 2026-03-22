@@ -8,16 +8,27 @@
 import Foundation
 
 enum SharedContainer {
+    private static let sharedKeychainInfoKey = "NewslySharedKeychainAccessGroup"
+
     /// App group identifier shared between the main app and extensions.
     /// Set this to your configured App Group (must match entitlements).
     static let appGroupId: String? = "group.com.newsly"
 
     /// Optional keychain access group shared between the main app and extensions.
-    /// Set to nil to use the default keychain (works in simulator and device).
-    /// If you need to share keychain between app and extensions, set this to:
-    /// - On device: "$(TeamID).com.newsly.shared-keychain"
-    /// - For now using nil to avoid simulator keychain errors (-34018)
-    static let keychainAccessGroup: String? = nil
+    /// On device, prefer the shared keychain group declared in target Info.plists.
+    /// On simulator, disable it to avoid entitlement-related keychain failures.
+    static var keychainAccessGroup: String? {
+#if targetEnvironment(simulator)
+        return nil
+#else
+        guard let value = Bundle.main.object(forInfoDictionaryKey: sharedKeychainInfoKey) as? String else {
+            return nil
+        }
+
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+#endif
+    }
 
     static var userDefaults: UserDefaults {
         if let appGroupId, let defaults = UserDefaults(suiteName: appGroupId) {

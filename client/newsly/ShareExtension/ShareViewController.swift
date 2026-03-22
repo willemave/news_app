@@ -229,46 +229,6 @@ final class ShareViewController: UIViewController {
     // MARK: - API Submission
 
     private func submitURL(_ url: URL) async throws {
-        let keychainToken = KeychainManager.shared.getToken(key: .accessToken)
-        let sharedToken = SharedContainer.userDefaults.string(forKey: "accessToken")
-
-        if let groupId = SharedContainer.appGroupId {
-            let directDefaults = UserDefaults(suiteName: groupId)
-            let directToken = directDefaults?.string(forKey: "accessToken")
-            let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
-            print("🔐 [ShareExt] Direct UserDefaults(\(groupId)) exists: \(directDefaults != nil)")
-            let directTokenStatus = directToken != nil ? "found" : "nil"
-            let containerPath = containerURL?.path ?? "nil"
-            print("🔐 [ShareExt] Direct token: \(directTokenStatus)")
-            print("🔐 [ShareExt] Container URL: \(containerPath)")
-        }
-
-        let keychainTokenStatus = keychainToken != nil ? "found" : "nil"
-        let sharedTokenStatus = sharedToken != nil ? "found (\(sharedToken!.prefix(20))...)" : "nil"
-        let appGroupId = SharedContainer.appGroupId ?? "nil"
-        print("🔐 [ShareExt] Keychain token: \(keychainTokenStatus)")
-        print("🔐 [ShareExt] SharedDefaults token: \(sharedTokenStatus)")
-        print("🔐 [ShareExt] App group: \(appGroupId)")
-
-        let token: String
-        if let keychainToken = keychainToken {
-            token = keychainToken
-        } else if let sharedToken = sharedToken {
-            token = sharedToken
-        } else {
-            throw ShareError.notAuthenticated
-        }
-
-        let baseURL = AppSettings.shared.baseURL
-        guard let requestURL = URL(string: "\(baseURL)/api/content/submit") else {
-            throw ShareError.invalidURL
-        }
-
-        var request = URLRequest(url: requestURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
         let handler = ShareURLRouting.handler(for: url)
         var body: [String: Any] = [
             "url": url.absoluteString,
@@ -279,20 +239,31 @@ final class ShareViewController: UIViewController {
         if let platform = handler.platform {
             body["platform"] = platform
         }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let requestBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ShareError.invalidResponse
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            if httpResponse.statusCode == 401 {
+        do {
+            try await APIClient.shared.requestVoid(
+                "/api/content/submit",
+                method: "POST",
+                body: requestBody
+            )
+        } catch let error as APIError {
+            switch error {
+            case .unauthorized:
                 throw ShareError.notAuthenticated
+            case .invalidURL:
+                throw ShareError.invalidURL
+            case .networkError(let underlying):
+                throw ShareError.networkError(underlying.localizedDescription)
+            case .httpError(let statusCode):
+                throw ShareError.serverError("Request failed with status \(statusCode)")
+            case .decodingError(let underlying):
+                throw ShareError.serverError(underlying.localizedDescription)
+            case .noData, .unknown:
+                throw ShareError.invalidResponse
             }
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw ShareError.serverError(message)
+        } catch {
+            throw ShareError.serverError(error.localizedDescription)
         }
     }
 
@@ -406,17 +377,20 @@ enum ShareError: LocalizedError {
     case notAuthenticated
     case invalidURL
     case invalidResponse
+    case networkError(String)
     case serverError(String)
     case userCancelled
 
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            return "Please sign in to the Newsly app first"
+            return "Session expired. Open Newsly and sign in again."
         case .invalidURL:
             return "Invalid URL"
         case .invalidResponse:
             return "Invalid server response"
+        case .networkError(let message):
+            return "Network error: \(message)"
         case .serverError(let message):
             return message
         case .userCancelled:
