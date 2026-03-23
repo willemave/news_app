@@ -99,6 +99,7 @@ struct AssistantFeedOption: Codable, Identifiable, Equatable {
 /// Individual message in a chat session
 struct ChatMessage: Codable, Identifiable {
     let id: Int
+    let sourceMessageId: Int?
     let role: ChatMessageRole
     let timestamp: String
     let content: String
@@ -112,6 +113,7 @@ struct ChatMessage: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(Int.self, forKey: .id)
+        sourceMessageId = try container.decodeIfPresent(Int.self, forKey: .sourceMessageId)
         role = try container.decode(ChatMessageRole.self, forKey: .role)
         timestamp = try container.decode(String.self, forKey: .timestamp)
         content = try container.decode(String.self, forKey: .content)
@@ -126,6 +128,7 @@ struct ChatMessage: Codable, Identifiable {
 
     init(
         id: Int,
+        sourceMessageId: Int? = nil,
         role: ChatMessageRole,
         timestamp: String,
         content: String,
@@ -136,6 +139,7 @@ struct ChatMessage: Codable, Identifiable {
         feedOptions: [AssistantFeedOption] = []
     ) {
         self.id = id
+        self.sourceMessageId = sourceMessageId
         self.role = role
         self.timestamp = timestamp
         self.content = content
@@ -148,6 +152,7 @@ struct ChatMessage: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, role, timestamp, content, status, error
+        case sourceMessageId = "source_message_id"
         case displayType = "display_type"
         case processLabel = "process_label"
         case feedOptions = "feed_options"
@@ -210,5 +215,15 @@ struct ChatMessage: Codable, Identifiable {
 
     var hasFeedOptions: Bool {
         !feedOptions.isEmpty
+    }
+
+    var uiIdentity: String {
+        [
+            String(id),
+            role.rawValue,
+            timestamp,
+            displayType.rawValue,
+            content
+        ].joined(separator: "|")
     }
 }

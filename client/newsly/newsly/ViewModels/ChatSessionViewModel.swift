@@ -55,15 +55,21 @@ class ChatSessionViewModel: ObservableObject {
         logger.debug("[ViewModel] loadSession | sessionId=\(self.sessionId)")
         isLoading = true
         errorMessage = nil
+        messages = []
 
         do {
             let detail = try await chatService.getSession(id: sessionId)
             session = detail.session
             messages = detail.messages.filter { !$0.content.isEmpty }
+            let assistantPreview = messages.last(where: { $0.isAssistant })?.content.prefix(160) ?? ""
+            logger.debug(
+                "[ViewModel] loadSession succeeded | sessionId=\(self.sessionId) messages=\(self.messages.count) assistantPreview=\(String(assistantPreview), privacy: .public)"
+            )
 
             // Check if there's a processing message we need to poll for
             if let processingMessage = detail.messages.first(where: { $0.isProcessing }) {
-                await pollForMessageCompletion(messageId: processingMessage.id)
+                let pollingMessageId = processingMessage.sourceMessageId ?? processingMessage.id
+                await pollForMessageCompletion(messageId: pollingMessageId)
             }
             // If this is a topic-focused session (like "Dig deeper") with no messages, auto-send the topic
             else if let topic = detail.session.topic, !topic.isEmpty, detail.messages.isEmpty {

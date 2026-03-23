@@ -116,9 +116,11 @@ struct ContentView: View {
             NavigationStack(path: $knowledgePath) {
                 KnowledgeView(
                     onSelectSession: { route in
+                        knowledgePath = NavigationPath()
                         knowledgePath.append(route)
                     },
                     onShowSessionHistory: {
+                        knowledgePath = NavigationPath()
                         knowledgePath.append(SessionHistoryRoute())
                     }
                 )
@@ -275,6 +277,7 @@ private extension View {
                         }
                         : nil
                 )
+                .id(route.sessionId)
             }
             .navigationDestination(for: SessionHistoryRoute.self) { _ in
                 ChatSessionHistoryView(onSelectSession: { route in

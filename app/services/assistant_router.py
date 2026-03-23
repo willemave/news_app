@@ -80,7 +80,10 @@ ASSISTANT_SYSTEM_PROMPT = (
     "call SearchContent first.\n"
     "- For broad current-events or recent factual questions, call search_web first.\n"
     "- For blog, newsletter, RSS, or podcast source-finding requests, call "
-    "find_feed_options first and let the user choose from the returned options.\n"
+    "find_feed_options first and present the returned options as recommendations "
+    "the user can review.\n"
+    "- When recommending feed options, stay in review mode. Do not offer to subscribe, "
+    "add, or mutate anything unless the user explicitly asks for that after seeing the options.\n"
     "- For source recommendations, prefer high-signal, widely recognized outlets unless "
     "the user explicitly asks for niche or emerging ones.\n"
     "- Mutations are allowed, but do not subscribe to a discovered feed in the same turn that "
@@ -291,9 +294,13 @@ def _build_turn_instructions(user_text: str) -> str | None:
     if _should_route_to_feed_finder(user_text):
         return (
             "For this turn, call find_feed_options before answering. "
-            "Summarize the best validated matches you found and tell the user they can tap the "
-            "feed options below to subscribe. Do not call subscribe_to_feed in this turn unless "
-            "the user supplied a specific URL."
+            "Summarize the best validated matches you found, keep the response in recommendation "
+            "mode, and mention that validated feed options are attached below for review. "
+            "Do not offer to subscribe, add, or take any mutation in this response. "
+            "Close by inviting the user to review or compare the options, not by proposing an "
+            "immediate action. "
+            "Do not call subscribe_to_feed in this turn unless the user supplied a specific URL "
+            "or explicitly asks to subscribe to one of the returned options."
         )
 
     if _should_route_to_knowledge(user_text):

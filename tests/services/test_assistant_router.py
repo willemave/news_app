@@ -31,6 +31,21 @@ def test_build_turn_instructions_prefers_feed_finder_for_blog_subscription() -> 
     assert instructions is not None
     assert "find_feed_options" in instructions
     assert "subscribe_to_feed" in instructions
+    assert "recommendation mode" in instructions
+
+
+def test_build_turn_instructions_keeps_feed_recommendations_non_mutating() -> None:
+    """Feed recommendation prompts should stay in recommendation mode."""
+
+    instructions = assistant_router._build_turn_instructions(
+        "Recommend a few feeds, newsletters, or podcasts I should add "
+        "based on what I've been reading."
+    )
+
+    assert instructions is not None
+    assert "find_feed_options" in instructions
+    assert "recommendation mode" in instructions
+    assert "attached below for review" in instructions
 
 
 def test_build_screen_aware_turn_instructions_prefers_content_search_for_digests() -> None:

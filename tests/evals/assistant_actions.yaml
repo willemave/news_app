@@ -68,3 +68,111 @@ cases:
       The assistant summarizes the user's recent daily news digests using the
       digest titles, summaries, or bullet points from the app context rather
       than switching to unrelated web results.
+  - id: knowledge_hub_todays_summary
+    query: "Give me a summary of the last day's content. What are the key themes and most important takeaways?"
+    screen_context:
+      screen_type: knowledge_hub
+      screen_title: Knowledge
+    seed_data:
+      daily_digests:
+        - local_date: 2026-03-16
+          title: Washington and AI policy moved quickly
+          summary: >
+            The day centered on AI regulation, semiconductor policy, and a new
+            round of campaign messaging ahead of key votes.
+          key_points:
+            - Congress debated a fresh AI transparency framework.
+            - Semiconductor export controls remained a major flashpoint.
+            - Campaigns sharpened messaging around the economy and immigration.
+          source_count: 3
+          source_content_ids: [101, 102, 103]
+        - local_date: 2026-03-15
+          title: Markets, media, and election strategy shaped the news
+          summary: >
+            Coverage focused on market volatility, coalition politics, and how
+            major media outlets framed the next election cycle.
+          key_points:
+            - Investors reacted to a mix of rate expectations and political uncertainty.
+            - Party strategists argued over turnout and coalition building.
+            - Media narratives diverged on the most important campaign issues.
+          source_count: 3
+          source_content_ids: [104, 105, 106]
+    expected_outcome: >
+      The assistant summarizes the user's recent daily digests using the
+      digest titles, summaries, or bullet points from the app context rather
+      than switching to unrelated web results.
+  - id: knowledge_hub_top_comments
+    query: "What are the most interesting and insightful comments from the content I've received recently? Highlight any surprising perspectives or debates."
+    screen_context:
+      screen_type: knowledge_hub
+      screen_title: Knowledge
+    seed_data:
+      daily_digests:
+        - local_date: 2026-03-16
+          title: AI policy, chips, and campaign framing collided
+          summary: >
+            The day's discussion focused on AI regulation, semiconductor
+            controls, and how campaigns framed economic anxiety.
+          key_points:
+            - Commentators split on whether export controls help or hurt long-term competitiveness.
+            - Several analysts argued open-source models are weakening the case for hardware-only restrictions.
+            - Campaign coverage diverged between media narratives and what local organizers said voters cared about.
+          source_count: 3
+          source_content_ids: [201, 202, 203]
+        - local_date: 2026-03-15
+          title: Markets, turnout, and media narratives drove debate
+          summary: >
+            Coverage emphasized election strategy, turnout assumptions, and
+            whether market volatility would change the political narrative.
+          key_points:
+            - Strategists disagreed on whether persuasion or turnout mattered more.
+            - Commentators pushed back on headline-driven media framing.
+            - Analysts argued investor anxiety was more about policy ambiguity than rates alone.
+          source_count: 3
+          source_content_ids: [204, 205, 206]
+    expected_outcome: >
+      The assistant highlights concrete disagreements or surprising
+      perspectives from the user's recent content context, including at least
+      two distinct debates, instead of giving only a generic summary.
+  - id: knowledge_hub_find_new_articles
+    query: "Find a few new articles or sources I should read next based on what I've been reading."
+    screen_context:
+      screen_type: knowledge_hub
+      screen_title: Knowledge
+    seed_data:
+      favorites:
+        - url: https://example.com/ai-policy-landscape
+          title: AI policy landscape in Washington
+          source: Example Policy Review
+        - url: https://example.com/chip-controls
+          title: Semiconductor export controls and TSMC
+          source: Example Chip Journal
+        - url: https://example.com/venture-financing
+          title: Venture slowdown and startup financing
+          source: Example Venture Brief
+    expected_outcome: >
+      The assistant recommends a few relevant articles or source publications
+      that fit the user's recent reading interests in AI policy,
+      semiconductors, or venture financing, and briefly explains the fit.
+  - id: knowledge_hub_find_new_feeds
+    query: "Recommend a few feeds, newsletters, or podcasts I should add based on what I've been reading."
+    expected_feed_options: true
+    screen_context:
+      screen_type: knowledge_hub
+      screen_title: Knowledge
+    seed_data:
+      favorites:
+        - url: https://example.com/ai-policy-landscape
+          title: AI policy landscape in Washington
+          source: Example Policy Review
+        - url: https://example.com/chip-controls
+          title: Semiconductor export controls and TSMC
+          source: Example Chip Journal
+        - url: https://example.com/venture-financing
+          title: Venture slowdown and startup financing
+          source: Example Venture Brief
+    expected_outcome: >
+      The assistant recommends a few relevant feeds, newsletters, or podcasts
+      that fit the user's recent reading interests and presents them as
+      recommendations for review rather than shifting into immediate
+      subscription language.

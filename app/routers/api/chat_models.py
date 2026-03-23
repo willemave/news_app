@@ -131,6 +131,10 @@ class ChatMessageDto(BaseModel):
     """Flattened chat message returned to clients."""
 
     id: int = Field(..., description="Unique message identifier")
+    source_message_id: int | None = Field(
+        default=None,
+        description="Backing async chat_messages row ID used for status polling",
+    )
     session_id: int = Field(..., description="Chat session ID")
     role: ChatMessageRole = Field(..., description="Message role")
     content: str = Field(..., description="Message content")

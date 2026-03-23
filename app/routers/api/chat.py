@@ -153,6 +153,7 @@ def _build_processing_user_message(
 ) -> ChatMessageDto:
     return ChatMessageDto(
         id=db_message.id,
+        source_message_id=db_message.id,
         session_id=session_id,
         role=ChatMessageRole.USER,
         content=content,
@@ -307,6 +308,7 @@ def _extract_messages_for_display(
                             messages.append(
                                 ChatMessageDto(
                                     id=display_id,  # Unique display ID
+                                    source_message_id=db_msg.id,
                                     session_id=session_id,
                                     role=ChatMessageRole.USER,
                                     timestamp=db_msg.created_at,
@@ -337,6 +339,7 @@ def _extract_messages_for_display(
                 messages.append(
                     ChatMessageDto(
                         id=display_id,
+                        source_message_id=db_msg.id,
                         session_id=session_id,
                         role=ChatMessageRole.TOOL,
                         timestamp=db_msg.created_at,
@@ -353,6 +356,7 @@ def _extract_messages_for_display(
                 messages.append(
                     ChatMessageDto(
                         id=display_id,  # Unique display ID
+                        source_message_id=db_msg.id,
                         session_id=session_id,
                         role=ChatMessageRole.ASSISTANT,
                         timestamp=db_msg.created_at,
@@ -1023,6 +1027,7 @@ async def get_message_status(
 
         assistant_message = ChatMessageDto(
             id=_build_async_assistant_display_id(message_id),
+            source_message_id=message_id,
             session_id=db_message.session_id,
             role=ChatMessageRole.ASSISTANT,
             content=assistant_content,

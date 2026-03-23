@@ -239,14 +239,13 @@ struct SelectableAttributedText: UIViewRepresentable {
 }
 
 struct ChatSessionView: View {
-    private static let thinkingIndicatorScrollId = -1
     @StateObject private var viewModel: ChatSessionViewModel
     let onShowHistory: (() -> Void)?
     @FocusState private var isInputFocused: Bool
     @State private var showingModelPicker = false
     @State private var navigateToNewSessionId: Int?
     @State private var shareContent: ShareContent?
-    @State private var scrolledMessageId: Int?
+    @State private var scrolledMessageId: String?
     @State private var storedScrollState: ChatScrollState?
     @State private var hasRestoredScroll = false
     @State private var isAtBottom = false
@@ -276,6 +275,21 @@ struct ChatSessionView: View {
         min(UIScreen.main.bounds.width * 0.6, 260)
     }
 
+    private var thinkingIndicatorScrollId: String {
+        "__thinking__|\(viewModel.sessionId)"
+    }
+
+    private func messageScrollId(for message: ChatMessage) -> String {
+        "\(viewModel.sessionId)|\(message.id)|\(message.timestamp)|\(message.displayType.rawValue)"
+    }
+
+    private func storedMessageId(from scrollId: String?) -> Int? {
+        guard let scrollId else { return nil }
+        let components = scrollId.components(separatedBy: "|")
+        guard components.count >= 2 else { return nil }
+        return Int(components[1])
+    }
+
     var body: some View {
         messageListView
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -283,7 +297,7 @@ struct ChatSessionView: View {
             }
             .scrollDismissesKeyboard(.interactively)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .task(id: viewModel.sessionId) {
             await viewModel.loadSession()
             await viewModel.checkAndRefreshVoiceDictation()
         }
@@ -435,10 +449,11 @@ struct ChatSessionView: View {
                         }
                         .padding()
                     } else if viewModel.allMessages.isEmpty {
-                        VStack(spacing: 16) {
+                        Group {
                             if viewModel.isSending {
                                 // Loading initial suggestions
                                 InitialSuggestionsLoadingView()
+                                    .frame(maxWidth: .infinity)
                             } else if let session = viewModel.session,
                                       let articleTitle = session.articleTitle {
                                 // Empty session with article - show article preview
@@ -449,22 +464,26 @@ struct ChatSessionView: View {
                                     url: session.articleUrl
                                 )
                             } else {
-                                Image(systemName: "bubble.left.and.bubble.right")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(.secondary.opacity(0.5))
-                                Text("Start the conversation")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                            }
-                            if let topic = viewModel.session?.topic {
-                                Text("Topic: \(topic)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.blue)
+                                VStack(spacing: 16) {
+                                    Image(systemName: "bubble.left.and.bubble.right")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(.secondary.opacity(0.5))
+                                    Text("Start the conversation")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                    if let topic = viewModel.session?.topic {
+                                        Text("Topic: \(topic)")
+                                            .font(.subheadline)
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .multilineTextAlignment(.center)
                             }
                         }
                         .padding(.top, 40)
                     } else {
-                        ForEach(viewModel.allMessages) { message in
+                        ForEach(viewModel.allMessages, id: \.uiIdentity) { message in
                             MessageBubble(
                                 message: message,
                                 articleTitle: viewModel.session?.articleTitle,
@@ -480,14 +499,14 @@ struct ChatSessionView: View {
                                     )
                                 }
                             )
-                            .id(message.id)
+                            .id(messageScrollId(for: message))
                         }
 
                         if viewModel.isSending {
                             ThinkingBubbleView(
                                 elapsedSeconds: viewModel.thinkingElapsedSeconds
                             )
-                            .id(Self.thinkingIndicatorScrollId)
+                            .id(thinkingIndicatorScrollId)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                         }
@@ -529,8 +548,8 @@ struct ChatSessionView: View {
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {
         let targetId = viewModel.isSending
-            ? Self.thinkingIndicatorScrollId
-            : viewModel.allMessages.last?.id
+            ? thinkingIndicatorScrollId
+            : viewModel.allMessages.last.map(messageScrollId(for:))
         guard let targetId else { return }
         if animated {
             withAnimation(.easeOut(duration: 0.2)) {
@@ -541,14 +560,15 @@ struct ChatSessionView: View {
         }
     }
 
-    private func updateIsAtBottom(anchorId: Int?) {
-        guard let lastId = viewModel.allMessages.last?.id else {
+    private func updateIsAtBottom(anchorId: String?) {
+        guard let lastMessage = viewModel.allMessages.last else {
             isAtBottom = false
             return
         }
+        let lastId = messageScrollId(for: lastMessage)
         isAtBottom =
             anchorId == lastId ||
-            (viewModel.isSending && anchorId == Self.thinkingIndicatorScrollId)
+            (viewModel.isSending && anchorId == thinkingIndicatorScrollId)
     }
 
     private func restoreScrollPositionIfNeeded(proxy: ScrollViewProxy) {
@@ -567,22 +587,22 @@ struct ChatSessionView: View {
         }
 
         if let anchorId = storedScrollState.anchorMessageId,
-           viewModel.allMessages.contains(where: { $0.id == anchorId }) {
-            proxy.scrollTo(anchorId, anchor: .bottom)
+           let anchorMessage = viewModel.allMessages.first(where: { $0.id == anchorId }) {
+            proxy.scrollTo(messageScrollId(for: anchorMessage), anchor: .bottom)
             return
         }
 
-        if let firstId = viewModel.allMessages.first?.id {
-            proxy.scrollTo(firstId, anchor: .top)
+        if let firstMessage = viewModel.allMessages.first {
+            proxy.scrollTo(messageScrollId(for: firstMessage), anchor: .top)
         }
     }
 
-    private func persistScrollPosition(anchorId: Int?) {
+    private func persistScrollPosition(anchorId: String?) {
         guard hasRestoredScroll else { return }
         guard !viewModel.allMessages.isEmpty else { return }
         ChatScrollStateStore.save(
             sessionId: viewModel.sessionId,
-            anchorMessageId: anchorId,
+            anchorMessageId: storedMessageId(from: anchorId),
             wasAtBottom: isAtBottom
         )
     }
@@ -864,6 +884,10 @@ struct MessageBubble: View {
         }
     }
 
+    private var assistantRenderIdentity: String {
+        "\(message.id)|\(message.timestamp)|\(message.displayType.rawValue)|\(message.content)"
+    }
+
     private var messageContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             Group {
@@ -879,6 +903,7 @@ struct MessageBubble: View {
                         baseFont: .preferredFont(forTextStyle: .callout),
                         onDigDeeper: onDigDeeper
                     )
+                    .id(assistantRenderIdentity)
                 }
             }
             if message.isAssistant && message.hasFeedOptions {

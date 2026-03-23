@@ -62,10 +62,6 @@ struct SelectableMarkdownView: UIViewRepresentable {
             linkColorSignature: linkAppearanceSignature
         )
 
-        guard context.coordinator.lastRenderSignature != renderSignature else {
-            return
-        }
-
         if context.coordinator.lastLinkAppearanceSignature != linkAppearanceSignature {
             context.coordinator.lastLinkAppearanceSignature = linkAppearanceSignature
             uiView.tintColor = resolvedLinkColor

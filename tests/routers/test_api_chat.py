@@ -329,6 +329,59 @@ def test_get_chat_session_detail_includes_assistant_feed_options(
     assert data["messages"][-1]["feed_options"][0]["feed_url"] == "https://lucumr.pocoo.org/feed.atom"
 
 
+def test_get_chat_session_detail_exposes_source_message_id_for_pending_rows(
+    client: TestClient,
+    db_session: Session,
+    test_user,
+) -> None:
+    """Pending session detail rows should expose their backing async message ID."""
+
+    session = ChatSession(
+        user_id=test_user.id,
+        title="Pending Session",
+        session_type="assistant_quick",
+        llm_model="openai:gpt-5.4",
+        llm_provider="openai",
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    payload = json.dumps(
+        [
+            {
+                "parts": [
+                    {
+                        "content": "Give me a summary of the last day.",
+                        "timestamp": "2026-03-23T20:41:07.295881Z",
+                        "part_kind": "user-prompt",
+                    }
+                ],
+                "timestamp": "2026-03-23T20:41:07.296029Z",
+                "instructions": None,
+                "kind": "request",
+                "run_id": "run-pending",
+                "metadata": None,
+            }
+        ]
+    )
+    db_message = ChatMessage(
+        session_id=session.id,
+        message_list=payload,
+        status="processing",
+    )
+    db_session.add(db_message)
+    db_session.commit()
+    db_session.refresh(db_message)
+
+    response = client.get(f"/api/content/chat/sessions/{session.id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["messages"][0]["status"] == "processing"
+    assert data["messages"][0]["source_message_id"] == db_message.id
+
+
 def test_get_chat_session_not_found(client: TestClient) -> None:
     """Test getting non-existent chat session."""
     response = client.get("/api/content/chat/sessions/99999")
