@@ -22,7 +22,12 @@ struct SettingsView: View {
     @State private var hasLoadedAccountState = false
     @State private var selectedDigestIntervalHours = NewsDigestIntervalOption.every6Hours.rawValue
     @State private var isSavingDigestInterval = false
+    @State private var isSavingXDigestFilterPrompt = false
+    @State private var xDigestFilterPromptDraft = ""
+    @State private var serverXDigestFilterPrompt = ""
+    @State private var hasUnsavedXDigestFilterPromptEdits = false
     @FocusState private var isTwitterUsernameFieldFocused: Bool
+    @FocusState private var isXDigestFilterPromptFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -30,7 +35,7 @@ struct SettingsView: View {
                 accountSection
                 SectionDivider()
 
-                xIntegrationSection
+                twitterConfigurationSection
                 SectionDivider()
 
                 displayPreferencesSection
@@ -111,11 +116,11 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - X Integration Section
+    // MARK: - Twitter Configuration Section
 
-    private var xIntegrationSection: some View {
+    private var twitterConfigurationSection: some View {
         VStack(spacing: 0) {
-            SectionHeader(title: "X Integration")
+            SectionHeader(title: "Twitter Configuration")
 
             if case .authenticated = authViewModel.authState {
                 usernameInputRow
@@ -140,6 +145,10 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isSavingTwitterUsername || isUpdatingXConnection)
+
+                RowDivider()
+
+                xDigestFilterPromptRow
 
                 RowDivider()
 
@@ -170,7 +179,7 @@ struct SettingsView: View {
                             icon: "link.badge.plus",
                             iconColor: .green,
                             title: "Connect X",
-                            subtitle: "Authorize bookmark sync from your X account"
+                            subtitle: "Authorize bookmarks, follows, and lists from your X account"
                         ) {
                             if isUpdatingXConnection {
                                 ProgressView()
@@ -267,6 +276,65 @@ struct SettingsView: View {
                 .padding(.vertical, Spacing.rowVertical)
             }
         }
+    }
+
+    private var xDigestFilterPromptRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.orange)
+                    .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("X Digest Filter")
+                        .font(.listTitle)
+                        .foregroundStyle(Color.textPrimary)
+                    Text("Edit what posts from your follows and lists should make the digest.")
+                        .font(.listCaption)
+                        .foregroundStyle(Color.textTertiary)
+                }
+
+                Spacer(minLength: 8)
+            }
+
+            TextEditor(text: $xDigestFilterPromptDraft)
+                .focused($isXDigestFilterPromptFocused)
+                .frame(minHeight: 120)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .background(Color.surfaceSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .onChange(of: xDigestFilterPromptDraft) { _, newValue in
+                    hasUnsavedXDigestFilterPromptEdits =
+                        normalizedDigestFilterPromptForComparison(newValue)
+                        != normalizedDigestFilterPromptForComparison(serverXDigestFilterPrompt)
+                }
+
+            HStack {
+                Text("Clear the field and save to restore the default filter.")
+                    .font(.caption)
+                    .foregroundStyle(Color.textTertiary)
+                Spacer()
+                Button {
+                    Task { await saveXDigestFilterPrompt() }
+                } label: {
+                    if isSavingXDigestFilterPrompt {
+                        ProgressView()
+                    } else {
+                        Text("Save Filter")
+                            .font(.callout.weight(.semibold))
+                    }
+                }
+                .disabled(
+                    isSavingXDigestFilterPrompt
+                    || isSavingDigestInterval
+                    || !hasUnsavedXDigestFilterPromptEdits
+                )
+            }
+        }
+        .padding(.horizontal, Spacing.rowHorizontal)
+        .padding(.vertical, Spacing.rowVertical)
     }
 
     private var textSizeRow: some View {
@@ -503,6 +571,15 @@ struct SettingsView: View {
         return withoutPrefix.lowercased()
     }
 
+    private func normalizedXDigestFilterPromptDraft() -> String? {
+        let trimmed = xDigestFilterPromptDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func normalizedDigestFilterPromptForComparison(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     @MainActor
     private func loadAccountState(force: Bool) async {
         guard let user = authenticatedUser else {
@@ -510,21 +587,32 @@ struct SettingsView: View {
             twitterUsernameDraft = ""
             serverTwitterUsername = ""
             hasUnsavedTwitterUsernameEdits = false
+            xDigestFilterPromptDraft = ""
+            serverXDigestFilterPrompt = ""
+            hasUnsavedXDigestFilterPromptEdits = false
             hasLoadedAccountState = false
             return
         }
 
         let userUsername = user.twitterUsername ?? ""
+        let userDigestPrompt = user.xDigestFilterPrompt
         if !hasLoadedAccountState {
             serverTwitterUsername = userUsername
             twitterUsernameDraft = userUsername
             hasUnsavedTwitterUsernameEdits = false
+            serverXDigestFilterPrompt = userDigestPrompt
+            xDigestFilterPromptDraft = userDigestPrompt
+            hasUnsavedXDigestFilterPromptEdits = false
             selectedDigestIntervalHours = user.newsDigestIntervalHours
             hasLoadedAccountState = true
         } else if force {
             serverTwitterUsername = userUsername
             if !isTwitterUsernameFieldFocused && !hasUnsavedTwitterUsernameEdits {
                 twitterUsernameDraft = userUsername
+            }
+            serverXDigestFilterPrompt = userDigestPrompt
+            if !isXDigestFilterPromptFocused && !hasUnsavedXDigestFilterPromptEdits {
+                xDigestFilterPromptDraft = userDigestPrompt
             }
             if !isSavingDigestInterval {
                 selectedDigestIntervalHours = user.newsDigestIntervalHours
@@ -551,6 +639,9 @@ struct SettingsView: View {
         hasUnsavedTwitterUsernameEdits =
             normalizedTwitterUsernameForComparison(twitterUsernameDraft)
             != normalizedTwitterUsernameForComparison(serverTwitterUsername)
+        hasUnsavedXDigestFilterPromptEdits =
+            normalizedDigestFilterPromptForComparison(xDigestFilterPromptDraft)
+            != normalizedDigestFilterPromptForComparison(serverXDigestFilterPrompt)
     }
 
     // MARK: - Actions
@@ -597,6 +688,28 @@ struct SettingsView: View {
                 selectedDigestIntervalHours = user.newsDigestIntervalHours
             }
             alertMessage = "Failed to save digest frequency: \(error.localizedDescription)"
+            showingAlert = true
+        }
+    }
+
+    @MainActor
+    private func saveXDigestFilterPrompt() async {
+        guard !isSavingXDigestFilterPrompt, authenticatedUser != nil else { return }
+        isSavingXDigestFilterPrompt = true
+        defer { isSavingXDigestFilterPrompt = false }
+
+        do {
+            let user = try await AuthenticationService.shared.updateCurrentUserProfile(
+                xDigestFilterPrompt: normalizedXDigestFilterPromptDraft()
+            )
+            authViewModel.updateUser(user)
+            serverXDigestFilterPrompt = user.xDigestFilterPrompt
+            xDigestFilterPromptDraft = user.xDigestFilterPrompt
+            hasUnsavedXDigestFilterPromptEdits = false
+            alertMessage = "X digest filter saved."
+            showingAlert = true
+        } catch {
+            alertMessage = "Failed to save X digest filter: \(error.localizedDescription)"
             showingAlert = true
         }
     }

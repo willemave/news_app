@@ -309,6 +309,9 @@ struct OnboardingFlowView: View {
                     twitterUsernameCard
                         .padding(.bottom, 12)
 
+                    xDigestFilterPromptCard
+                        .padding(.bottom, 8)
+
                     if !viewModel.substackSuggestions.isEmpty {
                         suggestionSection(
                             title: "NEWSLETTERS",
@@ -422,6 +425,27 @@ struct OnboardingFlowView: View {
                 .disableAutocorrection(true)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
+                .background(Color.white.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private var xDigestFilterPromptCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("X DIGEST FILTER")
+                .font(.system(size: 9, weight: .medium))
+                .tracking(1.5)
+                .foregroundColor(.watercolorSlate.opacity(0.5))
+
+            Text("Tune which posts from your follows and lists make it into the digest.")
+                .font(.caption)
+                .foregroundColor(.watercolorSlate.opacity(0.65))
+
+            TextEditor(text: $viewModel.xDigestFilterPrompt)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 108)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
                 .background(Color.white.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
         }

@@ -46,6 +46,7 @@ final class OnboardingViewModel: ObservableObject {
     @Published var topicSummary: String?
     @Published var inferredTopics: [String] = []
     @Published var twitterUsername: String = ""
+    @Published var xDigestFilterPrompt: String = ""
 
     private let service = OnboardingService.shared
     private let dictationService = VoiceDictationService.shared
@@ -60,6 +61,7 @@ final class OnboardingViewModel: ObservableObject {
     init(user: User) {
         self.user = user
         self.twitterUsername = user.twitterUsername ?? ""
+        self.xDigestFilterPrompt = user.xDigestFilterPrompt
     }
 
     deinit {
@@ -181,7 +183,8 @@ final class OnboardingViewModel: ObservableObject {
                 selectedSubreddits: selectedSubreddits,
                 profileSummary: isPersonalized ? topicSummary : nil,
                 inferredTopics: isPersonalized ? inferredTopics : nil,
-                twitterUsername: normalizedTwitterUsername()
+                twitterUsername: normalizedTwitterUsername(),
+                xDigestFilterPrompt: normalizedXDigestFilterPrompt()
             )
             let response = try await service.complete(request: request)
             completionResponse = response
@@ -296,6 +299,11 @@ final class OnboardingViewModel: ObservableObject {
         let trimmed = twitterUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         return trimmed.hasPrefix("@") ? String(trimmed.dropFirst()) : trimmed
+    }
+
+    private func normalizedXDigestFilterPrompt() -> String? {
+        let trimmed = xDigestFilterPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func handleAudioError(_ error: Error) {
