@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.models.pagination import PaginationMetadata
-from app.models.schema import DailyNewsDigest
+from app.models.schema import Content, DailyNewsDigest
 from app.models.user import User
 from app.routers.api.chat_models import (
     ChatMessageDto,
@@ -91,11 +91,74 @@ def _build_digest_response(digest: DailyNewsDigest) -> DailyNewsDigestResponse:
         key_points=[point for point in key_points if isinstance(point, str)],
         source_count=int(digest.source_count or 0),
         source_content_ids=[int(cid) for cid in source_ids if isinstance(cid, int)],
+        source_labels=[],
         is_read=digest.read_at is not None,
         read_at=_isoformat_utc(digest.read_at),
         generated_at=_isoformat_utc(digest.generated_at) or "",
         coverage_end_at=_isoformat_utc(digest.coverage_end_at),
     )
+
+
+def _resolve_source_label(content: Content) -> str | None:
+    metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
+    if content.platform == "twitter":
+        username = metadata.get("tweet_author_username")
+        if isinstance(username, str) and username.strip():
+            return f"@{username.strip().lstrip('@')}"
+        source_label = metadata.get("source_label")
+        if isinstance(source_label, str) and source_label.strip():
+            return source_label.strip()
+        return "X"
+    if content.platform == "hackernews":
+        return "Hacker News"
+    if content.platform == "techmeme":
+        return "Techmeme"
+    if content.platform == "reddit":
+        return "Reddit"
+
+    source_label = metadata.get("source_label")
+    if isinstance(source_label, str) and source_label.strip():
+        return source_label.strip()
+    if isinstance(content.source, str) and content.source.strip():
+        return content.source.strip()
+    if isinstance(content.platform, str) and content.platform.strip():
+        return content.platform.strip().replace("_", " ").title()
+    return None
+
+
+def _attach_source_labels(
+    db: Session,
+    digests: list[DailyNewsDigestResponse],
+) -> list[DailyNewsDigestResponse]:
+    source_ids = {
+        content_id
+        for digest in digests
+        for content_id in digest.source_content_ids
+        if isinstance(content_id, int)
+    }
+    if not source_ids:
+        return digests
+
+    contents = db.query(Content).filter(Content.id.in_(source_ids)).all()
+    labels_by_content_id = {
+        content.id: _resolve_source_label(content)
+        for content in contents
+        if content.id is not None
+    }
+    for digest in digests:
+        labels: list[str] = []
+        seen: set[str] = set()
+        for content_id in digest.source_content_ids:
+            label = labels_by_content_id.get(content_id)
+            if not isinstance(label, str):
+                continue
+            cleaned = label.strip()
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            labels.append(cleaned)
+        digest.source_labels = labels
+    return digests
 
 
 def _get_user_digest_or_404(
@@ -191,8 +254,10 @@ def list_daily_news_digests(
             read_filter=read_filter,
         )
 
+    digest_responses = _attach_source_labels(db, [_build_digest_response(row) for row in rows])
+
     return DailyNewsDigestListResponse(
-        digests=[_build_digest_response(row) for row in rows],
+        digests=digest_responses,
         meta=PaginationMetadata(
             next_cursor=next_cursor,
             has_more=has_more,

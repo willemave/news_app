@@ -58,7 +58,11 @@ sys.path.insert(0, PROJECT_ROOT)
 from sqlalchemy.orm import Session
 
 from app.constants import (
+    CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY,
+    CONTENT_STATUS_DIGEST_SOURCE,
+    CONTENT_STATUS_INBOX,
     SUMMARY_KIND_LONG_BULLETS,
+    SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
     SUMMARY_KIND_SHORT_NEWS_DIGEST,
@@ -69,8 +73,13 @@ from app.core.db import get_db, init_db
 from app.models.metadata import (
     ArticleMetadata,
     BulletedSummary,
+    ContentClassification,
     ContentStatus,
     ContentType,
+    EditorialArchetypeReaction,
+    EditorialKeyPoint,
+    EditorialNarrativeSummary,
+    EditorialQuote,
     InterleavedInsight,
     InterleavedSummary,
     InterleavedSummaryV2,
@@ -82,6 +91,7 @@ from app.models.metadata import (
 )
 from app.models.schema import Content, ContentReadStatus, ContentStatusEntry
 from app.models.user import User
+from app.services.twitter_share import canonical_tweet_url
 
 # Sample data pools
 ARTICLE_SOURCES = [
@@ -148,6 +158,52 @@ NEWS_HEADLINES = [
     "YC-Backed Startup Raises $500M for Open Source LLM Training",
     "Signal Protocol Adopted as Industry Standard for E2E Encryption",
     "NVIDIA H200 GPU Shortage Drives Cloud Compute Prices Up 40%",
+]
+
+X_AUTHORS = [
+    ("swyx", "Shawn Wang"),
+    ("karpathy", "Andrej Karpathy"),
+    ("simonw", "Simon Willison"),
+    ("shreyas", "Shreyas Doshi"),
+    ("gregisenberg", "Greg Isenberg"),
+]
+
+X_LISTS = [
+    "AI Researchers",
+    "Product Builders",
+    "Infra Operators",
+]
+
+X_POST_TEXTS = [
+    (
+        "Open-sourced our eval harness for ranking support tickets. "
+        "The useful bit was not the model choice, it was enforcing "
+        "failure-mode labels before scoring."
+    ),
+    (
+        "We cut onboarding drop-off by 18% after replacing a 7-step setup "
+        "with a single working default and progressive configuration. "
+        "Shipping the opinionated path mattered more than extra options."
+    ),
+    (
+        "Latency on our retrieval path dropped from 1.4s to 380ms after "
+        "moving embedding refresh out of the request path. Biggest gain "
+        "came from deleting work, not optimizing queries."
+    ),
+    (
+        "Interesting trend: more teams are using LLMs to structure messy "
+        "internal text than to generate polished external copy. Higher "
+        "leverage, lower trust cost."
+    ),
+    (
+        "If your AI feature needs a settings page before it proves value, "
+        "you probably shipped the configuration surface before the product."
+    ),
+    (
+        "New benchmark: our speech pipeline now holds p95 under 700ms "
+        "on-device for short utterances. Still weak on noisy rooms, but "
+        "the baseline is finally usable."
+    ),
 ]
 
 DISCUSSION_COMMENTS = [
@@ -223,7 +279,13 @@ DISCUSSION_COMMENTS = [
     },
 ]
 
-SUMMARY_FORMATS = ["bulleted", "interleaved_v2", "structured", "interleaved_v1"]
+SUMMARY_FORMATS = [
+    "editorial_narrative",
+    "bulleted",
+    "interleaved_v2",
+    "structured",
+    "interleaved_v1",
+]
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
 
@@ -502,13 +564,120 @@ def generate_interleaved_topics(count: int = 2) -> list[InterleavedTopic]:
     return topics
 
 
+def generate_editorial_quotes(count: int = 3) -> list[EditorialQuote]:
+    """Generate editorial quotes with attribution."""
+    quotes = generate_quotes(count)
+    return [
+        EditorialQuote(
+            text=item["text"],
+            context=item.get("context"),
+            attribution=item.get("attribution"),
+        )
+        for item in quotes
+    ]
+
+
+def generate_editorial_key_points(count: int = 5) -> list[EditorialKeyPoint]:
+    """Generate editorial key points for long-form summaries."""
+    candidates = [
+        "Reliability work is becoming the gating factor for production rollouts.",
+        "Teams that formalize feedback loops report faster iteration and cleaner outcomes.",
+        "Security and governance requirements are shaping adoption earlier in the cycle.",
+        "Cost visibility is pushing buyers toward fewer, more operationally mature vendors.",
+        "Integration quality matters more than raw model novelty in enterprise settings.",
+        "Workflow discipline is emerging as a stronger moat than access to the latest model.",
+        "Operational ownership is moving from experimentation teams into core platform groups.",
+        "Evaluation standards are turning ad hoc pilots into repeatable delivery processes.",
+    ]
+    selected = random.sample(candidates, count)
+    return [EditorialKeyPoint(point=point) for point in selected]
+
+
+def generate_editorial_archetype_reactions() -> list[EditorialArchetypeReaction]:
+    """Generate a complete editorial archetype set."""
+    return [
+        EditorialArchetypeReaction(
+            archetype="Paul Graham",
+            paragraphs=[
+                (
+                    "The interesting opportunity is not generic infrastructure but the "
+                    "specific workflow pain that teams feel before incumbents productize it."
+                ),
+                (
+                    "Whoever makes the operational burden feel simpler and more native to "
+                    "daily work will have room to build a durable product wedge."
+                ),
+            ],
+        ),
+        EditorialArchetypeReaction(
+            archetype="Andy Grove",
+            paragraphs=[
+                (
+                    "This looks like a strategic inflection point where reliability and "
+                    "governance stop being support functions and start shaping the product."
+                ),
+                (
+                    "The chokepoints are clear: approval latency, tooling sprawl, and weak "
+                    "observability. Teams that manage those well will move first."
+                ),
+            ],
+        ),
+        EditorialArchetypeReaction(
+            archetype="Charlie Munger",
+            paragraphs=[
+                (
+                    "The deeper story is incentives. Budget owners and operators now care more "
+                    "about predictability than demo quality, and behavior follows incentives."
+                ),
+                (
+                    "That shift changes vendor selection, process discipline, and who actually "
+                    "captures the long-term economics of the market."
+                ),
+            ],
+        ),
+    ]
+
+
+def generate_editorial_narrative(title: str, topic: str) -> EditorialNarrativeSummary:
+    """Generate an editorial narrative summary for long-form content."""
+    paragraphs = [
+        (
+            f"{title} argues that {topic.lower()} is no longer a side topic for curious teams but "
+            "an operating constraint for anyone shipping production systems. The core claim is "
+            "that reliability, observability, and governance now shape whether ambitious projects "
+            "survive beyond the pilot phase."
+        ),
+        (
+            "Rather than celebrating raw capability in isolation, the piece emphasizes how teams "
+            "turn progress into dependable workflow gains. It ties concrete implementation choices "
+            "to organizational behavior, showing that tighter feedback loops, clearer ownership, "
+            "and stronger deployment discipline are what make the technology economically useful."
+        ),
+        (
+            "The most persuasive evidence comes from practitioners describing smoother rollouts "
+            "once monitoring, security review, and cost visibility are designed in upfront. That "
+            "shifts the narrative from breakthrough demos to operating maturity, and suggests the "
+            "next winners will be the teams that can absorb complexity without passing it to users."
+        ),
+    ]
+    return EditorialNarrativeSummary(
+        title=title,
+        editorial_narrative="\n\n".join(paragraphs),
+        quotes=generate_editorial_quotes(random.randint(2, 3)),
+        archetype_reactions=generate_editorial_archetype_reactions(),
+        key_points=generate_editorial_key_points(random.randint(4, 6)),
+        classification="to_read" if random.random() > 0.15 else "skip",
+        summarization_date=random_datetime(7),
+    )
+
+
 def resolve_summary_format(summary_format: str) -> str:
     """Normalize summary format selection."""
     if summary_format != "mixed":
         return summary_format
     return random.choices(
         SUMMARY_FORMATS,
-        weights=[0.45, 0.25, 0.2, 0.1],
+        weights=[0.35, 0.3, 0.2, 0.1, 0.05],
         k=1,
     )[0]
 
@@ -533,7 +702,11 @@ class ArticleGenerator:
         summary_kind = SUMMARY_KIND_LONG_BULLETS
         summary_version = SUMMARY_VERSION_V1
 
-        if selected_format == "interleaved_v1":
+        if selected_format == "editorial_narrative":
+            summary = generate_editorial_narrative(title=title, topic=topics[0])
+            summary_kind = SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
+            summary_version = SUMMARY_VERSION_V1
+        elif selected_format == "interleaved_v1":
             summary = InterleavedSummary(
                 summary_type="interleaved",
                 title=title,
@@ -650,7 +823,11 @@ class PodcastGenerator:
         summary_kind = SUMMARY_KIND_LONG_BULLETS
         summary_version = SUMMARY_VERSION_V1
 
-        if selected_format == "interleaved_v1":
+        if selected_format == "editorial_narrative":
+            summary = generate_editorial_narrative(title=title, topic=topics[0])
+            summary_kind = SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
+            summary_version = SUMMARY_VERSION_V1
+        elif selected_format == "interleaved_v1":
             summary = InterleavedSummary(
                 summary_type="interleaved",
                 title=title,
@@ -836,6 +1013,103 @@ class NewsGenerator:
         }
 
 
+class XDigestTweetGenerator:
+    """Generate digest-only X post test data for a specific user."""
+
+    @staticmethod
+    def generate(
+        *,
+        user_id: int,
+        status: str = ContentStatus.COMPLETED.value,
+        source_type: str = "x_timeline",
+    ) -> dict[str, Any]:
+        """Generate a completed X digest item with production-shaped metadata."""
+        tweet_id = str(random.randint(10**17, (10**18) - 1))
+        tweet_url = canonical_tweet_url(tweet_id)
+        author_username, author_name = random.choice(X_AUTHORS)
+        tweet_text = random.choice(X_POST_TEXTS)
+        source_label = "X Following" if source_type == "x_timeline" else random.choice(X_LISTS)
+        created_at = random_datetime(3)
+        processed_at = min(
+            created_at + timedelta(minutes=random.randint(2, 45)),
+            utc_now_naive(),
+        )
+        metadata = {
+            "digest_visibility": CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY,
+            "platform": "twitter",
+            "source_type": source_type,
+            "source_label": source_label,
+            "source": source_label,
+            "discussion_url": tweet_url,
+            "submitted_via": "scripts.generate_test_data",
+            "submitted_by_user_id": user_id,
+            "filter_score": round(random.uniform(0.74, 0.97), 2),
+            "filter_reason": (
+                "Includes a concrete product, engineering, or market update with enough"
+                " substance to improve the daily digest."
+            ),
+            "filter_threshold": 0.7,
+            "tweet_id": tweet_id,
+            "tweet_url": tweet_url,
+            "tweet_author": author_name,
+            "tweet_author_username": author_username,
+            "tweet_created_at": created_at,
+            "tweet_like_count": random.randint(12, 1800),
+            "tweet_retweet_count": random.randint(2, 240),
+            "tweet_reply_count": random.randint(1, 80),
+            "tweet_text": tweet_text,
+            "tweet_external_urls": [],
+            "article": {
+                "url": tweet_url,
+                "title": tweet_text[:280],
+                "source_domain": "x.com",
+            },
+            "aggregator": {
+                "name": "X",
+                "title": tweet_text,
+                "url": tweet_url,
+                "external_id": tweet_id,
+                "author": author_name,
+                "metadata": {
+                    "likes": random.randint(12, 1800),
+                    "retweets": random.randint(2, 240),
+                    "replies": random.randint(1, 80),
+                },
+            },
+            "summary_kind": SUMMARY_KIND_SHORT_NEWS_DIGEST,
+            "summary_version": SUMMARY_VERSION_V1,
+            "summary": {
+                "title": tweet_text[:120],
+                "article_url": tweet_url,
+                "key_points": [
+                    "Concrete update with immediate implications for builders or operators.",
+                    "Specific metric or implementation detail gives the post signal.",
+                    "Worth including in a compact daily digest for tracking industry movement.",
+                ],
+                "summary": tweet_text[:280],
+                "classification": ContentClassification.TO_READ.value,
+                "summarization_date": processed_at,
+            },
+        }
+        return {
+            "content_type": ContentType.NEWS.value,
+            "url": f"{tweet_url}#newsly-digest-user-{user_id}",
+            "source_url": tweet_url,
+            "title": tweet_text[:280],
+            "source": source_label,
+            "platform": "twitter",
+            "status": status,
+            "classification": ContentClassification.TO_READ.value,
+            "content_metadata": metadata,
+            "created_at": created_at,
+            "publication_date": created_at,
+            "processed_at": processed_at if status == ContentStatus.COMPLETED.value else None,
+            "is_aggregate": False,
+            "target_user_id": user_id,
+            "target_status": CONTENT_STATUS_DIGEST_SOURCE,
+        }
+
+
 def generate_test_data(
     num_articles: int = 10,
     num_podcasts: int = 5,
@@ -844,6 +1118,8 @@ def generate_test_data(
     article_summary_format: str = "mixed",
     podcast_summary_format: str = "mixed",
     news_days_back: int = 5,
+    target_user_ids: list[int] | None = None,
+    num_x_posts: int = 0,
 ) -> list[dict[str, Any]]:
     """
     Generate a mix of test data across all content types.
@@ -854,6 +1130,8 @@ def generate_test_data(
         num_news: Number of news items to generate
         include_pending: Include some items in pending/processing states
         news_days_back: Spread generated news across this many recent UTC days
+        target_user_ids: Optional target users for digest-only X items
+        num_x_posts: Number of digest-only X items to generate
 
     Returns:
         List of content dictionaries ready for database insertion
@@ -890,6 +1168,16 @@ def generate_test_data(
                 day_offset=i % max(news_days_back, 1),
             )
         )
+
+    if num_x_posts > 0 and target_user_ids:
+        x_target_user_id = target_user_ids[0]
+        for i in range(num_x_posts):
+            data.append(
+                XDigestTweetGenerator.generate(
+                    user_id=x_target_user_id,
+                    source_type="x_timeline" if i % 2 == 0 else "x_list",
+                )
+            )
 
     return data
 
@@ -946,7 +1234,14 @@ def insert_test_data(
         user_ids = _fetch_user_ids(session)
 
     for item in data:
-        content = Content(**item)
+        target_status = item.get("target_status")
+        target_user_id = item.get("target_user_id")
+        content_payload = {
+            key: value
+            for key, value in item.items()
+            if key not in {"target_status", "target_user_id"}
+        }
+        content = Content(**content_payload)
         session.add(content)
         session.flush()  # Get the ID
         inserted_ids.append(content.id)
@@ -961,6 +1256,16 @@ def insert_test_data(
             ContentReadStatus.content_id == content.id
         ).delete(synchronize_session=False)
 
+        if target_status and target_user_id is not None:
+            session.add(
+                ContentStatusEntry(
+                    user_id=target_user_id,
+                    content_id=content.id,
+                    status=target_status,
+                )
+            )
+            continue
+
         # Add longform content to users' inboxes so it is visible in list endpoints.
         # News items are visible through the feed query without a content_status row.
         if item["content_type"] in ("article", "podcast") and user_ids:
@@ -969,7 +1274,7 @@ def insert_test_data(
                     ContentStatusEntry(
                         user_id=user_id,
                         content_id=content.id,
-                        status="inbox",
+                        status=CONTENT_STATUS_INBOX,
                     )
                 )
 
@@ -1036,6 +1341,12 @@ def main():
     parser.add_argument("--podcasts", type=int, default=5, help="Number of podcasts to generate")
     parser.add_argument("--news", type=int, default=30, help="Number of news items to generate")
     parser.add_argument(
+        "--x-posts",
+        type=int,
+        default=0,
+        help="Number of digest-only X posts to generate for the first target user",
+    )
+    parser.add_argument(
         "--news-days-back",
         type=int,
         default=5,
@@ -1049,13 +1360,27 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Generate but don't insert data")
     parser.add_argument(
         "--article-summary-format",
-        choices=["mixed", "bulleted", "interleaved_v2", "interleaved_v1", "structured"],
+        choices=[
+            "mixed",
+            "editorial_narrative",
+            "bulleted",
+            "interleaved_v2",
+            "interleaved_v1",
+            "structured",
+        ],
         default="mixed",
         help="Summary format for articles (default: mixed)",
     )
     parser.add_argument(
         "--podcast-summary-format",
-        choices=["mixed", "bulleted", "interleaved_v2", "interleaved_v1", "structured"],
+        choices=[
+            "mixed",
+            "editorial_narrative",
+            "bulleted",
+            "interleaved_v2",
+            "interleaved_v1",
+            "structured",
+        ],
         default="mixed",
         help="Summary format for podcasts (default: mixed)",
     )
@@ -1074,35 +1399,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Generate data
     print("Generating test data:")
     print(f"  - {args.articles} articles")
     print(f"  - {args.podcasts} podcasts")
     print(f"  - {args.news} news items")
+    print(f"  - {args.x_posts} digest-only X post(s)")
     print(f"  - News spread across {args.news_days_back} day(s)")
 
-    data = generate_test_data(
-        num_articles=args.articles,
-        num_podcasts=args.podcasts,
-        num_news=args.news,
-        include_pending=not args.no_pending,
-        article_summary_format=args.article_summary_format,
-        podcast_summary_format=args.podcast_summary_format,
-        news_days_back=args.news_days_back,
-    )
-
-    if args.dry_run:
-        print(f"\nDry run - generated {len(data)} items (not inserted)")
-        print("\nSample article:")
-        article_sample = next((d for d in data if d["content_type"] == "article"), None)
-        if article_sample:
-            print(f"  Title: {article_sample['title']}")
-            print(f"  Source: {article_sample['source']}")
-            print(f"  Status: {article_sample['status']}")
-        return
-
-    # Insert into database
-    print("\nInserting data into database...")
     init_db()
     with get_db() as session:
         try:
@@ -1117,6 +1420,42 @@ def main():
             print("  - Inbox assignment user IDs: all users")
         else:
             print(f"  - Inbox assignment user IDs: {', '.join(map(str, user_ids))}")
+        if args.x_posts and not user_ids:
+            parser.error(
+                "--x-posts requires --user-ids or --logged-in-user "
+                "so the digest items can be user-scoped."
+            )
+
+        data = generate_test_data(
+            num_articles=args.articles,
+            num_podcasts=args.podcasts,
+            num_news=args.news,
+            include_pending=not args.no_pending,
+            article_summary_format=args.article_summary_format,
+            podcast_summary_format=args.podcast_summary_format,
+            news_days_back=args.news_days_back,
+            target_user_ids=user_ids,
+            num_x_posts=args.x_posts,
+        )
+
+        if args.dry_run:
+            print(f"\nDry run - generated {len(data)} items (not inserted)")
+            article_sample = next((d for d in data if d["content_type"] == "article"), None)
+            x_sample = next((d for d in data if d["platform"] == "twitter"), None)
+            if article_sample:
+                print("\nSample article:")
+                print(f"  Title: {article_sample['title']}")
+                print(f"  Source: {article_sample['source']}")
+                print(f"  Status: {article_sample['status']}")
+            if x_sample:
+                print("\nSample X digest item:")
+                print(f"  Title: {x_sample['title']}")
+                print(f"  URL: {x_sample['source_url']}")
+                print(f"  Target user: {x_sample['target_user_id']}")
+            return
+
+        # Insert into database
+        print("\nInserting data into database...")
         inserted_ids = insert_test_data(session, data, user_ids=user_ids)
 
     print(f"\nSuccessfully inserted {len(inserted_ids)} items")

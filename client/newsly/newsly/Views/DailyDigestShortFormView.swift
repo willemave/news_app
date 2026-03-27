@@ -250,6 +250,13 @@ private struct DailyDigestCard: View {
                 }
             }
 
+            if !digest.cleanedSourceLabels.isEmpty {
+                Text("From " + digest.cleanedSourceLabels.joined(separator: " · "))
+                    .font(.terracottaBodySmall)
+                    .foregroundStyle(Color.onSurfaceSecondary)
+                    .lineLimit(2)
+            }
+
             // Actions row
             HStack(spacing: 0) {
                 if digest.sourceCount > 0 {

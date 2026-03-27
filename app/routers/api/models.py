@@ -166,6 +166,10 @@ class DailyNewsDigestResponse(BaseModel):
         default_factory=list,
         description="Source news content IDs used for synthesis",
     )
+    source_labels: list[str] = Field(
+        default_factory=list,
+        description="Human-readable source labels for the items included in this digest",
+    )
     is_read: bool = Field(False, description="Whether this digest card is marked read")
     read_at: str | None = Field(None, description="ISO timestamp when digest was marked read")
     generated_at: str = Field(..., description="ISO timestamp when digest was generated")

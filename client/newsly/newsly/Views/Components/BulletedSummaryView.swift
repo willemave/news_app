@@ -2,7 +2,7 @@
 //  BulletedSummaryView.swift
 //  newsly
 //
-//  Bullet-first summary with expandable details and quotes.
+//  Bullet-first summary with always-visible details and quotes.
 //
 
 import SwiftUI
@@ -17,66 +17,49 @@ struct BulletedSummaryView: View {
     let summary: BulletedSummary
     var contentId: Int?
 
-    @State private var expandedIndices: Set<Int> = []
-
     var body: some View {
         VStack(alignment: .leading, spacing: BulletedSummaryDesign.sectionSpacing) {
             VStack(alignment: .leading, spacing: BulletedSummaryDesign.itemSpacing) {
-                ForEach(Array(summary.points.enumerated()), id: \.offset) { index, point in
-                    bulletDisclosureRow(point: point, index: index)
+                ForEach(summary.points) { point in
+                    bulletPointRow(point: point)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func bulletDisclosureRow(point: BulletSummaryPoint, index: Int) -> some View {
+    private func bulletPointRow(point: BulletSummaryPoint) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if expandedIndices.contains(index) {
-                        expandedIndices.remove(index)
-                    } else {
-                        expandedIndices.insert(index)
-                    }
-                }
-            } label: {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.secondary.opacity(0.7))
-                        .rotationEffect(.degrees(expandedIndices.contains(index) ? 90 : 0))
-                        .padding(.top, 4)
+            HStack(alignment: .top, spacing: 10) {
+                Circle()
+                    .fill(Color.primary.opacity(0.5))
+                    .frame(width: 5, height: 5)
+                    .padding(.top, 8)
 
-                    Text(point.text)
-                        .font(.callout)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.leading)
+                Text(point.text)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.leading)
 
-                    Spacer()
-                }
+                Spacer()
             }
-            .buttonStyle(.plain)
 
-            if expandedIndices.contains(index) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(point.detail)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(point.detail)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                    if !point.quotes.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(point.quotes, id: \.text) { quote in
-                                quoteCard(quote)
-                            }
+                if !point.quotes.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(point.quotes, id: \.text) { quote in
+                            quoteCard(quote)
                         }
                     }
                 }
-                .padding(.leading, 16)
             }
+            .padding(.leading, 16)
         }
         .padding(.vertical, 6)
     }

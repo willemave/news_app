@@ -51,6 +51,34 @@ enum NewsDigestIntervalOption: Int, CaseIterable {
     }
 }
 
+enum LongArticleDisplayMode: String, CaseIterable {
+    case narrative = "narrative"
+    case keyPoints = "key_points"
+    case both = "both"
+
+    var title: String {
+        switch self {
+        case .narrative:
+            return "Narrative"
+        case .keyPoints:
+            return "Key Points"
+        case .both:
+            return "Both"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .narrative:
+            return "Show the narrative with notable quotes and expert perspectives"
+        case .keyPoints:
+            return "Show key points with notable quotes and expert perspectives"
+        case .both:
+            return "Show narrative, key points, quotes, and expert perspectives"
+        }
+    }
+}
+
 class AppSettings: ObservableObject {
     static let shared = AppSettings()
     
@@ -60,8 +88,8 @@ class AppSettings: ObservableObject {
     @AppStorage("appTextSizeIndex", store: SharedContainer.userDefaults) var appTextSizeIndex: Int = 1
     @AppStorage("contentTextSizeIndex", store: SharedContainer.userDefaults) var contentTextSizeIndex: Int = 2
     @AppStorage("fastNewsMode", store: SharedContainer.userDefaults) var fastNewsMode: String = FastNewsMode.dailyDigest.rawValue
+    @AppStorage("longArticleDisplayMode", store: SharedContainer.userDefaults) var longArticleDisplayMode: String = LongArticleDisplayMode.both.rawValue
     @AppStorage("useLongFormCardStack", store: SharedContainer.userDefaults) var useLongFormCardStack: Bool = true
-    @AppStorage("showLiveVoiceDebugText", store: SharedContainer.userDefaults) var showLiveVoiceDebugText: Bool = false
     @AppStorage("backendTranscriptionAvailable", store: SharedContainer.userDefaults) var backendTranscriptionAvailable: Bool = false
     private var normalizedHost: String {
 #if targetEnvironment(simulator)

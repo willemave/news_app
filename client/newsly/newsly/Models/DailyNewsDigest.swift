@@ -14,6 +14,7 @@ struct DailyNewsDigest: Codable, Identifiable {
     let keyPoints: [String]
     let sourceCount: Int
     let sourceContentIds: [Int]
+    let sourceLabels: [String]
     var isRead: Bool
     var readAt: String?
     let generatedAt: String
@@ -28,6 +29,7 @@ struct DailyNewsDigest: Codable, Identifiable {
         case keyPoints = "key_points"
         case sourceCount = "source_count"
         case sourceContentIds = "source_content_ids"
+        case sourceLabels = "source_labels"
         case isRead = "is_read"
         case readAt = "read_at"
         case generatedAt = "generated_at"
@@ -101,6 +103,10 @@ struct DailyNewsDigest: Codable, Identifiable {
 
     var cleanedKeyPoints: [String] {
         keyPoints.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    var cleanedSourceLabels: [String] {
+        sourceLabels.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     }
 
     var showsDigDeeperAction: Bool {

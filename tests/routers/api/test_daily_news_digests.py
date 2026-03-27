@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.models.schema import ChatMessage, ChatSession, DailyNewsDigest
+from app.models.schema import ChatMessage, ChatSession, Content, DailyNewsDigest
 from app.models.user import User
 
 
@@ -89,6 +89,43 @@ def test_list_daily_digests_includes_checkpoint_coverage(client, db_session, tes
     assert response.status_code == 200
     payload = response.json()
     assert payload["digests"][0]["coverage_end_at"] == "2026-02-28T06:00:00Z"
+
+
+def test_list_daily_digests_includes_source_labels(client, db_session, test_user) -> None:
+    db_session.add_all(
+        [
+            Content(
+                id=1,
+                content_type="news",
+                url="https://news.ycombinator.com/item?id=1",
+                title="HN story",
+                source="hackernews",
+                platform="hackernews",
+                status="completed",
+                classification="to_read",
+                content_metadata={},
+            ),
+            Content(
+                id=2,
+                content_type="news",
+                url="https://x.com/swyx/status/1#newsly-digest-user-1",
+                source_url="https://x.com/swyx/status/1",
+                title="X post",
+                source="X Following",
+                platform="twitter",
+                status="completed",
+                classification="to_read",
+                content_metadata={"tweet_author_username": "swyx", "source_label": "X Following"},
+            ),
+            _create_digest(user_id=test_user.id, local_date="2026-02-28"),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/api/content/daily-digests")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["digests"][0]["source_labels"] == ["Hacker News", "@swyx"]
 
 
 def test_mark_daily_digest_read_and_unread(client, db_session, test_user) -> None:
