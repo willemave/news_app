@@ -1,12 +1,12 @@
-# Share Sheet LLM Instruction (gpt-5.2 + Web Search)
+# Share Sheet LLM Instruction (gpt-5.4 + Web Search)
 
 ## Summary
-Add an optional instruction to `/api/content/submit` (repurposed from the share-sheet note field). When present, run a transient gpt-5.2 + web search call during `ANALYZE_URL` to generate context (text + links) that guides URL analysis. Only create additional content records from discovered links when `crawl_links=true`. The instruction text and raw results are not persisted or returned in API responses.
+Add an optional instruction to `/api/content/submit` (repurposed from the share-sheet note field). When present, run a transient gpt-5.4 + web search call during `ANALYZE_URL` to generate context (text + links) that guides URL analysis. Only create additional content records from discovered links when `crawl_links=true`. The instruction text and raw results are not persisted or returned in API responses.
 
 ## Goals
 - Accept an optional instruction on content submission (API + share extension).
 - Add an explicit crawl toggle so link creation is opt-in.
-- Use gpt-5.2 with web search to interpret the instruction and provide context about the submitted URL.
+- Use gpt-5.4 with web search to interpret the instruction and provide context about the submitted URL.
 - Support flexible outputs with text and 0+ links (plus metadata sufficient to create content records).
 - Create new content records from discovered links and enqueue them for normal processing when crawl is enabled.
 - Do not persist or return the instruction text or raw LLM output; use them only during analysis.
@@ -50,8 +50,8 @@ Add an optional instruction to `/api/content/submit` (repurposed from the share-
   - Update `ProcessingTask.payload` to remove the `instruction` field before calling `complete_task`.
 - Ensure the instruction text is included in the LLM prompt used during `ANALYZE_URL` (see section 4).
 
-### 4) Update ContentAnalyzer to gpt-5.2 + Web Search
-Extend `ContentAnalyzer` to use gpt-5.2 with web search for URL analysis and instruction handling. The old `gpt-4o-mini` path is deprecated.
+### 4) Update ContentAnalyzer to gpt-5.4 + Web Search
+Extend `ContentAnalyzer` to use gpt-5.4 with web search for URL analysis and instruction handling. The old `gpt-4o-mini` path is deprecated.
 
 **Models**
 ```python
@@ -73,7 +73,7 @@ class InstructionResult(BaseModel):
   - Accepts `url`, optional `instruction`, optional `title`, optional `analysis_context`.
   - Returns `ContentAnalysisResult` plus an optional `InstructionResult`.
 - Use OpenAI Responses API with:
-  - model: `gpt-5.2`
+  - model: `gpt-5.4`
   - tools: `[{"type": "web_search_preview"}]`
   - output: JSON matching a combined schema.
 

@@ -18,8 +18,8 @@ def test_get_basic_agent_returns_fresh_agent_instances(monkeypatch) -> None:
     monkeypatch.setattr(llm_agents, "Agent", _FakeAgent)
     monkeypatch.setattr(llm_agents, "build_pydantic_model", lambda _spec: ("model", {}))
 
-    first = llm_agents.get_basic_agent("openai:gpt-5.2", dict, "system prompt")
-    second = llm_agents.get_basic_agent("openai:gpt-5.2", dict, "system prompt")
+    first = llm_agents.get_basic_agent("openai:gpt-5.4", dict, "system prompt")
+    second = llm_agents.get_basic_agent("openai:gpt-5.4", dict, "system prompt")
 
     assert first is not second
     assert len(created) == 2

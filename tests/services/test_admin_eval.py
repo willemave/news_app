@@ -222,7 +222,7 @@ def test_run_admin_eval_skips_unavailable_models(db_session, monkeypatch):
 
     request = AdminEvalRunRequest(
         content_types=["article"],
-        models=["gpt_5_2", "haiku", "gemini_3_pro", "cerebras_glm_4_7"],
+        models=["gpt_5_4", "haiku", "gemini_3_pro", "cerebras_glm_4_7"],
         sample_size=1,
         recent_pool_size=10,
     )

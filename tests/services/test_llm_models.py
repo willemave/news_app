@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from app.services import llm_models
 
@@ -25,8 +25,11 @@ def test_build_pydantic_model_openai(monkeypatch: pytest.MonkeyPatch) -> None:
 
     model, model_settings = llm_models.build_pydantic_model("gpt-5-mini")
 
-    assert isinstance(model, OpenAIChatModel)
-    assert model_settings is None
+    assert isinstance(model, OpenAIResponsesModel)
+    assert model_settings == {
+        "openai_prompt_cache_retention": "24h",
+        "openai_send_reasoning_ids": False,
+    }
 
 
 def test_build_pydantic_model_openai_accepts_user_override(
@@ -39,8 +42,11 @@ def test_build_pydantic_model_openai_accepts_user_override(
         api_key_override="user-openai-key",
     )
 
-    assert isinstance(model, OpenAIChatModel)
-    assert model_settings is None
+    assert isinstance(model, OpenAIResponsesModel)
+    assert model_settings == {
+        "openai_prompt_cache_retention": "24h",
+        "openai_send_reasoning_ids": False,
+    }
 
 
 def test_resolve_model_uses_gpt_5_4_for_openai_default() -> None:

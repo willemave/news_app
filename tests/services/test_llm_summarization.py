@@ -99,6 +99,28 @@ def test_content_summarizer_resolves_default_models(monkeypatch: pytest.MonkeyPa
     assert captured == [("google", "gemini-3.1-flash-lite-preview")]
 
 
+def test_content_summarizer_uses_gpt_5_4_mini_for_articles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[str | None, str | None]] = []
+
+    def fake_resolve(provider: str | None, hint: str | None) -> tuple[str, str]:
+        captured.append((provider, hint))
+        return provider or "openai", f"{provider}:{hint}"
+
+    def fake_summarize(request: llm_summarization.SummarizationRequest):
+        return request.model_spec
+
+    monkeypatch.setattr(llm_summarization, "summarize_content", fake_summarize)
+
+    summarizer = llm_summarization.ContentSummarizer(_model_resolver=fake_resolve)
+
+    model_used = summarizer.summarize("body", content_type=ContentType.ARTICLE)
+
+    assert model_used == "openai:gpt-5.4-mini"
+    assert captured == [("openai", "gpt-5.4-mini")]
+
+
 def test_content_summarizer_respects_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[tuple[str | None, str | None]] = []
 

@@ -7,11 +7,16 @@ from enum import Enum, StrEnum
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import (
+    OpenAIChatModel,
+    OpenAIResponsesModel,
+    OpenAIResponsesModelSettings,
+)
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.cerebras import CerebrasProvider
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
@@ -133,11 +138,26 @@ def resolve_effective_api_key(
     return platform_keys.get(provider_name)
 
 
+def _build_openai_responses_model_settings() -> OpenAIResponsesModelSettings:
+    """Return default settings for OpenAI Responses models.
+
+    We disable reasoning item ID replay because chat history is rewritten for
+    user display before persistence, which makes provider-side message IDs
+    unsafe to resend. We keep 24h prompt-cache retention enabled so long,
+    repeated system-prompt prefixes can stay warm longer.
+    """
+
+    return {
+        "openai_prompt_cache_retention": "24h",
+        "openai_send_reasoning_ids": False,
+    }
+
+
 def build_pydantic_model(
     model_spec: str,
     *,
     api_key_override: str | None = None,
-) -> tuple[Model | str, GoogleModelSettings | None]:
+) -> tuple[Model | str, ModelSettings | None]:
     """Construct a pydantic-ai Model with explicit providers where required.
 
     Args:
@@ -146,7 +166,7 @@ def build_pydantic_model(
     Returns:
         Tuple of (model, model_settings). ``model`` is either a configured ``Model`` instance
         or the raw ``model_spec`` when no specific provider wiring is required. ``model_settings``
-        is only populated for Google models to suppress thinking traces.
+        is populated when a provider needs extra request settings.
     """
     settings = get_settings()
 
@@ -220,8 +240,8 @@ def build_pydantic_model(
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
         return (
-            OpenAIChatModel(model_to_use, provider=OpenAIProvider(api_key=resolved_api_key)),
-            None,
+            OpenAIResponsesModel(model_to_use, provider=OpenAIProvider(api_key=resolved_api_key)),
+            _build_openai_responses_model_settings(),
         )
 
     return model_spec, None

@@ -134,7 +134,7 @@ def test_reconstruct_summarize_prompt_from_content_metadata() -> None:
         )
         assert snapshot.user_prompt is not None
         assert "Prompt reconstruction text." in snapshot.user_prompt
-        assert snapshot.model == "openai:gpt-5.2"
+        assert snapshot.model == "openai:gpt-5.4-mini"
     finally:
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
@@ -164,7 +164,7 @@ def test_reconstruct_analyze_url_prompt_partial() -> None:
     assert "You classify web pages as article, podcast, or video" in snapshot.system_prompt
     assert snapshot.user_prompt is not None
     assert "URL: https://example.com/topic" in snapshot.user_prompt
-    assert snapshot.model == "gpt-5.2"
+    assert snapshot.model == "gpt-5.4"
 
 
 def test_render_markdown_report_contains_failure_sections() -> None:
@@ -178,7 +178,7 @@ def test_render_markdown_report_contains_failure_sections() -> None:
         operation="llm_summarization",
         content_id=7,
         url="https://example.com",
-        model="openai:gpt-5.2",
+        model="openai:gpt-5.4-mini",
         error_type="RuntimeError",
         error_message="example failure",
         system_prompt="system prompt text",
@@ -194,7 +194,7 @@ def test_render_markdown_report_contains_failure_sections() -> None:
         total_failures=1,
         by_phase={"summarize": 1},
         by_component={"summarization": 1},
-        by_model={"openai:gpt-5.2": 1},
+        by_model={"openai:gpt-5.4-mini": 1},
         snapshots=[snapshot],
     )
 

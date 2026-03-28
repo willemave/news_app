@@ -62,14 +62,14 @@ def test_summarize_content_uses_context_fallback_model(monkeypatch) -> None:
     request = SummarizationRequest(
         content="B" * 5000,
         content_type="article",
-        model_spec="openai:gpt-5.2",
+        model_spec="openai:gpt-5.4",
         content_id=124,
     )
 
     result = summarize_content(request)
 
     assert result is not None
-    assert "openai:gpt-5.2" in calls
+    assert "openai:gpt-5.4" in calls
     assert FALLBACK_SUMMARIZATION_MODEL in calls
 
 
@@ -132,7 +132,7 @@ def test_summarize_content_recovers_from_event_loop_binding_error(monkeypatch) -
     request = SummarizationRequest(
         content="A short body of content for testing",
         content_type="article",
-        model_spec="openai:gpt-5.2",
+        model_spec="openai:gpt-5.4",
         content_id=126,
     )
 
@@ -140,4 +140,4 @@ def test_summarize_content_recovers_from_event_loop_binding_error(monkeypatch) -
 
     assert result is not None
     assert run_invocations["count"] == 2
-    assert calls == ["openai:gpt-5.2", "openai:gpt-5.2"]
+    assert calls == ["openai:gpt-5.4", "openai:gpt-5.4"]

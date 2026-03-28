@@ -23,7 +23,7 @@ from app.services.llm_usage import record_usage
 logger = get_logger(__name__)
 
 # Configuration
-FEED_CLASSIFICATION_MODEL = "openai:gpt-5.2"
+FEED_CLASSIFICATION_MODEL = "openai:gpt-5.4"
 FEED_CLASSIFICATION_TIMEOUT = 10.0
 FEED_CLASSIFICATION_SYSTEM_PROMPT = (
     "You classify RSS/Atom feeds by inspecting the feed URL and page metadata. "

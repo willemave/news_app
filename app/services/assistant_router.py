@@ -48,6 +48,7 @@ from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_models import (
     DEFAULT_MODEL,
     DEFAULT_PROVIDER,
+    build_pydantic_model,
     resolve_effective_api_key,
 )
 
@@ -458,11 +459,17 @@ def _get_or_create_agent(
     if existing is not None:
         return existing
 
-    agent: Agent[AssistantDeps, str] = Agent(
+    model, model_settings = build_pydantic_model(
         model_spec,
+        api_key_override=api_key_override,
+    )
+
+    agent: Agent[AssistantDeps, str] = Agent(
+        model,
         deps_type=AssistantDeps,
         output_type=str,
         system_prompt=ASSISTANT_SYSTEM_PROMPT,
+        model_settings=model_settings,
     )
 
     @agent.tool

@@ -135,7 +135,7 @@ Guidelines:
 Return a JSON object with exactly these fields:
 {{
   "title": "Descriptive title (max 110 characters)",
-  "editorial_narrative": "2-3 tight paragraphs with a clear thesis and factual synthesis",
+  "editorial_narrative": "1-2 tight paragraphs with a clear thesis and factual synthesis",
   "quotes": [
     {{
       "text": "Direct quote from the content (min 10 chars)",
@@ -162,8 +162,9 @@ Return a JSON object with exactly these fields:
 
 Guidelines:
 - Start the first paragraph with the core thesis or the most consequential takeaway.
+- Use only 1-2 paragraphs for the full narrative.
 - Keep the narrative heavily information-dense: every sentence should carry concrete signal (named entities, numbers, dates, constraints, implications).
-- Keep it slightly shorter: target roughly 180-260 words across the full narrative.
+- Keep it slightly shorter: target roughly 140-220 words across the full narrative.
 - Avoid filler, repetition, and generic framing.
 - Include 2-{max_quotes} direct quotes; integrate at least 2 quotes naturally into the narrative prose.
 - archetype_reactions: include exactly three entries, one each for Paul Graham, Andy Grove, and Charlie Munger.
@@ -417,106 +418,10 @@ Core Guidelines:
 - Self-contained. Tweet should be understandable even without clicking the link
 - No markdown, no multi-tweet threads, no numbered lists
 - Focus on a single key insight, not a summary
-- Use <examples> to guide tone, these are inredible tweets by well known authors
 - Avoid rhetorical questions
 
 Style for this creativity level ({creativity}/10):
 {style_hints}
-
-<examples>
-A good demo is critical because investors, like consumers, fall in love with the product *first,* and then rationalize it after.
-
-----
-
-Marketing is a creative and adversarial game. Channels get discovered, exploited, and discarded. New products need new distribution. It’s hard to hire rule-breakers, so the best marketers tend to be the founders themselves.
-
-----
-
-Read what you love until you love to read.
-
-----
-
-In 1971, money changed from a natural system (gold) to a socialist system (fiat). 
-
-Crypto is tech to replace socialist money with a free-market system. 
-
-Market systems are inherently competitive and as tech evolves, new monies will continue to emerge to challenge existing ones.
-
-----
-
-Product > Distribution
-
-Every successful founder I know agrees with it, but every failed founder still blames the distribution, while it’s the product to blame.
-
-I think this is the greatest misunderstanding among junior entrepreneurs
-
-----
-
-Wealth is the ability to make things happen.
-
-----
-
-The most unasked question in the business world is “How does Elon do it?” You’d expect far more curiosity about this, but it’s simply not there. (Yet?)
-
-----
-
-AI startups will brag about 
-* funding 
-* valuations 
-* revenue (always with asterisks on it)
-* investors 
-* tokens burned 
-
-What is rare, and way more interesting to me, is to hear from lots of their happy customers.
-
-----
-
-Rationalisation is a meat-grinder to innovation. 
-
-It takes a breakthrough idea, applies yesterday’s thinking (market is too small, no one is asking for it, bigger existing opportunies), and in the end it dilutes, delays, and destroys innovation.
-
-So, yes, Burn the ships.
-
-----
-
-Great piece by  @ByrneHobart on how legacy products are behaving like a union. 
-
-This explains soo much of what I see the legacy incumbents doing, fighting product battles with lawyers and rate limits, vs product. 
-
-----
-
-Free advice for startup founders:
-
-Do not go on a podcast and contradict statements made by your lawyer who is actively defending you in a case.
-
-Also, do not commit fraud. Do not admit to fraud. And do not insinuate that your own employees are unqualified to do their jobs.
-
-----
-
-The lesson of deals is that if you have two, you have one. And if you have one, you have zero.
-
-In other words: the second bidder sets the price and ensures the deal goes through. If you only have one bidder, the price floor is zero. And the deal may not get done at all.
-
-Also holds for supply chains.
-
-If you have at least two independent vendors, you have one reliable supply chain. 
-
-But if you have only one vendor, you may end up with zero margin.
-
-So: if you have two, you have one, and if you have one, you have zero.
-
-Caveat: optionality isn’t everything.
-
-The best long-term relationships (commercial and otherwise) are actually with just one party. If you switch too much, you don’t compound over time.
-
-Like the multi-armed bandit problem. Exploration (optionality) vs exploitation (commitment).
-
-----
-
-If you can do it from scratch, you can take shortcuts.
-
-But if you can only take shortcuts, you can’t do it from scratch.
-<examples>
 
 Output Format:
 Return ONLY valid JSON matching this exact structure:

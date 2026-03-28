@@ -35,7 +35,7 @@ EVAL_MODEL_SPECS: dict[str, str] = {
     "opus": "anthropic:claude-opus-4-5-20251101",
     "gemini_3_pro": "google-gla:gemini-3-pro-preview",
     "flash_2": "google-gla:gemini-3-flash-preview",
-    "gpt_5_2": "openai:gpt-5.2",
+    "gpt_5_4": "openai:gpt-5.4",
     "cerebras_glm_4_7": "cerebras:zai-glm-4.7",
 }
 
@@ -44,7 +44,7 @@ EVAL_MODEL_LABELS: dict[str, str] = {
     "opus": "Opus",
     "gemini_3_pro": "Gemini 3 Pro",
     "flash_2": "Flash 2",
-    "gpt_5_2": "GPT 5.2",
+    "gpt_5_4": "GPT 5.4",
     "cerebras_glm_4_7": "Cerebras GLM-4.7",
 }
 

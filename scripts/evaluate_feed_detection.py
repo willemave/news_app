@@ -24,7 +24,7 @@ from app.services.feed_detection import FeedDetector, classify_feed_type_with_ll
 from app.services.http import get_http_service
 
 DEFAULT_MODELS = [
-    "openai:gpt-5.2",
+    "openai:gpt-5.4",
     "google-gla:gemini-3-flash-preview",
 ]
 

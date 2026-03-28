@@ -803,8 +803,10 @@ Current defaults:
 
 - news, news digests, daily rollups
   - `google:gemini-3.1-flash-lite-preview`
-- articles, podcasts, editorial/interleaved/long-bullets
-  - `openai:gpt-5.2`
+- articles
+  - `openai:gpt-5.4-mini`
+- podcasts, editorial/interleaved/long-bullets
+  - `openai:gpt-5.4`
 - fallback model
   - `google:gemini-2.5-flash`
 

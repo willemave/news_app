@@ -176,7 +176,7 @@ class TestContentAnalyzer:
         analyzer = ContentAnalyzer()
 
         with pytest.raises(ValueError, match="OPENAI_API_KEY not configured"):
-            analyzer._get_client()
+            analyzer._get_agent()
 
     @patch("app.services.content_analyzer._fetch_page_content")
     def test_analyze_url_with_spotify_link(self, mock_fetch):
@@ -187,27 +187,32 @@ class TestContentAnalyzer:
         )
 
         analyzer = ContentAnalyzer()
-        mock_client = type("MockClient", (), {})()
-        mock_responses = type("MockResponses", (), {})()
-        mock_client.responses = mock_responses
-
-        def _mock_create(**_kwargs):
-            return type(
-                "MockResponse",
-                (),
-                {
-                    "output_text": (
-                        '{"analysis":{"content_type":"podcast","original_url":"https://example.com/pod",'
-                        '"media_url":null,"media_format":null,"title":"Test Episode",'
-                        '"description":null,"duration_seconds":1800,"platform":"spotify",'
-                        '"confidence":0.9},"instruction":null}'
-                    )
-                },
-            )()
-
-        mock_responses.create = _mock_create
-
-        analyzer._client = mock_client
+        analyzer._agent = type(
+            "MockAgent",
+            (),
+            {
+                "run_sync": lambda self, _prompt: type(
+                    "MockRunResult",
+                    (),
+                    {
+                        "output": ContentAnalysisOutput(
+                            analysis=ContentAnalysisResult(
+                                content_type="podcast",
+                                original_url="https://example.com/pod",
+                                media_url=None,
+                                media_format=None,
+                                title="Test Episode",
+                                description=None,
+                                duration_seconds=1800,
+                                platform="spotify",
+                                confidence=0.9,
+                            ),
+                            instruction=None,
+                        )
+                    },
+                )()
+            },
+        )()
         result = analyzer.analyze_url("https://example.com/pod")
 
         assert isinstance(result, ContentAnalysisOutput)
@@ -221,27 +226,32 @@ class TestContentAnalyzer:
         mock_fetch.return_value = (None, None)
 
         analyzer = ContentAnalyzer()
-        mock_client = type("MockClient", (), {})()
-        mock_responses = type("MockResponses", (), {})()
-        mock_client.responses = mock_responses
-
-        def _mock_create(**_kwargs):
-            return type(
-                "MockResponse",
-                (),
-                {
-                    "output_text": (
-                        '{"analysis":{"content_type":"article","original_url":"https://example.com/article",'
-                        '"media_url":null,"media_format":null,"title":"Test Article",'
-                        '"description":null,"duration_seconds":null,"platform":null,'
-                        '"confidence":0.8},"instruction":null}'
-                    )
-                },
-            )()
-
-        mock_responses.create = _mock_create
-
-        analyzer._client = mock_client
+        analyzer._agent = type(
+            "MockAgent",
+            (),
+            {
+                "run_sync": lambda self, _prompt: type(
+                    "MockRunResult",
+                    (),
+                    {
+                        "output": ContentAnalysisOutput(
+                            analysis=ContentAnalysisResult(
+                                content_type="article",
+                                original_url="https://example.com/article",
+                                media_url=None,
+                                media_format=None,
+                                title="Test Article",
+                                description=None,
+                                duration_seconds=None,
+                                platform=None,
+                                confidence=0.8,
+                            ),
+                            instruction=None,
+                        )
+                    },
+                )()
+            },
+        )()
         result = analyzer.analyze_url("https://example.com/article")
 
         assert isinstance(result, ContentAnalysisOutput)

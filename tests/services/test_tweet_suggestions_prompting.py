@@ -104,6 +104,12 @@ class TestPromptGeneration:
         assert "json" in system_msg.lower()
         assert "suggestions" in system_msg
 
+    def test_prompt_does_not_embed_example_corpus(self) -> None:
+        """Prompt should not include the old inline example corpus."""
+        system_msg, _ = get_tweet_generation_prompt(creativity=5)
+        assert "<examples>" not in system_msg
+        assert "A good demo is critical" not in system_msg
+
     def test_user_template_has_placeholders(self) -> None:
         """User template has required placeholders."""
         _, user_template = get_tweet_generation_prompt(creativity=5)

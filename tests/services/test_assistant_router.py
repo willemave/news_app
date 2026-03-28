@@ -1,5 +1,7 @@
 """Tests for Quick Assistant routing heuristics."""
 
+from pydantic_ai.models.test import TestModel
+
 from app.services import assistant_router
 
 
@@ -67,3 +69,27 @@ def test_build_turn_instructions_skips_small_talk() -> None:
     """Small talk should not force a tool route."""
 
     assert assistant_router._build_turn_instructions("hello") is None
+
+
+def test_get_or_create_agent_uses_shared_model_builder(monkeypatch) -> None:
+    """Assistant agent construction should use the shared model factory."""
+
+    assistant_router._agents.clear()
+    calls: list[tuple[str, str | None]] = []
+    sentinel_model = TestModel(custom_output_text="ok")
+
+    def _fake_build(model_spec: str, *, api_key_override: str | None = None):
+        calls.append((model_spec, api_key_override))
+        return sentinel_model, {"timeout": 5}
+
+    monkeypatch.setattr(assistant_router, "build_pydantic_model", _fake_build)
+
+    agent = assistant_router._get_or_create_agent(
+        "openai:gpt-5.4",
+        api_key_override="user-key",
+    )
+
+    assert calls == [("openai:gpt-5.4", "user-key")]
+    assert agent.model is sentinel_model
+
+    assistant_router._agents.clear()

@@ -327,7 +327,10 @@ def reconstruct_summarize_prompt(
                 operation=failure.operation,
                 content_id=content_id,
                 url=str(content.url),
-                model=failure.model or _default_model_for_prompt_type(prompt_type),
+                model=(
+                    failure.model
+                    or _default_model_for_summarize(content.content_type, prompt_type)
+                ),
                 error_type=failure.error_type,
                 error_message=failure.error_message,
                 system_prompt=None,
@@ -349,7 +352,9 @@ def reconstruct_summarize_prompt(
             operation=failure.operation,
             content_id=content_id,
             url=str(content.url),
-            model=failure.model or _default_model_for_prompt_type(prompt_type),
+            model=(
+                failure.model or _default_model_for_summarize(content.content_type, prompt_type)
+            ),
             error_type=failure.error_type,
             error_message=failure.error_message,
             system_prompt=system_prompt,
@@ -714,8 +719,11 @@ def _extract_summarize_context(
     return "", "editorial_narrative", 10, 4, notes
 
 
-def _default_model_for_prompt_type(prompt_type: str) -> str:
-    """Resolve default model for a prompt type."""
+def _default_model_for_summarize(content_type: str | None, prompt_type: str) -> str:
+    """Resolve default model using the same content-type-first behavior as the summarizer."""
+    normalized_content_type = (content_type or "").lower()
+    if normalized_content_type in DEFAULT_SUMMARIZATION_MODELS:
+        return DEFAULT_SUMMARIZATION_MODELS[normalized_content_type]
     if prompt_type in DEFAULT_SUMMARIZATION_MODELS:
         return DEFAULT_SUMMARIZATION_MODELS[prompt_type]
     return DEFAULT_SUMMARIZATION_MODELS["article"]

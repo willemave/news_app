@@ -6,7 +6,6 @@ the HTML for embedded podcast/video links and determine content type.
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -14,23 +13,21 @@ from typing import Literal
 import feedparser
 import httpx
 import trafilatura
-from openai import APIConnectionError, APIError, RateLimitError
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent
+from pydantic_ai.builtin_tools import WebSearchTool
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.services.feed_detection import extract_feed_links
 from app.services.langfuse_tracing import langfuse_trace_context
-
-try:
-    from langfuse.openai import OpenAI
-except Exception:  # noqa: BLE001
-    from openai import OpenAI
+from app.services.llm_models import build_pydantic_model
 
 logger = get_logger(__name__)
 
 # Configuration - use Responses API with web search
-CONTENT_ANALYSIS_MODEL = "gpt-5.2"
+CONTENT_ANALYSIS_MODEL = "gpt-5.4"
 MAX_ANALYSIS_TEXT_CHARS = 8000
 
 # Patterns to detect podcast/video platform links in HTML
@@ -297,75 +294,24 @@ class ContentAnalyzer:
 
     def __init__(self) -> None:
         """Initialize the content analyzer."""
-        self._client: OpenAI | None = None
+        self._agent: Agent[None, ContentAnalysisOutput] | None = None
 
-    def _get_client(self) -> OpenAI:
-        """Get or create the OpenAI client."""
-        if self._client is None:
+    def _get_agent(self) -> Agent[None, ContentAnalysisOutput]:
+        """Get or create the content-analysis agent."""
+        if self._agent is None:
             settings = get_settings()
             if not settings.openai_api_key:
                 raise ValueError("OPENAI_API_KEY not configured in settings")
-            self._client = OpenAI(api_key=settings.openai_api_key)
-        return self._client
-
-    @staticmethod
-    def _extract_output_text(response: object) -> str:
-        """Extract output text from a Responses API result."""
-        output_text = getattr(response, "output_text", None)
-        if isinstance(output_text, str) and output_text.strip():
-            return output_text
-
-        output_items = getattr(response, "output", None)
-        if isinstance(output_items, list):
-            for item in output_items:
-                if getattr(item, "type", None) != "message":
-                    continue
-                contents = getattr(item, "content", []) or []
-                for content in contents:
-                    content_type = getattr(content, "type", None)
-                    if content_type not in {"output_text", "text"}:
-                        continue
-                    text_value = getattr(content, "text", None) or getattr(content, "value", None)
-                    if isinstance(text_value, str) and text_value.strip():
-                        return text_value
-        return ""
-
-    @staticmethod
-    def _parse_output(raw_output: str, url: str) -> ContentAnalysisOutput:
-        """Parse raw JSON into ContentAnalysisOutput."""
-        raw_candidates = [raw_output]
-        raw_output = raw_output.strip()
-        start = raw_output.find("{")
-        end = raw_output.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            raw_candidates.append(raw_output[start : end + 1])
-
-        last_error: Exception | None = None
-        for candidate in raw_candidates:
-            try:
-                return ContentAnalysisOutput.model_validate_json(candidate)
-            except Exception as exc:
-                last_error = exc
-
-            try:
-                parsed = json.loads(candidate)
-            except Exception as exc:
-                last_error = exc
-                continue
-
-            if isinstance(parsed, dict):
-                analysis = parsed.get("analysis")
-                if isinstance(analysis, dict) and not analysis.get("original_url"):
-                    analysis["original_url"] = url
-                    parsed["analysis"] = analysis
-                try:
-                    return ContentAnalysisOutput.model_validate(parsed)
-                except Exception as exc:
-                    last_error = exc
-
-        if last_error:
-            raise last_error
-        raise ValueError("Unable to parse content analysis output")
+            model, model_settings = build_pydantic_model(f"openai:{CONTENT_ANALYSIS_MODEL}")
+            self._agent = Agent(
+                model,
+                deps_type=None,
+                output_type=ContentAnalysisOutput,
+                system_prompt=CONTENT_ANALYZER_SYSTEM_PROMPT,
+                model_settings=model_settings,
+                builtin_tools=[WebSearchTool()],
+            )
+        return self._agent
 
     def analyze_url(
         self, url: str, instruction: str | None = None
@@ -418,7 +364,7 @@ class ContentAnalyzer:
             )
 
             # Step 3: Use LLM to analyze content with detected media info
-            client = self._get_client()
+            agent = self._get_agent()
 
             # Truncate text for LLM context and calculate word count
             text_payload = text or ""
@@ -462,12 +408,8 @@ PAGE CONTENT (truncated):
                     },
                     tags=["queue", "content_analyzer"],
                 ):
-                    response = client.responses.create(
-                        model=CONTENT_ANALYSIS_MODEL,
-                        input=prompt,
-                        tools=[{"type": "web_search_preview"}],
-                    )
-            except (APIError, APIConnectionError, RateLimitError) as exc:
+                    result = agent.run_sync(prompt)
+            except ModelHTTPError as exc:
                 logger.error(
                     "Content analysis request failed: %s",
                     exc,
@@ -478,14 +420,7 @@ PAGE CONTENT (truncated):
                     },
                 )
                 return AnalysisError(str(exc), recoverable=True)
-
-            raw_output = self._extract_output_text(response)
-            if not raw_output:
-                return AnalysisError("Empty response from content analysis", recoverable=True)
-
-            try:
-                parsed = self._parse_output(raw_output, url)
-            except Exception as exc:  # noqa: BLE001
+            except UnexpectedModelBehavior as exc:
                 logger.error(
                     "Content analysis output parse failed: %s",
                     exc,
@@ -496,6 +431,7 @@ PAGE CONTENT (truncated):
                     },
                 )
                 return AnalysisError("Invalid LLM output format", recoverable=True)
+            parsed = result.output
 
             logger.info(
                 "LLM analysis complete: type=%s, platform=%s",
