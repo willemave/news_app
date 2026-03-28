@@ -5,6 +5,7 @@ from sqlalchemy import and_, func, or_
 
 from app.core.db import get_db
 from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.models.contracts import TaskQueue, TaskStatus, TaskType
 from app.models.schema import ProcessingTask
 
@@ -33,8 +34,6 @@ DEDUPABLE_CONTENT_TASK_TYPES: set[TaskType] = {
     TaskType.FETCH_DISCUSSION,
     TaskType.GENERATE_IMAGE,
 }
-
-
 class QueueService:
     """Simple database-backed task queue."""
 
@@ -117,11 +116,17 @@ class QueueService:
                 )
                 if existing_task:
                     logger.info(
-                        "Reusing existing task %s of type %s for content %s (queue=%s)",
-                        existing_task.id,
-                        task_type.value,
-                        content_id,
-                        target_queue,
+                        "Reusing existing task",
+                        extra=build_log_extra(
+                            component="queue",
+                            operation="enqueue",
+                            event_name="task.reused",
+                            status="completed",
+                            task_id=existing_task.id,
+                            task_type=task_type.value,
+                            queue_name=target_queue,
+                            content_id=content_id,
+                        ),
                     )
                     return existing_task.id
 
@@ -137,10 +142,18 @@ class QueueService:
             db.refresh(task)
 
             logger.info(
-                "Enqueued task %s of type %s (queue=%s)",
-                task.id,
-                task_type.value,
-                target_queue,
+                "Task enqueued",
+                extra=build_log_extra(
+                    component="queue",
+                    operation="enqueue",
+                    event_name="task.enqueued",
+                    status="completed",
+                    task_id=task.id,
+                    task_type=task_type.value,
+                    queue_name=target_queue,
+                    content_id=content_id,
+                    context_data={"has_payload": bool(payload)},
+                ),
             )
             return task.id
 
@@ -258,10 +271,19 @@ class QueueService:
                 }
 
                 logger.debug(
-                    "Dequeued task %s for %s (queue=%s)",
-                    task_data["id"],
-                    worker_id,
-                    task_data["queue_name"],
+                    "Task dequeued",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="dequeue",
+                        event_name="task.dequeued",
+                        status="started",
+                        task_id=task_data["id"],
+                        task_type=task_data["task_type"],
+                        queue_name=task_data["queue_name"],
+                        worker_id=worker_id,
+                        content_id=task_data["content_id"],
+                        context_data={"retry_count": task_data["retry_count"]},
+                    ),
                 )
                 return task_data
 
@@ -273,27 +295,55 @@ class QueueService:
             task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
 
             if not task:
-                logger.error(f"Task {task_id} not found")
+                logger.error(
+                    "Task not found",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="complete_task",
+                        event_name="task.failed",
+                        status="failed",
+                        task_id=task_id,
+                        context_data={"failure_class": "TaskNotFound"},
+                    ),
+                )
                 return
 
             task.completed_at = datetime.now(UTC)
 
             if success:
                 task.status = TaskStatus.COMPLETED.value
-                logger.info(f"Task {task_id} completed successfully")
+                logger.info(
+                    "Task completed",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="complete_task",
+                        event_name="task.completed",
+                        status="completed",
+                        task_id=task_id,
+                        task_type=task.task_type,
+                        queue_name=task.queue_name,
+                        content_id=task.content_id,
+                    ),
+                )
             else:
                 if not error_message:
                     error_message = "Task failed without error details"
                 task.status = TaskStatus.FAILED.value
                 task.error_message = error_message
                 logger.error(
-                    f"Task {task_id} failed: {error_message}",
-                    extra={
-                        "component": "app.services.queue",
-                        "operation": "complete_task",
-                        "item_id": task_id,
-                        "context_data": {"error_message": error_message},
-                    },
+                    "Task failed",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="complete_task",
+                        event_name="task.failed",
+                        status="failed",
+                        item_id=task_id,
+                        task_id=task_id,
+                        task_type=task.task_type,
+                        queue_name=task.queue_name,
+                        content_id=task.content_id,
+                        context_data={"error_message": error_message},
+                    ),
                 )
 
             db.commit()
@@ -304,7 +354,17 @@ class QueueService:
             task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
 
             if not task:
-                logger.error(f"Task {task_id} not found")
+                logger.error(
+                    "Task not found",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="retry_task",
+                        event_name="task.retry_scheduled",
+                        status="failed",
+                        task_id=task_id,
+                        context_data={"failure_class": "TaskNotFound"},
+                    ),
+                )
                 return
 
             task.status = TaskStatus.PENDING.value
@@ -316,7 +376,23 @@ class QueueService:
             task.created_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
 
             db.commit()
-            logger.info(f"Task {task_id} scheduled for retry (attempt {task.retry_count})")
+            logger.info(
+                "Task retry scheduled",
+                extra=build_log_extra(
+                    component="queue",
+                    operation="retry_task",
+                    event_name="task.retry_scheduled",
+                    status="retry_scheduled",
+                    task_id=task_id,
+                    task_type=task.task_type,
+                    queue_name=task.queue_name,
+                    content_id=task.content_id,
+                    context_data={
+                        "retry_count": task.retry_count,
+                        "delay_seconds": delay_seconds,
+                    },
+                ),
+            )
 
     def get_queue_stats(self) -> dict[str, Any]:
         """Get queue statistics."""

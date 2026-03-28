@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
+from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.models.pagination import PaginationMetadata
 from app.models.schema import DailyNewsDigest
 from app.models.user import User
@@ -39,9 +41,9 @@ from app.services.daily_news_digest import (
     load_daily_digest_source_items,
     resolve_daily_digest_bullet_details,
 )
-from app.services.event_logger import log_event
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 def _isoformat_utc(dt: datetime | None) -> str | None:
@@ -371,14 +373,17 @@ async def start_daily_digest_bullet_dig_deeper(
 
     background_tasks.add_task(process_message_async, session.id, db_message.id, prompt)
 
-    log_event(
-        event_type="chat",
-        event_name="daily_digest_bullet_chat_started",
-        status="started",
-        user_id=current_user.id,
-        session_id=session.id,
-        digest_id=digest.id,
-        model=session.llm_model,
+    logger.info(
+        "Daily digest bullet chat started",
+        extra=build_log_extra(
+            component="daily_digest_chat",
+            operation="start_bullet_chat",
+            event_name="chat.daily_digest_bullet",
+            status="started",
+            user_id=current_user.id,
+            session_id=session.id,
+            context_data={"digest_id": digest.id, "model": session.llm_model},
+        ),
     )
 
     return StartDailyDigestChatResponse(
@@ -442,14 +447,17 @@ async def start_daily_digest_dig_deeper(
 
     background_tasks.add_task(process_message_async, session.id, db_message.id, prompt)
 
-    log_event(
-        event_type="chat",
-        event_name="daily_digest_chat_started",
-        status="started",
-        user_id=current_user.id,
-        session_id=session.id,
-        digest_id=digest.id,
-        model=session.llm_model,
+    logger.info(
+        "Daily digest chat started",
+        extra=build_log_extra(
+            component="daily_digest_chat",
+            operation="start_chat",
+            event_name="chat.daily_digest",
+            status="started",
+            user_id=current_user.id,
+            session_id=session.id,
+            context_data={"digest_id": digest.id, "model": session.llm_model},
+        ),
     )
 
     return StartDailyDigestChatResponse(

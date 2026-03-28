@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session as get_db
+from app.core.logging import bind_log_context
 from app.core.security import verify_token
 from app.infrastructure.security.api_keys import is_api_key_token
 from app.models.schema import UserApiKey
@@ -21,6 +22,7 @@ optional_security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
@@ -76,10 +78,14 @@ def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
 
+    request.state.authenticated_user_id = user.id
+    bind_log_context(user_id=user.id)
+
     return user
 
 
 def get_optional_user(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(optional_security)],
 ) -> User | None:
@@ -97,7 +103,7 @@ def get_optional_user(
         return None
 
     try:
-        return get_current_user(credentials, db)
+        return get_current_user(request, credentials, db)
     except HTTPException:
         return None
 

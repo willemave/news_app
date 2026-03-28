@@ -9,6 +9,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from app.core.db import get_db
 from app.core.logging import get_logger
+from app.core.observability import build_log_extra, sanitize_url_for_logs
 from app.core.settings import get_settings
 from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
@@ -72,22 +73,65 @@ class PodcastDownloadWorker:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.queue_service = get_queue_service()
 
+    @staticmethod
+    def _log_extra(
+        *,
+        operation: str,
+        content_id: int | None = None,
+        status: str | None = None,
+        duration_ms: float | None = None,
+        context_data: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return build_log_extra(
+            component="podcast_download_worker",
+            operation=operation,
+            event_name="content.download_audio",
+            status=status,
+            duration_ms=duration_ms,
+            content_id=content_id,
+            context_data=context_data,
+        )
+
     def _validate_url(self, url: str) -> bool:
         """Validate URL format and basic reachability."""
         try:
             parsed = urlparse(url)
             if not parsed.scheme or not parsed.netloc:
-                logger.error(f"Invalid URL format: {url}")
+                logger.error(
+                    "Invalid podcast URL format",
+                    extra=self._log_extra(
+                        operation="validate_url",
+                        status="failed",
+                        context_data={"url": sanitize_url_for_logs(url)},
+                    ),
+                )
                 return False
 
             # Check for obvious invalid characters
             if any(char in url for char in [" ", "\n", "\r", "\t"]):
-                logger.error(f"URL contains invalid characters: {url}")
+                logger.error(
+                    "Podcast URL contains invalid characters",
+                    extra=self._log_extra(
+                        operation="validate_url",
+                        status="failed",
+                        context_data={"url": sanitize_url_for_logs(url)},
+                    ),
+                )
                 return False
 
             return True
         except Exception as e:
-            logger.error(f"URL validation failed for {url}: {e}")
+            logger.error(
+                "Podcast URL validation raised exception",
+                extra=self._log_extra(
+                    operation="validate_url",
+                    status="failed",
+                    context_data={
+                        "url": sanitize_url_for_logs(url),
+                        "failure_class": type(e).__name__,
+                    },
+                ),
+            )
             return False
 
     @staticmethod
@@ -110,7 +154,14 @@ class PodcastDownloadWorker:
                 if "https%3A%2F%2F" in part:
                     # Decode the URL
                     decoded_url = unquote(part)
-                    logger.info(f"Extracted actual URL from Anchor redirect: {decoded_url}")
+                    logger.info(
+                        "Resolved anchor redirect URL",
+                        extra=self._log_extra(
+                            operation="resolve_audio_url",
+                            status="completed",
+                            context_data={"resolved_url": sanitize_url_for_logs(decoded_url)},
+                        ),
+                    )
                     return decoded_url
 
         return url
@@ -128,7 +179,17 @@ class PodcastDownloadWorker:
     )
     def _download_with_retry(self, audio_url: str, file_path: Path) -> None:
         """Download file with retry logic for network issues."""
-        logger.info(f"Attempting download from {audio_url}")
+        logger.info(
+            "Podcast download attempt started",
+            extra=self._log_extra(
+                operation="download_audio",
+                status="started",
+                context_data={
+                    "audio_url": sanitize_url_for_logs(audio_url),
+                    "file_path": str(file_path),
+                },
+            ),
+        )
 
         # Use sync httpx client with proper timeout configuration
         timeout = httpx.Timeout(
@@ -147,9 +208,29 @@ class PodcastDownloadWorker:
                 head_response = client.head(audio_url)
                 head_response.raise_for_status()
                 content_length = head_response.headers.get("content-length", "unknown")
-                logger.info(f"URL validated, content-length: {content_length}")
+                logger.info(
+                    "Podcast URL validated",
+                    extra=self._log_extra(
+                        operation="validate_audio_url",
+                        status="completed",
+                        context_data={
+                            "audio_url": sanitize_url_for_logs(audio_url),
+                            "content_length": content_length,
+                        },
+                    ),
+                )
             except Exception as e:
-                logger.warning(f"HEAD request failed, proceeding with GET: {e}")
+                logger.warning(
+                    "Podcast HEAD request failed; proceeding with GET",
+                    extra=self._log_extra(
+                        operation="validate_audio_url",
+                        status="failed",
+                        context_data={
+                            "audio_url": sanitize_url_for_logs(audio_url),
+                            "failure_class": type(e).__name__,
+                        },
+                    ),
+                )
 
             # Download the file
             with client.stream("GET", audio_url) as response:
@@ -163,7 +244,18 @@ class PodcastDownloadWorker:
                     for chunk in response.iter_bytes(chunk_size=8192):
                         f.write(chunk)
 
-                logger.info(f"Downloaded {file_path.stat().st_size} bytes to {file_path}")
+                logger.info(
+                    "Podcast download attempt completed",
+                    extra=self._log_extra(
+                        operation="download_audio",
+                        status="completed",
+                        context_data={
+                            "audio_url": sanitize_url_for_logs(audio_url),
+                            "file_path": str(file_path),
+                            "file_size": file_path.stat().st_size,
+                        },
+                    ),
+                )
 
     def _is_youtube_url(self, url: str) -> bool:
         """Check if URL is a YouTube URL."""
@@ -278,8 +370,16 @@ class PodcastDownloadWorker:
         Returns:
             True if successful, False otherwise
         """
-        logger.info(f"Processing download task for content {content_id}")
+        logger.info(
+            "Podcast download task started",
+            extra=self._log_extra(
+                operation="download_audio",
+                content_id=content_id,
+                status="started",
+            ),
+        )
         file_path = None
+        download_started_at = datetime.now(UTC)
 
         try:
             with get_db() as db:
@@ -315,7 +415,16 @@ class PodcastDownloadWorker:
                             audio_url = resolution.audio_url
 
                     if not audio_url:
-                        logger.error(f"No audio URL found for content {content_id}")
+                        platform = db_content.platform or content.metadata.get("platform")
+                        logger.error(
+                            "No podcast audio URL found",
+                            extra=self._log_extra(
+                                operation="resolve_audio_url",
+                                content_id=content_id,
+                                status="failed",
+                                context_data={"platform": platform},
+                            ),
+                        )
                         db_content.status = ContentStatus.FAILED.value
                         db_content.error_message = "No audio URL found"
                         content.status = ContentStatus.FAILED
@@ -327,8 +436,16 @@ class PodcastDownloadWorker:
                 # Check if this is a YouTube URL
                 if self._is_youtube_url(audio_url):
                     logger.info(
-                        "Detected YouTube URL for content %s, downloading audio with yt-dlp",
-                        content_id,
+                        "Podcast source resolved to YouTube",
+                        extra=self._log_extra(
+                            operation="resolve_audio_url",
+                            content_id=content_id,
+                            status="completed",
+                            context_data={
+                                "platform": "youtube",
+                                "audio_url": sanitize_url_for_logs(audio_url),
+                            },
+                        ),
                     )
                     file_path = self._download_youtube_audio(audio_url, content.title, content_id)
 
@@ -344,6 +461,26 @@ class PodcastDownloadWorker:
                     # Queue transcription task directly (transcriber will handle YouTube)
                     self.queue_service.enqueue(TaskType.TRANSCRIBE, content_id=content_id)
 
+                    youtube_duration_ms = (
+                        datetime.now(UTC) - download_started_at
+                    ).total_seconds() * 1000
+                    logger.info(
+                        "YouTube audio prepared for transcription",
+                        extra=self._log_extra(
+                            operation="download_audio",
+                            content_id=content_id,
+                            status="completed",
+                            duration_ms=youtube_duration_ms,
+                            context_data={
+                                "platform": "youtube",
+                                "file_path": str(file_path),
+                                "file_size": file_path.stat().st_size,
+                                "file_extension": file_path.suffix,
+                                "next_task_types": [TaskType.TRANSCRIBE.value],
+                            },
+                        ),
+                    )
+
                     return True
 
                 # Extract actual audio URL if it's a redirect
@@ -351,7 +488,15 @@ class PodcastDownloadWorker:
 
                 # Validate URL format
                 if not self._validate_url(audio_url):
-                    logger.error(f"Invalid audio URL for content {content_id}: {audio_url}")
+                    logger.error(
+                        "Invalid podcast audio URL",
+                        extra=self._log_extra(
+                            operation="validate_url",
+                            content_id=content_id,
+                            status="failed",
+                            context_data={"audio_url": sanitize_url_for_logs(audio_url)},
+                        ),
+                    )
                     db_content.status = ContentStatus.FAILED.value
                     db_content.error_message = "Invalid audio URL format"
                     db.commit()
@@ -376,7 +521,22 @@ class PodcastDownloadWorker:
 
                 # Check if file already exists
                 if file_path.exists() and file_path.stat().st_size > 0:
-                    logger.info(f"File already exists: {file_path}")
+                    logger.info(
+                        "Reusing existing podcast download",
+                        extra=self._log_extra(
+                            operation="download_audio",
+                            content_id=content_id,
+                            status="completed",
+                            context_data={
+                                "reuse_existing_file": True,
+                                "audio_url": sanitize_url_for_logs(audio_url),
+                                "file_path": str(file_path),
+                                "file_size": file_path.stat().st_size,
+                                "file_extension": file_path.suffix,
+                                "next_task_types": [TaskType.TRANSCRIBE.value],
+                            },
+                        ),
+                    )
                     content.metadata["file_path"] = str(file_path)
                     content.metadata["download_date"] = datetime.now(UTC).isoformat()
                     content.metadata["file_size"] = file_path.stat().st_size
@@ -407,7 +567,27 @@ class PodcastDownloadWorker:
                 db.commit()
 
                 file_size = file_path.stat().st_size
-                logger.info(f"Successfully downloaded podcast to {file_path} ({file_size} bytes)")
+                download_duration_ms = (
+                    datetime.now(UTC) - download_started_at
+                ).total_seconds() * 1000
+                logger.info(
+                    "Podcast download completed",
+                    extra=self._log_extra(
+                        operation="download_audio",
+                        content_id=content_id,
+                        status="completed",
+                        duration_ms=download_duration_ms,
+                        context_data={
+                            "platform": content.metadata.get("platform") or db_content.platform,
+                            "audio_url": sanitize_url_for_logs(audio_url),
+                            "file_path": str(file_path),
+                            "file_size": file_size,
+                            "file_extension": file_path.suffix,
+                            "reuse_existing_file": False,
+                            "next_task_types": [TaskType.TRANSCRIBE.value],
+                        },
+                    ),
+                )
 
                 # Queue transcription task
                 self.queue_service.enqueue(TaskType.TRANSCRIBE, content_id=content_id)
@@ -416,29 +596,50 @@ class PodcastDownloadWorker:
 
         except Exception as e:
             error_msg = str(e)
+            failed_audio_url = (
+                sanitize_url_for_logs(audio_url) if "audio_url" in locals() else None
+            )
+            failed_duration_ms = (
+                datetime.now(UTC) - download_started_at
+            ).total_seconds() * 1000
             logger.exception(
-                "Error downloading podcast %s: %s",
-                content_id,
-                error_msg,
-                extra={
-                    "component": "podcast_download_worker",
-                    "operation": "podcast_download",
-                    "item_id": content_id,
-                    "context_data": {
-                        "audio_url": audio_url if "audio_url" in locals() else None,
+                "Podcast download failed",
+                extra=self._log_extra(
+                    operation="download_audio",
+                    content_id=content_id,
+                    status="failed",
+                    duration_ms=failed_duration_ms,
+                    context_data={
+                        "audio_url": failed_audio_url,
                         "file_path": str(file_path) if file_path else None,
-                        "error_type": type(e).__name__,
+                        "failure_class": type(e).__name__,
                     },
-                },
+                ),
             )
 
             # Clean up partial download if exists
             if file_path and Path(file_path).exists():
                 try:
                     Path(file_path).unlink()
-                    logger.info(f"Cleaned up partial download: {file_path}")
+                    logger.info(
+                        "Cleaned up partial podcast download",
+                        extra=self._log_extra(
+                            operation="cleanup_partial_download",
+                            content_id=content_id,
+                            status="completed",
+                            context_data={"file_path": str(file_path)},
+                        ),
+                    )
                 except Exception as cleanup_error:
-                    logger.warning(f"Failed to clean up partial download: {cleanup_error}")
+                    logger.warning(
+                        "Failed to clean up partial podcast download",
+                        extra=self._log_extra(
+                            operation="cleanup_partial_download",
+                            content_id=content_id,
+                            status="failed",
+                            context_data={"failure_class": type(cleanup_error).__name__},
+                        ),
+                    )
 
             # Update content with error
             try:
@@ -450,7 +651,15 @@ class PodcastDownloadWorker:
                         db_content.retry_count += 1
                         db.commit()
             except Exception as db_error:
-                logger.error(f"Failed to update database with error: {db_error}")
+                logger.error(
+                    "Failed to persist podcast download error",
+                    extra=self._log_extra(
+                        operation="persist_error",
+                        content_id=content_id,
+                        status="failed",
+                        context_data={"failure_class": type(db_error).__name__},
+                    ),
+                )
 
             return False
 
@@ -464,14 +673,43 @@ class PodcastTranscribeWorker:
         self.queue_service = get_queue_service()
         self.transcription_service = None
 
+    @staticmethod
+    def _log_extra(
+        *,
+        operation: str,
+        content_id: int | None = None,
+        status: str | None = None,
+        duration_ms: float | None = None,
+        context_data: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return build_log_extra(
+            component="podcast_transcribe_worker",
+            operation=operation,
+            event_name="content.transcribe",
+            status=status,
+            duration_ms=duration_ms,
+            content_id=content_id,
+            context_data=context_data,
+        )
+
     def _get_transcription_service(self):
         """Lazy load the transcription service."""
         if self.transcription_service is None:
             try:
                 self.transcription_service = get_whisper_local_service()
-                logger.info("Local Whisper transcription service initialized")
+                logger.info(
+                    "Whisper transcription service initialized",
+                    extra=self._log_extra(operation="init_transcriber", status="completed"),
+                )
             except Exception as e:
-                logger.error(f"Failed to initialize transcription service: {e}")
+                logger.error(
+                    "Failed to initialize transcription service",
+                    extra=self._log_extra(
+                        operation="init_transcriber",
+                        status="failed",
+                        context_data={"failure_class": type(e).__name__},
+                    ),
+                )
                 raise
 
     def process_transcribe_task(self, content_id: int) -> bool:
@@ -484,7 +722,15 @@ class PodcastTranscribeWorker:
         Returns:
             True if successful, False otherwise
         """
-        logger.info(f"Processing transcribe task for content {content_id}")
+        logger.info(
+            "Podcast transcription task started",
+            extra=self._log_extra(
+                operation="transcribe",
+                content_id=content_id,
+                status="started",
+            ),
+        )
+        transcribe_started_at = datetime.now(UTC)
 
         try:
             with get_db() as db:
@@ -499,7 +745,20 @@ class PodcastTranscribeWorker:
 
                 # Check if this is a YouTube video with existing transcript
                 if content.metadata.get("youtube_video") and content.metadata.get("transcript"):
-                    logger.info(f"Using existing YouTube transcript for content {content_id}")
+                    transcript_chars = len(str(content.metadata.get("transcript") or ""))
+                    logger.info(
+                        "Reusing existing YouTube transcript",
+                        extra=self._log_extra(
+                            operation="transcribe",
+                            content_id=content_id,
+                            status="completed",
+                            context_data={
+                                "transcription_service": "youtube",
+                                "transcript_chars": transcript_chars,
+                                "next_task_types": [TaskType.SUMMARIZE.value],
+                            },
+                        ),
+                    )
 
                     # YouTube transcript already available from strategy processing
                     transcript_text = content.metadata.get("transcript")
@@ -516,7 +775,15 @@ class PodcastTranscribeWorker:
                     with open(text_path, "w", encoding="utf-8") as f:
                         f.write(transcript_text.strip())
 
-                    logger.info(f"YouTube transcript saved to: {text_path}")
+                    logger.info(
+                        "YouTube transcript persisted",
+                        extra=self._log_extra(
+                            operation="persist_transcript",
+                            content_id=content_id,
+                            status="completed",
+                            context_data={"transcript_path": str(text_path)},
+                        ),
+                    )
 
                     # Update content metadata
                     content.metadata["transcript_path"] = str(text_path)
@@ -536,7 +803,14 @@ class PodcastTranscribeWorker:
                 file_path_value = content.metadata.get("file_path")
                 if not file_path_value:
                     error_msg = "Audio file path missing in metadata"
-                    logger.error(error_msg)
+                    logger.error(
+                        error_msg,
+                        extra=self._log_extra(
+                            operation="load_audio",
+                            content_id=content_id,
+                            status="failed",
+                        ),
+                    )
                     db_content.status = ContentStatus.FAILED.value
                     db_content.error_message = error_msg
                     db.commit()
@@ -559,7 +833,15 @@ class PodcastTranscribeWorker:
 
                 if not audio_path.exists():
                     error_msg = f"Audio file not found: {audio_path}"
-                    logger.error(error_msg)
+                    logger.error(
+                        "Podcast audio file not found",
+                        extra=self._log_extra(
+                            operation="load_audio",
+                            content_id=content_id,
+                            status="failed",
+                            context_data={"audio_path": str(audio_path)},
+                        ),
+                    )
                     db_content.status = ContentStatus.FAILED.value
                     db_content.error_message = error_msg
                     db.commit()
@@ -574,7 +856,15 @@ class PodcastTranscribeWorker:
                 # Get transcription service and transcribe
                 self._get_transcription_service()
 
-                logger.info(f"Starting transcription of: {audio_path}")
+                logger.info(
+                    "Podcast transcription started",
+                    extra=self._log_extra(
+                        operation="transcribe",
+                        content_id=content_id,
+                        status="started",
+                        context_data={"audio_path": str(audio_path)},
+                    ),
+                )
 
                 # Transcribe the audio
                 transcript_text, detected_language = self.transcription_service.transcribe_audio(
@@ -589,9 +879,26 @@ class PodcastTranscribeWorker:
                 with open(text_path, "w", encoding="utf-8") as f:
                     f.write(transcript_text.strip())
 
-                logger.info(f"Transcription completed: {text_path}")
-                if detected_language:
-                    logger.info(f"Detected language: {detected_language}")
+                transcribe_duration_ms = (
+                    datetime.now(UTC) - transcribe_started_at
+                ).total_seconds() * 1000
+                logger.info(
+                    "Podcast transcription completed",
+                    extra=self._log_extra(
+                        operation="transcribe",
+                        content_id=content_id,
+                        status="completed",
+                        duration_ms=transcribe_duration_ms,
+                        context_data={
+                            "audio_path": str(audio_path),
+                            "transcript_path": str(text_path),
+                            "transcript_chars": len(transcript_text.strip()),
+                            "detected_language": detected_language,
+                            "transcription_service": "whisper_local",
+                            "next_task_types": [TaskType.SUMMARIZE.value],
+                        },
+                    ),
+                )
 
                 # Update content metadata
                 content.metadata["transcript_path"] = str(text_path)
@@ -605,15 +912,25 @@ class PodcastTranscribeWorker:
                 domain_to_content(content, db_content)
                 db.commit()
 
-                logger.info(f"Successfully transcribed podcast {content_id}")
-
                 # Queue summarization task
                 self.queue_service.enqueue(TaskType.SUMMARIZE, content_id=content_id)
 
                 return True
 
         except Exception as e:
-            logger.error(f"Error transcribing podcast {content_id}: {e}")
+            transcribe_failed_ms = (
+                datetime.now(UTC) - transcribe_started_at
+            ).total_seconds() * 1000
+            logger.exception(
+                "Podcast transcription failed",
+                extra=self._log_extra(
+                    operation="transcribe",
+                    content_id=content_id,
+                    status="failed",
+                    duration_ms=transcribe_failed_ms,
+                    context_data={"failure_class": type(e).__name__},
+                ),
+            )
 
             # Update content with error
             try:
@@ -636,4 +953,7 @@ class PodcastTranscribeWorker:
             if hasattr(self.transcription_service, "cleanup_service"):
                 self.transcription_service.cleanup_service()
             self.transcription_service = None
-        logger.info("Transcription service cleaned up")
+        logger.info(
+            "Transcription service cleaned up",
+            extra=self._log_extra(operation="cleanup_service", status="completed"),
+        )

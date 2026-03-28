@@ -4,6 +4,8 @@ import os
 import re
 import sys
 import traceback
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from datetime import UTC, datetime
 from functools import lru_cache
 from logging.handlers import TimedRotatingFileHandler
@@ -22,8 +24,38 @@ _STRUCTURED_LOG_KEYS = {
     "http_details",
     "error_type",
     "error_message",
+    "event_name",
+    "status",
+    "duration_ms",
+    "request_id",
+    "task_id",
+    "task_type",
+    "queue_name",
+    "worker_id",
+    "content_id",
+    "session_id",
+    "message_id",
+    "user_id",
+    "source",
+    "trigger",
+    "job_name",
 }
 _CONSOLE_STRUCTURED_MAX_CHARS = 700
+_LOG_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("log_context", default=None)
+_CONTEXT_KEYS = {
+    "request_id",
+    "task_id",
+    "task_type",
+    "queue_name",
+    "worker_id",
+    "content_id",
+    "session_id",
+    "message_id",
+    "user_id",
+    "source",
+    "trigger",
+    "job_name",
+}
 
 
 def _sanitize_filename(value: str) -> str:
@@ -43,9 +75,11 @@ def _redact_value(value: Any) -> Any:
         "access_token",
         "refresh_token",
         "password",
+        "passcode",
         "secret",
         "jwt",
         "jwt_secret_key",
+        "id_token",
     }
 
     if isinstance(value, dict):
@@ -138,7 +172,47 @@ def _record_has_structured_fields(record: logging.LogRecord) -> bool:
         return True
     if getattr(record, "operation", None) is not None:
         return True
+    if getattr(record, "event_name", None) is not None:
+        return True
+    if getattr(record, "status", None) is not None:
+        return True
+    if getattr(record, "duration_ms", None) is not None:
+        return True
+    if any(getattr(record, key, None) is not None for key in _CONTEXT_KEYS):
+        return True
     return bool(_extract_extra_fields(record))
+
+
+def bind_log_context(**context: Any) -> Token:
+    """Bind structured log context for the current execution scope."""
+    current = dict(_LOG_CONTEXT.get() or {})
+    current.update({key: value for key, value in context.items() if value is not None})
+    return _LOG_CONTEXT.set(current)
+
+
+def reset_log_context(token: Token) -> None:
+    """Restore the previous structured log context."""
+    _LOG_CONTEXT.reset(token)
+
+
+def clear_log_context() -> None:
+    """Clear the current structured log context."""
+    _LOG_CONTEXT.set({})
+
+
+def get_log_context() -> dict[str, Any]:
+    """Return the current structured log context."""
+    return dict(_LOG_CONTEXT.get() or {})
+
+
+@contextmanager
+def scoped_log_context(**context: Any):
+    """Temporarily bind structured logging context for the current scope."""
+    token = bind_log_context(**context)
+    try:
+        yield
+    finally:
+        reset_log_context(token)
 
 
 def _build_error_json_payload(record: logging.LogRecord) -> dict[str, Any]:
@@ -182,6 +256,9 @@ def _build_error_json_payload(record: logging.LogRecord) -> dict[str, Any]:
         "logger": record.name,
         "component": _default_log_record_component(record),
         "operation": getattr(record, "operation", None),
+        "event_name": getattr(record, "event_name", None),
+        "status": getattr(record, "status", None),
+        "duration_ms": getattr(record, "duration_ms", None),
         "error_type": error_type,
         "error_message": error_message,
         "stack_trace": stack_trace,
@@ -189,6 +266,18 @@ def _build_error_json_payload(record: logging.LogRecord) -> dict[str, Any]:
         "context_data": context_data,
         "http_details": http_details,
         "item_id": getattr(record, "item_id", None),
+        "request_id": getattr(record, "request_id", None),
+        "task_id": getattr(record, "task_id", None),
+        "task_type": getattr(record, "task_type", None),
+        "queue_name": getattr(record, "queue_name", None),
+        "worker_id": getattr(record, "worker_id", None),
+        "content_id": getattr(record, "content_id", None),
+        "session_id": getattr(record, "session_id", None),
+        "message_id": getattr(record, "message_id", None),
+        "user_id": getattr(record, "user_id", None),
+        "source": getattr(record, "source", None),
+        "trigger": getattr(record, "trigger", None),
+        "job_name": getattr(record, "job_name", None),
         "source_file": record.filename,
         "source_line": record.lineno,
         "source_function": record.funcName,
@@ -224,10 +313,25 @@ def _build_structured_json_payload(record: logging.LogRecord) -> dict[str, Any]:
         "logger": record.name,
         "component": _default_log_record_component(record),
         "operation": getattr(record, "operation", None),
+        "event_name": getattr(record, "event_name", None),
+        "status": getattr(record, "status", None),
+        "duration_ms": getattr(record, "duration_ms", None),
         "message": message,
         "context_data": context_data,
         "http_details": http_details,
         "item_id": getattr(record, "item_id", None),
+        "request_id": getattr(record, "request_id", None),
+        "task_id": getattr(record, "task_id", None),
+        "task_type": getattr(record, "task_type", None),
+        "queue_name": getattr(record, "queue_name", None),
+        "worker_id": getattr(record, "worker_id", None),
+        "content_id": getattr(record, "content_id", None),
+        "session_id": getattr(record, "session_id", None),
+        "message_id": getattr(record, "message_id", None),
+        "user_id": getattr(record, "user_id", None),
+        "source": getattr(record, "source", None),
+        "trigger": getattr(record, "trigger", None),
+        "job_name": getattr(record, "job_name", None),
         "source_file": record.filename,
         "source_line": record.lineno,
         "source_function": record.funcName,
@@ -263,8 +367,38 @@ class _ConsoleStructuredFormatter(logging.Formatter):
         if operation:
             suffix_parts.append(f"operation={operation}")
 
+        event_name = payload.get("event_name")
+        if event_name:
+            suffix_parts.append(f"event_name={event_name}")
+
+        status = payload.get("status")
+        if status:
+            suffix_parts.append(f"status={status}")
+
+        duration_ms = payload.get("duration_ms")
+        if duration_ms is not None:
+            suffix_parts.append(f"duration_ms={duration_ms}")
+
         if "item_id" in payload:
             suffix_parts.append(f"item_id={payload['item_id']}")
+
+        for key in (
+            "request_id",
+            "task_id",
+            "task_type",
+            "queue_name",
+            "worker_id",
+            "content_id",
+            "session_id",
+            "message_id",
+            "user_id",
+            "source",
+            "trigger",
+            "job_name",
+        ):
+            value = payload.get(key)
+            if value is not None:
+                suffix_parts.append(f"{key}={value}")
 
         context_data = payload.get("context_data")
         if context_data is not None:
@@ -282,6 +416,19 @@ class _ConsoleStructuredFormatter(logging.Formatter):
 class _StructuredLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return _record_has_structured_fields(record)
+
+
+class _ContextInjectionFilter(logging.Filter):
+    """Inject bound log context into records before formatting."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        context = _LOG_CONTEXT.get() or {}
+        for key, value in context.items():
+            if value is None:
+                continue
+            if getattr(record, key, None) is None:
+                setattr(record, key, value)
+        return True
 
 
 def _rotate_jsonl_namer(default_name: str) -> str:
@@ -358,6 +505,8 @@ def setup_logging(name: str | None = None, level: str | None = None) -> logging.
 
     # Remove existing handlers from root logger
     root_logger.handlers.clear()
+    root_logger.filters.clear()
+    root_logger.addFilter(_ContextInjectionFilter())
 
     # Console handler with formatting
     console_handler = logging.StreamHandler(sys.stdout)

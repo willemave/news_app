@@ -59,3 +59,10 @@ def test_get_recent_structured_events_reads_latest_entries(tmp_path, monkeypatch
     assert events[1]["operation"] == "turn_start"
     assert events[0]["level"] == "INFO"
 
+
+def test_matches_structured_filters_handles_missing_values() -> None:
+    """Filter matcher should reject entries missing a filtered key."""
+    entry = {"component": "http", "operation": "request"}
+
+    assert logs_router._matches_structured_filters(entry, {"request_id": "req_a"}) is False
+    assert logs_router._matches_structured_filters(entry, {"component": "http"}) is True

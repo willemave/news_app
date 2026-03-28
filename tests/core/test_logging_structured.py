@@ -29,7 +29,7 @@ class TestStructuredLogging:
         payload = _build_structured_json_payload(record)
 
         assert payload["context_data"]["content_id"] == 42
-        assert payload["context_data"]["user_id"] == 555
+        assert payload["user_id"] == 555
 
     def test_structured_log_filter(self):
         """Test structured log filter only allows records with structured data."""

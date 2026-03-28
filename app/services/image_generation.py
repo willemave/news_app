@@ -16,6 +16,7 @@ from google import genai
 from google.genai.types import GenerateContentConfig, ImageConfig
 from PIL import Image
 
+from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
@@ -23,6 +24,7 @@ from app.services.langfuse_tracing import (
     extract_google_usage_details,
     langfuse_generation_context,
 )
+from app.services.llm_costs import record_llm_usage
 from app.utils.image_paths import (
     get_content_images_dir,
     get_news_thumbnails_dir,
@@ -470,6 +472,19 @@ class ImageGenerationService:
                         output="generated_news_thumbnail",
                         usage_details=usage_details,
                     )
+                if usage_details:
+                    with get_db() as db:
+                        record_llm_usage(
+                            db,
+                            provider="google",
+                            model=NEWS_THUMBNAIL_MODEL,
+                            feature="image_generation",
+                            operation="image_generation.news_thumbnail",
+                            source="queue",
+                            usage=usage_details,
+                            content_id=content_id,
+                            metadata={"image_type": "news_thumbnail"},
+                        )
 
             image_path = get_news_thumbnails_dir() / f"{content_id}.png"
             image_saved = False
@@ -549,6 +564,19 @@ class ImageGenerationService:
                         output="generated_infographic",
                         usage_details=usage_details,
                     )
+                if usage_details:
+                    with get_db() as db:
+                        record_llm_usage(
+                            db,
+                            provider="google",
+                            model=INFOGRAPHIC_MODEL,
+                            feature="image_generation",
+                            operation="image_generation.infographic",
+                            source="queue",
+                            usage=usage_details,
+                            content_id=content_id,
+                            metadata={"image_type": "infographic"},
+                        )
 
             image_path = get_content_images_dir() / f"{content_id}.png"
             image_saved = False

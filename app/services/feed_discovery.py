@@ -84,8 +84,10 @@ class FeedDiscoveryRequest(BaseModel):
 @dataclass
 class FeedDiscoveryDeps:
     direction_selector: Callable[[Session, int], DiscoveryDirectionPlan]
-    lane_planner: Callable[[DiscoveryDirectionPlan], DiscoveryLanePlan]
-    candidate_extractor: Callable[[DiscoveryLane, list[ExaSearchResult]], DiscoveryCandidateBatch]
+    lane_planner: Callable[[Session, int, DiscoveryDirectionPlan], DiscoveryLanePlan]
+    candidate_extractor: Callable[
+        [Session, int, DiscoveryLane, list[ExaSearchResult]], DiscoveryCandidateBatch
+    ]
     exa_search_fn: Callable[[str, int], list[ExaSearchResult]]
     candidate_validator: Callable[
         [Session, int, Iterable[DiscoveryCandidate], str], list[DiscoveryCandidate]
@@ -215,7 +217,7 @@ def _run_feed_discovery(
                 },
             )
             lane_start = perf_counter()
-            lane_plan = deps.lane_planner(direction_plan)
+            lane_plan = deps.lane_planner(db, request.user_id, direction_plan)
             timing["lane_ms"] = (perf_counter() - lane_start) * 1000
             logger.debug(
                 "Lane planning complete",
@@ -229,7 +231,11 @@ def _run_feed_discovery(
 
             candidate_start = perf_counter()
             candidates = _collect_candidates(
-                lane_plan, deps.exa_search_fn, deps.candidate_extractor
+                db,
+                request.user_id,
+                lane_plan,
+                deps.exa_search_fn,
+                deps.candidate_extractor,
             )
             timing["candidate_extract_ms"] = (perf_counter() - candidate_start) * 1000
             logger.debug(
@@ -334,9 +340,18 @@ def _run_feed_discovery(
 def _default_deps(model_spec: str, candidate_model_spec: str) -> FeedDiscoveryDeps:
     return FeedDiscoveryDeps(
         direction_selector=lambda db, user_id: _select_directions_llm(db, user_id, model_spec),
-        lane_planner=lambda directions: _plan_lanes_llm(directions, model_spec),
-        candidate_extractor=lambda lane, results: _extract_candidates_llm(
-            lane, results, candidate_model_spec
+        lane_planner=lambda db, user_id, directions: _plan_lanes_llm(
+            db,
+            user_id,
+            directions,
+            model_spec,
+        ),
+        candidate_extractor=lambda db, user_id, lane, results: _extract_candidates_llm(
+            db,
+            user_id,
+            lane,
+            results,
+            candidate_model_spec,
         ),
         exa_search_fn=_run_exa_search,
         candidate_validator=lambda db, user_id, candidates, spec: _validate_and_filter_candidates(
@@ -542,7 +557,18 @@ def _select_directions_llm(
         deps=DiscoveryToolDeps(user_id=user_id),
         model_settings={"timeout": settings.worker_timeout_seconds},
     )
-    record_usage("direction_select", result, model_spec=model_spec)
+    record_usage(
+        "direction_select",
+        result,
+        model_spec=model_spec,
+        db=db,
+        persist={
+            "feature": "feed_discovery",
+            "operation": "feed_discovery.direction_select",
+            "source": "queue",
+            "user_id": user_id,
+        },
+    )
     tool_summary = _summarize_tool_calls(result)
     logger.debug(
         "Direction selection complete",
@@ -579,6 +605,8 @@ def _select_directions_llm(
 
 
 def _plan_lanes_llm(
+    db: Session,
+    user_id: int,
     direction_plan: DiscoveryDirectionPlan,
     model_spec: str,
 ) -> DiscoveryLanePlan:
@@ -621,7 +649,18 @@ def _plan_lanes_llm(
         },
     )
     result = agent.run_sync(prompt, model_settings={"timeout": settings.worker_timeout_seconds})
-    record_usage("lane_plan", result, model_spec=model_spec)
+    record_usage(
+        "lane_plan",
+        result,
+        model_spec=model_spec,
+        db=db,
+        persist={
+            "feature": "feed_discovery",
+            "operation": "feed_discovery.lane_plan",
+            "source": "queue",
+            "user_id": user_id,
+        },
+    )
     target_counts = Counter(lane.target for lane in result.output.lanes)
     logger.debug(
         "Lane planning complete",
@@ -638,6 +677,8 @@ def _plan_lanes_llm(
 
 
 def _extract_candidates_llm(
+    db: Session,
+    user_id: int,
     lane: DiscoveryLane,
     results: list[ExaSearchResult],
     model_spec: str,
@@ -672,7 +713,19 @@ def _extract_candidates_llm(
         },
     )
     result = agent.run_sync(prompt, model_settings={"timeout": settings.worker_timeout_seconds})
-    record_usage(f"candidate_extract:{lane.name}", result, model_spec=model_spec)
+    record_usage(
+        f"candidate_extract:{lane.name}",
+        result,
+        model_spec=model_spec,
+        db=db,
+        persist={
+            "feature": "feed_discovery",
+            "operation": "feed_discovery.candidate_extract",
+            "source": "queue",
+            "user_id": user_id,
+            "metadata": {"lane": lane.name},
+        },
+    )
     tool_summary = _summarize_tool_calls(result)
     logger.debug(
         "Candidate extraction complete",
@@ -694,9 +747,13 @@ def _run_exa_search(query: str, num_results: int) -> list[ExaSearchResult]:
 
 
 def _collect_candidates(
+    db: Session,
+    user_id: int,
     lane_plan: DiscoveryLanePlan,
     exa_search_fn: Callable[[str, int], list[ExaSearchResult]],
-    candidate_extractor: Callable[[DiscoveryLane, list[ExaSearchResult]], DiscoveryCandidateBatch],
+    candidate_extractor: Callable[
+        [Session, int, DiscoveryLane, list[ExaSearchResult]], DiscoveryCandidateBatch
+    ],
 ) -> list[DiscoveryCandidate]:
     settings = get_settings()
     all_candidates: list[DiscoveryCandidate] = []
@@ -740,7 +797,7 @@ def _collect_candidates(
                 "context_data": {"lane": lane.name, "result_count": len(lane_results)},
             },
         )
-        batch = candidate_extractor(lane, lane_results)
+        batch = candidate_extractor(db, user_id, lane, lane_results)
         logger.debug(
             "Lane candidates extracted",
             extra={

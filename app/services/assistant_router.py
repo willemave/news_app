@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import get_session_factory
 from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.infrastructure.db.search.base import get_search_backend
 from app.models.chat_message_metadata import (
     AssistantFeedOption,
@@ -925,16 +926,52 @@ async def process_assistant_turn_async(
     total_start = perf_counter()
     SessionLocal = get_session_factory()
     db = SessionLocal()
+    logger.info(
+        "Assistant turn started",
+        extra=build_log_extra(
+            component="assistant_turn",
+            operation="process_turn",
+            event_name="assistant.turn",
+            status="started",
+            session_id=session_id,
+            message_id=message_id,
+            source=source,
+            context_data={
+                "screen_type": screen_context.screen_type,
+                "prompt_chars": len(user_prompt),
+            },
+        ),
+    )
     try:
         session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if session is None:
             logger.error("Assistant session %s not found", session_id)
             return
 
+        history_start = perf_counter()
         history = load_message_history(db, session.id)
+        history_ms = (perf_counter() - history_start) * 1000
+        logger.info(
+            "Assistant history loaded",
+            extra=build_log_extra(
+                component="assistant_turn",
+                operation="load_history",
+                event_name="assistant.turn.history_loaded",
+                status="completed",
+                duration_ms=history_ms,
+                session_id=session.id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                context_data={"history_count": len(history)},
+            ),
+        )
+
+        context_start = perf_counter()
         context_snapshot = session.context_snapshot or build_screen_context_snapshot(
             db, user_id=session.user_id, screen_context=screen_context
         )
+        context_ms = (perf_counter() - context_start) * 1000
         deps = AssistantDeps(
             user_id=session.user_id,
             session_id=session.id,
@@ -942,11 +979,48 @@ async def process_assistant_turn_async(
             context_snapshot=context_snapshot,
             session_factory=get_session_factory(),
         )
+        logger.info(
+            "Assistant context built",
+            extra=build_log_extra(
+                component="assistant_turn",
+                operation="build_context",
+                event_name="assistant.turn.context_built",
+                status="completed",
+                duration_ms=context_ms,
+                session_id=session.id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                context_data={
+                    "screen_type": screen_context.screen_type,
+                    "context_chars": len(context_snapshot or ""),
+                },
+            ),
+        )
         provider_api_key = resolve_effective_api_key(
             db=db,
             user_id=session.user_id,
             model_spec=session.llm_model,
         )
+        logger.info(
+            "Assistant LLM call started",
+            extra=build_log_extra(
+                component="assistant_turn",
+                operation="llm_call",
+                event_name="assistant.turn.llm_started",
+                status="started",
+                session_id=session.id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={
+                    "model": session.llm_model,
+                    "screen_type": screen_context.screen_type,
+                },
+            ),
+        )
+        agent_start = perf_counter()
         result = await run_in_threadpool(
             run_assistant_turn_sync,
             session.llm_model,
@@ -955,8 +1029,9 @@ async def process_assistant_turn_async(
             history,
             provider_api_key=provider_api_key,
         )
+        agent_ms = (perf_counter() - agent_start) * 1000
         render_metadata = _extract_render_metadata(result.new_messages())
-        _log_chat_usage(result, session_id, message_id, source)
+        _log_chat_usage(result, db, session, session_id, message_id, source)
         update_message_completed(
             db,
             message_id,
@@ -975,21 +1050,40 @@ async def process_assistant_turn_async(
             for call in tool_calls
         ]
         logger.info(
-            "Assistant turn completed | sid=%s mid=%s total_ms=%.1f tools=%s",
-            session_id,
-            message_id,
-            (perf_counter() - total_start) * 1000,
-            tool_names,
+            "Assistant turn completed",
+            extra=build_log_extra(
+                component="assistant_turn",
+                operation="process_turn",
+                event_name="assistant.turn",
+                status="completed",
+                duration_ms=(perf_counter() - total_start) * 1000,
+                session_id=session_id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={
+                    "model": session.llm_model,
+                    "tool_names": tool_names,
+                    "tool_count": len([name for name in tool_names if name]),
+                    "agent_ms": round(agent_ms, 2),
+                },
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "Assistant turn failed",
-            extra={
-                "component": "assistant_router",
-                "operation": "process_turn",
-                "item_id": str(session_id),
-                "context_data": {"error": str(exc)},
-            },
+            extra=build_log_extra(
+                component="assistant_turn",
+                operation="process_turn",
+                event_name="assistant.turn",
+                status="failed",
+                duration_ms=(perf_counter() - total_start) * 1000,
+                session_id=session_id,
+                message_id=message_id,
+                source=source,
+                context_data={"failure_class": type(exc).__name__},
+            ),
         )
         db.rollback()
         update_message_failed(db, message_id, str(exc))

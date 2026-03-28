@@ -98,7 +98,7 @@ class TestBuildErrorJsonPayload:
         payload = _build_error_json_payload(record)
 
         assert payload["context_data"]["content_id"] == 123
-        assert payload["context_data"]["user_id"] == 999
+        assert payload["user_id"] == 999
 
     def test_payload_redacts_sensitive_context(self):
         """Test that sensitive data in context is redacted."""

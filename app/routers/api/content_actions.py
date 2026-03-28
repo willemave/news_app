@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
+from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.domain.converters import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
@@ -22,7 +24,6 @@ from app.routers.api.models import (
     TweetSuggestionsRequest,
     TweetSuggestionsResponse,
 )
-from app.services.event_logger import log_event
 from app.services.feed_backfill import (
     FeedBackfillRequest,
     backfill_feed_for_config,
@@ -32,6 +33,7 @@ from app.services.tweet_suggestions import generate_tweet_suggestions
 from app.utils.url_utils import is_http_url, normalize_http_url
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.post(
@@ -283,29 +285,34 @@ async def get_tweet_suggestions(
     )
 
     if result is None:
-        # Log the failure
-        log_event(
-            event_type="tweet_suggestions",
-            event_name="generation_failed",
-            status="failed",
-            content_id=content_id,
-            user_id=current_user.id,
-            creativity=request.creativity,
+        logger.error(
+            "Tweet suggestion generation failed",
+            extra=build_log_extra(
+                component="tweet_suggestions",
+                operation="generate",
+                event_name="tweet_suggestions.generate",
+                status="failed",
+                content_id=content_id,
+                user_id=current_user.id,
+                context_data={"creativity": request.creativity},
+            ),
         )
         raise HTTPException(
             status_code=502,
             detail="Tweet generation failed. Please try again.",
         )
 
-    # Log success
-    log_event(
-        event_type="tweet_suggestions",
-        event_name="generation_success",
-        status="completed",
-        content_id=content_id,
-        user_id=current_user.id,
-        creativity=request.creativity,
-        model=result.model,
+    logger.info(
+        "Tweet suggestion generation completed",
+        extra=build_log_extra(
+            component="tweet_suggestions",
+            operation="generate",
+            event_name="tweet_suggestions.generate",
+            status="completed",
+            content_id=content_id,
+            user_id=current_user.id,
+            context_data={"creativity": request.creativity, "model": result.model},
+        ),
     )
 
     # Convert result to response

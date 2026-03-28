@@ -1,6 +1,7 @@
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -11,6 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from app.core.db import init_db
 from app.core.deps import AdminAuthRequired
 from app.core.logging import setup_logging
+from app.core.observability import (
+    bound_log_context,
+    build_log_extra,
+    summarize_headers,
+    summarize_request_payload,
+)
 from app.core.settings import get_settings
 from app.routers import admin, api_content, auth, logs
 from app.routers.api import (
@@ -79,32 +86,12 @@ def _serialize_validation_errors(errors: list) -> list:
     return serialized
 
 
-def _redact_request_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Redact sensitive request headers before logging."""
-    sensitive_headers = {
-        "authorization",
-        "cookie",
-        "set-cookie",
-        "x-api-key",
-        "proxy-authorization",
-    }
-    redacted: dict[str, str] = {}
-    for key, value in headers.items():
-        if key.lower() in sensitive_headers:
-            redacted[key] = "<redacted>"
-        else:
-            redacted[key] = value
-    return redacted
-
-
-def _summarize_request_body(body: bytes | None, *, max_chars: int = 512) -> str:
-    """Return a bounded, text-safe request body summary for logs."""
-    if not body:
-        return "<empty>"
-    decoded = body.decode("utf-8", errors="replace")
-    if len(decoded) <= max_chars:
-        return decoded
-    return f"{decoded[:max_chars]}... <truncated>"
+def _route_details(request: Request) -> tuple[str | None, str | None]:
+    """Return the matched route name and template path when available."""
+    route = request.scope.get("route")
+    if route is None:
+        return None, None
+    return getattr(route, "name", None), getattr(route, "path", None)
 
 
 @app.exception_handler(RequestValidationError)
@@ -118,22 +105,44 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     body = None
     try:
         body = await request.body()
-    except Exception as e:
-        body_text = f"<unable to read body: {e}>"
+    except Exception:
+        payload_summary = {"shape": "unavailable"}
     else:
-        body_text = _summarize_request_body(body)
+        payload_summary = summarize_request_payload(body, request.headers.get("content-type"))
 
-    # Log detailed validation error
-    logger.error("=" * 80)
-    logger.error("VALIDATION ERROR - Request failed Pydantic validation")
-    logger.error(f"Path: {request.method} {request.url.path}")
-    logger.error(f"Client: {request.client.host if request.client else 'unknown'}")
-    logger.error(f"Headers: {_redact_request_headers(dict(request.headers))}")
-    logger.error(f"Request body: {body_text}")
-    logger.error("Validation errors:")
-    for error in exc.errors():
-        logger.error(f"  - Field: {error['loc']}, Error: {error['msg']}, Type: {error['type']}")
-    logger.error("=" * 80)
+    route_name, route_path = _route_details(request)
+    logger.error(
+        "Request validation failed",
+        extra=build_log_extra(
+            component="http",
+            operation="request_validation",
+            event_name="http.request",
+            status="validation_failed",
+            request_id=getattr(request.state, "request_id", None),
+            user_id=getattr(request.state, "authenticated_user_id", None),
+            http_details={
+                "method": request.method,
+                "path": request.url.path,
+                "route_name": route_name,
+                "route_path": route_path,
+                "client_ip": request.client.host if request.client else None,
+                "query_param_keys": sorted(request.query_params.keys()),
+                "header_summary": summarize_headers(dict(request.headers)),
+                "payload_summary": payload_summary,
+            },
+            context_data={
+                "error_count": len(exc.errors()),
+                "errors": [
+                    {
+                        "loc": list(error.get("loc", ())),
+                        "msg": str(error.get("msg", "")),
+                        "type": error.get("type"),
+                    }
+                    for error in exc.errors()
+                ],
+            },
+        ),
+    )
 
     # Return standard FastAPI validation error response with serialized errors
     return JSONResponse(
@@ -164,44 +173,120 @@ async def log_requests(request: Request, call_next):
     start_time = time.perf_counter()
     path = request.url.path
     skip_logging = _should_skip_logging(path)
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    request.state.request_id = request_id
+    route_name, route_path = _route_details(request)
 
-    if not skip_logging:
-        logger.info(f">>> {request.method} {path}")
-        logger.debug(f"    Headers: {dict(request.headers)}")
-        logger.debug(f"    Client: {request.client.host if request.client else 'unknown'}")
-
-    with langfuse_trace_context(
-        trace_name=f"http.{request.method.lower()}",
-        metadata={
-            "source": "realtime",
-            "path": path,
-            "method": request.method,
-        },
-        tags=["realtime", "http"],
-    ):
-        response = await call_next(request)
-
-    duration_ms = (time.perf_counter() - start_time) * 1000
-
-    # Add timing header to response
-    response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
-
-    if skip_logging:
-        return response
-
-    # Log with severity based on duration
-    method = request.method
-    status_code = response.status_code
-    time_str = f"{duration_ms:.2f}ms"
-
-    if duration_ms < 100:
-        logger.info(f"<<< {method} {path} - {status_code} [{time_str}]")
-    elif duration_ms < 500:
-        logger.info(f"<<< {method} {path} - {status_code} [{time_str}] (slow)")
+    body_bytes: bytes | None = None
+    payload_summary: dict[str, object] | None = None
+    content_type = request.headers.get("content-type")
+    try:
+        body_bytes = await request.body()
+    except Exception:
+        body_bytes = None
     else:
-        logger.warning(f"<<< {method} {path} - {status_code} [{time_str}] (very slow)")
+        payload_summary = summarize_request_payload(body_bytes, content_type)
 
-    return response
+    with bound_log_context(request_id=request_id, source="http"):
+        if not skip_logging:
+            logger.info(
+                "HTTP request started",
+                extra=build_log_extra(
+                    component="http",
+                    operation="request",
+                    event_name="http.request",
+                    status="started",
+                    request_id=request_id,
+                    user_id=getattr(request.state, "authenticated_user_id", None),
+                    http_details={
+                        "method": request.method,
+                        "path": path,
+                        "route_name": route_name,
+                        "route_path": route_path,
+                        "query_param_keys": sorted(request.query_params.keys()),
+                        "client_ip": request.client.host if request.client else None,
+                        "user_agent": request.headers.get("user-agent"),
+                        "content_type": content_type,
+                        "auth_present": bool(request.headers.get("authorization")),
+                        "payload_summary": payload_summary,
+                    },
+                ),
+            )
+
+        try:
+            with langfuse_trace_context(
+                trace_name=f"http.{request.method.lower()}",
+                metadata={
+                    "source": "realtime",
+                    "path": path,
+                    "method": request.method,
+                    "request_id": request_id,
+                },
+                tags=["realtime", "http"],
+            ):
+                response = await call_next(request)
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.exception(
+                "HTTP request failed",
+                extra=build_log_extra(
+                    component="http",
+                    operation="request",
+                    event_name="http.request",
+                    status="failed",
+                    duration_ms=duration_ms,
+                    request_id=request_id,
+                    user_id=getattr(request.state, "authenticated_user_id", None),
+                    http_details={
+                        "method": request.method,
+                        "path": path,
+                        "route_name": route_name,
+                        "route_path": route_path,
+                        "query_param_keys": sorted(request.query_params.keys()),
+                        "client_ip": request.client.host if request.client else None,
+                        "content_type": content_type,
+                    },
+                    context_data={"error_type": type(exc).__name__},
+                ),
+            )
+            raise
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
+        response.headers["X-Request-ID"] = request_id
+
+        if skip_logging:
+            return response
+
+        logger_method = logger.info if duration_ms < 500 else logger.warning
+        logger_method(
+            "HTTP request completed",
+            extra=build_log_extra(
+                component="http",
+                operation="request",
+                event_name="http.request",
+                status="completed",
+                duration_ms=duration_ms,
+                request_id=request_id,
+                user_id=getattr(request.state, "authenticated_user_id", None),
+                http_details={
+                    "method": request.method,
+                    "path": path,
+                    "route_name": route_name,
+                    "route_path": route_path,
+                    "query_param_keys": sorted(request.query_params.keys()),
+                    "status_code": response.status_code,
+                    "client_ip": request.client.host if request.client else None,
+                    "user_agent": request.headers.get("user-agent"),
+                    "content_type": content_type,
+                    "request_bytes": len(body_bytes or b""),
+                    "response_bytes": response.headers.get("content-length"),
+                    "auth_present": bool(request.headers.get("authorization")),
+                },
+            ),
+        )
+
+        return response
 
 
 # Add middleware

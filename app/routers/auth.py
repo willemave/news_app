@@ -14,6 +14,7 @@ from app.constants import ALLOWED_NEWS_DIGEST_INTERVAL_HOURS
 from app.core.db import get_db_session
 from app.core.deps import ADMIN_SESSION_COOKIE, get_current_user
 from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -139,25 +140,36 @@ def apple_signin(
     Raises:
         HTTPException: 401 if Apple token is invalid
     """
-    logger.info("=== Apple Sign In Request Started ===")
-    logger.info(f"Request data - email: {request.email}, full_name: {request.full_name}")
-    logger.debug(f"ID token (first 20 chars): {request.id_token[:20]}...")
-
     # Verify Apple identity token
     try:
-        logger.info("Verifying Apple ID token...")
         apple_claims = verify_apple_token(request.id_token)
-        logger.info(f"Apple token verified successfully. Claims: {apple_claims}")
 
         apple_id = apple_claims.get("sub")
-        logger.info(f"Extracted Apple ID: {apple_id}")
 
         if not apple_id:
-            logger.error("Apple token missing 'sub' claim")
+            logger.error(
+                "Apple sign-in token missing subject",
+                extra=build_log_extra(
+                    component="auth",
+                    operation="apple_signin",
+                    event_name="auth.apple_signin",
+                    status="failed",
+                    context_data={"failure_class": "missing_subject"},
+                ),
+            )
             raise ValueError("Missing subject in token")
 
     except (ValueError, Exception) as e:
-        logger.error(f"Apple token verification failed: {str(e)}", exc_info=True)
+        logger.exception(
+            "Apple sign-in token verification failed",
+            extra=build_log_extra(
+                component="auth",
+                operation="apple_signin",
+                event_name="auth.apple_signin",
+                status="failed",
+                context_data={"failure_class": type(e).__name__},
+            ),
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid Apple token: {str(e)}"
         ) from e
@@ -166,12 +178,18 @@ def apple_signin(
     email = request.email
     if not email or email.strip() == "":
         email = apple_claims.get("email")
-        logger.info(f"Email not in request, extracted from token: {email}")
-    else:
-        logger.info(f"Using email from request: {email}")
 
     if not email:
-        logger.error("No email found in request or Apple token")
+        logger.error(
+            "Apple sign-in missing email",
+            extra=build_log_extra(
+                component="auth",
+                operation="apple_signin",
+                event_name="auth.apple_signin",
+                status="failed",
+                context_data={"failure_class": "missing_email"},
+            ),
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email is required but not found in request or Apple token",
@@ -190,20 +208,14 @@ def apple_signin(
                 full_name = f"{first} {last}".strip()
             else:
                 full_name = token_name
-            logger.info(f"Full name extracted from token: {full_name}")
         else:
             full_name = None
-            logger.info("No full name provided in request or token")
-    else:
-        logger.info(f"Using full name from request: {full_name}")
 
     # Check if user already exists
-    logger.info(f"Checking if user exists with apple_id: {apple_id}")
     user = db.query(User).filter(User.apple_id == apple_id).first()
 
     is_new_user = False
     if user is None:
-        logger.info(f"User not found. Creating new user with email: {email}")
         # Create new user
         user = User(
             apple_id=apple_id,
@@ -215,17 +227,24 @@ def apple_signin(
         db.commit()
         db.refresh(user)
         is_new_user = True
-        logger.info(f"New user created with ID: {user.id}")
-    else:
-        logger.info(f"Existing user found with ID: {user.id}")
 
     # Generate tokens
-    logger.info("Generating access and refresh tokens...")
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
-    logger.info("Tokens generated successfully")
-
-    logger.info(f"=== Apple Sign In Successful for user {user.id} ===")
+    logger.info(
+        "Apple sign-in completed",
+        extra=build_log_extra(
+            component="auth",
+            operation="apple_signin",
+            event_name="auth.apple_signin",
+            status="completed",
+            user_id=user.id,
+            context_data={
+                "auth_method": "apple",
+                "is_new_user": is_new_user,
+            },
+        ),
+    )
 
     return TokenResponse(
         access_token=access_token,
@@ -317,7 +336,17 @@ def refresh_token(
     access_token = create_access_token(user.id)
     new_refresh_token = create_refresh_token(user.id)
 
-    logger.info(f"Token refresh successful for user {user.id}")
+    logger.info(
+        "Token refresh completed",
+        extra=build_log_extra(
+            component="auth",
+            operation="refresh_token",
+            event_name="auth.refresh_token",
+            status="completed",
+            user_id=user.id,
+            context_data={"auth_method": "refresh_token"},
+        ),
+    )
 
     return AccessTokenResponse(
         access_token=access_token,

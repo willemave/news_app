@@ -7,6 +7,7 @@ import time
 from pydantic import ValidationError
 
 from app.core.logging import get_logger, setup_logging
+from app.core.observability import bound_log_context, build_log_extra, get_task_event_name
 from app.core.settings import get_settings
 from app.pipeline.dispatcher import TaskDispatcher
 from app.pipeline.handlers.analyze_url import AnalyzeUrlHandler
@@ -31,6 +32,34 @@ from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.queue import QueueService, TaskQueue
 
 logger = get_logger(__name__)
+
+
+def _task_extra(
+    task: TaskEnvelope | None,
+    *,
+    processor: "SequentialTaskProcessor",
+    operation: str,
+    event_name: str | None = None,
+    status: str | None = None,
+    duration_ms: float | None = None,
+    context_data: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Build structured logger metadata for a queue task."""
+    task_type = task.task_type.value if task else None
+    return build_log_extra(
+        component="task_processor",
+        operation=operation,
+        event_name=event_name or get_task_event_name(task_type),
+        status=status,
+        duration_ms=duration_ms,
+        task_id=task.id if task else None,
+        task_type=task_type,
+        queue_name=processor.queue_name,
+        worker_id=processor.worker_id,
+        content_id=task.content_id if task else None,
+        source="queue",
+        context_data=context_data,
+    )
 
 
 class SequentialTaskProcessor:
@@ -87,8 +116,7 @@ class SequentialTaskProcessor:
 
     def process_task(self, task: TaskEnvelope) -> TaskResult:
         """Process a single task."""
-        task_id = task.id
-        start_time = time.time()
+        start_time = time.perf_counter()
         raw_user_id = task.payload.get("user_id")
         user_id: str | int | None = raw_user_id if isinstance(raw_user_id, (int, str)) else None
         metadata = {
@@ -100,7 +128,15 @@ class SequentialTaskProcessor:
             "retry_count": task.retry_count,
         }
 
-        with langfuse_trace_context(
+        with bound_log_context(
+            task_id=task.id,
+            task_type=task.task_type.value,
+            queue_name=self.queue_name,
+            worker_id=self.worker_id,
+            content_id=task.content_id,
+            user_id=user_id,
+            source="queue",
+        ), langfuse_trace_context(
             trace_name=f"queue.{task.task_type.value.lower()}",
             user_id=user_id,
             session_id=self.worker_id,
@@ -108,8 +144,25 @@ class SequentialTaskProcessor:
             tags=["queue", self.queue_name, task.task_type.value.lower()],
         ):
             try:
-                logger.info("Processing task %s of type %s", task_id, task.task_type)
-                logger.debug("Task %s data: %s", task_id, task.to_legacy_task_data())
+                logger.info(
+                    "Task processing started",
+                    extra=_task_extra(
+                        task,
+                        processor=self,
+                        operation="process_task",
+                        status="started",
+                        context_data={"retry_count": task.retry_count},
+                    ),
+                )
+                logger.debug(
+                    "Task payload loaded",
+                    extra=_task_extra(
+                        task,
+                        processor=self,
+                        operation="load_task",
+                        context_data={"payload_keys": sorted(task.payload.keys())},
+                    ),
+                )
                 result = self.dispatcher.dispatch(task, self.context)
                 if not result.success and not result.error_message:
                     result = TaskResult(
@@ -118,23 +171,37 @@ class SequentialTaskProcessor:
                         retry_delay_seconds=result.retry_delay_seconds,
                         retryable=result.retryable,
                     )
-                elapsed = time.time() - start_time
-                logger.info(
-                    "Task %s completed in %.2fs with result: %s",
-                    task_id,
-                    elapsed,
-                    result.success,
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                logger_method = logger.info if result.success else logger.warning
+                logger_method(
+                    "Task processing completed",
+                    extra=_task_extra(
+                        task,
+                        processor=self,
+                        operation="process_task",
+                        status="completed" if result.success else "failed",
+                        duration_ms=elapsed_ms,
+                        context_data={
+                            "result_success": result.success,
+                            "retryable": result.retryable,
+                            "error_message": result.error_message,
+                        },
+                    ),
                 )
                 return result
 
             except Exception as exc:  # noqa: BLE001
-                elapsed = time.time() - start_time
-                logger.error(
-                    "Error processing task %s after %.2fs: %s",
-                    task_id,
-                    elapsed,
-                    exc,
-                    exc_info=True,
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                logger.exception(
+                    "Task processing raised exception",
+                    extra=_task_extra(
+                        task,
+                        processor=self,
+                        operation="process_task",
+                        status="failed",
+                        duration_ms=elapsed_ms,
+                        context_data={"failure_class": type(exc).__name__},
+                    ),
                 )
                 return TaskResult.fail(str(exc))
 
@@ -224,15 +291,22 @@ class SequentialTaskProcessor:
                 except ValidationError as exc:
                     task_id = task_data.get("id")
                     logger.error(
-                        "Invalid task payload for %s: %s",
-                        task_id,
-                        exc,
-                        extra={
-                            "component": "sequential_task_processor",
-                            "operation": "task_parse",
-                            "item_id": task_id,
-                            "context_data": {"task_data": task_data},
-                        },
+                        "Invalid task payload",
+                        extra=build_log_extra(
+                            component="task_processor",
+                            operation="task_parse",
+                            event_name="task.invalid_payload",
+                            status="failed",
+                            item_id=task_id,
+                            task_id=task_id,
+                            queue_name=self.queue_name,
+                            worker_id=self.worker_id,
+                            source="queue",
+                            context_data={
+                                "failure_class": type(exc).__name__,
+                                "task_data": task_data,
+                            },
+                        ),
                     )
                     if task_id is not None:
                         self.queue_service.complete_task(
@@ -241,8 +315,6 @@ class SequentialTaskProcessor:
                             error_message="Invalid task payload",
                         )
                     continue
-                logger.info("Processing task %s (type: %s)", task.id, task.task_type.value)
-
                 retry_count = task.retry_count
 
                 result = self.process_task(task)
@@ -266,23 +338,44 @@ class SequentialTaskProcessor:
                         delay_seconds = min(60 * (2**retry_count), 3600)
                         self.queue_service.retry_task(task.id, delay_seconds=delay_seconds)
                         logger.info(
-                            "Task %s scheduled for retry %s/%s in %ss",
-                            task.id,
-                            retry_count + 1,
-                            max_retries,
-                            delay_seconds,
+                            "Task retry requested by processor",
+                            extra=_task_extra(
+                                task,
+                                processor=self,
+                                operation="retry_task",
+                                event_name="task.retry_scheduled",
+                                status="retry_scheduled",
+                                context_data={
+                                    "retry_count": retry_count + 1,
+                                    "max_retries": max_retries,
+                                    "delay_seconds": delay_seconds,
+                                },
+                            ),
                         )
                     elif not result.retryable:
                         logger.info(
-                            "Task %s failed with non-retryable error: %s",
-                            task.id,
-                            result.error_message or "unknown error",
+                            "Task failed with non-retryable error",
+                            extra=_task_extra(
+                                task,
+                                processor=self,
+                                operation="process_task",
+                                status="failed",
+                                context_data={
+                                    "retryable": False,
+                                    "error_message": result.error_message or "unknown error",
+                                },
+                            ),
                         )
                     else:
                         logger.error(
-                            "Task %s exceeded max retries (%s)",
-                            task.id,
-                            max_retries,
+                            "Task exceeded max retries",
+                            extra=_task_extra(
+                                task,
+                                processor=self,
+                                operation="process_task",
+                                status="failed",
+                                context_data={"max_retries": max_retries},
+                            ),
                         )
 
                 if max_tasks and processed_count >= max_tasks:
@@ -308,15 +401,22 @@ class SequentialTaskProcessor:
         except ValidationError as exc:
             task_id = task_data.get("id")
             logger.error(
-                "Invalid task payload for %s: %s",
-                task_id,
-                exc,
-                extra={
-                    "component": "sequential_task_processor",
-                    "operation": "task_parse",
-                    "item_id": task_id,
-                    "context_data": {"task_data": task_data},
-                },
+                "Invalid task payload",
+                extra=build_log_extra(
+                    component="task_processor",
+                    operation="task_parse",
+                    event_name="task.invalid_payload",
+                    status="failed",
+                    item_id=task_id,
+                    task_id=task_id,
+                    queue_name=self.queue_name,
+                    worker_id=self.worker_id,
+                    source="queue",
+                    context_data={
+                        "failure_class": type(exc).__name__,
+                        "task_data": task_data,
+                    },
+                ),
             )
             if task_id is not None:
                 self.queue_service.complete_task(

@@ -27,8 +27,9 @@ from sqlalchemy.orm import Session, sessionmaker
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.logging import get_logger, setup_logging  # noqa: E402
+from app.core.observability import bound_log_context, build_log_extra  # noqa: E402
 from app.core.settings import get_settings  # noqa: E402
-from app.models.schema import EventLog, ProcessingTask  # noqa: E402
+from app.models.schema import ProcessingTask  # noqa: E402
 from app.services.queue import TaskQueue, TaskStatus, TaskType  # noqa: E402
 
 logger = get_logger(__name__)
@@ -187,8 +188,8 @@ def _requeue_stale_tasks(
     )
 
 
-def _record_watchdog_events(session: Session, result: WatchdogRunResult) -> None:
-    """Persist watchdog action/run events into EventLog."""
+def _record_watchdog_events(result: WatchdogRunResult) -> None:
+    """Emit structured watchdog action/run events."""
     run_id = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
 
     action_results = [
@@ -197,40 +198,43 @@ def _record_watchdog_events(session: Session, result: WatchdogRunResult) -> None
         result.requeued_process_content,
     ]
     for action in action_results:
-        session.add(
-            EventLog(
-                event_type="queue_watchdog_action",
-                event_name=action.action_name,
+        logger.info(
+            "Queue watchdog action completed",
+            extra=build_log_extra(
+                component="queue_watchdog",
+                operation=action.action_name,
+                event_name="cron.run",
                 status="completed",
-                data={
+                job_name="watchdog_queue_recovery",
+                trigger="cron",
+                context_data={
                     "run_id": run_id,
                     "touched_count": action.touched_count,
                     "task_ids": action.task_ids[:100],
                     "metadata": action.metadata,
                 },
-            )
+            ),
         )
 
-    session.add(
-        EventLog(
-            event_type="queue_watchdog_run",
-            event_name="queue_recovery",
+    logger.info(
+        "Queue watchdog run completed",
+        extra=build_log_extra(
+            component="queue_watchdog",
+            operation="queue_recovery",
+            event_name="cron.run",
             status="completed",
-            data={
+            duration_ms=max((result.finished_at - result.started_at).total_seconds() * 1000, 0.0),
+            job_name="watchdog_queue_recovery",
+            trigger="cron",
+            context_data={
                 "run_id": run_id,
-                "started_at": result.started_at.isoformat(),
-                "finished_at": result.finished_at.isoformat(),
-                "duration_seconds": max(
-                    (result.finished_at - result.started_at).total_seconds(),
-                    0.0,
-                ),
                 "total_touched": result.total_touched,
                 "moved_transcribe": result.moved_transcribe.touched_count,
                 "requeued_transcribe": result.requeued_transcribe.touched_count,
                 "requeued_process_content": result.requeued_process_content.touched_count,
                 "dry_run": result.dry_run,
             },
-        )
+        ),
     )
 
 
@@ -256,25 +260,29 @@ def _send_slack_alert(webhook_url: str, result: WatchdogRunResult) -> tuple[bool
 
 
 def _record_watchdog_alert_event(
-    session: Session,
     *,
     result: WatchdogRunResult,
     status: str,
     detail: str,
     threshold: int,
 ) -> None:
-    """Persist Slack alert attempt outcome for dashboard visibility."""
-    session.add(
-        EventLog(
-            event_type="queue_watchdog_alert",
-            event_name="slack",
+    """Emit Slack alert attempt outcome for watchdog visibility."""
+    logger_method = logger.info if status in {"completed", "sent", "skipped"} else logger.warning
+    logger_method(
+        "Queue watchdog alert handled",
+        extra=build_log_extra(
+            component="queue_watchdog",
+            operation="slack_alert",
+            event_name="cron.run",
             status=status,
-            data={
+            job_name="watchdog_queue_recovery",
+            trigger="cron",
+            context_data={
                 "total_touched": result.total_touched,
                 "alert_threshold": threshold,
                 "detail": detail,
             },
-        )
+        ),
     )
 
 
@@ -324,14 +332,13 @@ def run_watchdog_once(
     if dry_run:
         return result
 
-    _record_watchdog_events(session, result)
+    _record_watchdog_events(result)
 
     if result.total_touched < alert_threshold:
         return result
 
     if not slack_webhook_url:
         _record_watchdog_alert_event(
-            session,
             result=result,
             status="skipped",
             detail="No QUEUE_WATCHDOG_SLACK_WEBHOOK_URL configured",
@@ -341,7 +348,6 @@ def run_watchdog_once(
 
     sent, detail = _send_slack_alert(slack_webhook_url, result)
     _record_watchdog_alert_event(
-        session,
         result=result,
         status="sent" if sent else "failed",
         detail=detail,
@@ -423,58 +429,82 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging(level="DEBUG" if args.debug else "INFO")
 
     session_factory, effective_database_url = _create_session_factory(args.database_url)
-    logger.info("Queue watchdog targeting database: %s", effective_database_url)
+    with bound_log_context(job_name="watchdog_queue_recovery", trigger="cron", source="cron"):
+        logger.info(
+            "Queue watchdog targeting database",
+            extra=build_log_extra(
+                component="queue_watchdog",
+                operation="startup",
+                event_name="cron.run",
+                status="started",
+                job_name="watchdog_queue_recovery",
+                trigger="cron",
+                context_data={
+                    "database_url": effective_database_url,
+                    "dry_run": bool(args.dry_run),
+                },
+            ),
+        )
 
-    def _run_cycle() -> int:
-        with session_factory() as session:
-            try:
-                result = run_watchdog_once(
-                    session=session,
-                    transcribe_stale_hours=float(args.transcribe_stale_hours),
-                    process_content_stale_hours=float(args.process_content_stale_hours),
-                    alert_threshold=max(int(args.alert_threshold), 1),
-                    slack_webhook_url=args.slack_webhook_url,
-                    dry_run=bool(args.dry_run),
-                    action_limit=args.action_limit,
-                )
-                if not args.dry_run:
-                    session.commit()
-                _print_result(result)
-                return 0
-            except Exception as exc:  # noqa: BLE001
-                session.rollback()
-                logger.exception("Queue watchdog cycle failed: %s", exc)
-                if not args.dry_run:
-                    session.add(
-                        EventLog(
-                            event_type="queue_watchdog_run",
-                            event_name="queue_recovery",
-                            status="failed",
-                            data={
-                                "error": str(exc),
-                                "error_type": type(exc).__name__,
-                            },
-                        )
+        def _run_cycle() -> int:
+            with session_factory() as session:
+                try:
+                    result = run_watchdog_once(
+                        session=session,
+                        transcribe_stale_hours=float(args.transcribe_stale_hours),
+                        process_content_stale_hours=float(args.process_content_stale_hours),
+                        alert_threshold=max(int(args.alert_threshold), 1),
+                        slack_webhook_url=args.slack_webhook_url,
+                        dry_run=bool(args.dry_run),
+                        action_limit=args.action_limit,
                     )
-                    session.commit()
-                return 1
+                    if not args.dry_run:
+                        session.commit()
+                    _print_result(result)
+                    return 0
+                except Exception as exc:  # noqa: BLE001
+                    session.rollback()
+                    logger.exception(
+                        "Queue watchdog cycle failed",
+                        extra=build_log_extra(
+                            component="queue_watchdog",
+                            operation="queue_recovery",
+                            event_name="cron.run",
+                            status="failed",
+                            job_name="watchdog_queue_recovery",
+                            trigger="cron",
+                            context_data={"failure_class": type(exc).__name__},
+                        ),
+                    )
+                    return 1
 
-    if not args.loop:
-        return _run_cycle()
+        if not args.loop:
+            return _run_cycle()
 
-    exit_code = 0
-    interval_seconds = max(int(args.interval_seconds), 30)
-    logger.info("Starting watchdog loop interval=%ss", interval_seconds)
+        exit_code = 0
+        interval_seconds = max(int(args.interval_seconds), 30)
+        logger.info(
+            "Starting watchdog loop",
+            extra=build_log_extra(
+                component="queue_watchdog",
+                operation="loop",
+                event_name="cron.run",
+                status="started",
+                job_name="watchdog_queue_recovery",
+                trigger="cron",
+                context_data={"interval_seconds": interval_seconds},
+            ),
+        )
 
-    try:
-        while True:
-            cycle_code = _run_cycle()
-            if cycle_code != 0:
-                exit_code = cycle_code
-            time.sleep(interval_seconds)
-    except KeyboardInterrupt:
-        logger.info("Queue watchdog loop interrupted by user")
-    return exit_code
+        try:
+            while True:
+                cycle_code = _run_cycle()
+                if cycle_code != 0:
+                    exit_code = cycle_code
+                time.sleep(interval_seconds)
+        except KeyboardInterrupt:
+            logger.info("Queue watchdog loop interrupted by user")
+        return exit_code
 
 
 if __name__ == "__main__":

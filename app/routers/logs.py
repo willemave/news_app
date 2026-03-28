@@ -6,10 +6,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from sqlalchemy import func
 
+from app.core.db import get_db
 from app.core.deps import require_admin
 from app.core.logging import get_logger
 from app.core.settings import get_settings
+from app.models.schema import EventLog, LlmUsageRecord
 from app.templates import templates
 
 router = APIRouter(prefix="/admin")
@@ -19,6 +22,18 @@ settings = get_settings()
 LOGS_DIR = settings.logs_dir
 ERRORS_DIR = LOGS_DIR / "errors"
 STRUCTURED_DIR = LOGS_DIR / "structured"
+STRUCTURED_FILTER_FIELDS = (
+    "request_id",
+    "content_id",
+    "task_id",
+    "session_id",
+    "message_id",
+    "job_name",
+    "component",
+    "operation",
+    "event_name",
+    "status",
+)
 
 # Logger
 logger = get_logger(__name__)
@@ -29,7 +44,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
     """List all log files with recent error logs."""
     log_files = []
     recent_errors = []
-    recent_structured = []
+    structured_filters = _get_structured_filters(request)
 
     # Get all log files from errors directory
     if ERRORS_DIR.exists():
@@ -94,7 +109,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
 
     # Get recent errors from the most recent error files
     recent_errors = _get_recent_errors(limit=10)
-    recent_structured = _get_recent_structured_events(limit=20)
+    recent_structured = _get_recent_structured_events(limit=20, filters=structured_filters)
 
     return templates.TemplateResponse(
         request,
@@ -104,6 +119,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
             "log_files": log_files,
             "recent_errors": recent_errors,
             "recent_structured": recent_structured,
+            "structured_filters": structured_filters,
         },
     )
 
@@ -112,6 +128,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
 async def view_log(request: Request, filename: str, _: None = Depends(require_admin)):
     """View specific log file content."""
     file_path = LOGS_DIR / filename
+    structured_filters = _get_structured_filters(request)
 
     # Security check - ensure file is in logs directory
     if not file_path.exists() or not str(file_path.resolve()).startswith(str(LOGS_DIR.resolve())):
@@ -120,7 +137,7 @@ async def view_log(request: Request, filename: str, _: None = Depends(require_ad
     try:
         # Handle JSONL files differently
         if file_path.suffix == ".jsonl":
-            content = _format_jsonl_content(file_path)
+            content = _format_jsonl_content(file_path, filters=structured_filters)
         else:
             with open(file_path, encoding="utf-8") as f:
                 content = f.read()
@@ -130,7 +147,12 @@ async def view_log(request: Request, filename: str, _: None = Depends(require_ad
     return templates.TemplateResponse(
         request,
         "log_detail.html",
-        {"request": request, "filename": filename, "content": content},
+        {
+            "request": request,
+            "filename": filename,
+            "content": content,
+            "structured_filters": structured_filters,
+        },
     )
 
 
@@ -221,6 +243,49 @@ async def errors_dashboard(
     )
 
 
+@router.get("/llm-usage", response_class=HTMLResponse)
+async def llm_usage_dashboard(
+    request: Request,
+    _: None = Depends(require_admin),
+):
+    """Show recent persisted LLM usage rows with lightweight filtering."""
+    provider = request.query_params.get("provider")
+    model = request.query_params.get("model")
+    feature = request.query_params.get("feature")
+    start_date = request.query_params.get("start_date")
+    end_date = request.query_params.get("end_date")
+    raw_limit = request.query_params.get("limit")
+    try:
+        limit = max(1, min(int(raw_limit or "100"), 500))
+    except ValueError:
+        limit = 100
+    records, totals = _get_llm_usage_rows(
+        provider=provider,
+        model=model,
+        feature=feature,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+    )
+    return templates.TemplateResponse(
+        request,
+        "llm_usage_list.html",
+        {
+            "request": request,
+            "records": records,
+            "totals": totals,
+            "filters": {
+                "provider": provider or "",
+                "model": model or "",
+                "feature": feature or "",
+                "start_date": start_date or "",
+                "end_date": end_date or "",
+                "limit": limit,
+            },
+        },
+    )
+
+
 @router.post("/errors/reset")
 async def reset_error_logs(_: None = Depends(require_admin)):
     """Reset all error logs by deleting all log files in the errors directory
@@ -266,9 +331,6 @@ async def reset_error_logs(_: None = Depends(require_admin)):
                     errors.append(f"Failed to delete {file_path.name}: {str(e)}")
 
         # Delete failed EventLog entries from database
-        from app.core.db import get_db
-        from app.models.schema import EventLog
-
         with get_db() as db:
             deleted_db_count = db.query(EventLog).filter(EventLog.status == "failed").delete()
             db.commit()
@@ -741,7 +803,11 @@ def _get_recent_errors(limit: int = 10) -> list[dict[str, Any]]:
     return errors
 
 
-def _get_recent_structured_events(limit: int = 20, max_files: int = 10) -> list[dict[str, Any]]:
+def _get_recent_structured_events(
+    limit: int = 20,
+    max_files: int = 10,
+    filters: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     """Get recent structured events from JSONL logs for quick live debugging."""
 
     events: list[dict[str, Any]] = []
@@ -767,6 +833,8 @@ def _get_recent_structured_events(limit: int = 20, max_files: int = 10) -> list[
                 data = json.loads(line.strip())
             except json.JSONDecodeError:
                 continue
+            if not _matches_structured_filters(data, filters):
+                continue
 
             timestamp = str(data.get("timestamp", "Unknown"))
             message = str(data.get("message", "")).strip()
@@ -776,6 +844,8 @@ def _get_recent_structured_events(limit: int = 20, max_files: int = 10) -> list[
                     "level": str(data.get("level", "INFO")),
                     "component": str(data.get("component") or "unknown"),
                     "operation": str(data.get("operation") or ""),
+                    "event_name": str(data.get("event_name") or ""),
+                    "status": str(data.get("status") or ""),
                     "item_id": data.get("item_id"),
                     "message": message[:240] + ("..." if len(message) > 240 else ""),
                     "file": file_path.name,
@@ -788,7 +858,7 @@ def _get_recent_structured_events(limit: int = 20, max_files: int = 10) -> list[
     return events
 
 
-def _format_jsonl_content(file_path: Path) -> str:
+def _format_jsonl_content(file_path: Path, filters: dict[str, str] | None = None) -> str:
     """Format JSONL file content for display."""
     formatted_lines = []
 
@@ -797,6 +867,8 @@ def _format_jsonl_content(file_path: Path) -> str:
             for i, line in enumerate(f, 1):
                 try:
                     data = json.loads(line.strip())
+                    if not _matches_structured_filters(data, filters):
+                        continue
                     # Pretty format the JSON
                     formatted = json.dumps(data, indent=2, ensure_ascii=False)
                     formatted_lines.append(f"=== Entry {i} ===")
@@ -810,3 +882,129 @@ def _format_jsonl_content(file_path: Path) -> str:
         return f"Error reading JSONL file: {str(e)}"
 
     return "\n".join(formatted_lines)
+
+
+def _get_structured_filters(request: Request) -> dict[str, str]:
+    """Collect supported structured log filters from the request."""
+    return {
+        field: value
+        for field in STRUCTURED_FILTER_FIELDS
+        if (value := request.query_params.get(field))
+    }
+
+
+def _matches_structured_filters(
+    entry: dict[str, Any],
+    filters: dict[str, str] | None,
+) -> bool:
+    """Return True when a structured log entry matches the active filters."""
+    if not filters:
+        return True
+    for key, expected in filters.items():
+        value = entry.get(key)
+        if value is None:
+            return False
+        if str(value) != expected:
+            return False
+    return True
+
+
+def _get_llm_usage_rows(
+    *,
+    provider: str | None,
+    model: str | None,
+    feature: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    limit: int = 100,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Query persisted LLM usage records and aggregate simple totals."""
+    with get_db() as db:
+        query = db.query(LlmUsageRecord).order_by(LlmUsageRecord.created_at.desc())
+        if provider:
+            query = query.filter(LlmUsageRecord.provider == provider)
+        if model:
+            query = query.filter(LlmUsageRecord.model == model)
+        if feature:
+            query = query.filter(LlmUsageRecord.feature == feature)
+
+        start_dt = _parse_date_filter(start_date, end_of_day=False)
+        end_dt = _parse_date_filter(end_date, end_of_day=True)
+        if start_dt:
+            query = query.filter(LlmUsageRecord.created_at >= start_dt)
+        if end_dt:
+            query = query.filter(LlmUsageRecord.created_at <= end_dt)
+
+        rows = query.limit(limit).all()
+        totals_query = db.query(
+            func.coalesce(func.sum(LlmUsageRecord.input_tokens), 0),
+            func.coalesce(func.sum(LlmUsageRecord.output_tokens), 0),
+            func.coalesce(func.sum(LlmUsageRecord.total_tokens), 0),
+            func.coalesce(func.sum(LlmUsageRecord.cost_usd), 0.0),
+            func.count(LlmUsageRecord.id),
+        )
+        if provider:
+            totals_query = totals_query.filter(LlmUsageRecord.provider == provider)
+        if model:
+            totals_query = totals_query.filter(LlmUsageRecord.model == model)
+        if feature:
+            totals_query = totals_query.filter(LlmUsageRecord.feature == feature)
+        if start_dt:
+            totals_query = totals_query.filter(LlmUsageRecord.created_at >= start_dt)
+        if end_dt:
+            totals_query = totals_query.filter(LlmUsageRecord.created_at <= end_dt)
+        (
+            total_input_tokens,
+            total_output_tokens,
+            total_tokens,
+            total_cost_usd,
+            total_rows,
+        ) = totals_query.one()
+
+    records = [
+        {
+            "id": row.id,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "provider": row.provider,
+            "model": row.model,
+            "feature": row.feature,
+            "operation": row.operation,
+            "source": row.source,
+            "request_id": row.request_id,
+            "task_id": row.task_id,
+            "content_id": row.content_id,
+            "session_id": row.session_id,
+            "message_id": row.message_id,
+            "user_id": row.user_id,
+            "input_tokens": row.input_tokens,
+            "output_tokens": row.output_tokens,
+            "total_tokens": row.total_tokens,
+            "cost_usd": row.cost_usd,
+            "pricing_version": row.pricing_version,
+        }
+        for row in rows
+    ]
+    return records, {
+        "row_count": int(total_rows or 0),
+        "input_tokens": int(total_input_tokens or 0),
+        "output_tokens": int(total_output_tokens or 0),
+        "total_tokens": int(total_tokens or 0),
+        "cost_usd": round(float(total_cost_usd or 0.0), 8),
+    }
+
+
+def _parse_date_filter(value: str | None, *, end_of_day: bool) -> datetime | None:
+    """Parse simple YYYY-MM-DD filters into UTC datetimes."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    if end_of_day:
+        parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999999)
+    else:
+        parsed = parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+    return parsed.astimezone(UTC)

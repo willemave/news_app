@@ -21,15 +21,16 @@ import argparse
 import os
 import sys
 from datetime import datetime, timedelta
+from time import perf_counter
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.db import get_db, init_db
 from app.core.logging import get_logger, setup_logging
+from app.core.observability import bound_log_context, build_log_extra
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry, User
-from app.services.event_logger import log_event, track_event
 from app.services.scraper_configs import ensure_inbox_status
 
 logger = get_logger(__name__)
@@ -332,6 +333,7 @@ Examples:
     # Setup logging
     log_level = "DEBUG" if args.debug else "INFO"
     setup_logging(level=log_level)
+    run_started_at = perf_counter()
 
     logger.info("=" * 60)
     logger.info("User Feed Bootstrap")
@@ -360,7 +362,19 @@ Examples:
             "statuses": args.statuses,
         }
 
-        with track_event("bootstrap_user_feeds", "all", config=run_config) as event_id:
+        with bound_log_context(job_name="bootstrap_user_feeds", trigger="manual", source="manual"):
+            logger.info(
+                "Bootstrap run started",
+                extra=build_log_extra(
+                    component="cron",
+                    operation="bootstrap_user_feeds",
+                    event_name="cron.run",
+                    status="started",
+                    job_name="bootstrap_user_feeds",
+                    trigger="manual",
+                    context_data=run_config,
+                ),
+            )
             # Bootstrap users
             stats = bootstrap_users(
                 user_ids=user_ids,
@@ -368,14 +382,18 @@ Examples:
                 content_types=args.content_types,
                 statuses=args.statuses,
             )
-
-            # Log results
-            log_event(
-                event_type="bootstrap_completed",
-                event_name="user_feeds",
-                parent_event_id=event_id,
-                user_count=len(user_ids),
-                **stats,
+            logger.info(
+                "Bootstrap run completed",
+                extra=build_log_extra(
+                    component="cron",
+                    operation="bootstrap_user_feeds",
+                    event_name="cron.run",
+                    status="completed",
+                    duration_ms=(perf_counter() - run_started_at) * 1000,
+                    job_name="bootstrap_user_feeds",
+                    trigger="manual",
+                    context_data={"user_count": len(user_ids), **stats},
+                ),
             )
 
             # Summary

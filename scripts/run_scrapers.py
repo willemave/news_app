@@ -9,6 +9,7 @@ import argparse
 import os
 import sys
 from datetime import UTC, datetime
+from time import perf_counter
 
 # Add parent directory so we can import from app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,10 +18,10 @@ from sqlalchemy import func
 
 from app.core.db import get_db, init_db
 from app.core.logging import get_logger, setup_logging
+from app.core.observability import bound_log_context, build_log_extra
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.scraping.runner import ScraperRunner
-from app.services.event_logger import log_event, track_event
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,7 @@ def main():
     # Setup logging
     log_level = "DEBUG" if args.debug else "INFO"
     setup_logging(level=log_level)
+    run_started_at = perf_counter()
 
     logger.info("=" * 60)
     logger.info("Content Scrapers")
@@ -76,8 +78,19 @@ def main():
         # Create run configuration
         run_config = {"debug": args.debug, "specific_scrapers": args.scrapers}
 
-        # Start tracking the scraper run
-        with track_event("scraper_run", run_type, config=run_config) as event_id:
+        with bound_log_context(job_name="run_scrapers", trigger="manual", source="cron"):
+            logger.info(
+                "Scraper cron run started",
+                extra=build_log_extra(
+                    component="cron",
+                    operation="run_scrapers",
+                    event_name="cron.run",
+                    status="started",
+                    job_name="run_scrapers",
+                    trigger="manual",
+                    context_data=run_config | {"run_type": run_type},
+                ),
+            )
             # Show available scrapers
             available_scrapers = scraper_runner.list_scrapers()
             logger.info(f"Available scrapers: {', '.join(available_scrapers)}")
@@ -92,15 +105,22 @@ def main():
                     if stats:
                         scraper_results[scraper_name] = stats.saved
                         scraper_stats[scraper_name] = stats
-                        # Log individual scraper stats
-                        log_event(
-                            event_type="scraper_summary",
-                            event_name=scraper_name,
-                            parent_event_id=event_id,
-                            scraped=stats.scraped,
-                            saved=stats.saved,
-                            duplicates=stats.duplicates,
-                            errors=stats.errors,
+                        logger.info(
+                            "Scraper summary",
+                            extra=build_log_extra(
+                                component="cron",
+                                operation="run_scrapers",
+                                event_name="scraper.run",
+                                status="completed",
+                                job_name="run_scrapers",
+                                source=scraper_name,
+                                context_data={
+                                    "scraped": stats.scraped,
+                                    "saved": stats.saved,
+                                    "duplicates": stats.duplicates,
+                                    "errors": stats.errors,
+                                },
+                            ),
                         )
                         logger.info(
                             "  Scraped: %s, Saved: %s, Duplicates: %s, Errors: %s",
@@ -122,24 +142,30 @@ def main():
                 total_saved = sum(s.saved for s in scraper_stats.values())
                 total_duplicates = sum(s.duplicates for s in scraper_stats.values())
                 total_errors = sum(s.errors for s in scraper_stats.values())
-
-                log_event(
-                    event_type="scraper_run_summary",
-                    event_name="all",
-                    parent_event_id=event_id,
-                    total_scraped=total_scraped,
-                    total_saved=total_saved,
-                    total_duplicates=total_duplicates,
-                    total_errors=total_errors,
-                    scraper_stats={
-                        name: {
-                            "scraped": s.scraped,
-                            "saved": s.saved,
-                            "duplicates": s.duplicates,
-                            "errors": s.errors,
-                        }
-                        for name, s in scraper_stats.items()
-                    },
+                logger.info(
+                    "Scraper run summary",
+                    extra=build_log_extra(
+                        component="cron",
+                        operation="run_scrapers",
+                        event_name="scraper.run",
+                        status="completed",
+                        job_name="run_scrapers",
+                        context_data={
+                            "total_scraped": total_scraped,
+                            "total_saved": total_saved,
+                            "total_duplicates": total_duplicates,
+                            "total_errors": total_errors,
+                            "scraper_stats": {
+                                name: {
+                                    "scraped": s.scraped,
+                                    "saved": s.saved,
+                                    "duplicates": s.duplicates,
+                                    "errors": s.errors,
+                                }
+                                for name, s in scraper_stats.items()
+                            },
+                        },
+                    ),
                 )
 
                 # Show individual scraper results
@@ -202,14 +228,45 @@ def main():
                             "Run 'python scripts/run_workers.py' to process the scraped content"
                         )
 
-        logger.info("\nScraping completed successfully!")
+            logger.info(
+                "Scraper cron run completed",
+                extra=build_log_extra(
+                    component="cron",
+                    operation="run_scrapers",
+                    event_name="cron.run",
+                    status="completed",
+                    duration_ms=(perf_counter() - run_started_at) * 1000,
+                    job_name="run_scrapers",
+                    trigger="manual",
+                    context_data={
+                        "run_type": run_type,
+                        "considered_count": len(args.scrapers or available_scrapers),
+                        "saved_count": sum(scraper_results.values()),
+                        "failed_count": sum(
+                            1 for stats in scraper_stats.values() if stats.errors > 0
+                        ),
+                    },
+                ),
+            )
         return 0
 
     except KeyboardInterrupt:
         logger.warning("\nProcess interrupted by user")
         return 1
     except Exception as e:
-        logger.error(f"Error running scrapers: {e}", exc_info=True)
+        logger.exception(
+            "Scraper cron run failed",
+            extra=build_log_extra(
+                component="cron",
+                operation="run_scrapers",
+                event_name="cron.run",
+                status="failed",
+                duration_ms=(perf_counter() - run_started_at) * 1000,
+                job_name="run_scrapers",
+                trigger="manual",
+                context_data={"failure_class": type(e).__name__},
+            ),
+        )
         return 1
 
 

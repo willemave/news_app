@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.domain.converters import content_to_domain
 from app.models.chat_message_metadata import ChatMessageRenderMetadata
 from app.models.schema import (
@@ -60,7 +61,6 @@ from app.services.chat_agent import (
     generate_initial_suggestions,
     process_message_async,
 )
-from app.services.event_logger import log_event
 from app.services.llm_models import is_deep_research_provider, resolve_model
 
 logger = get_logger(__name__)
@@ -608,15 +608,18 @@ async def create_session(
     db.commit()
     db.refresh(session)
 
-    # Log event
-    log_event(
-        event_type="chat",
-        event_name="session_created",
-        status="completed",
-        user_id=current_user.id,
-        session_id=session.id,
-        content_id=request.content_id,
-        model=model_spec,
+    logger.info(
+        "Chat session created",
+        extra=build_log_extra(
+            component="chat",
+            operation="create_session",
+            event_name="chat.session",
+            status="completed",
+            user_id=current_user.id,
+            session_id=session.id,
+            content_id=request.content_id,
+            context_data={"model": model_spec, "session_type": session_type},
+        ),
     )
 
     session_summary = _session_to_summary(
@@ -660,13 +663,17 @@ async def update_session(
         session.llm_model = model_spec
         session.updated_at = datetime.now(UTC)
 
-        log_event(
-            event_type="chat",
-            event_name="session_provider_changed",
-            status="completed",
-            user_id=current_user.id,
-            session_id=session.id,
-            model=model_spec,
+        logger.info(
+            "Chat session provider changed",
+            extra=build_log_extra(
+                component="chat",
+                operation="update_session",
+                event_name="chat.session_provider_changed",
+                status="completed",
+                user_id=current_user.id,
+                session_id=session.id,
+                context_data={"model": model_spec},
+            ),
         )
 
     db.commit()
@@ -765,12 +772,16 @@ async def delete_session(
         session.updated_at = datetime.now(UTC)
         db.commit()
 
-    log_event(
-        event_type="chat",
-        event_name="session_deleted",
-        status="completed",
-        user_id=current_user.id,
-        session_id=session.id,
+    logger.info(
+        "Chat session archived",
+        extra=build_log_extra(
+            component="chat",
+            operation="delete_session",
+            event_name="chat.session_deleted",
+            status="completed",
+            user_id=current_user.id,
+            session_id=session.id,
+        ),
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -805,13 +816,17 @@ async def send_message(
     if session.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
-    log_event(
-        event_type="chat",
-        event_name="message_sent",
-        status="started",
-        user_id=current_user.id,
-        session_id=session_id,
-        model=session.llm_model,
+    logger.info(
+        "Chat message accepted",
+        extra=build_log_extra(
+            component="chat",
+            operation="send_message",
+            event_name="chat.turn",
+            status="started",
+            user_id=current_user.id,
+            session_id=session_id,
+            context_data={"model": session.llm_model},
+        ),
     )
 
     # Create the processing message record immediately
@@ -905,14 +920,21 @@ async def create_assistant_turn(
             initial_message=request.message,
         )
 
-    log_event(
-        event_type="chat",
-        event_name="assistant_turn_started",
-        status="started",
-        user_id=current_user.id,
-        session_id=session.id,
-        content_id=screen_context.content_id,
-        model=session.llm_model,
+    logger.info(
+        "Assistant turn accepted",
+        extra=build_log_extra(
+            component="assistant_turn",
+            operation="create_turn",
+            event_name="assistant.turn",
+            status="started",
+            user_id=current_user.id,
+            session_id=session.id,
+            content_id=screen_context.content_id,
+            context_data={
+                "model": session.llm_model,
+                "screen_type": screen_context.screen_type,
+            },
+        ),
     )
 
     db_message = create_processing_message(db, session.id, request.message)
@@ -1082,13 +1104,17 @@ async def get_initial_suggestions(
             detail="Initial suggestions only available for article-based sessions",
         )
 
-    log_event(
-        event_type="chat",
-        event_name="initial_suggestions",
-        status="started",
-        user_id=current_user.id,
-        session_id=session_id,
-        model=session.llm_model,
+    logger.info(
+        "Initial suggestions requested",
+        extra=build_log_extra(
+            component="chat",
+            operation="initial_suggestions",
+            event_name="chat.initial_suggestions",
+            status="started",
+            user_id=current_user.id,
+            session_id=session_id,
+            context_data={"model": session.llm_model},
+        ),
     )
 
     result = await generate_initial_suggestions(db, session)
@@ -1103,13 +1129,17 @@ async def get_initial_suggestions(
     if assistant_message is None:
         raise HTTPException(status_code=500, detail="Assistant response missing")
 
-    log_event(
-        event_type="chat",
-        event_name="initial_suggestions",
-        status="completed",
-        user_id=current_user.id,
-        session_id=session_id,
-        model=session.llm_model,
+    logger.info(
+        "Initial suggestions completed",
+        extra=build_log_extra(
+            component="chat",
+            operation="initial_suggestions",
+            event_name="chat.initial_suggestions",
+            status="completed",
+            user_id=current_user.id,
+            session_id=session_id,
+            context_data={"model": session.llm_model},
+        ),
     )
 
     return assistant_message

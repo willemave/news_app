@@ -13,9 +13,11 @@ from openai import APIConnectionError, APIError, RateLimitError
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.core.settings import get_settings
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.langfuse_tracing import langfuse_trace_context
+from app.services.llm_costs import record_llm_usage
 from app.services.llm_models import DEEP_RESEARCH_MODEL
 
 try:
@@ -55,9 +57,26 @@ class DeepResearchClient:
         """Get or create the OpenAI async client."""
         if self._client is None:
             if not self._settings.openai_api_key:
-                logger.error("[DeepResearch:CLIENT] OPENAI_API_KEY not configured")
+                logger.error(
+                    "Deep research client missing API key",
+                    extra=build_log_extra(
+                        component="deep_research",
+                        operation="init_client",
+                        event_name="assistant.turn",
+                        status="failed",
+                        context_data={"failure_class": "MissingApiKey"},
+                    ),
+                )
                 raise ValueError("OPENAI_API_KEY not configured in settings")
-            logger.debug("[DeepResearch:CLIENT] Creating new OpenAI async client")
+            logger.debug(
+                "Creating deep research client",
+                extra=build_log_extra(
+                    component="deep_research",
+                    operation="init_client",
+                    event_name="assistant.turn",
+                    status="started",
+                ),
+            )
             self._client = AsyncOpenAI(
                 api_key=self._settings.openai_api_key,
                 timeout=DEEP_RESEARCH_TIMEOUT,
@@ -69,7 +88,15 @@ class DeepResearchClient:
         if self._client:
             await self._client.close()
             self._client = None
-            logger.debug("[DeepResearch:CLIENT] Closed OpenAI client")
+            logger.debug(
+                "Closed deep research client",
+                extra=build_log_extra(
+                    component="deep_research",
+                    operation="close_client",
+                    event_name="assistant.turn",
+                    status="completed",
+                ),
+            )
 
     async def start_research(
         self,
@@ -101,10 +128,18 @@ class DeepResearchClient:
             )
 
         logger.info(
-            "[DeepResearch:START] model=%s input_len=%d has_context=%s",
-            DEEP_RESEARCH_MODEL,
-            len(full_input),
-            context is not None,
+            "Deep research request submitted",
+            extra=build_log_extra(
+                component="deep_research",
+                operation="start_research",
+                event_name="assistant.turn.llm_started",
+                status="started",
+                context_data={
+                    "model": DEEP_RESEARCH_MODEL,
+                    "input_chars": len(full_input),
+                    "has_context": context is not None,
+                },
+            ),
         )
 
         try:
@@ -122,29 +157,51 @@ class DeepResearchClient:
 
             response_id = response.id
             logger.info(
-                "[DeepResearch:QUEUED] response_id=%s status=%s",
-                response_id,
-                response.status,
+                "Deep research queued",
+                extra=build_log_extra(
+                    component="deep_research",
+                    operation="start_research",
+                    event_name="assistant.turn.llm_started",
+                    status="completed",
+                    context_data={"response_id": response_id, "response_status": response.status},
+                ),
             )
             return response_id
 
         except RateLimitError as e:
             logger.error(
-                "[DeepResearch:RATE_LIMIT] Rate limit exceeded: %s",
-                str(e),
+                "Deep research rate limit exceeded",
+                extra=build_log_extra(
+                    component="deep_research",
+                    operation="start_research",
+                    event_name="assistant.turn.llm_started",
+                    status="failed",
+                    context_data={"failure_class": type(e).__name__},
+                ),
             )
             raise
         except APIConnectionError as e:
             logger.error(
-                "[DeepResearch:CONNECTION_ERROR] Connection failed: %s",
-                str(e),
+                "Deep research connection failed",
+                extra=build_log_extra(
+                    component="deep_research",
+                    operation="start_research",
+                    event_name="assistant.turn.llm_started",
+                    status="failed",
+                    context_data={"failure_class": type(e).__name__},
+                ),
             )
             raise
         except APIError as e:
             logger.error(
-                "[DeepResearch:API_ERROR] API error status=%s message=%s",
-                e.status_code,
-                str(e),
+                "Deep research API error",
+                extra=build_log_extra(
+                    component="deep_research",
+                    operation="start_research",
+                    event_name="assistant.turn.llm_started",
+                    status="failed",
+                    context_data={"failure_class": type(e).__name__, "status_code": e.status_code},
+                ),
             )
             raise
 
@@ -163,9 +220,14 @@ class DeepResearchClient:
             response = await client.responses.retrieve(response_id)
         except APIError as e:
             logger.error(
-                "[DeepResearch:POLL_ERROR] GET /responses/%s failed status=%s",
-                response_id,
-                e.status_code,
+                "Deep research poll failed",
+                extra=build_log_extra(
+                    component="deep_research",
+                    operation="poll_result",
+                    event_name="assistant.turn.llm_completed",
+                    status="failed",
+                    context_data={"response_id": response_id, "status_code": e.status_code},
+                ),
             )
             raise
 
@@ -201,11 +263,19 @@ class DeepResearchClient:
             if hasattr(response, "usage") and response.usage:
                 usage = response.usage
                 logger.info(
-                    "[DeepResearch:USAGE] response_id=%s input_tokens=%s output_tokens=%s total=%s",
-                    response_id,
-                    getattr(usage, "input_tokens", None),
-                    getattr(usage, "output_tokens", None),
-                    getattr(usage, "total_tokens", None),
+                    "Deep research usage received",
+                    extra=build_log_extra(
+                        component="deep_research",
+                        operation="poll_result",
+                        event_name="assistant.turn.llm_completed",
+                        status="completed",
+                        context_data={
+                            "response_id": response_id,
+                            "input_tokens": getattr(usage, "input_tokens", None),
+                            "output_tokens": getattr(usage, "output_tokens", None),
+                            "total_tokens": getattr(usage, "total_tokens", None),
+                        },
+                    ),
                 )
 
         # Build usage dict from response
@@ -250,21 +320,34 @@ class DeepResearchClient:
             if result.status in ("succeeded", "completed"):
                 duration = perf_counter() - start_time
                 logger.info(
-                    "[DeepResearch:COMPLETE] id=%s dur=%.1fs attempts=%d len=%d",
-                    response_id,
-                    duration,
-                    attempt + 1,
-                    len(result.output_text) if result.output_text else 0,
+                    "Deep research completed",
+                    extra=build_log_extra(
+                        component="deep_research",
+                        operation="wait_for_completion",
+                        event_name="assistant.turn.llm_completed",
+                        status="completed",
+                        duration_ms=duration * 1000,
+                        context_data={
+                            "response_id": response_id,
+                            "attempts": attempt + 1,
+                            "output_chars": len(result.output_text) if result.output_text else 0,
+                        },
+                    ),
                 )
                 return result
 
             if result.status == "failed":
                 duration = perf_counter() - start_time
                 logger.error(
-                    "[DeepResearch:FAILED] response_id=%s duration=%.1fs error=%s",
-                    response_id,
-                    duration,
-                    result.error,
+                    "Deep research failed",
+                    extra=build_log_extra(
+                        component="deep_research",
+                        operation="wait_for_completion",
+                        event_name="assistant.turn.llm_completed",
+                        status="failed",
+                        duration_ms=duration * 1000,
+                        context_data={"response_id": response_id, "error": result.error},
+                    ),
                 )
                 return result
 
@@ -272,11 +355,19 @@ class DeepResearchClient:
             if attempt % 10 == 0:  # Log every 10 attempts (~20 seconds)
                 elapsed = perf_counter() - start_time
                 logger.info(
-                    "[DeepResearch:POLLING] response_id=%s status=%s attempt=%d elapsed=%.0fs",
-                    response_id,
-                    result.status,
-                    attempt + 1,
-                    elapsed,
+                    "Deep research still polling",
+                    extra=build_log_extra(
+                        component="deep_research",
+                        operation="wait_for_completion",
+                        event_name="assistant.turn.llm_completed",
+                        status="started",
+                        duration_ms=elapsed * 1000,
+                        context_data={
+                            "response_id": response_id,
+                            "response_status": result.status,
+                            "attempt": attempt + 1,
+                        },
+                    ),
                 )
 
             await asyncio.sleep(poll_interval)
@@ -284,10 +375,15 @@ class DeepResearchClient:
         # Timeout
         duration = perf_counter() - start_time
         logger.error(
-            "[DeepResearch:TIMEOUT] response_id=%s duration=%.1fs max_attempts=%d",
-            response_id,
-            duration,
-            max_attempts,
+            "Deep research timed out",
+            extra=build_log_extra(
+                component="deep_research",
+                operation="wait_for_completion",
+                event_name="assistant.turn.llm_completed",
+                status="failed",
+                duration_ms=duration * 1000,
+                context_data={"response_id": response_id, "max_attempts": max_attempts},
+            ),
         )
         return DeepResearchResult(
             response_id=response_id,
@@ -346,19 +442,19 @@ async def process_deep_research_message(
     from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
     from app.core.db import get_session_factory
-    from app.services.event_logger import log_event
-
     total_start = perf_counter()
-    trimmed_prompt = user_prompt.replace("\n", " ")[:100]
-    if len(user_prompt) > 100:
-        trimmed_prompt = f"{trimmed_prompt}..."
-
     logger.info(
-        "[DeepResearch:PROCESS_START] sid=%s mid=%s prompt_len=%d prompt='%s'",
-        session_id,
-        message_id,
-        len(user_prompt),
-        trimmed_prompt,
+        "Deep research turn started",
+        extra=build_log_extra(
+            component="deep_research",
+            operation="process_message",
+            event_name="chat.turn",
+            status="started",
+            session_id=session_id,
+            message_id=message_id,
+            source=source,
+            context_data={"prompt_chars": len(user_prompt), "task_id": task_id},
+        ),
     )
 
     SessionLocal = get_session_factory()
@@ -370,24 +466,26 @@ async def process_deep_research_message(
             logger.error("[DeepResearch:ERROR] Session %s not found", session_id)
             return
 
-        logger.debug(
-            "[DeepResearch:SESSION] sid=%s user_id=%s content_id=%s type=%s",
-            session_id,
-            session.user_id,
-            session.content_id,
-            session.session_type,
-        )
-
         # Build context from article if available
         context = None
         if session.content_id:
             content = db.query(Content).filter(Content.id == session.content_id).first()
             if content:
                 context = _build_research_context(content)
-                logger.debug(
-                    "[DeepResearch:CONTEXT] Built context from content_id=%s len=%d",
-                    session.content_id,
-                    len(context) if context else 0,
+                logger.info(
+                    "Deep research context built",
+                    extra=build_log_extra(
+                        component="deep_research",
+                        operation="build_context",
+                        event_name="chat.turn.context_built",
+                        status="completed",
+                        session_id=session_id,
+                        message_id=message_id,
+                        user_id=session.user_id,
+                        content_id=session.content_id,
+                        source=source,
+                        context_data={"context_chars": len(context) if context else 0},
+                    ),
                 )
             else:
                 logger.warning(
@@ -395,6 +493,22 @@ async def process_deep_research_message(
                     session.content_id,
                 )
 
+        logger.info(
+            "Deep research LLM call started",
+            extra=build_log_extra(
+                component="deep_research",
+                operation="llm_call",
+                event_name="chat.turn.llm_started",
+                status="started",
+                session_id=session_id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                task_id=task_id,
+                context_data={"model": DEEP_RESEARCH_MODEL},
+            ),
+        )
         # Start the deep research
         client = get_deep_research_client()
         with langfuse_trace_context(
@@ -447,36 +561,41 @@ async def process_deep_research_message(
 
                 total_ms = (perf_counter() - total_start) * 1000
                 logger.info(
-                    "[DeepResearch:DONE] sid=%s mid=%s user_id=%s total=%.0fms output_len=%d",
-                    session_id,
-                    message_id,
-                    session.user_id,
-                    total_ms,
-                    len(result.output_text),
+                    "Deep research turn completed",
+                    extra=build_log_extra(
+                        component="deep_research",
+                        operation="process_message",
+                        event_name="chat.turn",
+                        status="completed",
+                        duration_ms=total_ms,
+                        session_id=session_id,
+                        message_id=message_id,
+                        user_id=session.user_id,
+                        content_id=session.content_id,
+                        source=source,
+                        task_id=task_id,
+                        context_data={
+                            "output_chars": len(result.output_text),
+                            "model": DEEP_RESEARCH_MODEL,
+                        },
+                    ),
                 )
-
-                # Log event with usage metrics
-                usage_data = {}
                 if result.usage:
-                    usage_data = {
-                        "input_tokens": result.usage.get("input_tokens"),
-                        "output_tokens": result.usage.get("output_tokens"),
-                        "total_tokens": result.usage.get("total_tokens"),
-                    }
-
-                log_event(
-                    event_type="chat",
-                    event_name="deep_research_completed",
-                    status="completed",
-                    user_id=session.user_id,
-                    session_id=session_id,
-                    message_id=message_id,
-                    response_id=response_id,
-                    content_id=session.content_id,
-                    duration_ms=total_ms,
-                    output_len=len(result.output_text),
-                    **usage_data,
-                )
+                    record_llm_usage(
+                        db,
+                        provider="deep_research",
+                        model=DEEP_RESEARCH_MODEL,
+                        feature="chat",
+                        operation="chat.deep_research",
+                        source=source,
+                        usage=result.usage,
+                        task_id=task_id,
+                        content_id=session.content_id,
+                        session_id=session_id,
+                        message_id=message_id,
+                        user_id=session.user_id,
+                        metadata={"response_id": response_id},
+                    )
         else:
             # Research failed or timed out
             error_msg = result.error or f"Research failed with status: {result.status}"
@@ -484,34 +603,39 @@ async def process_deep_research_message(
 
             total_ms = (perf_counter() - total_start) * 1000
             logger.error(
-                "[DeepResearch:FAILED] sid=%s mid=%s user_id=%s total=%.0fms error=%s",
-                session_id,
-                message_id,
-                session.user_id,
-                total_ms,
-                error_msg,
-            )
-
-            log_event(
-                event_type="chat",
-                event_name="deep_research_failed",
-                status="failed",
-                user_id=session.user_id,
-                session_id=session_id,
-                message_id=message_id,
-                response_id=response_id,
-                error=error_msg,
-                duration_ms=total_ms,
+                "Deep research turn failed",
+                extra=build_log_extra(
+                    component="deep_research",
+                    operation="process_message",
+                    event_name="chat.turn",
+                    status="failed",
+                    duration_ms=total_ms,
+                    session_id=session_id,
+                    message_id=message_id,
+                    user_id=session.user_id,
+                    content_id=session.content_id,
+                    source=source,
+                    task_id=task_id,
+                    context_data={"failure_class": result.status, "response_id": response_id},
+                ),
             )
 
     except Exception as exc:
         total_ms = (perf_counter() - total_start) * 1000
         logger.exception(
-            "[DeepResearch:EXCEPTION] sid=%s mid=%s total_ms=%.1f error=%s",
-            session_id,
-            message_id,
-            total_ms,
-            exc,
+            "Deep research turn raised exception",
+            extra=build_log_extra(
+                component="deep_research",
+                operation="process_message",
+                event_name="chat.turn",
+                status="failed",
+                duration_ms=total_ms,
+                session_id=session_id,
+                message_id=message_id,
+                source=source,
+                task_id=task_id,
+                context_data={"failure_class": type(exc).__name__},
+            ),
         )
         try:
             _update_message_failed(db, message_id, str(exc))

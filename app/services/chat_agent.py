@@ -13,16 +13,19 @@ from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.models.chat_message_metadata import ChatMessageRenderMetadata
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.exa_client import exa_search, get_exa_client
 from app.services.langfuse_tracing import langfuse_trace_context
+from app.services.llm_costs import extract_usage_from_result, record_llm_usage
 from app.services.llm_models import (  # noqa: F401 (re-export for API schemas)
     LLMProvider as ChatModelProvider,
 )
 from app.services.llm_models import (
     build_pydantic_model,
     resolve_effective_api_key,
+    resolve_model_provider,
 )
 
 logger = get_logger(__name__)
@@ -733,27 +736,53 @@ def _build_chat_deps(
 
 def _log_chat_usage(
     result: object,
+    db: Session,
+    session: ChatSession,
     session_id: int,
     message_id: int | None,
     context: str,
 ) -> None:
-    """Log token usage for a chat request when available."""
+    """Persist and log token usage for a chat request when available."""
+    usage_details = extract_usage_from_result(result)
+    if usage_details is None:
+        return
+
     try:
-        usage = result.usage()
+        usage = record_llm_usage(
+            db,
+            provider=resolve_model_provider(session.llm_model),
+            model=session.llm_model,
+            feature="chat",
+            operation=f"chat.{context}",
+            source=context,
+            usage=usage_details,
+            session_id=session_id,
+            message_id=message_id,
+            user_id=session.user_id,
+            content_id=session.content_id,
+            metadata={"session_type": session.session_type},
+        )
     except Exception:  # noqa: BLE001
         return
 
-    if not usage:
-        return
-
     logger.info(
-        "[ChatUsage] context=%s sid=%s mid=%s input_tokens=%s output_tokens=%s total_tokens=%s",
-        context,
-        session_id,
-        message_id,
-        getattr(usage, "input_tokens", None),
-        getattr(usage, "output_tokens", None),
-        getattr(usage, "total_tokens", None),
+        "Chat usage recorded",
+        extra=build_log_extra(
+            component="chat",
+            operation="usage",
+            event_name="chat.turn.usage",
+            status="completed",
+            session_id=session_id,
+            message_id=message_id,
+            user_id=session.user_id,
+            content_id=session.content_id,
+            source=context,
+            context_data={
+                "model": session.llm_model,
+                "provider": resolve_model_provider(session.llm_model),
+                "usage_recorded": usage is not None,
+            },
+        ),
     )
 
 
@@ -807,21 +836,43 @@ async def run_chat_turn(
         source: Request source label (`realtime` or `queue`).
         task_id: Optional queue task identifier.
     """
-    trimmed_prompt = user_prompt.replace("\n", " ")[:500]
-    if len(user_prompt) > 500:
-        trimmed_prompt = f"{trimmed_prompt}... [truncated]"
     total_start = perf_counter()
     logger.info(
-        "[ChatTurn] started | session_id=%s model=%s prompt_len=%s prompt='%s'",
-        session.id,
-        session.llm_model,
-        len(user_prompt),
-        trimmed_prompt,
+        "Chat turn started",
+        extra=build_log_extra(
+            component="chat",
+            operation="run_chat_turn",
+            event_name="chat.turn",
+            status="started",
+            session_id=session.id,
+            user_id=session.user_id,
+            content_id=session.content_id,
+            source=source,
+            context_data={
+                "model": session.llm_model,
+                "provider": resolve_model_provider(session.llm_model),
+                "session_type": session.session_type,
+                "prompt_chars": len(user_prompt),
+            },
+        ),
     )
 
     history_start = perf_counter()
     history = load_message_history(db, session.id)
     history_ms = (perf_counter() - history_start) * 1000
+    logger.info(
+        "Chat history loaded",
+        extra=build_log_extra(
+            component="chat",
+            operation="load_history",
+            event_name="chat.turn.history_loaded",
+            status="completed",
+            duration_ms=history_ms,
+            session_id=session.id,
+            user_id=session.user_id,
+            context_data={"history_count": len(history)},
+        ),
+    )
     include_full_text = True
 
     deps_start = perf_counter()
@@ -832,8 +883,36 @@ async def run_chat_turn(
         model_spec=session.llm_model,
     )
     deps_ms = (perf_counter() - deps_start) * 1000
+    logger.info(
+        "Chat context built",
+        extra=build_log_extra(
+            component="chat",
+            operation="build_context",
+            event_name="chat.turn.context_built",
+            status="completed",
+            duration_ms=deps_ms,
+            session_id=session.id,
+            user_id=session.user_id,
+            content_id=session.content_id,
+            context_data={"context_chars": len(deps.article_context or "")},
+        ),
+    )
 
     try:
+        logger.info(
+            "Chat LLM call started",
+            extra=build_log_extra(
+                component="chat",
+                operation="llm_call",
+                event_name="chat.turn.llm_started",
+                status="started",
+                session_id=session.id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={"model": session.llm_model},
+            ),
+        )
         agent_start = perf_counter()
         result = await run_in_threadpool(
             _run_agent_sync,
@@ -847,7 +926,7 @@ async def run_chat_turn(
             provider_api_key=provider_api_key,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
-        _log_chat_usage(result, session.id, None, "sync")
+        _log_chat_usage(result, db, session, session.id, None, "sync")
         new_messages = result.new_messages()
         save_messages(
             db,
@@ -869,14 +948,26 @@ async def run_chat_turn(
             for tc in tool_calls
         ]
         logger.info(
-            "[ChatTurn] sid=%s model=%s total=%.1f deps=%.1f hist=%.1f agent=%.1f tools=%s",
-            session.id,
-            session.llm_model,
-            total_ms,
-            deps_ms,
-            history_ms,
-            agent_ms,
-            tool_names,
+            "Chat turn completed",
+            extra=build_log_extra(
+                component="chat",
+                operation="run_chat_turn",
+                event_name="chat.turn",
+                status="completed",
+                duration_ms=total_ms,
+                session_id=session.id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={
+                    "model": session.llm_model,
+                    "deps_ms": round(deps_ms, 2),
+                    "history_ms": round(history_ms, 2),
+                    "agent_ms": round(agent_ms, 2),
+                    "tool_names": tool_names,
+                    "tool_count": len([name for name in tool_names if name]),
+                },
+            ),
         )
 
         return ChatRunResult(
@@ -886,7 +977,21 @@ async def run_chat_turn(
             tool_calls=getattr(result, "tool_calls", []),
         )
     except Exception as exc:  # noqa: BLE001
-        logger.error("Chat error for session %s: %s", session.id, exc)
+        logger.exception(
+            "Chat turn failed",
+            extra=build_log_extra(
+                component="chat",
+                operation="run_chat_turn",
+                event_name="chat.turn",
+                status="failed",
+                duration_ms=(perf_counter() - total_start) * 1000,
+                session_id=session.id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={"failure_class": type(exc).__name__},
+            ),
+        )
         db.rollback()
         raise
 
@@ -913,18 +1018,19 @@ async def process_message_async(
         task_id: Optional queue task identifier.
     """
     from app.core.db import get_session_factory
-    from app.services.event_logger import log_event
-
     total_start = perf_counter()
-    trimmed_prompt = user_prompt.replace("\n", " ")[:100]
-    if len(user_prompt) > 100:
-        trimmed_prompt = f"{trimmed_prompt}..."
-
     logger.info(
-        "[AsyncChat:START] sid=%s mid=%s prompt='%s'",
-        session_id,
-        message_id,
-        trimmed_prompt,
+        "Async chat turn started",
+        extra=build_log_extra(
+            component="chat",
+            operation="process_message_async",
+            event_name="chat.turn",
+            status="started",
+            session_id=session_id,
+            message_id=message_id,
+            source=source,
+            context_data={"prompt_chars": len(user_prompt)},
+        ),
     )
 
     SessionLocal = get_session_factory()
@@ -935,14 +1041,6 @@ async def process_message_async(
             logger.error("[AsyncChat:ERROR] Session %s not found", session_id)
             return
 
-        logger.info(
-            "[AsyncChat:SESSION] sid=%s model=%s content_id=%s topic=%s",
-            session_id,
-            session.llm_model,
-            session.content_id,
-            session.topic,
-        )
-
         include_full_text = True
 
         # Build dependencies
@@ -951,11 +1049,23 @@ async def process_message_async(
         deps_ms = (perf_counter() - deps_start) * 1000
         context_len = len(deps.article_context) if deps.article_context else 0
         logger.info(
-            "[AsyncChat:DEPS] sid=%s deps_ms=%.1f context_chars=%d has_content=%s",
-            session_id,
-            deps_ms,
-            context_len,
-            deps.content is not None,
+            "Async chat context built",
+            extra=build_log_extra(
+                component="chat",
+                operation="build_context",
+                event_name="chat.turn.context_built",
+                status="completed",
+                duration_ms=deps_ms,
+                session_id=session_id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={
+                    "context_chars": context_len,
+                    "has_content": deps.content is not None,
+                },
+            ),
         )
 
         # Load history (excluding the processing message we just created)
@@ -963,10 +1073,18 @@ async def process_message_async(
         history = load_message_history(db, session.id)
         history_ms = (perf_counter() - history_start) * 1000
         logger.info(
-            "[AsyncChat:HISTORY] sid=%s history_ms=%.1f message_count=%d",
-            session_id,
-            history_ms,
-            len(history),
+            "Async chat history loaded",
+            extra=build_log_extra(
+                component="chat",
+                operation="load_history",
+                event_name="chat.turn.history_loaded",
+                status="completed",
+                duration_ms=history_ms,
+                session_id=session_id,
+                message_id=message_id,
+                user_id=session.user_id,
+                context_data={"history_count": len(history)},
+            ),
         )
         provider_api_key = resolve_effective_api_key(
             db=db,
@@ -976,10 +1094,19 @@ async def process_message_async(
 
         # Run the agent
         logger.info(
-            "[AsyncChat:LLM_START] sid=%s model=%s history_len=%d",
-            session_id,
-            session.llm_model,
-            len(history),
+            "Async chat LLM call started",
+            extra=build_log_extra(
+                component="chat",
+                operation="llm_call",
+                event_name="chat.turn.llm_started",
+                status="started",
+                session_id=session_id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={"model": session.llm_model, "history_count": len(history)},
+            ),
         )
         agent_start = perf_counter()
         result = await run_in_threadpool(
@@ -995,7 +1122,7 @@ async def process_message_async(
             provider_api_key=provider_api_key,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
-        _log_chat_usage(result, session_id, message_id, "async")
+        _log_chat_usage(result, db, session, session_id, message_id, "async")
 
         # Extract tool calls info
         tool_calls = getattr(result, "tool_calls", []) or []
@@ -1007,11 +1134,24 @@ async def process_message_async(
         ]
         output_len = len(result.output) if result.output else 0
         logger.info(
-            "[AsyncChat:LLM_DONE] sid=%s agent_ms=%.1f output_chars=%d tools=%s",
-            session_id,
-            agent_ms,
-            output_len,
-            tool_names if tool_names else "none",
+            "Async chat LLM call completed",
+            extra=build_log_extra(
+                component="chat",
+                operation="llm_call",
+                event_name="chat.turn.llm_completed",
+                status="completed",
+                duration_ms=agent_ms,
+                session_id=session_id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={
+                    "tool_names": tool_names,
+                    "tool_count": len([name for name in tool_names if name]),
+                    "output_chars": output_len,
+                },
+            ),
         )
 
         # Update the message with the complete result
@@ -1032,33 +1172,43 @@ async def process_message_async(
 
         total_ms = (perf_counter() - total_start) * 1000
         logger.info(
-            "[AsyncChat:DONE] sid=%s mid=%s total=%.0f deps=%.0f hist=%.0f llm=%.0f save=%.0f ms",
-            session_id,
-            message_id,
-            total_ms,
-            deps_ms,
-            history_ms,
-            agent_ms,
-            save_ms,
-        )
-
-        log_event(
-            event_type="chat",
-            event_name="message_sent",
-            status="completed",
-            user_id=session.user_id,
-            session_id=session_id,
-            model=session.llm_model,
+            "Async chat turn persisted",
+            extra=build_log_extra(
+                component="chat",
+                operation="process_message_async",
+                event_name="chat.turn.persisted",
+                status="completed",
+                duration_ms=total_ms,
+                session_id=session_id,
+                message_id=message_id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={
+                    "model": session.llm_model,
+                    "deps_ms": round(deps_ms, 2),
+                    "history_ms": round(history_ms, 2),
+                    "agent_ms": round(agent_ms, 2),
+                    "save_ms": round(save_ms, 2),
+                },
+            ),
         )
 
     except Exception as exc:
         total_ms = (perf_counter() - total_start) * 1000
-        logger.error(
-            "[AsyncChat:FAILED] sid=%s mid=%s total_ms=%.1f error=%s",
-            session_id,
-            message_id,
-            total_ms,
-            exc,
+        logger.exception(
+            "Async chat turn failed",
+            extra=build_log_extra(
+                component="chat",
+                operation="process_message_async",
+                event_name="chat.turn.failed",
+                status="failed",
+                duration_ms=total_ms,
+                session_id=session_id,
+                message_id=message_id,
+                source=source,
+                context_data={"failure_class": type(exc).__name__},
+            ),
         )
         try:
             update_message_failed(db, message_id, str(exc))
@@ -1101,14 +1251,33 @@ async def generate_initial_suggestions(
     """
     total_start = perf_counter()
     logger.info(
-        "[InitialSuggestions] started | session_id=%s content_id=%s model=%s",
-        session.id,
-        session.content_id,
-        session.llm_model,
+        "Initial suggestions started",
+        extra=build_log_extra(
+            component="chat",
+            operation="generate_initial_suggestions",
+            event_name="chat.turn",
+            status="started",
+            session_id=session.id,
+            user_id=session.user_id,
+            content_id=session.content_id,
+            source=source,
+            context_data={"model": session.llm_model, "session_type": session.session_type},
+        ),
     )
 
     if not session.content_id:
-        logger.warning("[InitialSuggestions] No content_id | session_id=%s", session.id)
+        logger.warning(
+            "Initial suggestions skipped because session has no content",
+            extra=build_log_extra(
+                component="chat",
+                operation="generate_initial_suggestions",
+                event_name="chat.turn",
+                status="skipped",
+                session_id=session.id,
+                user_id=session.user_id,
+                source=source,
+            ),
+        )
         return None
 
     include_full_text = True
@@ -1133,7 +1302,7 @@ async def generate_initial_suggestions(
             provider_api_key=provider_api_key,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
-        _log_chat_usage(result, session.id, None, "initial_suggestions")
+        _log_chat_usage(result, db, session, session.id, None, "initial_suggestions")
         new_messages = result.new_messages()
         save_start = perf_counter()
         save_messages(db, session.id, new_messages)
@@ -1152,12 +1321,25 @@ async def generate_initial_suggestions(
             for tc in tool_calls
         ]
         logger.info(
-            "[InitialSuggestions] sid=%s total=%.1f agent=%.1f save=%.1f tools=%s",
-            session.id,
-            total_ms,
-            agent_ms,
-            save_ms,
-            tool_names,
+            "Initial suggestions persisted",
+            extra=build_log_extra(
+                component="chat",
+                operation="generate_initial_suggestions",
+                event_name="chat.turn.persisted",
+                status="completed",
+                duration_ms=total_ms,
+                session_id=session.id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={
+                    "model": session.llm_model,
+                    "agent_ms": round(agent_ms, 2),
+                    "save_ms": round(save_ms, 2),
+                    "tool_names": tool_names,
+                    "tool_count": len([name for name in tool_names if name]),
+                },
+            ),
         )
 
         return ChatRunResult(
@@ -1167,6 +1349,20 @@ async def generate_initial_suggestions(
             tool_calls=getattr(result, "tool_calls", []),
         )
     except Exception as exc:  # noqa: BLE001
-        logger.error("[InitialSuggestions] Error | session_id=%s error=%s", session.id, exc)
+        logger.exception(
+            "Initial suggestions failed",
+            extra=build_log_extra(
+                component="chat",
+                operation="generate_initial_suggestions",
+                event_name="chat.turn.failed",
+                status="failed",
+                duration_ms=(perf_counter() - total_start) * 1000,
+                session_id=session.id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                source=source,
+                context_data={"failure_class": type(exc).__name__},
+            ),
+        )
         db.rollback()
         raise

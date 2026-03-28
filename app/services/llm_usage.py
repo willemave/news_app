@@ -6,6 +6,10 @@ from contextvars import ContextVar, Token
 from copy import deepcopy
 from typing import Any
 
+from sqlalchemy.orm import Session
+
+from app.services.llm_costs import extract_usage_from_result, record_llm_usage
+
 _USAGE_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("llm_usage_context", default=None)
 
 
@@ -29,59 +33,57 @@ def snapshot_usage() -> dict[str, Any] | None:
     return deepcopy(usage)
 
 
-def record_usage(step: str, result: object, *, model_spec: str | None = None) -> None:
+def record_usage(
+    step: str,
+    result: object,
+    *,
+    model_spec: str | None = None,
+    db: Session | None = None,
+    persist: dict[str, Any] | None = None,
+) -> None:
     """Record usage for a single LLM call into the current context."""
     usage_context = _USAGE_CONTEXT.get()
-    if usage_context is None:
-        return
-
     usage = _extract_usage(result)
     if not usage:
         return
 
-    step_entry = usage_context["steps"].setdefault(
-        step,
-        {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "calls": 0},
-    )
-    if model_spec:
-        step_entry["model_spec"] = model_spec
+    if usage_context is not None:
+        step_entry = usage_context["steps"].setdefault(
+            step,
+            {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "calls": 0},
+        )
+        if model_spec:
+            step_entry["model_spec"] = model_spec
 
-    step_entry["calls"] += 1
-    for key in ("input_tokens", "output_tokens", "total_tokens"):
-        value = usage.get(key)
-        if value is None:
-            continue
-        step_entry[key] += value
-        usage_context["total"][key] += value
+        step_entry["calls"] += 1
+        for key in ("input_tokens", "output_tokens", "total_tokens"):
+            value = usage.get(key)
+            if value is None:
+                continue
+            step_entry[key] += value
+            usage_context["total"][key] += value
+
+    if db is not None and persist:
+        record_llm_usage(
+            db,
+            provider=persist.get("provider"),
+            model=model_spec or persist.get("model") or "unknown",
+            feature=persist["feature"],
+            operation=persist["operation"],
+            source=persist.get("source"),
+            usage=usage,
+            request_id=persist.get("request_id"),
+            task_id=persist.get("task_id"),
+            content_id=persist.get("content_id"),
+            session_id=persist.get("session_id"),
+            message_id=persist.get("message_id"),
+            user_id=persist.get("user_id"),
+            metadata=persist.get("metadata"),
+        )
 
 
 def _extract_usage(result: object) -> dict[str, int | None] | None:
-    try:
-        usage = result.usage()
-    except Exception:  # noqa: BLE001
-        return None
-
-    if not usage:
-        return None
-
-    input_tokens = _coerce_int(
-        getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None)
-    )
-    output_tokens = _coerce_int(
-        getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", None)
-    )
-    total_tokens = _coerce_int(getattr(usage, "total_tokens", None))
-    if total_tokens is None and input_tokens is not None and output_tokens is not None:
-        total_tokens = input_tokens + output_tokens
-
-    if input_tokens is None and output_tokens is None and total_tokens is None:
-        return None
-
-    return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-    }
+    return extract_usage_from_result(result)
 
 
 def _coerce_int(value: object | None) -> int | None:
