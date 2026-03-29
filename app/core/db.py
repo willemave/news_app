@@ -4,6 +4,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import Pool
@@ -21,6 +22,11 @@ _engine = None
 _SessionLocal = None
 
 
+def _is_sqlite_url(database_url: str) -> bool:
+    """Return whether the configured database URL targets SQLite."""
+    return make_url(database_url).drivername.startswith("sqlite")
+
+
 def init_db():
     """Initialize database engine and session factory."""
     global _engine, _SessionLocal
@@ -29,27 +35,47 @@ def init_db():
         return
 
     settings = get_settings()
+    database_url = str(settings.database_url)
+    is_sqlite = _is_sqlite_url(database_url)
 
     # Create engine with connection pooling
-    _engine = create_engine(
-        str(settings.database_url),
-        pool_size=settings.database_pool_size,
-        max_overflow=settings.database_max_overflow,
-        pool_pre_ping=True,  # Verify connections before using
-        echo=settings.debug,  # Log SQL in debug mode
-    )
+    engine_kwargs = {
+        "pool_pre_ping": True,
+        "echo": settings.debug,
+    }
+    if is_sqlite:
+        engine_kwargs["connect_args"] = {
+            "check_same_thread": False,
+            "timeout": 30,
+        }
+    else:
+        engine_kwargs["pool_size"] = settings.database_pool_size
+        engine_kwargs["max_overflow"] = settings.database_max_overflow
+
+    _engine = create_engine(database_url, **engine_kwargs)
 
     # Create session factory
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
     # Add connection pool logging
     @event.listens_for(Pool, "connect")
-    def set_sqlite_pragma(dbapi_conn, connection_record):
+    def log_connect(dbapi_conn, connection_record):
         logger.debug(f"New database connection established: {id(dbapi_conn)}")
 
     @event.listens_for(Pool, "checkout")
     def log_checkout(dbapi_conn, connection_record, connection_proxy):
         logger.debug(f"Connection checked out from pool: {id(dbapi_conn)}")
+
+    if is_sqlite:
+
+        @event.listens_for(_engine, "connect")
+        def set_sqlite_pragmas(dbapi_conn, connection_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.close()
 
     logger.info("Database initialized successfully")
 

@@ -194,6 +194,8 @@ def process_news_item(
     raw_metadata = dict(item.raw_metadata or {})
     item.status = NewsItemStatus.PROCESSING.value
     db.flush()
+    db.commit()
+    db.refresh(item)
 
     try:
         discussion_payload = raw_metadata.get("discussion_payload")
@@ -213,7 +215,7 @@ def process_news_item(
             existing_summary.title or existing_summary.key_points or existing_summary.summary
         ):
             _persist_summary(item, existing_summary, raw_metadata)
-            db.flush()
+            db.commit()
             return NewsItemProcessingResult(
                 success=True,
                 status=item.status,
@@ -235,7 +237,7 @@ def process_news_item(
             )
 
         _persist_summary(item, generated, raw_metadata)
-        db.flush()
+        db.commit()
         return NewsItemProcessingResult(
             success=True,
             status=item.status,
@@ -251,11 +253,21 @@ def process_news_item(
                 "context_data": {"error": str(exc)},
             },
         )
+        db.rollback()
+        item = db.query(NewsItem).filter(NewsItem.id == news_item_id).first()
+        if item is None:
+            return NewsItemProcessingResult(
+                success=False,
+                status="failed",
+                error_message=str(exc),
+                retryable=True,
+            )
+        raw_metadata = dict(item.raw_metadata or {})
         raw_metadata["processing_error"] = str(exc)
         item.raw_metadata = raw_metadata
         item.status = NewsItemStatus.FAILED.value
         item.processed_at = _utcnow_naive()
-        db.flush()
+        db.commit()
         return NewsItemProcessingResult(
             success=False,
             status=item.status,
