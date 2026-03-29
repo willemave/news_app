@@ -25,6 +25,7 @@ from app.routers.api import (
     discovery,
     integrations,
     interactions,
+    news,
     onboarding,
     openai,
     scraper_configs,
@@ -306,6 +307,7 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(admin.router)
 app.include_router(logs.router)
 app.include_router(api_content.router, prefix="/api/content")
+app.include_router(news.router, prefix="/api/news")
 app.include_router(interactions.router, prefix="/api")
 app.include_router(scraper_configs.router, prefix="/api")
 app.include_router(discovery.router, prefix="/api")

@@ -35,37 +35,43 @@ cases:
       The assistant uses the user's favorited content to identify "AI policy landscape"
       at https://example.com/ai-policy as the matching favorite for the term
       "policy" and does not answer with the unrelated sports favorite.
-  - id: recent_daily_news_digests_summary
-    query: "can you summarize my recent daily news digests?"
+  - id: recent_news_digests_summary
+    query: "can you summarize my recent news digests?"
     screen_context:
       screen_type: daily_digest_list
-      screen_title: Daily News Digests
+      screen_title: News Digests
     seed_data:
-      daily_digests:
-        - local_date: 2026-03-16
+      news_digests:
+        - window_start_at: 2026-03-16T08:00:00
+          window_end_at: 2026-03-16T09:00:00
           title: Washington and AI policy moved quickly
           summary: >
             The day centered on AI regulation, semiconductor policy, and a new
             round of campaign messaging ahead of key votes.
-          key_points:
-            - Congress debated a fresh AI transparency framework.
-            - Semiconductor export controls remained a major flashpoint.
-            - Campaigns sharpened messaging around the economy and immigration.
+          bullets:
+            - topic: AI transparency framework
+              details: Congress debated a fresh AI transparency framework.
+            - topic: Chip export controls
+              details: Semiconductor export controls remained a major flashpoint.
+            - topic: Campaign messaging
+              details: Campaigns sharpened messaging around the economy and immigration.
           source_count: 3
-          source_content_ids: [101, 102, 103]
-        - local_date: 2026-03-15
+        - window_start_at: 2026-03-15T08:00:00
+          window_end_at: 2026-03-15T09:00:00
           title: Markets, media, and election strategy shaped the news
           summary: >
             Coverage focused on market volatility, coalition politics, and how
             major media outlets framed the next election cycle.
-          key_points:
-            - Investors reacted to a mix of rate expectations and political uncertainty.
-            - Party strategists argued over turnout and coalition building.
-            - Media narratives diverged on the most important campaign issues.
+          bullets:
+            - topic: Market volatility
+              details: Investors reacted to a mix of rate expectations and political uncertainty.
+            - topic: Coalition politics
+              details: Party strategists argued over turnout and coalition building.
+            - topic: Media narratives
+              details: Media narratives diverged on the most important campaign issues.
           source_count: 3
-          source_content_ids: [104, 105, 106]
     expected_outcome: >
-      The assistant summarizes the user's recent daily news digests using the
+      The assistant summarizes the user's recent news digests using the
       digest titles, summaries, or bullet points from the app context rather
       than switching to unrelated web results.
   - id: knowledge_hub_todays_summary
@@ -74,31 +80,37 @@ cases:
       screen_type: knowledge_hub
       screen_title: Knowledge
     seed_data:
-      daily_digests:
-        - local_date: 2026-03-16
+      news_digests:
+        - window_start_at: 2026-03-16T08:00:00
+          window_end_at: 2026-03-16T09:00:00
           title: Washington and AI policy moved quickly
           summary: >
             The day centered on AI regulation, semiconductor policy, and a new
             round of campaign messaging ahead of key votes.
-          key_points:
-            - Congress debated a fresh AI transparency framework.
-            - Semiconductor export controls remained a major flashpoint.
-            - Campaigns sharpened messaging around the economy and immigration.
+          bullets:
+            - topic: AI transparency framework
+              details: Congress debated a fresh AI transparency framework.
+            - topic: Chip export controls
+              details: Semiconductor export controls remained a major flashpoint.
+            - topic: Campaign messaging
+              details: Campaigns sharpened messaging around the economy and immigration.
           source_count: 3
-          source_content_ids: [101, 102, 103]
-        - local_date: 2026-03-15
+        - window_start_at: 2026-03-15T08:00:00
+          window_end_at: 2026-03-15T09:00:00
           title: Markets, media, and election strategy shaped the news
           summary: >
             Coverage focused on market volatility, coalition politics, and how
             major media outlets framed the next election cycle.
-          key_points:
-            - Investors reacted to a mix of rate expectations and political uncertainty.
-            - Party strategists argued over turnout and coalition building.
-            - Media narratives diverged on the most important campaign issues.
+          bullets:
+            - topic: Market volatility
+              details: Investors reacted to a mix of rate expectations and political uncertainty.
+            - topic: Coalition politics
+              details: Party strategists argued over turnout and coalition building.
+            - topic: Media narratives
+              details: Media narratives diverged on the most important campaign issues.
           source_count: 3
-          source_content_ids: [104, 105, 106]
     expected_outcome: >
-      The assistant summarizes the user's recent daily digests using the
+      The assistant summarizes the user's recent news digests using the
       digest titles, summaries, or bullet points from the app context rather
       than switching to unrelated web results.
   - id: knowledge_hub_top_comments
@@ -107,29 +119,35 @@ cases:
       screen_type: knowledge_hub
       screen_title: Knowledge
     seed_data:
-      daily_digests:
-        - local_date: 2026-03-16
+      news_digests:
+        - window_start_at: 2026-03-16T08:00:00
+          window_end_at: 2026-03-16T09:00:00
           title: AI policy, chips, and campaign framing collided
           summary: >
             The day's discussion focused on AI regulation, semiconductor
             controls, and how campaigns framed economic anxiety.
-          key_points:
-            - Commentators split on whether export controls help or hurt long-term competitiveness.
-            - Several analysts argued open-source models are weakening the case for hardware-only restrictions.
-            - Campaign coverage diverged between media narratives and what local organizers said voters cared about.
+          bullets:
+            - topic: Export controls debate
+              details: Commentators split on whether export controls help or hurt long-term competitiveness.
+            - topic: Open-source pressure
+              details: Several analysts argued open-source models are weakening the case for hardware-only restrictions.
+            - topic: Campaign coverage
+              details: Campaign coverage diverged between media narratives and what local organizers said voters cared about.
           source_count: 3
-          source_content_ids: [201, 202, 203]
-        - local_date: 2026-03-15
+        - window_start_at: 2026-03-15T08:00:00
+          window_end_at: 2026-03-15T09:00:00
           title: Markets, turnout, and media narratives drove debate
           summary: >
             Coverage emphasized election strategy, turnout assumptions, and
             whether market volatility would change the political narrative.
-          key_points:
-            - Strategists disagreed on whether persuasion or turnout mattered more.
-            - Commentators pushed back on headline-driven media framing.
-            - Analysts argued investor anxiety was more about policy ambiguity than rates alone.
+          bullets:
+            - topic: Persuasion versus turnout
+              details: Strategists disagreed on whether persuasion or turnout mattered more.
+            - topic: Media framing pushback
+              details: Commentators pushed back on headline-driven media framing.
+            - topic: Investor anxiety
+              details: Analysts argued investor anxiety was more about policy ambiguity than rates alone.
           source_count: 3
-          source_content_ids: [204, 205, 206]
     expected_outcome: >
       The assistant highlights concrete disagreements or surprising
       perspectives from the user's recent content context, including at least

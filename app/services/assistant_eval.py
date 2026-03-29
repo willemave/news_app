@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -31,7 +31,8 @@ from app.models.contracts import TaskStatus, TaskType
 from app.models.schema import (
     Content,
     ContentFavorites,
-    DailyNewsDigest,
+    NewsDigest,
+    NewsDigestBullet,
     ProcessingTask,
     UserScraperConfig,
 )
@@ -86,18 +87,30 @@ class AssistantEvalCase(BaseModel):
     seed_data: AssistantEvalSeedData = Field(default_factory=lambda: AssistantEvalSeedData())
 
 
-class AssistantEvalSeedDigest(BaseModel):
-    """Daily digest fixture seeded for one eval case."""
+class AssistantEvalSeedNewsDigestBullet(BaseModel):
+    """News digest bullet fixture seeded for one eval case."""
 
-    local_date: date
+    topic: str = Field(..., min_length=1, max_length=240)
+    details: str = Field(..., min_length=1)
+
+
+class AssistantEvalSeedNewsDigest(BaseModel):
+    """News digest fixture seeded for one eval case."""
+
     title: str = Field(..., min_length=1, max_length=240)
     summary: str = Field(..., min_length=1)
-    key_points: list[str] = Field(default_factory=list)
+    bullets: list[AssistantEvalSeedNewsDigestBullet] = Field(default_factory=list)
     source_count: int = Field(default=0, ge=0)
-    source_content_ids: list[int] = Field(default_factory=list)
     timezone: str = Field(default="UTC", min_length=1, max_length=100)
+    trigger_reason: str = Field(default="assistant_eval", min_length=1, max_length=64)
     llm_model: str = Field(default="eval-seed", min_length=1, max_length=120)
     read_at: datetime | None = None
+    window_start_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None)
+    )
+    window_end_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None)
+    )
     generated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC).replace(tzinfo=None)
     )
@@ -106,7 +119,7 @@ class AssistantEvalSeedDigest(BaseModel):
 class AssistantEvalSeedData(BaseModel):
     """Fixture data seeded before an eval case runs."""
 
-    daily_digests: list[AssistantEvalSeedDigest] = Field(default_factory=list)
+    news_digests: list[AssistantEvalSeedNewsDigest] = Field(default_factory=list)
     favorites: list[AssistantEvalSeedFavorite] = Field(default_factory=list)
 
 
@@ -282,22 +295,36 @@ def _seed_case_data(
 ) -> None:
     """Seed fixture data required by an eval case."""
 
-    for digest in seed_data.daily_digests:
-        db.add(
-            DailyNewsDigest(
-                user_id=user_id,
-                local_date=digest.local_date,
-                timezone=digest.timezone,
-                title=digest.title,
-                summary=digest.summary,
-                key_points=list(digest.key_points),
-                source_content_ids=list(digest.source_content_ids),
-                source_count=digest.source_count or len(digest.source_content_ids),
-                llm_model=digest.llm_model,
-                generated_at=digest.generated_at,
-                read_at=digest.read_at,
-            )
+    for digest in seed_data.news_digests:
+        row = NewsDigest(
+            user_id=user_id,
+            timezone=digest.timezone,
+            window_start_at=digest.window_start_at,
+            window_end_at=digest.window_end_at,
+            title=digest.title,
+            summary=digest.summary,
+            source_count=digest.source_count,
+            group_count=len(digest.bullets),
+            embedding_model="eval-seed",
+            llm_model=digest.llm_model,
+            pipeline_version="assistant-eval",
+            trigger_reason=digest.trigger_reason,
+            generated_at=digest.generated_at,
+            read_at=digest.read_at,
+            build_metadata={},
         )
+        db.add(row)
+        db.flush()
+        for position, bullet in enumerate(digest.bullets, start=1):
+            db.add(
+                NewsDigestBullet(
+                    digest_id=row.id,
+                    position=position,
+                    topic=bullet.topic,
+                    details=bullet.details,
+                    source_count=0,
+                )
+            )
     for favorite in seed_data.favorites:
         content_metadata: dict[str, Any] = {}
         if favorite.summary:
@@ -317,7 +344,7 @@ def _seed_case_data(
         db.flush()
         db.add(ContentFavorites(user_id=user_id, content_id=int(content.id)))
 
-    if seed_data.daily_digests or seed_data.favorites:
+    if seed_data.news_digests or seed_data.favorites:
         db.commit()
 
 

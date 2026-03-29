@@ -20,12 +20,12 @@ from app.services.onboarding import (
 
 def test_default_onboarding_fallback_order() -> None:
     assert DISCOVERY_FALLBACK_MODELS == (
-        "google-gla:gemini-2.5-flash",
-        "openai:gpt-5-mini",
+        "google:gemini-3.1-flash-lite-preview",
+        "openai:gpt-5.4-mini",
     )
     assert AUDIO_PLAN_FALLBACK_MODELS == (
-        "google-gla:gemini-2.5-flash",
-        "openai:gpt-5-mini",
+        "google:gemini-3.1-flash-lite-preview",
+        "openai:gpt-5.4-mini",
     )
 
 
@@ -55,7 +55,10 @@ def test_discover_fallback_uses_secondary_model(monkeypatch):
             return FailingAgent()
         return SuccessAgent()
 
-    monkeypatch.setattr("app.services.onboarding.DISCOVERY_FALLBACK_MODELS", ("openai:gpt-5-mini",))
+    monkeypatch.setattr(
+        "app.services.onboarding.DISCOVERY_FALLBACK_MODELS",
+        ("openai:gpt-5.4-mini",),
+    )
     monkeypatch.setattr("app.services.onboarding.get_basic_agent", fake_get_basic_agent)
 
     output = _run_discover_output_with_fallback(
@@ -64,7 +67,7 @@ def test_discover_fallback_uses_secondary_model(monkeypatch):
         operation="test_discover_fallback",
     )
 
-    assert attempts == [FAST_DISCOVER_MODEL, "openai:gpt-5-mini"]
+    assert attempts == [FAST_DISCOVER_MODEL, "openai:gpt-5.4-mini"]
     assert output.substacks
     assert output.substacks[0].feed_url == "https://example.com/feed"
 
@@ -101,7 +104,8 @@ async def test_audio_plan_fallback_uses_secondary_model(monkeypatch):
         return SuccessAgent()
 
     monkeypatch.setattr(
-        "app.services.onboarding.AUDIO_PLAN_FALLBACK_MODELS", ("openai:gpt-5-mini",)
+        "app.services.onboarding.AUDIO_PLAN_FALLBACK_MODELS",
+        ("openai:gpt-5.4-mini",),
     )
     monkeypatch.setattr("app.services.onboarding.get_basic_agent", fake_get_basic_agent)
 
@@ -110,6 +114,6 @@ async def test_audio_plan_fallback_uses_secondary_model(monkeypatch):
         timeout_seconds=8,
     )
 
-    assert attempts == [AUDIO_PLAN_MODEL, "openai:gpt-5-mini"]
+    assert attempts == [AUDIO_PLAN_MODEL, "openai:gpt-5.4-mini"]
     assert output.topic_summary == "AI topics"
     assert output.lanes[0].name == "Lane"

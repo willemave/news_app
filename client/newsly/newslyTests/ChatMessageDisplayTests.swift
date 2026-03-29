@@ -41,7 +41,7 @@ final class ChatMessageDisplayTests: XCTestCase {
                 "id": 42,
                 "content_id": null,
                 "title": "Daily AI Digest",
-                "session_type": "daily_digest_brain",
+                "session_type": "news_digest_brain",
                 "topic": null,
                 "llm_provider": "anthropic",
                 "llm_model": "anthropic:claude-opus-4-5-20251101",

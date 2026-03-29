@@ -10,7 +10,7 @@ import Foundation
 
 enum APIEndpoints {
     static let contentList = "/api/content/"
-    static let dailyNewsDigests = "/api/content/daily-digests"
+    static let newsDigests = "/api/news/digests"
     static let submitContent = "/api/content/submit"
     static let submissionStatusList = "/api/content/submissions/list"
     static let searchContent = "/api/content/search"
@@ -24,20 +24,17 @@ enum APIEndpoints {
     static func markContentUnread(id: Int) -> String {
         return "/api/content/\(id)/mark-unread"
     }
-    static func markDailyDigestRead(id: Int) -> String {
-        return "/api/content/daily-digests/\(id)/mark-read"
-    }
-    static func markDailyDigestUnread(id: Int) -> String {
-        return "/api/content/daily-digests/\(id)/mark-unread"
-    }
     static func narration(_ target: NarrationTarget) -> String {
         return "/api/content/narration/\(target.pathComponent)/\(target.id)"
     }
-    static func dailyDigestDigDeeper(id: Int) -> String {
-        return "/api/content/daily-digests/\(id)/dig-deeper"
+    static func newsDigest(id: Int) -> String {
+        return "/api/news/digests/\(id)"
     }
-    static func dailyDigestBulletDigDeeper(id: Int, bulletIndex: Int) -> String {
-        return "/api/content/daily-digests/\(id)/bullets/\(bulletIndex)/dig-deeper"
+    static func markNewsDigestRead(id: Int) -> String {
+        return "/api/news/digests/\(id)/mark-read"
+    }
+    static func newsDigestBulletDigDeeper(digestId: Int, bulletId: Int) -> String {
+        return "/api/news/digests/\(digestId)/bullets/\(bulletId)/dig-deeper"
     }
     static let analytics = "/api/analytics"
     static let bulkMarkRead = "/api/content/bulk-mark-read"
@@ -60,6 +57,9 @@ enum APIEndpoints {
     static let longFormStats = "/api/content/stats/long-form"
     static func convertNewsToArticle(id: Int) -> String {
         return "/api/content/\(id)/convert-to-article"
+    }
+    static func convertNewsItemToArticle(id: Int) -> String {
+        return "/api/news/items/\(id)/convert-to-article"
     }
     static func downloadMoreFromSeries(id: Int) -> String {
         return "/api/content/\(id)/download-more"

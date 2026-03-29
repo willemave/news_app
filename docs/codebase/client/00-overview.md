@@ -26,7 +26,7 @@ Folder-by-folder reference for the SwiftUI app, share extension, project metadat
 | `86-views-library.md` | `client/newsly/newsly/Views/Library` | Library-oriented SwiftUI surfaces for saved/favorited content. |
 | `90-share-extension.md` | `client/newsly/ShareExtension` | Share extension target that receives shared URLs from iOS, reads shared auth state, and forwards submissions into the backend pipeline. |
 | `94-scripts.md` | `client/newsly/scripts` | Client-specific helper scripts for regenerating derived assets such as API contracts. |
-| `95-tests.md` | `client/newsly/newslyTests` | Focused iOS unit tests covering share routing, onboarding animation progress, and daily-digest dig-deeper behavior. |
+| `95-tests.md` | `client/newsly/newslyTests` | Focused iOS unit tests covering share routing, onboarding animation progress, and news-digest dig-deeper behavior. |
 | `96-xcode-project.md` | `client/newsly/newsly.xcodeproj` | Xcode project metadata including schemes, workspace settings, package resolution, and target membership for the app and share extension. |
 
 ## Concat command

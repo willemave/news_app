@@ -240,17 +240,9 @@ private final class FakeDailyNewsDigestRepository: DailyNewsDigestRepositoryType
         fatalError("unused in test")
     }
 
-    func markUnread(id: Int) -> AnyPublisher<Void, Error> {
-        fatalError("unused in test")
-    }
-
-    func startDigDeeperChat(id: Int) async throws -> StartDailyDigestChatResponse {
-        fatalError("unused in test")
-    }
-
     func startBulletDigDeeperChat(
         digestId: Int,
-        bulletIndex: Int
+        bulletId: Int
     ) async throws -> StartDailyDigestChatResponse {
         fatalError("unused in test")
     }

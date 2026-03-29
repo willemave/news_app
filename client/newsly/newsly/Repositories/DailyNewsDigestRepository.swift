@@ -14,11 +14,10 @@ protocol DailyNewsDigestRepositoryType {
     ) -> AnyPublisher<DailyNewsDigestListResponse, Error>
 
     func markRead(id: Int) -> AnyPublisher<Void, Error>
-    func markUnread(id: Int) -> AnyPublisher<Void, Error>
-    func startDigDeeperChat(id: Int) async throws -> StartDailyDigestChatResponse
+
     func startBulletDigDeeperChat(
         digestId: Int,
-        bulletIndex: Int
+        bulletId: Int
     ) async throws -> StartDailyDigestChatResponse
 }
 
@@ -46,32 +45,21 @@ final class DailyNewsDigestRepository: DailyNewsDigestRepositoryType {
         }
 
         return client.publisher(
-            APIEndpoints.dailyNewsDigests,
+            APIEndpoints.newsDigests,
             queryItems: queryItems
         )
     }
 
     func markRead(id: Int) -> AnyPublisher<Void, Error> {
-        client.publisherVoid(APIEndpoints.markDailyDigestRead(id: id), method: "POST")
-    }
-
-    func markUnread(id: Int) -> AnyPublisher<Void, Error> {
-        client.publisherVoid(APIEndpoints.markDailyDigestUnread(id: id), method: "DELETE")
-    }
-
-    func startDigDeeperChat(id: Int) async throws -> StartDailyDigestChatResponse {
-        try await client.request(
-            APIEndpoints.dailyDigestDigDeeper(id: id),
-            method: "POST"
-        )
+        client.publisherVoid(APIEndpoints.markNewsDigestRead(id: id), method: "POST")
     }
 
     func startBulletDigDeeperChat(
         digestId: Int,
-        bulletIndex: Int
+        bulletId: Int
     ) async throws -> StartDailyDigestChatResponse {
         try await client.request(
-            APIEndpoints.dailyDigestBulletDigDeeper(id: digestId, bulletIndex: bulletIndex),
+            APIEndpoints.newsDigestBulletDigDeeper(digestId: digestId, bulletId: bulletId),
             method: "POST"
         )
     }

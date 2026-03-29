@@ -7,7 +7,6 @@ from app.routers.api import (
     content_actions,
     content_detail,
     content_list,
-    daily_news_digests,
     favorites,
     narration,
     read_status,
@@ -23,8 +22,6 @@ from app.routers.api.models import (
     ContentListResponse,
     ContentSummaryResponse,
     ConvertNewsResponse,
-    DailyNewsDigestListResponse,
-    DailyNewsDigestResponse,
     NarrationResponse,
     RecordContentInteractionRequest,
     RecordContentInteractionResponse,
@@ -37,7 +34,6 @@ router = APIRouter(
 )
 
 router.include_router(content_list.router)
-router.include_router(daily_news_digests.router)
 router.include_router(narration.router)
 router.include_router(stats.router)
 router.include_router(content_detail.router)
@@ -58,8 +54,6 @@ __all__ = [
     "ChatGPTUrlResponse",
     "UnreadCountsResponse",
     "ConvertNewsResponse",
-    "DailyNewsDigestResponse",
-    "DailyNewsDigestListResponse",
     "NarrationResponse",
     "RecordContentInteractionRequest",
     "RecordContentInteractionResponse",

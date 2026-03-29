@@ -114,7 +114,7 @@ def test_extract_messages_for_display_hides_intermediate_agent_scaffolding(db_se
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="daily_digest_brain",
+        session_type="news_digest_brain",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
     )
@@ -150,7 +150,7 @@ def test_extract_messages_for_display_hides_intermediate_agent_scaffolding(db_se
     assert [message.role.value for message in display_messages] == ["user", "tool", "assistant"]
     assert display_messages[0].content == "Dig deeper into these digest bullets."
     assert display_messages[1].display_type.value == "process_summary"
-    assert display_messages[1].content == "Thinking • Searched the web and reviewed sources"
+    assert display_messages[1].content == "Thinking • Executed 1 tool and reviewed sources"
     assert display_messages[2].content == "Final deep-dive answer."
     assert display_messages[2].feed_options[0].feed_url == "https://lucumr.pocoo.org/feed.atom"
 
@@ -159,7 +159,7 @@ def test_extract_messages_for_display_omits_process_summary_for_simple_turn(db_s
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="daily_digest_brain",
+        session_type="news_digest_brain",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
     )
@@ -225,7 +225,7 @@ def test_extract_last_message_preview_prefers_final_assistant_text(db_session) -
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="daily_digest_brain",
+        session_type="news_digest_brain",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
     )

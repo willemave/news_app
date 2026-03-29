@@ -7,7 +7,6 @@ from sqlalchemy import (
     JSON,
     Boolean,
     Column,
-    Date,
     DateTime,
     Float,
     Index,
@@ -20,6 +19,7 @@ from sqlalchemy.orm import validates
 
 from app.core.db import Base
 from app.core.logging import get_logger
+from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.metadata import ContentStatus, StructuredSummary, validate_content_metadata
 from app.models.summary_contracts import is_structured_summary_payload
 from app.models.user import User  # noqa: F401
@@ -219,32 +219,145 @@ class ContentFavorites(Base):
     )
 
 
-class DailyNewsDigest(Base):
-    """Per-user daily news roll-up summary."""
+class NewsItem(Base):
+    """Short-form news evidence item used by the news-native digest pipeline."""
 
-    __tablename__ = "daily_news_digests"
+    __tablename__ = "news_items"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False, index=True)
-    local_date = Column(Date, nullable=False, index=True)
-    timezone = Column(String(100), nullable=False, default="UTC")
-    title = Column(String(240), nullable=False)
-    summary = Column(Text, nullable=False)
-    key_points = Column(JSON, default=list, nullable=False)
-    bullet_details = Column(JSON, default=list, nullable=False)
-    source_content_ids = Column(JSON, default=list, nullable=False)
-    source_count = Column(Integer, nullable=False, default=0)
-    llm_model = Column(String(120), nullable=False)
-    generated_at = Column(DateTime, nullable=False, default=_utcnow)
-    coverage_end_at = Column(DateTime, nullable=True)
-    read_at = Column(DateTime, nullable=True)
+    ingest_key = Column(String(128), nullable=False, index=True)
+    visibility_scope = Column(
+        String(20),
+        nullable=False,
+        default=NewsItemVisibilityScope.GLOBAL.value,
+        index=True,
+    )
+    owner_user_id = Column(Integer, nullable=True, index=True)
+    platform = Column(String(50), nullable=True, index=True)
+    source_type = Column(String(50), nullable=True, index=True)
+    source_label = Column(String(255), nullable=True)
+    source_external_id = Column(String(255), nullable=True, index=True)
+    user_scraper_config_id = Column(Integer, nullable=True, index=True)
+    user_integration_connection_id = Column(Integer, nullable=True, index=True)
+    canonical_item_url = Column(String(2048), nullable=True)
+    canonical_story_url = Column(String(2048), nullable=True, index=True)
+    article_url = Column(String(2048), nullable=True)
+    article_title = Column(String(500), nullable=True)
+    article_domain = Column(String(255), nullable=True)
+    discussion_url = Column(String(2048), nullable=True)
+    summary_title = Column(String(240), nullable=True)
+    summary_key_points = Column(JSON, default=list, nullable=False)
+    summary_text = Column(Text, nullable=True)
+    raw_metadata = Column(JSON, default=dict, nullable=False)
+    status = Column(String(20), nullable=False, default=NewsItemStatus.NEW.value, index=True)
+    legacy_content_id = Column(Integer, nullable=True, index=True)
+    published_at = Column(DateTime, nullable=True, index=True)
+    ingested_at = Column(DateTime, default=_utcnow, nullable=False, index=True)
+    processed_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=_utcnow, nullable=False)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
-        UniqueConstraint("user_id", "local_date", name="uq_daily_news_digests_user_date"),
-        Index("idx_daily_news_digests_user_local_date", "user_id", "local_date"),
-        Index("idx_daily_news_digests_user_read_at", "user_id", "read_at"),
+        UniqueConstraint("ingest_key", name="uq_news_items_ingest_key"),
+        UniqueConstraint("legacy_content_id", name="uq_news_items_legacy_content_id"),
+        Index(
+            "idx_news_items_visibility_owner_status", "visibility_scope", "owner_user_id", "status"
+        ),
+        Index("idx_news_items_status_ingested", "status", "ingested_at"),
+        Index("idx_news_items_owner_ingested", "owner_user_id", "ingested_at"),
+    )
+
+
+class NewsDigest(Base):
+    """Generated digest run for one user over an uncovered-item window."""
+
+    __tablename__ = "news_digests"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    timezone = Column(String(100), nullable=False, default="UTC")
+    window_start_at = Column(DateTime, nullable=False, index=True)
+    window_end_at = Column(DateTime, nullable=False, index=True)
+    title = Column(String(240), nullable=False)
+    summary = Column(Text, nullable=False)
+    source_count = Column(Integer, nullable=False, default=0)
+    group_count = Column(Integer, nullable=False, default=0)
+    embedding_model = Column(String(255), nullable=False)
+    llm_model = Column(String(255), nullable=False)
+    pipeline_version = Column(String(64), nullable=False)
+    trigger_reason = Column(String(64), nullable=False)
+    generated_at = Column(DateTime, nullable=False, default=_utcnow, index=True)
+    read_at = Column(DateTime, nullable=True, index=True)
+    build_metadata = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        Index("idx_news_digests_user_generated", "user_id", "generated_at"),
+        Index("idx_news_digests_user_read", "user_id", "read_at"),
+    )
+
+
+class NewsDigestBullet(Base):
+    """Persisted grouped bullet for one digest run."""
+
+    __tablename__ = "news_digest_bullets"
+
+    id = Column(Integer, primary_key=True)
+    digest_id = Column(Integer, nullable=False, index=True)
+    position = Column(Integer, nullable=False)
+    topic = Column(String(240), nullable=False)
+    details = Column(Text, nullable=False)
+    source_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("digest_id", "position", name="uq_news_digest_bullets_digest_position"),
+        Index("idx_news_digest_bullets_digest", "digest_id", "position"),
+    )
+
+
+class NewsDigestBulletSource(Base):
+    """Ordered evidence mapping for one digest bullet."""
+
+    __tablename__ = "news_digest_bullet_sources"
+
+    id = Column(Integer, primary_key=True)
+    bullet_id = Column(Integer, nullable=False, index=True)
+    news_item_id = Column(Integer, nullable=False, index=True)
+    position = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "bullet_id",
+            "news_item_id",
+            name="uq_news_digest_bullet_sources_bullet_item",
+        ),
+        UniqueConstraint(
+            "bullet_id",
+            "position",
+            name="uq_news_digest_bullet_sources_bullet_position",
+        ),
+        Index("idx_news_digest_bullet_sources_item", "news_item_id"),
+    )
+
+
+class NewsItemDigestCoverage(Base):
+    """Track first digest coverage for a news item per audience user."""
+
+    __tablename__ = "news_item_digest_coverage"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    news_item_id = Column(Integer, nullable=False, index=True)
+    digest_id = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "news_item_id", name="uq_news_item_digest_coverage_user_item"),
+        Index("idx_news_item_digest_coverage_digest", "digest_id"),
     )
 
 

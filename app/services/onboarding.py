@@ -65,12 +65,12 @@ FAST_DISCOVER_MODEL = ONBOARDING_PRIMARY_MODEL
 VOICE_PARSE_MODEL = ONBOARDING_PRIMARY_MODEL
 AUDIO_PLAN_MODEL = ONBOARDING_PRIMARY_MODEL
 DISCOVERY_FALLBACK_MODELS = (
-    "google-gla:gemini-2.5-flash",
-    "openai:gpt-5-mini",
+    "google:gemini-3.1-flash-lite-preview",
+    "openai:gpt-5.4-mini",
 )
 AUDIO_PLAN_FALLBACK_MODELS = (
-    "google-gla:gemini-2.5-flash",
-    "openai:gpt-5-mini",
+    "google:gemini-3.1-flash-lite-preview",
+    "openai:gpt-5.4-mini",
 )
 
 PROFILE_TIMEOUT_SECONDS = 8

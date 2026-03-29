@@ -1,11 +1,10 @@
 """Tests for X integration sync flows."""
 
 
-from app.constants import CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY, CONTENT_STATUS_DIGEST_SOURCE
+from app.constants import CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
 from app.core.settings import get_settings
 from app.models.schema import (
-    Content,
-    ContentStatusEntry,
+    NewsItem,
     UserIntegrationConnection,
     UserIntegrationSyncState,
 )
@@ -17,10 +16,10 @@ from app.services.x_integration import exchange_x_oauth, start_x_oauth, sync_x_s
 
 class _FakeQueueGateway:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, int | None]] = []
+        self.calls: list[tuple[str, int | None, dict | None]] = []
 
     def enqueue(self, task_type, *, content_id=None, payload=None, queue_name=None, dedupe=None):  # noqa: ANN001
-        self.calls.append((task_type.value, content_id))
+        self.calls.append((task_type.value, content_id, payload))
         return len(self.calls)
 
 
@@ -163,7 +162,7 @@ def test_exchange_x_oauth_stores_encrypted_tokens_and_profile(
 
 
 def test_sync_x_sources_ingests_digest_only_timeline_content(db_session, test_user, monkeypatch):
-    """Timeline sync should create digest-only news content and user-scoped status rows."""
+    """Timeline sync should create user-scoped news items and processing tasks."""
     connection = _build_connection(
         test_user,
         ["tweet.read", "users.read", "bookmark.read", "list.read"],
@@ -225,21 +224,18 @@ def test_sync_x_sources_ingests_digest_only_timeline_content(db_session, test_us
     assert summary.channels["timeline"].filtered_out == 1
     assert summary.channels["timeline"].created == 1
 
-    content = db_session.query(Content).one()
-    assert content.url.endswith(f"#newsly-digest-user-{test_user.id}")
-    assert content.source_url == "https://x.com/i/status/101"
-    assert content.content_metadata["digest_visibility"] == CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
-    assert content.content_metadata["source_type"] == "x_timeline"
-    assert content.content_metadata["filter_score"] == 0.91
-    assert content.content_metadata["submitted_by_user_id"] == test_user.id
-
-    status_row = db_session.query(ContentStatusEntry).one()
-    assert status_row.user_id == test_user.id
-    assert status_row.status == CONTENT_STATUS_DIGEST_SOURCE
+    news_item = db_session.query(NewsItem).one()
+    assert news_item.visibility_scope == "user"
+    assert news_item.owner_user_id == test_user.id
+    assert news_item.article_url == "https://x.com/i/status/101"
+    assert news_item.discussion_url == "https://x.com/i/status/101"
+    assert news_item.raw_metadata["digest_visibility"] == CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
+    assert news_item.raw_metadata["source_type"] == "x_timeline"
+    assert news_item.raw_metadata["filter_score"] == 0.91
+    assert news_item.raw_metadata["submitted_by_user_id"] == test_user.id
     assert recorded_prompts
     assert queue_gateway.calls == [
-        ("process_content", content.id),
-        ("fetch_discussion", content.id),
+        ("process_news_item", None, {"news_item_id": news_item.id}),
     ]
 
 

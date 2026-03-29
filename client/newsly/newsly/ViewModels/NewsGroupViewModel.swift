@@ -185,7 +185,7 @@ class NewsGroupViewModel: CursorPaginatedViewModel {
 
     func convertToArticle(_ contentId: Int) async {
         do {
-            let response = try await contentService.convertNewsToArticle(id: contentId)
+            let response = try await contentService.convertNewsItemToArticle(id: contentId)
 
             // Show success message or navigate to new article
             // For now, just log success

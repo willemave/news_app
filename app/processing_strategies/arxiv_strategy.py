@@ -126,7 +126,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
             }
 
         google_api_key = getattr(settings, "google_api_key", None)
-        model_name = getattr(settings, "pdf_gemini_model", "gemini-3-flash-preview")
+        model_name = getattr(settings, "pdf_gemini_model", "gemini-3.1-flash-lite-preview")
         if google_api_key:
             try:
                 client = genai.Client(api_key=google_api_key)

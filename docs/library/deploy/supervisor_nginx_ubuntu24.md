@@ -17,7 +17,7 @@ Supervisor manages:
 Cron manages:
 - `scripts/run_scrapers.py`
 - `scripts/run_twitter.py`
-- `scripts/run_daily_news_digest.py`
+- `scripts/run_news_digests.py`
 - `scripts/run_feed_discovery.py`
 
 ## 1) Install packages
@@ -137,14 +137,14 @@ sudo -u newsapp -H crontab /opt/news_app/crontab
 sudo -u newsapp -H crontab -l
 ```
 
-`run_daily_news_digest.py` is cron-driven, not Supervisor-driven.
+`run_news_digests.py` is cron-driven, not Supervisor-driven.
 
 Current production cadence:
 
 ```cron
 */15 * * * * cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_scrapers.py --show-stats --scrapers HackerNews Reddit Substack Techmeme Podcast Atom >> /var/log/news_app/scrapers-cron.log 2>&1
 */15 * * * * cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_twitter.py >> /var/log/news_app/twitter.log 2>&1
-0 */3 * * * cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_daily_news_digest.py --lookback-hours 6 >> /var/log/news_app/daily-news-digest.log 2>&1
+0 */3 * * * cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_news_digests.py --lookback-hours 6 >> /var/log/news_app/daily-news-digest.log 2>&1
 ```
 
 The scheduler polls every 3 hours and enqueues users whose latest local digest

@@ -21,7 +21,7 @@ enum NarrationTarget: Hashable {
         case .content:
             return "content"
         case .dailyDigest:
-            return "daily-digest"
+            return "news-digest"
         }
     }
 }

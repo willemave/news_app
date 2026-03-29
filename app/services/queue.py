@@ -16,12 +16,13 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.SCRAPE: TaskQueue.CONTENT,
     TaskType.ANALYZE_URL: TaskQueue.CONTENT,
     TaskType.PROCESS_CONTENT: TaskQueue.CONTENT,
+    TaskType.PROCESS_NEWS_ITEM: TaskQueue.CONTENT,
     TaskType.DOWNLOAD_AUDIO: TaskQueue.CONTENT,
     TaskType.TRANSCRIBE: TaskQueue.TRANSCRIBE,
     TaskType.SUMMARIZE: TaskQueue.CONTENT,
     TaskType.FETCH_DISCUSSION: TaskQueue.CONTENT,
     TaskType.GENERATE_IMAGE: TaskQueue.IMAGE,
-    TaskType.GENERATE_DAILY_NEWS_DIGEST: TaskQueue.CONTENT,
+    TaskType.GENERATE_NEWS_DIGEST: TaskQueue.CONTENT,
     TaskType.DISCOVER_FEEDS: TaskQueue.CONTENT,
     TaskType.ONBOARDING_DISCOVER: TaskQueue.ONBOARDING,
     TaskType.DIG_DEEPER: TaskQueue.CHAT,
@@ -34,6 +35,8 @@ DEDUPABLE_CONTENT_TASK_TYPES: set[TaskType] = {
     TaskType.FETCH_DISCUSSION,
     TaskType.GENERATE_IMAGE,
 }
+
+
 class QueueService:
     """Simple database-backed task queue."""
 
@@ -214,14 +217,11 @@ class QueueService:
                     .first()
                 )
                 if task_row is None:
-                    fallback_task_row = (
-                        query.order_by(
-                            ProcessingTask.created_at.asc(),
-                            ProcessingTask.retry_count.asc(),
-                            ProcessingTask.id.asc(),
-                        )
-                        .first()
-                    )
+                    fallback_task_row = query.order_by(
+                        ProcessingTask.created_at.asc(),
+                        ProcessingTask.retry_count.asc(),
+                        ProcessingTask.id.asc(),
+                    ).first()
                     if fallback_task_row is None:
                         return None
                     task_row = fallback_task_row

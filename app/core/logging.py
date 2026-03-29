@@ -12,6 +12,7 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any
 
+from app.core.redaction import redact_value
 from app.core.settings import get_settings
 
 _STANDARD_LOG_RECORD_KEYS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__.keys())
@@ -64,59 +65,8 @@ def _sanitize_filename(value: str) -> str:
 
 
 def _redact_value(value: Any) -> Any:
-    sensitive_keys = {
-        "authorization",
-        "cookie",
-        "set-cookie",
-        "x-api-key",
-        "api-key",
-        "apikey",
-        "token",
-        "access_token",
-        "refresh_token",
-        "password",
-        "passcode",
-        "secret",
-        "jwt",
-        "jwt_secret_key",
-        "id_token",
-    }
-
-    if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        for k, v in value.items():
-            key = str(k)
-            if any(part in key.lower() for part in sensitive_keys):
-                out[key] = "<redacted>"
-            else:
-                out[key] = _redact_value(v)
-        return out
-
-    if isinstance(value, list):
-        return [_redact_value(v) for v in value]
-
-    if isinstance(value, tuple):
-        return tuple(_redact_value(v) for v in value)
-
-    if isinstance(value, str):
-        redacted = re.sub(
-            r"(?i)\bbearer\s+[a-z0-9\-._~+/]+=*",
-            "Bearer <redacted>",
-            value,
-        )
-        redacted = re.sub(
-            r"(?i)(authorization['\"]?\s*[:=]\s*['\"])([^'\"]+)(['\"])",
-            r"\1<redacted>\3",
-            redacted,
-        )
-        redacted = re.sub(
-            r"(?i)(cookie['\"]?\s*[:=]\s*['\"])([^'\"]+)(['\"])",
-            r"\1<redacted>\3",
-            redacted,
-        )
-        return redacted
-
-    return value
+    """Backward-compatible wrapper for shared redaction logic."""
+    return redact_value(value)
 
 
 def _default_log_record_component(record: logging.LogRecord) -> str:

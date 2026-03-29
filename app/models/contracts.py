@@ -38,6 +38,7 @@ class TaskType(StrEnum):
     SCRAPE = "scrape"
     ANALYZE_URL = "analyze_url"
     PROCESS_CONTENT = "process_content"
+    PROCESS_NEWS_ITEM = "process_news_item"
     DOWNLOAD_AUDIO = "download_audio"
     TRANSCRIBE = "transcribe"
     SUMMARIZE = "summarize"
@@ -47,7 +48,7 @@ class TaskType(StrEnum):
     ONBOARDING_DISCOVER = "onboarding_discover"
     DIG_DEEPER = "dig_deeper"
     SYNC_INTEGRATION = "sync_integration"
-    GENERATE_DAILY_NEWS_DIGEST = "generate_daily_news_digest"
+    GENERATE_NEWS_DIGEST = "generate_news_digest"
 
 
 class TaskQueue(StrEnum):
@@ -85,3 +86,19 @@ class SummaryVersion(IntEnum):
 
     V1 = 1
     V2 = 2
+
+
+class NewsItemVisibilityScope(StrEnum):
+    """Audience visibility for one short-form news item."""
+
+    GLOBAL = "global"
+    USER = "user"
+
+
+class NewsItemStatus(StrEnum):
+    """Lifecycle status for short-form news items."""
+
+    NEW = "new"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"

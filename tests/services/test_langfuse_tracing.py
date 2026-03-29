@@ -236,7 +236,7 @@ def test_langfuse_generation_context_yields_generation(monkeypatch) -> None:
 
     with langfuse_tracing.langfuse_generation_context(
         name="llm.call",
-        model="gpt-5-mini",
+        model="gpt-5.4-mini",
         input_data={"prompt": "hi"},
         metadata={"attempt": 2},
     ) as generation:
@@ -245,7 +245,7 @@ def test_langfuse_generation_context_yields_generation(monkeypatch) -> None:
     assert captured["kwargs"] == {
         "name": "llm.call",
         "as_type": "generation",
-        "model": "gpt-5-mini",
+        "model": "gpt-5.4-mini",
         "input": {"prompt": "hi"},
         "metadata": {"attempt": "2"},
     }

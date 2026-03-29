@@ -257,7 +257,7 @@ class CreateChatSessionResponse(BaseModel):
 
 
 class StartDailyDigestChatResponse(BaseModel):
-    """Response returned after starting a daily-digest dig-deeper chat."""
+    """Response returned after starting a news-digest dig-deeper chat."""
 
     session: ChatSessionSummaryDto
     user_message: ChatMessageDto = Field(..., description="Seeded processing user message")

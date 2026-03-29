@@ -17,7 +17,7 @@ final class DailyDigestDigDeeperTests: XCTestCase {
                 "id": 42,
                 "content_id": null,
                 "title": "Daily AI Digest",
-                "session_type": "daily_digest_brain",
+                "session_type": "news_digest_brain",
                 "topic": null,
                 "llm_provider": "anthropic",
                 "llm_model": "anthropic:claude-opus-4-5-20251101",
@@ -53,7 +53,7 @@ final class DailyDigestDigDeeperTests: XCTestCase {
         let response = try JSONDecoder().decode(StartDailyDigestChatResponse.self, from: data)
 
         XCTAssertEqual(response.session.id, 42)
-        XCTAssertEqual(response.session.sessionType, "daily_digest_brain")
+        XCTAssertEqual(response.session.sessionType, "news_digest_brain")
         XCTAssertEqual(response.messageId, 99)
         XCTAssertEqual(response.status, .processing)
         XCTAssertEqual(response.userMessage.status, .processing)
@@ -64,7 +64,7 @@ final class DailyDigestDigDeeperTests: XCTestCase {
             id: 42,
             contentId: nil,
             title: "Daily AI Digest",
-            sessionType: "daily_digest_brain",
+            sessionType: "news_digest_brain",
             topic: nil,
             llmProvider: "anthropic",
             llmModel: "anthropic:claude-opus-4-5-20251101",
@@ -82,7 +82,7 @@ final class DailyDigestDigDeeperTests: XCTestCase {
             lastMessageRole: nil
         )
 
-        XCTAssertEqual(session.displaySubtitle, "About your daily digest")
+        XCTAssertEqual(session.displaySubtitle, "About your news digest")
         XCTAssertEqual(session.sessionTypeIconName, "calendar.badge.clock")
         XCTAssertEqual(session.sessionTypeLabel, "Daily Digest")
     }
@@ -98,19 +98,19 @@ final class DailyDigestDigDeeperTests: XCTestCase {
         )
 
         let task = Task {
-            try await viewModel.startBulletDigDeeperChat(digestId: 7, bulletIndex: 1)
+            try await viewModel.startBulletDigDeeperChat(digestId: 7, bulletId: 1)
         }
         await Task.yield()
 
-        XCTAssertTrue(viewModel.isStartingDigDeeperChat(digestId: 7, bulletIndex: 1))
+        XCTAssertTrue(viewModel.isStartingDigDeeperChat(digestId: 7, bulletId: 1))
 
         let route = try await task.value
 
         XCTAssertEqual(repository.startedBullets.map(\.digestId), [7])
-        XCTAssertEqual(repository.startedBullets.map(\.bulletIndex), [1])
+        XCTAssertEqual(repository.startedBullets.map(\.bulletId), [1])
         XCTAssertEqual(route.sessionId, 42)
-        XCTAssertFalse(viewModel.isStartingDigDeeperChat(digestId: 7, bulletIndex: 1))
-        XCTAssertNil(viewModel.digDeeperError(digestId: 7, bulletIndex: 1))
+        XCTAssertFalse(viewModel.isStartingDigDeeperChat(digestId: 7, bulletId: 1))
+        XCTAssertNil(viewModel.digDeeperError(digestId: 7, bulletId: 1))
     }
 
     @MainActor
@@ -122,14 +122,14 @@ final class DailyDigestDigDeeperTests: XCTestCase {
         )
 
         do {
-            _ = try await viewModel.startBulletDigDeeperChat(digestId: 11, bulletIndex: 0)
+            _ = try await viewModel.startBulletDigDeeperChat(digestId: 11, bulletId: 0)
             XCTFail("Expected dig deeper chat start to fail")
         } catch {
             XCTAssertEqual(error.localizedDescription, "Boom")
         }
 
-        XCTAssertEqual(viewModel.digDeeperError(digestId: 11, bulletIndex: 0), "Boom")
-        XCTAssertFalse(viewModel.isStartingDigDeeperChat(digestId: 11, bulletIndex: 0))
+        XCTAssertEqual(viewModel.digDeeperError(digestId: 11, bulletId: 0), "Boom")
+        XCTAssertFalse(viewModel.isStartingDigDeeperChat(digestId: 11, bulletId: 0))
     }
 
     private func makeStartResponse(sessionId: Int) -> StartDailyDigestChatResponse {
@@ -138,7 +138,7 @@ final class DailyDigestDigDeeperTests: XCTestCase {
                 id: sessionId,
                 contentId: nil,
                 title: "Daily AI Digest",
-                sessionType: "daily_digest_brain",
+                sessionType: "news_digest_brain",
                 topic: nil,
                 llmProvider: "anthropic",
                 llmModel: "anthropic:claude-opus-4-5-20251101",
@@ -177,7 +177,7 @@ private enum FakeRepositoryError: LocalizedError {
 }
 
 private final class FakeDailyNewsDigestRepository: DailyNewsDigestRepositoryType {
-    var startedBullets: [(digestId: Int, bulletIndex: Int)] = []
+    var startedBullets: [(digestId: Int, bulletId: Int)] = []
     let startResult: Result<StartDailyDigestChatResponse, Error>
 
     init(startResult: Result<StartDailyDigestChatResponse, Error>) {
@@ -196,21 +196,11 @@ private final class FakeDailyNewsDigestRepository: DailyNewsDigestRepositoryType
         fatalError("unused in test")
     }
 
-    func markUnread(id: Int) -> AnyPublisher<Void, Error> {
-        fatalError("unused in test")
-    }
-
-    func startDigDeeperChat(id: Int) async throws -> StartDailyDigestChatResponse {
-        startedBullets.append((digestId: id, bulletIndex: -1))
-        try await Task.sleep(nanoseconds: 5_000_000)
-        return try startResult.get()
-    }
-
     func startBulletDigDeeperChat(
         digestId: Int,
-        bulletIndex: Int
+        bulletId: Int
     ) async throws -> StartDailyDigestChatResponse {
-        startedBullets.append((digestId: digestId, bulletIndex: bulletIndex))
+        startedBullets.append((digestId: digestId, bulletId: bulletId))
         try await Task.sleep(nanoseconds: 5_000_000)
         return try startResult.get()
     }

@@ -23,10 +23,10 @@ struct DailyDigestShortFormView: View {
     private struct SelectedBulletSheet: Identifiable {
         let digest: DailyNewsDigest
         let bullet: DailyNewsDigestBulletDetail
-        let bulletIndex: Int
+        let bulletId: Int
 
         var id: String {
-            "\(digest.id):\(bulletIndex)"
+            "\(digest.id):\(bulletId)"
         }
     }
 
@@ -75,11 +75,11 @@ struct DailyDigestShortFormView: View {
                                 onSelectVoicePlaybackSpeed: { option in
                                     handleVoiceSummary(for: digest, rate: option.rate)
                                 },
-                                onLongPressBullet: { bulletIndex, bullet in
+                                onLongPressBullet: { bulletId, bullet in
                                     handleBulletLongPress(
                                         digest: digest,
                                         bullet: bullet,
-                                        bulletIndex: bulletIndex
+                                        bulletId: bulletId
                                     )
                                 }
                             )
@@ -125,7 +125,7 @@ struct DailyDigestShortFormView: View {
                 shareText: bulletShareText(for: selection.bullet),
                 isStartingDigDeeper: viewModel.isStartingDigDeeperChat(
                     digestId: selection.digest.id,
-                    bulletIndex: selection.bulletIndex
+                    bulletId: selection.bulletId
                 ),
                 onCopy: { handleCopyBullet(selection) },
                 onDigDeeper: { handleBulletDigDeeper(selection) }
@@ -136,11 +136,8 @@ struct DailyDigestShortFormView: View {
     // MARK: - Actions
 
     private func toggleRead(for digest: DailyNewsDigest) {
-        if digest.isRead {
-            viewModel.markDigestUnread(id: digest.id)
-        } else {
-            viewModel.markDigestRead(id: digest.id)
-        }
+        guard !digest.isRead else { return }
+        viewModel.markDigestRead(id: digest.id)
     }
 
     private func handleVoiceSummary(
@@ -194,25 +191,25 @@ struct DailyDigestShortFormView: View {
     private func handleBulletLongPress(
         digest: DailyNewsDigest,
         bullet: DailyNewsDigestBulletDetail,
-        bulletIndex: Int
+        bulletId: Int
     ) {
         selectedBulletSheet = SelectedBulletSheet(
             digest: digest,
             bullet: bullet,
-            bulletIndex: bulletIndex
+            bulletId: bulletId
         )
     }
 
     private func handleBulletDigDeeper(_ selection: SelectedBulletSheet) {
         guard !viewModel.isStartingDigDeeperChat(
             digestId: selection.digest.id,
-            bulletIndex: selection.bulletIndex
+            bulletId: selection.bulletId
         ) else { return }
         Task { @MainActor in
             do {
                 let route = try await viewModel.startBulletDigDeeperChat(
                     digestId: selection.digest.id,
-                    bulletIndex: selection.bulletIndex
+                    bulletId: selection.bulletId
                 )
                 selectedBulletSheet = nil
                 onOpenChatSession(route)
@@ -221,12 +218,12 @@ struct DailyDigestShortFormView: View {
                     title: "Dig Deeper",
                     message: viewModel.digDeeperError(
                         digestId: selection.digest.id,
-                        bulletIndex: selection.bulletIndex
+                        bulletId: selection.bulletId
                     ) ?? error.localizedDescription
                 )
                 viewModel.clearDigDeeperError(
                     digestId: selection.digest.id,
-                    bulletIndex: selection.bulletIndex
+                    bulletId: selection.bulletId
                 )
             }
         }
@@ -237,7 +234,7 @@ struct DailyDigestShortFormView: View {
     }
 
     private func bulletShareText(for bullet: DailyNewsDigestBulletDetail) -> String {
-        let urls = bullet.citations.compactMap(\.url)
+        let urls = bullet.citations.compactMap(\.effectiveURL)
         if urls.isEmpty {
             return bullet.cleanedText
         }
@@ -290,13 +287,13 @@ private struct DailyDigestCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(digest.displayBulletDetails.enumerated()), id: \.offset) { index, bullet in
-                        DigestBulletRow(
-                            bullet: bullet,
-                            isRead: digest.isRead,
-                            onLongPress: { onLongPressBullet(index, bullet) }
-                        )
-                    }
+                            ForEach(digest.displayBulletDetails) { bullet in
+                                DigestBulletRow(
+                                    bullet: bullet,
+                                    isRead: digest.isRead,
+                                    onLongPress: { onLongPressBullet(bullet.id, bullet) }
+                                )
+                            }
                 }
                 .padding(.horizontal, -8) // offset bullet row's internal padding
             }
@@ -490,7 +487,7 @@ private struct DailyDigestBulletDetailSheet: View {
 
                             VStack(alignment: .leading, spacing: 10) {
                                 ForEach(visibleCitations) { citation in
-                                    if let urlString = citation.url, let url = URL(string: urlString) {
+                                    if let urlString = citation.effectiveURL, let url = URL(string: urlString) {
                                         Link(destination: url) {
                                             HStack(alignment: .top, spacing: 8) {
                                                 Image(systemName: "arrow.up.right")

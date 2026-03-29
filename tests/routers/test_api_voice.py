@@ -193,7 +193,7 @@ def test_voice_websocket_streams_turn_events(client, test_user, monkeypatch) -> 
                     "latency_ms": 9,
                     "transcript_chars": 4,
                     "response_chars": 8,
-                    "model": "anthropic:claude-haiku-4-5-20251001",
+                    "model": "google:gemini-3.1-flash-lite-preview",
                 }
             )
             return {}
@@ -327,6 +327,11 @@ def test_voice_websocket_auto_runs_dictate_summary_turn(
         voice_router,
         "format_voice_content_context",
         lambda context: f"title: {context.title}\nsummary: {context.summary}",
+    )
+    monkeypatch.setattr(
+        voice_router,
+        "mark_live_voice_onboarding_complete",
+        lambda db, *, user_id: True,
     )
 
     created = client.post(
@@ -1208,7 +1213,7 @@ def test_voice_websocket_suppresses_stale_turn_events_on_turn_replacement(
                     "latency_ms": 8,
                     "transcript_chars": 10,
                     "response_chars": 20,
-                    "model": "anthropic:claude-haiku-4-5-20251001",
+                    "model": "google:gemini-3.1-flash-lite-preview",
                 }
             )
             return {}

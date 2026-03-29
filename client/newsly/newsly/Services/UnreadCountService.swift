@@ -14,11 +14,25 @@ struct UnreadCountsResponse: Codable {
     let news: Int
     let dailyNewsDigest: Int?
 
-    enum CodingKeys: String, CodingKey {
+    enum AliasCodingKeys: String, CodingKey {
         case article
         case podcast
         case news
         case dailyNewsDigest = "daily_news_digest"
+        case dailyDigestCount = "news_digest_count"
+        case newsDigest = "news_digest"
+        case legacyNewsDigest = "daily_digest_count"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: AliasCodingKeys.self)
+        article = try container.decode(Int.self, forKey: .article)
+        podcast = try container.decode(Int.self, forKey: .podcast)
+        news = try container.decode(Int.self, forKey: .news)
+        dailyNewsDigest = try container.decodeIfPresent(Int.self, forKey: .dailyNewsDigest)
+            ?? container.decodeIfPresent(Int.self, forKey: .dailyDigestCount)
+            ?? container.decodeIfPresent(Int.self, forKey: .newsDigest)
+            ?? container.decodeIfPresent(Int.self, forKey: .legacyNewsDigest)
     }
 }
 

@@ -157,13 +157,13 @@ DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "news_digest": "google:gemini-3.1-flash-lite-preview",
     "daily_news_rollup": "google:gemini-3.1-flash-lite-preview",
     "article": "openai:gpt-5.4-mini",
-    "podcast": "openai:gpt-5.4",
+    "podcast": "openai:gpt-5.4-mini",
     "interleaved": "openai:gpt-5.4",
     "long_bullets": "openai:gpt-5.4",
     "editorial_narrative": "openai:gpt-5.4",
 }
 
-FALLBACK_SUMMARIZATION_MODEL = "google:gemini-2.5-flash"
+FALLBACK_SUMMARIZATION_MODEL = "google:gemini-3.1-flash-lite-preview"
 CROSS_PROVIDER_FALLBACK_MODELS: tuple[str, ...] = (
     "openai:gpt-4o",
 )

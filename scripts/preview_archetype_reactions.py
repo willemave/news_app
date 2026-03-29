@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preview archetype reactions for recent articles, podcasts, and daily digests."""
+"""Preview archetype reactions for recent articles, podcasts, and news digests."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.db import get_db  # noqa: E402
 from app.core.logging import get_logger, setup_logging  # noqa: E402
-from app.models.schema import Content, DailyNewsDigest  # noqa: E402
+from app.models.schema import Content, NewsDigest, NewsDigestBullet  # noqa: E402
 from app.services.llm_agents import get_basic_agent  # noqa: E402
 from app.services.llm_models import resolve_model  # noqa: E402
 
@@ -125,10 +125,10 @@ def parse_args() -> argparse.Namespace:
         help=f"Number of recent completed podcasts to include (default: {DEFAULT_PODCAST_COUNT}).",
     )
     parser.add_argument(
-        "--daily-digests",
+        "--news-digests",
         type=int,
         default=DEFAULT_DIGEST_COUNT,
-        help=f"Number of recent daily digests to include (default: {DEFAULT_DIGEST_COUNT}).",
+        help=f"Number of recent news digests to include (default: {DEFAULT_DIGEST_COUNT}).",
     )
     parser.add_argument(
         "--model",
@@ -220,30 +220,35 @@ def _build_content_preview_item(content: Content) -> PreviewItem:
     )
 
 
-def _build_digest_preview_item(digest: DailyNewsDigest) -> PreviewItem:
-    """Normalize one daily digest row for prompting."""
+def _build_digest_preview_item(
+    digest: NewsDigest,
+    *,
+    bullet_rows: list[NewsDigestBullet],
+) -> PreviewItem:
+    """Normalize one news digest row for prompting."""
     key_points = [
-        _clean_text(point)
-        for point in digest.key_points
-        if isinstance(digest.key_points, list) and isinstance(point, str) and point.strip()
+        _clean_text(f"{bullet.topic}. {bullet.details}")
+        for bullet in bullet_rows
+        if bullet.topic.strip() or bullet.details.strip()
     ]
     prompt_payload = {
-        "item_kind": "daily_news_digest",
+        "item_kind": "news_digest",
         "item_id": digest.id,
         "title": digest.title,
-        "local_date": digest.local_date.isoformat(),
+        "window_start_at": _format_timestamp(digest.window_start_at),
+        "window_end_at": _format_timestamp(digest.window_end_at),
         "generated_at": _format_timestamp(digest.generated_at),
         "summary": _clean_text(digest.summary, limit=FALLBACK_TEXT_CLIP_LENGTH),
         "key_points": key_points[:SUMMARY_ITEM_LIMIT],
         "source_count": digest.source_count,
     }
     subtitle = (
-        f"local_date={digest.local_date.isoformat()} | "
+        f"window_start_at={_format_timestamp(digest.window_start_at)} | "
         f"source_count={digest.source_count} | "
         f"generated_at={_format_timestamp(digest.generated_at)}"
     )
     return PreviewItem(
-        item_kind="daily_news_digest",
+        item_kind="news_digest",
         item_id=digest.id,
         title=digest.title,
         subtitle=subtitle,
@@ -283,12 +288,19 @@ def load_preview_items(
 
     if digest_count > 0:
         digests = (
-            db.query(DailyNewsDigest)
-            .order_by(DailyNewsDigest.local_date.desc(), DailyNewsDigest.id.desc())
+            db.query(NewsDigest)
+            .order_by(NewsDigest.generated_at.desc(), NewsDigest.id.desc())
             .limit(digest_count)
             .all()
         )
-        items.extend(_build_digest_preview_item(digest) for digest in digests)
+        for digest in digests:
+            bullet_rows = (
+                db.query(NewsDigestBullet)
+                .filter(NewsDigestBullet.digest_id == digest.id)
+                .order_by(NewsDigestBullet.position.asc())
+                .all()
+            )
+            items.append(_build_digest_preview_item(digest, bullet_rows=bullet_rows))
 
     return items
 
@@ -350,7 +362,7 @@ def main() -> int:
         Panel.fit(
             "[bold cyan]Archetype Reaction Preview[/bold cyan]\n"
             f"model={model_spec} | articles={args.articles} | "
-            f"podcasts={args.podcasts} | daily_digests={args.daily_digests}",
+            f"podcasts={args.podcasts} | news_digests={args.news_digests}",
             border_style="cyan",
         )
     )
@@ -360,7 +372,7 @@ def main() -> int:
             db,
             article_count=args.articles,
             podcast_count=args.podcasts,
-            digest_count=args.daily_digests,
+            digest_count=args.news_digests,
         )
 
     if not items:

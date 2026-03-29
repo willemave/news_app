@@ -60,6 +60,20 @@ class Settings(BaseSettings):
     max_retry_attempts: int = 3
     max_retries: int = 3
 
+    # News-native digest pipeline
+    news_embedding_model: str = "BAAI/bge-small-en-v1.5"
+    news_embedding_device: str = "auto"  # auto, cpu, cuda, mps
+    news_group_model: str = "google:gemini-3.1-flash-lite-preview"
+    news_header_model: str = "google:gemini-3.1-flash-lite-preview"
+    news_digest_primary_similarity_threshold: float = Field(default=0.86, ge=0.0, le=1.0)
+    news_digest_secondary_similarity_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
+    news_digest_min_uncovered_items: int = Field(default=8, ge=1)
+    news_digest_min_provisional_groups: int = Field(default=3, ge=1)
+    news_digest_min_interval_minutes: int = Field(default=60, ge=1)
+    news_digest_max_candidates: int = Field(default=150, ge=1)
+    news_digest_scheduler_interval_minutes: int = Field(default=15, ge=1)
+    news_digest_warm_embeddings: bool = True
+
     # External services
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
@@ -83,7 +97,7 @@ class Settings(BaseSettings):
     elevenlabs_agent_id: str = "agent_4701khf4v6jef3vskb8sd2a30m36"
     elevenlabs_agent_text_only: bool = True
     elevenlabs_agent_turn_timeout_seconds: int = 25
-    voice_haiku_model: str = "anthropic:claude-haiku-4-5-20251001"
+    voice_haiku_model: str = "google:gemini-3.1-flash-lite-preview"
     voice_session_ttl_minutes: int = 60
     voice_max_context_turns: int = 20
     voice_stt_commit_timeout_seconds: int = 8
@@ -116,7 +130,7 @@ class Settings(BaseSettings):
         description="LLM model spec for feed discovery planning",
     )
     discovery_candidate_model: str = Field(
-        default="anthropic:claude-haiku-4-5-20251001",
+        default="google:gemini-3.1-flash-lite-preview",
         description="LLM model spec for discovery candidate extraction",
     )
     discovery_itunes_country: str | None = Field(
@@ -161,7 +175,7 @@ class Settings(BaseSettings):
 
     # PDF extraction (Gemini)
     pdf_gemini_model: str = Field(
-        default="gemini-3-flash-preview",
+        default="gemini-3.1-flash-lite-preview",
         description="Gemini model name for PDF extraction",
     )
 

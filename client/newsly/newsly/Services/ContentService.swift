@@ -454,6 +454,13 @@ class ContentService {
         )
     }
 
+    func convertNewsItemToArticle(id: Int) async throws -> ConvertNewsResponse {
+        return try await client.request(
+            APIEndpoints.convertNewsItemToArticle(id: id),
+            method: "POST"
+        )
+    }
+
     func generateTweetSuggestions(
         id: Int,
         message: String? = nil,

@@ -18,7 +18,7 @@ def test_admin_eval_run_requires_admin_session(client):
         "/admin/evals/summaries/run",
         json={
             "content_types": ["article"],
-            "models": ["haiku"],
+            "models": ["flash_lite"],
             "sample_size": 1,
             "recent_pool_size": 20,
         },
@@ -38,7 +38,9 @@ def test_admin_eval_run_returns_payload(client, test_user, monkeypatch):
     def fake_run_admin_eval(_db, _payload):
         return {
             "run_started_at": "2026-02-07T00:00:00+00:00",
-            "available_models": [{"alias": "haiku", "model_spec": "anthropic:claude-haiku"}],
+            "available_models": [
+                {"alias": "flash_lite", "model_spec": "google:gemini-3.1-flash-lite-preview"}
+            ],
             "skipped_models": [],
             "samples_by_type": {"article": []},
             "results": [],
@@ -57,7 +59,7 @@ def test_admin_eval_run_returns_payload(client, test_user, monkeypatch):
         "/admin/evals/summaries/run",
         json={
             "content_types": ["article"],
-            "models": ["haiku"],
+            "models": ["flash_lite"],
             "sample_size": 1,
             "recent_pool_size": 20,
         },
@@ -65,7 +67,7 @@ def test_admin_eval_run_returns_payload(client, test_user, monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["available_models"][0]["alias"] == "haiku"
+    assert payload["available_models"][0]["alias"] == "flash_lite"
 
 
 def test_admin_eval_run_rejects_unknown_model(client, test_user):

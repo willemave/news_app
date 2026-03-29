@@ -8,6 +8,10 @@ from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.models.scraper_runs import ScraperStats
 from app.services.long_form_images import enqueue_visible_long_form_image_if_needed
+from app.services.news_ingestion import (
+    build_news_item_upsert_input_from_scraped_item,
+    upsert_news_item,
+)
 from app.services.queue import TaskType, get_queue_service
 from app.services.scraper_configs import (
     ensure_inbox_status,
@@ -116,6 +120,24 @@ class BaseScraper(ABC):
                     user_id = item.get("user_id")
                     content_type_value = item["content_type"].value
                     metadata = item.get("metadata", {})
+
+                    if content_type_value == ContentType.NEWS.value:
+                        payload = build_news_item_upsert_input_from_scraped_item(item)
+                        news_item, was_created = upsert_news_item(db, payload)
+                        db.commit()
+                        db.refresh(news_item)
+                        if was_created or news_item.status != "ready":
+                            self.queue_service.enqueue(
+                                TaskType.PROCESS_NEWS_ITEM,
+                                payload={"news_item_id": news_item.id},
+                                dedupe=False,
+                            )
+                        if was_created:
+                            saved_count += 1
+                        else:
+                            duplicate_count += 1
+                        continue
+
                     raw_url = item.get("source_url") or item["url"]
                     canonical_url = normalize_http_url(item["url"]) or normalize_http_url(raw_url)
 

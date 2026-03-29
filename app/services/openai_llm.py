@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 # Summarization defaults
-SUMMARY_MODEL_SPEC = "gpt-5-mini"
+SUMMARY_MODEL_SPEC = "gpt-5.4-mini"
 
 # Transcription constants
 MAX_FILE_SIZE_MB = 25

@@ -26,10 +26,14 @@ def test_load_assistant_eval_suite_parses_yaml(tmp_path: Path) -> None:
                 "    query: find Armin Ronacher's blog",
                 "    expected_outcome: finds the right blog and subscribes to it",
                 "    seed_data:",
-                "      daily_digests:",
-                "        - local_date: 2026-03-16",
+                "      news_digests:",
+                "        - window_start_at: 2026-03-16T08:00:00",
+                "          window_end_at: 2026-03-16T09:00:00",
                 "          title: Policy and AI moved fast",
                 "          summary: Congress, chips, and platforms led the day.",
+                "          bullets:",
+                "            - topic: Policy",
+                "              details: Congress, chips, and platforms led the day.",
                 "      favorites:",
                 "        - url: https://example.com/policy",
                 "          title: AI policy landscape",
@@ -44,7 +48,7 @@ def test_load_assistant_eval_suite_parses_yaml(tmp_path: Path) -> None:
     assert suite.suite == "assistant_actions_v1"
     assert suite.defaults.model_spec == "openai:gpt-5.4"
     assert suite.cases[0].id == "case-1"
-    assert suite.cases[0].seed_data.daily_digests[0].title == "Policy and AI moved fast"
+    assert suite.cases[0].seed_data.news_digests[0].title == "Policy and AI moved fast"
     assert suite.cases[0].seed_data.favorites[0].title == "AI policy landscape"
 
 

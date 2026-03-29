@@ -1,4 +1,4 @@
-"""Unified narration endpoint for content and daily digests."""
+"""Unified narration endpoint for content and news digests."""
 
 from __future__ import annotations
 
@@ -10,20 +10,17 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
-from app.models.schema import Content, DailyNewsDigest
+from app.models.schema import Content
 from app.models.user import User
 from app.presenters.content_presenter import build_domain_content
-from app.routers.api.daily_news_digests import (
-    _build_digest_narration_text,
-    _get_user_digest_or_404,
-)
 from app.routers.api.models import NarrationResponse
+from app.services.news_digests import get_user_news_digest, list_digest_bullets_with_sources
 from app.services.voice.narration_tts import get_digest_narration_tts_service
 from app.services.voice.persistence import build_summary_narration
 
 router = APIRouter()
 
-NarrationTargetType = Literal["content", "daily-digest"]
+NarrationTargetType = Literal["content", "news-digest"]
 
 
 @dataclass(frozen=True)
@@ -70,25 +67,54 @@ def _resolve_content_narration_payload(
     )
 
 
-def _resolve_daily_digest_narration_payload(
+def _build_news_digest_narration_text(
+    db: Session,
+    *,
+    digest_id: int,
+    fallback_summary: str | None,
+) -> str:
+    """Build a narration script from persisted news digest bullets."""
+
+    bullet_rows = list_digest_bullets_with_sources(db, digest_id=digest_id)
+    lines: list[str] = []
+    for bullet, cited_items in bullet_rows:
+        lines.append(f"{bullet.topic}. {bullet.details}".strip())
+        if cited_items:
+            labels = [
+                item.source_label or item.platform or "Source"
+                for item in cited_items[:3]
+                if item.source_label or item.platform
+            ]
+            if labels:
+                lines.append(f"Sources included {', '.join(labels)}.")
+
+    narration = " ".join(line for line in lines if line).strip()
+    if narration:
+        return narration
+    return (fallback_summary or "").strip()
+
+
+def _resolve_news_digest_narration_payload(
     *,
     db: Session,
     current_user: User,
     target_id: int,
 ) -> NarrationPayload:
-    """Build narration payload for a daily digest row."""
+    """Build narration payload for a news digest run."""
 
-    digest: DailyNewsDigest = _get_user_digest_or_404(
-        db=db,
-        user_id=current_user.id,
-        digest_id=target_id,
-    )
+    digest = get_user_news_digest(db, user_id=current_user.id, digest_id=target_id)
+    if digest is None:
+        raise HTTPException(status_code=404, detail="News digest not found")
     return NarrationPayload(
-        target_type="daily-digest",
+        target_type="news-digest",
         target_id=digest.id,
         title=digest.title,
-        narration_text=_build_digest_narration_text(digest),
-        audio_filename=f"daily-digest-{digest.id}.mp3",
+        narration_text=_build_news_digest_narration_text(
+            db,
+            digest_id=digest.id,
+            fallback_summary=digest.summary,
+        ),
+        audio_filename=f"news-digest-{digest.id}.mp3",
     )
 
 
@@ -103,7 +129,7 @@ def _resolve_narration_payload(
 
     if target_type == "content":
         return _resolve_content_narration_payload(db=db, target_id=target_id)
-    return _resolve_daily_digest_narration_payload(
+    return _resolve_news_digest_narration_payload(
         db=db,
         current_user=current_user,
         target_id=target_id,

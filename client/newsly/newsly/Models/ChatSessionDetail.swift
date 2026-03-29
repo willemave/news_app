@@ -34,7 +34,7 @@ struct SendChatMessageResponse: Codable {
     }
 }
 
-/// Response returned after starting a daily-digest dig-deeper chat
+/// Response returned after starting a news-digest dig-deeper chat
 struct StartDailyDigestChatResponse: Codable {
     let session: ChatSessionSummary
     let userMessage: ChatMessage

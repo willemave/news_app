@@ -98,7 +98,7 @@ def test_llm_gateway_proxies_analyze_and_summarize(monkeypatch):
         max_quotes=2,
         content_id=5,
         provider_override="openai",
-        model_hint="gpt-5-mini",
+        model_hint="gpt-5.4-mini",
     )
 
     assert analysis == {"content_type": "article"}
@@ -112,7 +112,7 @@ def test_llm_gateway_proxies_analyze_and_summarize(monkeypatch):
         max_quotes=2,
         content_id=5,
         provider_override="openai",
-        model_hint="gpt-5-mini",
+        model_hint="gpt-5.4-mini",
     )
 
 

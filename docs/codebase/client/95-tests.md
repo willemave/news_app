@@ -3,7 +3,7 @@
 Source folder: `client/newsly/newslyTests`
 
 ## Purpose
-Focused iOS unit tests covering share routing, onboarding animation progress, and daily-digest dig-deeper behavior.
+Focused iOS unit tests covering share routing, onboarding animation progress, and news-digest dig-deeper behavior.
 
 ## Runtime behavior
 - Provides regression coverage for high-risk client-side behaviors that do not require full UI tests.

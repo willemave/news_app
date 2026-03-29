@@ -47,9 +47,29 @@ ALLOWED_OPERATIONS: dict[tuple[str, str], dict[str, Any]] = {
         "operation_id": "submitContent",
         "tags": ["content"],
     },
-    ("/api/content/daily-digests", "get"): {
-        "operation_id": "listDigests",
-        "tags": ["digests"],
+    ("/api/news/digests", "get"): {
+        "operation_id": "listNewsDigests",
+        "tags": ["news"],
+    },
+    ("/api/news/digests/{digest_id}", "get"): {
+        "operation_id": "getNewsDigest",
+        "tags": ["news"],
+    },
+    ("/api/news/digests/{digest_id}/mark-read", "post"): {
+        "operation_id": "markNewsDigestRead",
+        "tags": ["news"],
+    },
+    ("/api/news/digests/{digest_id}/bullets/{bullet_id}/dig-deeper", "post"): {
+        "operation_id": "startNewsDigestBulletDigDeeper",
+        "tags": ["news"],
+    },
+    ("/api/news/items/{news_item_id}", "get"): {
+        "operation_id": "getNewsItem",
+        "tags": ["news"],
+    },
+    ("/api/news/items/{news_item_id}/convert-to-article", "post"): {
+        "operation_id": "convertNewsItemToArticle",
+        "tags": ["news"],
     },
     ("/api/scrapers/", "get"): {
         "operation_id": "listSources",
@@ -142,7 +162,8 @@ def build_agent_openapi_schema() -> dict[str, Any]:
             {"name": "jobs", "description": "Async job status routes."},
             {"name": "search", "description": "Provider-backed discovery search."},
             {"name": "onboarding", "description": "Simplified onboarding routes."},
-            {"name": "digests", "description": "Daily digest generation and listing."},
+            {"name": "digests", "description": "Agent-driven digest generation routes."},
+            {"name": "news", "description": "News digest runs and short-form news items."},
             {"name": "content", "description": "Content listing, detail, and submission."},
             {"name": "sources", "description": "Runtime source subscription routes."},
         ],

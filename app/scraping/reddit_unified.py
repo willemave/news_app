@@ -1,5 +1,6 @@
 import logging
 import os
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,17 @@ logger = get_logger(__name__)
 settings = get_settings()
 REDDIT_USER_AGENT = settings.reddit_user_agent or "news_app.scraper/1.0 (by u/anonymous)"
 _MISSING_CONFIG_WARNINGS: set[str] = set()
+
+
+@dataclass(frozen=True)
+class RedditTarget:
+    """One subreddit scrape target with audience ownership."""
+
+    subreddit: str
+    limit: int
+    visibility_scope: str
+    owner_user_id: int | None = None
+    user_scraper_config_id: int | None = None
 
 
 def _resolve_reddit_config_path(config_path: str | Path | None) -> Path:
@@ -56,32 +68,32 @@ class RedditUnifiedScraper(BaseScraper):
     def __init__(self, config_path: str | Path | None = None):
         super().__init__("Reddit")
         self.config_path = _resolve_reddit_config_path(config_path)
-        self.subreddits = self._load_subreddit_config()
+        self.targets = self._load_subreddit_config()
         self._reddit_client: praw.Reddit | None = None
 
-    def _load_subreddit_config(self) -> dict[str, int]:
+    def _load_subreddit_config(self) -> list[RedditTarget]:
         """Load subreddit configuration from user configs and YAML defaults."""
-        file_subreddits = self._load_subreddits_from_file()
+        file_targets = self._load_subreddits_from_file()
 
         config_override = os.getenv("NEWSAPP_CONFIG_DIR")
-        if config_override and file_subreddits:
+        if config_override and file_targets:
             logger.info("Using config override at %s; skipping DB subreddits", config_override)
-            merged = file_subreddits
-            subreddits = {}
+            merged = file_targets
+            db_targets: list[RedditTarget] = []
         else:
-            subreddits = self._load_subreddits_from_db()
-            merged = {**file_subreddits, **subreddits}
+            db_targets = self._load_subreddits_from_db()
+            merged = [*file_targets, *db_targets]
         logger.info(
             "Loaded %s subreddits (db=%s, file=%s)",
             len(merged),
-            len(subreddits),
-            len(file_subreddits),
+            len(db_targets),
+            len(file_targets),
         )
         return merged
 
-    def _load_subreddits_from_db(self) -> dict[str, int]:
+    def _load_subreddits_from_db(self) -> list[RedditTarget]:
         """Load subreddit configuration from user scraper configs."""
-        subreddits: dict[str, int] = {}
+        targets: list[RedditTarget] = []
         with get_db() as db:
             configs = list_active_configs_by_type(db, "reddit")
             for config in configs:
@@ -97,25 +109,32 @@ class RedditUnifiedScraper(BaseScraper):
                 if not isinstance(limit, int) or limit <= 0:
                     logger.warning("Invalid limit for subreddit %s: %s", cleaned, limit)
                     limit = 10
-                subreddits[cleaned] = limit
+                targets.append(
+                    RedditTarget(
+                        subreddit=cleaned,
+                        limit=limit,
+                        visibility_scope="user",
+                        owner_user_id=config.user_id,
+                        user_scraper_config_id=config.id,
+                    )
+                )
 
-        return subreddits
+        return targets
 
-    def _load_subreddits_from_file(self) -> dict[str, int]:
+    def _load_subreddits_from_file(self) -> list[RedditTarget]:
         """Load subreddit configuration from YAML file."""
         config_path = self.config_path
         if not config_path.exists():
             _emit_missing_config_warning(config_path)
-            return {}
+            return []
 
         try:
             with open(config_path, encoding="utf-8") as f:
                 config = yaml.safe_load(f) or {}
 
             subreddits_list = config.get("subreddits", [])
-            subreddits: dict[str, int] = {}
+            targets: list[RedditTarget] = []
 
-            # Convert list format to dict
             for sub in subreddits_list:
                 if isinstance(sub, dict) and "name" in sub and "limit" in sub:
                     name = sub["name"]
@@ -124,12 +143,24 @@ class RedditUnifiedScraper(BaseScraper):
                         logger.info("Skipping 'front' subreddit; front page scraping disabled")
                         continue
                     if isinstance(limit, int) and limit > 0:
-                        subreddits[name] = limit
+                        targets.append(
+                            RedditTarget(
+                                subreddit=name,
+                                limit=limit,
+                                visibility_scope="global",
+                            )
+                        )
                     else:
                         logger.warning(f"Invalid limit for subreddit {name}: {limit}")
-                        subreddits[name] = 10  # Default to 10 if invalid
+                        targets.append(
+                            RedditTarget(
+                                subreddit=name,
+                                limit=10,
+                                visibility_scope="global",
+                            )
+                        )
 
-            return subreddits
+            return targets
 
         except Exception as e:
             log_scraper_event(
@@ -139,7 +170,7 @@ class RedditUnifiedScraper(BaseScraper):
                 path=str(config_path),
                 error=str(e),
             )
-            return {}
+            return []
 
     def scrape(self) -> list[dict[str, Any]]:
         """Scrape Reddit posts from multiple subreddits."""
@@ -149,32 +180,32 @@ class RedditUnifiedScraper(BaseScraper):
         if client is None:
             return []
 
-        for subreddit_name, limit in self.subreddits.items():
+        for target in self.targets:
             try:
-                items = self._scrape_subreddit(client, subreddit_name, limit)
+                items = self._scrape_subreddit(client, target)
                 all_items.extend(items)
-                logger.info("Scraped %s items from r/%s", len(items), subreddit_name)
+                logger.info("Scraped %s items from r/%s", len(items), target.subreddit)
             except prawcore.PrawcoreException as error:
                 logger.exception(
                     "Error scraping r/%s: %s",
-                    subreddit_name,
+                    target.subreddit,
                     error,
                     extra={
                         "component": "reddit_scraper",
                         "operation": "scrape_subreddit",
-                        "context_data": {"subreddit": subreddit_name},
+                        "context_data": {"subreddit": target.subreddit},
                     },
                 )
                 continue
             except Exception as error:  # pragma: no cover - defensive
                 logger.exception(
                     "Unexpected error scraping r/%s: %s",
-                    subreddit_name,
+                    target.subreddit,
                     error,
                     extra={
                         "component": "reddit_scraper",
                         "operation": "scrape_subreddit",
-                        "context_data": {"subreddit": subreddit_name},
+                        "context_data": {"subreddit": target.subreddit},
                     },
                 )
                 continue
@@ -183,10 +214,14 @@ class RedditUnifiedScraper(BaseScraper):
         return all_items
 
     def _scrape_subreddit(
-        self, client: praw.Reddit, subreddit_name: str, limit: int
+        self,
+        client: praw.Reddit,
+        target: RedditTarget,
     ) -> list[dict[str, Any]]:
         """Scrape a specific subreddit."""
         items = []
+        subreddit_name = target.subreddit
+        limit = target.limit
 
         try:
             subreddit = client.subreddit("popular" if subreddit_name == "front" else subreddit_name)
@@ -220,9 +255,16 @@ class RedditUnifiedScraper(BaseScraper):
                     "title": submission.title,
                     "content_type": ContentType.NEWS,
                     "is_aggregate": False,
+                    "owner_user_id": target.owner_user_id,
+                    "visibility_scope": target.visibility_scope,
+                    "user_scraper_config_id": target.user_scraper_config_id,
                     "metadata": {
                         "platform": "reddit",  # Scraper identifier
                         "source": submission.subreddit.display_name,
+                        "source_type": (
+                            "user_reddit" if target.visibility_scope == "user" else "reddit"
+                        ),
+                        "source_label": submission.subreddit.display_name,
                         "article": {
                             "url": normalized_url,
                             "title": submission.title,

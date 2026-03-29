@@ -11,7 +11,7 @@ private let logger = Logger(subsystem: "com.newsly", category: "DailyDigestList"
 
 struct DailyDigestBulletKey: Hashable {
     let digestId: Int
-    let bulletIndex: Int
+    let bulletId: Int
 }
 
 @MainActor
@@ -93,40 +93,23 @@ final class DailyDigestListViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    func markDigestUnread(id: Int) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        guard items[index].isRead else { return }
-
-        items[index].isRead = false
-        unreadCountService.incrementDailyDigestCount()
-        repository
-            .markUnread(id: id)
-            .receive(on: DispatchQueue.main)
-            .sink { completion in
-                if case .failure(let error) = completion {
-                    logger.error("[DailyDigestList] markUnread failed | id=\(id) error=\(error.localizedDescription)")
-                }
-            } receiveValue: { }
-            .store(in: &cancellables)
+    func isStartingDigDeeperChat(digestId: Int, bulletId: Int) -> Bool {
+        digDeeperLoadingKeys.contains(DailyDigestBulletKey(digestId: digestId, bulletId: bulletId))
     }
 
-    func isStartingDigDeeperChat(digestId: Int, bulletIndex: Int) -> Bool {
-        digDeeperLoadingKeys.contains(DailyDigestBulletKey(digestId: digestId, bulletIndex: bulletIndex))
+    func digDeeperError(digestId: Int, bulletId: Int) -> String? {
+        digDeeperErrors[DailyDigestBulletKey(digestId: digestId, bulletId: bulletId)]
     }
 
-    func digDeeperError(digestId: Int, bulletIndex: Int) -> String? {
-        digDeeperErrors[DailyDigestBulletKey(digestId: digestId, bulletIndex: bulletIndex)]
-    }
-
-    func clearDigDeeperError(digestId: Int, bulletIndex: Int) {
-        digDeeperErrors[DailyDigestBulletKey(digestId: digestId, bulletIndex: bulletIndex)] = nil
+    func clearDigDeeperError(digestId: Int, bulletId: Int) {
+        digDeeperErrors[DailyDigestBulletKey(digestId: digestId, bulletId: bulletId)] = nil
     }
 
     func startBulletDigDeeperChat(
         digestId: Int,
-        bulletIndex: Int
+        bulletId: Int
     ) async throws -> ChatSessionRoute {
-        let key = DailyDigestBulletKey(digestId: digestId, bulletIndex: bulletIndex)
+        let key = DailyDigestBulletKey(digestId: digestId, bulletId: bulletId)
         digDeeperErrors[key] = nil
         digDeeperLoadingKeys.insert(key)
         defer { digDeeperLoadingKeys.remove(key) }
@@ -134,7 +117,7 @@ final class DailyDigestListViewModel: ObservableObject {
         do {
             let response = try await repository.startBulletDigDeeperChat(
                 digestId: digestId,
-                bulletIndex: bulletIndex
+                bulletId: bulletId
             )
             return ChatSessionRoute(sessionId: response.session.id)
         } catch {

@@ -56,9 +56,9 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
         TaskType.SYNC_INTEGRATION,
         payload={"user_id": 11, "provider": "x"},
     )
-    daily_digest_task_id = queue.enqueue(
-        TaskType.GENERATE_DAILY_NEWS_DIGEST,
-        payload={"user_id": 11, "local_date": "2026-02-28", "timezone": "UTC"},
+    news_digest_task_id = queue.enqueue(
+        TaskType.GENERATE_NEWS_DIGEST,
+        payload={"user_id": 11, "trigger_reason": "scheduled"},
     )
     chat_task_id = queue.enqueue(
         TaskType.DIG_DEEPER,
@@ -77,7 +77,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
                     transcribe_task_id,
                     onboarding_task_id,
                     integration_task_id,
-                    daily_digest_task_id,
+                    news_digest_task_id,
                     chat_task_id,
                 ]
             )
@@ -90,7 +90,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     assert tasks[transcribe_task_id].queue_name == TaskQueue.TRANSCRIBE.value
     assert tasks[onboarding_task_id].queue_name == TaskQueue.ONBOARDING.value
     assert tasks[integration_task_id].queue_name == TaskQueue.TWITTER.value
-    assert tasks[daily_digest_task_id].queue_name == TaskQueue.CONTENT.value
+    assert tasks[news_digest_task_id].queue_name == TaskQueue.CONTENT.value
     assert tasks[chat_task_id].queue_name == TaskQueue.CHAT.value
 
 

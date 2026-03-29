@@ -43,11 +43,15 @@ dependencies = [
     "pillow>=12.0.0",
     "trafilatura>=2.0.0",
     "langfuse>=3.14.3",
+    "sentence-transformers>=5.3.0",
 ]
+
+[project.scripts]
+admin = "admin.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "cli*", "cron*"]
+include = ["admin*", "app*", "cli*", "cron*"]
 
 [dependency-groups]
 dev = [

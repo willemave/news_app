@@ -126,8 +126,8 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         if let topic = topic, !topic.isEmpty {
             return topic
         }
-        if sessionType == "daily_digest_brain" {
-            return "About your daily digest"
+        if sessionType == "daily_digest_brain" || sessionType == "news_digest_brain" {
+            return "About your news digest"
         }
         // For empty favorites, show the source
         if isEmptyFavorite, let source = articleSource {
@@ -218,7 +218,7 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "calendar.badge.plus"
         case "topic":
             return "text.magnifyingglass"
-        case "daily_digest_brain":
+        case "daily_digest_brain", "news_digest_brain":
             return "calendar.badge.clock"
         case "article_brain":
             return "doc.text.magnifyingglass"
@@ -244,7 +244,7 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "Weekly Discovery"
         case "topic":
             return "Search"
-        case "daily_digest_brain":
+        case "daily_digest_brain", "news_digest_brain":
             return "Daily Digest"
         case "article_brain":
             return "Dig Deeper"

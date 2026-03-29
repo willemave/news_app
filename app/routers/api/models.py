@@ -152,72 +152,10 @@ class ContentListResponse(BaseModel):
     )
 
 
-class DailyNewsDigestCitationResponse(BaseModel):
-    """Resolved citation metadata for one digest bullet."""
-
-    content_id: int = Field(..., description="Supporting content identifier")
-    label: str | None = Field(None, description="Human-readable source label")
-    title: str = Field(..., description="Supporting item title")
-    url: str | None = Field(None, description="Preferred outward URL for this citation")
-
-
-class DailyNewsDigestBulletDetailResponse(BaseModel):
-    """Resolved per-bullet metadata for one digest card."""
-
-    text: str = Field(..., description="Digest bullet text")
-    source_count: int = Field(..., ge=0, description="Number of linked supporting sources")
-    citations: list[DailyNewsDigestCitationResponse] = Field(
-        default_factory=list,
-        description="Resolved citations supporting this bullet",
-    )
-    comment_quotes: list[str] = Field(
-        default_factory=list,
-        description="Stored discussion comment quotes linked to this bullet",
-    )
-
-
-class DailyNewsDigestResponse(BaseModel):
-    """Summary information for one daily news digest card."""
-
-    id: int = Field(..., description="Unique digest identifier")
-    local_date: str = Field(..., description="Digest local date (YYYY-MM-DD)")
-    timezone: str = Field(..., description="IANA timezone used for local-day grouping")
-    title: str = Field(..., description="Daily digest headline")
-    summary: str = Field(..., description="Succinct daily roll-up summary")
-    key_points: list[str] = Field(default_factory=list, description="Optional digest bullet points")
-    bullet_details: list[DailyNewsDigestBulletDetailResponse] = Field(
-        default_factory=list,
-        description="Resolved per-bullet metadata for the digest card",
-    )
-    source_count: int = Field(..., ge=0, description="Number of source news items included")
-    source_content_ids: list[int] = Field(
-        default_factory=list,
-        description="Source news content IDs used for synthesis",
-    )
-    source_labels: list[str] = Field(
-        default_factory=list,
-        description="Human-readable source labels for the items included in this digest",
-    )
-    is_read: bool = Field(False, description="Whether this digest card is marked read")
-    read_at: str | None = Field(None, description="ISO timestamp when digest was marked read")
-    generated_at: str = Field(..., description="ISO timestamp when digest was generated")
-    coverage_end_at: str | None = Field(
-        None,
-        description="ISO timestamp for the latest checkpoint covered by this digest",
-    )
-
-
-class DailyNewsDigestListResponse(BaseModel):
-    """Paginated response for daily digest list."""
-
-    digests: list[DailyNewsDigestResponse] = Field(default_factory=list)
-    meta: PaginationMetadata = Field(..., description="Pagination metadata for the response")
-
-
 class NarrationResponse(BaseModel):
     """Unified narration payload for any supported narration target."""
 
-    target_type: Literal["content", "daily-digest"] = Field(
+    target_type: Literal["content", "news-digest"] = Field(
         ...,
         description="Narration target family",
     )
@@ -735,9 +673,9 @@ class UnreadCountsResponse(BaseModel):
     article: int = Field(..., description="Number of unread articles")
     podcast: int = Field(..., description="Number of unread podcasts")
     news: int = Field(..., description="Number of unread news items")
-    daily_news_digest: int = Field(
+    news_digest_count: int = Field(
         0,
-        description="Number of unread daily news digest cards",
+        description="Number of unread news digest cards",
     )
 
 

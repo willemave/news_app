@@ -754,6 +754,12 @@
             "title": "Session Id",
             "type": "integer"
           },
+          "source_message_id": {
+            "description": "Backing async chat_messages row ID used for status polling",
+            "nullable": true,
+            "title": "Source Message Id",
+            "type": "integer"
+          },
           "status": {
             "$ref": "#/components/schemas/MessageProcessingStatus",
             "default": "completed",
@@ -1711,6 +1717,40 @@
         "title": "ContentType",
         "type": "string"
       },
+      "ConvertNewsItemResponse": {
+        "description": "Response for converting a news item into long-form article content.",
+        "properties": {
+          "already_exists": {
+            "title": "Already Exists",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "new_content_id": {
+            "title": "New Content Id",
+            "type": "integer"
+          },
+          "news_item_id": {
+            "title": "News Item Id",
+            "type": "integer"
+          },
+          "status": {
+            "default": "success",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "news_item_id",
+          "new_content_id",
+          "already_exists",
+          "message"
+        ],
+        "title": "ConvertNewsItemResponse",
+        "type": "object"
+      },
       "ConvertNewsResponse": {
         "description": "Response for converting news link to article.",
         "example": {
@@ -1977,140 +2017,6 @@
           "content_context_attached"
         ],
         "title": "CreateVoiceSessionResponse",
-        "type": "object"
-      },
-      "DailyNewsDigestListResponse": {
-        "description": "Paginated response for daily digest list.",
-        "properties": {
-          "digests": {
-            "items": {
-              "$ref": "#/components/schemas/DailyNewsDigestResponse"
-            },
-            "title": "Digests",
-            "type": "array"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/PaginationMetadata",
-            "description": "Pagination metadata for the response"
-          }
-        },
-        "required": [
-          "meta"
-        ],
-        "title": "DailyNewsDigestListResponse",
-        "type": "object"
-      },
-      "DailyNewsDigestResponse": {
-        "description": "Summary information for one daily news digest card.",
-        "properties": {
-          "coverage_end_at": {
-            "description": "ISO timestamp for the latest checkpoint covered by this digest",
-            "nullable": true,
-            "title": "Coverage End At",
-            "type": "string"
-          },
-          "generated_at": {
-            "description": "ISO timestamp when digest was generated",
-            "title": "Generated At",
-            "type": "string"
-          },
-          "id": {
-            "description": "Unique digest identifier",
-            "title": "Id",
-            "type": "integer"
-          },
-          "is_read": {
-            "default": false,
-            "description": "Whether this digest card is marked read",
-            "title": "Is Read",
-            "type": "boolean"
-          },
-          "key_points": {
-            "description": "Optional digest bullet points",
-            "items": {
-              "type": "string"
-            },
-            "title": "Key Points",
-            "type": "array"
-          },
-          "local_date": {
-            "description": "Digest local date (YYYY-MM-DD)",
-            "title": "Local Date",
-            "type": "string"
-          },
-          "read_at": {
-            "description": "ISO timestamp when digest was marked read",
-            "nullable": true,
-            "title": "Read At",
-            "type": "string"
-          },
-          "source_content_ids": {
-            "description": "Source news content IDs used for synthesis",
-            "items": {
-              "type": "integer"
-            },
-            "title": "Source Content Ids",
-            "type": "array"
-          },
-          "source_count": {
-            "description": "Number of source news items included",
-            "minimum": 0.0,
-            "title": "Source Count",
-            "type": "integer"
-          },
-          "summary": {
-            "description": "Succinct daily roll-up summary",
-            "title": "Summary",
-            "type": "string"
-          },
-          "timezone": {
-            "description": "IANA timezone used for local-day grouping",
-            "title": "Timezone",
-            "type": "string"
-          },
-          "title": {
-            "description": "Daily digest headline",
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "local_date",
-          "timezone",
-          "title",
-          "summary",
-          "source_count",
-          "generated_at"
-        ],
-        "title": "DailyNewsDigestResponse",
-        "type": "object"
-      },
-      "DailyNewsDigestVoiceSummaryResponse": {
-        "description": "Voice narration payload for one daily digest.",
-        "properties": {
-          "digest_id": {
-            "description": "Digest identifier",
-            "title": "Digest Id",
-            "type": "integer"
-          },
-          "narration_text": {
-            "description": "Plain-text narration script for voice playback",
-            "title": "Narration Text",
-            "type": "string"
-          },
-          "title": {
-            "description": "Digest title",
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "digest_id",
-          "title",
-          "narration_text"
-        ],
-        "title": "DailyNewsDigestVoiceSummaryResponse",
         "type": "object"
       },
       "DetectedFeed": {
@@ -2981,6 +2887,363 @@
         "title": "ModelPricing",
         "type": "object"
       },
+      "NarrationResponse": {
+        "description": "Unified narration payload for any supported narration target.",
+        "properties": {
+          "narration_text": {
+            "description": "Plain-text narration script for voice playback",
+            "title": "Narration Text",
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Target identifier within the target family",
+            "title": "Target Id",
+            "type": "integer"
+          },
+          "target_type": {
+            "description": "Narration target family",
+            "enum": [
+              "content",
+              "news-digest"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "title": {
+            "description": "Resolved title for spoken playback",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id",
+          "title",
+          "narration_text"
+        ],
+        "title": "NarrationResponse",
+        "type": "object"
+      },
+      "NewsDigestBulletResponse": {
+        "description": "One persisted digest bullet.",
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/NewsDigestCitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "details": {
+            "description": "Expanded bullet details",
+            "title": "Details",
+            "type": "string"
+          },
+          "id": {
+            "description": "Bullet identifier",
+            "title": "Id",
+            "type": "integer"
+          },
+          "position": {
+            "description": "Bullet order within the digest",
+            "minimum": 1.0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "source_count": {
+            "description": "Number of cited items",
+            "minimum": 0.0,
+            "title": "Source Count",
+            "type": "integer"
+          },
+          "topic": {
+            "description": "Short bullet topic",
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "topic",
+          "details",
+          "source_count"
+        ],
+        "title": "NewsDigestBulletResponse",
+        "type": "object"
+      },
+      "NewsDigestCitationResponse": {
+        "description": "One supporting citation for a digest bullet.",
+        "properties": {
+          "article_url": {
+            "description": "Canonical article URL when available",
+            "nullable": true,
+            "title": "Article Url",
+            "type": "string"
+          },
+          "label": {
+            "description": "Source label",
+            "nullable": true,
+            "title": "Label",
+            "type": "string"
+          },
+          "news_item_id": {
+            "description": "Supporting news item identifier",
+            "title": "News Item Id",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Best title for the cited item",
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "description": "Preferred outward URL",
+            "nullable": true,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "news_item_id",
+          "title"
+        ],
+        "title": "NewsDigestCitationResponse",
+        "type": "object"
+      },
+      "NewsDigestListResponse": {
+        "description": "Paginated digest listing.",
+        "properties": {
+          "digests": {
+            "items": {
+              "$ref": "#/components/schemas/NewsDigestResponse"
+            },
+            "title": "Digests",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "NewsDigestListResponse",
+        "type": "object"
+      },
+      "NewsDigestResponse": {
+        "description": "Digest run detail payload.",
+        "properties": {
+          "bullets": {
+            "items": {
+              "$ref": "#/components/schemas/NewsDigestBulletResponse"
+            },
+            "title": "Bullets",
+            "type": "array"
+          },
+          "generated_at": {
+            "description": "When the digest was generated",
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "group_count": {
+            "description": "Number of persisted bullets",
+            "minimum": 0.0,
+            "title": "Group Count",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Digest identifier",
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_read": {
+            "description": "Whether the digest has been marked read",
+            "title": "Is Read",
+            "type": "boolean"
+          },
+          "read_at": {
+            "description": "When the digest was marked read",
+            "format": "date-time",
+            "nullable": true,
+            "title": "Read At",
+            "type": "string"
+          },
+          "source_count": {
+            "description": "Number of covered news items",
+            "minimum": 0.0,
+            "title": "Source Count",
+            "type": "integer"
+          },
+          "summary": {
+            "description": "Digest summary",
+            "title": "Summary",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "IANA timezone for rollover logic",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "title": {
+            "description": "Digest title",
+            "title": "Title",
+            "type": "string"
+          },
+          "trigger_reason": {
+            "description": "Why this digest run was created",
+            "title": "Trigger Reason",
+            "type": "string"
+          },
+          "window_end_at": {
+            "description": "Newest included item ingest time",
+            "format": "date-time",
+            "title": "Window End At",
+            "type": "string"
+          },
+          "window_start_at": {
+            "description": "Oldest included item ingest time",
+            "format": "date-time",
+            "title": "Window Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "timezone",
+          "title",
+          "summary",
+          "source_count",
+          "group_count",
+          "trigger_reason",
+          "is_read",
+          "generated_at",
+          "window_start_at",
+          "window_end_at"
+        ],
+        "title": "NewsDigestResponse",
+        "type": "object"
+      },
+      "NewsItemResponse": {
+        "description": "Visible news item detail payload.",
+        "properties": {
+          "article_domain": {
+            "nullable": true,
+            "title": "Article Domain",
+            "type": "string"
+          },
+          "article_title": {
+            "nullable": true,
+            "title": "Article Title",
+            "type": "string"
+          },
+          "article_url": {
+            "nullable": true,
+            "title": "Article Url",
+            "type": "string"
+          },
+          "canonical_item_url": {
+            "nullable": true,
+            "title": "Canonical Item Url",
+            "type": "string"
+          },
+          "canonical_story_url": {
+            "nullable": true,
+            "title": "Canonical Story Url",
+            "type": "string"
+          },
+          "discussion_url": {
+            "nullable": true,
+            "title": "Discussion Url",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ingested_at": {
+            "format": "date-time",
+            "title": "Ingested At",
+            "type": "string"
+          },
+          "owner_user_id": {
+            "nullable": true,
+            "title": "Owner User Id",
+            "type": "integer"
+          },
+          "platform": {
+            "nullable": true,
+            "title": "Platform",
+            "type": "string"
+          },
+          "processed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Processed At",
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Published At",
+            "type": "string"
+          },
+          "raw_metadata": {
+            "additionalProperties": true,
+            "title": "Raw Metadata",
+            "type": "object"
+          },
+          "source_external_id": {
+            "nullable": true,
+            "title": "Source External Id",
+            "type": "string"
+          },
+          "source_label": {
+            "nullable": true,
+            "title": "Source Label",
+            "type": "string"
+          },
+          "source_type": {
+            "nullable": true,
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary_key_points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Summary Key Points",
+            "type": "array"
+          },
+          "summary_text": {
+            "nullable": true,
+            "title": "Summary Text",
+            "type": "string"
+          },
+          "summary_title": {
+            "nullable": true,
+            "title": "Summary Title",
+            "type": "string"
+          },
+          "visibility_scope": {
+            "title": "Visibility Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "visibility_scope",
+          "status",
+          "ingested_at"
+        ],
+        "title": "NewsItemResponse",
+        "type": "object"
+      },
       "OnboardingAudioDiscoverRequest": {
         "description": "Request to start onboarding audio discovery.",
         "properties": {
@@ -3159,6 +3422,12 @@
             "maxLength": 50,
             "nullable": true,
             "title": "Twitter Username",
+            "type": "string"
+          },
+          "x_digest_filter_prompt": {
+            "maxLength": 4000,
+            "nullable": true,
+            "title": "X Digest Filter Prompt",
             "type": "string"
           }
         },
@@ -3936,7 +4205,7 @@
         "type": "object"
       },
       "StartDailyDigestChatResponse": {
-        "description": "Response returned after starting a daily-digest dig-deeper chat.",
+        "description": "Response returned after starting a news-digest dig-deeper chat.",
         "properties": {
           "message_id": {
             "description": "Pending message identifier",
@@ -4371,15 +4640,15 @@
             "title": "Article",
             "type": "integer"
           },
-          "daily_news_digest": {
-            "default": 0,
-            "description": "Number of unread daily news digest cards",
-            "title": "Daily News Digest",
-            "type": "integer"
-          },
           "news": {
             "description": "Number of unread news items",
             "title": "News",
+            "type": "integer"
+          },
+          "news_digest_count": {
+            "default": 0,
+            "description": "Number of unread news digest cards",
+            "title": "News Digest Count",
             "type": "integer"
           },
           "podcast": {
@@ -4443,6 +4712,12 @@
             "maxLength": 50,
             "nullable": true,
             "title": "Twitter Username",
+            "type": "string"
+          },
+          "x_digest_filter_prompt": {
+            "maxLength": 4000,
+            "nullable": true,
+            "title": "X Digest Filter Prompt",
             "type": "string"
           }
         },
@@ -4610,6 +4885,11 @@
           },
           "updated_at": {
             "title": "Updated At",
+            "type": "string"
+          },
+          "x_digest_filter_prompt": {
+            "nullable": true,
+            "title": "X Digest Filter Prompt",
             "type": "string"
           }
         },
@@ -5230,85 +5510,6 @@
         ]
       }
     },
-    "/api/content/daily-digests": {
-      "get": {
-        "description": "List per-user daily digest rows.",
-        "operationId": "listDigests",
-        "parameters": [
-          {
-            "description": "Filter by read status (all/read/unread)",
-            "in": "query",
-            "name": "read_filter",
-            "required": false,
-            "schema": {
-              "default": "unread",
-              "description": "Filter by read status (all/read/unread)",
-              "pattern": "^(all|read|unread)$",
-              "title": "Read Filter",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Pagination cursor for next page",
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "description": "Pagination cursor for next page",
-              "nullable": true,
-              "title": "Cursor",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 25,
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DailyNewsDigestListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "description": "Not found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List daily news digest cards",
-        "tags": [
-          "digests"
-        ]
-      }
-    },
     "/api/content/submit": {
       "post": {
         "description": "Submit article or podcast URLs for processing. Only http/https URLs are accepted.",
@@ -5479,6 +5680,357 @@
         ]
       }
     },
+    "/api/news/digests": {
+      "get": {
+        "operationId": "listNewsDigests",
+        "parameters": [
+          {
+            "description": "Filter by read status",
+            "in": "query",
+            "name": "read_filter",
+            "required": false,
+            "schema": {
+              "default": "unread",
+              "description": "Filter by read status",
+              "pattern": "^(all|read|unread)$",
+              "title": "Read Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque cursor token",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque cursor token",
+              "nullable": true,
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsDigestListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List news digest runs",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/digests/{digest_id}": {
+      "get": {
+        "operationId": "getNewsDigest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digest_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "minimum": 0,
+              "title": "Digest Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsDigestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get one digest run",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/digests/{digest_id}/bullets/{bullet_id}/dig-deeper": {
+      "post": {
+        "operationId": "startNewsDigestBulletDigDeeper",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digest_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "minimum": 0,
+              "title": "Digest Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bullet_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "minimum": 0,
+              "title": "Bullet Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartDailyDigestChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start a bullet-focused news digest chat",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/digests/{digest_id}/mark-read": {
+      "post": {
+        "operationId": "markNewsDigestRead",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digest_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "minimum": 0,
+              "title": "Digest Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Mark News Digest Read Api News Digests  Digest Id  Mark Read Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark one digest run as read",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/items/{news_item_id}": {
+      "get": {
+        "operationId": "getNewsItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "news_item_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "minimum": 0,
+              "title": "News Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get one news item",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/items/{news_item_id}/convert-to-article": {
+      "post": {
+        "operationId": "convertNewsItemToArticle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "news_item_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": true,
+              "minimum": 0,
+              "title": "News Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertNewsItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Convert one news item into article content",
+        "tags": [
+          "news"
+        ]
+      }
+    },
     "/api/scrapers/": {
       "get": {
         "description": "List scraper configurations for the current user.",
@@ -5604,8 +6156,12 @@
       "name": "onboarding"
     },
     {
-      "description": "Daily digest generation and listing.",
+      "description": "Agent-driven digest generation routes.",
       "name": "digests"
+    },
+    {
+      "description": "News digest runs and short-form news items.",
+      "name": "news"
     },
     {
       "description": "Content listing, detail, and submission.",

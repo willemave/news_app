@@ -1,8 +1,6 @@
-"""Application command for agent digest generation."""
+"""Application command for news-native agent digest generation."""
 
 from __future__ import annotations
-
-from datetime import UTC
 
 from sqlalchemy.orm import Session
 
@@ -17,19 +15,15 @@ def execute(
     user_id: int,
     payload: AgentDigestRequest,
 ) -> AgentDigestResponse:
-    """Queue an agent digest generation task."""
-    del db
+    """Queue a news-native digest generation task."""
+    del db, payload
     queue = get_task_queue_gateway()
     job_id = queue.enqueue(
-        TaskType.GENERATE_DAILY_NEWS_DIGEST,
+        TaskType.GENERATE_NEWS_DIGEST,
         payload={
             "user_id": user_id,
-            "local_date": payload.end_at.astimezone(UTC).date().isoformat(),
-            "timezone": "UTC",
-            "force_regenerate": True,
-            "start_at": payload.start_at.isoformat(),
-            "end_at": payload.end_at.isoformat(),
-            "form": payload.form,
+            "trigger_reason": "agent",
+            "force": True,
         },
     )
     return AgentDigestResponse(job_id=job_id)

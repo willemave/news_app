@@ -15,10 +15,11 @@ from app.pipeline.handlers.dig_deeper import DigDeeperHandler
 from app.pipeline.handlers.discover_feeds import DiscoverFeedsHandler
 from app.pipeline.handlers.download_audio import DownloadAudioHandler
 from app.pipeline.handlers.fetch_discussion import FetchDiscussionHandler
-from app.pipeline.handlers.generate_daily_news_digest import GenerateDailyNewsDigestHandler
 from app.pipeline.handlers.generate_image import GenerateImageHandler
+from app.pipeline.handlers.generate_news_digest import GenerateNewsDigestHandler
 from app.pipeline.handlers.onboarding_discover import OnboardingDiscoverHandler
 from app.pipeline.handlers.process_content import ProcessContentHandler
+from app.pipeline.handlers.process_news_item import ProcessNewsItemHandler
 from app.pipeline.handlers.scrape import ScrapeHandler
 from app.pipeline.handlers.summarize import SummarizeHandler
 from app.pipeline.handlers.sync_integration import SyncIntegrationHandler
@@ -29,6 +30,7 @@ from app.pipeline.task_models import TaskEnvelope, TaskResult
 from app.pipeline.worker import get_llm_service
 from app.services.gateways.task_queue_gateway import TaskQueueGateway
 from app.services.langfuse_tracing import langfuse_trace_context
+from app.services.news_embeddings import warm_news_embedding_model
 from app.services.queue import QueueService, TaskQueue
 
 logger = get_logger(__name__)
@@ -78,8 +80,13 @@ class SequentialTaskProcessor:
         logger.debug("Shared summarization service initialized")
         self.settings = get_settings()
         logger.debug("Settings loaded")
-        self.running = True
         self.queue_name = QueueService._normalize_queue_name(queue_name) or TaskQueue.CONTENT.value
+        if self.queue_name == TaskQueue.CONTENT.value and self.settings.news_digest_warm_embeddings:
+            try:
+                warm_news_embedding_model()
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to warm news embedding model")
+        self.running = True
         self.worker_slot = worker_slot
         self.worker_id = f"{self.queue_name}-processor-{self.worker_slot}"
         logger.debug(
@@ -102,12 +109,13 @@ class SequentialTaskProcessor:
             ScrapeHandler(),
             AnalyzeUrlHandler(),
             ProcessContentHandler(),
+            ProcessNewsItemHandler(),
             DownloadAudioHandler(),
             TranscribeHandler(),
             SummarizeHandler(),
             FetchDiscussionHandler(),
             GenerateImageHandler(),
-            GenerateDailyNewsDigestHandler(),
+            GenerateNewsDigestHandler(),
             DiscoverFeedsHandler(),
             OnboardingDiscoverHandler(),
             DigDeeperHandler(),
@@ -128,20 +136,23 @@ class SequentialTaskProcessor:
             "retry_count": task.retry_count,
         }
 
-        with bound_log_context(
-            task_id=task.id,
-            task_type=task.task_type.value,
-            queue_name=self.queue_name,
-            worker_id=self.worker_id,
-            content_id=task.content_id,
-            user_id=user_id,
-            source="queue",
-        ), langfuse_trace_context(
-            trace_name=f"queue.{task.task_type.value.lower()}",
-            user_id=user_id,
-            session_id=self.worker_id,
-            metadata=metadata,
-            tags=["queue", self.queue_name, task.task_type.value.lower()],
+        with (
+            bound_log_context(
+                task_id=task.id,
+                task_type=task.task_type.value,
+                queue_name=self.queue_name,
+                worker_id=self.worker_id,
+                content_id=task.content_id,
+                user_id=user_id,
+                source="queue",
+            ),
+            langfuse_trace_context(
+                trace_name=f"queue.{task.task_type.value.lower()}",
+                user_id=user_id,
+                session_id=self.worker_id,
+                metadata=metadata,
+                tags=["queue", self.queue_name, task.task_type.value.lower()],
+            ),
         ):
             try:
                 logger.info(

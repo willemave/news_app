@@ -15,22 +15,19 @@ from sqlalchemy.orm import Session
 
 from app.constants import (
     CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY,
-    CONTENT_STATUS_DIGEST_SOURCE,
 )
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.content_submission import SubmitContentRequest
 from app.models.contracts import TaskType
-from app.models.metadata import ContentClassification, ContentStatus, ContentType
-from app.models.schema import (
-    Content,
-    ContentStatusEntry,
-    UserIntegrationConnection,
-    UserIntegrationSyncState,
-)
+from app.models.schema import UserIntegrationConnection, UserIntegrationSyncState
 from app.models.user import User
 from app.services.content_submission import submit_user_content
 from app.services.gateways.task_queue_gateway import get_task_queue_gateway
+from app.services.news_ingestion import (
+    build_news_item_upsert_input_from_scraped_item,
+    upsert_news_item,
+)
 from app.services.token_crypto import decrypt_token, encrypt_token
 from app.services.twitter_share import canonical_tweet_url
 from app.services.x_api import (
@@ -361,9 +358,7 @@ def sync_x_sources_for_user(db: Session, *, user_id: int) -> XSyncSummary:
 
     sync_state = _get_or_create_sync_state(db, connection_id=connection.id)
     existing_sync_metadata = (
-        dict(sync_state.sync_metadata)
-        if isinstance(sync_state.sync_metadata, dict)
-        else {}
+        dict(sync_state.sync_metadata) if isinstance(sync_state.sync_metadata, dict) else {}
     )
     filter_prompt = resolve_user_x_digest_filter_prompt(user)
 
@@ -865,18 +860,7 @@ def _upsert_x_digest_tweet_content(
     filter_decision: XDigestFilterDecision,
     aggregator_metadata: dict[str, Any] | None = None,
 ) -> bool:
-    internal_url = _digest_tweet_content_url(user_id=user.id, tweet_id=tweet.id)
     tweet_url = canonical_tweet_url(tweet.id)
-    existing = (
-        db.query(Content)
-        .filter(Content.url == internal_url, Content.content_type == ContentType.NEWS.value)
-        .first()
-    )
-    if existing:
-        _ensure_digest_source_status(db, user_id=user.id, content_id=existing.id)
-        db.commit()
-        return False
-
     metadata = _build_digest_tweet_metadata(
         tweet=tweet,
         source_type=source_type,
@@ -886,41 +870,34 @@ def _upsert_x_digest_tweet_content(
         filter_decision=filter_decision,
         aggregator_metadata=aggregator_metadata or {},
     )
-    content = Content(
-        content_type=ContentType.NEWS.value,
-        url=internal_url,
-        source_url=tweet_url,
-        title=_tweet_title(tweet),
-        source=source_label,
-        platform="twitter",
-        is_aggregate=False,
-        status=ContentStatus.NEW.value,
-        classification=ContentClassification.TO_READ.value,
-        content_metadata=metadata,
+    payload = build_news_item_upsert_input_from_scraped_item(
+        {
+            "url": tweet_url,
+            "title": _tweet_title(tweet),
+            "metadata": metadata,
+            "owner_user_id": user.id,
+            "visibility_scope": "user",
+            "source_type": source_type,
+            "source_label": source_label,
+            "source_external_id": tweet.id,
+        }
     )
-    db.add(content)
+    news_item, was_created = upsert_news_item(db, payload)
     try:
-        db.flush()
-        _ensure_digest_source_status(db, user_id=user.id, content_id=content.id)
         db.commit()
     except IntegrityError:
         db.rollback()
-        existing = (
-            db.query(Content)
-            .filter(Content.url == internal_url, Content.content_type == ContentType.NEWS.value)
-            .first()
-        )
-        if existing:
-            _ensure_digest_source_status(db, user_id=user.id, content_id=existing.id)
-            db.commit()
-            return False
-        raise
+        news_item, was_created = upsert_news_item(db, payload)
+        db.commit()
 
-    db.refresh(content)
+    db.refresh(news_item)
     queue_gateway = get_task_queue_gateway()
-    queue_gateway.enqueue(TaskType.PROCESS_CONTENT, content_id=content.id)
-    queue_gateway.enqueue(TaskType.FETCH_DISCUSSION, content_id=content.id)
-    return True
+    if was_created or news_item.status != "ready":
+        queue_gateway.enqueue(
+            TaskType.PROCESS_NEWS_ITEM,
+            payload={"news_item_id": news_item.id},
+        )
+    return was_created
 
 
 def _build_digest_tweet_metadata(
@@ -1094,27 +1071,6 @@ def _failed_channel_summary() -> XSyncChannelSummary:
 
 def _digest_tweet_content_url(*, user_id: int, tweet_id: str) -> str:
     return f"{canonical_tweet_url(tweet_id)}#newsly-digest-user-{user_id}"
-
-
-def _ensure_digest_source_status(db: Session, *, user_id: int, content_id: int) -> bool:
-    existing = (
-        db.query(ContentStatusEntry)
-        .filter(
-            ContentStatusEntry.user_id == user_id,
-            ContentStatusEntry.content_id == content_id,
-        )
-        .first()
-    )
-    if existing:
-        return False
-    db.add(
-        ContentStatusEntry(
-            user_id=user_id,
-            content_id=content_id,
-            status=CONTENT_STATUS_DIGEST_SOURCE,
-        )
-    )
-    return True
 
 
 def _clean_optional_string(value: Any) -> str | None:

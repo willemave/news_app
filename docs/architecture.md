@@ -319,7 +319,7 @@ The SQLAlchemy schema lives primarily in `app/models/schema.py` and `app/models/
 | `content_discussions` | Persisted discussion payload | HN/Reddit/Techmeme/social discussion snapshots |
 | `user_scraper_configs` | User-managed feed subscriptions | Substack, Atom, podcast RSS, YouTube, Reddit |
 | `event_logs` | Flexible event telemetry | Scraper stats, errors, maintenance events |
-| `daily_news_digests` | Per-user daily digest cards | Roll-up summary, key points, bullet details, coverage checkpoint |
+| `news_digests` | Per-user daily digest cards | Roll-up summary, key points, bullet details, coverage checkpoint |
 | `feed_discovery_runs` | Discovery run metadata | Seed favorites, token/timing usage, status |
 | `feed_discovery_suggestions` | Discovery recommendations | Feed/podcast/YouTube suggestions with score/rationale |
 | `onboarding_discovery_runs` | Async onboarding runs | Audio/topic-driven discovery state |
@@ -447,11 +447,11 @@ Prefix: `/api/content`
 
 #### Daily digests
 
-- `GET /api/content/daily-digests`
-- `POST /api/content/daily-digests/{digest_id}/mark-read`
-- `DELETE /api/content/daily-digests/{digest_id}/mark-unread`
-- `POST /api/content/daily-digests/{digest_id}/bullets/{bullet_index}/dig-deeper`
-- `POST /api/content/daily-digests/{digest_id}/dig-deeper`
+- `GET /api/news/digests`
+- `POST /api/news/digests/{digest_id}/mark-read`
+- `DELETE /api/news/digests/{digest_id}/mark-unread`
+- `POST /api/news/digests/{digest_id}/bullets/{bullet_index}/dig-deeper`
+- `POST /api/news/digests/{digest_id}/dig-deeper`
 
 #### Detail and narration
 
@@ -632,7 +632,7 @@ Defined in `app/models/contracts.py`:
 - `onboarding_discover`
 - `dig_deeper`
 - `sync_integration`
-- `generate_daily_news_digest`
+- `generate_news_digest`
 
 ### 9.2 Queue partitions
 
@@ -657,7 +657,7 @@ Current task-to-queue mapping in `app/services/queue.py`:
 | `summarize` | `content` |
 | `fetch_discussion` | `content` |
 | `generate_image` | `image` |
-| `generate_daily_news_digest` | `content` |
+| `generate_news_digest` | `content` |
 | `discover_feeds` | `content` |
 | `onboarding_discover` | `onboarding` |
 | `dig_deeper` | `chat` |
@@ -845,8 +845,8 @@ Generated files are stored in image directories resolved by `app/utils/image_pat
 
 Daily digest generation is its own queued workflow:
 
-- task type: `generate_daily_news_digest`
-- table: `daily_news_digests`
+- task type: `generate_news_digest`
+- table: `news_digests`
 - output includes title, summary, key points, bullet details, source content ids, source count, `coverage_end_at`
 - dedicated routes support read/unread state and launching dig-deeper chats from digest bullets
 
@@ -1093,7 +1093,7 @@ Primary layers:
 - `Models/`
   - API-facing and UI-facing model types, including generated API contracts
 - `Repositories/`
-  - content/read-status/daily-digest repository wrappers
+  - content/read-status/news-digest repository wrappers
 - `Services/`
   - API client, auth, chat, discovery, narration, voice, X integration, image cache, notifications
 - `ViewModels/`
@@ -1221,9 +1221,9 @@ Representative scripts under `scripts/`:
 ### 21.3 Discovery, digests, and sync
 
 - `scripts/run_feed_discovery.py`
-- `scripts/run_daily_news_digest.py`
+- `scripts/run_news_digests.py`
 - `scripts/run_integration_sync.py`
-- `scripts/backfill_daily_news_digests.py`
+- `scripts/backfill_news_digests.py`
 
 ### 21.4 Content maintenance
 

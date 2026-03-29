@@ -47,7 +47,7 @@ def test_summarize_content_uses_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     request = llm_summarization.SummarizationRequest(
         content="Body",
         content_type=ContentType.ARTICLE,
-        model_spec="gpt-5-mini",
+        model_spec="gpt-5.4-mini",
         title="Title",
     )
 
@@ -70,7 +70,7 @@ def test_summarize_news_uses_news_summary(monkeypatch: pytest.MonkeyPatch) -> No
     request = llm_summarization.SummarizationRequest(
         content="News body",
         content_type="news",
-        model_spec="claude-haiku-4-5-20251001",
+        model_spec="google:gemini-3.1-flash-lite-preview",
     )
 
     result = llm_summarization.summarize_content(request)
@@ -157,7 +157,7 @@ def test_summarize_content_truncates_long_payload(monkeypatch: pytest.MonkeyPatc
     request = llm_summarization.SummarizationRequest(
         content="START " + ("A" * 200) + " END",
         content_type=ContentType.ARTICLE,
-        model_spec="gpt-5-mini",
+        model_spec="gpt-5.4-mini",
     )
 
     result = llm_summarization.summarize_content(request)
@@ -187,7 +187,7 @@ def test_summarize_content_retries_on_context_length_error(monkeypatch: pytest.M
         def run_sync(self, prompt: str):
             self.calls += 1
             # Fail on first call (primary model)
-            if "gpt-5-mini" in self._model_spec and self.calls == 1:
+            if "gpt-5.4-mini" in self._model_spec and self.calls == 1:
                 raise RuntimeError("context_length_exceeded")
             return FakeResult(self._output)
 
@@ -202,7 +202,7 @@ def test_summarize_content_retries_on_context_length_error(monkeypatch: pytest.M
     request = llm_summarization.SummarizationRequest(
         content=("X" * 200),
         content_type=ContentType.ARTICLE,
-        model_spec="gpt-5-mini",
+        model_spec="gpt-5.4-mini",
         content_id="test",
     )
 
@@ -211,5 +211,5 @@ def test_summarize_content_retries_on_context_length_error(monkeypatch: pytest.M
     assert result == summary
     # Primary model failed, then fallback model was used
     assert len(models_used) == 2
-    assert models_used[0] == "gpt-5-mini"
+    assert models_used[0] == "gpt-5.4-mini"
     assert models_used[1] == llm_summarization.FALLBACK_SUMMARIZATION_MODEL

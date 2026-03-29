@@ -8,104 +8,112 @@ import XCTest
 
 final class DailyNewsDigestTests: XCTestCase {
     func testCleanedSummaryTrimsWhitespace() {
-        let digest = makeDigest(summary: "  Summary text.  ", keyPoints: [])
+        let digest = makeDigest(summary: "  Summary text.  ")
 
         XCTAssertEqual(digest.cleanedSummary, "Summary text.")
     }
 
-    func testCleanedKeyPointsDropsBlankEntries() {
+    func testShowsDigDeeperActionWhenBulletsExist() {
         let digest = makeDigest(
             summary: "Summary text.",
-            keyPoints: [" First point ", "", "  ", "Second point"]
-        )
-
-        XCTAssertEqual(digest.cleanedKeyPoints, ["First point", "Second point"])
-    }
-
-    func testHidesDigDeeperActionWhenSummaryExistsWithoutBullets() {
-        let digest = makeDigest(summary: "Summary text.", keyPoints: [], sourceCount: 3)
-
-        XCTAssertFalse(digest.showsDigDeeperAction)
-    }
-
-    func testHidesDigDeeperActionWithoutSources() {
-        let digest = makeDigest(summary: "Summary text.", keyPoints: [], sourceCount: 0)
-
-        XCTAssertFalse(digest.showsDigDeeperAction)
-    }
-
-    func testShowsDigDeeperActionWhenBulletDetailsExist() {
-        let digest = makeDigest(
-            summary: "Summary text.",
-            keyPoints: [],
-            bulletDetails: [
+            bullets: [
                 DailyNewsDigestBulletDetail(
-                    text: " First point ",
-                    sourceCount: 2,
-                    citations: [],
-                    commentQuotes: []
+                    id: 1,
+                    position: 1,
+                    topic: "AI",
+                    details: "First point",
+                    sourceCount: 2
                 )
             ]
         )
 
         XCTAssertTrue(digest.showsDigDeeperAction)
+        XCTAssertEqual(digest.displayBulletDetails.map(\.cleanedText), ["First point"])
     }
 
-    func testDisplayBulletDetailsFallsBackToCleanedKeyPoints() {
-        let digest = makeDigest(
-            summary: "Summary text.",
-            keyPoints: [" First point ", "", "Second point "]
-        )
+    func testHidesDigDeeperActionWithoutBullets() {
+        let digest = makeDigest(summary: "Summary text.")
 
-        XCTAssertEqual(digest.displayBulletDetails.map(\.cleanedText), ["First point", "Second point"])
+        XCTAssertFalse(digest.showsDigDeeperAction)
+        XCTAssertEqual(digest.displayBulletDetails, [])
     }
 
     func testDigestPreviewTextStripsTrailingCommentQuote() {
         let bullet = DailyNewsDigestBulletDetail(
-            text: "OpenAI shipped GPT-5 and developers are already testing new workflows. \"Biggest gain came from deleting work, not optimizing queries.\"",
+            id: 1,
+            position: 1,
+            topic: "AI",
+            details: "OpenAI shipped a new model. \"Biggest gain came from deleting work, not optimizing queries.\"",
             sourceCount: 2,
-            citations: [],
             commentQuotes: ["Biggest gain came from deleting work, not optimizing queries."]
         )
 
         XCTAssertEqual(
             bullet.digestPreviewText,
-            "OpenAI shipped GPT-5 and developers are already testing new workflows."
+            "OpenAI shipped a new model."
         )
     }
 
-    func testCleanedSourceLabelsDropsBlankEntries() {
+    func testCleanedSourceLabelsDropsBlankEntriesAndDeduplicatesByLabel() {
         let digest = makeDigest(
             summary: "Summary text.",
-            keyPoints: [],
-            sourceLabels: [" @swyx ", "", "Hacker News", "  "]
+            bullets: [
+                DailyNewsDigestBulletDetail(
+                    id: 1,
+                    position: 1,
+                    topic: "AI",
+                    details: "First point",
+                    sourceCount: 2,
+                    citations: [
+                        DailyNewsDigestCitation(
+                            newsItemId: 11,
+                            label: " @swyx ",
+                            title: "Hacker News",
+                            url: "https://news.ycombinator.com/item?id=1"
+                        ),
+                        DailyNewsDigestCitation(
+                            newsItemId: 12,
+                            label: "  ",
+                            title: "Hacker News",
+                            url: "https://news.ycombinator.com/item?id=2"
+                        ),
+                        DailyNewsDigestCitation(
+                            newsItemId: 13,
+                            label: "@swyx",
+                            title: "Techmeme",
+                            url: "https://www.techmeme.com"
+                        ),
+                        DailyNewsDigestCitation(
+                            newsItemId: 14,
+                            label: " OpenAI ",
+                            title: "OpenAI",
+                            url: "https://openai.com"
+                        )
+                    ]
+                )
+            ]
         )
 
-        XCTAssertEqual(digest.cleanedSourceLabels, ["@swyx", "Hacker News"])
+        XCTAssertEqual(digest.cleanedSourceLabels, ["@swyx", "OpenAI"])
     }
+
     private func makeDigest(
         summary: String,
-        keyPoints: [String],
-        sourceCount: Int = 2,
-        coverageEndAt: String? = nil,
-        sourceLabels: [String] = [],
-        bulletDetails: [DailyNewsDigestBulletDetail] = []
+        bullets: [DailyNewsDigestBulletDetail] = []
     ) -> DailyNewsDigest {
         DailyNewsDigest(
             id: 7,
-            localDate: "2026-03-08",
             timezone: "UTC",
             title: "Digest",
             summary: summary,
-            keyPoints: keyPoints,
-            bulletDetails: bulletDetails,
-            sourceCount: sourceCount,
-            sourceContentIds: [11, 12],
-            sourceLabels: sourceLabels,
+            sourceCount: 2,
+            groupCount: bullets.count,
             isRead: false,
-            readAt: nil,
             generatedAt: "2026-03-08T18:00:00Z",
-            coverageEndAt: coverageEndAt
+            triggerReason: "scheduler",
+            windowStartAt: "2026-03-08T17:00:00Z",
+            windowEndAt: "2026-03-08T18:00:00Z",
+            bullets: bullets
         )
     }
 }

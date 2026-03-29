@@ -31,7 +31,7 @@ LongformTemplate = Literal[
 ]
 
 EVAL_MODEL_SPECS: dict[str, str] = {
-    "haiku": "anthropic:claude-haiku-4-5-20251001",
+    "flash_lite": "google:gemini-3.1-flash-lite-preview",
     "opus": "anthropic:claude-opus-4-5-20251101",
     "gemini_3_pro": "google-gla:gemini-3-pro-preview",
     "flash_2": "google-gla:gemini-3-flash-preview",
@@ -40,7 +40,7 @@ EVAL_MODEL_SPECS: dict[str, str] = {
 }
 
 EVAL_MODEL_LABELS: dict[str, str] = {
-    "haiku": "Haiku",
+    "flash_lite": "Gemini 3.1 Flash Lite",
     "opus": "Opus",
     "gemini_3_pro": "Gemini 3 Pro",
     "flash_2": "Flash 2",
