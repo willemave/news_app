@@ -1,8 +1,9 @@
 """Enqueue news-native digest runs for users with uncovered short-form items.
 
 Suggested cron (every 15 minutes):
-*/15 * * * * cd /opt/news_app && /opt/news_app/.venv/bin/python \
-scripts/run_news_digests.py >> /var/log/news_app/news-digests.log 2>&1
+*/15 * * * * flock -n /tmp/news_app_news_digests.lock /bin/bash -lc \
+'cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_news_digests.py' \
+>> /var/log/news_app/news-digests.log 2>&1
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from app.services.news_digests import (
     enqueue_news_digest_generation,
     get_news_digest_trigger_decision,
 )
+from app.services.queue import get_queue_service
 
 logger = get_logger(__name__)
 
@@ -69,6 +71,25 @@ def main() -> None:
     due = 0
     enqueued = 0
     skipped = 0
+    backpressure = get_queue_service().get_backpressure_status()
+
+    if bool(backpressure["should_throttle"]):
+        logger.warning(
+            "Skipping news digest cron run due to queue backpressure",
+            extra=build_log_extra(
+                component="cron",
+                operation="run_news_digests",
+                event_name="cron.run",
+                status="skipped",
+                context_data={
+                    "skip_reason": "queue_backpressure",
+                    "backpressure": backpressure,
+                    "dry_run": args.dry_run,
+                    "now_utc": now_utc.isoformat(),
+                },
+            ),
+        )
+        return
 
     with (
         bound_log_context(job_name="run_news_digests", trigger="cron", source="cron"),

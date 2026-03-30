@@ -22,8 +22,14 @@ from app.core.observability import bound_log_context, build_log_extra
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.scraping.runner import ScraperRunner
+from app.services.queue import get_queue_service
 
 logger = get_logger(__name__)
+
+
+def _get_backpressure_status() -> dict[str, object]:
+    """Return queue backlog health for scraper admission control."""
+    return get_queue_service().get_backpressure_status()
 
 
 def main():
@@ -79,6 +85,25 @@ def main():
         run_config = {"debug": args.debug, "specific_scrapers": args.scrapers}
 
         with bound_log_context(job_name="run_scrapers", trigger="manual", source="cron"):
+            backpressure = _get_backpressure_status()
+            if bool(backpressure["should_throttle"]):
+                logger.warning(
+                    "Skipping scraper cron run due to queue backpressure",
+                    extra=build_log_extra(
+                        component="cron",
+                        operation="run_scrapers",
+                        event_name="cron.run",
+                        status="skipped",
+                        job_name="run_scrapers",
+                        trigger="manual",
+                        context_data={
+                            "skip_reason": "queue_backpressure",
+                            "backpressure": backpressure,
+                        },
+                    ),
+                )
+                return
+
             logger.info(
                 "Scraper cron run started",
                 extra=build_log_extra(
@@ -95,49 +120,71 @@ def main():
             available_scrapers = scraper_runner.list_scrapers()
             logger.info(f"Available scrapers: {', '.join(available_scrapers)}")
 
-            # Run scrapers
-            if args.scrapers:
-                scraper_results = {}
-                scraper_stats = {}
-                for scraper_name in args.scrapers:
-                    logger.info(f"\nRunning {scraper_name} scraper...")
-                    stats = scraper_runner.run_scraper_with_stats(scraper_name)
-                    if stats:
-                        scraper_results[scraper_name] = stats.saved
-                        scraper_stats[scraper_name] = stats
-                        logger.info(
-                            "Scraper summary",
+            scraper_results: dict[str, int] = {}
+            scraper_stats: dict[str, object] = {}
+            scrapers_to_run = args.scrapers or available_scrapers
+            stopped_due_to_backpressure = False
+
+            if not args.scrapers:
+                logger.info("\nRunning all scrapers...")
+
+            for index, scraper_name in enumerate(scrapers_to_run):
+                if index > 0:
+                    backpressure = _get_backpressure_status()
+                    if bool(backpressure["should_throttle"]):
+                        stopped_due_to_backpressure = True
+                        logger.warning(
+                            "Stopping scraper cron run after current backlog crossed threshold",
                             extra=build_log_extra(
                                 component="cron",
                                 operation="run_scrapers",
-                                event_name="scraper.run",
-                                status="completed",
+                                event_name="cron.run",
+                                status="degraded",
                                 job_name="run_scrapers",
+                                trigger="manual",
                                 source=scraper_name,
                                 context_data={
-                                    "scraped": stats.scraped,
-                                    "saved": stats.saved,
-                                    "duplicates": stats.duplicates,
-                                    "errors": stats.errors,
+                                    "stop_reason": "queue_backpressure",
+                                    "backpressure": backpressure,
                                 },
                             ),
                         )
-                        logger.info(
-                            "  Scraped: %s, Saved: %s, Duplicates: %s, Errors: %s",
-                            stats.scraped,
-                            stats.saved,
-                            stats.duplicates,
-                            stats.errors,
-                        )
-                    else:
-                        scraper_results[scraper_name] = 0
-                        logger.warning(f"  No stats returned for {scraper_name}")
-            else:
-                logger.info("\nRunning all scrapers...")
-                scraper_stats = scraper_runner.run_all_with_stats()
-                scraper_results = {name: stats.saved for name, stats in scraper_stats.items()}
+                        break
 
-                # Log summary for all scrapers
+                logger.info(f"\nRunning {scraper_name} scraper...")
+                stats = scraper_runner.run_scraper_with_stats(scraper_name)
+                if stats:
+                    scraper_results[scraper_name] = stats.saved
+                    scraper_stats[scraper_name] = stats
+                    logger.info(
+                        "Scraper summary",
+                        extra=build_log_extra(
+                            component="cron",
+                            operation="run_scrapers",
+                            event_name="scraper.run",
+                            status="completed",
+                            job_name="run_scrapers",
+                            source=scraper_name,
+                            context_data={
+                                "scraped": stats.scraped,
+                                "saved": stats.saved,
+                                "duplicates": stats.duplicates,
+                                "errors": stats.errors,
+                            },
+                        ),
+                    )
+                    logger.info(
+                        "  Scraped: %s, Saved: %s, Duplicates: %s, Errors: %s",
+                        stats.scraped,
+                        stats.saved,
+                        stats.duplicates,
+                        stats.errors,
+                    )
+                else:
+                    scraper_results[scraper_name] = 0
+                    logger.warning(f"  No stats returned for {scraper_name}")
+
+            if scraper_stats:
                 total_scraped = sum(s.scraped for s in scraper_stats.values())
                 total_saved = sum(s.saved for s in scraper_stats.values())
                 total_duplicates = sum(s.duplicates for s in scraper_stats.values())
@@ -148,13 +195,14 @@ def main():
                         component="cron",
                         operation="run_scrapers",
                         event_name="scraper.run",
-                        status="completed",
+                        status="completed" if not stopped_due_to_backpressure else "degraded",
                         job_name="run_scrapers",
                         context_data={
                             "total_scraped": total_scraped,
                             "total_saved": total_saved,
                             "total_duplicates": total_duplicates,
                             "total_errors": total_errors,
+                            "stopped_due_to_backpressure": stopped_due_to_backpressure,
                             "scraper_stats": {
                                 name: {
                                     "scraped": s.scraped,
@@ -167,17 +215,6 @@ def main():
                         },
                     ),
                 )
-
-                # Show individual scraper results
-                for scraper_name, stats in scraper_stats.items():
-                    logger.info(f"\n{scraper_name}:")
-                    logger.info(
-                        "  Scraped: %s, Saved: %s, Duplicates: %s, Errors: %s",
-                        stats.scraped,
-                        stats.saved,
-                        stats.duplicates,
-                        stats.errors,
-                    )
 
             # Summary
             total_scraped = sum(scraper_results.values())
@@ -234,7 +271,7 @@ def main():
                     component="cron",
                     operation="run_scrapers",
                     event_name="cron.run",
-                    status="completed",
+                    status="completed" if not stopped_due_to_backpressure else "degraded",
                     duration_ms=(perf_counter() - run_started_at) * 1000,
                     job_name="run_scrapers",
                     trigger="manual",

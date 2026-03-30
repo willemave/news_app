@@ -3,7 +3,7 @@
 Source folder: `app/services`
 
 ## Purpose
-Business-logic layer for LLM access, content analysis and submission, chat, discovery, feeds, images, interactions, onboarding, event logging, and queue primitives.
+Business-logic layer for LLM access, content analysis and submission, chat, discovery, feeds, images, interactions, onboarding, and queue primitives.
 
 ## Runtime behavior
 - Holds the orchestration-heavy logic that routers and handlers call into, including URL analysis, summarization, chat turns, discovery, and image generation.
@@ -31,7 +31,6 @@ Business-logic layer for LLM access, content analysis and submission, chat, disc
 | `app/services/deep_research.py` | `DeepResearchResult`, `DeepResearchClient`, `get_deep_research_client`, `close_deep_research_client`, `process_deep_research_message` | Deep research service using OpenAI's o4-mini-deep-research model |
 | `app/services/dig_deeper.py` | `resolve_display_title`, `build_dig_deeper_prompt`, `get_or_create_dig_deeper_session`, `create_dig_deeper_message`, `run_dig_deeper_message`, `enqueue_dig_deeper_task` | Helpers for auto-starting dig-deeper chats. |
 | `app/services/discussion_fetcher.py` | `DiscussionFetchError`, `DiscussionFetchResult`, `DiscussionPayload`, `DiscussionTarget`, `fetch_and_store_discussion` | Discussion ingestion service for news content. |
-| `app/services/event_logger.py` | `log_event`, `track_event`, `get_recent_events`, `get_event_stats` | Simple event logging service for tracking all system events, stats, and errors. |
 | `app/services/exa_client.py` | `ExaSearchResult`, `get_exa_client`, `exa_search`, `format_exa_results_for_context` | Exa search client service for chat agent web search tool. |
 | `app/services/favorites.py` | `toggle_favorite`, `add_favorite`, `remove_favorite`, `get_favorite_content_ids`, `is_content_favorited`, `clear_favorites` | Repository for content favorites operations. |
 | `app/services/feed_backfill.py` | `FeedBackfillRequest`, `FeedBackfillResult`, `resolve_feed_config_for_content`, `backfill_feed_for_config` | Helpers for on-demand feed backfills ("download more from this series"). |

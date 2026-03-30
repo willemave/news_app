@@ -24,7 +24,6 @@ from app.models.schema import (  # noqa: E402
     ContentFavorites,
     ContentReadStatus,
     ContentUnlikes,
-    EventLog,
     ProcessingTask,
 )
 
@@ -107,16 +106,6 @@ class EngagementStats(BaseModel):
     total_unlikes: int
 
 
-class EventLogStats(BaseModel):
-    """Aggregated statistics for event log entries."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    total: int
-    by_type: dict[str, int]
-    latest_event_at: datetime | None
-
-
 class SystemStats(BaseModel):
     """Composite statistics returned by the script."""
 
@@ -125,7 +114,6 @@ class SystemStats(BaseModel):
     content: ContentStats
     tasks: TaskStats
     engagement: EngagementStats
-    event_logs: EventLogStats
 
 
 def parse_args(argv: list[str] | None = None) -> StatsOptions:
@@ -337,24 +325,6 @@ def collect_engagement_stats(session: Session) -> EngagementStats:
     )
 
 
-def collect_event_log_stats(session: Session) -> EventLogStats:
-    """Aggregate event log metrics."""
-
-    total = int(session.query(func.count(EventLog.id)).scalar() or 0)
-    type_rows = (
-        session.query(EventLog.event_type, func.count(EventLog.id))
-        .group_by(EventLog.event_type)
-        .all()
-    )
-    latest_entry = session.query(func.max(EventLog.created_at)).scalar()
-
-    return EventLogStats(
-        total=total,
-        by_type=_result_dict(type_rows),
-        latest_event_at=latest_entry,
-    )
-
-
 def gather_system_stats(session: Session, *, options: StatsOptions) -> SystemStats:
     """Collect all system statistics using the provided session and options.
 
@@ -373,13 +343,11 @@ def gather_system_stats(session: Session, *, options: StatsOptions) -> SystemSta
     )
     task_stats = collect_task_stats(session)
     engagement_stats = collect_engagement_stats(session)
-    event_log_stats = collect_event_log_stats(session)
 
     return SystemStats(
         content=content_stats,
         tasks=task_stats,
         engagement=engagement_stats,
-        event_logs=event_log_stats,
     )
 
 
@@ -466,18 +434,6 @@ def format_system_stats(stats: SystemStats, *, output_format: str) -> str:
     lines.append(f"Read marks: {stats.engagement.total_read_marks}")
     lines.append(f"Favorites: {stats.engagement.total_favorites}")
     lines.append(f"Unlikes: {stats.engagement.total_unlikes}")
-
-    lines.append("")
-    lines.append("== Event Logs ==")
-    lines.append(f"Total events: {stats.event_logs.total}")
-    lines.append("By type:")
-    lines.extend(_format_dict_lines(stats.event_logs.by_type))
-    latest_event = (
-        stats.event_logs.latest_event_at.isoformat(timespec="seconds")
-        if stats.event_logs.latest_event_at
-        else "n/a"
-    )
-    lines.append(f"Latest event at: {latest_event}")
 
     return "\n".join(lines)
 

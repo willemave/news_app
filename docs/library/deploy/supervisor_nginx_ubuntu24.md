@@ -74,12 +74,14 @@ command=/bin/bash -lc "/opt/news_app/scripts/start_server.sh"
 
 [program:news_app_workers_content]
 command=/bin/bash -lc "/opt/news_app/.venv/bin/python /opt/news_app/scripts/run_workers.py --queue content --worker-slot %(process_num)s --stats-interval 60"
+numprocs=1
 
 [program:news_app_workers_image]
 command=/bin/bash -lc "/opt/news_app/.venv/bin/python /opt/news_app/scripts/run_workers.py --queue image --worker-slot 1 --stats-interval 60"
 
 [program:news_app_workers_transcribe]
 command=/bin/bash -lc "/opt/news_app/.venv/bin/python /opt/news_app/scripts/run_workers.py --queue transcribe --worker-slot %(process_num)s --stats-interval 60"
+numprocs=1
 
 [program:news_app_workers_onboarding]
 command=/bin/bash -lc "/opt/news_app/.venv/bin/python /opt/news_app/scripts/run_workers.py --queue onboarding --worker-slot 1 --stats-interval 60"
@@ -142,18 +144,37 @@ sudo -u newsapp -H crontab -l
 Current production cadence:
 
 ```cron
-*/15 * * * * cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_scrapers.py --show-stats --scrapers HackerNews Reddit Substack Techmeme Podcast Atom >> /var/log/news_app/scrapers-cron.log 2>&1
-*/15 * * * * cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_twitter.py >> /var/log/news_app/twitter.log 2>&1
-0 */3 * * * cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_news_digests.py --lookback-hours 6 >> /var/log/news_app/daily-news-digest.log 2>&1
+0 2 * * * flock -n /tmp/news_app_backup.lock /bin/bash -lc '/opt/news_app/scripts/backup_database.sh' >> /var/log/news_app/backup.log 2>&1
+*/15 * * * * flock -n /tmp/news_app_scrapers.lock /bin/bash -lc 'cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_scrapers.py --show-stats --scrapers HackerNews Reddit Substack Techmeme Podcast Atom' >> /var/log/news_app/scrapers-cron.log 2>&1
+*/15 * * * * flock -n /tmp/news_app_twitter.lock /bin/bash -lc 'cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_twitter.py' >> /var/log/news_app/twitter.log 2>&1
+*/15 * * * * flock -n /tmp/news_app_news_digests.lock /bin/bash -lc 'cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_news_digests.py' >> /var/log/news_app/news-digests.log 2>&1
+0 3 * * 1 flock -n /tmp/news_app_feed_discovery.lock /bin/bash -lc 'cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_feed_discovery.py' >> /var/log/news_app/feed-discovery-cron.log 2>&1
 ```
 
-The scheduler polls every 3 hours and enqueues users whose latest local digest
-checkpoint fell within the recent lookback window. Per-user checkpoint cadence
-comes from `news_digest_interval_hours` with supported values `3`, `6`, or `12`.
+On SQLite-backed hosts, keep `news_app_workers_content` and
+`news_app_workers_transcribe` at `numprocs=1`. That limits concurrent writers
+while cron jobs are also active.
+
+Each cron-managed job uses `flock -n` to prevent a new run from overlapping a
+previous still-running instance of the same job.
+
+`run_news_digests.py` polls every 15 minutes and lets per-user checkpoint logic
+inside the app decide whether a digest should actually be enqueued.
 
 The dedicated Twitter scheduler runs every 15 minutes. It runs the public
 Twitter list scraper and enqueues per-user bookmark/timeline/list refresh tasks when
 `X_BOOKMARK_SYNC_ENABLED=true`.
+
+SQLite defaults shipped in the repo:
+- `SQLITE_BUSY_TIMEOUT_MS=30000`
+- `SQLITE_ENABLE_WAL=false`
+- `SQLITE_WRITE_RETRY_ATTEMPTS=3`
+- `QUEUE_BACKPRESSURE_MAX_PENDING_CONTENT=150`
+- `QUEUE_BACKPRESSURE_MAX_PENDING_PROCESS_NEWS_ITEM=75`
+- `QUEUE_BACKPRESSURE_MAX_PENDING_GENERATE_NEWS_DIGEST=5`
+
+Leave `SQLITE_ENABLE_WAL=false` until the host SQLite runtime is on a fixed
+release for the current WAL advisory.
 
 ## 6) GitHub Actions deploy behavior
 
