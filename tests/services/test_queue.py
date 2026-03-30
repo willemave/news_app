@@ -1,10 +1,16 @@
+import sqlite3
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from app.models.schema import ProcessingTask
 from app.services.queue import QueueService, TaskStatus, TaskType, get_queue_service
+
+
+def _set_last_added_task_id(mock_db_session, task_id: int) -> None:
+    mock_db_session.add.call_args[0][0].id = task_id
 
 
 class TestQueueService:
@@ -25,10 +31,7 @@ class TestQueueService:
 
     def test_enqueue_task(self, mock_db_session):
         """Test enqueueing a new task."""
-        # Mock task creation
-        mock_task = ProcessingTask()
-        mock_task.id = 123
-        mock_db_session.refresh.side_effect = lambda task: setattr(task, 'id', 123)
+        mock_db_session.flush.side_effect = lambda: _set_last_added_task_id(mock_db_session, 123)
 
         service = QueueService()
         task_id = service.enqueue(
@@ -40,8 +43,8 @@ class TestQueueService:
         # Verify task was created correctly
         assert task_id == 123
         mock_db_session.add.assert_called_once()
+        mock_db_session.flush.assert_called_once()
         mock_db_session.commit.assert_called_once()
-        mock_db_session.refresh.assert_called_once()
 
         # Verify task attributes
         added_task = mock_db_session.add.call_args[0][0]
@@ -52,7 +55,7 @@ class TestQueueService:
 
     def test_enqueue_task_minimal(self, mock_db_session):
         """Test enqueueing a task with minimal parameters."""
-        mock_db_session.refresh.side_effect = lambda task: setattr(task, 'id', 789)
+        mock_db_session.flush.side_effect = lambda: _set_last_added_task_id(mock_db_session, 789)
 
         service = QueueService()
         task_id = service.enqueue(task_type=TaskType.SCRAPE)
@@ -341,8 +344,7 @@ class TestQueueServiceIntegration:
         """Test complete workflow: enqueue -> dequeue -> complete."""
         service = QueueService()
 
-        # Mock enqueue
-        mock_db_session.refresh.side_effect = lambda task: setattr(task, 'id', 123)
+        mock_db_session.flush.side_effect = lambda: _set_last_added_task_id(mock_db_session, 123)
 
         # Enqueue task
         task_id = service.enqueue(
@@ -402,3 +404,70 @@ class TestQueueServiceIntegration:
         service.retry_task(task_id=123)
         assert mock_task.status == TaskStatus.PENDING.value
         assert mock_task.retry_count == 1
+
+    def test_enqueue_retries_sqlite_lock(self, mock_db_session):
+        """SQLite lock contention on enqueue should be retried."""
+        mock_db_session.flush.side_effect = lambda: _set_last_added_task_id(mock_db_session, 123)
+        mock_db_session.commit.side_effect = [
+            OperationalError("INSERT task", {}, sqlite3.OperationalError("database is locked")),
+            None,
+        ]
+
+        service = QueueService()
+        task_id = service.enqueue(task_type=TaskType.PROCESS_CONTENT, content_id=456)
+
+        assert task_id == 123
+        assert mock_db_session.commit.call_count == 2
+        mock_db_session.rollback.assert_called_once()
+
+    def test_enqueue_does_not_retry_non_lock_operational_error(self, mock_db_session):
+        """Non-lock OperationalError cases should fail immediately."""
+        mock_db_session.flush.side_effect = lambda: _set_last_added_task_id(mock_db_session, 123)
+        mock_db_session.commit.side_effect = OperationalError(
+            "INSERT task",
+            {},
+            sqlite3.OperationalError("disk I/O error"),
+        )
+
+        service = QueueService()
+
+        with pytest.raises(OperationalError):
+            service.enqueue(task_type=TaskType.PROCESS_CONTENT, content_id=456)
+
+        assert mock_db_session.commit.call_count == 1
+        mock_db_session.rollback.assert_not_called()
+
+    def test_complete_task_retries_sqlite_lock(self, mock_db_session):
+        """SQLite lock contention on completion should be retried."""
+        mock_task = ProcessingTask()
+        mock_task.id = 123
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_task
+        mock_db_session.commit.side_effect = [
+            OperationalError("UPDATE task", {}, sqlite3.OperationalError("database is locked")),
+            None,
+        ]
+
+        service = QueueService()
+        service.complete_task(task_id=123, success=True)
+
+        assert mock_task.status == TaskStatus.COMPLETED.value
+        assert mock_db_session.commit.call_count == 2
+        mock_db_session.rollback.assert_called_once()
+
+    def test_retry_task_retries_sqlite_lock(self, mock_db_session):
+        """SQLite lock contention on retry scheduling should be retried."""
+        mock_task = ProcessingTask()
+        mock_task.id = 123
+        mock_task.retry_count = 1
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_task
+        mock_db_session.commit.side_effect = [
+            OperationalError("UPDATE task", {}, sqlite3.OperationalError("database is locked")),
+            None,
+        ]
+
+        service = QueueService()
+        service.retry_task(task_id=123, delay_seconds=120)
+
+        assert mock_task.status == TaskStatus.PENDING.value
+        assert mock_db_session.commit.call_count == 2
+        mock_db_session.rollback.assert_called_once()

@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 from app.models.schema import ProcessingTask
 from app.services.queue import QueueService, TaskQueue, TaskStatus, TaskType
@@ -250,6 +251,47 @@ def test_get_queue_stats_reports_pending_by_queue(db_session, monkeypatch):
         ]
         == 1
     )
+
+
+def test_get_backpressure_status_uses_content_thresholds(db_session, monkeypatch):
+    """Backpressure status should reflect configured content queue thresholds."""
+    queue = _patch_db(monkeypatch, db_session)
+    monkeypatch.setattr(
+        "app.services.queue.get_settings",
+        lambda: SimpleNamespace(
+            queue_backpressure_max_pending_content=2,
+            queue_backpressure_max_pending_process_news_item=1,
+            queue_backpressure_max_pending_generate_news_digest=1,
+        ),
+    )
+
+    db_session.add_all(
+        [
+            ProcessingTask(
+                task_type=TaskType.PROCESS_NEWS_ITEM.value,
+                status=TaskStatus.PENDING.value,
+                payload={},
+                queue_name=TaskQueue.CONTENT.value,
+            ),
+            ProcessingTask(
+                task_type=TaskType.GENERATE_NEWS_DIGEST.value,
+                status=TaskStatus.PENDING.value,
+                payload={},
+                queue_name=TaskQueue.CONTENT.value,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    status = queue.get_backpressure_status()
+
+    assert status["should_throttle"] is True
+    assert status["counts"]["pending_content"] == 2
+    assert status["counts"]["pending_process_news_item"] == 1
+    assert status["counts"]["pending_generate_news_digest"] == 1
+    assert "content_queue_backlog" in status["reasons"]
+    assert "process_news_item_backlog" in status["reasons"]
+    assert "generate_news_digest_backlog" in status["reasons"]
 
 
 def test_dequeue_respects_retry_delay_schedule(db_session, monkeypatch):

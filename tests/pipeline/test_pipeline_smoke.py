@@ -47,14 +47,12 @@ def _patch_db_access(monkeypatch, db_session):
     import app.pipeline.task_context as task_context
     import app.pipeline.worker as pipeline_worker
     import app.scraping.base as scraping_base
-    import app.services.event_logger as event_logger
     import app.services.queue as queue_service
 
     monkeypatch.setattr(core_db, "get_db", override)
     monkeypatch.setattr(task_context, "get_db", override)
     monkeypatch.setattr(pipeline_worker, "get_db", override)
     monkeypatch.setattr(scraping_base, "get_db", override)
-    monkeypatch.setattr(event_logger, "get_db", override)
     monkeypatch.setattr(queue_service, "get_db", override)
 
     return override

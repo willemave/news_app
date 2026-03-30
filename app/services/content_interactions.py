@@ -5,9 +5,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.db import is_sqlite_lock_error, run_with_sqlite_lock_retry
 from app.core.logging import get_logger
 from app.models.schema import AnalyticsInteraction, Content
 
@@ -108,36 +109,50 @@ def record_content_interaction(
         )
 
     try:
-        existing = db.execute(
-            select(AnalyticsInteraction).where(
-                AnalyticsInteraction.user_id == payload.user_id,
-                AnalyticsInteraction.interaction_id == payload.interaction_id,
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            return RecordContentInteractionResult(
-                recorded=False,
+        def _persist_interaction() -> RecordContentInteractionResult:
+            existing = db.execute(
+                select(AnalyticsInteraction).where(
+                    AnalyticsInteraction.user_id == payload.user_id,
+                    AnalyticsInteraction.interaction_id == payload.interaction_id,
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return RecordContentInteractionResult(
+                    recorded=False,
+                    interaction_id=payload.interaction_id,
+                    analytics_interaction_id=existing.id,
+                )
+
+            interaction = AnalyticsInteraction(
+                user_id=payload.user_id,
+                content_id=payload.content_id,
+                interaction_type=payload.interaction_type,
                 interaction_id=payload.interaction_id,
-                analytics_interaction_id=existing.id,
+                surface=payload.surface,
+                context_data=payload.context_data or {},
+                occurred_at=_normalize_timestamp(payload.occurred_at),
+            )
+            db.add(interaction)
+            db.flush()
+            analytics_interaction_id = int(interaction.id)
+            db.commit()
+            return RecordContentInteractionResult(
+                recorded=True,
+                interaction_id=payload.interaction_id,
+                analytics_interaction_id=analytics_interaction_id,
             )
 
-        interaction = AnalyticsInteraction(
-            user_id=payload.user_id,
-            content_id=payload.content_id,
-            interaction_type=payload.interaction_type,
-            interaction_id=payload.interaction_id,
-            surface=payload.surface,
-            context_data=payload.context_data or {},
-            occurred_at=_normalize_timestamp(payload.occurred_at),
-        )
-        db.add(interaction)
-        db.commit()
-        db.refresh(interaction)
-
-        return RecordContentInteractionResult(
-            recorded=True,
-            interaction_id=payload.interaction_id,
-            analytics_interaction_id=interaction.id,
+        return run_with_sqlite_lock_retry(
+            db=db,
+            component="content_interactions",
+            operation="record_content_interaction",
+            work=_persist_interaction,
+            item_id=payload.content_id,
+            context_data={
+                "user_id": payload.user_id,
+                "interaction_type": payload.interaction_type,
+                "interaction_id": payload.interaction_id,
+            },
         )
     except IntegrityError as exc:
         db.rollback()
@@ -165,6 +180,28 @@ def record_content_interaction(
                 error=str(exc),
             ),
         )
+        raise
+    except OperationalError as exc:
+        db.rollback()
+        if is_sqlite_lock_error(exc):
+            logger.warning(
+                (
+                    "[CONTENT_INTERACTIONS] Dropping analytics interaction after "
+                    "SQLite lock contention"
+                ),
+                extra=_interaction_extra(
+                    "record_content_interaction",
+                    user_id=payload.user_id,
+                    content_id=payload.content_id,
+                    interaction_type=payload.interaction_type,
+                    interaction_id=payload.interaction_id,
+                ),
+            )
+            return RecordContentInteractionResult(
+                recorded=False,
+                interaction_id=payload.interaction_id,
+                analytics_interaction_id=None,
+            )
         raise
     except Exception as exc:  # noqa: BLE001
         db.rollback()

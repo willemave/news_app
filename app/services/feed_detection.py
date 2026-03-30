@@ -251,6 +251,25 @@ def extract_feed_links_from_anchors(html_content: str, page_url: str) -> list[di
     return feeds
 
 
+def _extract_canonical_page_urls(html_content: str, page_url: str) -> list[str]:
+    """Extract canonical page URLs that may expose safer feed candidates."""
+    candidates = [page_url]
+    patterns = (
+        r"<link[^>]+rel=[\"']canonical[\"'][^>]*href=[\"']([^\"']+)[\"']",
+        r"<meta[^>]+property=[\"']og:url[\"'][^>]*content=[\"']([^\"']+)[\"']",
+        r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]*property=[\"']og:url[\"']",
+    )
+
+    for pattern in patterns:
+        for match in re.finditer(pattern, html_content, re.IGNORECASE | re.DOTALL):
+            href = (match.group(1) or "").strip()
+            if not href:
+                continue
+            candidates.append(_resolve_url(href, page_url))
+
+    return list(dict.fromkeys(candidates))
+
+
 def _looks_like_feed_url(url: str) -> bool:
     lowered = url.lower()
     return any(hint in lowered for hint in FEED_URL_HINTS)
@@ -622,8 +641,10 @@ class FeedDetector:
             },
         )
 
+        normalized_feed_url = str(getattr(response, "url", feed_url) or feed_url)
+
         return {
-            "feed_url": feed_url,
+            "feed_url": normalized_feed_url,
             "feed_format": feed_format,
             "title": title,
         }
@@ -639,6 +660,25 @@ class FeedDetector:
             if result:
                 validated.append(result)
                 break
+        return validated
+
+    def _validate_feed_links(self, feed_links: list[dict[str, str]]) -> list[dict[str, str]]:
+        validated: list[dict[str, str]] = []
+        for feed_link in feed_links[: self.max_candidate_fetches]:
+            feed_url = feed_link.get("feed_url")
+            if not isinstance(feed_url, str) or not feed_url.strip():
+                continue
+            result = self._validate_feed_candidate(feed_url.strip())
+            if not result:
+                continue
+            validated.append(
+                {
+                    "feed_url": result["feed_url"],
+                    "feed_format": feed_link.get("feed_format") or result["feed_format"],
+                    "title": feed_link.get("title") or result.get("title"),
+                }
+            )
+            break
         return validated
 
     def _find_feed_candidates_via_exa(self, page_url: str) -> list[str]:
@@ -692,17 +732,26 @@ class FeedDetector:
     ) -> list[dict[str, str]]:
         if html_content:
             feed_links = extract_feed_links(html_content, page_url)
-            if feed_links:
-                return feed_links
+            validated_explicit_feeds = self._validate_feed_links(feed_links)
+            if validated_explicit_feeds:
+                return validated_explicit_feeds
 
-            anchor_feeds = extract_feed_links_from_anchors(html_content, page_url)
-            if anchor_feeds:
-                return anchor_feeds
-
-        candidate_urls = _build_candidate_feed_urls(page_url)
+        candidate_urls: list[str] = []
+        candidate_page_urls = [page_url]
+        if html_content:
+            candidate_page_urls = _extract_canonical_page_urls(html_content, page_url)
+        for candidate_page_url in candidate_page_urls:
+            candidate_urls.extend(_build_candidate_feed_urls(candidate_page_url))
+        candidate_urls = list(dict.fromkeys(candidate_urls))
         candidate_feeds = self._validate_feed_candidates(candidate_urls)
         if candidate_feeds:
             return candidate_feeds
+
+        if html_content:
+            anchor_feeds = extract_feed_links_from_anchors(html_content, page_url)
+            validated_anchor_feeds = self._validate_feed_links(anchor_feeds)
+            if validated_anchor_feeds:
+                return validated_anchor_feeds
 
         if self.use_exa_search:
             exa_candidates = self._find_feed_candidates_via_exa(page_url)

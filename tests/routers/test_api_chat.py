@@ -529,8 +529,6 @@ def test_create_assistant_turn_creates_session_with_screen_context(
         "app.routers.api.chat.process_assistant_turn_async",
         _fake_process_assistant_turn_async,
     )
-    monkeypatch.setattr("app.routers.api.chat.log_event", lambda *args, **kwargs: 0)
-
     response = client.post(
         "/api/content/chat/assistant/turns",
         json={
@@ -599,8 +597,6 @@ def test_create_assistant_turn_titles_new_ad_hoc_session_from_message(
         "app.routers.api.chat.process_assistant_turn_async",
         _fake_process_assistant_turn_async,
     )
-    monkeypatch.setattr("app.routers.api.chat.log_event", lambda *args, **kwargs: 0)
-
     message = "Recommend a few feeds and newsletters I should add based on what I've read lately."
     response = client.post(
         "/api/content/chat/assistant/turns",
@@ -661,8 +657,6 @@ def test_create_assistant_turn_truncates_visible_content_ids(
         "app.routers.api.chat.process_assistant_turn_async",
         _fake_process_assistant_turn_async,
     )
-    monkeypatch.setattr("app.routers.api.chat.log_event", lambda *args, **kwargs: 0)
-
     response = client.post(
         "/api/content/chat/assistant/turns",
         json={
@@ -734,8 +728,6 @@ def test_create_assistant_turn_refreshes_existing_session_context(
         "app.routers.api.chat.process_assistant_turn_async",
         _fake_process_assistant_turn_async,
     )
-    monkeypatch.setattr("app.routers.api.chat.log_event", lambda *args, **kwargs: 0)
-
     response = client.post(
         "/api/content/chat/assistant/turns",
         json={
@@ -803,8 +795,6 @@ def test_send_message_routes_assistant_sessions_to_assistant_processor(
         _fake_process_assistant_turn_async,
     )
     monkeypatch.setattr("app.routers.api.chat.process_message_async", _fake_process_message_async)
-    monkeypatch.setattr("app.routers.api.chat.log_event", lambda *args, **kwargs: 0)
-
     response = client.post(
         f"/api/content/chat/sessions/{session.id}/messages",
         json={"message": "Add a few related feeds."},

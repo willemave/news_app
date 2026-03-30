@@ -14,10 +14,12 @@ from app.constants import CONTENT_STATUS_DIGEST_SOURCE, CONTENT_STATUS_INBOX, DE
 from app.core.logging import get_logger
 from app.models.schema import ContentStatusEntry, UserScraperConfig
 from app.models.user import User
+from app.services.feed_detection import FeedDetector
 
 logger = get_logger(__name__)
 
 ALLOWED_SCRAPER_TYPES = {"substack", "atom", "podcast_rss", "youtube", "reddit"}
+FEED_VALIDATOR = FeedDetector(use_llm=False, use_exa_search=False)
 
 
 class CreateUserScraperConfig(BaseModel):
@@ -60,7 +62,10 @@ def _normalize_feed_config(config: dict[str, Any]) -> dict[str, Any]:
     feed_url = config.get("feed_url")
     if not isinstance(feed_url, str) or not feed_url.strip():
         raise ValueError("config.feed_url is required")
-    config["feed_url"] = feed_url.strip()
+    validated_feed = FEED_VALIDATOR.validate_feed_url(feed_url.strip())
+    if not validated_feed:
+        raise ValueError("config.feed_url must be a valid RSS/Atom feed URL")
+    config["feed_url"] = validated_feed["feed_url"]
 
     limit = config.get("limit")
     if limit is not None and (not isinstance(limit, int) or not 1 <= limit <= 100):
@@ -173,6 +178,11 @@ def create_user_scraper_config(
     feed_url = _normalize_feed_url(data.config)
     if data.scraper_type not in ALLOWED_SCRAPER_TYPES:
         raise ValueError("Unsupported scraper_type")
+    if data.scraper_type not in {"youtube", "reddit"}:
+        validated_feed = FEED_VALIDATOR.validate_feed_url(feed_url)
+        if not validated_feed:
+            raise ValueError("Scraper config requires a valid RSS/Atom feed URL")
+        feed_url = validated_feed["feed_url"]
 
     normalized_config = {**data.config, "feed_url": feed_url}
 
@@ -230,6 +240,12 @@ def update_user_scraper_config(
         record.display_name = data.display_name
     if data.config is not None:
         normalized_feed_url = _normalize_feed_url(data.config)
+        existing_type = record.scraper_type
+        if existing_type not in {"youtube", "reddit"}:
+            validated_feed = FEED_VALIDATOR.validate_feed_url(normalized_feed_url)
+            if not validated_feed:
+                raise ValueError("Scraper config requires a valid RSS/Atom feed URL")
+            normalized_feed_url = validated_feed["feed_url"]
         normalized_config = {**data.config, "feed_url": normalized_feed_url}
         record.config = normalized_config
         record.feed_url = normalized_feed_url

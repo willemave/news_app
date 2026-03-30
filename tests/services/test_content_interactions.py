@@ -1,9 +1,11 @@
 """Tests for content interaction analytics service."""
 
+import sqlite3
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.models.schema import AnalyticsInteraction, Content
@@ -164,3 +166,35 @@ def test_record_content_interaction_raises_for_missing_content(
                 interaction_type=INTERACTION_TYPE_OPENED,
             ),
         )
+
+
+def test_record_content_interaction_degrades_on_sqlite_lock(
+    db_session: Session,
+    analytics_user: User,
+    analytics_content: Content,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SQLite lock contention should not fail the caller for analytics writes."""
+    monkeypatch.setattr("app.core.db.time.sleep", lambda _seconds: None)
+
+    def _locked_commit() -> None:
+        raise OperationalError(
+            "INSERT analytics_interactions",
+            {},
+            sqlite3.OperationalError("database is locked"),
+        )
+
+    monkeypatch.setattr(db_session, "commit", _locked_commit)
+
+    result = record_content_interaction(
+        db_session,
+        RecordContentInteractionInput(
+            user_id=analytics_user.id,
+            content_id=analytics_content.id,
+            interaction_id=str(uuid4()),
+            interaction_type=INTERACTION_TYPE_OPENED,
+        ),
+    )
+
+    assert result.recorded is False
+    assert result.analytics_interaction_id is None

@@ -1,15 +1,19 @@
+import sqlite3
 import subprocess
 import sys
-from collections.abc import Generator
+import time
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from typing import Any
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import Pool
 
 from app.core.logging import get_logger
+from app.core.observability import build_log_extra
 from app.core.settings import get_settings
 
 logger = get_logger(__name__)
@@ -20,6 +24,174 @@ Base = declarative_base()
 # Global engine instance
 _engine = None
 _SessionLocal = None
+_sqlite_runtime_diagnostics_logged = False
+_SQLITE_MIN_WAL_VERSION = (3, 52, 0)
+
+
+def _sqlite_version_tuple(version: str) -> tuple[int, int, int]:
+    """Parse a SQLite version string into a numeric tuple."""
+    parts = [int(part) for part in version.split(".")[:3]]
+    while len(parts) < 3:
+        parts.append(0)
+    return (parts[0], parts[1], parts[2])
+
+
+def is_sqlite_lock_error(exc: BaseException) -> bool:
+    """Return whether an exception chain represents SQLite lock contention."""
+    candidate: BaseException | None = exc
+    while candidate is not None:
+        message = str(candidate).lower()
+        if "database is locked" in message or "database table is locked" in message:
+            return True
+        if "sqlite_busy" in message:
+            return True
+        candidate = candidate.__cause__ or candidate.__context__
+    return False
+
+
+def _sqlite_runtime_diagnostics(dbapi_conn: sqlite3.Connection) -> dict[str, Any]:
+    """Return runtime SQLite diagnostics after PRAGMAs are applied."""
+    cursor = dbapi_conn.cursor()
+    try:
+        cursor.execute("SELECT sqlite_version()")
+        version = str(cursor.fetchone()[0])
+        cursor.execute("PRAGMA journal_mode")
+        journal_mode = str(cursor.fetchone()[0]).lower()
+        cursor.execute("PRAGMA busy_timeout")
+        busy_timeout = int(cursor.fetchone()[0])
+        cursor.execute("PRAGMA synchronous")
+        synchronous = int(cursor.fetchone()[0])
+        cursor.execute("PRAGMA foreign_keys")
+        foreign_keys = int(cursor.fetchone()[0])
+    finally:
+        cursor.close()
+
+    return {
+        "sqlite_version": version,
+        "journal_mode": journal_mode,
+        "busy_timeout_ms": busy_timeout,
+        "synchronous": synchronous,
+        "foreign_keys": foreign_keys,
+    }
+
+
+def _log_sqlite_runtime_diagnostics_once(
+    dbapi_conn: sqlite3.Connection,
+    *,
+    wal_requested: bool,
+) -> None:
+    """Emit SQLite runtime diagnostics once per process."""
+    global _sqlite_runtime_diagnostics_logged
+    if _sqlite_runtime_diagnostics_logged:
+        return
+
+    diagnostics = _sqlite_runtime_diagnostics(dbapi_conn)
+    logger.info(
+        "SQLite runtime diagnostics",
+        extra=build_log_extra(
+            component="database",
+            operation="sqlite_runtime_diagnostics",
+            status="completed",
+            context_data=diagnostics
+            | {
+                "wal_requested": wal_requested,
+                "wal_enabled": diagnostics["journal_mode"] == "wal",
+            },
+        ),
+    )
+    _sqlite_runtime_diagnostics_logged = True
+
+
+def _get_sqlite_runtime_version(dbapi_conn: sqlite3.Connection) -> tuple[int, int, int]:
+    """Return the runtime SQLite version tuple."""
+    cursor = dbapi_conn.cursor()
+    try:
+        cursor.execute("SELECT sqlite_version()")
+        return _sqlite_version_tuple(str(cursor.fetchone()[0]))
+    finally:
+        cursor.close()
+
+
+def _configure_sqlite_connection(
+    dbapi_conn: sqlite3.Connection,
+    *,
+    busy_timeout_ms: int,
+    wal_requested: bool,
+) -> None:
+    """Apply SQLite PRAGMAs for one connection."""
+    runtime_version = _get_sqlite_runtime_version(dbapi_conn)
+    cursor = dbapi_conn.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
+        if wal_requested and runtime_version >= _SQLITE_MIN_WAL_VERSION:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            journal_mode = str(cursor.fetchone()[0]).lower()
+            if journal_mode == "wal":
+                cursor.execute("PRAGMA synchronous=NORMAL")
+        else:
+            cursor.execute("PRAGMA journal_mode=DELETE")
+            cursor.fetchone()
+            if wal_requested:
+                logger.warning(
+                    "SQLite WAL requested but runtime is below minimum supported version",
+                    extra=build_log_extra(
+                        component="database",
+                        operation="sqlite_runtime_diagnostics",
+                        status="degraded",
+                        context_data={
+                            "sqlite_version": ".".join(str(part) for part in runtime_version),
+                            "wal_requested": True,
+                            "minimum_wal_version": ".".join(
+                                str(part) for part in _SQLITE_MIN_WAL_VERSION
+                            ),
+                        },
+                    ),
+                )
+    finally:
+        cursor.close()
+
+    _log_sqlite_runtime_diagnostics_once(dbapi_conn, wal_requested=wal_requested)
+
+
+def run_with_sqlite_lock_retry[T](
+    *,
+    db: Session,
+    component: str,
+    operation: str,
+    work: Callable[[], T],
+    item_id: str | int | None = None,
+    context_data: dict[str, Any] | None = None,
+) -> T:
+    """Retry a short idempotent write when SQLite reports lock contention."""
+    attempts = get_settings().sqlite_write_retry_attempts
+    for attempt in range(1, attempts + 1):
+        try:
+            return work()
+        except OperationalError as exc:
+            if not is_sqlite_lock_error(exc) or attempt >= attempts:
+                raise
+
+            db.rollback()
+            backoff_seconds = 0.05 * attempt
+            logger.warning(
+                "SQLite write contention detected; retrying write",
+                extra=build_log_extra(
+                    component=component,
+                    operation=operation,
+                    status="retrying",
+                    item_id=item_id,
+                    context_data=(context_data or {})
+                    | {
+                        "attempt": attempt,
+                        "max_attempts": attempts,
+                        "backoff_seconds": round(backoff_seconds, 3),
+                    },
+                ),
+            )
+            time.sleep(backoff_seconds)
+
+    raise RuntimeError("SQLite retry helper exhausted without returning or raising")
 
 
 def _is_sqlite_url(database_url: str) -> bool:
@@ -46,7 +218,7 @@ def init_db():
     if is_sqlite:
         engine_kwargs["connect_args"] = {
             "check_same_thread": False,
-            "timeout": 30,
+            "timeout": settings.sqlite_busy_timeout_ms / 1000,
         }
     else:
         engine_kwargs["pool_size"] = settings.database_pool_size
@@ -57,25 +229,15 @@ def init_db():
     # Create session factory
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
-    # Add connection pool logging
-    @event.listens_for(Pool, "connect")
-    def log_connect(dbapi_conn, connection_record):
-        logger.debug(f"New database connection established: {id(dbapi_conn)}")
-
-    @event.listens_for(Pool, "checkout")
-    def log_checkout(dbapi_conn, connection_record, connection_proxy):
-        logger.debug(f"Connection checked out from pool: {id(dbapi_conn)}")
-
     if is_sqlite:
 
         @event.listens_for(_engine, "connect")
         def set_sqlite_pragmas(dbapi_conn, connection_record):
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA synchronous=NORMAL")
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.execute("PRAGMA busy_timeout=30000")
-            cursor.close()
+            _configure_sqlite_connection(
+                dbapi_conn=dbapi_conn,
+                busy_timeout_ms=settings.sqlite_busy_timeout_ms,
+                wal_requested=settings.sqlite_enable_wal,
+            )
 
     logger.info("Database initialized successfully")
 

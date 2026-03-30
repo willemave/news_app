@@ -535,31 +535,6 @@ class AnalyticsInteraction(Base):
     )
 
 
-class EventLog(Base):
-    """Generic event logging table for all system events, stats, and errors."""
-
-    __tablename__ = "event_logs"
-
-    id = Column(Integer, primary_key=True)
-    # Examples: 'scraper_run', 'processing_batch', 'error', 'cleanup'
-    event_type = Column(String(50), nullable=False, index=True)
-    # Examples: 'hackernews_scraper', 'pdf_processor'
-    event_name = Column(String(100), nullable=True, index=True)
-    status = Column(String(20), nullable=True, index=True)  # 'started', 'completed', 'failed'
-
-    # All data stored in one JSON field - completely flexible
-    data = Column(JSON, nullable=False, default=dict)
-
-    # Timestamp
-    created_at = Column(DateTime, default=_utcnow, nullable=False, index=True)
-
-    __table_args__ = (
-        Index("idx_event_type_created", "event_type", "created_at"),
-        Index("idx_event_name_created", "event_name", "created_at"),
-        Index("idx_event_status_created", "event_type", "status", "created_at"),
-    )
-
-
 class LlmUsageRecord(Base):
     """Persist per-call LLM usage and estimated cost."""
 

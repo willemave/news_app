@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     database_url: PostgresDsn | str
     database_pool_size: int = 20
     database_max_overflow: int = 40
+    sqlite_busy_timeout_ms: int = Field(default=30_000, ge=1_000)
+    sqlite_enable_wal: bool = False
+    sqlite_write_retry_attempts: int = Field(default=3, ge=1, le=10)
 
     # Application
     app_name: str = "News Aggregator"
@@ -54,6 +57,9 @@ class Settings(BaseSettings):
     max_workers: int = 1
     worker_timeout_seconds: int = 300
     checkout_timeout_minutes: int = 30
+    queue_backpressure_max_pending_content: int = Field(default=150, ge=1)
+    queue_backpressure_max_pending_process_news_item: int = Field(default=75, ge=1)
+    queue_backpressure_max_pending_generate_news_digest: int = Field(default=5, ge=1)
 
     # Content processing
     max_content_length: int = 100_000

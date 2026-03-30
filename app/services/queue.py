@@ -3,9 +3,10 @@ from typing import Any
 
 from sqlalchemy import and_, func, or_
 
-from app.core.db import get_db
+from app.core.db import get_db, run_with_sqlite_lock_retry
 from app.core.logging import get_logger
 from app.core.observability import build_log_extra
+from app.core.settings import get_settings
 from app.models.contracts import TaskQueue, TaskStatus, TaskType
 from app.models.schema import ProcessingTask
 
@@ -133,16 +134,31 @@ class QueueService:
                     )
                     return existing_task.id
 
-            task = ProcessingTask(
-                task_type=task_type.value,
-                content_id=content_id,
-                payload=payload or {},
-                status=TaskStatus.PENDING.value,
-                queue_name=target_queue,
+            def _create_task() -> int:
+                task = ProcessingTask(
+                    task_type=task_type.value,
+                    content_id=content_id,
+                    payload=payload or {},
+                    status=TaskStatus.PENDING.value,
+                    queue_name=target_queue,
+                )
+                db.add(task)
+                db.flush()
+                task_id = int(task.id)
+                db.commit()
+                return task_id
+
+            task_id = run_with_sqlite_lock_retry(
+                db=db,
+                component="queue",
+                operation="enqueue",
+                work=_create_task,
+                item_id=content_id,
+                context_data={
+                    "task_type": task_type.value,
+                    "queue_name": target_queue,
+                },
             )
-            db.add(task)
-            db.commit()
-            db.refresh(task)
 
             logger.info(
                 "Task enqueued",
@@ -151,14 +167,14 @@ class QueueService:
                     operation="enqueue",
                     event_name="task.enqueued",
                     status="completed",
-                    task_id=task.id,
+                    task_id=task_id,
                     task_type=task_type.value,
                     queue_name=target_queue,
                     content_id=content_id,
                     context_data={"has_payload": bool(payload)},
                 ),
             )
-            return task.id
+            return task_id
 
     def dequeue(
         self,
@@ -233,24 +249,44 @@ class QueueService:
                 if raw_task_id is None:
                     raw_task_id = task_row[0]
                 task_id = int(raw_task_id)
-                claimed = (
-                    db.query(ProcessingTask)
-                    .filter(
-                        ProcessingTask.id == task_id,
-                        ProcessingTask.status == TaskStatus.PENDING.value,
+                def _claim_task(
+                    claimed_task_id: int = task_id,
+                    claimed_started_at: datetime = now,
+                ) -> int:
+                    claimed_rows = (
+                        db.query(ProcessingTask)
+                        .filter(
+                            ProcessingTask.id == claimed_task_id,
+                            ProcessingTask.status == TaskStatus.PENDING.value,
+                        )
+                        .update(
+                            {
+                                ProcessingTask.status: TaskStatus.PROCESSING.value,
+                                ProcessingTask.started_at: claimed_started_at,
+                            },
+                            synchronize_session=False,
+                        )
                     )
-                    .update(
-                        {
-                            ProcessingTask.status: TaskStatus.PROCESSING.value,
-                            ProcessingTask.started_at: now,
-                        },
-                        synchronize_session=False,
-                    )
+                    if claimed_rows == 0:
+                        db.rollback()
+                        return 0
+                    db.commit()
+                    return int(claimed_rows)
+
+                claimed = run_with_sqlite_lock_retry(
+                    db=db,
+                    component="queue",
+                    operation="dequeue",
+                    work=_claim_task,
+                    item_id=task_id,
+                    context_data={
+                        "worker_id": worker_id,
+                        "queue_name": normalized_queue,
+                        "task_type": task_type.value if task_type is not None else None,
+                    },
                 )
                 if claimed == 0:
-                    db.rollback()
                     continue
-                db.commit()
 
                 task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
                 if task is None:
@@ -292,9 +328,36 @@ class QueueService:
     def complete_task(self, task_id: int, success: bool = True, error_message: str | None = None):
         """Mark a task as completed."""
         with get_db() as db:
-            task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+            def _complete_task() -> dict[str, Any] | None:
+                task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+                if not task:
+                    return None
 
-            if not task:
+                task.completed_at = datetime.now(UTC)
+                if success:
+                    task.status = TaskStatus.COMPLETED.value
+                    task.error_message = None
+                else:
+                    task.status = TaskStatus.FAILED.value
+                    task.error_message = error_message or "Task failed without error details"
+                db.commit()
+                return {
+                    "task_type": task.task_type,
+                    "queue_name": task.queue_name,
+                    "content_id": task.content_id,
+                    "error_message": task.error_message,
+                }
+
+            completion = run_with_sqlite_lock_retry(
+                db=db,
+                component="queue",
+                operation="complete_task",
+                work=_complete_task,
+                item_id=task_id,
+                context_data={"success": success},
+            )
+
+            if completion is None:
                 logger.error(
                     "Task not found",
                     extra=build_log_extra(
@@ -308,10 +371,7 @@ class QueueService:
                 )
                 return
 
-            task.completed_at = datetime.now(UTC)
-
             if success:
-                task.status = TaskStatus.COMPLETED.value
                 logger.info(
                     "Task completed",
                     extra=build_log_extra(
@@ -320,16 +380,12 @@ class QueueService:
                         event_name="task.completed",
                         status="completed",
                         task_id=task_id,
-                        task_type=task.task_type,
-                        queue_name=task.queue_name,
-                        content_id=task.content_id,
+                        task_type=completion["task_type"],
+                        queue_name=completion["queue_name"],
+                        content_id=completion["content_id"],
                     ),
                 )
             else:
-                if not error_message:
-                    error_message = "Task failed without error details"
-                task.status = TaskStatus.FAILED.value
-                task.error_message = error_message
                 logger.error(
                     "Task failed",
                     extra=build_log_extra(
@@ -339,21 +395,44 @@ class QueueService:
                         status="failed",
                         item_id=task_id,
                         task_id=task_id,
-                        task_type=task.task_type,
-                        queue_name=task.queue_name,
-                        content_id=task.content_id,
-                        context_data={"error_message": error_message},
+                        task_type=completion["task_type"],
+                        queue_name=completion["queue_name"],
+                        content_id=completion["content_id"],
+                        context_data={"error_message": completion["error_message"]},
                     ),
                 )
-
-            db.commit()
 
     def retry_task(self, task_id: int, delay_seconds: int = 60):
         """Retry a failed task after a delay."""
         with get_db() as db:
-            task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+            def _schedule_retry() -> dict[str, Any] | None:
+                task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+                if not task:
+                    return None
 
-            if not task:
+                task.status = TaskStatus.PENDING.value
+                task.retry_count += 1
+                task.started_at = None
+                task.completed_at = None
+                task.created_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
+                db.commit()
+                return {
+                    "task_type": task.task_type,
+                    "queue_name": task.queue_name,
+                    "content_id": task.content_id,
+                    "retry_count": task.retry_count,
+                }
+
+            retry_result = run_with_sqlite_lock_retry(
+                db=db,
+                component="queue",
+                operation="retry_task",
+                work=_schedule_retry,
+                item_id=task_id,
+                context_data={"delay_seconds": delay_seconds},
+            )
+
+            if retry_result is None:
                 logger.error(
                     "Task not found",
                     extra=build_log_extra(
@@ -367,15 +446,6 @@ class QueueService:
                 )
                 return
 
-            task.status = TaskStatus.PENDING.value
-            task.retry_count += 1
-            task.started_at = None
-            task.completed_at = None
-
-            # Set a future created_at to delay processing
-            task.created_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
-
-            db.commit()
             logger.info(
                 "Task retry scheduled",
                 extra=build_log_extra(
@@ -384,11 +454,11 @@ class QueueService:
                     event_name="task.retry_scheduled",
                     status="retry_scheduled",
                     task_id=task_id,
-                    task_type=task.task_type,
-                    queue_name=task.queue_name,
-                    content_id=task.content_id,
+                    task_type=retry_result["task_type"],
+                    queue_name=retry_result["queue_name"],
+                    content_id=retry_result["content_id"],
                     context_data={
-                        "retry_count": task.retry_count,
+                        "retry_count": retry_result["retry_count"],
                         "delay_seconds": delay_seconds,
                     },
                 ),
@@ -459,6 +529,54 @@ class QueueService:
             stats["recent_failures"] = recent_failures
 
             return stats
+
+    def get_backpressure_status(self) -> dict[str, Any]:
+        """Return whether pending queue backlog is healthy enough for cron enqueue work."""
+        settings = get_settings()
+        stats = self.get_queue_stats()
+        pending_by_queue = stats.get("pending_by_queue", {})
+        pending_by_queue_type = stats.get("pending_by_queue_type", {})
+        content_pending = int(pending_by_queue.get(TaskQueue.CONTENT.value, 0))
+        content_pending_by_type = pending_by_queue_type.get(TaskQueue.CONTENT.value, {})
+        pending_process_news_item = int(
+            content_pending_by_type.get(TaskType.PROCESS_NEWS_ITEM.value, 0)
+        )
+        pending_generate_news_digest = int(
+            content_pending_by_type.get(TaskType.GENERATE_NEWS_DIGEST.value, 0)
+        )
+
+        reasons: list[str] = []
+        if content_pending >= settings.queue_backpressure_max_pending_content:
+            reasons.append("content_queue_backlog")
+        if (
+            pending_process_news_item
+            >= settings.queue_backpressure_max_pending_process_news_item
+        ):
+            reasons.append("process_news_item_backlog")
+        if (
+            pending_generate_news_digest
+            >= settings.queue_backpressure_max_pending_generate_news_digest
+        ):
+            reasons.append("generate_news_digest_backlog")
+
+        return {
+            "should_throttle": bool(reasons),
+            "reasons": reasons,
+            "counts": {
+                "pending_content": content_pending,
+                "pending_process_news_item": pending_process_news_item,
+                "pending_generate_news_digest": pending_generate_news_digest,
+            },
+            "thresholds": {
+                "pending_content": settings.queue_backpressure_max_pending_content,
+                "pending_process_news_item": (
+                    settings.queue_backpressure_max_pending_process_news_item
+                ),
+                "pending_generate_news_digest": (
+                    settings.queue_backpressure_max_pending_generate_news_digest
+                ),
+            },
+        }
 
     def cleanup_old_tasks(self, days: int = 7):
         """Remove completed tasks older than specified days."""
