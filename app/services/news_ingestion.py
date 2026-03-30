@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.constants import CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
@@ -184,19 +185,114 @@ def _build_ingest_key(payload: NewsItemUpsertInput) -> str:
     material = {
         "visibility_scope": payload.visibility_scope.value,
         "owner_user_id": payload.owner_user_id,
-        "platform": payload.platform,
-        "source_type": payload.source_type,
-        "source_external_id": payload.source_external_id,
-        "canonical_item_url": payload.canonical_item_url,
-        "discussion_url": payload.discussion_url,
-        "canonical_story_url": payload.canonical_story_url,
-        "legacy_content_id": payload.legacy_content_id,
-        "raw_metadata_fallback": payload.raw_metadata
-        if payload.legacy_content_id is None
-        else None,
     }
+    if payload.legacy_content_id is not None:
+        material.update(
+            {
+                "identity_type": "legacy_content_id",
+                "legacy_content_id": payload.legacy_content_id,
+            }
+        )
+    elif payload.platform and payload.source_external_id:
+        material.update(
+            {
+                "identity_type": "platform_source_external_id",
+                "platform": payload.platform,
+                "source_external_id": payload.source_external_id,
+            }
+        )
+    elif payload.canonical_item_url:
+        material.update(
+            {
+                "identity_type": "canonical_item_url",
+                "canonical_item_url": payload.canonical_item_url,
+            }
+        )
+    elif payload.discussion_url:
+        material.update(
+            {
+                "identity_type": "discussion_url",
+                "discussion_url": payload.discussion_url,
+            }
+        )
+    elif payload.canonical_story_url:
+        material.update(
+            {
+                "identity_type": "canonical_story_url",
+                "canonical_story_url": payload.canonical_story_url,
+            }
+        )
+    else:
+        material.update(
+            {
+                "identity_type": "title_url_fallback",
+                "platform": payload.platform,
+                "source_type": payload.source_type,
+                "article_title": payload.article_title,
+                "article_url": payload.article_url,
+            }
+        )
     encoded = json.dumps(material, sort_keys=True, default=str, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _owner_user_id_matcher(owner_user_id: int | None) -> Any:
+    if owner_user_id is None:
+        return NewsItem.owner_user_id.is_(None)
+    return NewsItem.owner_user_id == owner_user_id
+
+
+def _find_existing_news_item(db: Session, payload: NewsItemUpsertInput) -> NewsItem | None:
+    if payload.legacy_content_id is not None:
+        existing = (
+            db.query(NewsItem)
+            .filter(NewsItem.legacy_content_id == payload.legacy_content_id)
+            .first()
+        )
+        if existing is not None:
+            return existing
+
+    if payload.platform and payload.source_external_id:
+        existing = (
+            db.query(NewsItem)
+            .filter(
+                and_(
+                    NewsItem.visibility_scope == payload.visibility_scope.value,
+                    _owner_user_id_matcher(payload.owner_user_id),
+                    NewsItem.platform == payload.platform,
+                    NewsItem.source_external_id == payload.source_external_id,
+                )
+            )
+            .order_by(NewsItem.id.asc())
+            .first()
+        )
+        if existing is not None:
+            return existing
+
+    for url_field, value in (
+        (NewsItem.canonical_item_url, payload.canonical_item_url),
+        (NewsItem.discussion_url, payload.discussion_url),
+        (NewsItem.canonical_story_url, payload.canonical_story_url),
+    ):
+        if value is None:
+            continue
+        existing = (
+            db.query(NewsItem)
+            .filter(
+                and_(
+                    NewsItem.visibility_scope == payload.visibility_scope.value,
+                    _owner_user_id_matcher(payload.owner_user_id),
+                    url_field == value,
+                )
+            )
+            .order_by(NewsItem.id.asc())
+            .first()
+        )
+        if existing is not None:
+            return existing
+
+    ingest_key = _build_ingest_key(payload)
+    return db.query(NewsItem).filter(NewsItem.ingest_key == ingest_key).first()
 
 
 def build_news_item_upsert_input_from_scraped_item(item: dict[str, Any]) -> NewsItemUpsertInput:
@@ -382,15 +478,10 @@ def upsert_news_item(db: Session, payload: NewsItemUpsertInput) -> tuple[NewsIte
         Tuple of ``(news_item, created)``.
     """
     ingest_key = _build_ingest_key(payload)
-    existing = db.query(NewsItem).filter(NewsItem.ingest_key == ingest_key).first()
-    if existing is None and payload.legacy_content_id is not None:
-        existing = (
-            db.query(NewsItem)
-            .filter(NewsItem.legacy_content_id == payload.legacy_content_id)
-            .first()
-        )
+    existing = _find_existing_news_item(db, payload)
 
     if existing is not None:
+        existing.ingest_key = ingest_key
         existing.visibility_scope = payload.visibility_scope.value
         existing.owner_user_id = payload.owner_user_id
         existing.platform = payload.platform
