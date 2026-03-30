@@ -402,6 +402,141 @@ class QueueService:
                     ),
                 )
 
+    def finalize_task(
+        self,
+        task_id: int,
+        *,
+        success: bool,
+        error_message: str | None = None,
+        retryable: bool = True,
+        current_retry_count: int = 0,
+        max_retries: int = 3,
+        retry_delay_seconds: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Persist one terminal or retry transition for a processed task."""
+        with get_db() as db:
+            should_retry = (
+                not success and retryable and current_retry_count < max(int(max_retries), 0)
+            )
+            resolved_delay_seconds = retry_delay_seconds if should_retry else None
+
+            def _finalize_task() -> dict[str, Any] | None:
+                task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+                if not task:
+                    return None
+
+                now = datetime.now(UTC)
+                persisted_retry_count = int(task.retry_count or 0)
+                base_retry_count = max(persisted_retry_count, int(current_retry_count or 0))
+
+                if success:
+                    task.status = TaskStatus.COMPLETED.value
+                    task.completed_at = now
+                    task.error_message = None
+                elif should_retry:
+                    task.status = TaskStatus.PENDING.value
+                    task.retry_count = base_retry_count + 1
+                    task.started_at = None
+                    task.completed_at = None
+                    task.created_at = now + timedelta(seconds=resolved_delay_seconds or 0)
+                    task.error_message = error_message or "Task failed without error details"
+                else:
+                    task.status = TaskStatus.FAILED.value
+                    task.completed_at = now
+                    task.error_message = error_message or "Task failed without error details"
+
+                db.commit()
+                return {
+                    "task_type": task.task_type,
+                    "queue_name": task.queue_name,
+                    "content_id": task.content_id,
+                    "error_message": task.error_message,
+                    "status": task.status,
+                    "retry_count": int(task.retry_count or 0),
+                    "retry_delay_seconds": resolved_delay_seconds,
+                }
+
+            transition = run_with_sqlite_lock_retry(
+                db=db,
+                component="queue",
+                operation="finalize_task",
+                work=_finalize_task,
+                item_id=task_id,
+                context_data={
+                    "success": success,
+                    "retryable": retryable,
+                    "current_retry_count": current_retry_count,
+                    "max_retries": max_retries,
+                    "retry_delay_seconds": resolved_delay_seconds,
+                },
+            )
+
+            if transition is None:
+                logger.error(
+                    "Task not found",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="finalize_task",
+                        event_name="task.failed",
+                        status="failed",
+                        task_id=task_id,
+                        context_data={"failure_class": "TaskNotFound"},
+                    ),
+                )
+                return None
+
+            if transition["status"] == TaskStatus.COMPLETED.value:
+                logger.info(
+                    "Task completed",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="finalize_task",
+                        event_name="task.completed",
+                        status="completed",
+                        task_id=task_id,
+                        task_type=transition["task_type"],
+                        queue_name=transition["queue_name"],
+                        content_id=transition["content_id"],
+                    ),
+                )
+            elif transition["status"] == TaskStatus.PENDING.value:
+                logger.info(
+                    "Task retry scheduled",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="finalize_task",
+                        event_name="task.retry_scheduled",
+                        status="retry_scheduled",
+                        task_id=task_id,
+                        task_type=transition["task_type"],
+                        queue_name=transition["queue_name"],
+                        content_id=transition["content_id"],
+                        context_data={
+                            "retry_count": transition["retry_count"],
+                            "delay_seconds": transition["retry_delay_seconds"],
+                            "error_message": transition["error_message"],
+                        },
+                    ),
+                )
+            else:
+                logger.error(
+                    "Task failed",
+                    extra=build_log_extra(
+                        component="queue",
+                        operation="finalize_task",
+                        event_name="task.failed",
+                        status="failed",
+                        item_id=task_id,
+                        task_id=task_id,
+                        task_type=transition["task_type"],
+                        queue_name=transition["queue_name"],
+                        content_id=transition["content_id"],
+                        context_data={"error_message": transition["error_message"]},
+                    ),
+                )
+
+            return transition
+
     def retry_task(self, task_id: int, delay_seconds: int = 60):
         """Retry a failed task after a delay."""
         with get_db() as db:

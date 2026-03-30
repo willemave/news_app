@@ -205,6 +205,36 @@ class TestQueueService:
 
         mock_db_session.commit.assert_not_called()
 
+    def test_finalize_task_schedules_retry(self, mock_db_session):
+        """Retryable failures transition back to pending in one write."""
+        mock_task = ProcessingTask()
+        mock_task.id = 123
+        mock_task.retry_count = 1
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_task
+
+        service = QueueService()
+        transition = service.finalize_task(
+            123,
+            success=False,
+            error_message="boom",
+            retryable=True,
+            current_retry_count=1,
+            max_retries=3,
+            retry_delay_seconds=120,
+        )
+
+        assert transition is not None
+        assert transition["status"] == TaskStatus.PENDING.value
+        assert transition["retry_count"] == 2
+        assert transition["retry_delay_seconds"] == 120
+        assert mock_task.status == TaskStatus.PENDING.value
+        assert mock_task.retry_count == 2
+        assert mock_task.started_at is None
+        assert mock_task.completed_at is None
+        assert mock_task.error_message == "boom"
+        assert mock_task.created_at > datetime.now(UTC)
+        mock_db_session.commit.assert_called_once()
+
     def test_get_queue_stats(self, mock_db_session):
         """Test getting queue statistics."""
         status_query = Mock()
@@ -468,6 +498,34 @@ class TestQueueServiceIntegration:
         service = QueueService()
         service.retry_task(task_id=123, delay_seconds=120)
 
+        assert mock_task.status == TaskStatus.PENDING.value
+        assert mock_db_session.commit.call_count == 2
+        mock_db_session.rollback.assert_called_once()
+
+    def test_finalize_task_retries_sqlite_lock(self, mock_db_session):
+        """SQLite lock contention on finalize should be retried."""
+        mock_task = ProcessingTask()
+        mock_task.id = 123
+        mock_task.retry_count = 0
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_task
+        mock_db_session.commit.side_effect = [
+            OperationalError("UPDATE task", {}, sqlite3.OperationalError("database is locked")),
+            None,
+        ]
+
+        service = QueueService()
+        transition = service.finalize_task(
+            123,
+            success=False,
+            error_message="boom",
+            retryable=True,
+            current_retry_count=0,
+            max_retries=3,
+            retry_delay_seconds=60,
+        )
+
+        assert transition is not None
+        assert transition["status"] == TaskStatus.PENDING.value
         assert mock_task.status == TaskStatus.PENDING.value
         assert mock_db_session.commit.call_count == 2
         mock_db_session.rollback.assert_called_once()

@@ -5,6 +5,7 @@ import sys
 import time
 
 from pydantic import ValidationError
+from sqlalchemy.exc import OperationalError
 
 from app.core.logging import get_logger, setup_logging
 from app.core.observability import bound_log_context, build_log_extra, get_task_event_name
@@ -31,7 +32,7 @@ from app.pipeline.worker import get_llm_service
 from app.services.gateways.task_queue_gateway import TaskQueueGateway
 from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.news_embeddings import warm_news_embedding_model
-from app.services.queue import QueueService, TaskQueue
+from app.services.queue import QueueService, TaskQueue, TaskType
 
 logger = get_logger(__name__)
 
@@ -216,6 +217,47 @@ class SequentialTaskProcessor:
                 )
                 return TaskResult.fail(str(exc))
 
+    def _finalize_processed_task(
+        self,
+        *,
+        task: TaskEnvelope,
+        result: TaskResult,
+    ) -> dict[str, object] | None:
+        """Persist task completion/retry state without crashing the worker loop."""
+        retry_count = task.retry_count
+        max_retries = getattr(self.settings, "max_retries", 3)
+        should_retry = not result.success and result.retryable and retry_count < max_retries
+        retry_delay_seconds = None
+        if should_retry:
+            retry_delay_seconds = result.retry_delay_seconds or min(60 * (2**retry_count), 3600)
+
+        try:
+            return self.queue_service.finalize_task(
+                task.id,
+                success=result.success,
+                error_message=result.error_message,
+                retryable=result.retryable,
+                current_retry_count=retry_count,
+                max_retries=max_retries,
+                retry_delay_seconds=retry_delay_seconds,
+            )
+        except OperationalError as exc:
+            logger.exception(
+                "Task finalization hit SQLite contention",
+                extra=_task_extra(
+                    task,
+                    processor=self,
+                    operation="finalize_task",
+                    status="failed",
+                    context_data={
+                        "failure_class": type(exc).__name__,
+                        "retryable": result.retryable,
+                        "result_success": result.success,
+                    },
+                ),
+            )
+            return None
+
     def run(self, max_tasks: int | None = None) -> None:
         """
         Run the task processor.
@@ -320,21 +362,19 @@ class SequentialTaskProcessor:
                         ),
                     )
                     if task_id is not None:
-                        self.queue_service.complete_task(
-                            int(task_id),
-                            success=False,
-                            error_message="Invalid task payload",
+                        invalid_task = TaskEnvelope(
+                            id=int(task_id),
+                            task_type=TaskType.SCRAPE,
+                            retry_count=0,
+                            payload={},
+                        )
+                        self._finalize_processed_task(
+                            task=invalid_task,
+                            result=TaskResult.fail("Invalid task payload", retryable=False),
                         )
                     continue
-                retry_count = task.retry_count
-
                 result = self.process_task(task)
-
-                self.queue_service.complete_task(
-                    task.id,
-                    success=result.success,
-                    error_message=result.error_message,
-                )
+                finalization = self._finalize_processed_task(task=task, result=result)
 
                 if result.success:
                     processed_count += 1
@@ -345,9 +385,7 @@ class SequentialTaskProcessor:
                     )
                 else:
                     max_retries = getattr(self.settings, "max_retries", 3)
-                    if result.retryable and retry_count < max_retries:
-                        delay_seconds = min(60 * (2**retry_count), 3600)
-                        self.queue_service.retry_task(task.id, delay_seconds=delay_seconds)
+                    if finalization and finalization.get("status") == "pending":
                         logger.info(
                             "Task retry requested by processor",
                             extra=_task_extra(
@@ -357,9 +395,9 @@ class SequentialTaskProcessor:
                                 event_name="task.retry_scheduled",
                                 status="retry_scheduled",
                                 context_data={
-                                    "retry_count": retry_count + 1,
+                                    "retry_count": finalization.get("retry_count"),
                                     "max_retries": max_retries,
-                                    "delay_seconds": delay_seconds,
+                                    "delay_seconds": finalization.get("retry_delay_seconds"),
                                 },
                             ),
                         )
@@ -430,31 +468,24 @@ class SequentialTaskProcessor:
                 ),
             )
             if task_id is not None:
-                self.queue_service.complete_task(
-                    int(task_id),
-                    success=False,
-                    error_message="Invalid task payload",
+                invalid_task = TaskEnvelope(
+                    id=int(task_id),
+                    task_type=TaskType.SCRAPE,
+                    retry_count=0,
+                    payload={},
+                )
+                self._finalize_processed_task(
+                    task=invalid_task,
+                    result=TaskResult.fail("Invalid task payload", retryable=False),
                 )
             return False
 
         result = self.process_task(task)
 
-        task_id = task.id
-        self.queue_service.complete_task(
-            task_id,
-            success=result.success,
-            error_message=result.error_message,
-        )
+        finalization = self._finalize_processed_task(task=task, result=result)
 
-        if (
-            not result.success
-            and result.retryable
-            and task.retry_count < getattr(self.settings, "max_retries", 3)
-        ):
-            retry_count = task.retry_count
-            delay_seconds = min(60 * (2**retry_count), 3600)
-            self.queue_service.retry_task(task_id, delay_seconds=delay_seconds)
-            logger.info("Task %s scheduled for retry", task_id)
+        if finalization and finalization.get("status") == "pending":
+            logger.info("Task %s scheduled for retry", task.id)
 
         return result.success
 

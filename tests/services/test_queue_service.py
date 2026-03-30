@@ -45,6 +45,42 @@ def test_complete_task_sets_default_error_message(db_session, monkeypatch):
     assert refreshed.error_message == "Task failed without error details"
 
 
+def test_finalize_task_retryable_failure_requeues_in_one_step(db_session, monkeypatch):
+    """Retryable failures should go back to pending without a second queue write."""
+    queue = _patch_db(monkeypatch, db_session)
+
+    task = ProcessingTask(
+        task_type=TaskType.GENERATE_NEWS_DIGEST.value,
+        payload={"user_id": 1},
+        status=TaskStatus.PROCESSING.value,
+        queue_name=TaskQueue.CONTENT.value,
+        retry_count=0,
+        started_at=datetime.now(UTC) - timedelta(minutes=5),
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    transition = queue.finalize_task(
+        task.id,
+        success=False,
+        error_message="database is locked",
+        retryable=True,
+        current_retry_count=task.retry_count,
+        max_retries=3,
+        retry_delay_seconds=120,
+    )
+
+    db_session.refresh(task)
+    assert transition is not None
+    assert task.status == TaskStatus.PENDING.value
+    assert task.retry_count == 1
+    assert task.started_at is None
+    assert task.completed_at is None
+    assert task.error_message == "database is locked"
+    assert task.created_at > datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
+
+
 def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     """Tasks are partitioned into the expected default queue."""
     queue = _patch_db(monkeypatch, db_session)

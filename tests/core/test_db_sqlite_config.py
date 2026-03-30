@@ -74,7 +74,7 @@ def test_init_db_preserves_existing_journal_mode_when_wal_is_disabled(
         _reset_db_globals(monkeypatch)
 
 
-def test_init_db_enables_wal_only_when_explicitly_enabled_and_runtime_safe(
+def test_init_db_enables_wal_when_explicitly_enabled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -84,7 +84,6 @@ def test_init_db_enables_wal_only_when_explicitly_enabled_and_runtime_safe(
         "get_settings",
         lambda: _build_settings(db_path, sqlite_enable_wal=True),
     )
-    monkeypatch.setattr(core_db, "_get_sqlite_runtime_version", lambda _conn: (3, 52, 0))
     _reset_db_globals(monkeypatch)
 
     try:
@@ -102,36 +101,47 @@ def test_init_db_enables_wal_only_when_explicitly_enabled_and_runtime_safe(
         _reset_db_globals(monkeypatch)
 
 
-def test_init_db_leaves_delete_mode_when_wal_requested_but_runtime_too_old(
+def test_init_db_leaves_delete_mode_when_wal_request_does_not_change_journal_mode(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    db_path = tmp_path / "sqlite-old-runtime.db"
+    monkeypatch.setattr(core_db, "_get_sqlite_runtime_version", lambda _conn: (3, 45, 1))
     monkeypatch.setattr(
         core_db,
-        "get_settings",
-        lambda: _build_settings(db_path, sqlite_enable_wal=True),
+        "_log_sqlite_runtime_diagnostics_once",
+        lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(core_db, "_get_sqlite_runtime_version", lambda _conn: (3, 51, 0))
-    _reset_db_globals(monkeypatch)
     caplog.set_level("WARNING")
 
-    try:
-        core_db.init_db()
-        engine = core_db.get_engine()
-        with engine.connect() as conn:
-            journal_mode = conn.execute(text("PRAGMA journal_mode")).scalar()
+    class DummyCursor:
+        def __init__(self) -> None:
+            self.last_statement = ""
 
-        assert str(journal_mode).lower() == "delete"
-        assert any(
-            "SQLite WAL requested but runtime is below minimum supported version" in message
-            for message in caplog.messages
-        )
-    finally:
-        if core_db._engine is not None:
-            core_db._engine.dispose()
-        _reset_db_globals(monkeypatch)
+        def execute(self, statement: str) -> None:
+            self.last_statement = statement
+
+        def fetchone(self) -> tuple[object]:
+            if self.last_statement == "PRAGMA journal_mode=WAL":
+                return ("delete",)
+            return ("ok",)
+
+        def close(self) -> None:
+            return None
+
+    class DummyConnection:
+        def cursor(self) -> DummyCursor:
+            return DummyCursor()
+
+    core_db._configure_sqlite_connection(
+        DummyConnection(),
+        busy_timeout_ms=30_000,
+        wal_requested=True,
+    )
+
+    assert any(
+        "SQLite WAL requested but journal mode remained unchanged" in message
+        for message in caplog.messages
+    )
 
 
 def test_run_with_sqlite_lock_retry_retries_locked_writes(

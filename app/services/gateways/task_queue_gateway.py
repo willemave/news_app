@@ -48,6 +48,28 @@ class TaskQueueGateway:
         """Retry task after delay."""
         self._queue_service.retry_task(task_id, delay_seconds=delay_seconds)
 
+    def finalize_task(
+        self,
+        task_id: int,
+        *,
+        success: bool,
+        error_message: str | None = None,
+        retryable: bool = True,
+        current_retry_count: int = 0,
+        max_retries: int = 3,
+        retry_delay_seconds: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Apply one final task transition after processing."""
+        return self._queue_service.finalize_task(
+            task_id,
+            success=success,
+            error_message=error_message,
+            retryable=retryable,
+            current_retry_count=current_retry_count,
+            max_retries=max_retries,
+            retry_delay_seconds=retry_delay_seconds,
+        )
+
     def dequeue(
         self,
         *,

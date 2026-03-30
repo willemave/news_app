@@ -3,6 +3,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
 from app.pipeline.task_models import TaskEnvelope, TaskResult
@@ -81,8 +82,24 @@ class TestSequentialTaskProcessor:
             processor.run(max_tasks=2)
 
         assert processor.process_task.call_count == 2
-        processor.queue_service.complete_task.assert_any_call(1, success=True, error_message=None)
-        processor.queue_service.complete_task.assert_any_call(2, success=True, error_message=None)
+        processor.queue_service.finalize_task.assert_any_call(
+            1,
+            success=True,
+            error_message=None,
+            retryable=True,
+            current_retry_count=0,
+            max_retries=processor.settings.max_retries,
+            retry_delay_seconds=None,
+        )
+        processor.queue_service.finalize_task.assert_any_call(
+            2,
+            success=True,
+            error_message=None,
+            retryable=True,
+            current_retry_count=0,
+            max_retries=processor.settings.max_retries,
+            retry_delay_seconds=None,
+        )
 
     def test_run_retry_logic(self, processor):
         """Test retry logic for failed tasks."""
@@ -110,10 +127,15 @@ class TestSequentialTaskProcessor:
         with patch("app.pipeline.sequential_task_processor.setup_logging"):
             processor.run()
 
-        processor.queue_service.retry_task.assert_called_once()
-        call_args = processor.queue_service.retry_task.call_args
-        assert call_args[0][0] == 1
-        assert call_args[1]["delay_seconds"] == 120
+        processor.queue_service.finalize_task.assert_called_once_with(
+            1,
+            success=False,
+            error_message="boom",
+            retryable=True,
+            current_retry_count=1,
+            max_retries=3,
+            retry_delay_seconds=120,
+        )
 
     def test_run_max_retries_exceeded(self, processor):
         """Test behavior when max retries exceeded."""
@@ -141,7 +163,15 @@ class TestSequentialTaskProcessor:
         with patch("app.pipeline.sequential_task_processor.setup_logging"):
             processor.run()
 
-        processor.queue_service.retry_task.assert_not_called()
+        processor.queue_service.finalize_task.assert_called_once_with(
+            1,
+            success=False,
+            error_message="boom",
+            retryable=True,
+            current_retry_count=3,
+            max_retries=3,
+            retry_delay_seconds=None,
+        )
 
     def test_run_empty_queue_backoff(self, processor):
         """Test backoff behavior when queue is empty."""
@@ -192,10 +222,14 @@ class TestSequentialTaskProcessor:
 
         assert result is True
         processor.process_task.assert_called_once()
-        processor.queue_service.complete_task.assert_called_once_with(
+        processor.queue_service.finalize_task.assert_called_once_with(
             1,
             success=True,
             error_message=None,
+            retryable=True,
+            current_retry_count=0,
+            max_retries=processor.settings.max_retries,
+            retry_delay_seconds=None,
         )
 
     def test_run_single_task_with_retry(self, processor):
@@ -214,12 +248,15 @@ class TestSequentialTaskProcessor:
             result = processor.run_single_task(task_data)
 
         assert result is False
-        processor.queue_service.complete_task.assert_called_once_with(
+        processor.queue_service.finalize_task.assert_called_once_with(
             1,
             success=False,
             error_message="boom",
+            retryable=True,
+            current_retry_count=0,
+            max_retries=3,
+            retry_delay_seconds=60,
         )
-        processor.queue_service.retry_task.assert_called_once()
 
     def test_run_single_task_with_invalid_payload(self, processor):
         """Test run_single_task handles invalid payloads gracefully."""
@@ -233,10 +270,14 @@ class TestSequentialTaskProcessor:
             result = processor.run_single_task(task_data)
 
         assert result is False
-        processor.queue_service.complete_task.assert_called_once_with(
+        processor.queue_service.finalize_task.assert_called_once_with(
             1,
             success=False,
             error_message="Invalid task payload",
+            retryable=False,
+            current_retry_count=0,
+            max_retries=processor.settings.max_retries,
+            retry_delay_seconds=None,
         )
 
     def test_process_task_exception_handling(self, processor):
@@ -272,3 +313,30 @@ class TestSequentialTaskProcessor:
 
         assert processor.running is False
         assert call_count > 2
+
+    def test_run_ignores_task_finalization_lock_error(self, processor):
+        """A finalization lock error should not crash the worker loop."""
+        task_data = {"id": 1, "task_type": TaskType.SCRAPE.value, "retry_count": 0, "payload": {}}
+        call_count = 0
+
+        def mock_dequeue(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return task_data
+            processor.running = False
+            return None
+
+        processor.queue_service.dequeue.side_effect = mock_dequeue
+        processor.queue_service.finalize_task.side_effect = OperationalError(
+            "UPDATE task",
+            {},
+            Exception("database is locked"),
+        )
+        processor.process_task = Mock(return_value=TaskResult.fail("boom"))
+
+        with patch("app.pipeline.sequential_task_processor.setup_logging"):
+            processor.run()
+
+        assert processor.process_task.call_count == 1
+        processor.queue_service.finalize_task.assert_called_once()
