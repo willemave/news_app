@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.settings import get_settings
 from app.models.schema import Content
 from app.services.content_analyzer import CONTENT_ANALYSIS_MODEL, CONTENT_ANALYZER_SYSTEM_PROMPT
+from app.services.content_bodies import get_content_body_resolver
 from app.services.llm_prompts import generate_summary_prompt
 from app.services.llm_summarization import DEFAULT_SUMMARIZATION_MODELS
 
@@ -315,7 +316,8 @@ def reconstruct_summarize_prompt(
             )
 
         text_payload, prompt_type, max_bullets, max_quotes, notes = _extract_summarize_context(
-            content
+            session,
+            content,
         )
         if not text_payload:
             return PromptSnapshot(
@@ -685,22 +687,28 @@ def _extract_instruction(context_data: dict[str, Any]) -> str:
 
 
 def _extract_summarize_context(
+    session: Session,
     content: Content,
 ) -> tuple[str, str, int, int, list[str]]:
     """Extract text and prompt settings matching summarize handler behavior."""
     metadata = content.content_metadata or {}
     notes: list[str] = [f"content_type={content.content_type}"]
     content_type = (content.content_type or "").lower()
+    source_text = get_content_body_resolver().resolve_text(session, content=content)
 
     if content_type == "article":
-        text_payload = _extract_str(metadata.get("content")) or _extract_str(
-            metadata.get("content_to_summarize")
+        text_payload = (
+            _extract_str(source_text)
+            or _extract_str(metadata.get("content"))
+            or _extract_str(metadata.get("content_to_summarize"))
         )
         return text_payload, "editorial_narrative", 10, 4, notes
 
     if content_type == "news":
-        raw_content = _extract_str(metadata.get("content")) or _extract_str(
-            metadata.get("content_to_summarize")
+        raw_content = (
+            _extract_str(source_text)
+            or _extract_str(metadata.get("content"))
+            or _extract_str(metadata.get("content_to_summarize"))
         )
         context = _build_news_context(metadata)
         if context and raw_content:
@@ -710,8 +718,10 @@ def _extract_summarize_context(
         return raw_content, "news_digest", 4, 0, notes
 
     if content_type == "podcast":
-        text_payload = _extract_str(metadata.get("transcript")) or _extract_str(
-            metadata.get("content_to_summarize")
+        text_payload = (
+            _extract_str(source_text)
+            or _extract_str(metadata.get("transcript"))
+            or _extract_str(metadata.get("content_to_summarize"))
         )
         return text_payload, "editorial_narrative", 10, 4, notes
 

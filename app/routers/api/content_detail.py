@@ -10,11 +10,18 @@ from app.application.queries import get_content_detail as get_content_detail_que
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
-from app.models.schema import Content, ContentDiscussion
+from app.models.schema import ContentDiscussion
 from app.models.user import User
 from app.presenters.content_presenter import build_domain_content
+from app.repositories.content_detail_repository import (
+    get_content_discussion as get_content_discussion_repository,
+)
+from app.repositories.content_detail_repository import (
+    get_visible_content,
+)
 from app.routers.api.models import (
     ChatGPTUrlResponse,
+    ContentBodyResponse,
     ContentDetailResponse,
     ContentDiscussionResponse,
     DiscussionCommentResponse,
@@ -22,6 +29,7 @@ from app.routers.api.models import (
     DiscussionItemResponse,
     DiscussionLinkResponse,
 )
+from app.services.content_bodies import ContentBodyVariant, get_content_body_resolver
 
 router = APIRouter()
 
@@ -50,6 +58,45 @@ def get_content_detail(
             user_id=current_user.id,
             content_id=content_id,
         )
+
+
+@router.get(
+    "/{content_id}/body",
+    response_model=ContentBodyResponse,
+    summary="Get canonical content body",
+    description="Retrieve the canonical body text for a content item via the backend proxy.",
+)
+def get_content_body(
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    variant: Annotated[
+        str,
+        Query(description="Body variant", pattern="^(source|rendered)$"),
+    ] = "source",
+) -> ContentBodyResponse:
+    """Return canonical body text for a content item."""
+    content = get_visible_content(db, user_id=current_user.id, content_id=content_id)
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    resolver = get_content_body_resolver()
+    resolved = resolver.resolve(
+        db,
+        content=content,
+        variant=ContentBodyVariant(variant),
+    )
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Content body not found")
+
+    return ContentBodyResponse(
+        content_id=resolved.content_id,
+        variant=resolved.variant.value,
+        kind=resolved.kind,
+        format=resolved.format.value,
+        text=resolved.text,
+        updated_at=resolved.updated_at.isoformat() if resolved.updated_at else None,
+    )
 
 
 def _build_discussion_response(
@@ -185,17 +232,17 @@ def get_content_discussion(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDiscussionResponse:
     """Return stored discussion payload for a content item."""
-    content = db.query(Content).filter(Content.id == content_id).first()
+    content, discussion_row = get_content_discussion_repository(
+        db,
+        user_id=current_user.id,
+        content_id=content_id,
+    )
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
     metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
     discussion_url = metadata.get("discussion_url")
     platform = metadata.get("platform") or content.platform
-
-    discussion_row = (
-        db.query(ContentDiscussion).filter(ContentDiscussion.content_id == content_id).first()
-    )
 
     return _build_discussion_response(
         content_id=content_id,
@@ -217,6 +264,7 @@ def get_content_discussion(
 def get_chatgpt_url(
     content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
     db: Annotated[Session, Depends(get_readonly_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
     user_prompt: Annotated[
         str | None,
         Query(max_length=2000, description="Optional user prompt to prepend to chat"),
@@ -227,7 +275,7 @@ def get_chatgpt_url(
     If ``user_prompt`` is provided, it is prepended to the generated prompt so the
     selection the user made in the UI appears as the first message in ChatGPT.
     """
-    content = db.query(Content).filter(Content.id == content_id).first()
+    content = get_visible_content(db, user_id=current_user.id, content_id=content_id)
 
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
@@ -238,6 +286,9 @@ def get_chatgpt_url(
         raise HTTPException(
             status_code=500, detail=f"Failed to process content metadata: {str(e)}"
         ) from e
+
+    resolver = get_content_body_resolver()
+    resolved_body = resolver.resolve(db, content=content, variant=ContentBodyVariant.SOURCE)
 
     # Build the prompt with context
     prompt_parts = []
@@ -258,9 +309,15 @@ def get_chatgpt_url(
         prompt_parts.append(f"Published: {domain_content.publication_date.strftime('%B %d, %Y')}")
 
     prompt_parts.append("")  # Empty line for separation
+    if resolved_body and resolved_body.text.strip():
+        label = "Transcript" if resolved_body.kind == "transcript" else "Full Content"
+        prompt_parts.append(f"{label}:")
+        prompt_parts.append(resolved_body.text.strip())
 
     # Add the main content
-    if domain_content.content_type.value == "podcast" and domain_content.transcript:
+    if resolved_body and resolved_body.text.strip():
+        content_text = resolved_body.text.strip()
+    elif domain_content.content_type.value == "podcast" and domain_content.transcript:
         prompt_parts.append("TRANSCRIPT:")
         content_text = domain_content.transcript
     elif domain_content.full_markdown:

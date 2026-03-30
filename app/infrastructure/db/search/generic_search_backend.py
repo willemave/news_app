@@ -25,7 +25,6 @@ class GenericSearchBackend:
             func.lower(cast(Content.content_metadata["summary"]["overview"], String)).like(search),
             func.lower(cast(Content.content_metadata["summary"]["hook"], String)).like(search),
             func.lower(cast(Content.content_metadata["summary"]["takeaway"], String)).like(search),
-            func.lower(cast(Content.content_metadata["transcript"], String)).like(search),
-            func.lower(cast(Content.content_metadata, String)).like(search),
+            func.lower(cast(Content.search_text, String)).like(search),
         )
         return query.filter(conditions)

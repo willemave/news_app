@@ -409,6 +409,7 @@ def get_chat_agent(
 
 
 def build_article_context(
+    db: Session,
     content: Content,
     include_full_text: bool = False,
     max_tokens: int | None = None,
@@ -432,15 +433,26 @@ def build_article_context(
     if isinstance(summary, dict) and summary:
         summary_lines = _build_summary_lines(summary)
 
+    from app.services.content_bodies import ContentBodyVariant, get_content_body_resolver
+
     transcript = metadata.get("transcript")
     content_text = metadata.get("content")
     full_markdown = None
     if not content_text and isinstance(summary, dict):
         full_markdown = summary.get("full_markdown")
 
+    resolved_body = get_content_body_resolver().resolve(
+        db,
+        content=content,
+        variant=ContentBodyVariant.SOURCE,
+    )
+
     full_text_label = None
     full_text = None
-    if isinstance(transcript, str) and transcript.strip():
+    if resolved_body and resolved_body.text.strip():
+        full_text_label = "Transcript" if resolved_body.kind == "transcript" else "Full Content"
+        full_text = resolved_body.text.strip()
+    elif isinstance(transcript, str) and transcript.strip():
         full_text_label = "Transcript"
         full_text = transcript.strip()
     elif isinstance(content_text, str) and content_text.strip():
@@ -721,6 +733,7 @@ def _build_chat_deps(
             header_tokens = _estimate_tokens(header_text)
             available_tokens = max(max_system_article_tokens - system_tokens - header_tokens, 0)
             article_context = build_article_context(
+                db,
                 content,
                 include_full_text=include_full_text,
                 max_tokens=available_tokens,

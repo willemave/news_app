@@ -20,7 +20,7 @@ def execute(db: Session, *, user_id: int, content_id: int):
     if not row:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    content, is_read, is_favorited = row
+    content, is_read, is_favorited, body_available, body_format = row
     try:
         domain_content = build_domain_content(content)
     except Exception as exc:
@@ -41,4 +41,7 @@ def execute(db: Session, *, user_id: int, content_id: int):
         is_favorited=bool(is_favorited),
         detected_feed_data=detected_feed_data,
         can_subscribe=can_subscribe,
+        body_available=bool(body_available),
+        body_kind="transcript" if content.content_type == "podcast" else "article",
+        body_format=str(body_format) if body_format else None,
     )

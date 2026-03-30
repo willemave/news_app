@@ -91,6 +91,7 @@ def _extract_transcript_excerpt(content: Content) -> str | None:
         return None
 
     transcript_candidates = [
+        metadata.get("excerpt"),
         metadata.get("transcript"),
         metadata.get("full_text"),
     ]

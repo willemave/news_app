@@ -788,6 +788,7 @@ def _extract_transcript_excerpt(content: Content, max_length: int = 420) -> str 
 
     metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
     candidates = [
+        metadata.get("excerpt"),
         metadata.get("transcript"),
         metadata.get("content"),
     ]

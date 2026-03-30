@@ -480,6 +480,13 @@ class ContentDetailResponse(BaseModel):
     full_markdown: str | None = Field(
         None, description="Full article content formatted as markdown"
     )
+    body_available: bool = Field(False, description="Whether canonical body text is available")
+    body_kind: str | None = Field(
+        None, description="Resolved body kind (article, transcript, or source)"
+    )
+    body_format: str | None = Field(
+        None, description="Resolved body format (text or markdown)"
+    )
     news_article_url: str | None = Field(
         None, description="Canonical article link for news content"
     )
@@ -562,12 +569,26 @@ class ContentDetailResponse(BaseModel):
                 "quotes": [{"text": "The future is now", "context": "Jane Doe"}],
                 "topics": ["AI", "Technology", "Future"],
                 "full_markdown": "# Understanding AI in 2025\n\nFull article content...",
+                "body_available": True,
+                "body_kind": "article",
+                "body_format": "text",
                 "image_url": "/static/images/content/123.png",
                 "thumbnail_url": "/static/images/thumbnails/123.png",
                 "can_subscribe": False,
             }
         }
     )
+
+
+class ContentBodyResponse(BaseModel):
+    """Resolved canonical body payload."""
+
+    content_id: int = Field(..., description="Content identifier")
+    variant: str = Field(..., description="Canonical body variant")
+    kind: str = Field(..., description="Body kind")
+    format: str = Field(..., description="Body format")
+    text: str = Field(..., description="Full canonical body text")
+    updated_at: str | None = Field(None, description="ISO timestamp of the body pointer update")
 
 
 class RecordContentInteractionRequest(BaseModel):

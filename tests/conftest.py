@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
-from app.models.schema import Base, Content
+from app.models.schema import Base, Content, ContentStatusEntry
 from app.models.user import User
 
 
@@ -212,7 +212,7 @@ def create_content_from_fixture(fixture_data: dict[str, Any]) -> Content:
 
 
 @pytest.fixture
-def create_sample_content(db_session):
+def create_sample_content(db_session, test_user):
     """Factory fixture to create content from samples in the database.
 
     Usage:
@@ -223,6 +223,14 @@ def create_sample_content(db_session):
         db_session.add(content)
         db_session.commit()
         db_session.refresh(content)
+        db_session.add(
+            ContentStatusEntry(
+                user_id=test_user.id,
+                content_id=content.id,
+                status="inbox",
+            )
+        )
+        db_session.commit()
         return content
 
     return _create

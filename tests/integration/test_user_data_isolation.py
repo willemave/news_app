@@ -1,12 +1,11 @@
 """Integration tests for user data isolation."""
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.main import app
-from app.models.schema import Content, ContentFavorites, ContentReadStatus
-from app.models.user import User
 from app.core.security import create_access_token
+from app.main import app
+from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
+from app.models.user import User
 
 
 def test_users_see_only_their_own_favorites(db_session: Session):
@@ -45,6 +44,14 @@ def test_users_see_only_their_own_favorites(db_session: Session):
     # User 2 favorites content 2
     favorite2 = ContentFavorites(user_id=user2.id, content_id=content2.id)
     db_session.add_all([favorite1, favorite2])
+    db_session.add_all(
+        [
+            ContentStatusEntry(user_id=user1.id, content_id=content1.id, status="inbox"),
+            ContentStatusEntry(user_id=user1.id, content_id=content2.id, status="inbox"),
+            ContentStatusEntry(user_id=user2.id, content_id=content1.id, status="inbox"),
+            ContentStatusEntry(user_id=user2.id, content_id=content2.id, status="inbox"),
+        ]
+    )
     db_session.commit()
 
     # Override dependencies for user1
@@ -124,7 +131,13 @@ def test_users_see_only_their_own_read_status(db_session: Session):
 
     # User 1 marks as read
     read_status = ContentReadStatus(user_id=user1.id, content_id=content.id)
-    db_session.add(read_status)
+    db_session.add_all(
+        [
+            read_status,
+            ContentStatusEntry(user_id=user1.id, content_id=content.id, status="inbox"),
+            ContentStatusEntry(user_id=user2.id, content_id=content.id, status="inbox"),
+        ]
+    )
     db_session.commit()
 
     # Override dependencies
@@ -194,6 +207,13 @@ def test_favorite_action_only_affects_current_user(db_session: Session):
     db_session.refresh(user1)
     db_session.refresh(user2)
     db_session.refresh(content)
+    db_session.add_all(
+        [
+            ContentStatusEntry(user_id=user1.id, content_id=content.id, status="inbox"),
+            ContentStatusEntry(user_id=user2.id, content_id=content.id, status="inbox"),
+        ]
+    )
+    db_session.commit()
 
     # Override dependencies
     def override_get_db():

@@ -694,7 +694,7 @@ def _extract_summary(metadata: dict[str, Any]) -> str | None:
 def _extract_transcript_excerpt(metadata: dict[str, Any]) -> str | None:
     """Extract a bounded transcript excerpt when available."""
 
-    transcript = metadata.get("transcript")
+    transcript = metadata.get("transcript") or metadata.get("excerpt")
     if not isinstance(transcript, str):
         return None
     excerpt = transcript.strip()
