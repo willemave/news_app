@@ -62,6 +62,7 @@ class Content(Base):
     # For articles: author, content, publish_date, source, internal_links
     # For podcasts: audio_url, transcript, duration, episode_number
     content_metadata = Column(JSON, default=dict, nullable=False)
+    search_text = Column(Text, nullable=True)
 
     # Common timestamps
     created_at = Column(DateTime, default=_utcnow, nullable=False)
@@ -161,6 +162,29 @@ class ContentDiscussion(Base):
         Index("idx_content_discussions_platform", "platform"),
         Index("idx_content_discussions_status", "status"),
         Index("idx_content_discussions_fetched_at", "fetched_at"),
+    )
+
+
+class ContentBody(Base):
+    """Canonical body pointer stored separately from `content_metadata`."""
+
+    __tablename__ = "content_bodies"
+
+    content_id = Column(Integer, primary_key=True)
+    variant = Column(String(20), primary_key=True)
+    storage_provider = Column(String(32), nullable=False)
+    storage_bucket = Column(String(255), nullable=True)
+    storage_key = Column(String(2048), nullable=False)
+    content_format = Column(String(32), nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    byte_size = Column(Integer, nullable=False, default=0)
+    char_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        Index("idx_content_bodies_content_id", "content_id"),
+        Index("idx_content_bodies_storage_key", "storage_key"),
     )
 
 

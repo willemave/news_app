@@ -205,6 +205,18 @@ class Settings(BaseSettings):
     media_base_dir: Path = Field(default_factory=lambda: Path.cwd() / "data" / "media")
     logs_base_dir: Path = Field(default_factory=lambda: Path.cwd() / "logs")
     images_base_dir: Path = Field(default_factory=_default_images_base_dir)
+    content_body_storage_provider: Literal["local", "s3_compatible"] = "local"
+    content_body_local_root: Path = Field(
+        default_factory=lambda: Path.cwd() / "data" / "content_bodies"
+    )
+    content_body_storage_prefix: str = "content"
+    content_body_storage_bucket: str | None = None
+    content_body_storage_endpoint: str | None = None
+    content_body_storage_region: str | None = None
+    content_body_storage_access_key: str | None = None
+    content_body_storage_secret_key: str | None = None
+    content_body_storage_timeout_seconds: int = Field(default=30, ge=1, le=300)
+    podcast_scratch_dir: Path = Field(default_factory=lambda: Path.cwd() / "data" / "scratch")
 
     # crawl4ai table extraction
     crawl4ai_enable_table_extraction: bool = False
@@ -265,6 +277,16 @@ class Settings(BaseSettings):
         """
 
         return self.logs_base_dir.resolve()
+
+    @property
+    def content_body_root_dir(self) -> Path:
+        """Return the local filesystem root for canonical content body storage."""
+        return self.content_body_local_root.resolve()
+
+    @property
+    def podcast_scratch_root(self) -> Path:
+        """Return the local scratch directory used by podcast media workers."""
+        return self.podcast_scratch_dir.resolve()
 
 
 @lru_cache

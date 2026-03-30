@@ -37,12 +37,18 @@ def _reset_db_globals(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(core_db, "_sqlite_runtime_diagnostics_logged", False)
 
 
-def test_init_db_configures_sqlite_pragmas_without_wal_by_default(
+def test_init_db_preserves_existing_journal_mode_when_wal_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     db_path = tmp_path / "sqlite-config.db"
+    existing_conn = sqlite3.connect(db_path)
+    try:
+        existing_conn.execute("PRAGMA journal_mode=WAL")
+    finally:
+        existing_conn.close()
+
     monkeypatch.setattr(core_db, "get_settings", lambda: _build_settings(db_path))
     _reset_db_globals(monkeypatch)
     caplog.set_level("INFO")
@@ -57,8 +63,8 @@ def test_init_db_configures_sqlite_pragmas_without_wal_by_default(
         with engine.connect() as conn:
             second_journal_mode = conn.execute(text("PRAGMA journal_mode")).scalar()
 
-        assert str(first_journal_mode).lower() == "delete"
-        assert str(second_journal_mode).lower() == "delete"
+        assert str(first_journal_mode).lower() == "wal"
+        assert str(second_journal_mode).lower() == "wal"
         assert int(busy_timeout) == 30000
         assert int(foreign_keys) == 1
         assert caplog.messages.count("SQLite runtime diagnostics") == 1
@@ -202,3 +208,40 @@ def test_run_with_sqlite_lock_retry_does_not_retry_non_lock_errors(
 
     assert attempts["count"] == 1
     assert session.rollback_calls == 0
+
+
+def test_run_with_sqlite_lock_retry_rolls_back_before_final_lock_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = SimpleNamespace(sqlite_write_retry_attempts=3)
+    monkeypatch.setattr(core_db, "get_settings", lambda: settings)
+    monkeypatch.setattr(core_db.time, "sleep", lambda _seconds: None)
+
+    class DummySession:
+        def __init__(self) -> None:
+            self.rollback_calls = 0
+
+        def rollback(self) -> None:
+            self.rollback_calls += 1
+
+    session = DummySession()
+    attempts = {"count": 0}
+
+    def _work() -> str:
+        attempts["count"] += 1
+        raise OperationalError(
+            "UPDATE foo",
+            {},
+            sqlite3.OperationalError("database is locked"),
+        )
+
+    with pytest.raises(OperationalError):
+        core_db.run_with_sqlite_lock_retry(
+            db=session,  # type: ignore[arg-type]
+            component="test",
+            operation="sqlite_retry",
+            work=_work,
+        )
+
+    assert attempts["count"] == 3
+    assert session.rollback_calls == 3

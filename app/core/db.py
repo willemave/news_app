@@ -125,16 +125,14 @@ def _configure_sqlite_connection(
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
         if wal_requested and runtime_version >= _SQLITE_MIN_WAL_VERSION:
-            cursor.execute("PRAGMA journal_mode=WAL")
-            journal_mode = str(cursor.fetchone()[0]).lower()
-            if journal_mode == "wal":
-                cursor.execute("PRAGMA synchronous=NORMAL")
-        else:
-            cursor.execute("PRAGMA journal_mode=DELETE")
-            cursor.fetchone()
-            if wal_requested:
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                journal_mode = str(cursor.fetchone()[0]).lower()
+            except sqlite3.OperationalError as exc:
+                if not is_sqlite_lock_error(exc):
+                    raise
                 logger.warning(
-                    "SQLite WAL requested but runtime is below minimum supported version",
+                    "SQLite WAL enable skipped because the database is locked",
                     extra=build_log_extra(
                         component="database",
                         operation="sqlite_runtime_diagnostics",
@@ -145,9 +143,46 @@ def _configure_sqlite_connection(
                             "minimum_wal_version": ".".join(
                                 str(part) for part in _SQLITE_MIN_WAL_VERSION
                             ),
+                            "error": str(exc),
                         },
                     ),
                 )
+            else:
+                if journal_mode == "wal":
+                    cursor.execute("PRAGMA synchronous=NORMAL")
+                else:
+                    logger.warning(
+                        "SQLite WAL requested but journal mode remained unchanged",
+                        extra=build_log_extra(
+                            component="database",
+                            operation="sqlite_runtime_diagnostics",
+                            status="degraded",
+                            context_data={
+                                "sqlite_version": ".".join(str(part) for part in runtime_version),
+                                "wal_requested": True,
+                                "minimum_wal_version": ".".join(
+                                    str(part) for part in _SQLITE_MIN_WAL_VERSION
+                                ),
+                                "journal_mode": journal_mode,
+                            },
+                        ),
+                    )
+        elif wal_requested:
+            logger.warning(
+                "SQLite WAL requested but runtime is below minimum supported version",
+                extra=build_log_extra(
+                    component="database",
+                    operation="sqlite_runtime_diagnostics",
+                    status="degraded",
+                    context_data={
+                        "sqlite_version": ".".join(str(part) for part in runtime_version),
+                        "wal_requested": True,
+                        "minimum_wal_version": ".".join(
+                            str(part) for part in _SQLITE_MIN_WAL_VERSION
+                        ),
+                    },
+                ),
+            )
     finally:
         cursor.close()
 
@@ -169,10 +204,13 @@ def run_with_sqlite_lock_retry[T](
         try:
             return work()
         except OperationalError as exc:
-            if not is_sqlite_lock_error(exc) or attempt >= attempts:
+            if not is_sqlite_lock_error(exc):
                 raise
 
             db.rollback()
+            if attempt >= attempts:
+                raise
+
             backoff_seconds = 0.05 * attempt
             logger.warning(
                 "SQLite write contention detected; retrying write",
