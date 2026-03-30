@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from admin.remote_ops import RemoteContext, usage_by_content, usage_by_user, usage_summary
 from app.core.db import Base
-from app.models.schema import Content, EventLog, LlmUsageRecord, ProcessingTask
+from app.models.schema import Content, LlmUsageRecord, ProcessingTask
 from app.models.user import User
 
 
@@ -22,7 +22,6 @@ def _build_context(tmp_path) -> RemoteContext:
             User.__table__,
             Content.__table__,
             ProcessingTask.__table__,
-            EventLog.__table__,
             LlmUsageRecord.__table__,
         ],
     )

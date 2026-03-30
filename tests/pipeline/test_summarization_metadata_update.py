@@ -106,14 +106,15 @@ def test_summarize_task_updates_podcast_metadata(db_session, mock_structured_sum
     assert "summary" in content.content_metadata
     assert "summarization_date" in content.content_metadata
     expected_summary = mock_structured_summary.model_dump(mode="json")
+    expected_summary.pop("full_markdown", None)
 
     summary = content.content_metadata["summary"]
     assert summary == expected_summary
 
     assert content.content_metadata["audio_url"] == "https://example.com/podcast.mp3"
-    assert content.content_metadata["transcript"] == (
-        "This is a test transcript of the podcast episode."
-    )
+    assert "transcript" not in content.content_metadata
+    assert content.content_metadata["has_transcript"] is True
+    assert content.content_metadata["excerpt"]
     assert content.content_metadata["source"] == "Test Podcast Feed"
 
     assert content.status == "completed"
@@ -152,10 +153,13 @@ def test_summarize_task_updates_article_metadata(db_session, mock_structured_sum
     assert result.success is True
     assert "summary" in content.content_metadata
     expected_summary = mock_structured_summary.model_dump(mode="json")
+    expected_summary.pop("full_markdown", None)
     assert content.content_metadata["summary"] == expected_summary
 
     assert content.content_metadata["author"] == "Test Author"
     assert content.content_metadata["source"] == "Test Blog"
+    assert "content" not in content.content_metadata
+    assert content.content_metadata["excerpt"]
 
 
 def test_summarize_task_updates_news_metadata(db_session):

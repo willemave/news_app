@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
-import pytest
 import feedparser
+import pytest
 
 from app.models.metadata import ContentType
 from app.models.schema import Content, ContentStatus
@@ -67,7 +67,7 @@ def mock_podcast_config():
 
 class TestPodcastScraperIntegration:
     """Test integration between podcast scraper and unified system."""
-    
+
     @patch('app.scraping.podcast_unified.feedparser.parse')
     @patch('app.scraping.base.get_db')
     @patch('app.scraping.base.get_queue_service')
@@ -77,30 +77,33 @@ class TestPodcastScraperIntegration:
         mock_get_db,
         mock_feedparser,
         mock_podcast_feed,
-        mock_podcast_config
+        mock_podcast_config,
     ):
         """Test that podcast scraper creates correct Content entries."""
         # Setup mocks
         mock_feedparser.return_value = mock_podcast_feed
-        
+
         # Mock database
         mock_db = Mock()
         mock_get_db.return_value.__enter__.return_value = mock_db
-        mock_db.query.return_value.filter.return_value.first.return_value = None  # No existing content
-        
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            None  # No existing content
+        )
+
         # Mock queue service
         queue_service = Mock()
         mock_queue_service.return_value = queue_service
-        
+
         # Keep track of created content
         created_contents = []
+
         def mock_add(content):
             created_contents.append(content)
             content.id = len(created_contents)  # Simulate auto-increment ID
-        
+
         mock_db.add.side_effect = mock_add
         mock_db.refresh.side_effect = lambda x: x
-        
+
         # Run scraper
         with patch.object(
             PodcastUnifiedScraper,
@@ -109,18 +112,18 @@ class TestPodcastScraperIntegration:
         ):
             scraper = PodcastUnifiedScraper()
             saved_count = scraper.run()
-        
+
         # Verify correct number of items saved
         assert saved_count == 2
         assert len(created_contents) == 2
-        
+
         # Verify first episode
         episode1 = created_contents[0]
         assert episode1.content_type == ContentType.PODCAST.value
         assert episode1.url == "https://example.com/episodes/1"
         assert episode1.title == "Episode 1: Introduction"
         assert episode1.status == ContentStatus.NEW.value
-        
+
         # Verify metadata
         metadata1 = episode1.content_metadata
         assert metadata1['audio_url'] == "https://example.com/audio/episode1.mp3"
@@ -129,7 +132,7 @@ class TestPodcastScraperIntegration:
         assert metadata1['feed_name'] == "Test Podcast"
         assert metadata1['author'] == "Host Name"
         assert metadata1['source'] == 'Test Podcast'
-        
+
         # Verify second episode
         episode2 = created_contents[1]
         assert episode2.content_type == ContentType.PODCAST.value
@@ -137,7 +140,7 @@ class TestPodcastScraperIntegration:
         assert episode2.title == "Episode 2: Deep Dive"
         assert episode2.content_metadata['audio_url'] == "https://example.com/audio/episode2.m4a"
         assert episode2.content_metadata['duration_seconds'] == 4530  # 1:15:30 = 4530 seconds
-        
+
         # Verify tasks were queued
         assert queue_service.enqueue.call_count == 2
         queue_service.enqueue.assert_any_call(
@@ -238,12 +241,12 @@ class TestPodcastProcessingFlow:
     
     @patch('app.pipeline.worker.get_db')
     @patch('app.pipeline.worker.get_task_queue_gateway')
-    def test_process_content_queues_download_audio(
+    def test_process_content_queues_process_podcast_media(
         self,
         mock_queue_gateway,
         mock_get_db
     ):
-        """Test that PROCESS_CONTENT for podcast queues DOWNLOAD_AUDIO."""
+        """Test that PROCESS_CONTENT for podcast queues PROCESS_PODCAST_MEDIA."""
         # Create mock podcast content
         mock_content = Content()
         mock_content.id = 100
@@ -273,8 +276,8 @@ class TestPodcastProcessingFlow:
         # Verify success
         assert success is True
         
-        # Verify DOWNLOAD_AUDIO task was queued
+        # Verify PROCESS_PODCAST_MEDIA task was queued
         queue_gateway.enqueue.assert_called_once_with(
-            TaskType.DOWNLOAD_AUDIO,
+            TaskType.PROCESS_PODCAST_MEDIA,
             content_id=100
         )

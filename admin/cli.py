@@ -405,8 +405,8 @@ def _build_fix_script_args(args: argparse.Namespace) -> list[str]:
         script_args.append("--yes" if args.apply else "--dry-run")
         return script_args
 
-    if args.fix_command == "move-transcribe":
-        script_args = ["scripts/queue_control.py", "move-transcribe"]
+    if args.fix_command in {"move-media", "move-transcribe"}:
+        script_args = ["scripts/queue_control.py", "move-media"]
         for status in args.statuses or []:
             script_args.extend(["--status", status])
         script_args.append("--yes" if args.apply else "--dry-run")
@@ -602,11 +602,12 @@ def _build_fix_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
     stale_parser.add_argument("--queue", default=None)
     stale_parser.add_argument("--task-type", default=None)
 
-    move_transcribe_parser = fix_subparsers.add_parser(
-        "move-transcribe",
-        help="Move transcribe tasks",
+    move_media_parser = fix_subparsers.add_parser(
+        "move-media",
+        aliases=["move-transcribe"],
+        help="Move media tasks into the media queue",
     )
-    move_transcribe_parser.add_argument("--status", dest="statuses", action="append")
+    move_media_parser.add_argument("--status", dest="statuses", action="append")
 
     move_queue_parser = fix_subparsers.add_parser("move-queue", help="Move tasks between queues")
     move_queue_parser.add_argument("--from-queue", required=True)

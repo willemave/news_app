@@ -25,8 +25,7 @@ def mock_dependencies():
         patch("app.pipeline.worker.get_queue_service") as mock_queue,
         patch("app.pipeline.worker.get_task_queue_gateway") as mock_queue_gateway,
         patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
-        patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
-        patch("app.pipeline.worker.PodcastTranscribeWorker") as mock_transcribe,
+        patch("app.pipeline.worker.PodcastMediaWorker") as mock_media,
         patch("app.pipeline.worker.get_db") as mock_get_db,
     ):
         yield {
@@ -35,8 +34,7 @@ def mock_dependencies():
             "queue": mock_queue,
             "queue_gateway": mock_queue_gateway,
             "registry": mock_registry,
-            "download": mock_download,
-            "transcribe": mock_transcribe,
+            "media": mock_media,
             "get_db": mock_get_db,
         }
 
@@ -52,8 +50,7 @@ class TestContentWorker:
         assert worker.http_service is not None
         assert worker.queue_service is not None
         assert worker.strategy_registry is not None
-        assert worker.podcast_download_worker is not None
-        assert worker.podcast_transcribe_worker is not None
+        assert worker.podcast_media_worker is not None
 
     def test_process_content_not_found(self, mock_dependencies):
         """Test processing when content not found."""
@@ -372,6 +369,7 @@ class TestContentWorker:
         mock_content.id = 1472
         mock_content.url = "https://signalsandthreads.com/why-ml-needs-a-new-programming-language"
         mock_content.content_type = ContentType.ARTICLE.value
+        mock_content.content_metadata = {}
 
         content_data = ContentData(
             id=1472,
@@ -466,10 +464,6 @@ class TestContentWorker:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_content
         mock_dependencies["get_db"].return_value.__enter__.return_value = mock_db
 
-        # Mock podcast workers
-        worker.podcast_download_worker.process_download_task.return_value = True
-        worker.podcast_transcribe_worker.process_transcribe_task.return_value = True
-
         # Mock queue gateway for task creation
         worker.queue_gateway.enqueue.side_effect = [1, 2]  # Return task IDs
 
@@ -479,9 +473,12 @@ class TestContentWorker:
             result = worker._process_podcast_sync(content_data)
 
         assert result is True
-        # Should have created download task (since file_path is not in metadata)
+        # Should have created a unified media task
         assert worker.queue_gateway.enqueue.call_count == 1
-        worker.queue_gateway.enqueue.assert_called_with(TaskType.DOWNLOAD_AUDIO, content_id=456)
+        worker.queue_gateway.enqueue.assert_called_with(
+            TaskType.PROCESS_PODCAST_MEDIA,
+            content_id=456,
+        )
 
     def test_process_youtube_podcast_enqueues_summarize_without_download(
         self,

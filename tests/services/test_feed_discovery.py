@@ -54,7 +54,12 @@ def _stub_direction_selector(db_session, user_id: int) -> DiscoveryDirectionPlan
     )
 
 
-def _stub_lane_planner(plan: DiscoveryDirectionPlan) -> DiscoveryLanePlan:
+def _stub_lane_planner(
+    _db_session,
+    _user_id: int,
+    plan: DiscoveryDirectionPlan,
+) -> DiscoveryLanePlan:
+    assert plan.directions
     return DiscoveryLanePlan(
         lanes=[
             DiscoveryLane(
@@ -99,9 +104,12 @@ def _stub_exa_search(query: str, num_results: int) -> list[ExaSearchResult]:
 
 
 def _stub_candidate_extractor(
+    _db_session,
+    _user_id: int,
     lane: DiscoveryLane,
     results: list[ExaSearchResult],
 ) -> DiscoveryCandidateBatch:
+    assert lane.name
     return DiscoveryCandidateBatch(
         candidates=[
             DiscoveryCandidate(

@@ -20,6 +20,7 @@ from app.pipeline.handlers.generate_news_digest import GenerateNewsDigestHandler
 from app.pipeline.handlers.onboarding_discover import OnboardingDiscoverHandler
 from app.pipeline.handlers.process_content import ProcessContentHandler
 from app.pipeline.handlers.process_news_item import ProcessNewsItemHandler
+from app.pipeline.handlers.process_podcast_media import ProcessPodcastMediaHandler
 from app.pipeline.handlers.scrape import ScrapeHandler
 from app.pipeline.handlers.summarize import SummarizeHandler
 from app.pipeline.handlers.sync_integration import SyncIntegrationHandler
@@ -110,6 +111,7 @@ class SequentialTaskProcessor:
             AnalyzeUrlHandler(),
             ProcessContentHandler(),
             ProcessNewsItemHandler(),
+            ProcessPodcastMediaHandler(),
             DownloadAudioHandler(),
             TranscribeHandler(),
             SummarizeHandler(),

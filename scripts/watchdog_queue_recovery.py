@@ -2,8 +2,8 @@
 """Automated queue watchdog for recovery actions.
 
 Runs the same safety actions operators have been running manually:
-1. Move transcribe tasks into the dedicated transcribe queue.
-2. Requeue stale transcribe processing tasks.
+1. Move media tasks into the dedicated media queue.
+2. Requeue stale media processing tasks.
 3. Requeue stale process_content processing tasks.
 
 The script supports one-shot mode (cron) and loop mode (supervisor/systemd).
@@ -30,7 +30,7 @@ from app.core.logging import get_logger, setup_logging  # noqa: E402
 from app.core.observability import bound_log_context, build_log_extra  # noqa: E402
 from app.core.settings import get_settings  # noqa: E402
 from app.models.schema import ProcessingTask  # noqa: E402
-from app.services.queue import TaskQueue, TaskStatus, TaskType  # noqa: E402
+from app.services.queue import TASK_QUEUE_BY_TYPE, TaskQueue, TaskStatus, TaskType  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -38,6 +38,11 @@ PROCESSING_TIMESTAMP_EXPR = func.coalesce(
     ProcessingTask.started_at,
     ProcessingTask.completed_at,
     ProcessingTask.created_at,
+)
+MEDIA_TASK_TYPES = sorted(
+    task_type.value
+    for task_type, queue_name in TASK_QUEUE_BY_TYPE.items()
+    if queue_name == TaskQueue.MEDIA
 )
 
 
@@ -58,16 +63,16 @@ class WatchdogRunResult:
     started_at: datetime
     finished_at: datetime
     dry_run: bool
-    moved_transcribe: ActionResult
-    requeued_transcribe: ActionResult
+    moved_media: ActionResult
+    requeued_media: ActionResult
     requeued_process_content: ActionResult
 
     @property
     def total_touched(self) -> int:
         """Return the total touched tasks across all actions."""
         return (
-            self.moved_transcribe.touched_count
-            + self.requeued_transcribe.touched_count
+            self.moved_media.touched_count
+            + self.requeued_media.touched_count
             + self.requeued_process_content.touched_count
         )
 
@@ -103,22 +108,22 @@ def _create_session_factory(database_url: str | None = None) -> tuple[sessionmak
     return sessionmaker(bind=engine, autocommit=False, autoflush=False), effective_database_url
 
 
-def _move_transcribe_tasks(
+def _move_media_tasks(
     session: Session,
     *,
     dry_run: bool,
     limit: int | None,
 ) -> ActionResult:
-    """Move transcribe tasks to the transcribe queue."""
+    """Move media tasks to the media queue."""
     query = (
         session.query(ProcessingTask)
-        .filter(ProcessingTask.task_type == TaskType.TRANSCRIBE.value)
+        .filter(ProcessingTask.task_type.in_(MEDIA_TASK_TYPES))
         .filter(
             ProcessingTask.status.in_(
                 [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
             )
         )
-        .filter(ProcessingTask.queue_name != TaskQueue.TRANSCRIBE.value)
+        .filter(ProcessingTask.queue_name != TaskQueue.MEDIA.value)
         .order_by(ProcessingTask.id.asc())
     )
     if limit:
@@ -129,14 +134,15 @@ def _move_transcribe_tasks(
 
     if not dry_run:
         for row in rows:
-            row.queue_name = TaskQueue.TRANSCRIBE.value
+            row.queue_name = TaskQueue.MEDIA.value
 
     return ActionResult(
-        action_name="move_transcribe",
+        action_name="move_media",
         touched_count=len(rows),
         task_ids=task_ids,
         metadata={
-            "target_queue": TaskQueue.TRANSCRIBE.value,
+            "target_queue": TaskQueue.MEDIA.value,
+            "task_types": MEDIA_TASK_TYPES,
             "statuses": [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value],
             "limit": limit,
         },
@@ -146,17 +152,18 @@ def _move_transcribe_tasks(
 def _requeue_stale_tasks(
     session: Session,
     *,
-    task_type: TaskType,
+    task_types: list[str],
+    action_name: str,
     stale_hours: float,
     dry_run: bool,
     limit: int | None,
 ) -> ActionResult:
-    """Requeue stale processing tasks for a given task type."""
+    """Requeue stale processing tasks for one logical task family."""
     cutoff = datetime.now(UTC) - timedelta(hours=stale_hours)
     query = (
         session.query(ProcessingTask)
         .filter(ProcessingTask.status == TaskStatus.PROCESSING.value)
-        .filter(ProcessingTask.task_type == task_type.value)
+        .filter(ProcessingTask.task_type.in_(task_types))
         .filter(cutoff >= PROCESSING_TIMESTAMP_EXPR)
         .order_by(PROCESSING_TIMESTAMP_EXPR.asc(), ProcessingTask.id.asc())
     )
@@ -177,11 +184,11 @@ def _requeue_stale_tasks(
             row.retry_count = int(row.retry_count or 0) + 1
 
     return ActionResult(
-        action_name=f"requeue_stale_{task_type.value}",
+        action_name=action_name,
         touched_count=len(rows),
         task_ids=task_ids,
         metadata={
-            "task_type": task_type.value,
+            "task_types": task_types,
             "stale_hours": stale_hours,
             "limit": limit,
         },
@@ -193,8 +200,8 @@ def _record_watchdog_events(result: WatchdogRunResult) -> None:
     run_id = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
 
     action_results = [
-        result.moved_transcribe,
-        result.requeued_transcribe,
+        result.moved_media,
+        result.requeued_media,
         result.requeued_process_content,
     ]
     for action in action_results:
@@ -229,8 +236,8 @@ def _record_watchdog_events(result: WatchdogRunResult) -> None:
             context_data={
                 "run_id": run_id,
                 "total_touched": result.total_touched,
-                "moved_transcribe": result.moved_transcribe.touched_count,
-                "requeued_transcribe": result.requeued_transcribe.touched_count,
+                "moved_media": result.moved_media.touched_count,
+                "requeued_media": result.requeued_media.touched_count,
                 "requeued_process_content": result.requeued_process_content.touched_count,
                 "dry_run": result.dry_run,
             },
@@ -244,8 +251,8 @@ def _send_slack_alert(webhook_url: str, result: WatchdogRunResult) -> tuple[bool
         "text": (
             "Queue watchdog touched tasks"
             f" | total={result.total_touched}"
-            f" move_transcribe={result.moved_transcribe.touched_count}"
-            f" requeue_transcribe={result.requeued_transcribe.touched_count}"
+            f" move_media={result.moved_media.touched_count}"
+            f" requeue_media={result.requeued_media.touched_count}"
             f" requeue_process_content={result.requeued_process_content.touched_count}"
         )
     }
@@ -289,7 +296,7 @@ def _record_watchdog_alert_event(
 def run_watchdog_once(
     *,
     session: Session,
-    transcribe_stale_hours: float,
+    media_stale_hours: float,
     process_content_stale_hours: float,
     alert_threshold: int,
     slack_webhook_url: str | None,
@@ -299,21 +306,23 @@ def run_watchdog_once(
     """Execute one watchdog cycle and optionally persist/alert."""
     started_at = datetime.now(UTC)
 
-    moved_transcribe = _move_transcribe_tasks(
+    moved_media = _move_media_tasks(
         session,
         dry_run=dry_run,
         limit=action_limit,
     )
-    requeued_transcribe = _requeue_stale_tasks(
+    requeued_media = _requeue_stale_tasks(
         session,
-        task_type=TaskType.TRANSCRIBE,
-        stale_hours=transcribe_stale_hours,
+        task_types=MEDIA_TASK_TYPES,
+        action_name="requeue_stale_media",
+        stale_hours=media_stale_hours,
         dry_run=dry_run,
         limit=action_limit,
     )
     requeued_process_content = _requeue_stale_tasks(
         session,
-        task_type=TaskType.PROCESS_CONTENT,
+        task_types=[TaskType.PROCESS_CONTENT.value],
+        action_name="requeue_stale_process_content",
         stale_hours=process_content_stale_hours,
         dry_run=dry_run,
         limit=action_limit,
@@ -324,8 +333,8 @@ def run_watchdog_once(
         started_at=started_at,
         finished_at=finished_at,
         dry_run=dry_run,
-        moved_transcribe=moved_transcribe,
-        requeued_transcribe=requeued_transcribe,
+        moved_media=moved_media,
+        requeued_media=requeued_media,
         requeued_process_content=requeued_process_content,
     )
 
@@ -364,10 +373,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Override database URL instead of using app settings/.env",
     )
     parser.add_argument(
-        "--transcribe-stale-hours",
+        "--media-stale-hours",
         type=float,
-        default=_env_float("QUEUE_WATCHDOG_TRANSCRIBE_STALE_HOURS", 2.0),
-        help="Requeue transcribe processing tasks older than this many hours",
+        default=_env_float(
+            "QUEUE_WATCHDOG_MEDIA_STALE_HOURS",
+            _env_float("QUEUE_WATCHDOG_TRANSCRIBE_STALE_HOURS", 2.0),
+        ),
+        help="Requeue media processing tasks older than this many hours",
     )
     parser.add_argument(
         "--process-content-stale-hours",
@@ -414,8 +426,8 @@ def _print_result(result: WatchdogRunResult) -> None:
     print(f"  started_at: {result.started_at.isoformat()}")
     print(f"  finished_at: {result.finished_at.isoformat()}")
     print(f"  dry_run: {result.dry_run}")
-    print(f"  move_transcribe: {result.moved_transcribe.touched_count}")
-    print(f"  requeue_stale_transcribe: {result.requeued_transcribe.touched_count}")
+    print(f"  move_media: {result.moved_media.touched_count}")
+    print(f"  requeue_stale_media: {result.requeued_media.touched_count}")
     print(
         "  requeue_stale_process_content: "
         f"{result.requeued_process_content.touched_count}"
@@ -451,7 +463,7 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     result = run_watchdog_once(
                         session=session,
-                        transcribe_stale_hours=float(args.transcribe_stale_hours),
+                        media_stale_hours=float(args.media_stale_hours),
                         process_content_stale_hours=float(args.process_content_stale_hours),
                         alert_threshold=max(int(args.alert_threshold), 1),
                         slack_webhook_url=args.slack_webhook_url,

@@ -59,7 +59,8 @@ jobs:
           SSH_OPTS=(-p "$PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes)
           REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/news_app}"
           OWNER_GROUP="${DEPLOY_OWNER_GROUP:-newsapp:newsapp}"
-          PROGRAMS="${DEPLOY_PROGRAMS:-news_app_server news_app_workers_content news_app_workers_image news_app_workers_transcribe news_app_workers_onboarding news_app_workers_twitter news_app_workers_chat news_app_queue_watchdog news_app_bgutil_provider}"
+          PROGRAMS="${DEPLOY_PROGRAMS:-news_app_server news_app_workers_content news_app_workers_image news_app_workers_media news_app_workers_onboarding news_app_workers_twitter news_app_workers_chat news_app_queue_watchdog news_app_bgutil_provider}"
+          LEGACY_PROGRAMS="news_app_workers_transcribe"
 
           echo "→ Verifying SSH connectivity"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "echo 'SSH ok: $(whoami)@$(hostname) on port $PORT'"
@@ -131,26 +132,25 @@ jobs:
             sudo chmod 644 \"\$TARGET_CONF\"
           '"
 
-          echo "→ Resolving supervisor programs to stop/start"
-          RESOLVED_PROGRAMS=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "bash -lc '
+          echo "→ Resolving supervisor programs to stop"
+          STOP_PROGRAMS=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "bash -lc '
             set -euo pipefail
             existing=\$(sudo supervisorctl status | sed -E \"s/[[:space:]].*$//\")
             resolved=\"\"
-            for p in $PROGRAMS; do
+            for p in $PROGRAMS $LEGACY_PROGRAMS; do
               if echo \"\$existing\" | grep -qx \"\$p\"; then
                 resolved+=\"\$p \"
               fi
             done
             echo \"\${resolved}\" | xargs
           '")
-          if [[ -z "${RESOLVED_PROGRAMS:-}" ]]; then
-            echo "No matching supervisor programs found for: $PROGRAMS" >&2
-            exit 1
+          if [[ -n "${STOP_PROGRAMS:-}" ]]; then
+            echo "→ Supervisor programs to stop: $STOP_PROGRAMS"
+            echo "→ Stopping supervisor programs"
+            ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl stop $STOP_PROGRAMS || true"
+          else
+            echo "→ No matching supervisor programs were running before deploy"
           fi
-          echo "→ Supervisor programs: $RESOLVED_PROGRAMS"
-
-          echo "→ Stopping supervisor programs"
-          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl stop $RESOLVED_PROGRAMS || true"
 
           echo "→ Setting up Python environment on remote (uv venv, deps, playwright)"
           ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo -u $SERVICE_USER -H bash -lc 'cd $REMOTE_DIR && ./scripts/setup_uv_env.sh --python-version $PY_VERSION --recreate'"
@@ -170,4 +170,21 @@ jobs:
           '"
 
           echo "→ Restarting supervisor programs"
-          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl start $RESOLVED_PROGRAMS && sudo supervisorctl status"
+          START_PROGRAMS=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "bash -lc '
+            set -euo pipefail
+            sudo supervisorctl reread >/dev/null
+            sudo supervisorctl update >/dev/null
+            existing=\$(sudo supervisorctl status | sed -E \"s/[[:space:]].*$//\")
+            resolved=\"\"
+            for p in $PROGRAMS; do
+              if echo \"\$existing\" | grep -qx \"\$p\"; then
+                resolved+=\"\$p \"
+              fi
+            done
+            echo \"\${resolved}\" | xargs
+          '")
+          if [[ -z "${START_PROGRAMS:-}" ]]; then
+            echo "No configured supervisor programs available to start after update: $PROGRAMS" >&2
+            exit 1
+          fi
+          ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl start $START_PROGRAMS && sudo supervisorctl status"

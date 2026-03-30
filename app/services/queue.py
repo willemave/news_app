@@ -18,8 +18,9 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.ANALYZE_URL: TaskQueue.CONTENT,
     TaskType.PROCESS_CONTENT: TaskQueue.CONTENT,
     TaskType.PROCESS_NEWS_ITEM: TaskQueue.CONTENT,
-    TaskType.DOWNLOAD_AUDIO: TaskQueue.CONTENT,
-    TaskType.TRANSCRIBE: TaskQueue.TRANSCRIBE,
+    TaskType.PROCESS_PODCAST_MEDIA: TaskQueue.MEDIA,
+    TaskType.DOWNLOAD_AUDIO: TaskQueue.MEDIA,
+    TaskType.TRANSCRIBE: TaskQueue.MEDIA,
     TaskType.SUMMARIZE: TaskQueue.CONTENT,
     TaskType.FETCH_DISCUSSION: TaskQueue.CONTENT,
     TaskType.GENERATE_IMAGE: TaskQueue.IMAGE,
@@ -32,6 +33,7 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
 
 DEDUPABLE_CONTENT_TASK_TYPES: set[TaskType] = {
     TaskType.PROCESS_CONTENT,
+    TaskType.PROCESS_PODCAST_MEDIA,
     TaskType.SUMMARIZE,
     TaskType.FETCH_DISCUSSION,
     TaskType.GENERATE_IMAGE,

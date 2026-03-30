@@ -28,6 +28,7 @@ _SAFE_HEADER_ALLOWLIST = {
 TASK_EVENT_NAMES = {
     "analyze_url": "content.analyze_url",
     "process_content": "content.process_content",
+    "process_podcast_media": "content.process_podcast_media",
     "download_audio": "content.download_audio",
     "transcribe": "content.transcribe",
     "summarize": "content.summarize",

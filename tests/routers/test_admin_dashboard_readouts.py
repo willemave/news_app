@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from app.core.deps import require_admin
 from app.main import app
-from app.models.schema import Content, EventLog, OnboardingDiscoveryRun, ProcessingTask
+from app.models.schema import Content, OnboardingDiscoveryRun, ProcessingTask
 from app.models.user import User
 
 
@@ -68,58 +68,6 @@ def test_admin_dashboard_shows_operational_readouts(client, db_session, test_use
 
         db_session.add_all(
             [
-                EventLog(
-                    event_type="scraper_run",
-                    event_name="all",
-                    status="started",
-                    data={},
-                    created_at=now,
-                ),
-                EventLog(
-                    event_type="scraper_stats",
-                    event_name="hackernews",
-                    status="completed",
-                    data={"scraped": 12, "saved": 8, "duplicates": 2, "errors": 1},
-                    created_at=now,
-                ),
-                EventLog(
-                    event_type="scraper_error",
-                    event_name="reddit",
-                    status="failed",
-                    data={"error": "boom"},
-                    created_at=now,
-                ),
-                EventLog(
-                    event_type="queue_watchdog_run",
-                    event_name="queue_recovery",
-                    status="completed",
-                    data={
-                        "total_touched": 3,
-                        "moved_transcribe": 1,
-                        "requeued_transcribe": 1,
-                        "requeued_process_content": 1,
-                    },
-                    created_at=now,
-                ),
-                EventLog(
-                    event_type="queue_watchdog_action",
-                    event_name="move_transcribe",
-                    status="completed",
-                    data={"touched_count": 1},
-                    created_at=now,
-                ),
-                EventLog(
-                    event_type="queue_watchdog_alert",
-                    event_name="slack",
-                    status="sent",
-                    data={"total_touched": 3},
-                    created_at=now,
-                ),
-            ]
-        )
-
-        db_session.add_all(
-            [
                 OnboardingDiscoveryRun(
                     user_id=test_user.id,
                     status="completed",
@@ -153,8 +101,6 @@ def test_admin_dashboard_shows_operational_readouts(client, db_session, test_use
         assert "User Lifecycle" in body
 
         assert "onboarding" in body
-        assert "hackernews" in body
-        assert "reddit" in body
         assert "Tutorial Done" in body
     finally:
         app.dependency_overrides.pop(require_admin, None)

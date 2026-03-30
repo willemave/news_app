@@ -20,7 +20,7 @@ from admin.log_parsing import (
 )
 from admin.sql_guard import validate_readonly_sql
 from app.core.redaction import redact_value
-from app.models.schema import Content, EventLog, LlmUsageRecord, ProcessingTask
+from app.models.schema import Content, LlmUsageRecord, ProcessingTask
 from app.models.user import User
 
 DEFAULT_ROW_LIMIT = 200
@@ -226,40 +226,13 @@ def events_list(
     limit: int = 100,
     unsafe_raw: bool = False,
 ) -> dict[str, Any]:
-    """Return recent event-log rows with optional filters."""
-    bounded_limit = _bounded_limit(limit)
-    engine = create_engine(context.database_url, pool_pre_ping=True)
-    session_factory = sessionmaker(bind=engine)
-    try:
-        with session_factory() as session:
-            query = session.query(EventLog)
-            if event_type:
-                query = query.filter(EventLog.event_type == event_type)
-            if event_name:
-                query = query.filter(EventLog.event_name == event_name)
-            if status:
-                query = query.filter(EventLog.status == status)
-            if since is not None:
-                query = query.filter(EventLog.created_at >= _naive_utc(since))
-            if until is not None:
-                query = query.filter(EventLog.created_at <= _naive_utc(until))
-            rows = query.order_by(EventLog.created_at.desc()).limit(bounded_limit).all()
-            serialized = []
-            for row in rows:
-                data = row.data if unsafe_raw else redact_value(row.data)
-                serialized.append(
-                    {
-                        "id": row.id,
-                        "event_type": row.event_type,
-                        "event_name": row.event_name,
-                        "status": row.status,
-                        "created_at": row.created_at,
-                        "data": data,
-                    }
-                )
-            return {"limit": bounded_limit, "rows": serialized, "redacted": not unsafe_raw}
-    finally:
-        engine.dispose()
+    """Return event rows.
+
+    EventLog has been removed from the app schema, so this remains a stable empty
+    response for older admin CLI surfaces.
+    """
+    del context, event_type, event_name, status, since, until, unsafe_raw
+    return {"limit": _bounded_limit(limit), "rows": [], "redacted": True}
 
 
 def health_snapshot(context: RemoteContext) -> dict[str, Any]:
@@ -270,8 +243,6 @@ def health_snapshot(context: RemoteContext) -> dict[str, Any]:
         with session_factory() as session:
             content_total = int(session.query(func.count(Content.id)).scalar() or 0)
             task_total = int(session.query(func.count(ProcessingTask.id)).scalar() or 0)
-            event_total = int(session.query(func.count(EventLog.id)).scalar() or 0)
-
             content_by_status = dict(
                 session.query(Content.status, func.count(Content.id))
                 .group_by(Content.status)
@@ -293,7 +264,7 @@ def health_snapshot(context: RemoteContext) -> dict[str, Any]:
                     "total": task_total,
                     "by_status": {str(key): int(value) for key, value in task_by_status.items()},
                 },
-                "events": {"total": event_total},
+                "events": {"total": 0},
                 "usage": {"latest_record_at": latest_usage_at},
             }
     finally:

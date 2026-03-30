@@ -67,12 +67,16 @@ class ContentProcessingWorkflow:
             return False
 
         if content.content_type in {ContentType.ARTICLE, ContentType.NEWS}:
+            if content.metadata.get("excerpt"):
+                return True
             summary_payload = content.metadata.get("content_to_summarize")
             return isinstance(summary_payload, str) and bool(summary_payload.strip())
 
         if content.content_type == ContentType.PODCAST:
             transcript = content.metadata.get("transcript")
             if isinstance(transcript, str) and transcript.strip():
+                return True
+            if content.metadata.get("has_transcript"):
                 return True
             summary_payload = content.metadata.get("content_to_summarize")
             return isinstance(summary_payload, str) and bool(summary_payload.strip())
@@ -85,5 +89,5 @@ class ContentProcessingWorkflow:
         if content.content_type in {ContentType.ARTICLE, ContentType.NEWS}:
             return TaskType.SUMMARIZE
         if content.content_type == ContentType.PODCAST:
-            return TaskType.DOWNLOAD_AUDIO
+            return TaskType.PROCESS_PODCAST_MEDIA
         return None

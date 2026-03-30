@@ -1,5 +1,7 @@
 import os
 import re
+import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -15,6 +17,7 @@ from app.domain.converters import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
 from app.scraping.youtube_unified import YouTubeClientConfig, load_youtube_client_config
 from app.services.apple_podcasts import resolve_apple_podcast_episode
+from app.services.content_bodies import sync_content_body_storage
 from app.services.queue import TaskType, get_queue_service
 from app.services.whisper_local import get_whisper_local_service
 
@@ -662,6 +665,232 @@ class PodcastDownloadWorker:
                 )
 
             return False
+
+
+class PodcastMediaWorker:
+    """Worker for the full podcast media hot path on local scratch storage."""
+
+    def __init__(self) -> None:
+        self.scratch_root = settings.podcast_scratch_root
+        self.scratch_root.mkdir(parents=True, exist_ok=True)
+        self.queue_service = get_queue_service()
+        self.download_worker = PodcastDownloadWorker()
+        self.transcribe_worker = PodcastTranscribeWorker()
+
+    @staticmethod
+    def _log_extra(
+        *,
+        operation: str,
+        content_id: int | None = None,
+        status: str | None = None,
+        duration_ms: float | None = None,
+        context_data: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return build_log_extra(
+            component="podcast_media_worker",
+            operation=operation,
+            event_name="content.process_podcast_media",
+            status=status,
+            duration_ms=duration_ms,
+            content_id=content_id,
+            context_data=context_data,
+        )
+
+    def _scratch_dir(self, content_id: int) -> Path:
+        return self.scratch_root / f"content-{content_id}"
+
+    def _resolve_audio_url(self, content, db_content: Content) -> str | None:  # noqa: ANN001
+        audio_url = content.metadata.get("audio_url")
+        if audio_url:
+            return str(audio_url)
+
+        platform = (content.metadata.get("platform") or db_content.platform or "").lower()
+        is_apple_url = self.download_worker._is_apple_podcasts_url(str(content.url))
+        if platform == "apple_podcasts" or is_apple_url:
+            resolution = resolve_apple_podcast_episode(str(content.url))
+            if resolution.feed_url:
+                content.metadata.setdefault("feed_url", resolution.feed_url)
+            if resolution.episode_title:
+                content.metadata.setdefault("episode_title", resolution.episode_title)
+                if not content.title:
+                    content.title = resolution.episode_title
+            if resolution.audio_url:
+                content.metadata["audio_url"] = resolution.audio_url
+                return resolution.audio_url
+        return None
+
+    def _download_to_scratch(
+        self,
+        *,
+        content_id: int,
+        title: str | None,
+        audio_url: str,
+        scratch_dir: Path,
+    ) -> Path:
+        scratch_dir.mkdir(parents=True, exist_ok=True)
+        helper = self.download_worker
+        original_base_dir = helper.base_dir
+        helper.base_dir = scratch_dir
+        try:
+            if helper._is_youtube_url(audio_url):
+                return helper._download_youtube_audio(audio_url, title, content_id)
+
+            resolved_audio_url = helper._extract_actual_audio_url(audio_url)
+            if not helper._validate_url(resolved_audio_url):
+                raise ValueError("Invalid audio URL format")
+
+            extension = get_file_extension_from_url(resolved_audio_url)
+            filename = f"{sanitize_filename(title or f'podcast_{content_id}')}{extension}"
+            audio_path = scratch_dir / filename
+            helper._download_with_retry(resolved_audio_url, audio_path)
+            return audio_path
+        finally:
+            helper.base_dir = original_base_dir
+
+    def _normalize_audio_file(self, audio_path: Path) -> Path:
+        ffmpeg_binary = shutil.which("ffmpeg")
+        if ffmpeg_binary is None:
+            return audio_path
+
+        normalized_path = audio_path.with_suffix(".normalized.wav")
+        result = subprocess.run(
+            [
+                ffmpeg_binary,
+                "-y",
+                "-i",
+                str(audio_path),
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                str(normalized_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0 or not normalized_path.exists():
+            return audio_path
+        return normalized_path
+
+    def process_media_task(self, content_id: int) -> bool:
+        """Run podcast download + local normalization + transcription in one task."""
+        started_at = datetime.now(UTC)
+        logger.info(
+            "Podcast media task started",
+            extra=self._log_extra(
+                operation="process_podcast_media",
+                content_id=content_id,
+                status="started",
+            ),
+        )
+        scratch_dir = self._scratch_dir(content_id)
+
+        try:
+            with get_db() as db:
+                db_content = db.query(Content).filter(Content.id == content_id).first()
+                if not db_content:
+                    logger.error("Content %s not found", content_id)
+                    return False
+
+                content = content_to_domain(db_content)
+                transcript_text = None
+                reused_embedded_transcript = False
+                if content.metadata.get("youtube_video"):
+                    existing_transcript = content.metadata.get("transcript")
+                    transcript_candidate = existing_transcript or content.metadata.get(
+                        "content_to_summarize"
+                    )
+                    if isinstance(transcript_candidate, str) and transcript_candidate.strip():
+                        transcript_text = transcript_candidate.strip()
+                        reused_embedded_transcript = True
+
+                detected_language = None
+                if transcript_text is None:
+                    audio_url = self._resolve_audio_url(content, db_content)
+                    if not audio_url:
+                        db_content.status = ContentStatus.FAILED.value
+                        db_content.error_message = "No audio URL found"
+                        db.commit()
+                        return False
+
+                    audio_path = self._download_to_scratch(
+                        content_id=content_id,
+                        title=content.title,
+                        audio_url=audio_url,
+                        scratch_dir=scratch_dir,
+                    )
+                    normalized_audio_path = self._normalize_audio_file(audio_path)
+                    self.transcribe_worker._get_transcription_service()
+                    transcript_text, detected_language = (
+                        self.transcribe_worker.transcription_service.transcribe_audio(
+                            normalized_audio_path
+                        )
+                    )
+                    transcript_text = transcript_text.strip()
+
+                content.metadata["transcription_date"] = datetime.now(UTC).isoformat()
+                content.metadata["transcription_service"] = (
+                    "youtube" if content.metadata.get("youtube_video") else "whisper_local"
+                )
+                content.metadata["transcript"] = transcript_text
+                if detected_language:
+                    content.metadata["detected_language"] = detected_language
+                content.status = ContentStatus.PROCESSING
+                content.processed_at = datetime.now(UTC)
+
+                domain_to_content(content, db_content)
+                sync_content_body_storage(db, content=db_content)
+                db.commit()
+
+                self.queue_service.enqueue(TaskType.SUMMARIZE, content_id=content_id)
+                duration_ms = (datetime.now(UTC) - started_at).total_seconds() * 1000
+                logger.info(
+                    "Podcast media task completed",
+                    extra=self._log_extra(
+                        operation="process_podcast_media",
+                        content_id=content_id,
+                        status="completed",
+                        duration_ms=duration_ms,
+                        context_data={
+                            "scratch_dir": str(scratch_dir),
+                            "reused_embedded_transcript": reused_embedded_transcript,
+                            "detected_language": detected_language,
+                            "transcript_chars": len(transcript_text),
+                            "next_task_types": [TaskType.SUMMARIZE.value],
+                        },
+                    ),
+                )
+                return True
+        except Exception as exc:  # noqa: BLE001
+            duration_ms = (datetime.now(UTC) - started_at).total_seconds() * 1000
+            logger.exception(
+                "Podcast media task failed",
+                extra=self._log_extra(
+                    operation="process_podcast_media",
+                    content_id=content_id,
+                    status="failed",
+                    duration_ms=duration_ms,
+                    context_data={"failure_class": type(exc).__name__},
+                ),
+            )
+            try:
+                with get_db() as db:
+                    db_content = db.query(Content).filter(Content.id == content_id).first()
+                    if db_content:
+                        db_content.status = ContentStatus.FAILED.value
+                        db_content.error_message = str(exc)[:500]
+                        db_content.retry_count += 1
+                        db.commit()
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Failed to persist podcast media failure for content %s",
+                    content_id,
+                )
+            return False
+        finally:
+            if scratch_dir.exists():
+                shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 class PodcastTranscribeWorker:

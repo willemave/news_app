@@ -39,6 +39,7 @@ class TaskType(StrEnum):
     ANALYZE_URL = "analyze_url"
     PROCESS_CONTENT = "process_content"
     PROCESS_NEWS_ITEM = "process_news_item"
+    PROCESS_PODCAST_MEDIA = "process_podcast_media"
     DOWNLOAD_AUDIO = "download_audio"
     TRANSCRIBE = "transcribe"
     SUMMARIZE = "summarize"
@@ -55,8 +56,8 @@ class TaskQueue(StrEnum):
     """Queue partitions used by workers."""
 
     CONTENT = "content"
+    MEDIA = "media"
     IMAGE = "image"
-    TRANSCRIBE = "transcribe"
     ONBOARDING = "onboarding"
     TWITTER = "twitter"
     CHAT = "chat"

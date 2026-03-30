@@ -17,10 +17,11 @@ from app.models.metadata_state import (
 )
 from app.models.schema import Content
 from app.pipeline.checkout import get_checkout_manager
-from app.pipeline.podcast_workers import PodcastDownloadWorker, PodcastTranscribeWorker
+from app.pipeline.podcast_workers import PodcastMediaWorker
 from app.pipeline.workflows.content_processing_workflow import ContentProcessingWorkflow
 from app.processing_strategies.registry import get_strategy_registry
 from app.processing_strategies.youtube_strategy import YouTubeProcessorStrategy
+from app.services.content_bodies import sync_content_body_storage
 from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.exa_client import ExaClientError, exa_get_contents
 from app.services.gateways.task_queue_gateway import get_task_queue_gateway
@@ -53,8 +54,7 @@ class ContentWorker:
         self.queue_service = get_queue_service()
         self.queue_gateway = get_task_queue_gateway()
         self.strategy_registry = get_strategy_registry()
-        self.podcast_download_worker = PodcastDownloadWorker()
-        self.podcast_transcribe_worker = PodcastTranscribeWorker()
+        self.podcast_media_worker = PodcastMediaWorker()
         self.processing_workflow = ContentProcessingWorkflow()
 
     def _mark_article_extraction_failure(
@@ -265,6 +265,7 @@ class ContentWorker:
                             preserve_latest_keys=DISCUSSION_PREVIEW_METADATA_KEYS,
                         )
                         domain_to_content(content, db_content)
+                        sync_content_body_storage(db, content=db_content)
                         try:
                             db.commit()
                             state_persisted = True
@@ -883,10 +884,10 @@ class ContentWorker:
                     domain_to_content(content, db_content)
                     db.commit()
 
-            # Queue download task
-            self.queue_gateway.enqueue(TaskType.DOWNLOAD_AUDIO, content_id=content.id)
+            # Queue podcast media task
+            self.queue_gateway.enqueue(TaskType.PROCESS_PODCAST_MEDIA, content_id=content.id)
 
-            logger.info(f"Queued download task for podcast {content.url}")
+            logger.info("Queued podcast media task for podcast %s", content.url)
 
             return True
 

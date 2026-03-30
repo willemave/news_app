@@ -4,24 +4,49 @@ from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
+import app.core.db as core_db
 from app.core.db import get_db
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ProcessingTask
+from app.models.schema import Base, Content, ContentBody, ProcessingTask
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
 from app.pipeline.task_models import TaskEnvelope
 from app.services.queue import QueueService, TaskType
 
 
+class _SummaryStub:
+    """Minimal serializable summary stub for integration tests."""
+
+    def __init__(self, summary: str) -> None:
+        self._summary = summary
+
+    def model_dump(self, mode: str = "json", by_alias: bool = True) -> dict[str, str]:
+        del mode, by_alias
+        return {"summary": self._summary}
+
+
 @pytest.fixture
 def setup_test_db():
-    """Setup test database with sample content."""
-    with get_db() as db:
-        # Clear existing test data
-        db.query(ProcessingTask).delete()
-        db.query(Content).delete()
-        db.commit()
+    """Setup an isolated test database with sample content."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    previous_engine = core_db._engine
+    previous_session_local = core_db._SessionLocal
+    previous_sqlite_log_flag = core_db._sqlite_runtime_diagnostics_logged
 
+    core_db._engine = engine
+    core_db._SessionLocal = session_factory
+    core_db._sqlite_runtime_diagnostics_logged = False
+    Base.metadata.create_all(bind=engine)
+
+    with get_db() as db:
         # Add test content
         test_contents = [
             Content(
@@ -35,12 +60,12 @@ def setup_test_db():
             ),
             Content(
                 id=2,
-                url="https://example.com/podcast1.mp3",
-                title="Test Podcast 1",
-                content_type=ContentType.PODCAST.value,
+                url="https://example.com/article2",
+                title="Test Article 2",
+                content_type=ContentType.ARTICLE.value,
                 status=ContentStatus.NEW.value,
                 created_at=datetime.now(UTC),
-                content_metadata={"audio_url": "https://example.com/podcast1.mp3"},
+                content_metadata={},
             ),
             Content(
                 id=3,
@@ -57,12 +82,14 @@ def setup_test_db():
             db.add(content)
         db.commit()
 
-        yield db
-
-        # Cleanup
-        db.query(ProcessingTask).delete()
-        db.query(Content).delete()
-        db.commit()
+    try:
+        yield
+    finally:
+        Base.metadata.drop_all(bind=engine)
+        core_db._engine = previous_engine
+        core_db._SessionLocal = previous_session_local
+        core_db._sqlite_runtime_diagnostics_logged = previous_sqlite_log_flag
+        engine.dispose()
 
 
 class TestPipelineIntegration:
@@ -92,9 +119,8 @@ class TestPipelineIntegration:
             mock_http_service.return_value = mock_http
 
             mock_llm = Mock()
-            mock_summary = Mock()
-            mock_summary.model_dump.return_value = {"summary": "Test summary"}
-            mock_llm.summarize_content.return_value = mock_summary
+            mock_summary = _SummaryStub("Test summary")
+            mock_llm.summarize.return_value = mock_summary
             mock_llm_service.return_value = mock_llm
 
             mock_strategy = Mock()
@@ -141,12 +167,23 @@ class TestPipelineIntegration:
                 )
 
             # Verify content was processed
-            with setup_test_db as db:
+            with get_db() as db:
                 content = db.query(Content).filter(Content.id == 1).first()
+                source_body = (
+                    db.query(ContentBody)
+                    .filter(
+                        ContentBody.content_id == 1,
+                        ContentBody.variant == "source",
+                    )
+                    .first()
+                )
                 assert content.status == ContentStatus.COMPLETED.value
                 assert content.processed_at is not None
                 assert content.content_metadata.get("summary", {}).get("summary") == "Test summary"
-                assert content.content_metadata.get("content") == "Test article content"
+                assert content.content_metadata.get("content") is None
+                assert content.content_metadata.get("excerpt")
+                assert content.search_text
+                assert source_body is not None
 
     @pytest.mark.integration
     def test_failed_task_retry_mechanism(self, setup_test_db):
@@ -154,7 +191,7 @@ class TestPipelineIntegration:
         queue_service = QueueService()
 
         # Create task for content that will fail
-        task_id = queue_service.enqueue(
+        queue_service.enqueue(
             task_type=TaskType.PROCESS_CONTENT,
             content_id=3,  # Failing article
         )
@@ -191,7 +228,7 @@ class TestPipelineIntegration:
             queue_service.retry_task(task["id"], delay_seconds=0)
 
             # Check retry count increased
-            with setup_test_db as db:
+            with get_db() as db:
                 updated_task = (
                     db.query(ProcessingTask).filter(ProcessingTask.id == task["id"]).first()
                 )
@@ -204,24 +241,16 @@ class TestPipelineIntegration:
         queue_service = QueueService()
 
         # Create multiple tasks
-        task_ids = []
         for content_id in [1, 2]:
-            task_id = queue_service.enqueue(
-                task_type=TaskType.PROCESS_CONTENT, content_id=content_id
-            )
-            task_ids.append(task_id)
-
-        processed_contents = []
+            queue_service.enqueue(task_type=TaskType.PROCESS_CONTENT, content_id=content_id)
 
         # Mock services
         with (
             patch("app.pipeline.worker.get_http_service") as mock_http_service,
             patch("app.pipeline.sequential_task_processor.get_llm_service") as mock_llm_service,
             patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
-            patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
-            patch("app.pipeline.worker.PodcastTranscribeWorker") as mock_transcribe,
         ):
-            # Setup mocks for both content types
+            # Setup mocks for concurrent article processing
             mock_http = Mock()
             mock_http.fetch_content.return_value = (
                 "<html><body>Content</body></html>",
@@ -230,9 +259,8 @@ class TestPipelineIntegration:
             mock_http_service.return_value = mock_http
 
             mock_llm = Mock()
-            mock_summary = Mock()
-            mock_summary.model_dump.return_value = {"summary": "Summary"}
-            mock_llm.summarize_content.return_value = mock_summary
+            mock_summary = _SummaryStub("Summary")
+            mock_llm.summarize.return_value = mock_summary
             mock_llm_service.return_value = mock_llm
 
             # Article strategy
@@ -252,20 +280,6 @@ class TestPipelineIntegration:
             mock_registry_instance = Mock()
             mock_registry_instance.get_strategy.return_value = mock_strategy
             mock_registry.return_value = mock_registry_instance
-
-            # Podcast workers
-            mock_download_worker = Mock()
-            mock_download_worker.process_download_task.return_value = True
-            mock_download.return_value = mock_download_worker
-
-            mock_transcribe_worker = Mock()
-            mock_transcribe_worker.process_transcribe_task.return_value = True
-            mock_transcribe.return_value = mock_transcribe_worker
-
-            # Track processed content
-            def track_processing(content_id, worker_id):
-                processed_contents.append((content_id, worker_id))
-                return True
 
             # Process tasks with multiple workers
             processor = SequentialTaskProcessor()
@@ -291,7 +305,7 @@ class TestPipelineIntegration:
                 )
 
             # Verify both tasks were processed
-            with setup_test_db as db:
+            with get_db() as db:
                 completed_tasks = (
                     db.query(ProcessingTask).filter(ProcessingTask.status == "completed").all()
                 )
@@ -303,7 +317,7 @@ class TestPipelineIntegration:
         queue_service = QueueService()
 
         # Test handling of invalid content ID
-        invalid_task_id = queue_service.enqueue(
+        queue_service.enqueue(
             task_type=TaskType.PROCESS_CONTENT,
             content_id=9999,  # Non-existent
         )
@@ -315,7 +329,7 @@ class TestPipelineIntegration:
         assert result.success is False
 
         # Test handling of invalid task type
-        with setup_test_db as db:
+        with get_db() as db:
             invalid_task = ProcessingTask(
                 task_type="INVALID_TYPE",
                 payload={"content_id": 1},
@@ -344,9 +358,7 @@ class TestPipelineIntegration:
         queue_service = QueueService()
 
         # Create scrape task
-        scrape_task_id = queue_service.enqueue(
-            task_type=TaskType.SCRAPE, payload={"sources": ["test"]}
-        )
+        queue_service.enqueue(task_type=TaskType.SCRAPE, payload={"sources": ["test"]})
 
         with patch("app.pipeline.handlers.scrape.ScraperRunner") as mock_runner:
             # Mock scraper to create new content
@@ -381,7 +393,7 @@ class TestPipelineIntegration:
             assert result.success is True
 
             # Verify new content was created and task queued
-            with setup_test_db as db:
+            with get_db() as db:
                 new_content = db.query(Content).filter(Content.url.like("%scraped.com%")).first()
                 assert new_content is not None
 

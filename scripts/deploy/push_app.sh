@@ -37,7 +37,7 @@ establish_ssh_connection() {
 #       --force-env                 Force deletion/recreation of the remote .venv
 #       --debug                     Verbose output; enable local and remote tracing
 #       --restart-supervisor        Reread/update and restart programs
-#       --programs "a b c"          Supervisor program names (default: news_app_server news_app_workers_content news_app_workers_image news_app_workers_transcribe news_app_workers_onboarding news_app_workers_twitter news_app_workers_chat news_app_queue_watchdog news_app_bgutil_provider)
+#       --programs "a b c"          Supervisor program names (default: news_app_server news_app_workers_content news_app_workers_image news_app_workers_media news_app_workers_onboarding news_app_workers_twitter news_app_workers_chat news_app_queue_watchdog news_app_bgutil_provider)
 #       --promote-user USER         Run remote promote step as this user (default: root)
 #       --extra-exclude PATTERN     Additional rsync exclude (can repeat)
 #       --source-env FILE           Source env file for --env-only (default: .env.racknerd)
@@ -62,7 +62,7 @@ PROGRAMS=(
   news_app_server
   news_app_workers_content
   news_app_workers_image
-  news_app_workers_transcribe
+  news_app_workers_media
   news_app_workers_onboarding
   news_app_workers_twitter
   news_app_workers_chat
@@ -72,7 +72,7 @@ PROGRAMS=(
 REQUIRED_PROGRAMS=(
   news_app_server
   news_app_workers_content
-  news_app_workers_transcribe
+  news_app_workers_media
   news_app_workers_onboarding
   news_app_workers_twitter
   news_app_workers_chat

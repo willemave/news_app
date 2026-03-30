@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Script to retranscribe all podcasts in the database."""
+"""Script to requeue podcast media processing for all podcasts."""
 
 import sys
 from pathlib import Path
@@ -12,14 +12,14 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.models.schema import Content, ProcessingTask
-from app.services.queue import TaskType
+from app.models.schema import Content
+from app.services.queue import TaskType, get_queue_service
 
 logger = get_logger(__name__)
 
 
 def main():
-    """Main function to retranscribe all podcasts."""
+    """Main function to requeue podcast media tasks."""
     # Create database session
     settings = get_settings()
     engine = create_engine(str(settings.database_url))
@@ -30,42 +30,23 @@ def main():
         # Find all podcast content
         podcasts = session.query(Content).filter(Content.content_type == "podcast").all()
 
-        logger.info(f"Found {len(podcasts)} podcasts to retranscribe")
+        logger.info(f"Found {len(podcasts)} podcasts to requeue for media processing")
 
-        # Create transcribe tasks for each podcast
+        queue_service = get_queue_service()
         tasks_created = 0
         for podcast in podcasts:
-            # Check if audio file exists
-            metadata = podcast.content_metadata or {}
-            audio_file_path = metadata.get("audio_file_path")
-
-            if not audio_file_path:
-                logger.warning(f"Podcast {podcast.id} has no audio file path, skipping")
-                continue
-
-            if not Path(audio_file_path).exists():
-                logger.warning(f"Audio file not found for podcast {podcast.id}: {audio_file_path}")
-                continue
-
-            # Create transcribe task
-            task = ProcessingTask(
-                task_type=TaskType.TRANSCRIBE.value,
+            queue_service.enqueue(
+                TaskType.PROCESS_PODCAST_MEDIA,
                 content_id=podcast.id,
-                payload={"audio_file_path": audio_file_path, "force_retranscribe": True},
-                status="pending",
             )
-            session.add(task)
             tasks_created += 1
 
-            # Log progress
-            logger.info(f"Created transcribe task for podcast {podcast.id}: {podcast.title}")
+            logger.info(f"Queued media processing task for podcast {podcast.id}: {podcast.title}")
 
-        # Commit all tasks
-        session.commit()
-        logger.info(f"Successfully created {tasks_created} transcribe tasks")
+        logger.info(f"Successfully queued {tasks_created} media tasks")
 
     except Exception as e:
-        logger.error(f"Error creating transcribe tasks: {e}")
+        logger.error(f"Error creating media tasks: {e}")
         session.rollback()
         raise
     finally:
