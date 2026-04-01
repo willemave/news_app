@@ -15,6 +15,55 @@ private let appSettingsLogger = Logger(
     category: "AppSettings"
 )
 
+enum ServerConfigurationDefaults {
+    static let hostKey = "serverHost"
+    static let portKey = "serverPort"
+    static let useHTTPSKey = "useHTTPS"
+    static let defaultHost = "localhost"
+    static let defaultPort = "8000"
+
+    static func applyDebugDefaultsIfNeeded(to userDefaults: UserDefaults) {
+#if DEBUG
+        let persistedHost = persistedString(forKey: hostKey, in: userDefaults)
+        let persistedPort = persistedString(forKey: portKey, in: userDefaults)
+
+        guard persistedHost == nil || persistedPort == nil else {
+            return
+        }
+
+        if persistedHost == nil {
+            userDefaults.set(defaultHost, forKey: hostKey)
+        }
+
+        if persistedPort == nil {
+            userDefaults.set(defaultPort, forKey: portKey)
+        }
+
+        if userDefaults.object(forKey: useHTTPSKey) == nil {
+            userDefaults.set(false, forKey: useHTTPSKey)
+        }
+
+        appSettingsLogger.notice(
+            "Seeded debug server configuration host=\(persistedHost ?? defaultHost, privacy: .public) port=\(persistedPort ?? defaultPort, privacy: .public)"
+        )
+#endif
+    }
+
+    static func hasPersistedServerConfiguration(in userDefaults: UserDefaults) -> Bool {
+        persistedString(forKey: hostKey, in: userDefaults) != nil
+            && persistedString(forKey: portKey, in: userDefaults) != nil
+    }
+
+    private static func persistedString(forKey key: String, in userDefaults: UserDefaults) -> String? {
+        guard let value = userDefaults.string(forKey: key)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+}
+
 enum FastNewsMode: String, CaseIterable {
     case newsList = "news_list"
     case dailyDigest = "daily_digest"
@@ -76,11 +125,11 @@ enum LongArticleDisplayMode: String, CaseIterable {
     var detail: String {
         switch self {
         case .narrative:
-            return "Show the narrative with notable quotes and expert perspectives"
+            return "Show the narrative with notable quotes"
         case .keyPoints:
-            return "Show key points with notable quotes and expert perspectives"
+            return "Show key points with notable quotes"
         case .both:
-            return "Show narrative, key points, quotes, and expert perspectives"
+            return "Show narrative, key points, and quotes"
         }
     }
 }
@@ -98,8 +147,7 @@ class AppSettings: ObservableObject {
     @AppStorage("useLongFormCardStack", store: SharedContainer.userDefaults) var useLongFormCardStack: Bool = true
     @AppStorage("backendTranscriptionAvailable", store: SharedContainer.userDefaults) var backendTranscriptionAvailable: Bool = false
     private var hasExplicitServerConfiguration: Bool {
-        SharedContainer.userDefaults.object(forKey: "serverHost") != nil
-            || SharedContainer.userDefaults.object(forKey: "serverPort") != nil
+        ServerConfigurationDefaults.hasPersistedServerConfiguration(in: SharedContainer.userDefaults)
     }
     private var normalizedHost: String {
 #if targetEnvironment(simulator)
@@ -125,5 +173,7 @@ class AppSettings: ObservableObject {
         backendTranscriptionAvailable = isAvailable
     }
     
-    private init() {}
+    private init() {
+        ServerConfigurationDefaults.applyDebugDefaultsIfNeeded(to: SharedContainer.userDefaults)
+    }
 }

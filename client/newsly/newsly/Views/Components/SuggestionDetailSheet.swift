@@ -118,16 +118,16 @@ struct SuggestionDetailSheet: View {
                 dismiss()
             }) {
                 Text("Not interested")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundColor(.editorialSub)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 14)
+                    .frame(minHeight: RowMetrics.compactHeight)
             }
             .buttonStyle(.plain)
 
             Spacer()
         }
-        .presentationDetents([.height(300)])
+        .presentationDetents([.height(320)])
         .presentationDragIndicator(.hidden)
     }
 

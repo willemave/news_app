@@ -107,6 +107,7 @@ final class AuthenticationService: NSObject {
         fullName: String? = nil,
         twitterUsername: String? = nil,
         newsDigestPreferencePrompt: String? = nil,
+        councilPersonas: [CouncilPersona]? = nil,
         newsDigestTimezone: String? = nil,
         newsDigestIntervalHours: Int? = nil
     ) async throws -> User {
@@ -124,6 +125,7 @@ final class AuthenticationService: NSObject {
             fullName: fullName,
             twitterUsername: twitterUsername,
             newsDigestPreferencePrompt: newsDigestPreferencePrompt,
+            councilPersonas: councilPersonas,
             newsDigestTimezone: newsDigestTimezone,
             newsDigestIntervalHours: newsDigestIntervalHours
         )

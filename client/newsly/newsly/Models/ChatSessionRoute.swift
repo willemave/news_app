@@ -13,18 +13,21 @@ struct ChatSessionRoute: Hashable {
     let initialUserMessageText: String?
     let initialUserMessageTimestamp: String?
     let pendingMessageId: Int?
+    let pendingCouncilPrompt: String?
 
     init(
         sessionId: Int,
         contentId: Int? = nil,
         initialUserMessageText: String? = nil,
         initialUserMessageTimestamp: String? = nil,
-        pendingMessageId: Int? = nil
+        pendingMessageId: Int? = nil,
+        pendingCouncilPrompt: String? = nil
     ) {
         self.sessionId = sessionId
         self.contentId = contentId
         self.initialUserMessageText = initialUserMessageText
         self.initialUserMessageTimestamp = initialUserMessageTimestamp
         self.pendingMessageId = pendingMessageId
+        self.pendingCouncilPrompt = pendingCouncilPrompt
     }
 }

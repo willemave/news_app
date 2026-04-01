@@ -231,6 +231,7 @@ struct ContentView: View {
         } else {
             sessionId = nil
         }
+        let pendingCouncilPrompt = notification.userInfo?["pending_council_prompt"] as? String
 
         guard let sessionId else {
             logger.error("[Notification] openChatSession missing session_id")
@@ -238,13 +239,18 @@ struct ContentView: View {
         }
 
         logger.info("[Notification] openChatSession sessionId=\(sessionId, privacy: .public)")
-        openChatSession(sessionId: sessionId)
+        openChatSession(
+            route: ChatSessionRoute(
+                sessionId: sessionId,
+                pendingCouncilPrompt: pendingCouncilPrompt
+            )
+        )
     }
 
-    private func openChatSession(sessionId: Int) {
+    private func openChatSession(route: ChatSessionRoute) {
         tabCoordinator.selectedTab = .knowledge
         knowledgePath = NavigationPath()
-        knowledgePath.append(ChatSessionRoute(sessionId: sessionId))
+        knowledgePath.append(route)
     }
 }
 

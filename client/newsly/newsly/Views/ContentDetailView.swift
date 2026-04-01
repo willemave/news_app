@@ -53,6 +53,8 @@ private enum DetailDesign {
 
     // Hero
     static let heroHeight: CGFloat = 220
+    static let parallaxHeroHeight: CGFloat = 340
+    static let parallaxRate: CGFloat = 0.5
 }
 
 private let detailLogger = Logger(subsystem: "com.newsly", category: "ContentDetailView")
@@ -92,6 +94,7 @@ struct ContentDetailView: View {
     @State private var didTriggerSwipeHaptic: Bool = false
     // Transcript/Full Article collapsed state
     @State private var isTranscriptExpanded: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     init(
         contentId: Int,
         allContentIds: [Int] = [],
@@ -120,17 +123,11 @@ struct ContentDetailView: View {
                     .frame(minHeight: 400)
                 } else if let content = viewModel.content {
                     VStack(alignment: .leading, spacing: 0) {
-                        // Modern hero header
+                        // Parallax hero header (image + title + action bar)
                         heroHeader(content: content)
-
-                        // Action bar
-                        actionBar(content: content)
-                            .padding(.horizontal, DetailDesign.horizontalPadding)
-                            .padding(.top, 2)
 
                         Divider()
                             .padding(.horizontal, DetailDesign.horizontalPadding)
-                            .padding(.top, 6)
 
                         // Chat status banner (inline, under header)
                         if let activeSession = chatSessionManager.getSession(forContentId: content.id) {
@@ -285,6 +282,7 @@ struct ContentDetailView: View {
                 }
             }
         }
+        .coordinateSpace(name: "detailScroll")
         .textSelection(.enabled)
         .accessibilityIdentifier("content.detail.screen")
         .overlay(alignment: .leading) {
@@ -381,7 +379,10 @@ struct ContentDetailView: View {
                     }
                 }
         )
+        .screenContainer()
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.surfacePrimary, for: .navigationBar)
+        .toolbarBackground(.automatic, for: .navigationBar)
         // Hide the main tab bar while viewing details
         .toolbar(.hidden, for: .tabBar)
         .task {
@@ -505,8 +506,33 @@ struct ContentDetailView: View {
         isStartingChat = false
     }
 
+    private func startCouncilWithPrompt(_ prompt: String, contentId: Int) async {
+        guard !isStartingChat else { return }
+
+        isStartingChat = true
+        chatError = nil
+
+        do {
+            let session = try await ChatService.shared.startArticleChat(contentId: contentId)
+            activeSheet = nil
+            openChatSession(
+                sessionId: session.id,
+                contentId: contentId,
+                pendingCouncilPrompt: session.isCouncilMode ? nil : prompt
+            )
+        } catch {
+            chatError = error.localizedDescription
+        }
+
+        isStartingChat = false
+    }
+
     private func deepDivePrompt(for content: ContentDetail) -> String {
         "Dig deeper into the key points of \(content.displayTitle). For each main point, explain reasoning, supporting evidence, and include a bit more detail explaining the point. Also pull out key ideas from the discussion context when available, and add more insights from the discussion, including notable agreements and disagreements. Keep answers concise and numbered."
+    }
+
+    private func councilPrompt(for content: ContentDetail) -> String {
+        "Give me your perspective on \(content.displayTitle). Keep it short: 2-4 concise bullets on what matters most, what is weak or missing, and what actions or implications follow."
     }
 
     private func corroboratePrompt(for content: ContentDetail) -> String {
@@ -540,12 +566,20 @@ struct ContentDetailView: View {
     }
 
     @MainActor
-    private func openChatSession(sessionId: Int, contentId: Int) {
+    private func openChatSession(
+        sessionId: Int,
+        contentId: Int,
+        pendingCouncilPrompt: String? = nil
+    ) {
         chatSessionManager.stopTracking(contentId: contentId)
+        var userInfo: [String: Any] = ["session_id": sessionId]
+        if let pendingCouncilPrompt, !pendingCouncilPrompt.isEmpty {
+            userInfo["pending_council_prompt"] = pendingCouncilPrompt
+        }
         NotificationCenter.default.post(
             name: .openChatSession,
             object: nil,
-            userInfo: ["session_id": sessionId]
+            userInfo: userInfo
         )
     }
 
@@ -615,15 +649,15 @@ struct ContentDetailView: View {
     }
 
     @ViewBuilder
-    private func narrationActionIcon(for content: ContentDetail) -> some View {
+    private func narrationActionIcon(for content: ContentDetail, overlaid: Bool = false) -> some View {
         if isNarrationLoading(for: content) {
             ProgressView()
                 .scaleEffect(0.8)
                 .frame(width: 44, height: 44)
         } else if isNarrationActive(for: content) {
-            minimalActionIcon("speaker.wave.3.fill", color: .blue)
+            minimalActionIcon("speaker.wave.3.fill", color: overlaid ? .white : .blue, overlaid: overlaid)
         } else {
-            minimalActionIcon("speaker.wave.2", color: .secondary)
+            minimalActionIcon("speaker.wave.2", color: .secondary, overlaid: overlaid)
         }
     }
 
@@ -679,23 +713,47 @@ struct ContentDetailView: View {
         }
     }
 
-    // MARK: - Modern Hero Header
+    // MARK: - Parallax Hero Header
+    private var hasHeroImage: Bool {
+        guard let content = viewModel.content,
+              let imageUrlString = content.imageUrl,
+              !imageUrlString.isEmpty,
+              content.contentTypeEnum != .news,
+              buildImageURL(from: imageUrlString) != nil else {
+            return false
+        }
+        return true
+    }
+
     @ViewBuilder
     private func heroHeader(content: ContentDetail) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Hero image (optional, tappable) - extends to top of screen
-            if let imageUrlString = content.imageUrl,
-               !imageUrlString.isEmpty,
-               content.contentTypeEnum != .news,
-               let imageUrl = buildImageURL(from: imageUrlString) {
-                Button {
-                    selectedImageAsset = DetailImageAsset(
-                        imageURL: imageUrl,
-                        thumbnailURL: content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
-                    )
-                } label: {
-                    let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
-                    GeometryReader { geo in
+        if let imageUrlString = content.imageUrl,
+           !imageUrlString.isEmpty,
+           content.contentTypeEnum != .news,
+           let imageUrl = buildImageURL(from: imageUrlString) {
+            // Parallax hero with overlaid title + action bar
+            let thumbnailUrl = content.thumbnailUrl.flatMap { buildImageURL(from: $0) }
+            ZStack(alignment: .bottomLeading) {
+                // Layer 1: Parallax image
+                GeometryReader { geo in
+                    let minY = geo.frame(in: .named("detailScroll")).minY
+                    let isOverscroll = minY > 0
+                    let scrolled = max(-minY, 0)
+                    let rate = reduceMotion ? 0 : DetailDesign.parallaxRate
+                    // Extra upward shift so image scrolls faster than content
+                    let parallaxShift = scrolled * rate
+                    // Overscroll stretch
+                    let stretch = (isOverscroll && !reduceMotion) ? minY : 0
+                    // Oversized image to prevent gaps during parallax
+                    let extraHeight = geo.size.height * rate
+                    let imageHeight = geo.size.height + geo.safeAreaInsets.top + stretch + extraHeight
+
+                    Button {
+                        selectedImageAsset = DetailImageAsset(
+                            imageURL: imageUrl,
+                            thumbnailURL: thumbnailUrl
+                        )
+                    } label: {
                         CachedAsyncImage(
                             url: imageUrl,
                             thumbnailUrl: thumbnailUrl
@@ -703,67 +761,126 @@ struct ContentDetailView: View {
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: geo.size.width, height: geo.size.height + geo.safeAreaInsets.top)
-                                .offset(y: -geo.safeAreaInsets.top)
+                                .frame(width: geo.size.width, height: imageHeight)
                                 .clipped()
                         } placeholder: {
                             Rectangle()
                                 .fill(Color(.systemGray5))
-                                .frame(width: geo.size.width, height: geo.size.height + geo.safeAreaInsets.top)
-                                .offset(y: -geo.safeAreaInsets.top)
+                                .frame(width: geo.size.width, height: imageHeight)
                                 .overlay(ProgressView())
                         }
                     }
-                    .frame(height: 220)
+                    .buttonStyle(.plain)
+                    .offset(y: -geo.safeAreaInsets.top - parallaxShift + (isOverscroll ? -minY : 0))
                 }
-                .buttonStyle(.plain)
-            } else {
-                Spacer().frame(height: 8)
-            }
 
-            // Title and metadata section
-            VStack(alignment: .leading, spacing: 8) {
-                // Title
-                Text(content.displayTitle)
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // Layer 2: Gradient scrim
+                LinearGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: .clear, location: 0.25),
+                        .init(color: .black.opacity(0.25), location: 0.5),
+                        .init(color: .black.opacity(0.7), location: 1.0)
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
 
-                // Metadata row
-                HStack(spacing: 6) {
-                    HStack(spacing: 4) {
-                        Image(systemName: contentTypeIcon(for: content))
-                            .font(.caption2)
-                        Text(content.contentTypeEnum?.rawValue.capitalized ?? "Article")
+                // Layer 3: Title + metadata + action bar
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(content.displayTitle)
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 1)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 6) {
+                        HStack(spacing: 4) {
+                            Image(systemName: contentTypeIcon(for: content))
+                                .font(.caption2)
+                            Text(content.contentTypeEnum?.rawValue.capitalized ?? "Article")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(.white.opacity(0.9))
+
+                        if let source = content.source {
+                            Text("·")
+                                .foregroundColor(.white.opacity(0.5))
+                            Text(source)
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+
+                        Text("·")
+                            .foregroundColor(.white.opacity(0.5))
+
+                        Text(formatDateSimple(content.createdAt))
                             .font(.caption)
-                            .fontWeight(.medium)
+                            .foregroundColor(.white.opacity(0.8))
                     }
-                    .foregroundColor(.accentColor)
+                    .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
 
-                    if let source = content.source {
+                    actionBar(content: content, overlaid: true)
+                        .padding(.top, 2)
+                }
+                .padding(.horizontal, DetailDesign.horizontalPadding)
+                .padding(.bottom, 10)
+            }
+            .frame(height: DetailDesign.parallaxHeroHeight)
+            .clipped()
+            .fullScreenCover(item: $selectedImageAsset) { asset in
+                FullImageView(imageURL: asset.imageURL, thumbnailURL: asset.thumbnailURL)
+            }
+        } else {
+            // No image fallback — standard layout
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer().frame(height: 8)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(content.displayTitle)
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 6) {
+                        HStack(spacing: 4) {
+                            Image(systemName: contentTypeIcon(for: content))
+                                .font(.caption2)
+                            Text(content.contentTypeEnum?.rawValue.capitalized ?? "Article")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(.accentColor)
+
+                        if let source = content.source {
+                            Text("·")
+                                .foregroundColor(.secondary.opacity(0.4))
+                            Text(source)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
                         Text("·")
                             .foregroundColor(.secondary.opacity(0.4))
-                        Text(source)
+
+                        Text(formatDateSimple(content.createdAt))
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-
-                    Text("·")
-                        .foregroundColor(.secondary.opacity(0.4))
-
-                    Text(formatDateSimple(content.createdAt))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, DetailDesign.horizontalPadding)
+                .padding(.top, 16)
+                .padding(.bottom, 6)
+
+                actionBar(content: content, overlaid: false)
+                    .padding(.horizontal, DetailDesign.horizontalPadding)
+                    .padding(.top, 2)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, DetailDesign.horizontalPadding)
-            .padding(.top, 16)
-            .padding(.bottom, 6)
-        }
-        .fullScreenCover(item: $selectedImageAsset) { asset in
-            FullImageView(imageURL: asset.imageURL, thumbnailURL: asset.thumbnailURL)
         }
     }
 
@@ -799,12 +916,12 @@ struct ContentDetailView: View {
 
     // MARK: - Modern Action Bar (Minimal, Twitter-inspired)
     @ViewBuilder
-    private func actionBar(content: ContentDetail) -> some View {
+    private func actionBar(content: ContentDetail, overlaid: Bool = false) -> some View {
         HStack(spacing: 0) {
             // Primary action - Open in browser
             if let url = URL(string: content.url) {
                 Link(destination: url) {
-                    minimalActionIcon("safari", color: .accentColor)
+                    minimalActionIcon("safari", color: overlaid ? .white : .accentColor, overlaid: overlaid)
                 }
                 .accessibilityIdentifier("content.action.open_external")
             }
@@ -813,7 +930,7 @@ struct ContentDetailView: View {
 
             // Share
             Button(action: { activeSheet = .share }) {
-                minimalActionIcon("square.and.arrow.up")
+                minimalActionIcon("square.and.arrow.up", overlaid: overlaid)
             }
             .accessibilityIdentifier("content.action.share")
 
@@ -822,7 +939,7 @@ struct ContentDetailView: View {
                 Spacer()
 
                 Button { activeSheet = .download } label: {
-                    minimalActionIcon("tray.and.arrow.down")
+                    minimalActionIcon("tray.and.arrow.down", overlaid: overlaid)
                 }
                 .accessibilityIdentifier("content.action.download_more")
             }
@@ -843,7 +960,7 @@ struct ContentDetailView: View {
                             .scaleEffect(0.8)
                             .frame(width: 44, height: 44)
                     } else {
-                        minimalActionIcon("arrow.right.circle")
+                        minimalActionIcon("arrow.right.circle", overlaid: overlaid)
                     }
                 }
                 .disabled(isConverting)
@@ -856,9 +973,11 @@ struct ContentDetailView: View {
             Button(action: {
                 Task { await viewModel.toggleFavorite() }
             }) {
+                let favColor: Color = content.isFavorited ? .yellow : (overlaid ? .white : .secondary)
                 minimalActionIcon(
                     content.isFavorited ? "star.fill" : "star",
-                    color: content.isFavorited ? .yellow : .secondary
+                    color: favColor,
+                    overlaid: overlaid
                 )
             }
             .accessibilityIdentifier("content.action.favorite")
@@ -881,7 +1000,7 @@ struct ContentDetailView: View {
                         }
                     }
                 ) {
-                    narrationActionIcon(for: content)
+                    narrationActionIcon(for: content, overlaid: overlaid)
                 }
                 .accessibilityIdentifier("content.action.narrate_summary")
             }
@@ -901,26 +1020,26 @@ struct ContentDetailView: View {
                 if isStartingChat {
                     Image(systemName: "brain.head.profile")
                         .font(.system(size: 20, weight: .regular))
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(overlaid ? .white : .accentColor)
+                        .shadow(color: overlaid ? .black.opacity(0.4) : .clear, radius: 3, x: 0, y: 1)
                         .frame(width: 44, height: 44)
                         .symbolEffect(.pulse, options: .repeating)
                 } else {
-                    minimalActionIcon("brain.head.profile")
+                    minimalActionIcon("brain.head.profile", overlaid: overlaid)
                 }
             }
             .disabled(isCheckingChatSession)
             .accessibilityIdentifier("content.action.deep_dive")
-
-            // Navigation - Next removed (swipe only)
         }
         .frame(height: 44)
     }
 
     @ViewBuilder
-    private func minimalActionIcon(_ icon: String, color: Color = .secondary) -> some View {
+    private func minimalActionIcon(_ icon: String, color: Color = .secondary, overlaid: Bool = false) -> some View {
         Image(systemName: icon)
             .font(.system(size: 20, weight: .regular))
-            .foregroundColor(color)
+            .foregroundColor(overlaid ? (color == .secondary ? .white : color) : color)
+            .shadow(color: overlaid ? .black.opacity(0.4) : .clear, radius: 3, x: 0, y: 1)
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }
@@ -942,10 +1061,10 @@ struct ContentDetailView: View {
                 Spacer()
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
-                        .font(.subheadline)
+                        .font(.body)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
                         .background(Color(.tertiarySystemBackground))
                         .clipShape(Circle())
                 }
@@ -969,19 +1088,19 @@ struct ContentDetailView: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundColor(iconColor)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 36, height: 36)
                     .background(iconColor.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.subheadline)
+                        .font(.body)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
 
@@ -989,12 +1108,14 @@ struct ContentDetailView: View {
 
                 if let badge {
                     Text(badge)
-                        .font(.caption2)
+                        .font(.caption)
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
                 }
             }
-            .padding(10)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .frame(minHeight: RowMetrics.compactHeight)
             .background(Color.surfaceSecondary)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
@@ -1055,11 +1176,10 @@ struct ContentDetailView: View {
                 }
             )
             .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+
+            Spacer(minLength: 0)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color.surfacePrimary)
-        .ignoresSafeArea(edges: .bottom)
     }
 
     // MARK: - Download Sheet
@@ -1111,11 +1231,10 @@ struct ContentDetailView: View {
                 )
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+
+            Spacer(minLength: 0)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color.surfacePrimary)
-        .ignoresSafeArea(edges: .bottom)
     }
 
     // MARK: - AI Chat Sheet
@@ -1147,6 +1266,16 @@ struct ContentDetailView: View {
                     disabled: isStartingChat,
                     action: {
                         Task { await startChatWithPrompt(deepDivePrompt(for: content), contentId: content.id) }
+                    }
+                )
+                sheetOptionRow(
+                    icon: "person.3.sequence.fill",
+                    iconColor: .orange,
+                    title: "Council Chat",
+                    subtitle: "Compare four saved perspectives",
+                    disabled: isStartingChat,
+                    action: {
+                        Task { await startCouncilWithPrompt(councilPrompt(for: content), contentId: content.id) }
                     }
                 )
                 sheetOptionRow(
@@ -1182,10 +1311,9 @@ struct ContentDetailView: View {
                     .padding(.horizontal, 20)
             }
 
+            Spacer(minLength: 0)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color.surfacePrimary)
-        .ignoresSafeArea(edges: .bottom)
     }
 
     private func handleDiscussionTap(content: ContentDetail, fallbackURL: URL) {

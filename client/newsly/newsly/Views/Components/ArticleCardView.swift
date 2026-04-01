@@ -315,6 +315,7 @@ struct ArticleCardView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title3)
                         .foregroundColor(.secondary.opacity(0.6))
+                        .frame(width: 44, height: 44)
                 }
             }
             .padding(.horizontal, 20)
@@ -345,22 +346,23 @@ struct ArticleCardView: View {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.title3)
                     .foregroundColor(.accentColor)
-                    .frame(width: 28)
+                    .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(count) episodes")
-                        .font(.callout)
+                        .font(.body)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
 
                 Spacer()
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
             .padding(.horizontal, 4)
+            .frame(minHeight: RowMetrics.compactHeight)
         }
         .buttonStyle(.plain)
     }

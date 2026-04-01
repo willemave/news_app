@@ -75,8 +75,8 @@ struct DailyDigestShortFormView: View {
                                 onSelectVoicePlaybackSpeed: { option in
                                     handleVoiceSummary(for: digest, rate: option.rate)
                                 },
-                                onLongPressBullet: { bulletId, bullet in
-                                    handleBulletLongPress(
+                                onTapBullet: { bulletId, bullet in
+                                    handleBulletTap(
                                         digest: digest,
                                         bullet: bullet,
                                         bulletId: bulletId
@@ -188,7 +188,7 @@ struct DailyDigestShortFormView: View {
         loadingNarrationTargets.contains(narrationTarget(for: digest))
     }
 
-    private func handleBulletLongPress(
+    private func handleBulletTap(
         digest: DailyNewsDigest,
         bullet: DailyNewsDigestBulletDetail,
         bulletId: Int
@@ -253,7 +253,7 @@ private struct DailyDigestCard: View {
     let onToggleRead: () -> Void
     let onVoiceSummary: () -> Void
     let onSelectVoicePlaybackSpeed: (NarrationPlaybackSpeedOption) -> Void
-    let onLongPressBullet: (Int, DailyNewsDigestBulletDetail) -> Void
+    let onTapBullet: (Int, DailyNewsDigestBulletDetail) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -270,6 +270,13 @@ private struct DailyDigestCard: View {
                             Text(digest.displayTimeLabel.uppercased())
                                 .foregroundStyle(Color.onSurfaceSecondary)
                         }
+
+                        if digest.sourceCount > 0 {
+                            Text("·")
+                                .foregroundStyle(Color.onSurfaceSecondary)
+                            Text(digest.articleCountLabel.uppercased())
+                                .foregroundStyle(Color.onSurfaceSecondary)
+                        }
                     }
                     .font(.terracottaCategoryPill)
                     .tracking(1.2)
@@ -277,14 +284,6 @@ private struct DailyDigestCard: View {
                     Rectangle()
                         .fill(Color.outlineVariant.opacity(0.5))
                         .frame(height: 1)
-                }
-
-                if !headerTitle.isEmpty {
-                    Text(headerTitle)
-                        .font(.terracottaBodyMedium.weight(.semibold))
-                        .foregroundStyle(digest.isRead ? Color.onSurfaceSecondary : Color.onSurface)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -301,7 +300,7 @@ private struct DailyDigestCard: View {
                                 DigestBulletRow(
                                     bullet: bullet,
                                     isRead: digest.isRead,
-                                    onLongPress: { onLongPressBullet(bullet.id, bullet) }
+                                    onTap: { onTapBullet(bullet.id, bullet) }
                                 )
                             }
                 }
@@ -371,10 +370,6 @@ private struct DailyDigestCard: View {
         return Self.shortFormatter.string(from: date)
     }
 
-    private var headerTitle: String {
-        digest.title.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private var voiceSummaryButtonTitle: String {
         isSpeaking ? "Stop" : "Listen \(selectedVoicePlaybackSpeedTitle)"
     }
@@ -383,52 +378,52 @@ private struct DailyDigestCard: View {
 private struct DigestBulletRow: View {
     let bullet: DailyNewsDigestBulletDetail
     let isRead: Bool
-    let onLongPress: () -> Void
-
-    @State private var isPressed = false
+    let onTap: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Circle()
-                .fill(isRead ? Color.onSurfaceSecondary.opacity(0.4) : Color.terracottaPrimary.opacity(0.6))
-                .frame(width: 5, height: 5)
-                .padding(.top, 9)
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 10) {
+                Circle()
+                    .fill(isRead ? Color.onSurfaceSecondary.opacity(0.4) : Color.terracottaPrimary.opacity(0.6))
+                    .frame(width: 5, height: 5)
+                    .padding(.top, 9)
 
-            VStack(alignment: .leading, spacing: 4) {
-                bulletText
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    bulletText
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                if bullet.sourceCount > 0 {
-                    Text("\(bullet.sourceCount) \(bullet.sourceCount == 1 ? "source" : "sources")")
-                        .font(.terracottaCategoryPill)
-                        .foregroundStyle(Color.onSurfaceSecondary.opacity(0.7))
-                        .tracking(0.4)
+                    if bullet.sourceCount > 0 {
+                        Text("\(bullet.sourceCount) \(bullet.sourceCount == 1 ? "source" : "sources")")
+                            .font(.terracottaCategoryPill)
+                            .foregroundStyle(Color.onSurfaceSecondary.opacity(0.7))
+                            .tracking(0.4)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isPressed ? Color.surfaceContainer.opacity(0.6) : Color.clear)
-        )
-        .contentShape(Rectangle())
-        .onLongPressGesture(
-            minimumDuration: 0.4,
-            pressing: { pressing in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isPressed = pressing
-                }
-            },
-            perform: onLongPress
-        )
+        .buttonStyle(DigestBulletButtonStyle())
     }
 
     private var bulletText: Text {
         Text(bullet.digestPreviewText)
             .font(.terracottaHeadlineSmall)
             .foregroundStyle(isRead ? Color.onSurfaceSecondary : Color.onSurface)
+    }
+}
+
+private struct DigestBulletButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(configuration.isPressed ? Color.surfaceContainer.opacity(0.6) : Color.clear)
+            )
+            .contentShape(Rectangle())
+            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
@@ -562,10 +557,10 @@ private struct DailyDigestBulletDetailSheet: View {
                                 if isStartingDigDeeper {
                                     ProgressView()
                                         .scaleEffect(0.7)
-                                        .frame(width: 14, height: 14)
+                                        .frame(width: 16, height: 16)
                                 } else {
                                     Image(systemName: "brain.head.profile")
-                                        .font(.system(size: 13))
+                                        .font(.system(size: 15))
                                 }
                                 Text("Dig Deeper")
                                     .font(.terracottaBodyMedium)
@@ -579,8 +574,10 @@ private struct DailyDigestBulletDetailSheet: View {
 
                         Button(action: onCopy) {
                             Image(systemName: "doc.on.doc")
-                                .font(.system(size: 14))
+                                .font(.system(size: 16))
                                 .foregroundStyle(Color.onSurfaceSecondary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -592,8 +589,10 @@ private struct DailyDigestBulletDetailSheet: View {
                             )
                         } label: {
                             Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 14))
+                                .font(.system(size: 16))
                                 .foregroundStyle(Color.onSurfaceSecondary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -616,7 +615,7 @@ private struct DailyDigestBulletDetailSheet: View {
                 ShareSheet(content: content)
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.fraction(0.75)])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(24)
     }

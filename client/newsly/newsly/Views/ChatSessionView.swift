@@ -241,6 +241,7 @@ struct SelectableAttributedText: UIViewRepresentable {
 struct ChatSessionView: View {
     @StateObject private var viewModel: ChatSessionViewModel
     let onShowHistory: (() -> Void)?
+    private let resetsScrollStateOnOpen: Bool
     @FocusState private var isInputFocused: Bool
     @State private var showingModelPicker = false
     @State private var navigateToNewSessionId: Int?
@@ -259,6 +260,7 @@ struct ChatSessionView: View {
             wrappedValue: ChatSessionViewModel(session: session)
         )
         self.onShowHistory = onShowHistory
+        self.resetsScrollStateOnOpen = false
     }
 
     init(
@@ -284,10 +286,13 @@ struct ChatSessionView: View {
             wrappedValue: ChatSessionViewModel(
                 sessionId: route.sessionId,
                 initialPendingUserMessage: initialPendingUserMessage,
-                initialPendingMessageId: route.pendingMessageId
+                initialPendingMessageId: route.pendingMessageId,
+                pendingCouncilPrompt: route.pendingCouncilPrompt
             )
         )
         self.onShowHistory = onShowHistory
+        self.resetsScrollStateOnOpen =
+            !(route.pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
     }
 
     init(
@@ -298,6 +303,7 @@ struct ChatSessionView: View {
             wrappedValue: ChatSessionViewModel(sessionId: sessionId)
         )
         self.onShowHistory = onShowHistory
+        self.resetsScrollStateOnOpen = false
     }
 
     private var titleMaxWidth: CGFloat {
@@ -306,6 +312,14 @@ struct ChatSessionView: View {
 
     private var thinkingIndicatorScrollId: String {
         "__thinking__|\(viewModel.sessionId)"
+    }
+
+    private var defaultCouncilPrompt: String {
+        if let title = viewModel.session?.articleTitle ?? viewModel.session?.displayTitle,
+           !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Give me your perspective on \(title). Keep it short: 2-4 concise bullets on what matters, what is weak or missing, and what follows."
+        }
+        return "Give me your perspective on this conversation. Keep it short: 2-4 concise bullets on what matters, what is weak or missing, and what follows."
     }
 
     private func messageScrollId(for message: ChatMessage) -> String {
@@ -327,6 +341,12 @@ struct ChatSessionView: View {
             .scrollDismissesKeyboard(.interactively)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: viewModel.sessionId) {
+            if resetsScrollStateOnOpen {
+                ChatScrollStateStore.clear(sessionId: viewModel.sessionId)
+                storedScrollState = nil
+                hasRestoredScroll = false
+                scrolledMessageId = nil
+            }
             await viewModel.loadSession()
             await viewModel.checkAndRefreshVoiceDictation()
         }
@@ -387,6 +407,27 @@ struct ChatSessionView: View {
                     }
                 }
 
+                if viewModel.canStartCouncil {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            Task {
+                                await viewModel.startCouncil(message: defaultCouncilPrompt)
+                            }
+                        } label: {
+                            Group {
+                                if viewModel.isStartingCouncil {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Image(systemName: "person.3.sequence.fill")
+                                }
+                            }
+                        }
+                        .disabled(viewModel.isStartingCouncil)
+                        .accessibilityIdentifier("knowledge.start_council")
+                    }
+                }
+
                 // Provider selector (trailing, icon-only)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -424,6 +465,8 @@ struct ChatSessionView: View {
                         .background(Color.secondary.opacity(0.1))
                         .cornerRadius(8)
                     }
+                    .disabled(session.isCouncilMode)
+                    .opacity(session.isCouncilMode ? 0.45 : 1)
                 }
             }
         }
@@ -479,8 +522,25 @@ struct ChatSessionView: View {
                         .padding()
                     } else if viewModel.allMessages.isEmpty {
                         Group {
-                            if viewModel.isSending {
-                                // Loading initial suggestions
+                            if viewModel.isStartingCouncil {
+                                VStack(alignment: .leading, spacing: 18) {
+                                    if let session = viewModel.session,
+                                       let articleTitle = session.articleTitle {
+                                        articlePreviewCard(
+                                            title: articleTitle,
+                                            source: session.articleSource,
+                                            summary: session.articleSummary,
+                                            url: session.articleUrl
+                                        )
+                                    }
+
+                                    ThinkingBubbleView(
+                                        elapsedSeconds: viewModel.thinkingElapsedSeconds,
+                                        statusText: "Gathering council perspectives"
+                                    )
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else if viewModel.isSending {
                                 InitialSuggestionsLoadingView()
                                     .frame(maxWidth: .infinity)
                             } else if let session = viewModel.session,
@@ -517,8 +577,12 @@ struct ChatSessionView: View {
                                 message: message,
                                 articleTitle: viewModel.session?.articleTitle,
                                 articleUrl: viewModel.session?.articleUrl,
+                                selectingCouncilChildSessionId: viewModel.selectingCouncilChildSessionId,
                                 onDigDeeper: { selectedText in
                                     Task { await viewModel.digDeeper(into: selectedText) }
+                                },
+                                onSelectCouncilCandidate: { childSessionId in
+                                    Task { await viewModel.selectCouncilBranch(childSessionId: childSessionId) }
                                 },
                                 onShare: { content in
                                     shareContent = ShareContent(
@@ -567,7 +631,9 @@ struct ChatSessionView: View {
                 }
             }
             .onAppear {
-                storedScrollState = ChatScrollStateStore.load(sessionId: viewModel.sessionId)
+                storedScrollState = resetsScrollStateOnOpen
+                    ? nil
+                    : ChatScrollStateStore.load(sessionId: viewModel.sessionId)
                 restoreScrollPositionIfNeeded(proxy: proxy)
             }
             .onDisappear {
@@ -757,7 +823,7 @@ struct ChatSessionView: View {
                         }
                     }
                     .foregroundColor(sendButtonDisabled ? Color.onSurfaceSecondary : .white)
-                    .frame(width: 34, height: 34, alignment: .center)
+                    .frame(width: 38, height: 38, alignment: .center)
                     .background(sendButtonDisabled ? Color.surfaceContainer : Color.chatUserBubble)
                     .clipShape(Circle())
                 }
@@ -827,7 +893,9 @@ struct MessageBubble: View {
     let message: ChatMessage
     let articleTitle: String?
     let articleUrl: String?
+    let selectingCouncilChildSessionId: Int?
     var onDigDeeper: ((String) -> Void)?
+    var onSelectCouncilCandidate: ((Int) -> Void)?
     var onShare: ((String) -> Void)?
     @Environment(\.openURL) private var openURL
     @StateObject private var feedOptionActionModel = AssistantFeedOptionActionModel()
@@ -854,18 +922,22 @@ struct MessageBubble: View {
                     }
 
                     VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
-                        messageContent
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(bubbleBackground)
-                            .clipShape(bubbleShape)
-                            .overlay(
-                                bubbleShape
-                                    .stroke(
-                                        message.isUser ? Color.clear : Color.outlineVariant.opacity(0.20),
-                                        lineWidth: 0.5
-                                    )
-                            )
+                        if rendersOwnBubble {
+                            messageContent
+                        } else {
+                            messageContent
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(bubbleBackground)
+                                .clipShape(bubbleShape)
+                                .overlay(
+                                    bubbleShape
+                                        .stroke(
+                                            message.isUser ? Color.clear : Color.outlineVariant.opacity(0.20),
+                                            lineWidth: 0.5
+                                        )
+                                )
+                        }
 
                         if !message.formattedTime.isEmpty {
                             Text(message.formattedTime)
@@ -902,6 +974,10 @@ struct MessageBubble: View {
         message.isUser ? Color.chatUserBubble : Color.surfaceContainer
     }
 
+    private var rendersOwnBubble: Bool {
+        message.isAssistant && message.hasCouncilCandidates
+    }
+
     private var textColor: UIColor {
         message.isUser ? .white : UIColor(Color.onSurface)
     }
@@ -921,7 +997,14 @@ struct MessageBubble: View {
     private var messageContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             Group {
-                if message.isUser {
+                if message.isAssistant && message.hasCouncilCandidates {
+                    CouncilCandidatesBubble(
+                        message: message,
+                        textColor: textColor,
+                        selectingChildSessionId: selectingCouncilChildSessionId,
+                        onSelectCouncilCandidate: onSelectCouncilCandidate
+                    )
+                } else if message.isUser {
                     Text(message.content)
                         .font(.callout)
                         .foregroundColor(Color(textColor))
@@ -949,6 +1032,270 @@ struct MessageBubble: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: message.isUser ? nil : .infinity, alignment: message.isUser ? .trailing : .leading)
+    }
+}
+
+private struct CouncilCandidatesBubble: View {
+    let message: ChatMessage
+    let textColor: UIColor
+    let selectingChildSessionId: Int?
+    let onSelectCouncilCandidate: ((Int) -> Void)?
+
+    @State private var selectedChildSessionId: Int?
+    @State private var railWidth: CGFloat = 0
+    @State private var railHeight: CGFloat = 220
+    @State private var pendingSelectionTask: Task<Void, Never>?
+
+    private var candidates: [CouncilCandidate] {
+        message.councilCandidates.sorted { $0.order < $1.order }
+    }
+
+    private var selectedIndex: Int? {
+        guard let selectedChildSessionId else { return nil }
+        return candidates.firstIndex { $0.childSessionId == selectedChildSessionId }
+    }
+
+    private var previousCandidate: CouncilCandidate? {
+        guard let selectedIndex, selectedIndex > 0 else { return nil }
+        return candidates[selectedIndex - 1]
+    }
+
+    private var nextCandidate: CouncilCandidate? {
+        guard let selectedIndex, selectedIndex + 1 < candidates.count else { return nil }
+        return candidates[selectedIndex + 1]
+    }
+
+    private var bubbleWidth: CGFloat {
+        let resolvedWidth = railWidth > 0 ? railWidth : UIScreen.main.bounds.width * 0.78
+        return max(resolvedWidth - 18, 280)
+    }
+
+    private var sidePeekInset: CGFloat {
+        max((railWidth - bubbleWidth) / 2, 8)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        railWidth = proxy.size.width
+                    }
+                    .onChange(of: proxy.size.width) { _, newValue in
+                        railWidth = newValue
+                    }
+            }
+            .frame(height: 0)
+
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    Color.clear
+                        .frame(width: sidePeekInset)
+                        .id("council-leading-peek")
+
+                    ForEach(candidates) { candidate in
+                        CouncilCandidateCard(
+                            candidate: candidate,
+                            textColor: textColor,
+                            isActive: message.activeCouncilChildSessionId == candidate.childSessionId,
+                            isSelecting: selectingChildSessionId == candidate.childSessionId
+                        )
+                        .frame(width: bubbleWidth)
+                        .id(candidate.childSessionId)
+                    }
+
+                    Color.clear
+                        .frame(width: sidePeekInset)
+                        .id("council-trailing-peek")
+                }
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $selectedChildSessionId, anchor: .center)
+            .scrollDisabled(selectingChildSessionId != nil)
+            .allowsHitTesting(selectingChildSessionId == nil)
+            .frame(height: railHeight)
+            .background(alignment: .topLeading) {
+                if railWidth > 0 {
+                    ZStack(alignment: .topLeading) {
+                        ForEach(candidates) { candidate in
+                            CouncilCandidateCard(
+                                candidate: candidate,
+                                textColor: textColor,
+                                isActive: message.activeCouncilChildSessionId == candidate.childSessionId,
+                                isSelecting: false
+                            )
+                            .frame(width: bubbleWidth)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear
+                                        .preference(
+                                            key: CouncilRailHeightPreferenceKey.self,
+                                            value: proxy.size.height
+                                        )
+                                }
+                            )
+                        }
+                    }
+                    .hidden()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+            }
+
+            HStack(spacing: 10) {
+                CouncilNeighborHint(
+                    title: previousCandidate?.personaName,
+                    systemImage: "chevron.left",
+                    isLeading: true
+                )
+
+                Spacer(minLength: 0)
+
+                CouncilNeighborHint(
+                    title: nextCandidate?.personaName,
+                    systemImage: "chevron.right",
+                    isLeading: false
+                )
+            }
+        }
+        .onAppear {
+            selectedChildSessionId = message.activeCouncilChildSessionId ?? candidates.first?.childSessionId
+        }
+        .onChange(of: message.activeCouncilChildSessionId) { _, newValue in
+            guard let newValue else { return }
+            selectedChildSessionId = newValue
+        }
+        .onChange(of: selectedChildSessionId) { _, newValue in
+            guard let newValue else { return }
+            guard newValue != message.activeCouncilChildSessionId else { return }
+            pendingSelectionTask?.cancel()
+            pendingSelectionTask = Task {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    onSelectCouncilCandidate?(newValue)
+                }
+            }
+        }
+        .onPreferenceChange(CouncilRailHeightPreferenceKey.self) { newValue in
+            guard newValue > 0 else { return }
+            railHeight = max(newValue, 220)
+        }
+        .onDisappear {
+            pendingSelectionTask?.cancel()
+            pendingSelectionTask = nil
+        }
+    }
+}
+
+private struct CouncilRailHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct CouncilCandidateCard: View {
+    let candidate: CouncilCandidate
+    let textColor: UIColor
+    let isActive: Bool
+    let isSelecting: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(candidate.personaName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.onSurface)
+
+                    if isActive {
+                        Text("Current branch")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.chatAccent)
+                    } else {
+                        Text("Swipe to compare")
+                            .font(.caption2)
+                            .foregroundStyle(Color.onSurfaceSecondary)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                if isSelecting {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if isActive {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(Color.chatAccent)
+                }
+            }
+
+            SelectableMarkdownView(
+                markdown: candidate.content,
+                textColor: textColor,
+                baseFont: .preferredFont(forTextStyle: .callout)
+            )
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 4,
+                bottomLeadingRadius: 16,
+                bottomTrailingRadius: 16,
+                topTrailingRadius: 16
+            )
+            .fill(isActive ? Color.surfaceContainer : Color.surfaceSecondary.opacity(0.92))
+        )
+        .overlay(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 4,
+                bottomLeadingRadius: 16,
+                bottomTrailingRadius: 16,
+                topTrailingRadius: 16
+            )
+            .stroke(
+                isActive ? Color.chatAccent.opacity(0.35) : Color.outlineVariant.opacity(0.18),
+                lineWidth: 1
+            )
+        )
+    }
+}
+
+private struct CouncilNeighborHint: View {
+    let title: String?
+    let systemImage: String
+    let isLeading: Bool
+
+    var body: some View {
+        Group {
+            if let title {
+                HStack(spacing: 4) {
+                    if isLeading {
+                        Image(systemName: systemImage)
+                    }
+
+                    Text(title)
+                        .lineLimit(1)
+
+                    if !isLeading {
+                        Image(systemName: systemImage)
+                    }
+                }
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Color.onSurfaceSecondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.surfacePrimary.opacity(0.55))
+                .clipShape(Capsule())
+            }
+        }
     }
 }
 

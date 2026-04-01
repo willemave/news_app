@@ -120,6 +120,12 @@ enum APIEndpoints {
     static func chatInitialSuggestions(sessionId: Int) -> String {
         return "/api/content/chat/sessions/\(sessionId)/initial-suggestions"
     }
+    static func chatCouncilStart(sessionId: Int) -> String {
+        return "/api/content/chat/sessions/\(sessionId)/council/start"
+    }
+    static func chatCouncilSelect(sessionId: Int) -> String {
+        return "/api/content/chat/sessions/\(sessionId)/council/select"
+    }
     static func chatMessageStatus(messageId: Int) -> String {
         return "/api/content/chat/messages/\(messageId)/status"
     }

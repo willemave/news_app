@@ -20,6 +20,8 @@ class ChatSessionViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var inputText: String = ""
     @Published var thinkingElapsedSeconds = 0
+    @Published var isStartingCouncil = false
+    @Published var selectingCouncilChildSessionId: Int?
 
     // Voice dictation state
     @Published var isRecording = false
@@ -33,16 +35,20 @@ class ChatSessionViewModel: ObservableObject {
     let sessionId: Int
     private let initialPendingUserMessage: ChatMessage?
     private let initialPendingMessageId: Int?
+    private var pendingCouncilPrompt: String?
+    private var hasTriggeredPendingCouncilStart = false
 
     init(
         sessionId: Int,
         initialPendingUserMessage: ChatMessage? = nil,
         initialPendingMessageId: Int? = nil,
+        pendingCouncilPrompt: String? = nil,
         transcriptionService: (any SpeechTranscribing)? = nil
     ) {
         self.sessionId = sessionId
         self.initialPendingUserMessage = initialPendingUserMessage
         self.initialPendingMessageId = initialPendingMessageId
+        self.pendingCouncilPrompt = pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.messages = initialPendingUserMessage.map { [$0] } ?? []
         let resolvedService = transcriptionService ?? RealtimeTranscriptionService()
         self.transcriptionService = resolvedService
@@ -53,12 +59,14 @@ class ChatSessionViewModel: ObservableObject {
         session: ChatSessionSummary,
         initialPendingUserMessage: ChatMessage? = nil,
         initialPendingMessageId: Int? = nil,
+        pendingCouncilPrompt: String? = nil,
         transcriptionService: (any SpeechTranscribing)? = nil
     ) {
         self.sessionId = session.id
         self.session = session
         self.initialPendingUserMessage = initialPendingUserMessage
         self.initialPendingMessageId = initialPendingMessageId
+        self.pendingCouncilPrompt = pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.messages = initialPendingUserMessage.map { [$0] } ?? []
         let resolvedService = transcriptionService ?? RealtimeTranscriptionService()
         self.transcriptionService = resolvedService
@@ -77,21 +85,27 @@ class ChatSessionViewModel: ObservableObject {
 
         do {
             let detail = try await chatService.getSession(id: sessionId)
-            session = detail.session
-            let filteredMessages = detail.messages.filter { !$0.content.isEmpty }
-            messages = filteredMessages.isEmpty ? (initialPendingUserMessage.map { [$0] } ?? []) : filteredMessages
+            applyDetail(detail)
             let assistantPreview = messages.last(where: { $0.isAssistant })?.content.prefix(160) ?? ""
             logger.debug(
                 "[ViewModel] loadSession succeeded | sessionId=\(self.sessionId) messages=\(self.messages.count) assistantPreview=\(String(assistantPreview), privacy: .public)"
             )
 
             // Check if there's a processing message we need to poll for
-            if let processingMessage = filteredMessages.first(where: { $0.isProcessing }) {
+            if let processingMessage = messages.first(where: { $0.isProcessing }) {
                 let pollingMessageId = processingMessage.sourceMessageId ?? processingMessage.id
                 await pollForMessageCompletion(messageId: pollingMessageId)
             }
             else if let pendingMessageId = initialPendingMessageId, detail.session.isProcessing {
                 await pollForMessageCompletion(messageId: pendingMessageId)
+            }
+            else if shouldAutoStartCouncil(detail: detail) {
+                hasTriggeredPendingCouncilStart = true
+                let prompt = pendingCouncilPrompt ?? ""
+                pendingCouncilPrompt = nil
+                isLoading = false
+                await startCouncil(message: prompt)
+                return
             }
             // If this is a topic-focused session (like "Dig deeper") with no messages, auto-send the topic
             else if let topic = detail.session.topic, !topic.isEmpty, detail.messages.isEmpty {
@@ -107,6 +121,12 @@ class ChatSessionViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    private func shouldAutoStartCouncil(detail: ChatSessionDetail) -> Bool {
+        guard !hasTriggeredPendingCouncilStart else { return false }
+        guard let prompt = pendingCouncilPrompt, !prompt.isEmpty else { return false }
+        return !detail.session.isCouncilMode
     }
 
     var latestProcessSummary: String? {
@@ -263,6 +283,12 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         self.session = updatedSession
     }
 
+    var canStartCouncil: Bool {
+        guard let session else { return false }
+        guard !session.isCouncilMode else { return false }
+        return session.sessionType != "deep_research" && session.sessionType != "voice_live"
+    }
+
     /// All messages including any streaming message
     var allMessages: [ChatMessage] {
         return messages
@@ -273,14 +299,22 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         messages = [initialPendingUserMessage]
     }
 
+    private func visibleMessages(from detail: ChatSessionDetail) -> [ChatMessage] {
+        let filteredMessages = detail.messages.filter {
+            !$0.content.isEmpty || $0.hasCouncilCandidates
+        }
+        return filteredMessages.isEmpty ? (initialPendingUserMessage.map { [$0] } ?? []) : filteredMessages
+    }
+
+    private func applyDetail(_ detail: ChatSessionDetail) {
+        session = detail.session
+        messages = visibleMessages(from: detail)
+    }
+
     private func refreshTranscriptSnapshot() async {
         do {
             let detail = try await chatService.getSession(id: sessionId)
-            session = detail.session
-            let filteredMessages = detail.messages.filter { !$0.content.isEmpty }
-            if !filteredMessages.isEmpty {
-                messages = filteredMessages
-            }
+            applyDetail(detail)
         } catch {
             logger.debug("[ViewModel] refreshTranscriptSnapshot skipped | error=\(error.localizedDescription)")
         }
@@ -288,13 +322,57 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     private func refreshTranscriptAfterPolling() async throws {
         let detail = try await chatService.getSession(id: sessionId)
-        session = detail.session
-        let filteredMessages = detail.messages.filter { !$0.content.isEmpty }
-        guard !filteredMessages.isEmpty else {
+        applyDetail(detail)
+        guard !messages.isEmpty else {
             logger.error("[ViewModel] refreshTranscriptAfterPolling failed | no transcript messages returned")
             throw ChatServiceError.missingAssistantMessage
         }
-        messages = filteredMessages
+    }
+
+    func startCouncil(message: String) async {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isStartingCouncil else { return }
+
+        isStartingCouncil = true
+        isSending = true
+        errorMessage = nil
+        startThinkingTimer()
+        defer {
+            isStartingCouncil = false
+            isSending = false
+            stopThinkingTimer()
+        }
+
+        do {
+            let detail = try await chatService.startCouncil(
+                sessionId: sessionId,
+                message: trimmed
+            )
+            applyDetail(detail)
+        } catch {
+            errorMessage = error.localizedDescription
+            logger.error("[ViewModel] startCouncil failed | error=\(error.localizedDescription)")
+        }
+    }
+
+    func selectCouncilBranch(childSessionId: Int) async {
+        guard session?.activeChildSessionId != childSessionId else { return }
+        guard selectingCouncilChildSessionId == nil || selectingCouncilChildSessionId == childSessionId else { return }
+
+        selectingCouncilChildSessionId = childSessionId
+        errorMessage = nil
+        defer { selectingCouncilChildSessionId = nil }
+
+        do {
+            let detail = try await chatService.selectCouncilBranch(
+                sessionId: sessionId,
+                childSessionId: childSessionId
+            )
+            applyDetail(detail)
+        } catch {
+            errorMessage = error.localizedDescription
+            logger.error("[ViewModel] selectCouncilBranch failed | error=\(error.localizedDescription)")
+        }
     }
 
     // MARK: - Thinking Indicator

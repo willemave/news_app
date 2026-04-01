@@ -32,7 +32,7 @@ class ChatSessionsViewModel: ObservableObject {
     func createSession(
         contentId: Int? = nil,
         topic: String? = nil,
-        provider: ChatModelProvider = .anthropic
+        provider: ChatModelProvider = .openai
     ) async -> ChatSessionSummary? {
         do {
             let session = try await chatService.createSession(

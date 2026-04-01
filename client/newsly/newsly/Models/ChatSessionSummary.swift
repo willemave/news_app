@@ -35,6 +35,8 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     let hasMessages: Bool?
     let lastMessagePreview: String?
     let lastMessageRole: String?
+    let councilMode: Bool?
+    let activeChildSessionId: Int?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -56,6 +58,79 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         case hasMessages = "has_messages"
         case lastMessagePreview = "last_message_preview"
         case lastMessageRole = "last_message_role"
+        case councilMode = "council_mode"
+        case activeChildSessionId = "active_child_session_id"
+    }
+
+    init(
+        id: Int,
+        contentId: Int?,
+        title: String?,
+        sessionType: String?,
+        topic: String?,
+        llmProvider: String,
+        llmModel: String,
+        createdAt: String,
+        updatedAt: String?,
+        lastMessageAt: String?,
+        articleTitle: String?,
+        articleUrl: String?,
+        articleSummary: String?,
+        articleSource: String?,
+        hasPendingMessage: Bool?,
+        isFavorite: Bool?,
+        hasMessages: Bool?,
+        lastMessagePreview: String?,
+        lastMessageRole: String?,
+        councilMode: Bool? = nil,
+        activeChildSessionId: Int? = nil
+    ) {
+        self.id = id
+        self.contentId = contentId
+        self.title = title
+        self.sessionType = sessionType
+        self.topic = topic
+        self.llmProvider = llmProvider
+        self.llmModel = llmModel
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.lastMessageAt = lastMessageAt
+        self.articleTitle = articleTitle
+        self.articleUrl = articleUrl
+        self.articleSummary = articleSummary
+        self.articleSource = articleSource
+        self.hasPendingMessage = hasPendingMessage
+        self.isFavorite = isFavorite
+        self.hasMessages = hasMessages
+        self.lastMessagePreview = lastMessagePreview
+        self.lastMessageRole = lastMessageRole
+        self.councilMode = councilMode
+        self.activeChildSessionId = activeChildSessionId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        contentId = try container.decodeIfPresent(Int.self, forKey: .contentId)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        sessionType = try container.decodeIfPresent(String.self, forKey: .sessionType)
+        topic = try container.decodeIfPresent(String.self, forKey: .topic)
+        llmProvider = try container.decode(String.self, forKey: .llmProvider)
+        llmModel = try container.decode(String.self, forKey: .llmModel)
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        lastMessageAt = try container.decodeIfPresent(String.self, forKey: .lastMessageAt)
+        articleTitle = try container.decodeIfPresent(String.self, forKey: .articleTitle)
+        articleUrl = try container.decodeIfPresent(String.self, forKey: .articleUrl)
+        articleSummary = try container.decodeIfPresent(String.self, forKey: .articleSummary)
+        articleSource = try container.decodeIfPresent(String.self, forKey: .articleSource)
+        hasPendingMessage = try container.decodeIfPresent(Bool.self, forKey: .hasPendingMessage)
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite)
+        hasMessages = try container.decodeIfPresent(Bool.self, forKey: .hasMessages)
+        lastMessagePreview = try container.decodeIfPresent(String.self, forKey: .lastMessagePreview)
+        lastMessageRole = try container.decodeIfPresent(String.self, forKey: .lastMessageRole)
+        councilMode = try container.decodeIfPresent(Bool.self, forKey: .councilMode)
+        activeChildSessionId = try container.decodeIfPresent(Int.self, forKey: .activeChildSessionId)
     }
 
     private static let iso8601WithFractionalFormatter: ISO8601DateFormatter = {
@@ -201,6 +276,10 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     /// Whether this is a deep research session
     var isDeepResearch: Bool {
         sessionType == "deep_research" || llmProvider.lowercased() == "deep_research"
+    }
+
+    var isCouncilMode: Bool {
+        councilMode ?? false
     }
 
     /// Icon name for the session type (used in chat list)

@@ -19,6 +19,10 @@ struct SettingsView: View {
     @State private var serverDigestPreferencePrompt = ""
     @State private var hasUnsavedDigestPreferencePromptEdits = false
     @State private var isSavingDigestPreferencePrompt = false
+    @State private var councilPersonasDraft = CouncilPersona.defaults
+    @State private var serverCouncilPersonas = CouncilPersona.defaults
+    @State private var hasUnsavedCouncilPersonaEdits = false
+    @State private var isSavingCouncilPersonas = false
     @FocusState private var isDigestPreferencePromptFocused: Bool
 
     var body: some View {
@@ -31,6 +35,9 @@ struct SettingsView: View {
                 SectionDivider()
 
                 displayPreferencesSection
+                SectionDivider()
+
+                councilSection
                 SectionDivider()
 
                 digestPreferencesSection
@@ -76,10 +83,12 @@ struct SettingsView: View {
         .onChange(of: authViewModel.authState) { _, _ in
             syncDigestIntervalWithAuthenticatedUser()
             syncDigestPreferencePromptWithAuthenticatedUser(force: true)
+            syncCouncilPersonasWithAuthenticatedUser(force: true)
         }
         .task {
             syncDigestIntervalWithAuthenticatedUser()
             syncDigestPreferencePromptWithAuthenticatedUser(force: true)
+            syncCouncilPersonasWithAuthenticatedUser(force: true)
         }
     }
 
@@ -198,6 +207,96 @@ struct SettingsView: View {
 
                 digestPreferencePromptRow
             }
+        }
+    }
+
+    private var councilSection: some View {
+        VStack(spacing: 0) {
+            SectionHeader(title: "Council")
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.3.sequence.fill")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.orange)
+                        .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Council Personas")
+                            .font(.listTitle)
+                            .foregroundStyle(Color.textPrimary)
+                        Text("These four branches power council chat and can be switched live inside a conversation.")
+                            .font(.listCaption)
+                            .foregroundStyle(Color.textTertiary)
+                    }
+
+                    Spacer(minLength: 8)
+                }
+
+                ForEach(Array(councilPersonasDraft.enumerated()), id: \.element.id) { index, persona in
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField(
+                            "Persona name",
+                            text: Binding(
+                                get: { councilPersonasDraft[index].displayName },
+                                set: { newValue in
+                                    councilPersonasDraft[index] = CouncilPersona(
+                                        id: councilPersonasDraft[index].id,
+                                        displayName: newValue,
+                                        instructionPrompt: councilPersonasDraft[index].instructionPrompt,
+                                        sortOrder: councilPersonasDraft[index].sortOrder
+                                    )
+                                    hasUnsavedCouncilPersonaEdits = councilPersonasDraft != serverCouncilPersonas
+                                }
+                            )
+                        )
+                        .textFieldStyle(.roundedBorder)
+
+                        TextEditor(
+                            text: Binding(
+                                get: { councilPersonasDraft[index].instructionPrompt },
+                                set: { newValue in
+                                    councilPersonasDraft[index] = CouncilPersona(
+                                        id: councilPersonasDraft[index].id,
+                                        displayName: councilPersonasDraft[index].displayName,
+                                        instructionPrompt: newValue,
+                                        sortOrder: councilPersonasDraft[index].sortOrder
+                                    )
+                                    hasUnsavedCouncilPersonaEdits = councilPersonasDraft != serverCouncilPersonas
+                                }
+                            )
+                        )
+                        .frame(minHeight: 92)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                        .background(Color.surfaceSecondary)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .padding(12)
+                    .background(Color.surfaceSecondary.opacity(0.55))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+
+                HStack {
+                    Text("Swiping between council replies switches the active branch for future messages.")
+                        .font(.caption)
+                        .foregroundStyle(Color.textTertiary)
+                    Spacer()
+                    Button {
+                        Task { await saveCouncilPersonas() }
+                    } label: {
+                        if isSavingCouncilPersonas {
+                            ProgressView()
+                        } else {
+                            Text("Save Personas")
+                                .font(.callout.weight(.semibold))
+                        }
+                    }
+                    .disabled(isSavingCouncilPersonas || !hasUnsavedCouncilPersonaEdits)
+                }
+            }
+            .padding(.horizontal, Spacing.rowHorizontal)
+            .padding(.vertical, Spacing.rowVertical)
         }
     }
 
@@ -546,6 +645,28 @@ struct SettingsView: View {
     }
 
     @MainActor
+    private func syncCouncilPersonasWithAuthenticatedUser(force: Bool) {
+        guard !isSavingCouncilPersonas else { return }
+        let resolved = authenticatedUser?.councilPersonas ?? CouncilPersona.defaults
+        serverCouncilPersonas = resolved
+        if force || !hasUnsavedCouncilPersonaEdits {
+            councilPersonasDraft = resolved
+        }
+        hasUnsavedCouncilPersonaEdits = councilPersonasDraft != serverCouncilPersonas
+    }
+
+    private func normalizedCouncilPersonas() -> [CouncilPersona] {
+        councilPersonasDraft.enumerated().map { index, persona in
+            CouncilPersona(
+                id: persona.id,
+                displayName: persona.displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+                instructionPrompt: persona.instructionPrompt.trimmingCharacters(in: .whitespacesAndNewlines),
+                sortOrder: index
+            )
+        }
+    }
+
+    @MainActor
     private func saveDigestPreferencePrompt() async {
         guard !isSavingDigestPreferencePrompt, authenticatedUser != nil else { return }
         isSavingDigestPreferencePrompt = true
@@ -563,6 +684,36 @@ struct SettingsView: View {
             showingAlert = true
         } catch {
             alertMessage = "Failed to save digest preferences: \(error.localizedDescription)"
+            showingAlert = true
+        }
+    }
+
+    @MainActor
+    private func saveCouncilPersonas() async {
+        guard !isSavingCouncilPersonas, authenticatedUser != nil else { return }
+
+        let normalized = normalizedCouncilPersonas()
+        guard normalized.allSatisfy({ !$0.displayName.isEmpty && !$0.instructionPrompt.isEmpty }) else {
+            alertMessage = "Each council persona needs a name and prompt."
+            showingAlert = true
+            return
+        }
+
+        isSavingCouncilPersonas = true
+        defer { isSavingCouncilPersonas = false }
+
+        do {
+            let user = try await AuthenticationService.shared.updateCurrentUserProfile(
+                councilPersonas: normalized
+            )
+            authViewModel.updateUser(user)
+            serverCouncilPersonas = user.councilPersonas
+            councilPersonasDraft = user.councilPersonas
+            hasUnsavedCouncilPersonaEdits = false
+            alertMessage = "Council personas saved."
+            showingAlert = true
+        } catch {
+            alertMessage = "Failed to save council personas: \(error.localizedDescription)"
             showingAlert = true
         }
     }

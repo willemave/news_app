@@ -96,6 +96,26 @@ struct AssistantFeedOption: Codable, Identifiable, Equatable {
     }
 }
 
+struct CouncilCandidate: Codable, Identifiable, Equatable {
+    let personaId: String
+    let personaName: String
+    let childSessionId: Int
+    let content: String
+    let status: String
+    let order: Int
+
+    var id: String { "\(personaId)-\(childSessionId)" }
+
+    enum CodingKeys: String, CodingKey {
+        case personaId = "persona_id"
+        case personaName = "persona_name"
+        case childSessionId = "child_session_id"
+        case content
+        case status
+        case order
+    }
+}
+
 /// Individual message in a chat session
 struct ChatMessage: Codable, Identifiable {
     let id: Int
@@ -108,6 +128,8 @@ struct ChatMessage: Codable, Identifiable {
     let status: MessageProcessingStatus?
     let error: String?
     let feedOptions: [AssistantFeedOption]
+    let councilCandidates: [CouncilCandidate]
+    let activeCouncilChildSessionId: Int?
 
     // Allow status to be optional (default to completed for backward compatibility)
     init(from decoder: Decoder) throws {
@@ -124,6 +146,8 @@ struct ChatMessage: Codable, Identifiable {
         status = try container.decodeIfPresent(MessageProcessingStatus.self, forKey: .status)
         error = try container.decodeIfPresent(String.self, forKey: .error)
         feedOptions = try container.decodeIfPresent([AssistantFeedOption].self, forKey: .feedOptions) ?? []
+        councilCandidates = try container.decodeIfPresent([CouncilCandidate].self, forKey: .councilCandidates) ?? []
+        activeCouncilChildSessionId = try container.decodeIfPresent(Int.self, forKey: .activeCouncilChildSessionId)
     }
 
     init(
@@ -136,7 +160,9 @@ struct ChatMessage: Codable, Identifiable {
         processLabel: String? = nil,
         status: MessageProcessingStatus? = nil,
         error: String? = nil,
-        feedOptions: [AssistantFeedOption] = []
+        feedOptions: [AssistantFeedOption] = [],
+        councilCandidates: [CouncilCandidate] = [],
+        activeCouncilChildSessionId: Int? = nil
     ) {
         self.id = id
         self.sourceMessageId = sourceMessageId
@@ -148,6 +174,8 @@ struct ChatMessage: Codable, Identifiable {
         self.status = status
         self.error = error
         self.feedOptions = feedOptions
+        self.councilCandidates = councilCandidates
+        self.activeCouncilChildSessionId = activeCouncilChildSessionId
     }
 
     enum CodingKeys: String, CodingKey {
@@ -156,6 +184,8 @@ struct ChatMessage: Codable, Identifiable {
         case displayType = "display_type"
         case processLabel = "process_label"
         case feedOptions = "feed_options"
+        case councilCandidates = "council_candidates"
+        case activeCouncilChildSessionId = "active_council_child_session_id"
     }
 
     var isProcessing: Bool {
@@ -215,6 +245,10 @@ struct ChatMessage: Codable, Identifiable {
 
     var hasFeedOptions: Bool {
         !feedOptions.isEmpty
+    }
+
+    var hasCouncilCandidates: Bool {
+        !councilCandidates.isEmpty
     }
 
     var uiIdentity: String {

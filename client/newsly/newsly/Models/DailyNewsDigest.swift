@@ -24,6 +24,146 @@ struct DailyNewsDigestCitation: Codable, Identifiable, Equatable {
         url ?? articleUrl
     }
 
+    private static let inlineSourceCharacterLimit = 9
+
+    private static func trimmedValue(_ value: String?) -> String? {
+        guard
+            let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !value.isEmpty
+        else {
+            return nil
+        }
+        return value
+    }
+
+    private static func parsedURL(from rawURL: String?) -> URL? {
+        guard let rawURL = trimmedValue(rawURL) else {
+            return nil
+        }
+        return URL(string: rawURL)
+    }
+
+    private static func normalizedHost(from rawURL: String?) -> String? {
+        guard let parsedURL = parsedURL(from: rawURL) else {
+            return nil
+        }
+        guard var host = trimmedValue(parsedURL.host) else {
+            return nil
+        }
+        if host.hasPrefix("www.") {
+            host.removeFirst(4)
+        }
+        return host.isEmpty ? nil : host
+    }
+
+    private static func normalizedPathComponents(from rawURL: String?) -> [String] {
+        guard let parsedURL = parsedURL(from: rawURL) else {
+            return []
+        }
+        return parsedURL.pathComponents.filter { component in
+            component != "/" && !component.isEmpty
+        }
+    }
+
+    private static func mappedHostToken(_ host: String) -> String? {
+        switch host.lowercased() {
+        case "news.ycombinator.com":
+            return "HN"
+        case "techmeme.com":
+            return "Techmeme"
+        case "semianalysis.com":
+            return "SemiAnal"
+        case "theinformation.com":
+            return "The Info"
+        default:
+            return nil
+        }
+    }
+
+    private static func redditToken(from rawURL: String?) -> String? {
+        guard let host = normalizedHost(from: rawURL) else {
+            return nil
+        }
+        guard host == "reddit.com" || host == "redd.it" else {
+            return nil
+        }
+        let components = normalizedPathComponents(from: rawURL)
+        guard let redditIndex = components.firstIndex(where: { $0.lowercased() == "r" }) else {
+            return "Reddit"
+        }
+        let subredditIndex = redditIndex + 1
+        guard subredditIndex < components.count else {
+            return "Reddit"
+        }
+        guard let subreddit = trimmedValue(components[subredditIndex]) else {
+            return "Reddit"
+        }
+        return "r/\(subreddit)"
+    }
+
+    private static func socialUsernameToken(from rawURL: String?) -> String? {
+        guard let host = normalizedHost(from: rawURL) else {
+            return nil
+        }
+        guard host == "x.com" || host == "twitter.com" else {
+            return nil
+        }
+        let components = normalizedPathComponents(from: rawURL)
+        guard let firstComponent = components.first else {
+            return "X"
+        }
+        let reservedComponents = Set([
+            "explore", "hashtag", "home", "i", "intent", "messages", "search", "settings", "share"
+        ])
+        let username = firstComponent.trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+        guard !reservedComponents.contains(username.lowercased()), !username.isEmpty else {
+            return "X"
+        }
+        return "@\(username)"
+    }
+
+    private static func preferredLabelToken(_ label: String?) -> String? {
+        guard let label = trimmedValue(label) else {
+            return nil
+        }
+        switch label.lowercased() {
+        case "hacker news":
+            return "HN"
+        case "twitter", "x":
+            return "X"
+        default:
+            return label
+        }
+    }
+
+    var inlineSourceToken: String {
+        let smartURLToken = [
+            Self.redditToken(from: effectiveURL),
+            Self.redditToken(from: articleUrl),
+            Self.socialUsernameToken(from: effectiveURL),
+            Self.socialUsernameToken(from: articleUrl)
+        ]
+        .compactMap { $0 }
+        .first
+
+        let candidates = [
+            smartURLToken,
+            Self.preferredLabelToken(label),
+            Self.normalizedHost(from: effectiveURL).flatMap(Self.mappedHostToken) ?? Self.normalizedHost(from: effectiveURL),
+            Self.normalizedHost(from: articleUrl).flatMap(Self.mappedHostToken) ?? Self.normalizedHost(from: articleUrl),
+            Self.trimmedValue(title)
+        ]
+        let resolved = candidates
+            .compactMap(Self.trimmedValue)
+            .first { !$0.isEmpty }
+
+        guard let resolved else {
+            return ""
+        }
+        let truncated = String(resolved.prefix(Self.inlineSourceCharacterLimit))
+        return truncated.trimmingCharacters(in: CharacterSet(charactersIn: " ./"))
+    }
+
     var id: String {
         "\(newsItemId):\(effectiveURL ?? title)"
     }
@@ -134,6 +274,36 @@ struct DailyNewsDigestBulletDetail: Codable, Identifiable, Equatable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
+
+    var inlineSourceTokens: [String] {
+        var seenTokens = Set<String>()
+        var tokens: [String] = []
+
+        for citation in citations {
+            let token = citation.inlineSourceToken
+            guard !token.isEmpty else {
+                continue
+            }
+            guard !seenTokens.contains(token) else {
+                continue
+            }
+            seenTokens.insert(token)
+            tokens.append(token)
+        }
+
+        return tokens
+    }
+
+    var digestPreviewWithSources: String {
+        let preview = digestPreviewText
+        guard !preview.isEmpty else {
+            return preview
+        }
+        guard !inlineSourceTokens.isEmpty else {
+            return preview
+        }
+        return "\(preview) [\(inlineSourceTokens.joined(separator: ", "))]"
+    }
 }
 
 struct DailyNewsDigest: Codable, Identifiable {
@@ -215,6 +385,10 @@ struct DailyNewsDigest: Codable, Identifiable {
         return formatter
     }()
 
+    static func parseGeneratedAt(_ isoDate: String) -> Date? {
+        parseDate(isoDate)
+    }
+
     static private func parseDate(_ isoDate: String) -> Date? {
         let parser = isoDateParser
         if let date = parser.date(from: isoDate) {
@@ -264,6 +438,10 @@ struct DailyNewsDigest: Codable, Identifiable {
             return ""
         }
         return Self.timeLabelFormatter.string(from: date)
+    }
+
+    var articleCountLabel: String {
+        "\(sourceCount) \(sourceCount == 1 ? "article" : "articles")"
     }
 
     var cleanedSummary: String {

@@ -16,7 +16,6 @@ private enum EditorialNarrativeDesign {
 struct EditorialNarrativeSummaryView: View {
     let summary: EditorialNarrativeSummary
     var contentId: Int?
-    @State private var expandedArchetypes: Set<String> = []
     @AppStorage("longArticleDisplayMode", store: SharedContainer.userDefaults)
     private var longArticleDisplayModeRawValue: String = LongArticleDisplayMode.both.rawValue
 
@@ -50,17 +49,6 @@ struct EditorialNarrativeSummaryView: View {
                 }
             }
 
-            if showsSupportingContext,
-               let archetypeReactions = summary.archetypeReactions,
-               !archetypeReactions.isEmpty {
-                sectionHeader("Perspectives", icon: "person.3.sequence", tint: .orange)
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(archetypeReactions) { reaction in
-                        collapsibleArchetypeReaction(reaction)
-                    }
-                }
-            }
-
             if showsKeyPoints, !summary.keyPoints.isEmpty {
                 sectionHeader("Key Points", icon: "list.bullet.rectangle", tint: .blue)
                 VStack(alignment: .leading, spacing: EditorialNarrativeDesign.itemSpacing) {
@@ -77,54 +65,6 @@ struct EditorialNarrativeSummaryView: View {
                         quoteCard(quote)
                     }
                 }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func collapsibleArchetypeReaction(_ reaction: EditorialArchetypeReaction) -> some View {
-        let isExpanded = expandedArchetypes.contains(reaction.id)
-
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if isExpanded {
-                        expandedArchetypes.remove(reaction.id)
-                    } else {
-                        expandedArchetypes.insert(reaction.id)
-                    }
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.secondary.opacity(0.7))
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-
-                    Text(reaction.archetype)
-                        .font(.callout)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-
-                    Spacer()
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(Array(reaction.displayParagraphs.enumerated()), id: \.offset) { _, paragraph in
-                        Text(paragraph)
-                            .font(.callout)
-                            .foregroundColor(.primary.opacity(0.9))
-                            .lineSpacing(4)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(.top, 12)
-                .padding(.leading, 22)
             }
         }
     }

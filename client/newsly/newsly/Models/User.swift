@@ -7,6 +7,47 @@
 
 import Foundation
 
+struct CouncilPersona: Codable, Equatable, Identifiable {
+    let id: String
+    let displayName: String
+    let instructionPrompt: String
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+        case instructionPrompt = "instruction_prompt"
+        case sortOrder = "sort_order"
+    }
+
+    static let defaults: [CouncilPersona] = [
+        CouncilPersona(
+            id: "analyst",
+            displayName: "Analyst",
+            instructionPrompt: "Focus on the core argument, strongest evidence, missing evidence, and what matters most if the user needs a clear mental model.",
+            sortOrder: 0
+        ),
+        CouncilPersona(
+            id: "skeptic",
+            displayName: "Skeptic",
+            instructionPrompt: "Stress-test assumptions, weak evidence, overreach, incentives, and what could make the thesis wrong.",
+            sortOrder: 1
+        ),
+        CouncilPersona(
+            id: "builder",
+            displayName: "Builder",
+            instructionPrompt: "Translate the discussion into concrete product, engineering, or operational implications and practical next moves.",
+            sortOrder: 2
+        ),
+        CouncilPersona(
+            id: "historian",
+            displayName: "Historian",
+            instructionPrompt: "Add context from prior cycles, related precedents, and comparable moments so the user can place the current topic in a longer arc.",
+            sortOrder: 3
+        )
+    ]
+}
+
 /// User account model matching backend UserResponse schema
 struct User: Codable, Identifiable, Equatable {
     let id: Int
@@ -15,6 +56,7 @@ struct User: Codable, Identifiable, Equatable {
     let fullName: String?
     let twitterUsername: String?
     let newsDigestPreferencePrompt: String
+    let councilPersonas: [CouncilPersona]
     let newsDigestTimezone: String
     let newsDigestIntervalHours: Int
     let hasXBookmarkSync: Bool
@@ -33,6 +75,7 @@ struct User: Codable, Identifiable, Equatable {
         case fullName = "full_name"
         case twitterUsername = "twitter_username"
         case newsDigestPreferencePrompt = "news_digest_preference_prompt"
+        case councilPersonas = "council_personas"
         case newsDigestTimezone = "news_digest_timezone"
         case newsDigestIntervalHours = "news_digest_interval_hours"
         case hasXBookmarkSync = "has_x_bookmark_sync"
@@ -52,6 +95,7 @@ struct User: Codable, Identifiable, Equatable {
         fullName: String?,
         twitterUsername: String?,
         newsDigestPreferencePrompt: String,
+        councilPersonas: [CouncilPersona] = CouncilPersona.defaults,
         newsDigestTimezone: String,
         newsDigestIntervalHours: Int = 6,
         hasXBookmarkSync: Bool,
@@ -69,6 +113,7 @@ struct User: Codable, Identifiable, Equatable {
         self.fullName = fullName
         self.twitterUsername = twitterUsername
         self.newsDigestPreferencePrompt = newsDigestPreferencePrompt
+        self.councilPersonas = councilPersonas.isEmpty ? CouncilPersona.defaults : councilPersonas
         self.newsDigestTimezone = newsDigestTimezone
         self.newsDigestIntervalHours = newsDigestIntervalHours
         self.hasXBookmarkSync = hasXBookmarkSync
@@ -90,6 +135,9 @@ struct User: Codable, Identifiable, Equatable {
         twitterUsername = try container.decodeIfPresent(String.self, forKey: .twitterUsername)
         newsDigestPreferencePrompt =
             try container.decodeIfPresent(String.self, forKey: .newsDigestPreferencePrompt) ?? ""
+        councilPersonas =
+            try container.decodeIfPresent([CouncilPersona].self, forKey: .councilPersonas)
+            ?? CouncilPersona.defaults
         newsDigestTimezone = try container.decodeIfPresent(String.self, forKey: .newsDigestTimezone) ?? "UTC"
         newsDigestIntervalHours = try container.decodeIfPresent(Int.self, forKey: .newsDigestIntervalHours) ?? 6
         hasXBookmarkSync = try container.decodeIfPresent(Bool.self, forKey: .hasXBookmarkSync) ?? false
@@ -154,13 +202,31 @@ struct UpdateUserProfileRequest: Codable {
     let fullName: String?
     let twitterUsername: String?
     let newsDigestPreferencePrompt: String?
+    let councilPersonas: [CouncilPersona]?
     let newsDigestTimezone: String?
     let newsDigestIntervalHours: Int?
+
+    init(
+        fullName: String? = nil,
+        twitterUsername: String? = nil,
+        newsDigestPreferencePrompt: String? = nil,
+        councilPersonas: [CouncilPersona]? = nil,
+        newsDigestTimezone: String? = nil,
+        newsDigestIntervalHours: Int? = nil
+    ) {
+        self.fullName = fullName
+        self.twitterUsername = twitterUsername
+        self.newsDigestPreferencePrompt = newsDigestPreferencePrompt
+        self.councilPersonas = councilPersonas
+        self.newsDigestTimezone = newsDigestTimezone
+        self.newsDigestIntervalHours = newsDigestIntervalHours
+    }
 
     enum CodingKeys: String, CodingKey {
         case fullName = "full_name"
         case twitterUsername = "twitter_username"
         case newsDigestPreferencePrompt = "news_digest_preference_prompt"
+        case councilPersonas = "council_personas"
         case newsDigestTimezone = "news_digest_timezone"
         case newsDigestIntervalHours = "news_digest_interval_hours"
     }

@@ -77,7 +77,7 @@ class ChatService {
     func createSession(
         contentId: Int? = nil,
         topic: String? = nil,
-        provider: ChatModelProvider? = .anthropic,
+        provider: ChatModelProvider? = .openai,
         modelHint: String? = nil,
         initialMessage: String? = nil
     ) async throws -> ChatSessionSummary {
@@ -109,7 +109,11 @@ class ChatService {
     /// Check if a session exists for the given content
     func getSessionForContent(contentId: Int) async throws -> ChatSessionSummary? {
         let sessions = try await listSessions(contentId: contentId, limit: 20)
-        return sessions.first(where: { $0.isKnowledgeSession }) ?? sessions.first
+        return sessions.first(where: {
+            $0.contentId == contentId &&
+            $0.isKnowledgeSession &&
+            !($0.councilMode ?? false)
+        })
     }
 
     /// Update a session's provider (allows switching models mid-conversation)
@@ -245,12 +249,40 @@ class ChatService {
         )
     }
 
+    /// Start council mode for an existing session and return the merged parent transcript.
+    func startCouncil(
+        sessionId: Int,
+        message: String
+    ) async throws -> ChatSessionDetail {
+        let request = StartCouncilChatRequest(message: message)
+        let body = try JSONEncoder().encode(request)
+        return try await client.request(
+            APIEndpoints.chatCouncilStart(sessionId: sessionId),
+            method: "POST",
+            body: body
+        )
+    }
+
+    /// Select the active council branch and return the merged parent transcript.
+    func selectCouncilBranch(
+        sessionId: Int,
+        childSessionId: Int
+    ) async throws -> ChatSessionDetail {
+        let request = SelectCouncilBranchRequest(childSessionId: childSessionId)
+        let body = try JSONEncoder().encode(request)
+        return try await client.request(
+            APIEndpoints.chatCouncilSelect(sessionId: sessionId),
+            method: "POST",
+            body: body
+        )
+    }
+
     // MARK: - Convenience Methods
 
     /// Start a deep dive chat for an article
     func startArticleChat(
         contentId: Int,
-        provider: ChatModelProvider = .anthropic
+        provider: ChatModelProvider = .openai
     ) async throws -> ChatSessionSummary {
         // Check for existing session
         if let existing = try await getSessionForContent(contentId: contentId) {
@@ -268,7 +300,7 @@ class ChatService {
     func startTopicChat(
         contentId: Int,
         topic: String,
-        provider: ChatModelProvider = .anthropic
+        provider: ChatModelProvider = .openai
     ) async throws -> ChatSessionSummary {
         return try await createSession(
             contentId: contentId,
@@ -280,7 +312,7 @@ class ChatService {
     /// Start an ad-hoc chat without article context
     func startAdHocChat(
         initialMessage: String? = nil,
-        provider: ChatModelProvider = .anthropic
+        provider: ChatModelProvider = .openai
     ) async throws -> ChatSessionSummary {
         return try await createSession(
             provider: provider,
