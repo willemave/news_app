@@ -353,46 +353,28 @@ struct ChatSessionView: View {
         .toolbar {
             if let session = viewModel.session {
                 // Session title (tappable if linked to article)
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 2) {
-                        if let articleUrl = session.articleUrl, let url = URL(string: articleUrl) {
-                            // Tappable title that opens the article
-                            Button {
-                                UIApplication.shared.open(url)
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Text(session.displayTitle)
-                                        .font(.headline)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                        .layoutPriority(1)
-                                    Image(systemName: "arrow.up.right.square")
-                                        .font(.caption2)
-                                }
-                                .frame(maxWidth: titleMaxWidth)
-                                .foregroundColor(Color.onSurface)
-                            }
-                        } else {
-                            Text(session.displayTitle)
-                                .font(.headline)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .frame(maxWidth: titleMaxWidth)
-                        }
-
-                        if session.sessionType != "article_brain" {
+                ToolbarItem(placement: .topBarLeading) {
+                    if let articleUrl = session.articleUrl, let url = URL(string: articleUrl) {
+                        Button {
+                            UIApplication.shared.open(url)
+                        } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: session.sessionTypeIconName)
-                                    .font(.caption2)
-                                Text(session.sessionTypeLabel)
-                                    .font(.caption2)
+                                Text(session.displayTitle)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
-                                    .layoutPriority(1)
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.caption2)
                             }
-                            .frame(maxWidth: titleMaxWidth)
-                            .foregroundColor(session.isDeepResearch ? Color.terracottaPrimary : Color.onSurfaceSecondary)
+                            .foregroundColor(Color.onSurface)
                         }
+                    } else {
+                        Text(session.displayTitle)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
 
@@ -864,7 +846,7 @@ struct ChatSessionView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.top, 14)
         .padding(.bottom, 8)
         .background(
             LinearGradient(

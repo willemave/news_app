@@ -917,7 +917,15 @@ async def send_message(
     )
 
     # Start async processing using BackgroundTasks (not asyncio.create_task which can be GC'd)
-    if effective_session.session_type == "deep_research":
+    if session.council_mode:
+        background_tasks.add_task(
+            process_message_async,
+            effective_session.id,
+            db_message.id,
+            request.message,
+            source="council",
+        )
+    elif effective_session.session_type == "deep_research":
         from app.services.deep_research import process_deep_research_message
 
         background_tasks.add_task(

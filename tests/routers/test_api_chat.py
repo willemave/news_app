@@ -328,7 +328,19 @@ def test_council_branch_selection_switches_visible_transcript_and_send_targets_a
     _seed_turn(db_session, first_child_id, "First branch follow-up", "First branch answer")
     _seed_turn(db_session, second_child_id, "Second branch follow-up", "Second branch answer")
 
-    routed_calls: list[tuple[int, int, str]] = []
+    standard_calls: list[tuple[int, int, str, str]] = []
+    assistant_calls: list[tuple[int, int, str, str]] = []
+
+    async def _fake_process_message_async(
+        session_id: int,
+        message_id: int,
+        prompt: str,
+        *,
+        source: str = "realtime",
+        task_id: int | None = None,
+    ) -> None:
+        del task_id
+        standard_calls.append((session_id, message_id, prompt, source))
 
     async def _fake_process_assistant_turn_async(
         session_id: int,
@@ -338,9 +350,9 @@ def test_council_branch_selection_switches_visible_transcript_and_send_targets_a
         screen_context,
         source: str = "assistant",
     ) -> None:
-        del screen_context, source
-        routed_calls.append((session_id, message_id, prompt))
+        assistant_calls.append((session_id, message_id, prompt, screen_context.screen_type))
 
+    monkeypatch.setattr("app.routers.api.chat.process_message_async", _fake_process_message_async)
     monkeypatch.setattr(
         "app.routers.api.chat.process_assistant_turn_async",
         _fake_process_assistant_turn_async,
@@ -351,7 +363,13 @@ def test_council_branch_selection_switches_visible_transcript_and_send_targets_a
         json={"message": "Stay on the default branch."},
     )
     assert send_response.status_code == 200
-    assert routed_calls[0][0] == first_child_id
+    assert standard_calls[0] == (
+        first_child_id,
+        send_response.json()["message_id"],
+        "Stay on the default branch.",
+        "council",
+    )
+    assert assistant_calls == []
 
     second_select_response = client.post(
         f"/api/content/chat/sessions/{parent.id}/council/select",
@@ -369,7 +387,13 @@ def test_council_branch_selection_switches_visible_transcript_and_send_targets_a
         json={"message": "Route this to the second branch."},
     )
     assert send_after_switch_response.status_code == 200
-    assert routed_calls[1][0] == second_child_id
+    assert standard_calls[1] == (
+        second_child_id,
+        send_after_switch_response.json()["message_id"],
+        "Route this to the second branch.",
+        "council",
+    )
+    assert assistant_calls == []
 
     first_select_response = client.post(
         f"/api/content/chat/sessions/{parent.id}/council/select",

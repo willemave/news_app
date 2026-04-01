@@ -80,7 +80,8 @@ struct PodcastSourcesView: View {
                     name: config.displayName ?? config.feedURL ?? "Podcast",
                     url: config.feedURL,
                     type: config.scraperType,
-                    isActive: config.isActive
+                    isActive: config.isActive,
+                    stats: config.stats
                 )
                 .onTapGesture { selectedConfig = config }
 

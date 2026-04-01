@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import AuthenticationServices
 import SwiftUI
 import os.log
 
@@ -55,6 +56,7 @@ final class AuthenticationViewModel: ObservableObject {
     /// Check if user is already authenticated on app launch
     func checkAuthStatus() {
         authState = .loading
+        errorMessage = nil
 
         let hasRefreshToken = KeychainManager.shared.getToken(key: .refreshToken) != nil
         let hasAccessToken = KeychainManager.shared.getToken(key: .accessToken) != nil
@@ -68,6 +70,7 @@ final class AuthenticationViewModel: ObservableObject {
         Task {
             do {
                 let user = try await authService.getCurrentUser()
+                errorMessage = nil
                 lastKnownUser = user
                 authState = .authenticated(user)
                 await syncNewsDigestTimezoneIfNeeded(for: user)
@@ -87,11 +90,12 @@ final class AuthenticationViewModel: ObservableObject {
         Task {
             do {
                 let session = try await authService.signInWithApple()
+                errorMessage = nil
                 lastKnownUser = session.user
                 authState = .authenticated(session.user)
                 await syncNewsDigestTimezoneIfNeeded(for: session.user)
             } catch {
-                errorMessage = error.localizedDescription
+                presentAuthError(error)
                 authState = .unauthenticated
             }
         }
@@ -101,6 +105,7 @@ final class AuthenticationViewModel: ObservableObject {
     func logout() {
         authService.logout()
         lastKnownUser = nil
+        errorMessage = nil
         authState = .unauthenticated
     }
 
@@ -124,15 +129,15 @@ final class AuthenticationViewModel: ObservableObject {
             authService.logout()
             authState = .unauthenticated
         case .networkError(let underlying):
-            errorMessage = underlying.localizedDescription
+            errorMessage = AuthError.networkError(underlying).userFacingMessage
             // Keep tokens; allow retry without forcing logout
             if let user = lastKnownUser {
                 authState = .authenticated(user)
             } else {
                 authState = .unauthenticated
             }
-        case .serverError(_, let message):
-            errorMessage = message
+        case .serverError(let statusCode, let message):
+            errorMessage = AuthError.serverError(statusCode: statusCode, message: message).userFacingMessage
             if let user = lastKnownUser {
                 authState = .authenticated(user)
             } else {
@@ -148,6 +153,7 @@ final class AuthenticationViewModel: ObservableObject {
         do {
             _ = try await authService.refreshAccessToken()
             let user = try await authService.getCurrentUser()
+            errorMessage = nil
             lastKnownUser = user
             authState = .authenticated(user)
             await syncNewsDigestTimezoneIfNeeded(for: user)
@@ -158,14 +164,14 @@ final class AuthenticationViewModel: ObservableObject {
                 authService.logout()
                 authState = .unauthenticated
             case .networkError(let underlying):
-                errorMessage = underlying.localizedDescription
+                errorMessage = AuthError.networkError(underlying).userFacingMessage
                 if let user = lastKnownUser {
                     authState = .authenticated(user)
                 } else {
                     authState = .unauthenticated
                 }
-            case .serverError(_, let message):
-                errorMessage = message
+            case .serverError(let statusCode, let message):
+                errorMessage = AuthError.serverError(statusCode: statusCode, message: message).userFacingMessage
                 if let user = lastKnownUser {
                     authState = .authenticated(user)
                 } else {
@@ -197,5 +203,20 @@ final class AuthenticationViewModel: ObservableObject {
                 "[AuthState] Failed to sync digest timezone | current=\(user.newsDigestTimezone, privacy: .public) target=\(deviceTimezone, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
         }
+    }
+
+    private func presentAuthError(_ error: Error) {
+        if let authorizationError = error as? ASAuthorizationError,
+           authorizationError.code == .canceled {
+            errorMessage = nil
+            return
+        }
+
+        if let authError = error as? AuthError {
+            errorMessage = authError.userFacingMessage
+            return
+        }
+
+        errorMessage = error.localizedDescription
     }
 }

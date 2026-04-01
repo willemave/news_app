@@ -82,8 +82,8 @@ extension Color {
     static var onSurfaceSecondary: Color {
         Color(UIColor { tc in
             tc.userInterfaceStyle == .dark
-                ? UIColor(red: 0.639, green: 0.616, blue: 0.588, alpha: 1.0)  // #a39d96
-                : UIColor(red: 0.302, green: 0.271, blue: 0.247, alpha: 1.0)  // #4d453f
+                ? UIColor(red: 0.690, green: 0.667, blue: 0.639, alpha: 1.0)  // #b0aaa3
+                : UIColor(red: 0.271, green: 0.243, blue: 0.220, alpha: 1.0)  // #453e38
         })
     }
 
@@ -423,8 +423,8 @@ extension UIColor {
     static var appOnSurfaceSecondary: UIColor {
         UIColor { tc in
             tc.userInterfaceStyle == .dark
-                ? UIColor(red: 0.639, green: 0.616, blue: 0.588, alpha: 1.0)  // #a39d96
-                : UIColor(red: 0.302, green: 0.271, blue: 0.247, alpha: 1.0)  // #4d453f
+                ? UIColor(red: 0.690, green: 0.667, blue: 0.639, alpha: 1.0)  // #b0aaa3
+                : UIColor(red: 0.271, green: 0.243, blue: 0.220, alpha: 1.0)  // #453e38
         }
     }
     static var appSurfacePrimary: UIColor {

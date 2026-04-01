@@ -39,6 +39,9 @@ struct SearchView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.surfacePrimary.ignoresSafeArea())
+        .toolbarBackground(Color.surfacePrimary, for: .navigationBar)
         .navigationTitle("Search")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -89,17 +92,17 @@ struct SearchView: View {
                 HStack {
                     ProgressView()
                     Text("Searching your content...")
-                        .foregroundStyle(Color.textSecondary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                 }
             } else if viewModel.hasLocalSearch && viewModel.contentResults.isEmpty {
                 Text("No matching content.")
-                    .foregroundStyle(Color.textSecondary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
             } else {
                 ForEach(viewModel.contentResults, id: \.id) { item in
                     NavigationLink(destination: ContentDetailView(contentId: item.id)) {
                         HStack(spacing: 12) {
                             Image(systemName: item.apiContentType == .podcast ? "waveform" : "doc.text")
-                                .foregroundStyle(Color.textSecondary)
+                                .foregroundStyle(Color.onSurfaceSecondary)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(item.displayTitle)
                                     .font(.listTitle)
@@ -107,18 +110,18 @@ struct SearchView: View {
                                 if let summary = item.shortSummary, !summary.isEmpty {
                                     Text(summary)
                                         .font(.listCaption)
-                                        .foregroundStyle(Color.textSecondary)
+                                        .foregroundStyle(Color.onSurfaceSecondary)
                                         .lineLimit(2)
                                 }
                                 HStack(spacing: 6) {
                                     if let source = item.source {
                                         Text(source)
                                             .font(.listCaption)
-                                            .foregroundStyle(Color.textTertiary)
+                                            .foregroundStyle(Color.onSurfaceSecondary)
                                     }
                                     Text(item.contentType.capitalized)
                                         .font(.chipLabel)
-                                        .foregroundStyle(Color.textTertiary)
+                                        .foregroundStyle(Color.onSurfaceSecondary)
                                 }
                             }
                         }
@@ -154,11 +157,11 @@ struct SearchView: View {
                 HStack {
                     ProgressView()
                     Text("Finding subscribable sources...")
-                        .foregroundStyle(Color.textSecondary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                 }
             } else if viewModel.hasSubmittedSearch && viewModel.feedResults.isEmpty {
                 Text("No feed or source matches.")
-                    .foregroundStyle(Color.textSecondary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
             } else {
                 ForEach(viewModel.feedResults) { result in
                     VStack(alignment: .leading, spacing: 10) {
@@ -167,7 +170,7 @@ struct SearchView: View {
                                 .font(.listTitle.weight(.semibold))
                             Text(result.rationale ?? result.description ?? result.siteURL)
                                 .font(.listCaption)
-                                .foregroundStyle(Color.textSecondary)
+                                .foregroundStyle(Color.onSurfaceSecondary)
                                 .lineLimit(3)
                         }
 
@@ -205,11 +208,11 @@ struct SearchView: View {
                 HStack {
                     ProgressView()
                     Text("Searching podcast episodes...")
-                        .foregroundStyle(Color.textSecondary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                 }
             } else if viewModel.hasSubmittedSearch && viewModel.podcastResults.isEmpty {
                 Text("No podcast matches.")
-                    .foregroundStyle(Color.textSecondary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
             } else {
                 ForEach(viewModel.podcastResults) { result in
                     VStack(alignment: .leading, spacing: 10) {
@@ -218,11 +221,11 @@ struct SearchView: View {
                                 .font(.listTitle.weight(.semibold))
                             Text(result.podcastTitle ?? result.source ?? result.episodeURL)
                                 .font(.listCaption)
-                                .foregroundStyle(Color.textSecondary)
+                                .foregroundStyle(Color.onSurfaceSecondary)
                             if let snippet = result.snippet, !snippet.isEmpty {
                                 Text(snippet)
                                     .font(.listCaption)
-                                    .foregroundStyle(Color.textSecondary)
+                                    .foregroundStyle(Color.onSurfaceSecondary)
                                     .lineLimit(3)
                             }
                         }

@@ -79,7 +79,8 @@ struct FeedSourcesView: View {
                     name: config.displayName ?? config.feedURL ?? "Feed",
                     url: config.feedURL,
                     type: config.scraperType,
-                    isActive: config.isActive
+                    isActive: config.isActive,
+                    stats: config.stats
                 )
                 .onTapGesture { selectedConfig = config }
 

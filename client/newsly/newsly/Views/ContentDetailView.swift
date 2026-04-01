@@ -379,7 +379,7 @@ struct ContentDetailView: View {
                     }
                 }
         )
-        .screenContainer()
+        .background(Color.surfacePrimary.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.surfacePrimary, for: .navigationBar)
         .toolbarBackground(.automatic, for: .navigationBar)
@@ -774,13 +774,13 @@ struct ContentDetailView: View {
                     .offset(y: -geo.safeAreaInsets.top - parallaxShift + (isOverscroll ? -minY : 0))
                 }
 
-                // Layer 2: Gradient scrim
+                // Layer 2: Gradient scrim — blend into surfacePrimary
                 LinearGradient(
                     gradient: Gradient(stops: [
                         .init(color: .clear, location: 0.0),
-                        .init(color: .clear, location: 0.25),
-                        .init(color: .black.opacity(0.25), location: 0.5),
-                        .init(color: .black.opacity(0.7), location: 1.0)
+                        .init(color: .clear, location: 0.2),
+                        .init(color: Color.surfacePrimary.opacity(0.5), location: 0.55),
+                        .init(color: Color.surfacePrimary, location: 1.0)
                     ]),
                     startPoint: .top,
                     endPoint: .bottom

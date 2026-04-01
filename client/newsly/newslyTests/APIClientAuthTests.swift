@@ -216,6 +216,32 @@ final class APIClientAuthTests: XCTestCase {
         XCTAssertNil(tokenStore.getToken(key: .refreshToken))
     }
 
+    func testServerAuthErrorUsesFriendlyMessageForHTMLGatewayResponse() {
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head><title>willemsavenue.com | 502: Bad gateway</title></head>
+        <body>Bad gateway</body>
+        </html>
+        """
+
+        let error = AuthError.serverError(statusCode: 502, message: html)
+
+        XCTAssertEqual(
+            error.userFacingMessage,
+            "Melliw News is temporarily unavailable. Please try again in a moment."
+        )
+    }
+
+    func testServerAuthErrorExtractsJSONDetailMessage() {
+        let error = AuthError.serverError(
+            statusCode: 422,
+            message: #"{"detail":"Sign in is not available for this account."}"#
+        )
+
+        XCTAssertEqual(error.userFacingMessage, "Sign in is not available for this account.")
+    }
+
     private func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]

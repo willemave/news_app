@@ -16,7 +16,7 @@ struct SearchBar: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.listTitle)
-                .foregroundColor(.textSecondary)
+                .foregroundColor(.onSurfaceSecondary)
 
             TextField(placeholder, text: $text)
                 .font(.listTitle)
@@ -35,7 +35,7 @@ struct SearchBar: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.listTitle)
-                        .foregroundColor(.textSecondary)
+                        .foregroundColor(.onSurfaceSecondary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
@@ -45,7 +45,7 @@ struct SearchBar: View {
         .padding(.horizontal, 14)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.borderStrong, lineWidth: 1)
+                .stroke(Color.outlineVariant, lineWidth: 1)
         )
     }
 }

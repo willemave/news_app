@@ -1,10 +1,12 @@
 """CRUD endpoints for per-user scraper configurations."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_NEW_FEED_LIMIT
@@ -17,11 +19,26 @@ from app.services.scraper_configs import (
     UpdateUserScraperConfig,
     create_user_scraper_config,
     delete_user_scraper_config,
+    get_scraper_config_stats,
     list_user_scraper_configs,
     update_user_scraper_config,
 )
 
 router = APIRouter(prefix="/scrapers", tags=["scrapers"])
+
+
+class ScraperConfigStatsResponse(BaseModel):
+    """Derived stats for a single scraper configuration."""
+
+    total_count: int
+    completed_count: int
+    unread_count: int
+    processing_count: int
+    latest_processed_at: datetime | None = None
+    latest_publication_at: datetime | None = None
+    next_expected_at: datetime | None = None
+    average_interval_hours: float | None = None
+    interval_sample_size: int = 0
 
 
 class ScraperConfigResponse(BaseModel):
@@ -35,6 +52,7 @@ class ScraperConfigResponse(BaseModel):
     limit: int | None = None
     is_active: bool
     created_at: datetime
+    stats: ScraperConfigStatsResponse | None = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -47,6 +65,17 @@ class ScraperConfigResponse(BaseModel):
                 "limit": 10,
                 "is_active": True,
                 "created_at": "2025-06-24T12:00:00Z",
+                "stats": {
+                    "total_count": 8,
+                    "completed_count": 7,
+                    "unread_count": 3,
+                    "processing_count": 1,
+                    "latest_processed_at": "2026-03-30T21:30:00Z",
+                    "latest_publication_at": "2026-03-30T20:00:00Z",
+                    "next_expected_at": "2026-04-01T08:00:00Z",
+                    "average_interval_hours": 24.0,
+                    "interval_sample_size": 3,
+                },
             }
         }
     )
@@ -57,6 +86,24 @@ def _coerce_limit(config: dict[str, Any]) -> int | None:
     if isinstance(limit, int) and 1 <= limit <= 100:
         return limit
     return None
+
+
+def _serialize_scraper_config(
+    config,
+    *,
+    stats: dict[str, Any] | None = None,
+) -> ScraperConfigResponse:
+    return ScraperConfigResponse(
+        id=config.id,
+        scraper_type=config.scraper_type,
+        display_name=config.display_name,
+        config=config.config or {},
+        feed_url=(config.config or {}).get("feed_url"),
+        limit=_coerce_limit(config.config or {}),
+        is_active=config.is_active,
+        created_at=config.created_at,
+        stats=ScraperConfigStatsResponse(**stats) if stats is not None else None,
+    )
 
 
 @router.get("/", response_model=list[ScraperConfigResponse])
@@ -86,16 +133,11 @@ async def list_scraper_configs(
         current_user.id,
         allowed_types=requested_types or None,
     )
+    stats_by_config = get_scraper_config_stats(db, user_id=current_user.id, configs=configs)
     return [
-        ScraperConfigResponse(
-            id=config.id,
-            scraper_type=config.scraper_type,
-            display_name=config.display_name,
-            config=config.config or {},
-            feed_url=(config.config or {}).get("feed_url"),
-            limit=_coerce_limit(config.config or {}),
-            is_active=config.is_active,
-            created_at=config.created_at,
+        _serialize_scraper_config(
+            config,
+            stats=stats_by_config.get(config.id),
         )
         for config in configs
     ]
@@ -113,16 +155,8 @@ async def create_scraper_config(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    return ScraperConfigResponse(
-        id=record.id,
-        scraper_type=record.scraper_type,
-        display_name=record.display_name,
-        config=record.config or {},
-        feed_url=(record.config or {}).get("feed_url"),
-        limit=_coerce_limit(record.config or {}),
-        is_active=record.is_active,
-        created_at=record.created_at,
-    )
+    stats_by_config = get_scraper_config_stats(db, user_id=current_user.id, configs=[record])
+    return _serialize_scraper_config(record, stats=stats_by_config.get(record.id))
 
 
 @router.put("/{config_id}", response_model=ScraperConfigResponse)
@@ -138,16 +172,8 @@ async def update_scraper_config(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    return ScraperConfigResponse(
-        id=record.id,
-        scraper_type=record.scraper_type,
-        display_name=record.display_name,
-        config=record.config or {},
-        feed_url=(record.config or {}).get("feed_url"),
-        limit=_coerce_limit(record.config or {}),
-        is_active=record.is_active,
-        created_at=record.created_at,
-    )
+    stats_by_config = get_scraper_config_stats(db, user_id=current_user.id, configs=[record])
+    return _serialize_scraper_config(record, stats=stats_by_config.get(record.id))
 
 
 @router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -199,28 +225,23 @@ async def subscribe_to_feed(
             detail=f"Unsupported feed type: {payload.feed_type}",
         )
 
-    create_payload = CreateUserScraperConfig(
-        scraper_type=payload.feed_type,
-        display_name=payload.display_name,
-        config={
-            "feed_url": payload.feed_url,
-            "limit": DEFAULT_NEW_FEED_LIMIT,
-        },
-        is_active=True,
-    )
+    try:
+        create_payload = CreateUserScraperConfig(
+            scraper_type=payload.feed_type,
+            display_name=payload.display_name,
+            config={
+                "feed_url": payload.feed_url,
+                "limit": DEFAULT_NEW_FEED_LIMIT,
+            },
+            is_active=True,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     try:
         record = create_user_scraper_config(db, current_user.id, create_payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    return ScraperConfigResponse(
-        id=record.id,
-        scraper_type=record.scraper_type,
-        display_name=record.display_name,
-        config=record.config or {},
-        feed_url=(record.config or {}).get("feed_url"),
-        limit=_coerce_limit(record.config or {}),
-        is_active=record.is_active,
-        created_at=record.created_at,
-    )
+    stats_by_config = get_scraper_config_stats(db, user_id=current_user.id, configs=[record])
+    return _serialize_scraper_config(record, stats=stats_by_config.get(record.id))

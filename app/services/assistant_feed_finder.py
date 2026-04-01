@@ -20,6 +20,8 @@ MAX_FEED_OPTION_DESCRIPTION_CHARACTERS = 600
 MAX_FEED_OPTION_RATIONALE_CHARACTERS = 600
 URL_REGEX = r"https?://[^\s\"'<>]+"
 URL_TRIM_CHARS = ".,);]>'\""
+PODCAST_QUERY_HINTS = ("podcast", "podcasts", "episode", "episodes", "show", "shows")
+YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
 
 
 def find_feed_options(query: str, limit: int = MAX_FEED_OPTIONS) -> AssistantFeedOptionsResult:
@@ -51,10 +53,12 @@ def find_feed_options(query: str, limit: int = MAX_FEED_OPTIONS) -> AssistantFee
         if option is None:
             continue
         options.append(option)
-        if len(options) >= normalized_limit:
-            break
 
-    return AssistantFeedOptionsResult(query=normalized_query, options=options)
+    ranked_options = _rank_options_for_query(normalized_query, options)
+    return AssistantFeedOptionsResult(
+        query=normalized_query,
+        options=ranked_options[:normalized_limit],
+    )
 
 
 def _content_results_by_url(
@@ -75,6 +79,16 @@ def _build_option_from_result(
     site_url = _normalize_url(search_result.url)
     if site_url is None:
         return None
+
+    if _is_youtube_site_url(site_url):
+        live_option = _build_option_from_live_page(
+            search_result=search_result,
+            site_url=site_url,
+            detector=detector,
+            seen_feed_urls=seen_feed_urls,
+        )
+        if live_option is not None:
+            return live_option
 
     page_text = "\n".join(
         part.strip()
@@ -123,6 +137,43 @@ def _build_option_from_result(
         feed_title=detected_feed.get("title"),
         detector=detector,
         page_text=page_text,
+        seen_feed_urls=seen_feed_urls,
+    )
+
+
+def _build_option_from_live_page(
+    *,
+    search_result: ExaSearchResult,
+    site_url: str,
+    detector: FeedDetector,
+    seen_feed_urls: set[str],
+) -> AssistantFeedOption | None:
+    try:
+        response = detector.http_service.fetch(site_url)
+    except Exception:  # noqa: BLE001
+        return None
+
+    detection = detector.detect_from_links(
+        None,
+        page_url=str(getattr(response, "url", site_url) or site_url),
+        page_title=search_result.title,
+        html_content=response.text,
+        source="assistant_feed_finder",
+        content_type="article",
+        force_detect=True,
+    )
+    if not detection:
+        return None
+
+    detected_feed = detection["detected_feed"]
+    return _build_option(
+        search_result=search_result,
+        site_url=site_url,
+        feed_url=detected_feed["url"],
+        feed_format=detected_feed.get("format", "rss"),
+        feed_title=detected_feed.get("title"),
+        detector=detector,
+        page_text=response.text,
         seen_feed_urls=seen_feed_urls,
     )
 
@@ -196,6 +247,34 @@ def _extract_urls_from_text(text: str) -> list[str]:
     import re
 
     return [match.rstrip(URL_TRIM_CHARS) for match in re.findall(URL_REGEX, text)]
+
+
+def _rank_options_for_query(
+    query: str,
+    options: list[AssistantFeedOption],
+) -> list[AssistantFeedOption]:
+    if not _looks_like_podcast_query(query):
+        return options
+
+    indexed_options = list(enumerate(options))
+    ranked = sorted(
+        indexed_options,
+        key=lambda item: (
+            0 if item[1].feed_type == "podcast_rss" else 1,
+            item[0],
+        ),
+    )
+    return [option for _, option in ranked]
+
+
+def _looks_like_podcast_query(query: str) -> bool:
+    lowered = query.lower()
+    return any(hint in lowered for hint in PODCAST_QUERY_HINTS)
+
+
+def _is_youtube_site_url(url: str) -> bool:
+    host = urlparse(url).netloc.lower()
+    return host in YOUTUBE_HOSTS
 
 
 def _looks_like_feed_url(url: str) -> bool:

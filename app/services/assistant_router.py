@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
@@ -12,7 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
-from sqlalchemy import Text, cast, or_
+from sqlalchemy import Text, and_, cast, func, or_
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import get_session_factory
@@ -26,7 +27,7 @@ from app.models.chat_message_metadata import (
 )
 from app.models.content_submission import SubmitContentRequest
 from app.models.metadata import ContentType
-from app.models.schema import ChatSession, Content, NewsDigest
+from app.models.schema import ChatSession, Content, NewsDigest, UserScraperConfig
 from app.models.user import User
 from app.repositories import favorites_repository, read_status_repository
 from app.repositories.content_feed_query import build_user_feed_query
@@ -65,6 +66,46 @@ ASSISTANT_SESSION_TYPES = {
     "weekly_discovery",
 }
 MAX_VISIBLE_CONTENT_IDS = 12
+SUBSCRIPTION_QUERY_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "article",
+    "articles",
+    "episode",
+    "episodes",
+    "feed",
+    "feeds",
+    "have",
+    "in",
+    "inbox",
+    "my",
+    "newsletter",
+    "newsletters",
+    "of",
+    "pod",
+    "pods",
+    "podcast",
+    "podcasts",
+    "read",
+    "series",
+    "show",
+    "shows",
+    "the",
+}
+SUBSCRIPTION_QUERY_HINTS = {
+    "episode",
+    "episodes",
+    "feed",
+    "feeds",
+    "pod",
+    "pods",
+    "podcast",
+    "podcasts",
+    "series",
+    "show",
+    "shows",
+}
 _agents: dict[tuple[str, str], Agent[AssistantDeps, str]] = {}
 
 ASSISTANT_SYSTEM_PROMPT = (
@@ -406,6 +447,7 @@ def _format_content_hits(
     *,
     query: str,
     content_rows: list[tuple[Content, object, object]],
+    total_content_matches: int | None,
     digest_rows: list[NewsDigest],
     digest_bullets_by_digest_id: dict[int, list[str]],
 ) -> str:
@@ -414,7 +456,17 @@ def _format_content_hits(
     lines = [f'In-app content results for "{query}":']
 
     if content_rows:
-        lines.append("Feed Content:")
+        if total_content_matches is not None and total_content_matches > 0:
+            if total_content_matches > len(content_rows):
+                summary_line = (
+                    f"Feed Content ({total_content_matches} total matches, "
+                    f"showing {len(content_rows)}):"
+                )
+                lines.append(summary_line)
+            else:
+                lines.append(f"Feed Content ({total_content_matches} total matches):")
+        else:
+            lines.append("Feed Content:")
         for idx, (content, is_read, is_favorited) in enumerate(content_rows, start=1):
             lines.append(
                 f"{idx}. [{content.id}] {(content.title or 'Untitled').strip()} "
@@ -439,6 +491,120 @@ def _format_content_hits(
     if len(lines) == 1:
         return f'No in-app content matched "{query}".'
     return "\n".join(lines)
+
+
+def _tokenize_subscription_query(value: str | None) -> list[str]:
+    """Return normalized tokens for subscription-aware content lookups."""
+
+    if not value:
+        return []
+
+    tokens: list[str] = []
+    for raw_token in re.findall(r"[a-z0-9]+", value.lower()):
+        token = raw_token
+        if len(token) > 4 and token.endswith("ies"):
+            token = f"{token[:-3]}y"
+        elif len(token) > 3 and token.endswith("s"):
+            token = token[:-1]
+        tokens.append(token)
+    return tokens
+
+
+def _significant_subscription_tokens(value: str | None) -> list[str]:
+    """Return de-duplicated non-generic query tokens."""
+
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for token in _tokenize_subscription_query(value):
+        if token in SUBSCRIPTION_QUERY_STOPWORDS:
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
+
+
+def _find_subscription_content_matches(
+    db: Session,
+    *,
+    user_id: int,
+    query: str,
+    limit: int,
+):
+    """Return feed items matching an active subscription name for the user."""
+
+    raw_query_tokens = _tokenize_subscription_query(query)
+    significant_query_tokens = _significant_subscription_tokens(query)
+    if not significant_query_tokens:
+        return [], None
+
+    query_has_subscription_hint = any(
+        token in SUBSCRIPTION_QUERY_HINTS for token in raw_query_tokens
+    )
+    normalized_query = query.strip().lower()
+    configs = (
+        db.query(UserScraperConfig)
+        .filter(UserScraperConfig.user_id == user_id)
+        .filter(UserScraperConfig.is_active.is_(True))
+        .all()
+    )
+
+    config_filters = []
+    for config in configs:
+        candidate_names = [
+            (config.display_name or "").strip(),
+            str((config.config or {}).get("name") or "").strip(),
+        ]
+        candidate_names = [name for name in candidate_names if name]
+        if not candidate_names:
+            continue
+
+        candidate_tokens = set()
+        for name in candidate_names:
+            candidate_tokens.update(_significant_subscription_tokens(name))
+        if not candidate_tokens:
+            continue
+
+        name_overlap = set(significant_query_tokens) & candidate_tokens
+        if not name_overlap and not any(
+            normalized_query
+            and (normalized_query in name.lower() or name.lower() in normalized_query)
+            for name in candidate_names
+        ):
+            continue
+        if not query_has_subscription_hint and not name_overlap:
+            continue
+
+        per_config_filters = [
+            func.lower(Content.source).like(f"%{name.lower()}%") for name in candidate_names
+        ]
+        token_filters = [
+            or_(
+                func.lower(Content.title).like(f"%{token}%"),
+                func.lower(Content.source).like(f"%{token}%"),
+            )
+            for token in sorted(candidate_tokens)
+        ]
+        if token_filters:
+            per_config_filters.append(and_(*token_filters))
+        config_filters.append(or_(*per_config_filters))
+
+    if not config_filters:
+        return [], None
+
+    matched_query = build_user_feed_query(db, user_id, mode="inbox").filter(or_(*config_filters))
+    total_matches = matched_query.order_by(None).count()
+    if total_matches == 0:
+        return [], 0
+
+    rows = (
+        matched_query
+        .order_by(Content.created_at.desc(), Content.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return rows, total_matches
 
 
 def _build_agent_cache_key(model_spec: str, api_key_override: str | None) -> tuple[str, str]:
@@ -532,22 +698,31 @@ def _get_or_create_agent(
         normalized_limit = max(1, min(limit, 10))
         normalized_query = query.strip()
         with ctx.deps.session_factory() as db:
-            feed_query = build_user_feed_query(db, ctx.deps.user_id, mode="inbox")
-            search_backend = get_search_backend(db)
-            content_query = search_backend.apply_search(feed_query, normalized_query)
-            content_rows = (
-                content_query
-                .order_by(Content.created_at.desc(), Content.id.desc())
-                .limit(normalized_limit)
-                .all()
+            content_rows, total_content_matches = _find_subscription_content_matches(
+                db,
+                user_id=ctx.deps.user_id,
+                query=normalized_query,
+                limit=normalized_limit,
             )
-            if not content_rows:
+            if total_content_matches is None:
+                feed_query = build_user_feed_query(db, ctx.deps.user_id, mode="inbox")
+                search_backend = get_search_backend(db)
+                content_query = search_backend.apply_search(feed_query, normalized_query)
+                total_content_matches = content_query.order_by(None).count()
                 content_rows = (
-                    feed_query
+                    content_query
                     .order_by(Content.created_at.desc(), Content.id.desc())
                     .limit(normalized_limit)
                     .all()
                 )
+                if not content_rows:
+                    content_rows = (
+                        feed_query
+                        .order_by(Content.created_at.desc(), Content.id.desc())
+                        .limit(normalized_limit)
+                        .all()
+                    )
+                    total_content_matches = 0
 
             digest_query = db.query(NewsDigest).filter(NewsDigest.user_id == ctx.deps.user_id)
             if normalized_query:
@@ -583,6 +758,7 @@ def _get_or_create_agent(
         return _format_content_hits(
             query=query,
             content_rows=content_rows,
+            total_content_matches=total_content_matches,
             digest_rows=digest_rows,
             digest_bullets_by_digest_id=digest_bullets_by_digest_id,
         )

@@ -35,6 +35,10 @@ struct SourceDetailSheet: View {
                     // Info card
                     infoCard
 
+                    if let stats = config.stats, stats.hasVisibleStats {
+                        statsCard(stats)
+                    }
+
                     // Settings card
                     settingsCard
 
@@ -166,6 +170,35 @@ struct SourceDetailSheet: View {
         .background(Color.surfaceSecondary, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private func statsCard(_ stats: ScraperConfigStats) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("STATS")
+                .font(.sectionHeader)
+                .foregroundStyle(Color.textTertiary)
+                .tracking(0.5)
+
+            statLine("Items", value: "\(stats.totalCount)")
+            statLine("Ready", value: "\(stats.completedCount)")
+            statLine("Unread", value: "\(stats.unreadCount)")
+            statLine("Processing", value: "\(stats.processingCount)")
+
+            if let latestProcessed = formattedTimestamp(stats.latestProcessedDate) {
+                statLine("Last Processed", value: latestProcessed)
+            }
+            if let latestPublished = formattedTimestamp(stats.latestPublicationDate) {
+                statLine("Latest Published", value: latestPublished)
+            }
+            if let nextExpected = formattedTimestamp(stats.nextExpectedDate) {
+                statLine("Next Expected", value: nextExpected)
+            }
+            if let cadence = stats.cadenceSummary {
+                statLine("Cadence", value: cadence)
+            }
+        }
+        .padding()
+        .background(Color.surfaceSecondary, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Error Banner
 
     private func errorBanner(_ error: String) -> some View {
@@ -254,4 +287,29 @@ struct SourceDetailSheet: View {
             dismiss()
         }
     }
+
+    private func statLine(_ title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .font(.listTitle)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            Text(value)
+                .font(.listMono)
+                .foregroundStyle(Color.textSecondary)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func formattedTimestamp(_ date: Date?) -> String? {
+        guard let date else { return nil }
+        return Self.dateFormatter.string(from: date)
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }

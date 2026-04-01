@@ -163,3 +163,178 @@ def test_find_feed_options_truncates_long_option_fields(monkeypatch) -> None:
     assert option.rationale is not None
     assert len(option.rationale) <= 600
     assert option.rationale.endswith("...")
+
+
+def test_find_feed_options_uses_live_youtube_detection_over_stale_exa_feed(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.assistant_feed_finder.exa_search",
+        lambda query, num_results, max_characters=1200: [
+            ExaSearchResult(
+                title="Bg2 Pod",
+                url="https://www.youtube.com/@bg2pod",
+                snippet="Podcast page.",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "app.services.assistant_feed_finder.exa_get_contents",
+        lambda urls, max_characters=5000: [
+            ExaContentResult(
+                title="Bg2 Pod",
+                url=urls[0],
+                text=(
+                    "Stale indexed feed URL: "
+                    "https://www.youtube.com/feeds/videos.xml?channel_id=UC8P0dc0Zn2gf8L6tJi_k6xg"
+                ),
+            )
+        ],
+    )
+
+    class _Response:
+        def __init__(
+            self,
+            url: str,
+            text: str,
+            *,
+            status_code: int = 200,
+            content_type: str = "text/html; charset=utf-8",
+        ) -> None:
+            self.url = url
+            self.text = text
+            self.content = text.encode("utf-8")
+            self.status_code = status_code
+            self.headers = {"content-type": content_type}
+
+    monkeypatch.setattr(
+        "app.services.http.HttpService.head",
+        lambda self,
+        url,
+        headers=None,
+        allow_statuses=None,
+        log_client_errors=True,
+        log_exceptions=True: _Response(url, "", content_type="text/html; charset=utf-8"),
+    )
+
+    monkeypatch.setattr(
+        "app.services.http.HttpService.fetch",
+        lambda self, url, headers=None: (
+            _Response(
+                url,
+                (
+                    '<?xml version="1.0" encoding="UTF-8"?>'
+                    "<feed xmlns='http://www.w3.org/2005/Atom'>"
+                    "<title>Bg2 Pod</title>"
+                    "</feed>"
+                ),
+                content_type="application/atom+xml",
+            )
+            if "feeds/videos.xml" in url
+            else _Response(
+                url,
+                (
+                    '<link rel="alternate" type="application/atom+xml" '
+                    "href="
+                    '"https://www.youtube.com/feeds/videos.xml?channel_id='
+                    'UC-yRDvpR99LUc5l7i7jLzew" '
+                    'title="Bg2 Pod">'
+                ),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.feed_detection.FeedDetector.validate_feed_url",
+        lambda self, url: {
+            "feed_url": url,
+            "feed_format": "atom",
+            "title": "Chris Palmer SEO"
+            if "UC8P0dc0Zn2gf8L6tJi_k6xg" in url
+            else "Bg2 Pod",
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.feed_detection.FeedDetector.classify_feed_type",
+        lambda self, **kwargs: FeedClassificationResult(
+            feed_type="atom",
+            confidence=0.9,
+            reasoning="Validated YouTube channel feed.",
+        ),
+    )
+
+    result = find_feed_options("BG2 podcast", limit=1)
+
+    assert len(result.options) == 1
+    option = result.options[0]
+    assert option.title == "Bg2 Pod"
+    assert option.feed_url == "https://www.youtube.com/feeds/videos.xml?channel_id=UC-yRDvpR99LUc5l7i7jLzew"
+    assert option.site_url == "https://www.youtube.com/@bg2pod"
+
+
+def test_find_feed_options_prefers_podcast_rss_for_podcast_queries(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.assistant_feed_finder.exa_search",
+        lambda query, num_results, max_characters=1200: [
+            ExaSearchResult(
+                title="Bg2 Pod YouTube",
+                url="https://www.youtube.com/@bg2pod",
+                snippet="Follow on YouTube.",
+            ),
+            ExaSearchResult(
+                title="BG2 Pod",
+                url="https://bg2pod.com",
+                snippet="Podcast RSS: https://feeds.megaphone.fm/bg2pod",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.services.assistant_feed_finder.exa_get_contents",
+        lambda urls, max_characters=5000: [
+            ExaContentResult(
+                title="Bg2 Pod YouTube",
+                url=urls[0],
+                text="https://www.youtube.com/feeds/videos.xml?channel_id=UC-yRDvpR99LUc5l7i7jLzew",
+            ),
+            ExaContentResult(
+                title="BG2 Pod",
+                url=urls[1],
+                text="https://feeds.megaphone.fm/bg2pod",
+            ),
+        ],
+    )
+
+    class _Response:
+        def __init__(self, url: str, text: str) -> None:
+            self.url = url
+            self.text = text
+
+    monkeypatch.setattr(
+        "app.services.http.HttpService.fetch",
+        lambda self, url, headers=None: _Response(url, "<html></html>"),
+    )
+    monkeypatch.setattr(
+        "app.services.feed_detection.FeedDetector.detect_from_links",
+        lambda self, *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.services.feed_detection.FeedDetector.validate_feed_url",
+        lambda self, url: {
+            "feed_url": url,
+            "feed_format": "atom" if "youtube.com" in url else "rss",
+            "title": "Bg2 Pod YouTube" if "youtube.com" in url else "BG2 Pod",
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.feed_detection.FeedDetector.classify_feed_type",
+        lambda self, **kwargs: FeedClassificationResult(
+            feed_type="atom"
+            if "youtube.com" in kwargs["feed_url"]
+            else "podcast_rss",
+            confidence=0.95,
+            reasoning="Validated feed.",
+        ),
+    )
+
+    result = find_feed_options("BG2 podcast", limit=2)
+
+    assert len(result.options) == 2
+    assert result.options[0].feed_type == "podcast_rss"
+    assert result.options[0].feed_url == "https://feeds.megaphone.fm/bg2pod"

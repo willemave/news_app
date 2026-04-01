@@ -12,6 +12,7 @@ struct SourceRow: View {
     let url: String?
     let type: String
     let isActive: Bool
+    let stats: ScraperConfigStats?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -30,6 +31,13 @@ struct SourceRow: View {
                         .font(.listMono)
                         .foregroundStyle(Color.textTertiary)
                         .lineLimit(1)
+                }
+
+                if let summary = statsLine {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(Color.textSecondary)
+                        .lineLimit(2)
                 }
             }
 
@@ -54,6 +62,19 @@ struct SourceRow: View {
             return urlString
         }
         return host.replacingOccurrences(of: "www.", with: "")
+    }
+
+    private var statsLine: String? {
+        guard let stats, stats.hasVisibleStats else { return nil }
+
+        var parts: [String] = []
+        if let countSummary = stats.compactCountSummary {
+            parts.append(countSummary)
+        }
+        if let processedSummary = stats.relativeProcessedSummary {
+            parts.append(processedSummary)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 }
 
@@ -104,7 +125,8 @@ struct SourceTypeIcon: View {
             name: "Stratechery",
             url: "https://stratechery.com/feed",
             type: "substack",
-            isActive: true
+            isActive: true,
+            stats: nil
         )
 
         Divider().padding(.leading, 56)
@@ -113,7 +135,8 @@ struct SourceTypeIcon: View {
             name: "The Vergecast",
             url: "https://feeds.megaphone.fm/vergecast",
             type: "podcast_rss",
-            isActive: true
+            isActive: true,
+            stats: nil
         )
 
         Divider().padding(.leading, 56)
@@ -122,7 +145,8 @@ struct SourceTypeIcon: View {
             name: "MKBHD",
             url: "https://youtube.com/mkbhd",
             type: "youtube",
-            isActive: false
+            isActive: false,
+            stats: nil
         )
     }
     .background(Color.surfacePrimary)

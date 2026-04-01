@@ -1,5 +1,49 @@
+from datetime import UTC, datetime
+
+import pytest
+
 from app.constants import DEFAULT_NEW_FEED_LIMIT
-from app.models.schema import UserScraperConfig
+from app.models.metadata import ContentStatus, ContentType
+from app.models.schema import (
+    Content,
+    ContentReadStatus,
+    ContentStatusEntry,
+    ProcessingTask,
+    UserScraperConfig,
+)
+
+
+@pytest.fixture(autouse=True)
+def _stub_feed_validation(monkeypatch):
+    def _validate(feed_url: str):
+        return {"feed_url": feed_url.strip()}
+
+    monkeypatch.setattr(
+        "app.services.scraper_configs.FEED_VALIDATOR.validate_feed_url",
+        _validate,
+    )
+
+
+def _add_inbox_status(db_session, user_id: int, content_id: int) -> None:
+    db_session.add(
+        ContentStatusEntry(
+            user_id=user_id,
+            content_id=content_id,
+            status="inbox",
+        )
+    )
+
+
+def _add_active_task(db_session, *, content_id: int) -> None:
+    db_session.add(
+        ProcessingTask(
+            task_type="process_content",
+            content_id=content_id,
+            status="pending",
+            queue_name="content",
+            payload={},
+        )
+    )
 
 
 def test_scraper_configs_crud(client, db_session, test_user):
@@ -135,3 +179,128 @@ def test_scraper_config_reddit(client, test_user):
     assert data["scraper_type"] == "reddit"
     assert data["feed_url"] == "https://www.reddit.com/r/MachineLearning/"
     assert data["config"]["subreddit"] == "MachineLearning"
+
+
+def test_scraper_config_list_includes_derived_stats(client, db_session, test_user):
+    article_config = client.post(
+        "/api/scrapers",
+        json={
+            "scraper_type": "substack",
+            "display_name": "Import AI",
+            "config": {"feed_url": "https://importai.substack.com/feed"},
+            "is_active": True,
+        },
+    ).json()
+    podcast_config = client.post(
+        "/api/scrapers",
+        json={
+            "scraper_type": "podcast_rss",
+            "display_name": "AI Radio",
+            "config": {"feed_url": "https://pod.example.com/rss", "limit": 10},
+            "is_active": True,
+        },
+    ).json()
+    youtube_config = client.post(
+        "/api/scrapers",
+        json={
+            "scraper_type": "youtube",
+            "display_name": "AI Channel",
+            "config": {"feed_url": "https://www.youtube.com/channel/UC123"},
+            "is_active": True,
+        },
+    ).json()
+
+    article_old = Content(
+        url="https://importai.substack.com/p/older",
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.COMPLETED.value,
+        processed_at=datetime(2026, 3, 27, 9, 0, 0),
+        publication_date=datetime(2026, 3, 27, 8, 0, 0),
+        content_metadata={
+            "feed_config_id": article_config["id"],
+            "feed_url": "https://importai.substack.com/feed",
+        },
+    )
+    article_new = Content(
+        url="https://importai.substack.com/p/newer",
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.COMPLETED.value,
+        processed_at=datetime(2026, 3, 30, 9, 0, 0),
+        publication_date=datetime(2026, 3, 30, 8, 0, 0),
+        content_metadata={
+            "feed_config_id": article_config["id"],
+            "feed_url": "https://importai.substack.com/feed",
+        },
+    )
+    podcast_completed = Content(
+        url="https://pod.example.com/episodes/1",
+        content_type=ContentType.PODCAST.value,
+        status=ContentStatus.COMPLETED.value,
+        processed_at=datetime(2026, 3, 29, 7, 0, 0),
+        publication_date=datetime(2026, 3, 29, 6, 30, 0),
+        content_metadata={
+            "feed_config_id": podcast_config["id"],
+            "feed_url": "https://pod.example.com/rss",
+        },
+    )
+    podcast_pending = Content(
+        url="https://pod.example.com/episodes/2",
+        content_type=ContentType.PODCAST.value,
+        status=ContentStatus.PENDING.value,
+        publication_date=datetime(2026, 3, 31, 6, 30, 0),
+        content_metadata={
+            "feed_config_id": podcast_config["id"],
+            "feed_url": "https://pod.example.com/rss",
+        },
+    )
+    unrelated = Content(
+        url="https://example.com/other",
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.COMPLETED.value,
+        processed_at=datetime.now(UTC).replace(tzinfo=None),
+        publication_date=datetime.now(UTC).replace(tzinfo=None),
+        content_metadata={"feed_url": "https://other.example.com/feed"},
+    )
+
+    db_session.add_all([article_old, article_new, podcast_completed, podcast_pending, unrelated])
+    db_session.commit()
+    for content in [article_old, article_new, podcast_completed, podcast_pending, unrelated]:
+        db_session.refresh(content)
+
+    for content in [article_old, article_new, podcast_completed, podcast_pending, unrelated]:
+        _add_inbox_status(db_session, test_user.id, content.id)
+    _add_active_task(db_session, content_id=podcast_pending.id)
+    db_session.add(ContentReadStatus(user_id=test_user.id, content_id=article_old.id))
+    db_session.commit()
+
+    response = client.get("/api/scrapers?types=substack,podcast_rss,youtube")
+    assert response.status_code == 200
+    payload = {item["id"]: item for item in response.json()}
+
+    article_stats = payload[article_config["id"]]["stats"]
+    assert article_stats["total_count"] == 2
+    assert article_stats["completed_count"] == 2
+    assert article_stats["unread_count"] == 1
+    assert article_stats["processing_count"] == 0
+    assert article_stats["latest_processed_at"].startswith("2026-03-30T09:00:00")
+    assert article_stats["latest_publication_at"].startswith("2026-03-30T08:00:00")
+    assert article_stats["next_expected_at"].startswith("2026-04-02T08:00:00")
+    assert article_stats["interval_sample_size"] == 1
+
+    podcast_stats = payload[podcast_config["id"]]["stats"]
+    assert podcast_stats["total_count"] == 2
+    assert podcast_stats["completed_count"] == 1
+    assert podcast_stats["unread_count"] == 1
+    assert podcast_stats["processing_count"] == 1
+    assert podcast_stats["latest_processed_at"].startswith("2026-03-29T07:00:00")
+    assert podcast_stats["latest_publication_at"].startswith("2026-03-31T06:30:00")
+    assert podcast_stats["next_expected_at"].startswith("2026-04-02T06:30:00")
+    assert podcast_stats["interval_sample_size"] == 1
+
+    youtube_stats = payload[youtube_config["id"]]["stats"]
+    assert youtube_stats["total_count"] == 0
+    assert youtube_stats["completed_count"] == 0
+    assert youtube_stats["unread_count"] == 0
+    assert youtube_stats["processing_count"] == 0
+    assert youtube_stats["latest_processed_at"] is None
+    assert youtube_stats["next_expected_at"] is None

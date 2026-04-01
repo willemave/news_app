@@ -2,6 +2,7 @@
 
 from pydantic_ai.models.test import TestModel
 
+from app.models.schema import Content, ContentStatusEntry, UserScraperConfig
 from app.services import assistant_router
 
 
@@ -93,3 +94,113 @@ def test_get_or_create_agent_uses_shared_model_builder(monkeypatch) -> None:
     assert agent.model is sentinel_model
 
     assistant_router._agents.clear()
+
+
+def test_find_subscription_content_matches_uses_active_feed_names(
+    db_session,
+    test_user,
+) -> None:
+    """Subscription-aware search should find feed items beyond the stored source label."""
+
+    config = UserScraperConfig(
+        user_id=test_user.id,
+        scraper_type="podcast_rss",
+        display_name="BG2 Pod",
+        feed_url="https://anchor.fm/s/f06c2370/podcast/rss",
+        config={"feed_url": "https://anchor.fm/s/f06c2370/podcast/rss", "limit": 10},
+        is_active=True,
+    )
+    db_session.add(config)
+    db_session.flush()
+
+    rows: list[Content] = []
+    for idx, (title, source) in enumerate(
+        [
+            (
+                "ChatGPT – The Super Assistant Era | BG2 Guest Interview",
+                "BG2 Pod",
+            ),
+            (
+                "Inside OpenAI Enterprise: Forward Deployed Engineering, GPT-5, "
+                "and More | BG2 Guest Interview",
+                "podcasters.spotify.com",
+            ),
+            (
+                "China, China, China. Breaking Down China’s Tech Surge | BG2 "
+                "w/ Bill Gurley and Brad Gerstner",
+                "podcasters.spotify.com",
+            ),
+        ],
+        start=1,
+    ):
+        content = Content(
+            content_type="podcast",
+            url=f"https://podcasters.spotify.com/pod/show/bg2pod/episodes/test-{idx}",
+            title=title,
+            source=source,
+            status="completed",
+            content_metadata={},
+        )
+        db_session.add(content)
+        db_session.flush()
+        db_session.add(
+            ContentStatusEntry(
+                user_id=test_user.id,
+                content_id=content.id,
+                status="inbox",
+            )
+        )
+        rows.append(content)
+
+    unrelated = Content(
+        content_type="podcast",
+        url="https://example.com/other-show",
+        title="An unrelated podcast episode",
+        source="Other Show",
+        status="completed",
+        content_metadata={},
+    )
+    db_session.add(unrelated)
+    db_session.flush()
+    db_session.add(
+        ContentStatusEntry(
+            user_id=test_user.id,
+            content_id=unrelated.id,
+            status="inbox",
+        )
+    )
+    db_session.commit()
+
+    matches, total_matches = assistant_router._find_subscription_content_matches(
+        db_session,
+        user_id=test_user.id,
+        query="How many BG2 pods do I have in my feed?",
+        limit=10,
+    )
+
+    assert total_matches == 3
+    assert [content.id for content, _, _ in matches] == [rows[2].id, rows[1].id, rows[0].id]
+
+
+def test_format_content_hits_reports_total_matches() -> None:
+    """Formatted SearchContent responses should include the total match count."""
+
+    content = Content(
+        id=42,
+        content_type="podcast",
+        url="https://example.com/bg2",
+        title="BG2 episode",
+        source="BG2 Pod",
+        status="completed",
+        content_metadata={},
+    )
+
+    formatted = assistant_router._format_content_hits(
+        query="BG2 pods",
+        content_rows=[(content, object(), None)],
+        total_content_matches=13,
+        digest_rows=[],
+        digest_bullets_by_digest_id={},
+    )
+
+    assert "Feed Content (13 total matches, showing 1):" in formatted
