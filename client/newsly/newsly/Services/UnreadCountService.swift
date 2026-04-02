@@ -12,27 +12,11 @@ struct UnreadCountsResponse: Codable {
     let article: Int
     let podcast: Int
     let news: Int
-    let dailyNewsDigest: Int?
 
-    enum AliasCodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey {
         case article
         case podcast
         case news
-        case dailyNewsDigest = "daily_news_digest"
-        case dailyDigestCount = "news_digest_count"
-        case newsDigest = "news_digest"
-        case legacyNewsDigest = "daily_digest_count"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: AliasCodingKeys.self)
-        article = try container.decode(Int.self, forKey: .article)
-        podcast = try container.decode(Int.self, forKey: .podcast)
-        news = try container.decode(Int.self, forKey: .news)
-        dailyNewsDigest = try container.decodeIfPresent(Int.self, forKey: .dailyNewsDigest)
-            ?? container.decodeIfPresent(Int.self, forKey: .dailyDigestCount)
-            ?? container.decodeIfPresent(Int.self, forKey: .newsDigest)
-            ?? container.decodeIfPresent(Int.self, forKey: .legacyNewsDigest)
     }
 }
 
@@ -43,7 +27,6 @@ class UnreadCountService: ObservableObject {
     @Published var articleCount: Int = 0
     @Published var podcastCount: Int = 0
     @Published var newsCount: Int = 0
-    @Published var dailyNewsDigestCount: Int = 0
 
     // Computed properties for convenience
     var longFormCount: Int {
@@ -72,7 +55,6 @@ class UnreadCountService: ObservableObject {
             articleCount = response.article
             podcastCount = response.podcast
             newsCount = response.news
-            dailyNewsDigestCount = response.dailyNewsDigest ?? 0
         } catch {
             print("Failed to fetch unread counts: \(error)")
         }
@@ -111,15 +93,5 @@ class UnreadCountService: ObservableObject {
 
     func incrementNewsCount() {
         newsCount += 1
-    }
-
-    func decrementDailyDigestCount(by amount: Int = 1) {
-        guard amount > 0 else { return }
-        dailyNewsDigestCount = max(dailyNewsDigestCount - amount, 0)
-    }
-
-    func incrementDailyDigestCount(by amount: Int = 1) {
-        guard amount > 0 else { return }
-        dailyNewsDigestCount += amount
     }
 }

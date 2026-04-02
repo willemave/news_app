@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer, f
 from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.sql import func
 
-from app.constants import DEFAULT_NEWS_DIGEST_INTERVAL_HOURS
 from app.core.db import Base
 
 
@@ -100,13 +99,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     full_name = Column(String(255), nullable=True)
     twitter_username = Column(String(50), nullable=True, index=True)
-    news_digest_timezone = Column(String(100), nullable=False, default="UTC")
-    news_digest_interval_hours = Column(
-        Integer,
-        nullable=False,
-        default=DEFAULT_NEWS_DIGEST_INTERVAL_HOURS,
-    )
-    news_digest_preference_prompt = Column(Text, nullable=True)
+    news_list_preference_prompt = Column(Text, nullable=True)
     council_personas = Column(JSON, nullable=True)
     is_admin = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -141,9 +134,7 @@ class UserResponse(UserBase):
     is_admin: bool
     is_active: bool
     twitter_username: str | None = None
-    news_digest_timezone: str = "UTC"
-    news_digest_interval_hours: int = DEFAULT_NEWS_DIGEST_INTERVAL_HOURS
-    news_digest_preference_prompt: str | None = None
+    news_list_preference_prompt: str | None = None
     council_personas: list[CouncilPersonaConfig] = Field(default_factory=list)
     has_x_bookmark_sync: bool = False
     has_completed_onboarding: bool
@@ -236,9 +227,7 @@ class UpdateUserProfileRequest(BaseModel):
 
     full_name: str | None = Field(default=None, max_length=255)
     twitter_username: str | None = Field(default=None, max_length=50)
-    news_digest_timezone: str | None = Field(default=None, max_length=100)
-    news_digest_interval_hours: int | None = Field(default=None)
-    news_digest_preference_prompt: str | None = Field(default=None, max_length=4000)
+    news_list_preference_prompt: str | None = Field(default=None, max_length=4000)
     council_personas: list[CouncilPersonaConfig] | None = Field(
         default=None,
         min_length=4,

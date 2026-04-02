@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.application.commands import (
     complete_agent_onboarding,
-    generate_agent_digest,
     start_agent_onboarding,
 )
 from app.application.queries import (
@@ -21,8 +20,6 @@ from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.routers.api.models import (
-    AgentDigestRequest,
-    AgentDigestResponse,
     AgentOnboardingCompleteRequest,
     AgentOnboardingStartRequest,
     AgentOnboardingStartResponse,
@@ -102,12 +99,3 @@ def complete_onboarding(
     )
     return response.model_dump(mode="json")
 
-
-@router.post("/agent/digests", response_model=AgentDigestResponse)
-def generate_digest(
-    payload: AgentDigestRequest,
-    db: Annotated[Session, Depends(get_db_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> AgentDigestResponse:
-    """Queue arbitrary-window digest generation for agent clients."""
-    return generate_agent_digest.execute(db, user_id=current_user.id, payload=payload)

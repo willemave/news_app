@@ -5,7 +5,6 @@ Runs the same safety actions operators have been running manually:
 1. Move transcribe tasks into the dedicated transcribe queue.
 2. Requeue stale transcribe processing tasks.
 3. Requeue stale process_content processing tasks.
-4. Requeue stale generate_news_digest processing tasks.
 
 The script supports one-shot mode (cron) and loop mode (supervisor/systemd).
 """
@@ -62,7 +61,6 @@ class WatchdogRunResult:
     moved_transcribe: ActionResult
     requeued_transcribe: ActionResult
     requeued_process_content: ActionResult
-    requeued_generate_news_digest: ActionResult
 
     @property
     def total_touched(self) -> int:
@@ -71,7 +69,6 @@ class WatchdogRunResult:
             self.moved_transcribe.touched_count
             + self.requeued_transcribe.touched_count
             + self.requeued_process_content.touched_count
-            + self.requeued_generate_news_digest.touched_count
         )
 
 
@@ -199,7 +196,6 @@ def _record_watchdog_events(result: WatchdogRunResult) -> None:
         result.moved_transcribe,
         result.requeued_transcribe,
         result.requeued_process_content,
-        result.requeued_generate_news_digest,
     ]
     for action in action_results:
         logger.info(
@@ -236,9 +232,6 @@ def _record_watchdog_events(result: WatchdogRunResult) -> None:
                 "moved_transcribe": result.moved_transcribe.touched_count,
                 "requeued_transcribe": result.requeued_transcribe.touched_count,
                 "requeued_process_content": result.requeued_process_content.touched_count,
-                "requeued_generate_news_digest": (
-                    result.requeued_generate_news_digest.touched_count
-                ),
                 "dry_run": result.dry_run,
             },
         ),
@@ -254,7 +247,6 @@ def _send_slack_alert(webhook_url: str, result: WatchdogRunResult) -> tuple[bool
             f" move_transcribe={result.moved_transcribe.touched_count}"
             f" requeue_transcribe={result.requeued_transcribe.touched_count}"
             f" requeue_process_content={result.requeued_process_content.touched_count}"
-            f" requeue_generate_news_digest={result.requeued_generate_news_digest.touched_count}"
         )
     }
 
@@ -299,7 +291,6 @@ def run_watchdog_once(
     session: Session,
     transcribe_stale_hours: float,
     process_content_stale_hours: float,
-    generate_news_digest_stale_hours: float,
     alert_threshold: int,
     slack_webhook_url: str | None,
     dry_run: bool,
@@ -327,13 +318,6 @@ def run_watchdog_once(
         dry_run=dry_run,
         limit=action_limit,
     )
-    requeued_generate_news_digest = _requeue_stale_tasks(
-        session,
-        task_type=TaskType.GENERATE_NEWS_DIGEST,
-        stale_hours=generate_news_digest_stale_hours,
-        dry_run=dry_run,
-        limit=action_limit,
-    )
 
     finished_at = datetime.now(UTC)
     result = WatchdogRunResult(
@@ -343,7 +327,6 @@ def run_watchdog_once(
         moved_transcribe=moved_transcribe,
         requeued_transcribe=requeued_transcribe,
         requeued_process_content=requeued_process_content,
-        requeued_generate_news_digest=requeued_generate_news_digest,
     )
 
     if dry_run:
@@ -393,12 +376,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Requeue process_content processing tasks older than this many hours",
     )
     parser.add_argument(
-        "--generate-news-digest-stale-hours",
-        type=float,
-        default=_env_float("QUEUE_WATCHDOG_GENERATE_NEWS_DIGEST_STALE_HOURS", 2.0),
-        help="Requeue generate_news_digest processing tasks older than this many hours",
-    )
-    parser.add_argument(
         "--alert-threshold",
         type=int,
         default=_env_int("QUEUE_WATCHDOG_ALERT_THRESHOLD", 1),
@@ -443,10 +420,6 @@ def _print_result(result: WatchdogRunResult) -> None:
         "  requeue_stale_process_content: "
         f"{result.requeued_process_content.touched_count}"
     )
-    print(
-        "  requeue_stale_generate_news_digest: "
-        f"{result.requeued_generate_news_digest.touched_count}"
-    )
     print(f"  total_touched: {result.total_touched}")
 
 
@@ -480,9 +453,6 @@ def main(argv: list[str] | None = None) -> int:
                         session=session,
                         transcribe_stale_hours=float(args.transcribe_stale_hours),
                         process_content_stale_hours=float(args.process_content_stale_hours),
-                        generate_news_digest_stale_hours=float(
-                            args.generate_news_digest_stale_hours
-                        ),
                         alert_threshold=max(int(args.alert_threshold), 1),
                         slack_webhook_url=args.slack_webhook_url,
                         dry_run=bool(args.dry_run),

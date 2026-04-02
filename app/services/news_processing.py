@@ -14,6 +14,7 @@ from app.models.metadata import NewsSummary
 from app.models.schema import NewsItem
 from app.services.discussion_fetcher import _build_discussion_payload
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
+from app.services.news_relations import reconcile_news_item_relation
 from app.utils.url_utils import normalize_http_url
 
 logger = get_logger(__name__)
@@ -166,6 +167,19 @@ def _persist_summary(item: NewsItem, summary: NewsSummary, raw_metadata: dict[st
     item.processed_at = _utcnow_naive()
 
 
+def _finalize_processed_item(
+    db: Session,
+    *,
+    item: NewsItem,
+    raw_metadata: dict[str, Any],
+    summary: NewsSummary,
+) -> None:
+    """Persist one summary, reconcile clustering, and commit."""
+    _persist_summary(item, summary, raw_metadata)
+    reconcile_news_item_relation(db, news_item_id=item.id)
+    db.commit()
+
+
 def process_news_item(
     db: Session,
     *,
@@ -210,49 +224,53 @@ def process_news_item(
             if discussion.error_message:
                 raw_metadata["discussion_error"] = discussion.error_message
 
-        existing_summary = _extract_existing_summary(item)
-        if existing_summary is not None and (
-            existing_summary.title or existing_summary.key_points or existing_summary.summary
-        ):
-            _persist_summary(item, existing_summary, raw_metadata)
-            db.commit()
-            return NewsItemProcessingResult(
-                success=True,
-                status=item.status,
-                used_existing_summary=True,
+        summary_to_persist = _extract_existing_summary(item)
+        used_existing_summary = bool(
+            summary_to_persist
+            and (
+                summary_to_persist.title
+                or summary_to_persist.key_points
+                or summary_to_persist.summary
             )
-
-        prompt = _build_processing_prompt(item, raw_metadata)
-        content_summarizer = summarizer or get_content_summarizer()
-        generated = content_summarizer.summarize(
-            prompt,
-            content_type="news",
-            title=item.article_title or item.summary_title,
-            content_id=item.id,
-            db=db,
-            usage_persist={
-                "feature": "news_processing",
-                "operation": "news_processing.summarize_short_form",
-                "source": "queue",
-                "user_id": item.owner_user_id,
-                "metadata": {
-                    "news_item_id": item.id,
-                    "source_type": item.source_type,
-                },
-            },
         )
-        if not isinstance(generated, NewsSummary):
-            raise TypeError(
-                "Short-form news summarizer returned an invalid payload: "
-                f"{type(generated).__name__}"
+        if not used_existing_summary:
+            prompt = _build_processing_prompt(item, raw_metadata)
+            content_summarizer = summarizer or get_content_summarizer()
+            generated = content_summarizer.summarize(
+                prompt,
+                content_type="news",
+                title=item.article_title or item.summary_title,
+                content_id=item.id,
+                db=db,
+                usage_persist={
+                    "feature": "news_processing",
+                    "operation": "news_processing.summarize_short_form",
+                    "source": "queue",
+                    "user_id": item.owner_user_id,
+                    "metadata": {
+                        "news_item_id": item.id,
+                        "source_type": item.source_type,
+                    },
+                },
             )
+            if not isinstance(generated, NewsSummary):
+                raise TypeError(
+                    "Short-form news summarizer returned an invalid payload: "
+                    f"{type(generated).__name__}"
+                )
+            summary_to_persist = generated
 
-        _persist_summary(item, generated, raw_metadata)
-        db.commit()
+        _finalize_processed_item(
+            db,
+            item=item,
+            raw_metadata=raw_metadata,
+            summary=summary_to_persist or _fallback_summary(item, raw_metadata),
+        )
         return NewsItemProcessingResult(
             success=True,
             status=item.status,
-            generated_summary=True,
+            used_existing_summary=used_existing_summary,
+            generated_summary=not used_existing_summary,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception(

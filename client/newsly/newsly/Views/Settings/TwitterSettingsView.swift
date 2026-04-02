@@ -119,7 +119,7 @@ struct TwitterSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Username")
                 .font(.listCaption)
-                .foregroundStyle(Color.textTertiary)
+                .foregroundStyle(Color.onSurfaceSecondary)
             TextField("@username", text: $twitterUsernameDraft)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)

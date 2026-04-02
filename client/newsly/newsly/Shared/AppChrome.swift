@@ -43,15 +43,12 @@ enum RootDependencyFactory {
     static func makeTabCoordinator() -> TabCoordinatorViewModel {
         let contentRepository = ContentRepository()
         let readRepository = ReadStatusRepository()
+        let newsReadRepository = ReadStatusRepository(endpoint: .newsItems)
         let unreadService = UnreadCountService.shared
 
         let shortNewsViewModel = ShortNewsListViewModel(
             repository: contentRepository,
-            readRepository: readRepository,
-            unreadCountService: unreadService
-        )
-        let dailyDigestViewModel = DailyDigestListViewModel(
-            repository: DailyNewsDigestRepository(),
+            readRepository: newsReadRepository,
             unreadCountService: unreadService
         )
         let longContentViewModel = LongContentListViewModel(
@@ -62,7 +59,6 @@ enum RootDependencyFactory {
 
         return TabCoordinatorViewModel(
             shortNewsVM: shortNewsViewModel,
-            dailyDigestVM: dailyDigestViewModel,
             longContentVM: longContentViewModel
         )
     }

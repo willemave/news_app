@@ -10,7 +10,8 @@ import Foundation
 
 enum APIEndpoints {
     static let contentList = "/api/content/"
-    static let newsDigests = "/api/news/digests"
+    static let newsItems = "/api/news/items"
+    static let newsItemsMarkRead = "/api/news/items/mark-read"
     static let submitContent = "/api/content/submit"
     static let submissionStatusList = "/api/content/submissions/list"
     static let searchContent = "/api/content/search"
@@ -27,14 +28,8 @@ enum APIEndpoints {
     static func narration(_ target: NarrationTarget) -> String {
         return "/api/content/narration/\(target.pathComponent)/\(target.id)"
     }
-    static func newsDigest(id: Int) -> String {
-        return "/api/news/digests/\(id)"
-    }
-    static func markNewsDigestRead(id: Int) -> String {
-        return "/api/news/digests/\(id)/mark-read"
-    }
-    static func newsDigestBulletDigDeeper(digestId: Int, bulletId: Int) -> String {
-        return "/api/news/digests/\(digestId)/bullets/\(bulletId)/dig-deeper"
+    static func newsItem(id: Int) -> String {
+        return "/api/news/items/\(id)"
     }
     static let analytics = "/api/analytics"
     static let bulkMarkRead = "/api/content/bulk-mark-read"

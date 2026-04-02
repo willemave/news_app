@@ -196,7 +196,7 @@ struct LongFormView: View {
                 ProgressView()
                 Text("Preparing \(processingCountService.longFormProcessingCount) long-form items")
                     .font(.listSubtitle)
-                    .foregroundStyle(Color.textSecondary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

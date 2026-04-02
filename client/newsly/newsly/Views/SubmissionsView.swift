@@ -24,6 +24,8 @@ struct SubmissionsView: View {
                 listView
             }
         }
+        .background(Color.surfacePrimary.ignoresSafeArea())
+        .toolbarBackground(Color.surfacePrimary, for: .navigationBar)
         .navigationTitle("Submissions")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -59,6 +61,7 @@ struct SubmissionsView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .refreshable {
             await viewModel.load()
         }

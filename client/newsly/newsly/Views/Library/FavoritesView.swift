@@ -44,11 +44,11 @@ struct FavoritesView: View {
             VStack(spacing: 6) {
                 Text("No favorites yet")
                     .font(.listTitle.weight(.semibold))
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.onSurface)
 
                 Text("Swipe right on articles or podcasts to add them to your favorites.")
                     .font(.listSubtitle)
-                    .foregroundStyle(Color.textSecondary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 280)
             }
@@ -130,25 +130,25 @@ private struct FavoriteRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(content.displayTitle)
                     .font(.listTitle)
-                    .foregroundStyle(Color.textPrimary.opacity(textOpacity))
+                    .foregroundStyle(Color.onSurface.opacity(textOpacity))
                     .lineLimit(2)
 
                 HStack(spacing: 6) {
                     if let source = content.source {
                         Text(source)
                             .font(.listCaption)
-                            .foregroundStyle(Color.textTertiary)
+                            .foregroundStyle(Color.onSurfaceSecondary)
                             .lineLimit(1)
                     }
 
                     if let date = content.processedDateDisplay {
                         Text("·")
                             .font(.listCaption)
-                            .foregroundStyle(Color.textTertiary)
+                            .foregroundStyle(Color.onSurfaceSecondary)
 
                         Text(date)
                             .font(.listCaption)
-                            .foregroundStyle(Color.textTertiary)
+                            .foregroundStyle(Color.onSurfaceSecondary)
                     }
                 }
             }
@@ -186,7 +186,7 @@ private struct FavoriteRow: View {
             .overlay(
                 Image(systemName: contentTypeIcon)
                     .font(.system(size: 20))
-                    .foregroundStyle(Color.textTertiary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
             )
     }
 

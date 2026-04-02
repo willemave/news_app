@@ -16,41 +16,58 @@ struct SubmissionStatusRow: View {
                 // Status icon
                 statusIcon
                     .frame(width: RowMetrics.smallThumbnailSize, height: RowMetrics.smallThumbnailSize)
-                    .background(statusColor.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .background(statusColor.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
+                    // Title — primary visual weight
                     Text(submission.displayTitle)
                         .font(.listTitle)
-                        .foregroundStyle(Color.textPrimary)
+                        .foregroundStyle(Color.onSurface)
                         .lineLimit(2)
 
-                    Text(submission.url)
-                        .font(.listMono)
-                        .foregroundStyle(Color.textTertiary)
-                        .lineLimit(1)
-
-                    HStack(spacing: 6) {
+                    // Domain + date on one line
+                    HStack(spacing: 4) {
+                        if let host = URL(string: submission.url)?.host {
+                            Text(host)
+                                .font(.listCaption)
+                                .foregroundStyle(Color.onSurfaceSecondary)
+                        }
                         if let date = submission.statusDateDisplay {
+                            Text("·")
+                                .font(.listCaption)
+                                .foregroundStyle(Color.onSurfaceSecondary.opacity(0.5))
                             Text(date)
                                 .font(.listCaption)
-                                .foregroundStyle(Color.textSecondary)
+                                .foregroundStyle(Color.onSurfaceSecondary)
                         }
-                        Spacer()
-                        if submission.isSelfSubmission {
-                            TextBadge(text: "Submitted", color: .blue)
-                        }
-                        TextBadge(text: submission.statusLabel, color: statusColor)
                     }
 
+                    // Status badge row
+                    HStack(spacing: 6) {
+                        TextBadge(text: submission.statusLabel, color: statusColor)
+
+                        if submission.isSelfSubmission {
+                            TextBadge(text: "Submitted", color: .terracottaPrimary, style: .outlined)
+                        }
+                    }
+
+                    // Error — muted, with icon
                     if let error = submission.errorDisplayText {
-                        Text(error)
-                            .font(.listCaption)
-                            .foregroundStyle(Color.statusDestructive)
-                            .lineLimit(2)
-                            .padding(.top, 2)
+                        HStack(alignment: .top, spacing: 4) {
+                            Image(systemName: "info.circle")
+                                .font(.caption2)
+                                .foregroundStyle(statusColor.opacity(0.7))
+                                .padding(.top, 1)
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(Color.onSurfaceSecondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
+
+                Spacer(minLength: 0)
             }
             .padding(.vertical, Spacing.rowVertical)
             .padding(.horizontal, Spacing.rowHorizontal)
@@ -86,15 +103,17 @@ struct SubmissionStatusRow: View {
     private var statusColor: Color {
         switch submission.status.lowercased() {
         case "failed":
-            return .red
+            return .red.opacity(0.85)
         case "skipped":
-            return .orange
+            return .orange.opacity(0.85)
         case "processing":
-            return .blue
+            return .terracottaPrimary
+        case "completed":
+            return .statusActive
         case "new", "pending":
-            return .gray
+            return .onSurfaceSecondary
         default:
-            return .gray
+            return .onSurfaceSecondary
         }
     }
 

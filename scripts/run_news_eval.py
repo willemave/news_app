@@ -1,4 +1,4 @@
-"""Run clustering evals against the frozen short-form news corpus."""
+"""Run feed-style relation evals against the frozen short-form news corpus."""
 
 from __future__ import annotations
 
@@ -16,8 +16,10 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.logging import get_logger, setup_logging
+from app.core.settings import get_settings
 from app.models.schema import NewsItem
-from app.services.news_digests import calculate_pairwise_cluster_counts, cluster_news_items
+from app.services.news_embeddings import encode_news_texts
+from app.services.news_relations import exact_relation_key, match_tokens_for_text, matching_text
 
 logger = get_logger(__name__)
 
@@ -35,6 +37,40 @@ def _parse_args() -> argparse.Namespace:
         action="append",
         dest="slices",
         help="Optional slice name(s) to evaluate",
+    )
+    settings = get_settings()
+    parser.add_argument(
+        "--primary-threshold",
+        type=float,
+        default=settings.news_list_primary_similarity_threshold,
+        help="Primary semantic similarity threshold",
+    )
+    parser.add_argument(
+        "--secondary-threshold",
+        type=float,
+        default=settings.news_list_secondary_similarity_threshold,
+        help="Secondary semantic similarity threshold",
+    )
+    parser.add_argument(
+        "--require-guard-for-primary",
+        action="store_true",
+        help="Require the lexical guard for primary-threshold matches too",
+    )
+    parser.add_argument(
+        "--min-title-token-overlap",
+        type=int,
+        default=1,
+        help="Minimum normalized title-token overlap for non-exact semantic merges",
+    )
+    parser.add_argument(
+        "--disable-source-or-domain-shortcut",
+        action="store_true",
+        help="Do not let same source/domain satisfy the lexical guard by itself",
+    )
+    parser.add_argument(
+        "--block-conflicting-exact-keys",
+        action="store_true",
+        help="Skip semantic merges when both items already have different strong exact keys",
     )
     return parser.parse_args()
 
@@ -99,10 +135,151 @@ def _pairwise_sets(
     return pairs
 
 
-def _score_case(records: list[dict[str, Any]]) -> dict[str, float]:
+def _title_tokens(item: NewsItem) -> set[str]:
+    title = item.summary_title or item.article_title or ""
+    return match_tokens_for_text(title.casefold())
+
+
+def _guard_passes(
+    left: NewsItem,
+    right: NewsItem,
+    *,
+    min_title_token_overlap: int,
+    allow_source_or_domain_shortcut: bool,
+) -> bool:
+    overlap = len(_title_tokens(left) & _title_tokens(right))
+    if overlap >= min_title_token_overlap:
+        return True
+
+    if not allow_source_or_domain_shortcut:
+        return False
+
+    left_domain = (left.article_domain or "").strip().casefold()
+    right_domain = (right.article_domain or "").strip().casefold()
+    if left_domain and left_domain == right_domain:
+        return True
+
+    left_source = (left.source_label or "").strip().casefold()
+    right_source = (right.source_label or "").strip().casefold()
+    return bool(left_source and left_source == right_source)
+
+
+def _find_related_representative(
+    item: NewsItem,
+    representatives: list[NewsItem],
+    *,
+    primary_threshold: float,
+    secondary_threshold: float,
+    require_guard_for_primary: bool,
+    min_title_token_overlap: int,
+    allow_source_or_domain_shortcut: bool,
+    block_conflicting_exact_keys: bool,
+) -> NewsItem | None:
+    if not representatives:
+        return None
+
+    item_exact_key = exact_relation_key(item)
+    if item_exact_key is not None:
+        for representative in representatives:
+            if exact_relation_key(representative) == item_exact_key:
+                return representative
+
+    item_text = matching_text(item)
+    representative_texts = [matching_text(representative) for representative in representatives]
+    vectors = encode_news_texts([item_text, *representative_texts])
+    if vectors.size == 0:
+        return None
+
+    scores = vectors[0] @ vectors[1:].T
+    best_representative: NewsItem | None = None
+    best_score = -1.0
+    for index, representative in enumerate(representatives):
+        representative_exact_key = exact_relation_key(representative)
+        if (
+            block_conflicting_exact_keys
+            and item_exact_key is not None
+            and representative_exact_key is not None
+            and item_exact_key != representative_exact_key
+        ):
+            continue
+
+        passes_guard = _guard_passes(
+            item,
+            representative,
+            min_title_token_overlap=min_title_token_overlap,
+            allow_source_or_domain_shortcut=allow_source_or_domain_shortcut,
+        )
+        score = float(scores[index])
+        if score >= primary_threshold and score > best_score:
+            if require_guard_for_primary and not passes_guard:
+                continue
+            best_representative = representative
+            best_score = score
+            continue
+        if score >= secondary_threshold and score > best_score and passes_guard:
+            best_representative = representative
+            best_score = score
+
+    return best_representative
+
+
+def _cluster_feed_items(
+    items: list[NewsItem],
+    *,
+    primary_threshold: float,
+    secondary_threshold: float,
+    require_guard_for_primary: bool,
+    min_title_token_overlap: int,
+    allow_source_or_domain_shortcut: bool,
+    block_conflicting_exact_keys: bool,
+) -> list[list[NewsItem]]:
+    representatives: list[NewsItem] = []
+    clusters_by_representative_id: dict[int, list[NewsItem]] = {}
+    ordered_items = sorted(items, key=lambda item: (item.ingested_at or datetime.min, item.id))
+
+    for item in ordered_items:
+        representative = _find_related_representative(
+            item,
+            representatives,
+            primary_threshold=primary_threshold,
+            secondary_threshold=secondary_threshold,
+            require_guard_for_primary=require_guard_for_primary,
+            min_title_token_overlap=min_title_token_overlap,
+            allow_source_or_domain_shortcut=allow_source_or_domain_shortcut,
+            block_conflicting_exact_keys=block_conflicting_exact_keys,
+        )
+        if representative is None:
+            representatives.append(item)
+            clusters_by_representative_id[item.id] = [item]
+            continue
+        clusters_by_representative_id[representative.id].append(item)
+
+    return list(clusters_by_representative_id.values())
+
+
+def _pairwise_positive_count(predicted_clusters: list[list[NewsItem]]) -> tuple[int, int]:
+    positive_pairs = 0
+    item_count = 0
+    for cluster in predicted_clusters:
+        cluster_size = len(cluster)
+        item_count += cluster_size
+        if cluster_size >= 2:
+            positive_pairs += cluster_size * (cluster_size - 1) // 2
+    return positive_pairs, item_count
+
+
+def _score_case(records: list[dict[str, Any]], *, args: argparse.Namespace) -> dict[str, float]:
     items = [_build_news_item(record) for record in records]
     started_at = perf_counter()
-    predicted_clusters = cluster_news_items(items)
+    predicted_clusters = _cluster_feed_items(
+        items,
+        primary_threshold=args.primary_threshold,
+        secondary_threshold=args.secondary_threshold,
+        require_guard_for_primary=args.require_guard_for_primary,
+        min_title_token_overlap=args.min_title_token_overlap,
+        allow_source_or_domain_shortcut=not args.disable_source_or_domain_shortcut,
+        block_conflicting_exact_keys=args.block_conflicting_exact_keys,
+    )
     runtime_ms = (perf_counter() - started_at) * 1000
 
     gold_labels = {
@@ -111,7 +288,7 @@ def _score_case(records: list[dict[str, Any]]) -> dict[str, float]:
     predicted_labels: dict[int, str] = {}
     for cluster_index, cluster in enumerate(predicted_clusters, start=1):
         label = f"pred:{cluster_index}"
-        for item in cluster.items:
+        for item in cluster:
             predicted_labels[item.id] = label
 
     item_ids = [item.id for item in items]
@@ -127,7 +304,7 @@ def _score_case(records: list[dict[str, Any]]) -> dict[str, float]:
         else 0.0
     )
     over_merge_rate = false_positive / len(predicted_pairs) if predicted_pairs else 0.0
-    pairwise_positive_pairs, item_count = calculate_pairwise_cluster_counts(predicted_clusters)
+    pairwise_positive_pairs, item_count = _pairwise_positive_count(predicted_clusters)
     return {
         "precision": precision,
         "recall": recall,
@@ -182,10 +359,30 @@ def main() -> None:
         for record in records:
             cases[str(record.get("case_id") or "unknown")].append(record)
 
-        case_scores = [_score_case(case_records) for case_records in cases.values() if case_records]
+        case_scores = [
+            _score_case(case_records, args=args) for case_records in cases.values() if case_records
+        ]
         summaries[slice_name] = _aggregate_case_scores(case_scores)
 
-    print(json.dumps(summaries, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "config": {
+                    "primary_threshold": args.primary_threshold,
+                    "secondary_threshold": args.secondary_threshold,
+                    "require_guard_for_primary": args.require_guard_for_primary,
+                    "min_title_token_overlap": args.min_title_token_overlap,
+                    "allow_source_or_domain_shortcut": (
+                        not args.disable_source_or_domain_shortcut
+                    ),
+                    "block_conflicting_exact_keys": args.block_conflicting_exact_keys,
+                },
+                "summaries": summaries,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
     logger.info(
         "Completed news eval",
         extra={

@@ -19,11 +19,11 @@ struct ErrorView: View {
 
             Text("Error")
                 .font(.headline)
-                .foregroundStyle(Color.textPrimary)
+                .foregroundStyle(Color.onSurface)
 
             Text(message)
                 .font(.listSubtitle)
-                .foregroundStyle(Color.textSecondary)
+                .foregroundStyle(Color.onSurfaceSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280)
 

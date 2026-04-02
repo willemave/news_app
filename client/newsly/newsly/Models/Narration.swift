@@ -7,11 +7,10 @@ import Foundation
 
 enum NarrationTarget: Hashable {
     case content(Int)
-    case dailyDigest(Int)
 
     var id: Int {
         switch self {
-        case .content(let id), .dailyDigest(let id):
+        case .content(let id):
             return id
         }
     }
@@ -20,8 +19,6 @@ enum NarrationTarget: Hashable {
         switch self {
         case .content:
             return "content"
-        case .dailyDigest:
-            return "news-digest"
         }
     }
 }

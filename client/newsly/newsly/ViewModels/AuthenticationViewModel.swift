@@ -73,7 +73,6 @@ final class AuthenticationViewModel: ObservableObject {
                 errorMessage = nil
                 lastKnownUser = user
                 authState = .authenticated(user)
-                await syncNewsDigestTimezoneIfNeeded(for: user)
             } catch let authError as AuthError {
                 await handleAuthFailure(authError, hasRefreshToken: hasRefreshToken)
             } catch {
@@ -93,7 +92,6 @@ final class AuthenticationViewModel: ObservableObject {
                 errorMessage = nil
                 lastKnownUser = session.user
                 authState = .authenticated(session.user)
-                await syncNewsDigestTimezoneIfNeeded(for: session.user)
             } catch {
                 presentAuthError(error)
                 authState = .unauthenticated
@@ -156,7 +154,6 @@ final class AuthenticationViewModel: ObservableObject {
             errorMessage = nil
             lastKnownUser = user
             authState = .authenticated(user)
-            await syncNewsDigestTimezoneIfNeeded(for: user)
             print("✅ User authenticated successfully after refresh")
         } catch let authError as AuthError {
             switch authError {
@@ -186,25 +183,6 @@ final class AuthenticationViewModel: ObservableObject {
             authState = .unauthenticated
         }
     }
-
-    private func syncNewsDigestTimezoneIfNeeded(for user: User) async {
-        let deviceTimezone = TimeZone.current.identifier
-        guard !deviceTimezone.isEmpty else { return }
-        guard user.newsDigestTimezone != deviceTimezone else { return }
-
-        do {
-            let updatedUser = try await authService.updateCurrentUserProfile(
-                newsDigestTimezone: deviceTimezone
-            )
-            lastKnownUser = updatedUser
-            authState = .authenticated(updatedUser)
-        } catch {
-            authViewModelLogger.warning(
-                "[AuthState] Failed to sync digest timezone | current=\(user.newsDigestTimezone, privacy: .public) target=\(deviceTimezone, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
-            )
-        }
-    }
-
     private func presentAuthError(_ error: Error) {
         if let authorizationError = error as? ASAuthorizationError,
            authorizationError.code == .canceled {

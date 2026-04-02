@@ -13,9 +13,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.constants import (
-    CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY,
-)
+from app.constants import CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
 from app.core.db import run_with_sqlite_lock_retry
 from app.core.logging import get_logger
 from app.core.settings import get_settings
@@ -25,11 +23,11 @@ from app.models.schema import UserIntegrationConnection, UserIntegrationSyncStat
 from app.models.user import User
 from app.services.content_submission import submit_user_content
 from app.services.gateways.task_queue_gateway import get_task_queue_gateway
-from app.services.news_digest_preferences import resolve_user_news_digest_preference_prompt
 from app.services.news_ingestion import (
     build_news_item_upsert_input_from_scraped_item,
     upsert_news_item,
 )
+from app.services.news_list_preferences import resolve_user_news_list_preference_prompt
 from app.services.token_crypto import decrypt_token, encrypt_token
 from app.services.twitter_share import canonical_tweet_url
 from app.services.x_api import (
@@ -362,7 +360,7 @@ def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -
     existing_sync_metadata = (
         dict(sync_state.sync_metadata) if isinstance(sync_state.sync_metadata, dict) else {}
     )
-    filter_prompt = resolve_user_news_digest_preference_prompt(user)
+    filter_prompt = resolve_user_news_list_preference_prompt(user)
 
     try:
         access_token = _ensure_valid_access_token(db, connection)

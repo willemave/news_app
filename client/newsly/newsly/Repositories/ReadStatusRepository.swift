@@ -11,6 +11,20 @@ import os.log
 
 private let logger = Logger(subsystem: "com.newsly", category: "ReadStatus")
 
+enum ReadStatusEndpoint {
+    case content
+    case newsItems
+
+    var path: String {
+        switch self {
+        case .content:
+            return APIEndpoints.bulkMarkRead
+        case .newsItems:
+            return APIEndpoints.newsItemsMarkRead
+        }
+    }
+}
+
 protocol ReadStatusRepositoryType {
     func markRead(ids: [Int]) -> AnyPublisher<Void, Error>
 }
@@ -18,9 +32,11 @@ protocol ReadStatusRepositoryType {
 final class ReadStatusRepository: ReadStatusRepositoryType {
     private let client: APIClient
     private let encoder = JSONEncoder()
+    private let endpoint: ReadStatusEndpoint
 
-    init(client: APIClient = .shared) {
+    init(client: APIClient = .shared, endpoint: ReadStatusEndpoint = .content) {
         self.client = client
+        self.endpoint = endpoint
     }
 
     func markRead(ids: [Int]) -> AnyPublisher<Void, Error> {
@@ -45,7 +61,7 @@ final class ReadStatusRepository: ReadStatusRepositoryType {
         let body = try? encoder.encode(payload)
 
         return client.publisher(
-            APIEndpoints.bulkMarkRead,
+            endpoint.path,
             method: "POST",
             body: body
         )

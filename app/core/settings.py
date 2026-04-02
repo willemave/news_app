@@ -59,26 +59,19 @@ class Settings(BaseSettings):
     checkout_timeout_minutes: int = 30
     queue_backpressure_max_pending_content: int = Field(default=150, ge=1)
     queue_backpressure_max_pending_process_news_item: int = Field(default=75, ge=1)
-    queue_backpressure_max_pending_generate_news_digest: int = Field(default=5, ge=1)
-
     # Content processing
     max_content_length: int = 100_000
     max_retry_attempts: int = 3
     max_retries: int = 3
 
-    # News-native digest pipeline
+    # News list clustering and enrichment
     news_embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
     news_embedding_device: str = "auto"  # auto, cpu, cuda, mps
-    news_group_model: str = "google:gemini-3.1-flash-lite-preview"
-    news_header_model: str = "google:gemini-3.1-flash-lite-preview"
-    news_digest_primary_similarity_threshold: float = Field(default=0.86, ge=0.0, le=1.0)
-    news_digest_secondary_similarity_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
-    news_digest_min_uncovered_items: int = Field(default=15, ge=1)
-    news_digest_min_provisional_groups: int = Field(default=15, ge=1)
-    news_digest_min_interval_minutes: int = Field(default=60, ge=1)
-    news_digest_max_candidates: int = Field(default=150, ge=1)
-    news_digest_scheduler_interval_minutes: int = Field(default=15, ge=1)
-    news_digest_warm_embeddings: bool = True
+    news_list_primary_similarity_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
+    news_list_secondary_similarity_threshold: float = Field(default=0.76, ge=0.0, le=1.0)
+    news_list_related_lookback_days: int = Field(default=7, ge=1, le=30)
+    news_list_max_related_candidates: int = Field(default=150, ge=1)
+    news_list_warm_embeddings: bool = True
 
     # External services
     openai_api_key: str | None = None

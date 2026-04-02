@@ -64,48 +64,6 @@ enum ServerConfigurationDefaults {
     }
 }
 
-enum FastNewsMode: String, CaseIterable {
-    case newsList = "news_list"
-    case dailyDigest = "daily_digest"
-
-    var title: String {
-        switch self {
-        case .newsList:
-            return "News List"
-        case .dailyDigest:
-            return "Daily Roll-Up"
-        }
-    }
-}
-
-enum NewsDigestIntervalOption: Int, CaseIterable {
-    case every3Hours = 3
-    case every6Hours = 6
-    case every12Hours = 12
-
-    var title: String {
-        switch self {
-        case .every3Hours:
-            return "3h"
-        case .every6Hours:
-            return "6h"
-        case .every12Hours:
-            return "12h"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .every3Hours:
-            return "Every 3 hours"
-        case .every6Hours:
-            return "Every 6 hours"
-        case .every12Hours:
-            return "Every 12 hours"
-        }
-    }
-}
-
 enum LongArticleDisplayMode: String, CaseIterable {
     case narrative = "narrative"
     case keyPoints = "key_points"
@@ -142,7 +100,6 @@ class AppSettings: ObservableObject {
     @AppStorage("useHTTPS", store: SharedContainer.userDefaults) var useHTTPS: Bool = false
     @AppStorage("appTextSizeIndex", store: SharedContainer.userDefaults) var appTextSizeIndex: Int = 1
     @AppStorage("contentTextSizeIndex", store: SharedContainer.userDefaults) var contentTextSizeIndex: Int = 2
-    @AppStorage("fastNewsMode", store: SharedContainer.userDefaults) var fastNewsMode: String = FastNewsMode.dailyDigest.rawValue
     @AppStorage("longArticleDisplayMode", store: SharedContainer.userDefaults) var longArticleDisplayMode: String = LongArticleDisplayMode.both.rawValue
     @AppStorage("useLongFormCardStack", store: SharedContainer.userDefaults) var useLongFormCardStack: Bool = true
     @AppStorage("backendTranscriptionAvailable", store: SharedContainer.userDefaults) var backendTranscriptionAvailable: Bool = false

@@ -38,7 +38,7 @@ class WeeklyDiscoverySeed:
 
 
 def _user_local_date(user: User, reference_time: datetime | None = None) -> datetime.date:
-    tz_name = user.news_digest_timezone or "UTC"
+    tz_name = "UTC"
     tz = ZoneInfo(tz_name)
     now = reference_time or datetime.now(UTC)
     return now.astimezone(tz).date()

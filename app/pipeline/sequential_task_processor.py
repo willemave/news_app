@@ -17,7 +17,6 @@ from app.pipeline.handlers.discover_feeds import DiscoverFeedsHandler
 from app.pipeline.handlers.download_audio import DownloadAudioHandler
 from app.pipeline.handlers.fetch_discussion import FetchDiscussionHandler
 from app.pipeline.handlers.generate_image import GenerateImageHandler
-from app.pipeline.handlers.generate_news_digest import GenerateNewsDigestHandler
 from app.pipeline.handlers.onboarding_discover import OnboardingDiscoverHandler
 from app.pipeline.handlers.process_content import ProcessContentHandler
 from app.pipeline.handlers.process_news_item import ProcessNewsItemHandler
@@ -82,7 +81,7 @@ class SequentialTaskProcessor:
         self.settings = get_settings()
         logger.debug("Settings loaded")
         self.queue_name = QueueService._normalize_queue_name(queue_name) or TaskQueue.CONTENT.value
-        if self.queue_name == TaskQueue.CONTENT.value and self.settings.news_digest_warm_embeddings:
+        if self.queue_name == TaskQueue.CONTENT.value and self.settings.news_list_warm_embeddings:
             try:
                 warm_news_embedding_model()
             except Exception:  # noqa: BLE001
@@ -116,7 +115,6 @@ class SequentialTaskProcessor:
             SummarizeHandler(),
             FetchDiscussionHandler(),
             GenerateImageHandler(),
-            GenerateNewsDigestHandler(),
             DiscoverFeedsHandler(),
             OnboardingDiscoverHandler(),
             DigDeeperHandler(),

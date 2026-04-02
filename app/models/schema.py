@@ -275,6 +275,9 @@ class NewsItem(Base):
     raw_metadata = Column(JSON, default=dict, nullable=False)
     status = Column(String(20), nullable=False, default=NewsItemStatus.NEW.value, index=True)
     legacy_content_id = Column(Integer, nullable=True, index=True)
+    representative_news_item_id = Column(Integer, nullable=True, index=True)
+    cluster_size = Column(Integer, nullable=False, default=1)
+    enrichment_updated_at = Column(DateTime, nullable=True, index=True)
     published_at = Column(DateTime, nullable=True, index=True)
     ingested_at = Column(DateTime, default=_utcnow, nullable=False, index=True)
     processed_at = Column(DateTime, nullable=True, index=True)
@@ -289,6 +292,30 @@ class NewsItem(Base):
         ),
         Index("idx_news_items_status_ingested", "status", "ingested_at"),
         Index("idx_news_items_owner_ingested", "owner_user_id", "ingested_at"),
+        Index(
+            "idx_news_items_visible_feed",
+            "visibility_scope",
+            "owner_user_id",
+            "representative_news_item_id",
+            "status",
+            "ingested_at",
+        ),
+    )
+
+
+class NewsItemReadStatus(Base):
+    """Track which visible news items have been read by which user."""
+
+    __tablename__ = "news_item_read_status"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    news_item_id = Column(Integer, nullable=False, index=True)
+    read_at = Column(DateTime, default=_utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_news_item_read_status_user_item", "user_id", "news_item_id", unique=True),
     )
 
 

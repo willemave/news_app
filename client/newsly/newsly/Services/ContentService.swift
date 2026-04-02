@@ -222,9 +222,27 @@ class ContentService {
         return try await fetchContentList(contentTypes: types, date: date, readFilter: readFilter, cursor: cursor, limit: limit)
     }
     
-    func fetchContentDetail(id: Int) async throws -> ContentDetail {
-        let endpoint = APIRequestDescriptor<ContentDetail>(path: APIEndpoints.contentDetail(id: id))
+    func fetchContentDetail(id: Int, contentType: ContentType? = nil) async throws -> ContentDetail {
+        let path = contentType == .news ? APIEndpoints.newsItem(id: id) : APIEndpoints.contentDetail(id: id)
+        let endpoint = APIRequestDescriptor<ContentDetail>(path: path)
         return try await client.request(endpoint)
+    }
+
+    func fetchNewsItemList(
+        readFilter: String = "all",
+        cursor: String? = nil,
+        limit: Int = 25
+    ) async throws -> ContentListResponse {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "read_filter", value: readFilter),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+
+        return try await client.request(APIEndpoints.newsItems, queryItems: queryItems)
     }
 
     func fetchContentDiscussion(id: Int) async throws -> ContentDiscussion {
@@ -330,6 +348,10 @@ class ContentService {
             throw error
         }
     }
+
+    func markNewsItemAsRead(id: Int) async throws {
+        _ = try await bulkMarkNewsItemsAsRead(contentIds: [id])
+    }
     
     func markContentAsUnread(id: Int) async throws {
         try await client.requestVoid(APIEndpoints.markContentUnread(id: id), method: "DELETE")
@@ -364,18 +386,56 @@ class ContentService {
         }
     }
 
+    func bulkMarkNewsItemsAsRead(contentIds: [Int]) async throws -> BulkMarkReadResponse {
+        logger.info("[ContentService] bulkMarkNewsItemsAsRead called | ids=\(contentIds, privacy: .public) count=\(contentIds.count)")
+
+        struct BulkMarkReadRequest: Codable {
+            let contentIds: [Int]
+
+            enum CodingKeys: String, CodingKey {
+                case contentIds = "content_ids"
+            }
+        }
+
+        let request = BulkMarkReadRequest(contentIds: contentIds)
+        let encoder = JSONEncoder()
+        let body = try encoder.encode(request)
+
+        do {
+            let response: BulkMarkReadResponse = try await client.request(
+                APIEndpoints.newsItemsMarkRead,
+                method: "POST",
+                body: body
+            )
+            logger.info("[ContentService] bulkMarkNewsItemsAsRead success | markedCount=\(response.markedCount)")
+            return response
+        } catch {
+            logger.error("[ContentService] bulkMarkNewsItemsAsRead failed | ids=\(contentIds, privacy: .public) error=\(error.localizedDescription)")
+            throw error
+        }
+    }
+
     func markAllAsRead(contentType: String) async throws -> BulkMarkReadResponse? {
         var allUnreadIds: [Int] = []
         var cursor: String? = nil
 
         // Loop through all pages until hasMore is false
         repeat {
-            let response = try await fetchContentList(
-                contentType: contentType,
-                readFilter: "unread",
-                cursor: cursor,
-                limit: 100  // Fetch larger batches for efficiency
-            )
+            let response: ContentListResponse
+            if contentType == ContentType.news.rawValue {
+                response = try await fetchNewsItemList(
+                    readFilter: "unread",
+                    cursor: cursor,
+                    limit: 100
+                )
+            } else {
+                response = try await fetchContentList(
+                    contentType: contentType,
+                    readFilter: "unread",
+                    cursor: cursor,
+                    limit: 100
+                )
+            }
 
             // Collect unread IDs from this page
             let pageUnreadIds = response.contents
@@ -397,6 +457,9 @@ class ContentService {
             return nil
         }
 
+        if contentType == ContentType.news.rawValue {
+            return try await bulkMarkNewsItemsAsRead(contentIds: allUnreadIds)
+        }
         return try await bulkMarkAsRead(contentIds: allUnreadIds)
     }
     

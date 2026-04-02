@@ -145,7 +145,7 @@ struct ShortFormView: View {
                 ProgressView()
                 Text("Preparing \(processingCountService.newsProcessingCount) short-form items")
                     .font(.listSubtitle)
-                    .foregroundStyle(Color.textSecondary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .containerRelativeFrame(.vertical)
@@ -153,7 +153,7 @@ struct ShortFormView: View {
             EmptyStateView(
                 icon: "bolt.fill",
                 title: "No Short-Form Content",
-                subtitle: "News digests will appear here once processed"
+                subtitle: "News items will appear here once processed"
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .containerRelativeFrame(.vertical)
@@ -178,16 +178,6 @@ private struct ShortNewsRow: View {
         item.platform?.isEmpty == false
     }
 
-    /// True topic (not a platform-name fallback).
-    private var realTopic: String? {
-        guard let topic = item.primaryTopic, !topic.isEmpty else { return nil }
-        // The presenter falls back to platform name when no real topic exists.
-        if let platform = item.platform, topic.caseInsensitiveCompare(platform) == .orderedSame {
-            return nil
-        }
-        return topic.uppercased()
-    }
-
     /// Text-only metadata parts (platform, source, time) joined by " · ".
     private var metadataTextParts: [String] {
         var parts: [String] = []
@@ -206,14 +196,6 @@ private struct ShortNewsRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Topic label (only real topics, not platform fallback)
-            if let topic = realTopic {
-                Text(topic)
-                    .font(.feedMeta)
-                    .tracking(0.5)
-                    .foregroundStyle(Color.topicAccent)
-            }
-
             // Headline
             Text(item.displayTitle)
                 .font(.feedHeadline)
@@ -230,7 +212,7 @@ private struct ShortNewsRow: View {
                     Text(textParts.joined(separator: " · "))
                         .font(.feedMeta)
                         .tracking(0.4)
-                        .foregroundStyle(hasPlatform ? Color.platformLabel : Color.textSecondary)
+                        .foregroundStyle(hasPlatform ? Color.platformLabel : Color.onSurfaceSecondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
@@ -238,14 +220,14 @@ private struct ShortNewsRow: View {
                         HStack(spacing: 3) {
                             Text("·")
                                 .font(.feedMeta)
-                                .foregroundStyle(Color.textTertiary)
+                                .foregroundStyle(Color.onSurfaceSecondary)
                             Image(systemName: "bubble.left")
                                 .font(.system(size: 9, weight: .medium))
                             Text(comments)
                                 .font(.feedMeta)
                                 .tracking(0.4)
                         }
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .fixedSize()
                     }
                 }
@@ -257,16 +239,16 @@ private struct ShortNewsRow: View {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "bubble.left.fill")
                         .font(.system(size: 11))
-                        .foregroundStyle(Color.textTertiary.opacity(0.6))
+                        .foregroundStyle(Color.onSurfaceSecondary.opacity(0.6))
                         .padding(.top, 3)
                     (
                         Text("\(snippet.author): ")
                             .font(.feedSnippet.weight(.semibold))
-                            .foregroundStyle(Color.textPrimary.opacity(0.7))
+                            .foregroundStyle(Color.onSurface.opacity(0.7))
                         +
                         Text(snippet.text)
                             .font(.feedSnippet)
-                            .foregroundStyle(Color.textSecondary)
+                            .foregroundStyle(Color.onSurfaceSecondary)
                     )
                         .lineLimit(2)
                         .lineSpacing(2)

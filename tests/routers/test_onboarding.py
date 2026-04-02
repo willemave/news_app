@@ -48,7 +48,7 @@ def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, te
             "profile_summary": "AI researcher and writer",
             "inferred_topics": ["AI", "ML"],
             "twitter_username": "@willem_aw",
-            "news_digest_preference_prompt": (
+            "news_list_preference_prompt": (
                 "Prefer semiconductors, AI infrastructure, and product launches."
             ),
         },
@@ -63,16 +63,15 @@ def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, te
     configs = (
         db_session.query(UserScraperConfig).filter(UserScraperConfig.user_id == test_user.id).all()
     )
-    assert len(configs) == 3
+    assert len(configs) == 2
     assert any(config.scraper_type == "substack" for config in configs)
-    assert any(config.scraper_type == "podcast_rss" for config in configs)
     assert any(config.scraper_type == "reddit" for config in configs)
 
     assert any(call[0] == TaskType.SCRAPE.value for call in calls)
     assert any(call[0] == TaskType.ONBOARDING_DISCOVER.value for call in calls)
     db_session.refresh(test_user)
     assert test_user.twitter_username == "willem_aw"
-    assert test_user.news_digest_preference_prompt.startswith("Prefer semiconductors")
+    assert test_user.news_list_preference_prompt.startswith("Prefer semiconductors")
     assert test_user.has_completed_onboarding is True
 
 
@@ -86,18 +85,18 @@ def test_onboarding_complete_rejects_invalid_twitter_username(client):
 
 
 def test_onboarding_complete_blank_prompt_resets_to_default(client, db_session, test_user):
-    test_user.news_digest_preference_prompt = "Only include chip foundry updates."
+    test_user.news_list_preference_prompt = "Only include chip foundry updates."
     db_session.commit()
 
     response = client.post(
         "/api/onboarding/complete",
-        json={"news_digest_preference_prompt": "   "},
+        json={"news_list_preference_prompt": "   "},
     )
 
     assert response.status_code == 200
 
     db_session.refresh(test_user)
-    assert test_user.news_digest_preference_prompt is None
+    assert test_user.news_list_preference_prompt is None
 
 
 def test_onboarding_tutorial_complete(client, db_session, test_user):

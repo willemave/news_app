@@ -51,7 +51,7 @@ from app.services.exa_client import ExaSearchResult, exa_search
 from app.services.gateways.task_queue_gateway import get_task_queue_gateway
 from app.services.llm_agents import get_basic_agent
 from app.services.long_form_images import enqueue_visible_long_form_images_for_content_ids
-from app.services.news_digest_preferences import normalize_news_digest_preference_prompt
+from app.services.news_list_preferences import normalize_news_list_preference_prompt
 from app.services.queue import TaskType
 from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
 from app.services.x_integration import normalize_twitter_username
@@ -506,16 +506,16 @@ def complete_onboarding(
         OnboardingCompleteResponse with status and inbox count.
     """
     normalized_username: str | None = None
-    normalized_news_digest_preference_prompt: str | None = None
+    normalized_news_list_preference_prompt: str | None = None
     should_update_twitter_username = request.twitter_username is not None
     if should_update_twitter_username:
         normalized_username = normalize_twitter_username(request.twitter_username)
-    should_update_news_digest_preference_prompt = (
-        request.news_digest_preference_prompt is not None
+    should_update_news_list_preference_prompt = (
+        request.news_list_preference_prompt is not None
     )
-    if should_update_news_digest_preference_prompt:
-        normalized_news_digest_preference_prompt = normalize_news_digest_preference_prompt(
-            request.news_digest_preference_prompt
+    if should_update_news_list_preference_prompt:
+        normalized_news_list_preference_prompt = normalize_news_list_preference_prompt(
+            request.news_list_preference_prompt
         )
 
     created_types: set[str] = set()
@@ -620,8 +620,8 @@ def complete_onboarding(
     if user:
         if should_update_twitter_username and user.twitter_username != normalized_username:
             user.twitter_username = normalized_username
-        if should_update_news_digest_preference_prompt:
-            user.news_digest_preference_prompt = normalized_news_digest_preference_prompt
+        if should_update_news_list_preference_prompt:
+            user.news_list_preference_prompt = normalized_news_list_preference_prompt
         user.has_completed_onboarding = True
         db.commit()
 

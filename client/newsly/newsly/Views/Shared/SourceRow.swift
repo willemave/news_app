@@ -23,20 +23,20 @@ struct SourceRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .font(.listTitle)
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.onSurface)
                     .lineLimit(1)
 
                 if let url {
                     Text(formattedURL(url))
                         .font(.listMono)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .lineLimit(1)
                 }
 
                 if let summary = statsLine {
                     Text(summary)
                         .font(.caption)
-                        .foregroundStyle(Color.textSecondary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .lineLimit(2)
                 }
             }
@@ -49,7 +49,7 @@ struct SourceRow: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.textTertiary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
             }
         }
         .padding(.vertical, Spacing.rowVertical)

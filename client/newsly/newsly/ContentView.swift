@@ -39,10 +39,7 @@ struct ContentView: View {
     }
 
     private var shortBadge: String? {
-        let mode = FastNewsMode(rawValue: settings.fastNewsMode) ?? .dailyDigest
-        let count = mode == .dailyDigest
-            ? unreadCountService.dailyNewsDigestCount
-            : unreadCountService.newsCount
+        let count = unreadCountService.newsCount
         return count > 0 ? String(count) : nil
     }
 
@@ -79,33 +76,18 @@ struct ContentView: View {
             .badge(longBadge != nil ? Int(longBadge!) ?? 0 : 0)
 
             NavigationStack(path: $shortFormPath) {
-                if (FastNewsMode(rawValue: settings.fastNewsMode) ?? .dailyDigest) == .dailyDigest {
-                    DailyDigestShortFormView(
-                        viewModel: tabCoordinator.dailyDigestVM,
-                        onOpenChatSession: { route in
-                            shortFormPath.append(route)
-                        }
-                    )
-                    .withContentRoutes(
-                        tab: .shortNews,
-                        path: $shortFormPath,
-                        readingStateStore: readingStateStore,
-                        contentTextSize: contentTextSize
-                    )
-                } else {
-                    ShortFormView(
-                        viewModel: tabCoordinator.shortNewsVM,
-                        onSelect: { route in
-                            shortFormPath.append(route)
-                        }
-                    )
-                    .withContentRoutes(
-                        tab: .shortNews,
-                        path: $shortFormPath,
-                        readingStateStore: readingStateStore,
-                        contentTextSize: contentTextSize
-                    )
-                }
+                ShortFormView(
+                    viewModel: tabCoordinator.shortNewsVM,
+                    onSelect: { route in
+                        shortFormPath.append(route)
+                    }
+                )
+                .withContentRoutes(
+                    tab: .shortNews,
+                    path: $shortFormPath,
+                    readingStateStore: readingStateStore,
+                    contentTextSize: contentTextSize
+                )
             }
             .tag(RootTab.shortNews)
             .tabItem {
@@ -172,10 +154,6 @@ struct ContentView: View {
 
     private func restoreIfNeeded() {
         let isNews = readingStateStore.current?.contentType == .news
-        let isDailyDigestMode = (FastNewsMode(rawValue: settings.fastNewsMode) ?? .dailyDigest) == .dailyDigest
-        if isNews && isDailyDigestMode {
-            return
-        }
         let targetPath = isNews ? shortFormPath : longFormPath
         guard !isRestoringPath, targetPath.isEmpty, let state = readingStateStore.current else { return }
 
@@ -267,6 +245,7 @@ private extension View {
             .navigationDestination(for: ContentDetailRoute.self) { route in
                 ContentDetailView(
                     contentId: route.contentId,
+                    contentType: route.contentType,
                     allContentIds: route.allContentIds
                 )
                 .dynamicTypeSize(contentTextSize)

@@ -17,8 +17,7 @@ class NewsPipelineEvalUserContext(BaseModel):
     apple_id: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=255)
     full_name: str | None = Field(default=None, max_length=255)
-    news_digest_timezone: str = "UTC"
-    news_digest_preference_prompt: str | None = Field(default=None, max_length=4000)
+    news_list_preference_prompt: str | None = Field(default=None, max_length=4000)
 
 
 class NewsPipelineEvalExpectations(BaseModel):

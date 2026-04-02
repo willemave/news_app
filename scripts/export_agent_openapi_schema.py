@@ -31,10 +31,6 @@ ALLOWED_OPERATIONS: dict[tuple[str, str], dict[str, Any]] = {
         "operation_id": "completeOnboarding",
         "tags": ["onboarding"],
     },
-    ("/api/agent/digests", "post"): {
-        "operation_id": "generateDigest",
-        "tags": ["digests"],
-    },
     ("/api/content/", "get"): {
         "operation_id": "listContent",
         "tags": ["content"],
@@ -47,20 +43,12 @@ ALLOWED_OPERATIONS: dict[tuple[str, str], dict[str, Any]] = {
         "operation_id": "submitContent",
         "tags": ["content"],
     },
-    ("/api/news/digests", "get"): {
-        "operation_id": "listNewsDigests",
+    ("/api/news/items", "get"): {
+        "operation_id": "listNewsItems",
         "tags": ["news"],
     },
-    ("/api/news/digests/{digest_id}", "get"): {
-        "operation_id": "getNewsDigest",
-        "tags": ["news"],
-    },
-    ("/api/news/digests/{digest_id}/mark-read", "post"): {
-        "operation_id": "markNewsDigestRead",
-        "tags": ["news"],
-    },
-    ("/api/news/digests/{digest_id}/bullets/{bullet_id}/dig-deeper", "post"): {
-        "operation_id": "startNewsDigestBulletDigDeeper",
+    ("/api/news/items/mark-read", "post"): {
+        "operation_id": "markNewsItemsRead",
         "tags": ["news"],
     },
     ("/api/news/items/{news_item_id}", "get"): {
@@ -162,8 +150,7 @@ def build_agent_openapi_schema() -> dict[str, Any]:
             {"name": "jobs", "description": "Async job status routes."},
             {"name": "search", "description": "Provider-backed discovery search."},
             {"name": "onboarding", "description": "Simplified onboarding routes."},
-            {"name": "digests", "description": "Agent-driven digest generation routes."},
-            {"name": "news", "description": "News digest runs and short-form news items."},
+            {"name": "news", "description": "Visible short-form news item routes."},
             {"name": "content", "description": "Content listing, detail, and submission."},
             {"name": "sources", "description": "Runtime source subscription routes."},
         ],

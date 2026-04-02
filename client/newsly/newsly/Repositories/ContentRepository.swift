@@ -38,9 +38,12 @@ final class ContentRepository: ContentRepositoryType {
             URLQueryItem(name: "read_filter", value: readFilter.rawValue),
             URLQueryItem(name: "limit", value: String(limit ?? defaultPageSize))
         ]
+        let isNewsOnly = contentTypes == [.news]
 
-        contentTypes.forEach { type in
-            queryItems.append(URLQueryItem(name: "content_type", value: type.rawValue))
+        if !isNewsOnly {
+            contentTypes.forEach { type in
+                queryItems.append(URLQueryItem(name: "content_type", value: type.rawValue))
+            }
         }
 
         if let cursor {
@@ -48,7 +51,7 @@ final class ContentRepository: ContentRepositoryType {
         }
 
         return client.publisher(
-            APIEndpoints.contentList,
+            isNewsOnly ? APIEndpoints.newsItems : APIEndpoints.contentList,
             queryItems: queryItems
         )
     }

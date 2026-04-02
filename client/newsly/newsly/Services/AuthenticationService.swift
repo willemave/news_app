@@ -106,10 +106,8 @@ final class AuthenticationService: NSObject {
     func updateCurrentUserProfile(
         fullName: String? = nil,
         twitterUsername: String? = nil,
-        newsDigestPreferencePrompt: String? = nil,
-        councilPersonas: [CouncilPersona]? = nil,
-        newsDigestTimezone: String? = nil,
-        newsDigestIntervalHours: Int? = nil
+        newsListPreferencePrompt: String? = nil,
+        councilPersonas: [CouncilPersona]? = nil
     ) async throws -> User {
         guard let token = KeychainManager.shared.getToken(key: .accessToken) else {
             throw AuthError.notAuthenticated
@@ -124,10 +122,8 @@ final class AuthenticationService: NSObject {
         let body = UpdateUserProfileRequest(
             fullName: fullName,
             twitterUsername: twitterUsername,
-            newsDigestPreferencePrompt: newsDigestPreferencePrompt,
-            councilPersonas: councilPersonas,
-            newsDigestTimezone: newsDigestTimezone,
-            newsDigestIntervalHours: newsDigestIntervalHours
+            newsListPreferencePrompt: newsListPreferencePrompt,
+            councilPersonas: councilPersonas
         )
         request.httpBody = try JSONEncoder().encode(body)
 

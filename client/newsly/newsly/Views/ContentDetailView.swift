@@ -61,6 +61,7 @@ private let detailLogger = Logger(subsystem: "com.newsly", category: "ContentDet
 
 struct ContentDetailView: View {
     let initialContentId: Int
+    let initialContentType: ContentType?
     let allContentIds: [Int]
     let onConvert: ((Int) async -> Void)?
     @StateObject private var viewModel = ContentDetailViewModel()
@@ -97,10 +98,12 @@ struct ContentDetailView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     init(
         contentId: Int,
+        contentType: ContentType? = nil,
         allContentIds: [Int] = [],
         onConvert: ((Int) async -> Void)? = nil
     ) {
         self.initialContentId = contentId
+        self.initialContentType = contentType
         self.allContentIds = allContentIds.isEmpty ? [contentId] : allContentIds
         self.onConvert = onConvert
         if let index = allContentIds.firstIndex(of: contentId) {
@@ -387,7 +390,7 @@ struct ContentDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .task {
             let idToLoad = allContentIds.isEmpty ? initialContentId : allContentIds[currentIndex]
-            viewModel.updateContentId(idToLoad)
+            viewModel.updateContentId(idToLoad, contentType: initialContentType)
             await viewModel.loadContent()
         }
         .onChange(of: viewModel.content?.id) { _, newValue in
@@ -423,7 +426,7 @@ struct ContentDetailView: View {
         .onChange(of: currentIndex) { oldValue, newValue in
             Task {
                 let newContentId = allContentIds[newValue]
-                viewModel.updateContentId(newContentId)
+                viewModel.updateContentId(newContentId, contentType: initialContentType)
                 await viewModel.loadContent()
             }
         }

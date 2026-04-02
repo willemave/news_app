@@ -16,7 +16,7 @@ struct SectionHeader: View {
         HStack {
             Text(title.uppercased())
                 .font(.sectionHeader)
-                .foregroundStyle(Color.textTertiary)
+                .foregroundStyle(Color.onSurfaceSecondary)
                 .tracking(0.5)
 
             Spacer()

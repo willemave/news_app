@@ -14,10 +14,11 @@ from app.models.schema import (
     ContentFavorites,
     ContentReadStatus,
     ContentStatusEntry,
-    NewsDigest,
+    NewsItem,
     ProcessingTask,
 )
 from app.repositories.content_repository import apply_visibility_filters, build_visibility_context
+from app.services.news_feed import count_unread_news_items
 
 settings = get_settings()
 
@@ -44,10 +45,11 @@ def _build_active_processing_filter(now_utc: datetime):
 
 
 def get_unread_counts(db: Session, *, user_id: int) -> dict[str, int]:
-    """Return unread counts by content type plus news digest count."""
+    """Return unread counts by content type."""
     context = build_visibility_context(user_id)
     count_query = db.query(Content.content_type, func.count(Content.id))
     count_query = apply_visibility_filters(count_query, context)
+    count_query = count_query.filter(Content.content_type != ContentType.NEWS.value)
     count_query = count_query.filter(~context.is_read).group_by(Content.content_type)
     results = count_query.all()
 
@@ -56,13 +58,7 @@ def get_unread_counts(db: Session, *, user_id: int) -> dict[str, int]:
         if content_type in counts:
             counts[content_type] = int(count or 0)
 
-    counts["news_digest_count"] = int(
-        db.query(func.count(NewsDigest.id))
-        .filter(NewsDigest.user_id == user_id)
-        .filter(NewsDigest.read_at.is_(None))
-        .scalar()
-        or 0
-    )
+    counts["news"] = count_unread_news_items(db, user_id=user_id)
     return counts
 
 
@@ -96,7 +92,26 @@ def get_processing_count(db: Session, *, user_id: int) -> dict[str, int]:
         or 0
     )
     news_count = int(
-        base_query.filter(Content.content_type == ContentType.NEWS.value).scalar() or 0
+        db.query(func.count(NewsItem.id))
+        .filter(
+            NewsItem.status.in_(
+                [
+                    "new",
+                    "processing",
+                ]
+            )
+        )
+        .filter(
+            or_(
+                NewsItem.visibility_scope == "global",
+                and_(
+                    NewsItem.visibility_scope == "user",
+                    NewsItem.owner_user_id == user_id,
+                ),
+            )
+        )
+        .scalar()
+        or 0
     )
 
     return {

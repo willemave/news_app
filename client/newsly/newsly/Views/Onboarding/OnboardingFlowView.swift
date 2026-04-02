@@ -309,7 +309,7 @@ struct OnboardingFlowView: View {
                     twitterUsernameCard
                         .padding(.bottom, 12)
 
-                    digestPreferencePromptCard
+                    newsListPreferencePromptCard
                         .padding(.bottom, 8)
 
                     if !viewModel.substackSuggestions.isEmpty {
@@ -430,18 +430,18 @@ struct OnboardingFlowView: View {
         }
     }
 
-    private var digestPreferencePromptCard: some View {
+    private var newsListPreferencePromptCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("DIGEST PREFERENCES")
+            Text("NEWS LIST PREFERENCES")
                 .font(.system(size: 9, weight: .medium))
                 .tracking(1.5)
                 .foregroundColor(.watercolorSlate.opacity(0.5))
 
-            Text("Used to curate your digest across feeds, Reddit, and X.")
+            Text("Used to tune the news list across feeds, Reddit, and X.")
                 .font(.caption)
                 .foregroundColor(.watercolorSlate.opacity(0.65))
 
-            TextEditor(text: $viewModel.newsDigestPreferencePrompt)
+            TextEditor(text: $viewModel.newsListPreferencePrompt)
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 108)
                 .padding(.horizontal, 8)

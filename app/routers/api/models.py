@@ -155,7 +155,7 @@ class ContentListResponse(BaseModel):
 class NarrationResponse(BaseModel):
     """Unified narration payload for any supported narration target."""
 
-    target_type: Literal["content", "news-digest"] = Field(
+    target_type: Literal["content"] = Field(
         ...,
         description="Narration target family",
     )
@@ -673,10 +673,6 @@ class UnreadCountsResponse(BaseModel):
     article: int = Field(..., description="Number of unread articles")
     podcast: int = Field(..., description="Number of unread podcasts")
     news: int = Field(..., description="Number of unread news items")
-    news_digest_count: int = Field(
-        0,
-        description="Number of unread news digest cards",
-    )
 
 
 class ProcessingCountResponse(BaseModel):
@@ -1014,7 +1010,7 @@ class OnboardingCompleteRequest(BaseModel):
     profile_summary: str | None = None
     inferred_topics: list[str] | None = None
     twitter_username: str | None = Field(default=None, max_length=50)
-    news_digest_preference_prompt: str | None = Field(default=None, max_length=4000)
+    news_list_preference_prompt: str | None = Field(default=None, max_length=4000)
 
 
 class OnboardingCompleteResponse(BaseModel):

@@ -85,13 +85,13 @@ struct SourceDetailSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("INFORMATION")
                 .font(.sectionHeader)
-                .foregroundStyle(Color.textTertiary)
+                .foregroundStyle(Color.onSurfaceSecondary)
                 .tracking(0.5)
 
             HStack {
                 Text("Type")
                     .font(.listTitle)
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.onSurface)
 
                 Spacer()
 
@@ -99,7 +99,7 @@ struct SourceDetailSheet: View {
                     SourceTypeIcon(type: config.scraperType)
                     Text(config.scraperType.capitalized)
                         .font(.listMono)
-                        .foregroundStyle(Color.textSecondary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                 }
             }
         }
@@ -113,14 +113,14 @@ struct SourceDetailSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("SETTINGS")
                 .font(.sectionHeader)
-                .foregroundStyle(Color.textTertiary)
+                .foregroundStyle(Color.onSurfaceSecondary)
                 .tracking(0.5)
 
             // Active toggle
             HStack {
                 Text("Active")
                     .font(.listTitle)
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.onSurface)
 
                 Spacer()
 
@@ -134,7 +134,7 @@ struct SourceDetailSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Display Name")
                     .font(.listCaption)
-                    .foregroundStyle(Color.textTertiary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
 
                 TextField("Display Name", text: $displayName)
                     .textFieldStyle(.roundedBorder)
@@ -144,7 +144,7 @@ struct SourceDetailSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Feed URL")
                     .font(.listCaption)
-                    .foregroundStyle(Color.textTertiary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
 
                 TextField("Feed URL", text: $feedURL)
                     .textFieldStyle(.roundedBorder)
@@ -158,7 +158,7 @@ struct SourceDetailSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Episode Limit (1-100)")
                         .font(.listCaption)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
 
                     TextField("Optional", text: $limit)
                         .textFieldStyle(.roundedBorder)
@@ -174,7 +174,7 @@ struct SourceDetailSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("STATS")
                 .font(.sectionHeader)
-                .foregroundStyle(Color.textTertiary)
+                .foregroundStyle(Color.onSurfaceSecondary)
                 .tracking(0.5)
 
             statLine("Items", value: "\(stats.totalCount)")
@@ -208,7 +208,7 @@ struct SourceDetailSheet: View {
 
             Text(error)
                 .font(.subheadline)
-                .foregroundStyle(Color.textPrimary)
+                .foregroundStyle(Color.onSurface)
 
             Spacer()
         }
@@ -292,11 +292,11 @@ struct SourceDetailSheet: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(title)
                 .font(.listTitle)
-                .foregroundStyle(Color.textPrimary)
+                .foregroundStyle(Color.onSurface)
             Spacer()
             Text(value)
                 .font(.listMono)
-                .foregroundStyle(Color.textSecondary)
+                .foregroundStyle(Color.onSurfaceSecondary)
                 .multilineTextAlignment(.trailing)
         }
     }

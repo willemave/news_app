@@ -30,7 +30,7 @@ struct MoreView: View {
                     HStack(spacing: 16) {
                         minimalIcon("tray.and.arrow.up")
                         Text("Submissions")
-                            .foregroundStyle(Color.textPrimary)
+                            .foregroundStyle(Color.onSurface)
                         Spacer()
                         if submissionsViewModel.submissions.count > 0 {
                             CountBadge(count: submissionsViewModel.submissions.count, color: .red)
@@ -45,7 +45,7 @@ struct MoreView: View {
                     HStack(spacing: 16) {
                         minimalIcon("clock.arrow.circlepath")
                         Text("Processing")
-                            .foregroundStyle(Color.textPrimary)
+                            .foregroundStyle(Color.onSurface)
                         Spacer()
                         if processingCountService.processingCount > 0 {
                             CountBadge(count: processingCountService.processingCount, color: .teal)
@@ -78,7 +78,7 @@ struct MoreView: View {
             HStack(spacing: 16) {
                 minimalIcon(icon)
                 Text(title)
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.onSurface)
             }
             .frame(minHeight: RowMetrics.compactHeight)
         }
@@ -87,7 +87,7 @@ struct MoreView: View {
     private func minimalIcon(_ name: String) -> some View {
         Image(systemName: name)
             .font(.system(size: Spacing.smallIcon, weight: .regular))
-            .foregroundStyle(Color.textSecondary)
+            .foregroundStyle(Color.onSurfaceSecondary)
             .frame(width: 24, height: 24)
     }
 }

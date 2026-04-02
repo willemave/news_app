@@ -2,7 +2,6 @@
 
 import secrets
 from typing import Annotated
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -10,7 +9,6 @@ from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.constants import ALLOWED_NEWS_DIGEST_INTERVAL_HOURS
 from app.core.db import get_db_session
 from app.core.deps import ADMIN_SESSION_COOKIE, get_current_user
 from app.core.logging import get_logger
@@ -36,9 +34,9 @@ from app.models.user import (
     UserResponse,
     resolve_user_council_personas,
 )
-from app.services.news_digest_preferences import (
-    normalize_news_digest_preference_prompt,
-    resolve_user_news_digest_preference_prompt,
+from app.services.news_list_preferences import (
+    normalize_news_list_preference_prompt,
+    resolve_user_news_list_preference_prompt,
 )
 from app.services.x_integration import has_active_x_connection, normalize_twitter_username
 from app.templates import templates
@@ -79,49 +77,10 @@ def _build_user_response(db: Session, user: User) -> UserResponse:
     return response.model_copy(
         update={
             "has_x_bookmark_sync": has_sync,
-            "news_digest_preference_prompt": resolve_user_news_digest_preference_prompt(user),
+            "news_list_preference_prompt": resolve_user_news_list_preference_prompt(user),
             "council_personas": resolve_user_council_personas(user),
         }
     )
-
-
-def _normalize_news_digest_timezone(timezone_name: str | None) -> str | None:
-    """Normalize and validate an IANA timezone string.
-
-    Args:
-        timezone_name: Raw timezone string from client payload.
-
-    Returns:
-        Normalized timezone string, or ``None`` when not provided.
-
-    Raises:
-        ValueError: If timezone is invalid.
-    """
-    if timezone_name is None:
-        return None
-
-    candidate = timezone_name.strip()
-    if not candidate:
-        return "UTC"
-
-    try:
-        ZoneInfo(candidate)
-    except ZoneInfoNotFoundError as exc:
-        raise ValueError(f"Invalid timezone: {candidate}") from exc
-
-    return candidate
-
-
-def _normalize_news_digest_interval_hours(interval_hours: int | None) -> int | None:
-    """Validate digest interval checkpoint hours."""
-    if interval_hours is None:
-        return None
-    if interval_hours not in ALLOWED_NEWS_DIGEST_INTERVAL_HOURS:
-        allowed_values = ", ".join(str(option) for option in ALLOWED_NEWS_DIGEST_INTERVAL_HOURS)
-        raise ValueError(
-            f"Invalid digest interval hours: {interval_hours}. Allowed: {allowed_values}"
-        )
-    return interval_hours
 
 
 @router.post("/apple", response_model=TokenResponse)
@@ -400,25 +359,9 @@ def update_current_user_info(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    if payload.news_digest_timezone is not None:
-        try:
-            current_user.news_digest_timezone = _normalize_news_digest_timezone(
-                payload.news_digest_timezone
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    if payload.news_digest_interval_hours is not None:
-        try:
-            current_user.news_digest_interval_hours = _normalize_news_digest_interval_hours(
-                payload.news_digest_interval_hours
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    if payload.news_digest_preference_prompt is not None:
-        current_user.news_digest_preference_prompt = normalize_news_digest_preference_prompt(
-            payload.news_digest_preference_prompt
+    if payload.news_list_preference_prompt is not None:
+        current_user.news_list_preference_prompt = normalize_news_list_preference_prompt(
+            payload.news_list_preference_prompt
         )
 
     if payload.council_personas is not None:

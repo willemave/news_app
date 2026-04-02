@@ -13,7 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
-from sqlalchemy import Text, and_, cast, func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import get_session_factory
@@ -27,7 +27,7 @@ from app.models.chat_message_metadata import (
 )
 from app.models.content_submission import SubmitContentRequest
 from app.models.metadata import ContentType
-from app.models.schema import ChatSession, Content, NewsDigest, UserScraperConfig
+from app.models.schema import ChatSession, Content, UserScraperConfig
 from app.models.user import User
 from app.repositories import favorites_repository, read_status_repository
 from app.repositories.content_feed_query import build_user_feed_query
@@ -49,7 +49,6 @@ from app.services.llm_models import (
     build_pydantic_model,
     resolve_effective_api_key,
 )
-from app.services.news_digests import list_digest_bullets_with_sources
 
 logger = get_logger(__name__)
 
@@ -116,7 +115,7 @@ ASSISTANT_SYSTEM_PROMPT = (
     "Rules:\n"
     "- Use tools when they can directly answer or complete the request.\n"
     "- If the user asks about their saved or favorited content, call SearchKnowledge first.\n"
-    "- If the user asks about their in-app feed, inbox, or news digests, "
+    "- If the user asks about their in-app feed or inbox, "
     "call SearchContent first.\n"
     "- For broad current-events or recent factual questions, call search_web first.\n"
     "- For blog, newsletter, RSS, or podcast source-finding requests, call "
@@ -164,10 +163,6 @@ KNOWLEDGE_HINTS = (
     "favorited",
 )
 CONTENT_SEARCH_HINTS = (
-    "news digest",
-    "news digests",
-    "digest",
-    "digests",
     "in my feed",
     "in my inbox",
     "from my feed",
@@ -382,17 +377,6 @@ def _should_route_to_content_search(user_text: str) -> bool:
     return any(hint in normalized for hint in CONTENT_SEARCH_HINTS)
 
 
-def _screen_context_mentions_daily_digests(screen_context: AssistantScreenContext) -> bool:
-    """Return True when the current screen context is about news digests."""
-
-    haystacks = [
-        screen_context.screen_type,
-        screen_context.screen_title or "",
-        screen_context.note or "",
-    ]
-    return any("digest" in value.lower() for value in haystacks if value)
-
-
 def _build_screen_aware_turn_instructions(
     user_text: str,
     screen_context: AssistantScreenContext,
@@ -402,18 +386,9 @@ def _build_screen_aware_turn_instructions(
     if _should_route_to_content_search(user_text):
         return (
             "For this turn, you must call SearchContent before answering. "
-            "Use it for in-app feed items, inbox content, and news digests. "
+            "Use it for in-app feed items and inbox content. "
             "Only call search_web if SearchContent is insufficient."
         )
-
-    if _screen_context_mentions_daily_digests(screen_context):
-        normalized = _normalize_turn_text(user_text)
-        if any(marker in normalized for marker in ("digest", "digests", "summarize", "summary")):
-            return (
-                "For this turn, you must call SearchContent before answering. "
-                "Use it to summarize the user's recent news digests. "
-                "Do not call search_web unless SearchContent is insufficient."
-            )
 
     return _build_turn_instructions(user_text)
 
@@ -448,10 +423,8 @@ def _format_content_hits(
     query: str,
     content_rows: list[tuple[Content, object, object]],
     total_content_matches: int | None,
-    digest_rows: list[NewsDigest],
-    digest_bullets_by_digest_id: dict[int, list[str]],
 ) -> str:
-    """Serialize mixed in-app content results for the assistant tool."""
+    """Serialize in-app content results for the assistant tool."""
 
     lines = [f'In-app content results for "{query}":']
 
@@ -476,17 +449,6 @@ def _format_content_hits(
             summary = str((content.content_metadata or {}).get("summary") or "").strip()
             if summary:
                 lines.append(f"   summary: {summary[:240]}")
-
-    if digest_rows:
-        lines.append("News Digests:")
-        for digest in digest_rows:
-            lines.append(f"{digest.generated_at.isoformat()} | {digest.title}")
-            summary = (digest.summary or "").strip()
-            if summary:
-                lines.append(f"   summary: {summary[:240]}")
-            for point_text in digest_bullets_by_digest_id.get(digest.id, [])[:3]:
-                if point_text:
-                    lines.append(f"   point: {point_text[:200]}")
 
     if len(lines) == 1:
         return f'No in-app content matched "{query}".'
@@ -694,7 +656,7 @@ def _get_or_create_agent(
         query: str,
         limit: int = 5,
     ) -> str:
-        """Search user-visible app content and recent news digests."""
+        """Search user-visible app content."""
         normalized_limit = max(1, min(limit, 10))
         normalized_query = query.strip()
         with ctx.deps.session_factory() as db:
@@ -724,43 +686,10 @@ def _get_or_create_agent(
                     )
                     total_content_matches = 0
 
-            digest_query = db.query(NewsDigest).filter(NewsDigest.user_id == ctx.deps.user_id)
-            if normalized_query:
-                pattern = f"%{normalized_query}%"
-                digest_query = digest_query.filter(
-                    or_(
-                        NewsDigest.title.ilike(pattern),
-                        NewsDigest.summary.ilike(pattern),
-                        cast(NewsDigest.build_metadata, Text).ilike(pattern),
-                    )
-                )
-            digest_rows = (
-                digest_query
-                .order_by(NewsDigest.generated_at.desc(), NewsDigest.id.desc())
-                .limit(3)
-                .all()
-            )
-            if not digest_rows:
-                digest_rows = (
-                    db.query(NewsDigest)
-                    .filter(NewsDigest.user_id == ctx.deps.user_id)
-                    .order_by(NewsDigest.generated_at.desc(), NewsDigest.id.desc())
-                    .limit(3)
-                    .all()
-                )
-            digest_bullets_by_digest_id = {
-                digest.id: [
-                    f"{bullet.topic}. {bullet.details}".strip()
-                    for bullet, _ in list_digest_bullets_with_sources(db, digest_id=digest.id)
-                ]
-                for digest in digest_rows
-            }
         return _format_content_hits(
             query=query,
             content_rows=content_rows,
             total_content_matches=total_content_matches,
-            digest_rows=digest_rows,
-            digest_bullets_by_digest_id=digest_bullets_by_digest_id,
         )
 
     @agent.tool

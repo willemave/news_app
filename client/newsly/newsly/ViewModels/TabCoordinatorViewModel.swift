@@ -19,19 +19,16 @@ final class TabCoordinatorViewModel: ObservableObject {
     @Published var selectedTab: RootTab
 
     let shortNewsVM: ShortNewsListViewModel
-    let dailyDigestVM: DailyDigestListViewModel
     let longContentVM: LongContentListViewModel
 
     private var previousTab: RootTab
 
     init(
         shortNewsVM: ShortNewsListViewModel,
-        dailyDigestVM: DailyDigestListViewModel,
         longContentVM: LongContentListViewModel,
         initialTab: RootTab = .shortNews
     ) {
         self.shortNewsVM = shortNewsVM
-        self.dailyDigestVM = dailyDigestVM
         self.longContentVM = longContentVM
         self.selectedTab = initialTab
         self.previousTab = initialTab
@@ -53,12 +50,7 @@ final class TabCoordinatorViewModel: ObservableObject {
     private func ensureTabLoaded(_ tab: RootTab) {
         switch tab {
         case .shortNews:
-            let fastNewsMode = FastNewsMode(rawValue: AppSettings.shared.fastNewsMode) ?? .dailyDigest
-            if fastNewsMode == .dailyDigest {
-                if dailyDigestVM.currentItems().isEmpty {
-                    dailyDigestVM.refreshTrigger.send(())
-                }
-            } else if shortNewsVM.currentItems().isEmpty {
+            if shortNewsVM.currentItems().isEmpty {
                 shortNewsVM.refreshTrigger.send(())
             }
         case .longContent:

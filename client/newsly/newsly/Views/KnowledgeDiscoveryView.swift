@@ -277,7 +277,7 @@ struct KnowledgeDiscoveryView: View {
 
             Text(viewModel.runStatusDescription)
                 .font(.listCaption)
-                .foregroundColor(Color.textTertiary)
+                .foregroundColor(Color.onSurfaceSecondary)
         }
         .padding(.horizontal, Spacing.screenHorizontal)
         .padding(.vertical, 12)

@@ -258,7 +258,7 @@ final class DiscoveryPersonalizeViewModel: ObservableObject {
                 profileSummary: topicSummary,
                 inferredTopics: inferredTopics.isEmpty ? nil : inferredTopics,
                 twitterUsername: nil,
-                newsDigestPreferencePrompt: nil
+                newsListPreferencePrompt: nil
             )
             _ = try await service.complete(request: request)
             onboardingStateStore.clearDiscoveryRun(userId: userId)

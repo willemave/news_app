@@ -38,12 +38,12 @@ struct SettingsRow<Accessory: View>: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.listTitle)
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.onSurface)
 
                 if let subtitle {
                     Text(subtitle)
                         .font(.listCaption)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .lineLimit(1)
                 }
             }
@@ -79,7 +79,7 @@ struct NavigationChevron: View {
     var body: some View {
         Image(systemName: "chevron.right")
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Color.textTertiary)
+            .foregroundStyle(Color.onSurfaceSecondary)
     }
 }
 
@@ -116,12 +116,12 @@ struct SettingsToggleRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.listTitle)
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.onSurface)
 
                 if let subtitle {
                     Text(subtitle)
                         .font(.listCaption)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .lineLimit(2)
                 }
             }

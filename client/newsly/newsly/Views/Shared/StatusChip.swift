@@ -18,7 +18,7 @@ struct StatusChip: View {
 
             Text(isActive ? "Active" : "Inactive")
                 .font(.chipLabel)
-                .foregroundStyle(isActive ? Color.textPrimary : Color.textTertiary)
+                .foregroundStyle(isActive ? Color.onSurface : Color.onSurfaceSecondary)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

@@ -215,8 +215,7 @@ def _resolve_eval_user(
             apple_id=user_context.apple_id or f"eval.{clean_case_id}",
             email=user_context.email or f"{clean_case_id}@example.com",
             full_name=user_context.full_name or f"Eval {case_id}",
-            news_digest_timezone=user_context.news_digest_timezone,
-            news_digest_preference_prompt=user_context.news_digest_preference_prompt,
+            news_list_preference_prompt=user_context.news_list_preference_prompt,
             is_active=True,
         )
         db.add(user)
@@ -224,9 +223,8 @@ def _resolve_eval_user(
         return user
 
     user.full_name = user_context.full_name or user.full_name
-    user.news_digest_timezone = user_context.news_digest_timezone or user.news_digest_timezone
-    if user_context.news_digest_preference_prompt is not None:
-        user.news_digest_preference_prompt = user_context.news_digest_preference_prompt
+    if user_context.news_list_preference_prompt is not None:
+        user.news_list_preference_prompt = user_context.news_list_preference_prompt
     db.flush()
     return user
 

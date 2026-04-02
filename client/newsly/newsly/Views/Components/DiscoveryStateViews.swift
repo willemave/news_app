@@ -138,7 +138,7 @@ struct DiscoveryProcessingStateView: View {
             HStack(spacing: 8) {
                 ForEach(0..<4, id: \.self) { index in
                     Circle()
-                        .fill(index <= currentJobStage ? Color.textPrimary : Color.editorialBorder)
+                        .fill(index <= currentJobStage ? Color.onSurface : Color.editorialBorder)
                         .frame(width: 6, height: 6)
                         .scaleEffect(index == currentJobStage ? pulseScale : 1.0)
                 }
@@ -169,11 +169,11 @@ struct DiscoveryEmptyStateView: View {
             VStack(spacing: 6) {
                 Text("Discover New Content")
                     .font(.listTitle.weight(.semibold))
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.onSurface)
 
                 Text("Get personalized suggestions for feeds, podcasts, and channels based on your reading history.")
                     .font(.listSubtitle)
-                    .foregroundStyle(Color.textSecondary)
+                    .foregroundStyle(Color.onSurfaceSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 280)
             }

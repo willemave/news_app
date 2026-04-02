@@ -65,7 +65,7 @@ struct PodcastSourcesView: View {
             ProgressView()
             Text("Loading sources...")
                 .font(.subheadline)
-                .foregroundStyle(Color.textSecondary)
+                .foregroundStyle(Color.onSurfaceSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 100)
@@ -107,7 +107,7 @@ struct PodcastSourcesView: View {
                 .foregroundStyle(Color.statusDestructive)
             Text(error)
                 .font(.caption)
-                .foregroundStyle(Color.textSecondary)
+                .foregroundStyle(Color.onSurfaceSecondary)
         }
         .padding()
     }
@@ -121,7 +121,7 @@ struct PodcastSourcesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("FEED URL")
                         .font(.sectionHeader)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .tracking(0.5)
 
                     TextField("https://example.com/podcast/feed", text: $newFeedURL)
@@ -135,7 +135,7 @@ struct PodcastSourcesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY NAME")
                         .font(.sectionHeader)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .tracking(0.5)
 
                     TextField("Optional", text: $newFeedName)
@@ -146,7 +146,7 @@ struct PodcastSourcesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("EPISODE LIMIT")
                         .font(.sectionHeader)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .tracking(0.5)
 
                     TextField("1-100, optional", text: $newLimit)

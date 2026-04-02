@@ -14,7 +14,7 @@ struct LoadingView: View {
                 .scaleEffect(1.5)
             Text("Loading...")
                 .font(.listSubtitle)
-                .foregroundStyle(Color.textSecondary)
+                .foregroundStyle(Color.onSurfaceSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.surfacePrimary)

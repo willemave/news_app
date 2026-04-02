@@ -33,7 +33,7 @@ def _tweet() -> XTweet:
 
 def test_resolve_user_news_digest_preference_prompt_defaults_when_empty() -> None:
     """Missing or blank stored prompts should use the default instructions."""
-    user = User(apple_id="a", email="test@example.com", news_digest_preference_prompt="   ")
+    user = User(apple_id="a", email="test@example.com", news_list_preference_prompt="   ")
 
     assert normalize_news_digest_preference_prompt("   ") is None
     assert (

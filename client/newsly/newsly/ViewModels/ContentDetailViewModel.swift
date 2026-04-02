@@ -35,13 +35,18 @@ class ContentDetailViewModel: ObservableObject {
     private let unreadCountService = UnreadCountService.shared
     private let scraperConfigService = ScraperConfigService.shared
     private var contentId: Int = 0
+    private var contentType: ContentType?
     
-    init(contentId: Int = 0) {
+    init(contentId: Int = 0, contentType: ContentType? = nil) {
         self.contentId = contentId
+        self.contentType = contentType
     }
     
-    func updateContentId(_ newId: Int) {
+    func updateContentId(_ newId: Int, contentType newContentType: ContentType? = nil) {
         self.contentId = newId
+        if let newContentType {
+            self.contentType = newContentType
+        }
         // Clear previous content to show loading state
         self.content = nil
     }
@@ -53,7 +58,7 @@ class ContentDetailViewModel: ObservableObject {
 
         do {
             logger.debug("[ContentDetail] Fetching content detail | contentId=\(self.contentId)")
-            let fetched = try await contentService.fetchContentDetail(id: contentId)
+            let fetched = try await contentService.fetchContentDetail(id: contentId, contentType: contentType)
             content = fetched
             logger.info("[ContentDetail] Content fetched | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public) isRead=\(fetched.isRead) title=\(fetched.displayTitle, privacy: .public)")
 
@@ -68,7 +73,11 @@ class ContentDetailViewModel: ObservableObject {
             // Auto-mark as read if not already read
             if !fetched.isRead {
                 logger.info("[ContentDetail] Content not read, marking as read | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public)")
-                try await contentService.markContentAsRead(id: contentId)
+                if fetched.apiContentType == .news {
+                    try await contentService.markNewsItemAsRead(id: contentId)
+                } else {
+                    try await contentService.markContentAsRead(id: contentId)
+                }
                 logger.info("[ContentDetail] Successfully marked as read | contentId=\(self.contentId)")
 
                 // Post notification so list views can update their local state

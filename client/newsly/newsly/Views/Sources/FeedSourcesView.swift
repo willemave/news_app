@@ -64,7 +64,7 @@ struct FeedSourcesView: View {
             ProgressView()
             Text("Loading sources...")
                 .font(.subheadline)
-                .foregroundStyle(Color.textSecondary)
+                .foregroundStyle(Color.onSurfaceSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 100)
@@ -106,7 +106,7 @@ struct FeedSourcesView: View {
                 .foregroundStyle(Color.statusDestructive)
             Text(error)
                 .font(.caption)
-                .foregroundStyle(Color.textSecondary)
+                .foregroundStyle(Color.onSurfaceSecondary)
         }
         .padding()
     }
@@ -120,7 +120,7 @@ struct FeedSourcesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("TYPE")
                         .font(.sectionHeader)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .tracking(0.5)
 
                     Picker("Type", selection: $newFeedType) {
@@ -135,7 +135,7 @@ struct FeedSourcesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("FEED URL")
                         .font(.sectionHeader)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .tracking(0.5)
 
                     TextField("https://example.com/feed", text: $newFeedURL)
@@ -149,7 +149,7 @@ struct FeedSourcesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY NAME")
                         .font(.sectionHeader)
-                        .foregroundStyle(Color.textTertiary)
+                        .foregroundStyle(Color.onSurfaceSecondary)
                         .tracking(0.5)
 
                     TextField("Optional", text: $newFeedName)

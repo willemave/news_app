@@ -10,7 +10,7 @@ from app.models.schema import (
     ContentFavorites,
     ContentReadStatus,
     ContentStatusEntry,
-    NewsDigest,
+    NewsItem,
     ProcessingTask,
 )
 from app.models.user import User
@@ -147,6 +147,32 @@ def test_processing_count_includes_news_and_new_status(client, db_session, test_
     _add_active_task(db_session, content_id=pending_article_no_inbox.id)
     processing_podcast.checked_out_by = "content-processor-1"
     processing_podcast.checked_out_at = datetime.now(UTC).replace(tzinfo=None)
+    db_session.add_all(
+        [
+            NewsItem(
+                ingest_key="processing-news-1",
+                visibility_scope="global",
+                source_type="hackernews",
+                status="new",
+                ingested_at=datetime.now(UTC).replace(tzinfo=None),
+            ),
+            NewsItem(
+                ingest_key="processing-news-2",
+                visibility_scope="user",
+                owner_user_id=test_user.id,
+                source_type="reddit",
+                status="processing",
+                ingested_at=datetime.now(UTC).replace(tzinfo=None),
+            ),
+            NewsItem(
+                ingest_key="processing-news-3",
+                visibility_scope="global",
+                source_type="reddit",
+                status="new",
+                ingested_at=datetime.now(UTC).replace(tzinfo=None),
+            ),
+        ]
+    )
     db_session.commit()
 
     response = client.get("/api/content/stats/processing-count")
@@ -315,12 +341,16 @@ def test_long_form_stats_counts(client, db_session, test_user) -> None:
     assert payload["processing_count"] == 2
 
 
-def test_unread_counts_require_inbox_for_news(client, db_session, test_user) -> None:
-    news_item = Content(
-        url="https://example.com/news-unread",
-        content_type=ContentType.NEWS.value,
-        status=ContentStatus.COMPLETED.value,
-        content_metadata={},
+def test_unread_counts_use_visible_news_items(client, db_session, test_user) -> None:
+    news_item = NewsItem(
+        ingest_key="news-unread",
+        visibility_scope="global",
+        source_type="hackernews",
+        status="ready",
+        article_title="News unread",
+        summary_title="News unread",
+        summary_text="Summary",
+        ingested_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db_session.add(news_item)
     db_session.commit()
@@ -329,40 +359,4 @@ def test_unread_counts_require_inbox_for_news(client, db_session, test_user) -> 
     response = client.get("/api/content/stats/unread-counts")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["news"] == 0
-    assert payload["news_digest_count"] == 0
-
-    _add_inbox_status(db_session, test_user.id, news_item.id)
-    db_session.commit()
-
-    response = client.get("/api/content/stats/unread-counts")
-    assert response.status_code == 200
-    payload = response.json()
     assert payload["news"] == 1
-    assert payload["news_digest_count"] == 0
-
-    db_session.add(
-        NewsDigest(
-            user_id=test_user.id,
-            timezone="UTC",
-            title="Digest",
-            summary="Digest summary",
-            source_count=0,
-            group_count=0,
-            embedding_model="Qwen/Qwen3-Embedding-0.6B",
-            llm_model="google:gemini-3.1-flash-lite-preview",
-            pipeline_version="test",
-            trigger_reason="test",
-            window_start_at=datetime(2026, 3, 1, 2, 0, 0),
-            window_end_at=datetime(2026, 3, 1, 3, 0, 0),
-            generated_at=datetime(2026, 3, 1, 3, 0, 0),
-            build_metadata={},
-        )
-    )
-    db_session.commit()
-
-    response = client.get("/api/content/stats/unread-counts")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["news"] == 1
-    assert payload["news_digest_count"] == 1

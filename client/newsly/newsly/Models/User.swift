@@ -55,10 +55,8 @@ struct User: Codable, Identifiable, Equatable {
     let email: String
     let fullName: String?
     let twitterUsername: String?
-    let newsDigestPreferencePrompt: String
+    let newsListPreferencePrompt: String
     let councilPersonas: [CouncilPersona]
-    let newsDigestTimezone: String
-    let newsDigestIntervalHours: Int
     let hasXBookmarkSync: Bool
     let isAdmin: Bool
     let isActive: Bool
@@ -74,10 +72,8 @@ struct User: Codable, Identifiable, Equatable {
         case email
         case fullName = "full_name"
         case twitterUsername = "twitter_username"
-        case newsDigestPreferencePrompt = "news_digest_preference_prompt"
+        case newsListPreferencePrompt = "news_list_preference_prompt"
         case councilPersonas = "council_personas"
-        case newsDigestTimezone = "news_digest_timezone"
-        case newsDigestIntervalHours = "news_digest_interval_hours"
         case hasXBookmarkSync = "has_x_bookmark_sync"
         case isAdmin = "is_admin"
         case isActive = "is_active"
@@ -94,10 +90,8 @@ struct User: Codable, Identifiable, Equatable {
         email: String,
         fullName: String?,
         twitterUsername: String?,
-        newsDigestPreferencePrompt: String,
+        newsListPreferencePrompt: String,
         councilPersonas: [CouncilPersona] = CouncilPersona.defaults,
-        newsDigestTimezone: String,
-        newsDigestIntervalHours: Int = 6,
         hasXBookmarkSync: Bool,
         isAdmin: Bool,
         isActive: Bool,
@@ -112,10 +106,8 @@ struct User: Codable, Identifiable, Equatable {
         self.email = email
         self.fullName = fullName
         self.twitterUsername = twitterUsername
-        self.newsDigestPreferencePrompt = newsDigestPreferencePrompt
+        self.newsListPreferencePrompt = newsListPreferencePrompt
         self.councilPersonas = councilPersonas.isEmpty ? CouncilPersona.defaults : councilPersonas
-        self.newsDigestTimezone = newsDigestTimezone
-        self.newsDigestIntervalHours = newsDigestIntervalHours
         self.hasXBookmarkSync = hasXBookmarkSync
         self.isAdmin = isAdmin
         self.isActive = isActive
@@ -133,13 +125,11 @@ struct User: Codable, Identifiable, Equatable {
         email = try container.decode(String.self, forKey: .email)
         fullName = try container.decodeIfPresent(String.self, forKey: .fullName)
         twitterUsername = try container.decodeIfPresent(String.self, forKey: .twitterUsername)
-        newsDigestPreferencePrompt =
-            try container.decodeIfPresent(String.self, forKey: .newsDigestPreferencePrompt) ?? ""
+        newsListPreferencePrompt =
+            try container.decodeIfPresent(String.self, forKey: .newsListPreferencePrompt) ?? ""
         councilPersonas =
             try container.decodeIfPresent([CouncilPersona].self, forKey: .councilPersonas)
             ?? CouncilPersona.defaults
-        newsDigestTimezone = try container.decodeIfPresent(String.self, forKey: .newsDigestTimezone) ?? "UTC"
-        newsDigestIntervalHours = try container.decodeIfPresent(Int.self, forKey: .newsDigestIntervalHours) ?? 6
         hasXBookmarkSync = try container.decodeIfPresent(Bool.self, forKey: .hasXBookmarkSync) ?? false
         isAdmin = try container.decode(Bool.self, forKey: .isAdmin)
         isActive = try container.decode(Bool.self, forKey: .isActive)
@@ -201,33 +191,25 @@ struct AccessTokenResponse: Codable {
 struct UpdateUserProfileRequest: Codable {
     let fullName: String?
     let twitterUsername: String?
-    let newsDigestPreferencePrompt: String?
+    let newsListPreferencePrompt: String?
     let councilPersonas: [CouncilPersona]?
-    let newsDigestTimezone: String?
-    let newsDigestIntervalHours: Int?
 
     init(
         fullName: String? = nil,
         twitterUsername: String? = nil,
-        newsDigestPreferencePrompt: String? = nil,
-        councilPersonas: [CouncilPersona]? = nil,
-        newsDigestTimezone: String? = nil,
-        newsDigestIntervalHours: Int? = nil
+        newsListPreferencePrompt: String? = nil,
+        councilPersonas: [CouncilPersona]? = nil
     ) {
         self.fullName = fullName
         self.twitterUsername = twitterUsername
-        self.newsDigestPreferencePrompt = newsDigestPreferencePrompt
+        self.newsListPreferencePrompt = newsListPreferencePrompt
         self.councilPersonas = councilPersonas
-        self.newsDigestTimezone = newsDigestTimezone
-        self.newsDigestIntervalHours = newsDigestIntervalHours
     }
 
     enum CodingKeys: String, CodingKey {
         case fullName = "full_name"
         case twitterUsername = "twitter_username"
-        case newsDigestPreferencePrompt = "news_digest_preference_prompt"
+        case newsListPreferencePrompt = "news_list_preference_prompt"
         case councilPersonas = "council_personas"
-        case newsDigestTimezone = "news_digest_timezone"
-        case newsDigestIntervalHours = "news_digest_interval_hours"
     }
 }

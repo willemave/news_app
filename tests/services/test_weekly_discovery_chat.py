@@ -25,7 +25,6 @@ def test_ensure_weekly_discovery_session_creates_one_session_per_week(
 ) -> None:
     """Test the weekly thread is deduplicated across multiple runs in the same week."""
     test_user.has_completed_onboarding = True
-    test_user.news_digest_timezone = "America/Los_Angeles"
     db_session.commit()
 
     content = Content(

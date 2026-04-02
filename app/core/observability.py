@@ -34,7 +34,6 @@ TASK_EVENT_NAMES = {
     "fetch_discussion": "content.fetch_discussion",
     "generate_image": "content.generate_image",
     "discover_feeds": "content.discover_feeds",
-    "generate_news_digest": "content.generate_news_digest",
     "onboarding_discover": "content.onboarding_discover",
     "dig_deeper": "assistant.turn",
     "sync_integration": "integration.sync",

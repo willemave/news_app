@@ -9,7 +9,7 @@ from app.core.security import create_access_token, create_refresh_token
 from app.main import app
 from app.models.schema import UserIntegrationConnection
 from app.models.user import User, build_default_council_personas
-from app.services.news_digest_preferences import DEFAULT_NEWS_DIGEST_PREFERENCE_PROMPT
+from app.services.news_list_preferences import DEFAULT_NEWS_LIST_PREFERENCE_PROMPT
 
 client = TestClient(app)
 
@@ -359,9 +359,7 @@ def test_get_current_user_info(db: Session, monkeypatch):
         assert data["email"] == "testme@icloud.com"
         assert data["full_name"] == "Test Me User"
         assert data["twitter_username"] is None
-        assert data["news_digest_timezone"] == "UTC"
-        assert data["news_digest_interval_hours"] == 6
-        assert data["news_digest_preference_prompt"] == DEFAULT_NEWS_DIGEST_PREFERENCE_PROMPT
+        assert data["news_list_preference_prompt"] == DEFAULT_NEWS_LIST_PREFERENCE_PROMPT
         assert data["council_personas"] == build_default_council_personas()
         assert data["has_x_bookmark_sync"] is False
     finally:
@@ -474,9 +472,7 @@ def test_update_current_user_info(db: Session, monkeypatch):
                         "sort_order": 3,
                     },
                 ],
-                "news_digest_timezone": "America/New_York",
-                "news_digest_interval_hours": 3,
-                "news_digest_preference_prompt": (
+                "news_list_preference_prompt": (
                     "Prefer semiconductors, infrastructure, and AI models."
                 ),
             },
@@ -485,9 +481,7 @@ def test_update_current_user_info(db: Session, monkeypatch):
         data = response.json()
         assert data["full_name"] == "Updated Name"
         assert data["twitter_username"] == "willem_aw"
-        assert data["news_digest_timezone"] == "America/New_York"
-        assert data["news_digest_interval_hours"] == 3
-        assert data["news_digest_preference_prompt"].startswith("Prefer semiconductors")
+        assert data["news_list_preference_prompt"].startswith("Prefer semiconductors")
         assert [persona["display_name"] for persona in data["council_personas"]] == [
             "Albert Einstein",
             "Alan Turing",
@@ -498,9 +492,7 @@ def test_update_current_user_info(db: Session, monkeypatch):
         db.refresh(test_user)
         assert test_user.full_name == "Updated Name"
         assert test_user.twitter_username == "willem_aw"
-        assert test_user.news_digest_timezone == "America/New_York"
-        assert test_user.news_digest_interval_hours == 3
-        assert test_user.news_digest_preference_prompt.startswith("Prefer semiconductors")
+        assert test_user.news_list_preference_prompt.startswith("Prefer semiconductors")
         assert test_user.council_personas[0]["id"] == "einstein"
     finally:
         app.dependency_overrides.clear()
@@ -588,7 +580,7 @@ def test_update_current_user_info_empty_prompt_falls_back_to_default(db: Session
         apple_id="001234.test.blankprompt",
         email="blankprompt@icloud.com",
         full_name="Blank Prompt",
-        news_digest_preference_prompt="Keep macro and chips only.",
+        news_list_preference_prompt="Keep macro and chips only.",
     )
     db.add(test_user)
     db.commit()
@@ -600,16 +592,16 @@ def test_update_current_user_info_empty_prompt_falls_back_to_default(db: Session
         response = client.patch(
             "/auth/me",
             headers={"Authorization": f"Bearer {access_token}"},
-            json={"news_digest_preference_prompt": "   "},
+            json={"news_list_preference_prompt": "   "},
         )
         assert response.status_code == 200
         assert (
-            response.json()["news_digest_preference_prompt"]
-            == DEFAULT_NEWS_DIGEST_PREFERENCE_PROMPT
+            response.json()["news_list_preference_prompt"]
+            == DEFAULT_NEWS_LIST_PREFERENCE_PROMPT
         )
 
         db.refresh(test_user)
-        assert test_user.news_digest_preference_prompt is None
+        assert test_user.news_list_preference_prompt is None
     finally:
         app.dependency_overrides.clear()
 
@@ -648,82 +640,6 @@ def test_update_current_user_info_rejects_invalid_username(db: Session, monkeypa
         )
         assert response.status_code == 400
         assert "Twitter username" in response.json()["detail"]
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_update_current_user_info_rejects_invalid_timezone(db: Session, monkeypatch):
-    """Test PATCH /auth/me validates timezone formatting."""
-    from app.core.db import get_db_session, get_readonly_db_session
-    from app.core.settings import get_settings
-
-    monkeypatch.setattr(get_settings(), "debug", False)
-
-    def override_get_db_session():
-        try:
-            yield db
-        finally:
-            pass
-
-    app.dependency_overrides[get_db_session] = override_get_db_session
-    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
-
-    test_user = User(
-        apple_id="001234.test.invalidtimezone",
-        email="invalidtimezone@icloud.com",
-        full_name="Invalid Timezone",
-    )
-    db.add(test_user)
-    db.commit()
-    db.refresh(test_user)
-    access_token = create_access_token(test_user.id)
-
-    try:
-        response = client.patch(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {access_token}"},
-            json={"news_digest_timezone": "Not/A_Real_Timezone"},
-        )
-        assert response.status_code == 400
-        assert "timezone" in response.json()["detail"].lower()
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_update_current_user_info_rejects_invalid_digest_interval(db: Session, monkeypatch):
-    """Test PATCH /auth/me validates digest interval formatting."""
-    from app.core.db import get_db_session, get_readonly_db_session
-    from app.core.settings import get_settings
-
-    monkeypatch.setattr(get_settings(), "debug", False)
-
-    def override_get_db_session():
-        try:
-            yield db
-        finally:
-            pass
-
-    app.dependency_overrides[get_db_session] = override_get_db_session
-    app.dependency_overrides[get_readonly_db_session] = override_get_db_session
-
-    test_user = User(
-        apple_id="001234.test.invaliddigestinterval",
-        email="invaliddigestinterval@icloud.com",
-        full_name="Invalid Digest Interval",
-    )
-    db.add(test_user)
-    db.commit()
-    db.refresh(test_user)
-    access_token = create_access_token(test_user.id)
-
-    try:
-        response = client.patch(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {access_token}"},
-            json={"news_digest_interval_hours": 5},
-        )
-        assert response.status_code == 400
-        assert "digest interval" in response.json()["detail"].lower()
     finally:
         app.dependency_overrides.clear()
 
