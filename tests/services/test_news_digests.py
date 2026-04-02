@@ -326,7 +326,7 @@ def test_generate_curated_cluster_bullets_uses_user_prompt_and_sanitizes_ids(mon
     user = User(
         apple_id="digest-preference-user",
         email="digest-preference@example.com",
-        news_digest_preference_prompt="Prefer semiconductor supply chain and AI infra.",
+        news_list_preference_prompt="Prefer semiconductor supply chain and AI infra.",
     )
     cluster = news_digests.NewsDigestCluster(
         items=[
@@ -594,8 +594,8 @@ def test_get_news_digest_trigger_decision_ignores_day_boundaries_when_threshold_
         email="threshold-only@example.com",
         full_name="Threshold Only User",
         is_active=True,
-        news_digest_timezone="America/Los_Angeles",
     )
+    user.news_digest_timezone = "America/Los_Angeles"
     db_session.add(user)
     db_session.flush()
 
@@ -692,8 +692,8 @@ def test_get_news_digest_trigger_decision_respects_user_interval_hours(
         email="interval@example.com",
         full_name="Interval User",
         is_active=True,
-        news_digest_interval_hours=3,
     )
+    user.news_digest_interval_hours = 3
     db_session.add(user)
     db_session.flush()
 

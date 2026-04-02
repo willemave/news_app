@@ -99,8 +99,8 @@ def _resolve_target_user(
         email=args.email or f"digest-preview-{suffix}@example.com",
         full_name="Digest Preview User",
         is_active=True,
-        news_digest_timezone="US/Pacific",
     )
+    user.news_digest_timezone = "US/Pacific"
     db.add(user)
     db.flush()
     return user

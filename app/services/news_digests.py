@@ -420,7 +420,7 @@ def get_news_digest_trigger_decision(
     min_interval_elapsed = True
     min_interval_minutes = max(
         settings.news_digest_min_interval_minutes,
-        max(1, int(user.news_digest_interval_hours or 0)) * 60,
+        max(1, int(getattr(user, "news_digest_interval_hours", None) or 0)) * 60,
     )
     if last_digest and last_digest.generated_at:
         last_generated = _coerce_utc(last_digest.generated_at) or resolved_now
@@ -993,7 +993,7 @@ def generate_news_digest_for_user(
     resolved_reason = resolved_reason or "manual"
     digest = NewsDigest(
         user_id=user.id,
-        timezone=normalize_timezone(user.news_digest_timezone),
+        timezone=normalize_timezone(getattr(user, "news_digest_timezone", None)),
         window_start_at=min(
             (_coerce_utc(item.ingested_at) or _utcnow_naive()) for item in candidates
         ),
