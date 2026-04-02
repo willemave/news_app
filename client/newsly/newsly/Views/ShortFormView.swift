@@ -35,6 +35,15 @@ struct ShortFormView: View {
                     shortFormEmptyState
                 } else {
                     let items = viewModel.currentItems()
+
+                    Text("Fast Read")
+                        .font(.terracottaDisplayLarge)
+                        .foregroundStyle(Color.onSurface)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.screenHorizontal)
+                        .padding(.top, 16)
+                        .padding(.bottom, 24)
+
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         // Day delimiter: show when this item starts a new day
                         if index == 0 || item.calendarDayKey != items[index - 1].calendarDayKey {
