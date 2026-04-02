@@ -66,18 +66,20 @@ def _extract_news_summary(domain_content: ContentData) -> dict[str, Any]:
     news_article_url = str(domain_content.url) if domain_content.url else article_meta.get("url")
 
     key_points = summary_meta.get("key_points")
+    if not isinstance(key_points, list) or not key_points:
+        key_points = metadata.get("summary_key_points")
     news_key_points = key_points if isinstance(key_points, list) and key_points else None
 
     # Extract comment count: scrapers write comments_count, discussion fetcher
     # denormalizes to comment_count.
     comment_count: int | None = None
     for raw in (
-        aggregator_metadata.get("comments_count"),
         metadata.get("comment_count"),
+        aggregator_metadata.get("comments_count"),
     ):
         if raw is not None:
             try:
-                comment_count = int(raw)
+                comment_count = max(int(raw), 0)
             except (TypeError, ValueError):
                 continue
             break

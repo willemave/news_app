@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.constants import CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
@@ -23,14 +23,32 @@ class FeedQueryRows:
     is_favorited: bool
 
 
-def apply_created_at_cursor(query, last_created_at: datetime | None, last_id: int | None):
-    """Apply `(created_at, id)` keyset cursor to a query."""
-    if not last_created_at or not last_id:
+def content_sort_timestamp_expr():
+    """Return the feed timestamp used for list ordering and grouping."""
+    return func.coalesce(Content.publication_date, Content.processed_at, Content.created_at)
+
+
+def resolve_content_sort_timestamp(content: Content) -> datetime | None:
+    """Return the in-Python sort timestamp matching ``content_sort_timestamp_expr``."""
+    return content.publication_date or content.processed_at or content.created_at
+
+
+def apply_sort_timestamp_cursor(
+    query,
+    last_sort_timestamp: datetime | None,
+    last_id: int | None,
+    *,
+    sort_expr=None,
+):
+    """Apply `(sort_timestamp, id)` keyset cursor to a query."""
+    if not last_sort_timestamp or not last_id:
         return query
+    if sort_expr is None:
+        sort_expr = Content.created_at
     return query.filter(
         or_(
-            Content.created_at < last_created_at,
-            and_(Content.created_at == last_created_at, Content.id < last_id),
+            sort_expr < last_sort_timestamp,
+            and_(sort_expr == last_sort_timestamp, Content.id < last_id),
         )
     )
 

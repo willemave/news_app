@@ -34,6 +34,19 @@ def _coerce_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
+def _news_item_sort_timestamp_expr():
+    return func.coalesce(
+        NewsItem.published_at,
+        NewsItem.processed_at,
+        NewsItem.ingested_at,
+        NewsItem.created_at,
+    )
+
+
+def _news_item_sort_timestamp(item: NewsItem) -> datetime:
+    return item.published_at or item.processed_at or item.ingested_at or item.created_at
+
+
 def _resolve_item_url(item: NewsItem) -> str:
     for candidate in (
         item.article_url,
@@ -62,6 +75,32 @@ def _top_comment(item: NewsItem) -> dict[str, str] | None:
     if not text:
         return None
     return {"author": author, "text": text}
+
+
+def _comment_count(item: NewsItem) -> int | None:
+    """Return the best available discussion count for a news item."""
+    metadata = dict(item.raw_metadata or {})
+    aggregator = metadata.get("aggregator")
+    aggregator_metadata = aggregator.get("metadata") if isinstance(aggregator, dict) else None
+
+    for raw in (
+        metadata.get("comment_count"),
+        (
+            aggregator_metadata.get("comments_count")
+            if isinstance(aggregator_metadata, dict)
+            else None
+        ),
+    ):
+        if raw is None:
+            continue
+        try:
+            return max(int(raw), 0)
+        except (TypeError, ValueError):
+            continue
+
+    if item.cluster_size > 1:
+        return item.cluster_size - 1
+    return None
 
 
 def _content_status(item: NewsItem) -> ContentStatus:
@@ -117,7 +156,7 @@ def _present_summary(item: NewsItem, *, is_read: bool) -> ContentSummaryResponse
         thumbnail_url=None,
         primary_topic=None,
         top_comment=top_comment,
-        comment_count=item.cluster_size - 1 if item.cluster_size > 1 else None,
+        comment_count=_comment_count(item),
     )
 
 
@@ -134,10 +173,17 @@ def _present_detail(item: NewsItem, *, is_read: bool) -> ContentDetailResponse:
     summary = metadata.get("summary")
     if not isinstance(summary, dict):
         summary = {}
-    summary.setdefault("title", item.summary_title or item.article_title)
-    summary.setdefault("article_url", item.article_url or item.canonical_story_url)
-    summary.setdefault("key_points", list(item.summary_key_points or []))
-    summary.setdefault("summary", item.summary_text)
+    summary_title = item.summary_title or item.article_title
+    article_url = item.article_url or item.canonical_story_url
+    summary_key_points = list(item.summary_key_points or [])
+    if summary_title and not summary.get("title"):
+        summary["title"] = summary_title
+    if article_url and not summary.get("article_url"):
+        summary["article_url"] = article_url
+    if summary_key_points and not summary.get("key_points"):
+        summary["key_points"] = summary_key_points
+    if item.summary_text and not summary.get("summary"):
+        summary["summary"] = item.summary_text
     metadata["summary"] = summary
 
     metadata.setdefault("discussion_url", item.discussion_url)
@@ -222,39 +268,36 @@ def list_visible_news_items(
 ) -> ContentListResponse:
     """Return the visible representative news feed for one user."""
     last_id = None
-    last_ingested_at = None
+    last_sort_timestamp = None
     if cursor:
         cursor_data = PaginationCursor.decode_cursor(cursor)
         last_id = cursor_data["last_id"]
-        last_ingested_at = cursor_data["last_created_at"]
+        last_sort_timestamp = cursor_data["last_created_at"]
 
     is_read = _news_item_is_read_clause(user_id=user_id)
+    sort_expr = _news_item_sort_timestamp_expr()
     query = _visible_news_item_query(db, user_id=user_id).add_columns(is_read.label("is_read"))
     if read_filter == "unread":
         query = query.filter(~is_read)
     elif read_filter == "read":
         query = query.filter(is_read)
 
-    if last_ingested_at is not None and last_id is not None:
+    if last_sort_timestamp is not None and last_id is not None:
         query = query.filter(
             or_(
-                NewsItem.ingested_at < last_ingested_at,
-                and_(NewsItem.ingested_at == last_ingested_at, NewsItem.id < last_id),
+                sort_expr < last_sort_timestamp,
+                and_(sort_expr == last_sort_timestamp, NewsItem.id < last_id),
             )
         )
 
-    rows = (
-        query.order_by(NewsItem.ingested_at.desc(), NewsItem.id.desc()).limit(limit + 1).all()
-    )
+    rows = query.order_by(sort_expr.desc(), NewsItem.id.desc()).limit(limit + 1).all()
     has_more = len(rows) > limit
     if has_more:
         rows = rows[:limit]
 
     available_dates = sorted(
         {
-            (_coerce_utc(item.published_at) or _coerce_utc(item.ingested_at) or datetime.now(UTC))
-            .date()
-            .isoformat()
+            _coerce_utc(_news_item_sort_timestamp(item)).date().isoformat()
             for item, _row_is_read in rows
         },
         reverse=True,
@@ -264,7 +307,7 @@ def list_visible_news_items(
         last_item = rows[-1][0]
         next_cursor = PaginationCursor.encode_cursor(
             last_id=last_item.id,
-            last_created_at=last_item.ingested_at,
+            last_created_at=_news_item_sort_timestamp(last_item),
             filters={"read_filter": read_filter},
         )
 

@@ -819,7 +819,7 @@ struct ContentDetailView: View {
                         Text("·")
                             .foregroundColor(.white.opacity(0.5))
 
-                        Text(formatDateSimple(content.createdAt))
+                        Text(displayDateText(for: content))
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.8))
                     }
@@ -869,7 +869,7 @@ struct ContentDetailView: View {
                         Text("·")
                             .foregroundColor(.secondary.opacity(0.4))
 
-                        Text(formatDateSimple(content.createdAt))
+                        Text(displayDateText(for: content))
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -1797,40 +1797,10 @@ struct ContentDetailView: View {
             return .secondary
         }
     }
-    
-    private func formatDateSimple(_ dateString: String) -> String {
-        let inputFormatter = DateFormatter()
-        inputFormatter.locale = Locale(identifier: "en_US_POSIX")
-        inputFormatter.timeZone = TimeZone(secondsFromGMT: 0)
 
-        // Try with microseconds first
-        inputFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
-        var date = inputFormatter.date(from: dateString)
-
-        // Try with milliseconds
-        if date == nil {
-            inputFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
-            date = inputFormatter.date(from: dateString)
-        }
-
-        // Try without fractional seconds
-        if date == nil {
-            inputFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-            date = inputFormatter.date(from: dateString)
-        }
-
-        // Try ISO8601 with Z
-        if date == nil {
-            let isoFormatter = ISO8601DateFormatter()
-            isoFormatter.formatOptions = [.withInternetDateTime]
-            date = isoFormatter.date(from: dateString)
-        }
-
-        guard let validDate = date else { return dateString }
-
-        let displayFormatter = DateFormatter()
-        displayFormatter.dateFormat = "MM-dd-yyyy"
-        return displayFormatter.string(from: validDate)
+    private func displayDateText(for content: ContentDetail) -> String {
+        let dateString = content.publicationDate ?? content.processedAt ?? content.createdAt
+        return formatDate(dateString)
     }
 
     private func formatDate(_ dateString: String) -> String {

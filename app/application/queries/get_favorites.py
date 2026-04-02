@@ -29,12 +29,12 @@ def execute(
 ) -> ContentListResponse:
     """Return favorited content list response."""
     last_id = None
-    last_created_at = None
+    last_sort_timestamp = None
     if cursor:
         try:
             cursor_data = PaginationCursor.decode_cursor(cursor)
             last_id = cursor_data["last_id"]
-            last_created_at = cursor_data["last_created_at"]
+            last_sort_timestamp = cursor_data["last_created_at"]
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -42,7 +42,7 @@ def execute(
         db,
         user_id=user_id,
         last_id=last_id,
-        last_created_at=last_created_at,
+        last_sort_timestamp=last_sort_timestamp,
         limit=limit,
     )
     has_more = len(rows) > limit

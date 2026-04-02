@@ -37,6 +37,10 @@ struct ContentDetail: Codable, Identifiable {
     let fullMarkdown: String?
     let imageUrl: String?
     let thumbnailUrl: String?
+    let newsArticleURL: String?
+    let newsDiscussionURL: String?
+    let newsKeyPoints: [String]?
+    let newsSummary: String?
     let detectedFeed: DetectedFeed?
     let canSubscribe: Bool?
 
@@ -70,6 +74,10 @@ struct ContentDetail: Codable, Identifiable {
         case fullMarkdown = "full_markdown"
         case imageUrl = "image_url"
         case thumbnailUrl = "thumbnail_url"
+        case newsArticleURL = "news_article_url"
+        case newsDiscussionURL = "news_discussion_url"
+        case newsKeyPoints = "news_key_points"
+        case newsSummary = "news_summary"
         case detectedFeed = "detected_feed"
         case canSubscribe = "can_subscribe"
     }
@@ -129,6 +137,42 @@ struct ContentDetail: Codable, Identifiable {
             return try? decoder.decode(NewsMetadata.self, from: jsonData)
         }
         return nil
+    }
+
+    private func normalizedText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var resolvedNewsSummaryText: String? {
+        normalizedText(newsMetadata?.summary?.summary)
+            ?? normalizedText(newsSummary)
+            ?? normalizedText(summary)
+            ?? normalizedText(shortSummary)
+    }
+
+    var resolvedNewsArticleURL: String? {
+        normalizedText(newsMetadata?.summary?.articleURL)
+            ?? normalizedText(newsArticleURL)
+    }
+
+    var resolvedNewsKeyPoints: [String] {
+        let metadataKeyPoints = newsMetadata?.summary?.keyPoints ?? []
+        let values = metadataKeyPoints.isEmpty ? (newsKeyPoints ?? []) : metadataKeyPoints
+
+        var seen: Set<String> = []
+        var result: [String] = []
+
+        for value in values {
+            guard let normalized = normalizedText(value) else { continue }
+            let key = normalized.lowercased()
+            if seen.insert(key).inserted {
+                result.append(normalized)
+            }
+        }
+
+        return result
     }
 
     // MARK: - Summary Type Detection

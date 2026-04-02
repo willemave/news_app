@@ -32,7 +32,23 @@ def _create_news_item(
     summary_title: str,
     is_representative: bool = True,
     representative_news_item_id: int | None = None,
+    raw_metadata: dict | None = None,
+    published_at: datetime | None = None,
+    ingested_at: datetime | None = None,
 ) -> NewsItem:
+    metadata = {
+        "cluster": {
+            "member_ids": [ingest_key],
+            "source_labels": ["Hacker News"],
+            "domains": ["example.com"],
+            "discussion_snippets": ["Useful comment"],
+            "related_titles": [summary_title],
+            "latest_member_ingested_at": datetime.now(UTC).isoformat(),
+        }
+    }
+    if raw_metadata:
+        metadata.update(raw_metadata)
+
     item = NewsItem(
         ingest_key=ingest_key,
         visibility_scope="global",
@@ -49,20 +65,12 @@ def _create_news_item(
         summary_title=summary_title,
         summary_key_points=["Point one", "Point two"],
         summary_text=f"{summary_title} summary",
-        raw_metadata={
-            "cluster": {
-                "member_ids": [ingest_key],
-                "source_labels": ["Hacker News"],
-                "domains": ["example.com"],
-                "discussion_snippets": ["Useful comment"],
-                "related_titles": [summary_title],
-                "latest_member_ingested_at": datetime.now(UTC).isoformat(),
-            }
-        },
+        raw_metadata=metadata,
         representative_news_item_id=None if is_representative else representative_news_item_id,
         cluster_size=2 if is_representative else 1,
         status="ready",
-        ingested_at=datetime.now(UTC).replace(tzinfo=None),
+        published_at=published_at.replace(tzinfo=None) if published_at else None,
+        ingested_at=(ingested_at or datetime.now(UTC)).replace(tzinfo=None),
         processed_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db_session.add(item)
@@ -130,6 +138,29 @@ def test_list_news_items_hides_suppressed_members_and_marks_read(
     assert [item["id"] for item in read_response.json()["contents"]] == [representative.id]
 
 
+def test_list_news_items_uses_denormalized_comment_count_when_available(
+    client,
+    db_session,
+) -> None:
+    news_item = _create_news_item(
+        db_session,
+        ingest_key="rep-comments",
+        summary_title="Representative story",
+        raw_metadata={
+            "comment_count": 42,
+            "aggregator": {"metadata": {"comments_count": 17}},
+        },
+    )
+    db_session.commit()
+
+    response = client.get("/api/news/items")
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert [item["id"] for item in payload["contents"]] == [news_item.id]
+    assert payload["contents"][0]["comment_count"] == 42
+
+
 def test_get_news_item_detail_includes_cluster_metadata(client, db_session) -> None:
     news_item = _create_news_item(
         db_session,
@@ -146,6 +177,58 @@ def test_get_news_item_detail_includes_cluster_metadata(client, db_session) -> N
     assert payload["display_title"] == "Detail story"
     assert payload["metadata"]["cluster"]["related_titles"] == ["Detail story"]
     assert payload["metadata"]["summary"]["key_points"] == ["Point one", "Point two"]
+
+
+def test_get_news_item_detail_restores_key_points_when_summary_metadata_is_empty(
+    client,
+    db_session,
+) -> None:
+    news_item = _create_news_item(
+        db_session,
+        ingest_key="detail-empty-summary",
+        summary_title="Detail story",
+        raw_metadata={
+            "summary": {
+                "summary": "Summary from metadata",
+                "key_points": [],
+            }
+        },
+    )
+    db_session.commit()
+
+    response = client.get(f"/api/news/items/{news_item.id}")
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["metadata"]["summary"]["key_points"] == ["Point one", "Point two"]
+
+
+def test_list_news_items_orders_by_published_at_before_ingested_at(
+    client,
+    db_session,
+) -> None:
+    older_published = _create_news_item(
+        db_session,
+        ingest_key="older-published",
+        summary_title="Older published",
+        published_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+        ingested_at=datetime(2026, 4, 2, 10, 0, tzinfo=UTC),
+    )
+    newer_published = _create_news_item(
+        db_session,
+        ingest_key="newer-published",
+        summary_title="Newer published",
+        published_at=datetime(2026, 4, 2, 9, 0, tzinfo=UTC),
+        ingested_at=datetime(2026, 4, 1, 9, 0, tzinfo=UTC),
+    )
+    db_session.commit()
+
+    response = client.get("/api/news/items", params={"limit": 10})
+    assert response.status_code == 200
+
+    payload = response.json()
+    returned_ids = [item["id"] for item in payload["contents"]]
+    assert returned_ids[:2] == [newer_published.id, older_published.id]
 
 
 def test_convert_news_item_to_article_queues_processing(

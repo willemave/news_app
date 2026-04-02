@@ -229,7 +229,7 @@ class ContentDetailViewModel: ObservableObject {
 
     private func resolvedShareURLString(for content: ContentDetail) -> String? {
         if content.apiContentType == .news,
-           let articleURL = normalizedText(content.newsMetadata?.summary?.articleURL) {
+           let articleURL = content.resolvedNewsArticleURL {
             return articleURL
         }
         return normalizedText(content.url)
@@ -250,13 +250,10 @@ class ContentDetailViewModel: ObservableObject {
            let narrative = normalizedText(firstParagraph) {
             return narrative
         }
-        if let newsSummary = normalizedText(content.newsMetadata?.summary?.summary) {
+        if let newsSummary = content.resolvedNewsSummaryText {
             return newsSummary
         }
-        if let summary = normalizedText(content.summary) {
-            return summary
-        }
-        return normalizedText(content.shortSummary)
+        return nil
     }
 
     private func resolvedKeyPointTexts(for content: ContentDetail) -> [String] {
@@ -279,15 +276,13 @@ class ContentDetailViewModel: ObservableObject {
         }
         points.append(contentsOf: content.bulletPoints.map(\.text))
 
-        if let newsKeyPoints = content.newsMetadata?.summary?.keyPoints {
-            points.append(contentsOf: newsKeyPoints)
+        if content.apiContentType == .news {
+            points.append(contentsOf: content.resolvedNewsKeyPoints)
         }
 
         if points.isEmpty {
-            if let summary = normalizedText(content.summary) {
+            if let summary = resolvedOverviewText(for: content) {
                 points = [summary]
-            } else if let shortSummary = normalizedText(content.shortSummary) {
-                points = [shortSummary]
             }
         }
 

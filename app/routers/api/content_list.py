@@ -65,6 +65,15 @@ def list_contents(
             description="Number of items per page (max 100)",
         ),
     ] = 25,
+    include_available_dates: Annotated[
+        bool,
+        Query(
+            description=(
+                "Whether to include the available_dates metadata used by filterable list UIs. "
+                "Disable for feed surfaces that do not show date filters."
+            ),
+        ),
+    ] = True,
 ) -> ContentListResponse:
     """List content with optional filters and cursor-based pagination."""
     try:
@@ -76,6 +85,7 @@ def list_contents(
             read_filter=read_filter,
             cursor=cursor,
             limit=limit,
+            include_available_dates=include_available_dates,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid date format") from exc

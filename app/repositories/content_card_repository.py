@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.models.metadata import ContentType
 from app.models.schema import Content, ContentReadStatus
-from app.repositories.content_feed_query import apply_created_at_cursor, build_user_feed_query
+from app.repositories.content_feed_query import (
+    apply_sort_timestamp_cursor,
+    build_user_feed_query,
+    content_sort_timestamp_expr,
+)
 
 AVAILABLE_DATES_LOOKBACK_DAYS = 120
 
@@ -22,20 +26,22 @@ def list_contents(
     date: str | None,
     read_filter: str,
     last_id: int | None,
-    last_created_at,
+    last_sort_timestamp: datetime | None,
     limit: int,
+    include_available_dates: bool = True,
 ):
     """Return visible inbox card rows and available dates."""
     available_dates: list[str] = []
-    if last_id is None and last_created_at is None:
+    sort_expr = content_sort_timestamp_expr()
+    if include_available_dates and last_id is None and last_sort_timestamp is None:
         lookback_start = datetime.now(UTC) - timedelta(days=AVAILABLE_DATES_LOOKBACK_DAYS)
         available_dates_query = build_user_feed_query(db, user_id, mode="inbox").with_entities(
-            func.date(Content.created_at).label("date")
+            func.date(sort_expr).label("date")
         )
-        available_dates_query = available_dates_query.filter(Content.created_at >= lookback_start)
+        available_dates_query = available_dates_query.filter(sort_expr >= lookback_start)
         available_dates_query = (
             available_dates_query.distinct()
-            .order_by(func.date(Content.created_at).desc())
+            .order_by(func.date(sort_expr).desc())
             .limit(90)
         )
         for row in available_dates_query.all():
@@ -55,15 +61,15 @@ def list_contents(
         filter_date = datetime.strptime(date, "%Y-%m-%d").date()  # noqa: DTZ007
         start_dt = datetime.combine(filter_date, datetime.min.time())  # noqa: DTZ001
         end_dt = start_dt + timedelta(days=1)
-        query = query.filter(Content.created_at >= start_dt, Content.created_at < end_dt)
+        query = query.filter(sort_expr >= start_dt, sort_expr < end_dt)
 
     if read_filter == "unread":
         query = query.filter(ContentReadStatus.id.is_(None))
     elif read_filter == "read":
         query = query.filter(ContentReadStatus.id.is_not(None))
 
-    query = apply_created_at_cursor(query, last_created_at, last_id)
-    rows = query.order_by(Content.created_at.desc(), Content.id.desc()).limit(limit + 1).all()
+    query = apply_sort_timestamp_cursor(query, last_sort_timestamp, last_id, sort_expr=sort_expr)
+    rows = query.order_by(sort_expr.desc(), Content.id.desc()).limit(limit + 1).all()
     return rows, available_dates
 
 
@@ -86,9 +92,9 @@ def search_contents(
     query = search_backend.apply_search(query, query_text)
     query = query.order_by(Content.created_at.desc(), Content.id.desc())
 
-    last_id, last_created_at = cursor
-    if last_id and last_created_at:
-        query = apply_created_at_cursor(query, last_created_at, last_id)
+    last_id, last_sort_timestamp = cursor
+    if last_id and last_sort_timestamp:
+        query = apply_sort_timestamp_cursor(query, last_sort_timestamp, last_id)
     elif offset > 0:
         query = query.offset(offset)
 
@@ -100,12 +106,12 @@ def get_favorites(
     *,
     user_id: int,
     last_id: int | None,
-    last_created_at,
+    last_sort_timestamp: datetime | None,
     limit: int,
 ):
     """Return favorited card rows."""
     query = build_user_feed_query(db, user_id, mode="favorites")
-    query = apply_created_at_cursor(query, last_created_at, last_id)
+    query = apply_sort_timestamp_cursor(query, last_sort_timestamp, last_id)
     return query.order_by(Content.created_at.desc(), Content.id.desc()).limit(limit + 1).all()
 
 

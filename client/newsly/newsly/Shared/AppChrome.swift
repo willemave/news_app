@@ -41,18 +41,19 @@ enum AppChrome {
 @MainActor
 enum RootDependencyFactory {
     static func makeTabCoordinator() -> TabCoordinatorViewModel {
-        let contentRepository = ContentRepository()
+        let shortFeedRepository = ContentRepository(includeAvailableDates: false)
+        let longFeedRepository = ContentRepository(includeAvailableDates: false)
         let readRepository = ReadStatusRepository()
         let newsReadRepository = ReadStatusRepository(endpoint: .newsItems)
         let unreadService = UnreadCountService.shared
 
         let shortNewsViewModel = ShortNewsListViewModel(
-            repository: contentRepository,
+            repository: shortFeedRepository,
             readRepository: newsReadRepository,
             unreadCountService: unreadService
         )
         let longContentViewModel = LongContentListViewModel(
-            repository: contentRepository,
+            repository: longFeedRepository,
             readRepository: readRepository,
             unreadCountService: unreadService
         )

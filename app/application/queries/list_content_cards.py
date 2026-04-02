@@ -16,6 +16,7 @@ from app.presenters.content_presenter import (
     resolve_image_urls,
 )
 from app.repositories.content_card_repository import list_content_types, list_contents
+from app.repositories.content_feed_query import resolve_content_sort_timestamp
 from app.routers.api.models import ContentListResponse
 from app.utils.pagination import PaginationCursor
 
@@ -31,10 +32,11 @@ def execute(
     read_filter: str,
     cursor: str | None,
     limit: int,
+    include_available_dates: bool = True,
 ) -> ContentListResponse:
     """Return list response for visible content cards."""
     last_id = None
-    last_created_at = None
+    last_sort_timestamp = None
     if cursor:
         try:
             cursor_data = PaginationCursor.decode_cursor(cursor)
@@ -49,7 +51,7 @@ def execute(
                     detail="Cursor invalid: filters changed. Start a new pagination.",
                 )
             last_id = cursor_data["last_id"]
-            last_created_at = cursor_data["last_created_at"]
+            last_sort_timestamp = cursor_data["last_created_at"]
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -60,8 +62,9 @@ def execute(
         date=date,
         read_filter=read_filter,
         last_id=last_id,
-        last_created_at=last_created_at,
+        last_sort_timestamp=last_sort_timestamp,
         limit=limit,
+        include_available_dates=include_available_dates,
     )
     has_more = len(rows) > limit
     if has_more:
@@ -105,9 +108,10 @@ def execute(
     next_cursor = None
     if has_more and rows:
         last_item = rows[-1][0]
+        last_sort_timestamp = resolve_content_sort_timestamp(last_item)
         next_cursor = PaginationCursor.encode_cursor(
             last_id=last_item.id,
-            last_created_at=last_item.created_at,
+            last_created_at=last_sort_timestamp or last_item.created_at,
             filters={
                 "content_type": content_type,
                 "date": date,

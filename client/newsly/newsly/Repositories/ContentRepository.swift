@@ -22,10 +22,16 @@ protocol ContentRepositoryType {
 final class ContentRepository: ContentRepositoryType {
     private let client: APIClient
     private let defaultPageSize: Int
+    private let includeAvailableDates: Bool
 
-    init(client: APIClient = .shared, defaultPageSize: Int = 25) {
+    init(
+        client: APIClient = .shared,
+        defaultPageSize: Int = 25,
+        includeAvailableDates: Bool = true
+    ) {
         self.client = client
         self.defaultPageSize = defaultPageSize
+        self.includeAvailableDates = includeAvailableDates
     }
 
     func loadPage(
@@ -38,6 +44,9 @@ final class ContentRepository: ContentRepositoryType {
             URLQueryItem(name: "read_filter", value: readFilter.rawValue),
             URLQueryItem(name: "limit", value: String(limit ?? defaultPageSize))
         ]
+        if !includeAvailableDates {
+            queryItems.append(URLQueryItem(name: "include_available_dates", value: "false"))
+        }
         let isNewsOnly = contentTypes == [.news]
 
         if !isNewsOnly {

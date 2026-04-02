@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry
 
@@ -252,3 +254,59 @@ def test_podcast_prefers_generated_image_over_provider_thumbnail(
     returned_item = next(item for item in payload["contents"] if item["id"] == podcast.id)
     assert returned_item["image_url"] == f"/static/images/content/{podcast.id}.png"
     assert returned_item["thumbnail_url"] == f"/static/images/thumbnails/{podcast.id}.png"
+
+
+def test_list_orders_news_by_publication_date_before_created_at(
+    client,
+    db_session,
+    test_user,
+) -> None:
+    older_published = Content(
+        url="https://example.com/news-older",
+        content_type=ContentType.NEWS.value,
+        status=ContentStatus.COMPLETED.value,
+        title="Older published",
+        created_at=datetime(2026, 4, 2, 10, 0, tzinfo=UTC),
+        publication_date=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+        content_metadata={
+            "summary": {
+                "title": "Older published",
+                "summary": "Older summary",
+                "classification": "to_read",
+            },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
+        },
+    )
+    newer_published = Content(
+        url="https://example.com/news-newer",
+        content_type=ContentType.NEWS.value,
+        status=ContentStatus.COMPLETED.value,
+        title="Newer published",
+        created_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+        publication_date=datetime(2026, 4, 2, 9, 0, tzinfo=UTC),
+        content_metadata={
+            "summary": {
+                "title": "Newer published",
+                "summary": "Newer summary",
+                "classification": "to_read",
+            },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
+        },
+    )
+
+    db_session.add_all([older_published, newer_published])
+    db_session.commit()
+    db_session.refresh(older_published)
+    db_session.refresh(newer_published)
+
+    _add_inbox_status(db_session, test_user.id, older_published.id)
+    _add_inbox_status(db_session, test_user.id, newer_published.id)
+    db_session.commit()
+
+    response = client.get("/api/content/", params={"content_type": "news", "limit": 10})
+    assert response.status_code == 200
+
+    ids = [item["id"] for item in response.json()["contents"]]
+    assert ids[:2] == [newer_published.id, older_published.id]

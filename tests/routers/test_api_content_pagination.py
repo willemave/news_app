@@ -182,6 +182,17 @@ class TestListEndpointPagination:
         assert "next_cursor" in data["meta"]
         assert "contents" in data
 
+    def test_first_page_can_skip_available_dates(self, client, sample_contents):
+        """Test fetching first page without available date metadata."""
+        response = client.get(
+            "/api/content/",
+            params={"limit": 10, "include_available_dates": "false"},
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["available_dates"] == []
+
     def test_second_page_with_cursor(self, client, sample_contents):
         """Test fetching second page using cursor."""
         # Get first page
@@ -374,7 +385,11 @@ class TestFavoritesEndpointPagination:
         # If there's a next page, fetch it
         if data1["meta"]["next_cursor"]:
             response2 = client.get(
-                "/api/content/favorites/list", params={"limit": 10, "cursor": data1["meta"]["next_cursor"]}
+                "/api/content/favorites/list",
+                params={
+                    "limit": 10,
+                    "cursor": data1["meta"]["next_cursor"],
+                },
             )
             assert response2.status_code == 200
             data2 = response2.json()
@@ -414,7 +429,8 @@ class TestPaginationStability:
                     "summary": {
                         "title": f"Same Time Article {i}",
                         "overview": (
-                            "This overview is long enough to satisfy the minimum length requirement "
+                            "This overview is long enough to satisfy the minimum "
+                            "length requirement "
                             "for structured summaries."
                         ),
                         "bullet_points": [
@@ -453,7 +469,10 @@ class TestPaginationStability:
         if not data1["meta"].get("next_cursor"):
             pytest.skip("Not enough data for pagination stability test")
 
-        response2 = client.get("/api/content/", params={"limit": 5, "cursor": data1["meta"]["next_cursor"]})
+        response2 = client.get(
+            "/api/content/",
+            params={"limit": 5, "cursor": data1["meta"]["next_cursor"]},
+        )
         data2 = response2.json()
 
         # No overlapping IDs (stable pagination using ID as tie-breaker)
