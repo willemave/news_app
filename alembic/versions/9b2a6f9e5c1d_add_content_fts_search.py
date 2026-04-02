@@ -34,7 +34,7 @@ def upgrade() -> None:
                 title,
                 source,
                 summary,
-                transcript
+                search_text
             )
             """
         )
@@ -44,13 +44,13 @@ def upgrade() -> None:
         text(
             """
             CREATE TRIGGER IF NOT EXISTS content_fts_ai AFTER INSERT ON contents BEGIN
-                INSERT INTO content_fts(rowid, title, source, summary, transcript)
+                INSERT INTO content_fts(rowid, title, source, summary, search_text)
                 VALUES (
                     new.id,
                     new.title,
                     new.source,
                     COALESCE(json_extract(new.content_metadata, '$.summary'), ''),
-                    COALESCE(json_extract(new.content_metadata, '$.transcript'), '')
+                    COALESCE(new.search_text, '')
                 );
             END;
             """
@@ -62,13 +62,13 @@ def upgrade() -> None:
             """
             CREATE TRIGGER IF NOT EXISTS content_fts_au AFTER UPDATE ON contents BEGIN
                 DELETE FROM content_fts WHERE rowid = old.id;
-                INSERT INTO content_fts(rowid, title, source, summary, transcript)
+                INSERT INTO content_fts(rowid, title, source, summary, search_text)
                 VALUES (
                     new.id,
                     new.title,
                     new.source,
                     COALESCE(json_extract(new.content_metadata, '$.summary'), ''),
-                    COALESCE(json_extract(new.content_metadata, '$.transcript'), '')
+                    COALESCE(new.search_text, '')
                 );
             END;
             """
@@ -88,13 +88,13 @@ def upgrade() -> None:
     conn.execute(
         text(
             """
-            INSERT OR REPLACE INTO content_fts(rowid, title, source, summary, transcript)
+            INSERT OR REPLACE INTO content_fts(rowid, title, source, summary, search_text)
             SELECT
                 id,
                 title,
                 source,
                 COALESCE(json_extract(content_metadata, '$.summary'), ''),
-                COALESCE(json_extract(content_metadata, '$.transcript'), '')
+                COALESCE(search_text, '')
             FROM contents
             """
         )

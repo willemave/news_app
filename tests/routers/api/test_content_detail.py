@@ -2,6 +2,8 @@
 
 from urllib.parse import parse_qs, unquote_plus, urlparse
 
+from app.models.schema import Content
+
 
 def _get_display_title(fixture_data: dict) -> str:
     """Get the display title the same way the API does."""
@@ -134,3 +136,45 @@ def test_content_narration_returns_audio_bytes(
     assert response.content == b"fake-content-mp3"
     assert captured["item_id"] == content.id
     assert "Here is the full summary for" in str(captured["text"])
+
+
+def test_content_body_requires_visible_content(client, db_session, sample_article_long):
+    """Canonical body endpoint should reject content outside the user's inbox."""
+    content = create_sample_content_without_visibility(db_session, sample_article_long)
+
+    response = client.get(f"/api/content/{content.id}/body")
+
+    assert response.status_code == 404
+
+
+def test_content_body_returns_visible_content(client, create_sample_content, sample_article_long):
+    """Canonical body endpoint should serve visible content bodies."""
+    content = create_sample_content(sample_article_long)
+
+    response = client.get(f"/api/content/{content.id}/body")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["content_id"] == content.id
+    assert payload["variant"] == "source"
+    assert payload["text"]
+
+
+def create_sample_content_without_visibility(db_session, fixture_data: dict):
+    """Create sample content without an inbox visibility row."""
+    content = Content(
+        id=fixture_data.get("id"),
+        content_type=fixture_data["content_type"],
+        url=fixture_data["url"],
+        title=fixture_data["title"],
+        source=fixture_data["source"],
+        status=fixture_data["status"],
+        platform=fixture_data.get("platform"),
+        classification=fixture_data.get("classification"),
+        publication_date=None,
+        content_metadata=fixture_data.get("content_metadata", {}),
+    )
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
+    return content

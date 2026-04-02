@@ -14,18 +14,26 @@ from app.services.chat_agent import (
 )
 
 
-def test_build_article_context_includes_full_transcript_with_budget() -> None:
+def test_build_article_context_includes_full_transcript_with_budget(db_session) -> None:
     transcript = "a" * 5000
     content = Content(content_type=ContentType.PODCAST.value, url="https://example.com")
     content.content_metadata = {"transcript": transcript}
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
 
-    context = build_article_context(content, include_full_text=True, max_tokens=5000)
+    context = build_article_context(
+        db_session,
+        content,
+        include_full_text=True,
+        max_tokens=5000,
+    )
 
     assert context is not None
     assert transcript in context
 
 
-def test_build_article_context_prefers_summary_over_full_text_when_requested() -> None:
+def test_build_article_context_prefers_summary_over_full_text_when_requested(db_session) -> None:
     content_text = "b" * 5000
     content = Content(content_type=ContentType.ARTICLE.value, url="https://example.com")
     content.content_metadata = {
@@ -46,8 +54,16 @@ def test_build_article_context_prefers_summary_over_full_text_when_requested() -
         "summary_kind": "long_structured",
         "summary_version": 1,
     }
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
 
-    context = build_article_context(content, include_full_text=False, max_tokens=5000)
+    context = build_article_context(
+        db_session,
+        content,
+        include_full_text=False,
+        max_tokens=5000,
+    )
 
     assert context is not None
     assert "Overview text" in context
@@ -57,7 +73,7 @@ def test_build_article_context_prefers_summary_over_full_text_when_requested() -
     assert content_text not in context
 
 
-def test_build_article_context_falls_back_to_summary_when_budget_exceeded() -> None:
+def test_build_article_context_falls_back_to_summary_when_budget_exceeded(db_session) -> None:
     content_text = "c" * 5000
     content = Content(content_type=ContentType.ARTICLE.value, url="https://example.com")
     content.content_metadata = {
@@ -75,8 +91,16 @@ def test_build_article_context_falls_back_to_summary_when_budget_exceeded() -> N
         "summary_kind": "long_structured",
         "summary_version": 1,
     }
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
 
-    context = build_article_context(content, include_full_text=True, max_tokens=50)
+    context = build_article_context(
+        db_session,
+        content,
+        include_full_text=True,
+        max_tokens=50,
+    )
 
     assert context is not None
     assert "Short overview" in context

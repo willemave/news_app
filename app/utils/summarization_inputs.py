@@ -70,6 +70,8 @@ def build_news_context(metadata: dict[str, Any]) -> str:
 def build_summarization_payload(
     content_type: str | ContentType,
     metadata: dict[str, Any],
+    *,
+    source_text: str | None = None,
 ) -> str:
     """Build the exact payload that summarization should consume."""
     resolved_type = (
@@ -77,17 +79,23 @@ def build_summarization_payload(
     )
 
     if resolved_type == ContentType.ARTICLE.value:
-        return str(metadata.get("content") or metadata.get("content_to_summarize") or "")
+        return str(
+            source_text or metadata.get("content") or metadata.get("content_to_summarize") or ""
+        )
 
     if resolved_type == ContentType.NEWS.value:
-        article_content = str(metadata.get("content") or metadata.get("content_to_summarize") or "")
+        article_content = str(
+            source_text or metadata.get("content") or metadata.get("content_to_summarize") or ""
+        )
         aggregator_context = build_news_context(metadata)
         if aggregator_context and article_content:
             return f"Context:\n{aggregator_context}\n\nArticle Content:\n{article_content}"
         return article_content
 
     if resolved_type == ContentType.PODCAST.value:
-        return str(metadata.get("transcript") or metadata.get("content_to_summarize") or "")
+        return str(
+            source_text or metadata.get("transcript") or metadata.get("content_to_summarize") or ""
+        )
 
     return ""
 

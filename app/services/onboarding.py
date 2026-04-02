@@ -526,6 +526,9 @@ def complete_onboarding(
         selections = _defaults_to_selected_sources(curated)
 
     for selection in selections:
+        if selection.suggestion_type == "podcast_rss":
+            created_types.add(selection.suggestion_type)
+            continue
         config_payload = {**(selection.config or {})}
         if not config_payload.get("feed_url"):
             config_payload["feed_url"] = selection.feed_url

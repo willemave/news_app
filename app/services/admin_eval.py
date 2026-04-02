@@ -13,10 +13,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.core.settings import get_settings
 from app.models.schema import Content
+from app.services.content_bodies import get_content_body_resolver
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_prompts import generate_summary_prompt
 from app.services.llm_summarization import resolve_summarization_output_type
@@ -402,7 +403,12 @@ def build_eval_source_payload(content: Content) -> EvalSourcePayload | None:
         EvalSourcePayload when text input is available, else None.
     """
     metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
-    input_text = _extract_input_text(content.content_type, metadata)
+    session = object_session(content)
+    source_text = None
+    if session is not None:
+        source_text = get_content_body_resolver().resolve_text(session, content=content)
+
+    input_text = _extract_input_text(content.content_type, metadata, source_text=source_text)
     if not input_text:
         return None
 
@@ -618,17 +624,22 @@ def _resolve_prompt_settings(
     return "long_bullets", 30, 3
 
 
-def _extract_input_text(content_type: str, metadata: dict[str, Any]) -> str | None:
+def _extract_input_text(
+    content_type: str,
+    metadata: dict[str, Any],
+    *,
+    source_text: str | None = None,
+) -> str | None:
     if content_type == "article":
-        text = metadata.get("content") or metadata.get("content_to_summarize")
+        text = source_text or metadata.get("content") or metadata.get("content_to_summarize")
         return text if isinstance(text, str) and text.strip() else None
 
     if content_type == "podcast":
-        text = metadata.get("transcript") or metadata.get("content_to_summarize")
+        text = source_text or metadata.get("transcript") or metadata.get("content_to_summarize")
         return text if isinstance(text, str) and text.strip() else None
 
     if content_type == "news":
-        text = metadata.get("content") or metadata.get("content_to_summarize")
+        text = source_text or metadata.get("content") or metadata.get("content_to_summarize")
         if not isinstance(text, str) or not text.strip():
             return None
 

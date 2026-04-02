@@ -113,6 +113,10 @@ def test_subscribe_to_feed_accepts_direct_feed_url(db_session, monkeypatch) -> N
         },
     )
     monkeypatch.setattr(
+        "app.services.scraper_configs.FEED_VALIDATOR.validate_feed_url",
+        lambda feed_url: {"feed_url": feed_url},
+    )
+    monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.FeedDetector.classify_feed_type",
         lambda _self, **_kwargs: SimpleNamespace(feed_type="atom"),
     )
@@ -202,6 +206,10 @@ def test_subscribe_to_feed_from_article_page_uses_detected_feed_url_and_page_tit
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.FeedDetector.validate_feed_url",
         lambda _self, feed_url: None,
+    )
+    monkeypatch.setattr(
+        "app.services.scraper_configs.FEED_VALIDATOR.validate_feed_url",
+        lambda feed_url: {"feed_url": feed_url},
     )
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.get_http_gateway",
@@ -393,6 +401,10 @@ def test_subscribe_to_feed_records_initial_download_failure(
             "feed_format": "rss",
             "title": "Failing Feed",
         },
+    )
+    monkeypatch.setattr(
+        "app.services.scraper_configs.FEED_VALIDATOR.validate_feed_url",
+        lambda feed_url: {"feed_url": feed_url},
     )
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.FeedDetector.classify_feed_type",

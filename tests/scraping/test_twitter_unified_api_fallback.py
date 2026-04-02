@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.scraping.twitter_unified import TwitterUnifiedScraper
 from app.services.x_api import XTweet, XTweetsPage
 
@@ -50,6 +52,7 @@ def test_scrape_uses_playwright_when_api_scrape_raises(
 def test_scrape_list_api_builds_news_entries(monkeypatch) -> None:
     """Official X API list tweets should be converted into news entries."""
     scraper = TwitterUnifiedScraper()
+    current_timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     scraper.settings = {
         "default_limit": 50,
         "default_hours_back": 24,
@@ -68,7 +71,7 @@ def test_scrape_list_api_builds_news_entries(monkeypatch) -> None:
                     text="Interesting link",
                     author_username="news_bot",
                     author_name="News Bot",
-                    created_at="2026-03-27T21:56:00Z",
+                    created_at=current_timestamp,
                     like_count=5,
                     retweet_count=2,
                     reply_count=1,
@@ -99,6 +102,7 @@ def test_scrape_list_api_builds_news_entries(monkeypatch) -> None:
 def test_scrape_list_api_uses_app_bearer_when_user_token_missing(monkeypatch) -> None:
     """List scraping should still try the official API with app bearer auth."""
     scraper = TwitterUnifiedScraper()
+    current_timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     scraper.settings = {
         "default_limit": 50,
         "default_hours_back": 24,
@@ -120,7 +124,7 @@ def test_scrape_list_api_uses_app_bearer_when_user_token_missing(monkeypatch) ->
                     text="App bearer fallback link",
                     author_username="news_bot",
                     author_name="News Bot",
-                    created_at="2026-03-27T21:56:00Z",
+                    created_at=current_timestamp,
                     like_count=9,
                     retweet_count=3,
                     reply_count=1,

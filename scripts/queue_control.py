@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.settings import get_settings  # noqa: E402
 from app.models.schema import Content, ProcessingTask  # noqa: E402
-from app.services.queue import TaskQueue, TaskStatus, TaskType  # noqa: E402
+from app.services.queue import TASK_QUEUE_BY_TYPE, TaskQueue, TaskStatus, TaskType  # noqa: E402
 
 PROCESSING_TIMESTAMP_EXPR = func.coalesce(
     ProcessingTask.started_at,
@@ -26,6 +26,11 @@ PROCESSING_TIMESTAMP_EXPR = func.coalesce(
 )
 
 CONTENT_TYPE_CHOICES = ("article", "podcast", "news", "unknown")
+MEDIA_TASK_TYPES = sorted(
+    task_type.value
+    for task_type, queue_name in TASK_QUEUE_BY_TYPE.items()
+    if queue_name == TaskQueue.MEDIA
+)
 
 
 def _create_session_factory(database_url: str | None = None) -> tuple[Any, sessionmaker, str]:
@@ -285,23 +290,23 @@ def requeue_stale_processing(
     print(f"Requeued tasks: {len(rows)}")
 
 
-def move_transcribe_tasks(
+def move_media_tasks(
     session: Session,
     *,
     statuses: list[str],
     dry_run: bool,
     force: bool,
 ) -> None:
-    """Move transcribe tasks into the dedicated transcribe queue."""
+    """Move media tasks into the dedicated media queue."""
     rows = (
         session.query(ProcessingTask)
-        .filter(ProcessingTask.task_type == TaskType.TRANSCRIBE.value)
+        .filter(ProcessingTask.task_type.in_(MEDIA_TASK_TYPES))
         .filter(ProcessingTask.status.in_(statuses))
-        .filter(ProcessingTask.queue_name != TaskQueue.TRANSCRIBE.value)
+        .filter(ProcessingTask.queue_name != TaskQueue.MEDIA.value)
         .order_by(ProcessingTask.id.asc())
         .all()
     )
-    print(f"Transcribe tasks to move: {len(rows)}")
+    print(f"Media tasks to move: {len(rows)}")
     for row in rows[:20]:
         print(
             f"id={row.id} status={row.status} queue={row.queue_name} "
@@ -318,7 +323,7 @@ def move_transcribe_tasks(
         raise SystemExit("Refusing to move tasks without --yes")
 
     for row in rows:
-        row.queue_name = TaskQueue.TRANSCRIBE.value
+        row.queue_name = TaskQueue.MEDIA.value
     session.commit()
     print(f"Moved tasks: {len(rows)}")
 
@@ -465,8 +470,9 @@ def build_parser() -> argparse.ArgumentParser:
     stale_parser.add_argument("--yes", action="store_true", help="Apply changes")
 
     move_parser = subparsers.add_parser(
-        "move-transcribe",
-        help="Move transcribe tasks into the dedicated transcribe queue",
+        "move-media",
+        aliases=["move-transcribe"],
+        help="Move media tasks into the media queue",
     )
     move_parser.add_argument(
         "--status",
@@ -558,8 +564,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 0
 
-            if args.command == "move-transcribe":
-                move_transcribe_tasks(
+            if args.command in {"move-media", "move-transcribe"}:
+                move_media_tasks(
                     session,
                     statuses=list(
                         args.statuses

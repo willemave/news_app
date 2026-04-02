@@ -1,4 +1,4 @@
-"""Podcast audio download task handler."""
+"""Podcast media processing task handler."""
 
 from __future__ import annotations
 
@@ -12,32 +12,17 @@ from app.services.queue import TaskType
 logger = get_logger(__name__)
 
 
-def _is_non_retryable_download_error(error_message: str | None) -> bool:
-    """Return True for terminal download failures that should not be retried."""
-    if not error_message:
-        return False
-    lowered = error_message.lower()
-    markers = (
-        "sign in to confirm",
-        "requires authentication",
-        "cookies not found",
-        "private video",
-        "video unavailable",
-    )
-    return any(marker in lowered for marker in markers)
+class ProcessPodcastMediaHandler:
+    """Handle podcast media processing in a single hot-path worker lease."""
 
-
-class DownloadAudioHandler:
-    """Handle podcast audio download tasks."""
-
-    task_type = TaskType.DOWNLOAD_AUDIO
+    task_type = TaskType.PROCESS_PODCAST_MEDIA
 
     def handle(self, task: TaskEnvelope, context: TaskContext) -> TaskResult:
-        """Legacy shim that routes to unified podcast media processing."""
+        """Download, normalize, transcribe, persist, and queue summarize."""
         try:
             content_id = task.content_id or task.payload.get("content_id")
             if not content_id:
-                logger.error("No content_id provided for download task")
+                logger.error("No content_id provided for process_podcast_media task")
                 return TaskResult.fail("No content_id provided")
 
             worker = PodcastMediaWorker()
@@ -52,11 +37,7 @@ class DownloadAudioHandler:
                 )
                 if content_row:
                     persisted_error = content_row[0]
-
-            if _is_non_retryable_download_error(persisted_error):
-                return TaskResult.fail(persisted_error, retryable=False)
-
             return TaskResult.fail(persisted_error)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Download error: %s", exc, exc_info=True)
+            logger.error("Podcast media processing error: %s", exc, exc_info=True)
             return TaskResult.fail(str(exc))

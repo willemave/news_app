@@ -8,6 +8,7 @@ from app.models.contracts import ContentClassification, ContentStatus
 from app.models.metadata import ContentData, ContentType
 from app.models.schema import Content
 from app.routers.api.models import ContentDetailResponse, ContentSummaryResponse, DetectedFeed
+from app.services.content_bodies import sanitize_metadata_for_api
 from app.utils.image_urls import (
     build_content_image_url,
     build_news_thumbnail_url,
@@ -260,6 +261,10 @@ def build_content_detail_response(
     is_favorited: bool,
     detected_feed_data: dict[str, Any] | None,
     can_subscribe: bool,
+    *,
+    body_available: bool = False,
+    body_kind: str | None = None,
+    body_format: str | None = None,
 ) -> ContentDetailResponse:
     """Build a detail response for content."""
     image_url, thumbnail_url = resolve_image_urls(domain_content)
@@ -268,7 +273,7 @@ def build_content_detail_response(
     bullet_points = domain_content.bullet_points
     quotes = domain_content.quotes
     topics = domain_content.topics
-    full_markdown = domain_content.full_markdown
+    full_markdown = None
     summary_kind = (domain_content.metadata or {}).get("summary_kind")
     summary_version = (domain_content.metadata or {}).get("summary_version")
     news_article_url = None
@@ -311,7 +316,7 @@ def build_content_detail_response(
         discussion_url=discussion_url,
         error_message=domain_content.error_message,
         retry_count=domain_content.retry_count,
-        metadata=domain_content.metadata,
+        metadata=sanitize_metadata_for_api(domain_content.metadata or {}),
         created_at=domain_content.created_at.isoformat() if domain_content.created_at else "",
         updated_at=content.updated_at.isoformat() if content.updated_at else None,
         processed_at=domain_content.processed_at.isoformat()
@@ -333,6 +338,9 @@ def build_content_detail_response(
         quotes=quotes,
         topics=topics,
         full_markdown=full_markdown,
+        body_available=body_available,
+        body_kind=body_kind,
+        body_format=body_format,
         news_article_url=news_article_url,
         news_discussion_url=news_discussion_url,
         news_key_points=news_key_points,

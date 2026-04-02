@@ -20,6 +20,7 @@ from app.pipeline.handlers.generate_image import GenerateImageHandler
 from app.pipeline.handlers.onboarding_discover import OnboardingDiscoverHandler
 from app.pipeline.handlers.process_content import ProcessContentHandler
 from app.pipeline.handlers.process_news_item import ProcessNewsItemHandler
+from app.pipeline.handlers.process_podcast_media import ProcessPodcastMediaHandler
 from app.pipeline.handlers.scrape import ScrapeHandler
 from app.pipeline.handlers.summarize import SummarizeHandler
 from app.pipeline.handlers.sync_integration import SyncIntegrationHandler
@@ -110,6 +111,7 @@ class SequentialTaskProcessor:
             AnalyzeUrlHandler(),
             ProcessContentHandler(),
             ProcessNewsItemHandler(),
+            ProcessPodcastMediaHandler(),
             DownloadAudioHandler(),
             TranscribeHandler(),
             SummarizeHandler(),
@@ -230,15 +232,43 @@ class SequentialTaskProcessor:
             retry_delay_seconds = result.retry_delay_seconds or min(60 * (2**retry_count), 3600)
 
         try:
-            return self.queue_service.finalize_task(
-                task.id,
-                success=result.success,
-                error_message=result.error_message,
-                retryable=result.retryable,
-                current_retry_count=retry_count,
-                max_retries=max_retries,
-                retry_delay_seconds=retry_delay_seconds,
-            )
+            finalization = None
+            if hasattr(self.queue_service, "finalize_task"):
+                finalization = self.queue_service.finalize_task(
+                    task.id,
+                    success=result.success,
+                    error_message=result.error_message,
+                    retryable=result.retryable,
+                    current_retry_count=retry_count,
+                    max_retries=max_retries,
+                    retry_delay_seconds=retry_delay_seconds,
+                )
+
+            if not isinstance(self.queue_service, QueueService):
+                self.queue_service.complete_task(
+                    task.id,
+                    success=result.success,
+                    error_message=result.error_message,
+                )
+                if should_retry:
+                    self.queue_service.retry_task(
+                        task.id,
+                        delay_seconds=int(retry_delay_seconds or 0),
+                    )
+                    return {
+                        "status": "pending",
+                        "retry_count": retry_count + 1,
+                        "retry_delay_seconds": retry_delay_seconds,
+                    }
+                return {"status": "completed" if result.success else "failed"}
+
+            if finalization is not None:
+                return finalization
+            return {
+                "status": "pending"
+                if should_retry
+                else ("completed" if result.success else "failed")
+            }
         except OperationalError as exc:
             logger.exception(
                 "Task finalization hit SQLite contention",

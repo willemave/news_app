@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ContentDiscussion
+from app.models.schema import Content, ContentDiscussion, ContentStatusEntry
 
 
-def _create_news_content(db_session, *, metadata: dict) -> Content:
+def _create_news_content(db_session, *, metadata: dict, user_id: int | None = None) -> Content:
     content = Content(
         content_type=ContentType.NEWS.value,
         url="https://example.com/story",
@@ -18,16 +18,24 @@ def _create_news_content(db_session, *, metadata: dict) -> Content:
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    if user_id is not None:
+        db_session.add(ContentStatusEntry(user_id=user_id, content_id=content.id, status="inbox"))
+        db_session.commit()
     return content
 
 
-def test_get_content_discussion_returns_not_ready_when_missing(client, db_session) -> None:
+def test_get_content_discussion_returns_not_ready_when_missing(
+    client,
+    db_session,
+    test_user,
+) -> None:
     content = _create_news_content(
         db_session,
         metadata={
             "platform": "hackernews",
             "discussion_url": "https://news.ycombinator.com/item?id=123",
         },
+        user_id=test_user.id,
     )
 
     response = client.get(f"/api/content/{content.id}/discussion")
@@ -39,13 +47,18 @@ def test_get_content_discussion_returns_not_ready_when_missing(client, db_sessio
     assert payload["discussion_url"] == "https://news.ycombinator.com/item?id=123"
 
 
-def test_get_content_discussion_returns_comments_payload(client, db_session) -> None:
+def test_get_content_discussion_returns_comments_payload(
+    client,
+    db_session,
+    test_user,
+) -> None:
     content = _create_news_content(
         db_session,
         metadata={
             "platform": "hackernews",
             "discussion_url": "https://news.ycombinator.com/item?id=123",
         },
+        user_id=test_user.id,
     )
     db_session.add(
         ContentDiscussion(
@@ -82,13 +95,18 @@ def test_get_content_discussion_returns_comments_payload(client, db_session) -> 
     assert payload["links"][0]["url"] == "https://example.com"
 
 
-def test_get_content_discussion_returns_discussion_list_payload(client, db_session) -> None:
+def test_get_content_discussion_returns_discussion_list_payload(
+    client,
+    db_session,
+    test_user,
+) -> None:
     content = _create_news_content(
         db_session,
         metadata={
             "platform": "techmeme",
             "discussion_url": "https://www.techmeme.com/260217/p39#a260217p39",
         },
+        user_id=test_user.id,
     )
     db_session.add(
         ContentDiscussion(

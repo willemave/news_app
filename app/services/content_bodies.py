@@ -305,8 +305,30 @@ class ContentBodyResolver:
             .filter(ContentBody.content_id == content.id, ContentBody.variant == variant.value)
             .first()
         )
-        if row is None:
-            return None
+        if row is None or not getattr(row, "storage_key", None):
+            metadata = (
+                content.content_metadata if isinstance(content.content_metadata, dict) else {}
+            )
+            fallback_text = (
+                extract_rendered_body_text(metadata)
+                if variant == ContentBodyVariant.RENDERED
+                else extract_source_body_text(content.content_type, metadata)
+            )
+            if not fallback_text:
+                return None
+            fallback_format = (
+                ContentBodyFormat.MARKDOWN
+                if variant == ContentBodyVariant.RENDERED
+                else ContentBodyFormat.TEXT
+            )
+            return ResolvedContentBody(
+                content_id=int(content.id),
+                variant=variant,
+                kind=_body_kind_for_content_type(content.content_type),
+                format=fallback_format,
+                text=fallback_text,
+                updated_at=getattr(content, "updated_at", None),
+            )
 
         text = self._gateway.get_text(key=row.storage_key)
         return ResolvedContentBody(
@@ -327,7 +349,11 @@ class ContentBodyResolver:
     ) -> str | None:
         """Resolve text only."""
         body = self.resolve(db, content=content, variant=variant)
-        return body.text if body else None
+        if body:
+            return body.text
+
+        metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
+        return extract_source_body_text(content.content_type, metadata)
 
 
 def _body_kind_for_content_type(content_type: str) -> str:

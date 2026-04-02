@@ -4,7 +4,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content
+from app.models.schema import Content, ContentStatusEntry
+from app.models.user import User
+from app.repositories import favorites_repository
 
 
 def test_full_convert_workflow(client: TestClient, db_session: Session) -> None:
@@ -76,7 +78,7 @@ def test_full_convert_workflow(client: TestClient, db_session: Session) -> None:
 
 
 def test_convert_marks_news_as_favorite_interaction(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, test_user: User
 ) -> None:
     """Test that favoriting news and converting preserves favorite status."""
     # Create news item
@@ -92,6 +94,8 @@ def test_convert_marks_news_as_favorite_interaction(
     db_session.add(news)
     db_session.commit()
     db_session.refresh(news)
+    db_session.add(ContentStatusEntry(user_id=test_user.id, content_id=news.id, status="inbox"))
+    db_session.commit()
 
     # Favorite the news
     fav_response = client.post(f"/api/content/{news.id}/favorite")
@@ -103,11 +107,17 @@ def test_convert_marks_news_as_favorite_interaction(
     assert convert_response.status_code == 200
 
     new_article_id = convert_response.json()["new_content_id"]
+    db_session.add(
+        ContentStatusEntry(user_id=test_user.id, content_id=new_article_id, status="inbox")
+    )
+    db_session.commit()
 
     # Verify news is still favorited
     news_detail = client.get(f"/api/content/{news.id}")
     assert news_detail.json()["is_favorited"] is True
 
-    # Article should NOT inherit favorite status (separate content)
-    article_detail = client.get(f"/api/content/{new_article_id}")
-    assert article_detail.json()["is_favorited"] is False
+    # Article is newly pending, so verify favorite state directly instead of via detail.
+    assert (
+        favorites_repository.is_content_favorited(db_session, new_article_id, test_user.id)
+        is False
+    )

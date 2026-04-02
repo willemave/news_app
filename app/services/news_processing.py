@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -180,6 +181,21 @@ def _finalize_processed_item(
     db.commit()
 
 
+def _summarizer_accepts_context_kwargs(summarizer: object) -> bool:
+    """Return whether a summarizer callable can accept ``db`` context kwargs."""
+    summarize = getattr(summarizer, "summarize", None)
+    if summarize is None:
+        return False
+    try:
+        signature = inspect.signature(summarize)
+    except (TypeError, ValueError):
+        return True
+    for parameter in signature.parameters.values():
+        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+    return "db" in signature.parameters or "usage_persist" in signature.parameters
+
+
 def process_news_item(
     db: Session,
     *,
@@ -236,13 +252,14 @@ def process_news_item(
         if not used_existing_summary:
             prompt = _build_processing_prompt(item, raw_metadata)
             content_summarizer = summarizer or get_content_summarizer()
-            generated = content_summarizer.summarize(
-                prompt,
-                content_type="news",
-                title=item.article_title or item.summary_title,
-                content_id=item.id,
-                db=db,
-                usage_persist={
+            summarize_kwargs: dict[str, object] = {
+                "content_type": "news",
+                "title": item.article_title or item.summary_title,
+                "content_id": item.id,
+            }
+            if summarizer is None or _summarizer_accepts_context_kwargs(content_summarizer):
+                summarize_kwargs["db"] = db
+                summarize_kwargs["usage_persist"] = {
                     "feature": "news_processing",
                     "operation": "news_processing.summarize_short_form",
                     "source": "queue",
@@ -251,8 +268,8 @@ def process_news_item(
                         "news_item_id": item.id,
                         "source_type": item.source_type,
                     },
-                },
-            )
+                }
+            generated = content_summarizer.summarize(prompt, **summarize_kwargs)
             if not isinstance(generated, NewsSummary):
                 raise TypeError(
                     "Short-form news summarizer returned an invalid payload: "

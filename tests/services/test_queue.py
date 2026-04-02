@@ -253,14 +253,14 @@ class TestQueueService:
         queue_query = Mock()
         queue_query.filter.return_value.group_by.return_value.all.return_value = [
             ("content", 4),
-            ("transcribe", 1),
+            ("media", 1),
         ]
 
         queue_type_query = Mock()
         queue_type_query.filter.return_value.group_by.return_value.all.return_value = [
             ("content", "process_content", 3),
             ("content", "download_audio", 1),
-            ("transcribe", "transcribe", 1),
+            ("media", "transcribe", 1),
         ]
 
         failure_query = Mock()
@@ -280,13 +280,13 @@ class TestQueueService:
         expected_stats = {
             'by_status': {'pending': 5, 'processing': 2, 'completed': 10},
             'pending_by_type': {'process_content': 3, 'download_audio': 2},
-            "pending_by_queue": {"content": 4, "transcribe": 1},
+            "pending_by_queue": {"content": 4, "media": 1},
             "pending_by_queue_type": {
                 "content": {
                     "process_content": 3,
                     "download_audio": 1,
                 },
-                "transcribe": {
+                "media": {
                     "transcribe": 1,
                 },
             },
@@ -332,7 +332,7 @@ class TestTaskEnums:
 
     def test_enum_counts(self):
         """Test that enums have expected number of values."""
-        assert len(list(TaskType)) == 14
+        assert len(list(TaskType)) == 15
         assert len(list(TaskStatus)) == 4
 
 

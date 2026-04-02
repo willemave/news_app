@@ -1,12 +1,13 @@
 """Integration tests for authentication on protected endpoints."""
-import pytest
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core.security import create_access_token, create_token
 from app.main import app
-from app.models.schema import Content
+from app.models.schema import Content, ContentStatusEntry
 from app.models.user import User
-from app.core.security import create_access_token
 
 
 def test_api_endpoints_require_authentication():
@@ -28,7 +29,9 @@ def test_api_endpoints_require_authentication():
             response = client.post(endpoint)
 
         # FastAPI's HTTPBearer returns 403 when no credentials provided, 401 for invalid credentials
-        assert response.status_code in [401, 403], f"{method} {endpoint} should require auth (got {response.status_code})"
+        assert response.status_code in [401, 403], (
+            f"{method} {endpoint} should require auth (got {response.status_code})"
+        )
 
 
 def test_authenticated_requests_accepted(db_session: Session):
@@ -56,6 +59,8 @@ def test_authenticated_requests_accepted(db_session: Session):
     db_session.commit()
     db_session.refresh(user)
     db_session.refresh(content)
+    db_session.add(ContentStatusEntry(user_id=user.id, content_id=content.id, status="inbox"))
+    db_session.commit()
 
     # Override dependencies
     def override_get_db():
@@ -100,9 +105,6 @@ def test_invalid_token_rejected():
 
 def test_expired_token_rejected(db_session: Session):
     """Test that expired tokens are rejected."""
-    from app.core.security import create_token
-    from datetime import timedelta
-
     # Create user
     user = User(
         apple_id="test.expired.001",

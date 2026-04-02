@@ -45,7 +45,7 @@ def test_download_audio_handler_marks_youtube_auth_failure_non_retryable(
     db_session.refresh(content)
 
     monkeypatch.setattr(
-        "app.pipeline.handlers.download_audio.PodcastDownloadWorker.process_download_task",
+        "app.pipeline.handlers.download_audio.PodcastMediaWorker.process_media_task",
         lambda _self, _content_id: False,
     )
 

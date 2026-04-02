@@ -19,6 +19,9 @@ enum APIEndpoints {
     static func contentDetail(id: Int) -> String {
         return "/api/content/\(id)"
     }
+    static func contentBody(id: Int) -> String {
+        return "/api/content/\(id)/body"
+    }
     static func markContentRead(id: Int) -> String {
         return "/api/content/\(id)/mark-read"
     }

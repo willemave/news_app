@@ -2,11 +2,18 @@
 
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content
+from app.models.schema import Content, ContentStatusEntry
 from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
 
 
-def _create_content(db_session, *, content_type: str, source: str, metadata: dict) -> Content:
+def _create_content(
+    db_session,
+    *,
+    content_type: str,
+    source: str,
+    metadata: dict,
+    user_id: int | None = None,
+) -> Content:
     content = Content(
         url="https://example.com/article",
         content_type=content_type,
@@ -18,6 +25,9 @@ def _create_content(db_session, *, content_type: str, source: str, metadata: dic
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    if user_id is not None:
+        db_session.add(ContentStatusEntry(user_id=user_id, content_id=content.id, status="inbox"))
+        db_session.commit()
     return content
 
 
@@ -38,6 +48,7 @@ def test_can_subscribe_self_submission_true_when_missing_config(client, db_sessi
         content_type=ContentType.ARTICLE.value,
         source=SELF_SUBMISSION_SOURCE,
         metadata=metadata,
+        user_id=test_user.id,
     )
 
     response = client.get(f"/api/content/{content.id}")
@@ -71,6 +82,7 @@ def test_can_subscribe_false_when_already_subscribed(client, db_session, test_us
         content_type=ContentType.ARTICLE.value,
         source=SELF_SUBMISSION_SOURCE,
         metadata=metadata,
+        user_id=test_user.id,
     )
 
     response = client.get(f"/api/content/{content.id}")
@@ -96,6 +108,7 @@ def test_can_subscribe_false_for_non_news_non_self_submission(client, db_session
         content_type=ContentType.ARTICLE.value,
         source="web",
         metadata=metadata,
+        user_id=test_user.id,
     )
 
     response = client.get(f"/api/content/{content.id}")
@@ -125,6 +138,7 @@ def test_can_subscribe_true_for_news_content(client, db_session, test_user):
         content_type=ContentType.NEWS.value,
         source="hackernews",
         metadata=metadata,
+        user_id=test_user.id,
     )
 
     response = client.get(f"/api/content/{content.id}")

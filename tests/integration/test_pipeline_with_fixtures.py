@@ -3,15 +3,20 @@
 These tests demonstrate using the content_samples fixtures with the processing
 pipeline, showing how real data flows through the system.
 """
+
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
+import app.core.db as core_db
 from app.core.db import get_db
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content
+from app.models.schema import Base, Content, ProcessingTask
 from app.pipeline.worker import ContentWorker
 from app.services.queue import QueueService, TaskType
 
@@ -19,20 +24,46 @@ from app.services.queue import QueueService, TaskType
 @pytest.fixture
 def db_session():
     """Create a database session for testing."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    previous_engine = core_db._engine
+    previous_session_local = core_db._SessionLocal
+    previous_sqlite_log_flag = core_db._sqlite_runtime_diagnostics_logged
+
+    core_db._engine = engine
+    core_db._SessionLocal = session_factory
+    core_db._sqlite_runtime_diagnostics_logged = False
+    Base.metadata.create_all(bind=engine)
+
     with get_db() as db:
-        # Clear existing test data
+        db.query(ProcessingTask).delete()
         db.query(Content).filter(Content.id.in_([1, 25, 118, 998, 999])).delete()
         db.commit()
-        yield db
-        # Cleanup
-        db.query(Content).filter(Content.id.in_([1, 25, 118, 998, 999])).delete()
-        db.commit()
+        try:
+            yield db
+        finally:
+            db.rollback()
+            db.query(ProcessingTask).delete()
+            db.query(Content).filter(Content.id.in_([1, 25, 118, 998, 999])).delete()
+            db.commit()
+
+    Base.metadata.drop_all(bind=engine)
+    core_db._engine = previous_engine
+    core_db._SessionLocal = previous_session_local
+    core_db._sqlite_runtime_diagnostics_logged = previous_sqlite_log_flag
+    engine.dispose()
 
 
-def create_content_in_db(db, fixture_data: Dict[str, Any]) -> Content:
+def create_content_in_db(db, fixture_data: dict[str, Any]) -> Content:
     """Create content from fixture in the database."""
     publication_date = fixture_data.get("publication_date")
-    parsed_publication_date = datetime.fromisoformat(publication_date) if publication_date else None
+    parsed_publication_date = (
+        datetime.fromisoformat(publication_date) if publication_date else None
+    )
     content = Content(
         id=fixture_data.get("id"),
         content_type=fixture_data["content_type"],
@@ -65,9 +96,9 @@ class TestPipelineWithRealData:
 
         # Mock external dependencies
         with (
-            patch("app.pipeline.worker.get_http_service") as mock_http,
+            patch("app.pipeline.worker.get_http_service"),
             patch("app.pipeline.worker.get_strategy_registry") as mock_registry,
-            patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
+            patch("app.pipeline.worker.get_checkout_manager"),
             patch("app.pipeline.worker.get_task_queue_gateway") as mock_queue_gateway,
         ):
             # Setup strategy mock
@@ -100,7 +131,8 @@ class TestPipelineWithRealData:
             # Verify content was updated
             db_session.refresh(content)
             assert content.status == ContentStatus.PROCESSING.value
-            assert content.content_metadata.get("content") == sample_unprocessed_article["content_metadata"]["content"]
+            assert content.content_metadata.get("content") is None
+            assert content.content_metadata.get("excerpt")
             mock_queue_gateway.return_value.enqueue.assert_called_with(
                 TaskType.SUMMARIZE, content_id=content.id
             )
@@ -117,20 +149,22 @@ class TestPipelineWithRealData:
 
         # Mock dependencies
         with (
-            patch("app.pipeline.worker.get_checkout_manager") as mock_checkout,
+            patch("app.pipeline.worker.get_checkout_manager"),
             patch("app.pipeline.worker.get_task_queue_gateway") as mock_queue_gateway,
-            patch("app.pipeline.worker.PodcastDownloadWorker") as mock_download,
-            patch("app.pipeline.worker.PodcastTranscribeWorker") as mock_transcribe,
+            patch("app.pipeline.worker.PodcastMediaWorker"),
         ):
             # Process the content
             worker = ContentWorker()
-            result = worker.process_content(content.id, "test-worker")
+            worker.process_content(content.id, "test-worker")
 
             # For podcasts with transcript, we should summarize it
             db_session.refresh(content)
 
-            mock_queue_gateway.return_value.enqueue.assert_called_with(
-                TaskType.DOWNLOAD_AUDIO, content_id=content.id
+            mock_queue_gateway.return_value.enqueue.assert_any_call(
+                TaskType.PROCESS_PODCAST_MEDIA, content_id=content.id
+            )
+            mock_queue_gateway.return_value.enqueue.assert_any_call(
+                TaskType.SUMMARIZE, content_id=content.id
             )
 
     @pytest.mark.integration
@@ -205,7 +239,7 @@ class TestPipelineWithRealData:
         queue_service = QueueService()
         task_id = queue_service.enqueue(
             task_type=TaskType.PROCESS_CONTENT,
-            content_id=content.id
+            content_id=content.id,
         )
 
         assert task_id is not None
@@ -219,7 +253,6 @@ class TestPipelineWithRealData:
         queue_service.complete_task(task["id"], success=True)
 
         # Verify task is completed
-        from app.models.schema import ProcessingTask
         completed_task = db_session.query(ProcessingTask).filter_by(id=task["id"]).first()
         assert completed_task.status == "completed"
 
@@ -233,7 +266,10 @@ class TestPipelineWithRealData:
         # Verify metadata was preserved
         metadata = content.content_metadata
         assert metadata.get("source") == sample_article_long["content_metadata"]["source"]
-        assert metadata.get("content_type") == sample_article_long["content_metadata"]["content_type"]
+        assert (
+            metadata.get("content_type")
+            == sample_article_long["content_metadata"]["content_type"]
+        )
 
         # Verify HackerNews metadata
         if "hn_id" in sample_article_long["content_metadata"]:

@@ -18,6 +18,8 @@ class NewsPipelineEvalUserContext(BaseModel):
     email: str | None = Field(default=None, max_length=255)
     full_name: str | None = Field(default=None, max_length=255)
     news_list_preference_prompt: str | None = Field(default=None, max_length=4000)
+    news_digest_preference_prompt: str | None = Field(default=None, max_length=4000)
+    news_digest_timezone: str | None = Field(default=None, max_length=255)
 
 
 class NewsPipelineEvalExpectations(BaseModel):

@@ -124,7 +124,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
 
     assert tasks[content_task_id].queue_name == TaskQueue.CONTENT.value
     assert tasks[image_task_id].queue_name == TaskQueue.IMAGE.value
-    assert tasks[transcribe_task_id].queue_name == TaskQueue.TRANSCRIBE.value
+    assert tasks[transcribe_task_id].queue_name == TaskQueue.MEDIA.value
     assert tasks[onboarding_task_id].queue_name == TaskQueue.ONBOARDING.value
     assert tasks[integration_task_id].queue_name == TaskQueue.TWITTER.value
     assert tasks[news_digest_task_id].queue_name == TaskQueue.CONTENT.value
@@ -180,7 +180,7 @@ def test_dequeue_filters_by_queue_name(db_session, monkeypatch):
                 task_type=TaskType.TRANSCRIBE.value,
                 status=TaskStatus.PENDING.value,
                 payload={},
-                queue_name=TaskQueue.TRANSCRIBE.value,
+                queue_name=TaskQueue.MEDIA.value,
             ),
             ProcessingTask(
                 task_type=TaskType.ONBOARDING_DISCOVER.value,
@@ -223,10 +223,10 @@ def test_dequeue_filters_by_queue_name(db_session, monkeypatch):
     assert content_task["task_type"] == TaskType.SUMMARIZE.value
     assert content_task["queue_name"] == TaskQueue.CONTENT.value
 
-    transcribe_task = queue.dequeue(worker_id="transcribe-test", queue_name=TaskQueue.TRANSCRIBE)
+    transcribe_task = queue.dequeue(worker_id="media-test", queue_name=TaskQueue.MEDIA)
     assert transcribe_task is not None
     assert transcribe_task["task_type"] == TaskType.TRANSCRIBE.value
-    assert transcribe_task["queue_name"] == TaskQueue.TRANSCRIBE.value
+    assert transcribe_task["queue_name"] == TaskQueue.MEDIA.value
 
     chat_task = queue.dequeue(worker_id="chat-test", queue_name=TaskQueue.CHAT)
     assert chat_task is not None

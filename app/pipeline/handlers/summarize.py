@@ -27,6 +27,7 @@ from app.models.metadata import (
 from app.models.schema import Content
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
+from app.services.content_bodies import get_content_body_resolver, sync_content_body_storage
 from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.dig_deeper import enqueue_dig_deeper_task
 from app.services.long_form_images import enqueue_visible_long_form_image_if_needed
@@ -169,6 +170,8 @@ class SummarizeHandler:
                         return {}
                     return dict(latest_metadata)
 
+                body_resolver = get_content_body_resolver()
+
                 def _persist_failure(
                     reason: str,
                     *,
@@ -253,7 +256,12 @@ class SummarizeHandler:
                     _persist_failure(reason)
                     return TaskResult.fail(reason, retryable=False)
 
-                text_to_summarize = build_summarization_payload(content.content_type, metadata)
+                source_text = body_resolver.resolve_text(db, content=content)
+                text_to_summarize = build_summarization_payload(
+                    content.content_type,
+                    metadata,
+                    source_text=source_text,
+                )
 
                 if not text_to_summarize:
                     expected_field = (
@@ -461,6 +469,7 @@ class SummarizeHandler:
                         base_metadata=base_metadata,
                         updated_metadata=metadata,
                     )
+                    sync_content_body_storage(db, content=content)
                     content.status = ContentStatus.COMPLETED.value
                     content.processed_at = datetime.now(UTC)
                     db.commit()

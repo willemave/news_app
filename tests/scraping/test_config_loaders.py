@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from app.scraping.podcast_unified import PodcastUnifiedScraper
-from app.scraping.substack_unified import load_substack_feeds
 from app.scraping.reddit_unified import RedditUnifiedScraper
+from app.scraping.substack_unified import load_substack_feeds
 from app.utils.error_logger import get_scraper_metrics, reset_scraper_metrics
 
 
@@ -14,7 +14,11 @@ def _reset_metrics() -> None:
     reset_scraper_metrics()
 
 
-def test_substack_missing_config_logs_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_substack_missing_config_logs_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
 
@@ -28,7 +32,9 @@ def test_substack_missing_config_logs_once(monkeypatch: pytest.MonkeyPatch, tmp_
     feeds = load_substack_feeds()
     assert feeds == []
 
-    warn_messages = [record.message for record in caplog.records if record.levelno == logging.WARNING]
+    warn_messages = [
+        record.message for record in caplog.records if record.levelno == logging.WARNING
+    ]
     missing_logs = [message for message in warn_messages if "config_missing" in message]
     assert len(missing_logs) == 1
 
@@ -79,7 +85,9 @@ def test_podcast_no_feeds_configured(
     result = scraper.scrape()
     assert result == []
 
-    warn_messages = [record.message for record in caplog.records if record.levelno == logging.WARNING]
+    warn_messages = [
+        record.message for record in caplog.records if record.levelno == logging.WARNING
+    ]
     assert any("No podcast feeds configured" in message for message in warn_messages)
 
 
@@ -95,7 +103,9 @@ def test_reddit_config_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.setenv("NEWSAPP_CONFIG_DIR", str(config_dir))
 
     scraper = RedditUnifiedScraper()
-    assert scraper.subreddits == {"MachineLearning": 5}
+    assert {target.subreddit: target.limit for target in scraper.targets} == {
+        "MachineLearning": 5
+    }
 
     metrics = get_scraper_metrics()
     assert "Reddit" not in metrics or "scrape_config_missing" not in metrics["Reddit"]

@@ -383,6 +383,15 @@ def _build_screen_aware_turn_instructions(
 ) -> str | None:
     """Build per-turn instructions with screen-context overrides."""
 
+    if screen_context.screen_type == "daily_digest_list" or (
+        screen_context.screen_title and "digest" in screen_context.screen_title.lower()
+    ):
+        return (
+            "For this turn, you must call SearchContent before answering. "
+            "Use it for in-app feed items and inbox content. "
+            "Only call search_web if SearchContent is insufficient."
+        )
+
     if _should_route_to_content_search(user_text):
         return (
             "For this turn, you must call SearchContent before answering. "
@@ -423,8 +432,11 @@ def _format_content_hits(
     query: str,
     content_rows: list[tuple[Content, object, object]],
     total_content_matches: int | None,
+    digest_rows: list[object] | None = None,
+    digest_bullets_by_digest_id: dict[int, object] | None = None,
 ) -> str:
     """Serialize in-app content results for the assistant tool."""
+    del digest_rows, digest_bullets_by_digest_id
 
     lines = [f'In-app content results for "{query}":']
 
@@ -893,6 +905,7 @@ def _extract_transcript_excerpt(content: Content, max_length: int = 420) -> str 
 
     metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
     candidates = [
+        metadata.get("excerpt"),
         metadata.get("transcript"),
         metadata.get("content"),
     ]

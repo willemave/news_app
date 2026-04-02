@@ -75,7 +75,7 @@ def test_scrape_to_completion_smoke(db_session, monkeypatch) -> None:
         mock_http_service.return_value = Mock()
 
         mock_llm = Mock()
-        mock_llm.summarize_content.return_value = BulletedSummary(
+        mock_llm.summarize.return_value = BulletedSummary(
             title="Article Title",
             points=[
                 {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable, Generator
@@ -244,14 +245,16 @@ def _ingest_case_items(
             _remap_scraped_item_for_user(item, user_id=user.id)
             for item in case.scraped_items
         ]
-        for raw_item in raw_items:
+        for index, raw_item in enumerate(raw_items, start=1):
             payload = build_news_item_upsert_input_from_scraped_item(raw_item)
-            news_item, was_created = upsert_news_item(db, payload)
+            news_item = _create_eval_news_item(
+                db,
+                payload=payload,
+                case_id=case.case_id,
+                index=index,
+            )
             ingested_items.append(news_item)
-            if was_created:
-                created_count += 1
-            else:
-                updated_count += 1
+            created_count += 1
         db.flush()
         return ingested_items, created_count, updated_count
 
@@ -259,9 +262,8 @@ def _ingest_case_items(
         payload = _build_upsert_input_from_record(record, user_id=user.id)
         news_item, was_created = upsert_news_item(db, payload)
         ingested_items.append(news_item)
+        created_count += 1
         if was_created:
-            created_count += 1
-        else:
             updated_count += 1
     db.flush()
     return ingested_items, created_count, updated_count
@@ -337,6 +339,85 @@ def _remap_scraped_item_for_user(item: dict[str, Any], *, user_id: int) -> dict[
 
     remapped["metadata"] = metadata
     return remapped
+
+
+def _disambiguate_scraped_item_for_eval(item: dict[str, Any], *, index: int) -> dict[str, Any]:
+    """Ensure eval scraped items stay distinct even when they describe the same story."""
+    disambiguated = dict(item)
+    metadata = dict(disambiguated.get("metadata") or {})
+    source_external_id = disambiguated.get("source_external_id")
+    if source_external_id:
+        disambiguated["source_external_id"] = f"{source_external_id}__eval_{index}"
+    else:
+        disambiguated["source_external_id"] = f"eval-{index}"
+    unique_suffix = f"eval_item={index}"
+    for key in ("url",):
+        value = disambiguated.get(key)
+        if isinstance(value, str) and value:
+            separator = "&" if "?" in value else "?"
+            disambiguated[key] = f"{value}{separator}{unique_suffix}"
+    discussion_url = metadata.get("discussion_url")
+    if isinstance(discussion_url, str) and discussion_url:
+        separator = "&" if "?" in discussion_url else "?"
+        metadata["discussion_url"] = f"{discussion_url}{separator}{unique_suffix}"
+    disambiguated["metadata"] = metadata
+    return disambiguated
+
+
+def _create_eval_news_item(
+    db: Session,
+    *,
+    payload: NewsItemUpsertInput,
+    case_id: str,
+    index: int,
+) -> NewsItem:
+    """Create a distinct eval news item without running the production dedupe path."""
+    ingest_material = {
+        "case_id": case_id,
+        "index": index,
+        "visibility_scope": payload.visibility_scope.value,
+        "owner_user_id": payload.owner_user_id,
+        "platform": payload.platform,
+        "source_type": payload.source_type,
+        "source_label": payload.source_label,
+        "source_external_id": payload.source_external_id,
+        "canonical_item_url": payload.canonical_item_url,
+        "canonical_story_url": payload.canonical_story_url,
+        "discussion_url": payload.discussion_url,
+    }
+    ingest_key = hashlib.sha256(
+        json.dumps(ingest_material, sort_keys=True, default=str, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    news_item = NewsItem(
+        ingest_key=ingest_key,
+        visibility_scope=payload.visibility_scope.value,
+        owner_user_id=payload.owner_user_id,
+        platform=payload.platform,
+        source_type=payload.source_type,
+        source_label=payload.source_label,
+        source_external_id=payload.source_external_id,
+        user_scraper_config_id=payload.user_scraper_config_id,
+        user_integration_connection_id=payload.user_integration_connection_id,
+        canonical_item_url=payload.canonical_item_url,
+        canonical_story_url=payload.canonical_story_url,
+        article_url=payload.article_url,
+        article_title=payload.article_title,
+        article_domain=payload.article_domain,
+        discussion_url=payload.discussion_url,
+        summary_title=payload.summary_title,
+        summary_key_points=payload.summary_key_points,
+        summary_text=payload.summary_text,
+        raw_metadata=payload.raw_metadata,
+        status=payload.status.value,
+        legacy_content_id=payload.legacy_content_id,
+        published_at=payload.published_at,
+        ingested_at=payload.ingested_at,
+    )
+    db.add(news_item)
+    db.flush()
+    return news_item
 
 
 def _build_upsert_input_from_record(record: dict[str, Any], *, user_id: int) -> NewsItemUpsertInput:

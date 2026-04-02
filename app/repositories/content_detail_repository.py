@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.schema import Content, ContentDiscussion
+from app.models.schema import Content, ContentBody, ContentDiscussion
 from app.repositories.content_repository import build_visibility_context
 
 
@@ -16,15 +16,41 @@ def get_content_detail(db: Session, *, user_id: int, content_id: int):
             Content,
             context.is_read.label("is_read"),
             context.is_favorited.label("is_favorited"),
+            ContentBody.content_id.is_not(None).label("body_available"),
+            ContentBody.content_format.label("body_format"),
         )
-        .filter(Content.id == content_id)
+        .outerjoin(
+            ContentBody,
+            (ContentBody.content_id == Content.id) & (ContentBody.variant == "source"),
+        )
+        .filter(
+            Content.id == content_id,
+            Content.status == "completed",
+            context.is_in_inbox,
+            (Content.classification != "skip") | (Content.classification.is_(None)),
+        )
         .first()
     )
 
 
-def get_content_discussion(db: Session, *, content_id: int):
-    """Return content and discussion rows for discussion endpoint."""
-    content = db.query(Content).filter(Content.id == content_id).first()
+def get_visible_content(db: Session, *, user_id: int, content_id: int):
+    """Return one visible content row for the given user."""
+    context = build_visibility_context(user_id)
+    return (
+        db.query(Content)
+        .filter(
+            Content.id == content_id,
+            Content.status == "completed",
+            context.is_in_inbox,
+            (Content.classification != "skip") | (Content.classification.is_(None)),
+        )
+        .first()
+    )
+
+
+def get_content_discussion(db: Session, *, user_id: int, content_id: int):
+    """Return visible content and discussion rows for discussion endpoint."""
+    content = get_visible_content(db, user_id=user_id, content_id=content_id)
     if not content:
         return None, None
     discussion = (

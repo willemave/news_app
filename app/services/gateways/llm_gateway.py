@@ -28,12 +28,14 @@ class LlmGateway:
     ) -> ContentAnalysisOutput | AnalysisError:
         """Analyze URL content and optional instruction links."""
         analyzer = get_content_analyzer()
-        return analyzer.analyze_url(
-            url,
-            instruction=instruction,
-            db=db,
-            usage_persist=usage_persist,
-        )
+        kwargs: dict[str, Any] = {}
+        if instruction is not None:
+            kwargs["instruction"] = instruction
+        if db is not None:
+            kwargs["db"] = db
+        if usage_persist is not None:
+            kwargs["usage_persist"] = usage_persist
+        return analyzer.analyze_url(url, **kwargs)
 
     def summarize(
         self,
@@ -50,18 +52,21 @@ class LlmGateway:
         usage_persist: dict[str, Any] | None = None,
     ) -> SummaryPayload | None:
         """Summarize content using canonical summarizer policy."""
-        return self._summarizer.summarize(
-            content=content,
-            content_type=content_type,
-            title=title,
-            max_bullet_points=max_bullet_points,
-            max_quotes=max_quotes,
-            content_id=content_id,
-            provider_override=provider_override,
-            model_hint=model_hint,
-            db=db,
-            usage_persist=usage_persist,
-        )
+        kwargs: dict[str, Any] = {
+            "content": content,
+            "content_type": content_type,
+            "title": title,
+            "max_bullet_points": max_bullet_points,
+            "max_quotes": max_quotes,
+            "content_id": content_id,
+            "provider_override": provider_override,
+            "model_hint": model_hint,
+        }
+        if db is not None:
+            kwargs["db"] = db
+        if usage_persist is not None:
+            kwargs["usage_persist"] = usage_persist
+        return self._summarizer.summarize(**kwargs)
 
 
 _llm_gateway: LlmGateway | None = None

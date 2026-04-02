@@ -22,9 +22,9 @@ optional_security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     db: Annotated[Session, Depends(get_db)],
+    request: Request = None,
 ) -> User:
     """
     Get current authenticated user from JWT token.
@@ -78,7 +78,8 @@ def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
 
-    request.state.authenticated_user_id = user.id
+    if request is not None:
+        request.state.authenticated_user_id = user.id
     bind_log_context(user_id=user.id)
 
     return user
