@@ -148,7 +148,7 @@ def main() -> None:
         queue_service = get_queue_service()
         for news_item_id in pending_news_item_ids:
             queue_service.enqueue(
-                TaskType.PROCESS_NEWS_ITEM,
+                TaskType.ENRICH_NEWS_ITEM_ARTICLE,
                 payload={"news_item_id": news_item_id},
                 dedupe=False,
             )

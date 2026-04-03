@@ -8,8 +8,11 @@ from types import SimpleNamespace
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.models.metadata import NewsSummary
-from app.models.schema import Base, NewsItem
+from app.models.metadata import ContentType, NewsSummary
+from app.models.schema import Base, Content, NewsItem
+from app.services import news_processing as news_processing_module
+from app.services.news_article_bodies import NEWS_ARTICLE_BODY_REF_KEY
+from app.services.news_article_enrichment import enrich_news_item_article
 from app.services.news_processing import process_news_item
 
 
@@ -372,3 +375,108 @@ def test_process_news_item_ignores_void_placeholder_titles(db_session) -> None:
     assert "Article title: VOID" not in captured["args"][0]
     assert item.summary_title == "Fresh digest title"
     assert item.status == "ready"
+
+
+def test_enrich_news_item_article_reuses_existing_article_content(db_session) -> None:
+    article = Content(
+        content_type=ContentType.ARTICLE.value,
+        url="https://example.com/story-8",
+        source_url="https://example.com/story-8",
+        title="Existing article body",
+        source="example.com",
+        platform=None,
+        is_aggregate=False,
+        status="completed",
+        content_metadata={"content_to_summarize": "Full extracted article body."},
+    )
+    db_session.add(article)
+    db_session.flush()
+
+    item = NewsItem(
+        ingest_key="news-item-content-reuse",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="content-reuse-1",
+        article_url="https://example.com/story-8",
+        canonical_story_url="https://example.com/story-8",
+        article_title="Example story 8",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=128",
+        raw_metadata={"excerpt": "Short excerpt."},
+        status="new",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    result = enrich_news_item_article(db_session, news_item_id=item.id)
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert result.source == "content"
+    assert item.raw_metadata[NEWS_ARTICLE_BODY_REF_KEY]["kind"] == "content"
+    assert item.raw_metadata[NEWS_ARTICLE_BODY_REF_KEY]["content_id"] == article.id
+    assert item.raw_metadata["article_extraction"]["status"] == "completed"
+
+
+def test_process_news_item_includes_resolved_article_body_in_prompt(
+    db_session,
+    monkeypatch,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-article-body-prompt",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="article-body-prompt-1",
+        article_url="https://example.com/story-9",
+        article_title="Example story 9",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=129",
+        raw_metadata={"excerpt": "Fallback excerpt."},
+        status="new",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    class _Resolver:
+        def resolve_text(self, db, *, news_item):
+            assert db is db_session
+            assert news_item.id == item.id
+            return "Full extracted article body for prompt grounding."
+
+    monkeypatch.setattr(
+        news_processing_module,
+        "get_news_item_article_body_resolver",
+        lambda: _Resolver(),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _summarize(prompt, **kwargs):
+        captured["prompt"] = prompt
+        captured["kwargs"] = kwargs
+        return NewsSummary(
+            title="Prompt-grounded title",
+            article_url=item.article_url,
+            key_points=["Body-informed point"],
+            summary="Body-informed summary.",
+        )
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=SimpleNamespace(summarize=_summarize),
+    )
+
+    db_session.refresh(item)
+    assert result.success is True
+    prompt = str(captured["prompt"])
+    assert "Article body:" in prompt
+    assert "Full extracted article body for prompt grounding." in prompt
+    assert "Excerpt:" in prompt
+    assert item.summary_text == "Body-informed summary."

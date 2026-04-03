@@ -128,7 +128,7 @@ class BaseScraper(ABC):
                         db.refresh(news_item)
                         if was_created or news_item.status != "ready":
                             self.queue_service.enqueue(
-                                TaskType.PROCESS_NEWS_ITEM,
+                                TaskType.ENRICH_NEWS_ITEM_ARTICLE,
                                 payload={"news_item_id": news_item.id},
                                 dedupe=False,
                             )

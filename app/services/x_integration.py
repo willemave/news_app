@@ -704,7 +704,7 @@ def _upsert_x_digest_tweet_content(
     queue_gateway = get_task_queue_gateway()
     if was_created or news_item.status != "ready":
         queue_gateway.enqueue(
-            TaskType.PROCESS_NEWS_ITEM,
+            TaskType.ENRICH_NEWS_ITEM_ARTICLE,
             payload={"news_item_id": news_item.id},
         )
     return was_created

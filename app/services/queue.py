@@ -17,6 +17,7 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.SCRAPE: TaskQueue.CONTENT,
     TaskType.ANALYZE_URL: TaskQueue.CONTENT,
     TaskType.PROCESS_CONTENT: TaskQueue.CONTENT,
+    TaskType.ENRICH_NEWS_ITEM_ARTICLE: TaskQueue.CONTENT,
     TaskType.PROCESS_NEWS_ITEM: TaskQueue.CONTENT,
     TaskType.PROCESS_PODCAST_MEDIA: TaskQueue.MEDIA,
     TaskType.DOWNLOAD_AUDIO: TaskQueue.MEDIA,

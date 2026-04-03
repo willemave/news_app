@@ -16,6 +16,7 @@ from app.models.metadata import NewsSummary
 from app.models.schema import NewsItem
 from app.services.discussion_fetcher import _build_discussion_payload
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
+from app.services.news_article_bodies import get_news_item_article_body_resolver
 from app.services.news_relations import reconcile_news_item_relation
 from app.utils.url_utils import normalize_http_url
 
@@ -144,7 +145,12 @@ def _extract_discussion_snippets(raw_metadata: dict[str, Any]) -> list[str]:
     return snippets
 
 
-def _build_processing_prompt(item: NewsItem, raw_metadata: dict[str, Any]) -> str:
+def _build_processing_prompt(
+    item: NewsItem,
+    raw_metadata: dict[str, Any],
+    *,
+    article_body_text: str | None = None,
+) -> str:
     lines = [
         "Create a compact short-form news summary grounded only in this evidence.",
     ]
@@ -168,6 +174,8 @@ def _build_processing_prompt(item: NewsItem, raw_metadata: dict[str, Any]) -> st
             lines.append(f"Aggregator author: {_clean_string(aggregator.get('author'))}")
 
     excerpt = _clean_string(raw_metadata.get("excerpt"))
+    if article_body_text:
+        lines.extend(["", "Article body:", article_body_text])
     if excerpt:
         lines.extend(["", "Excerpt:", excerpt])
 
@@ -281,6 +289,9 @@ def process_news_item(
     db.refresh(item)
 
     try:
+        article_body_resolver = get_news_item_article_body_resolver()
+        article_body_text = article_body_resolver.resolve_text(db, news_item=item)
+
         discussion_payload = raw_metadata.get("discussion_payload")
         if not isinstance(discussion_payload, dict):
             discussion = _build_discussion_payload(
@@ -303,7 +314,11 @@ def process_news_item(
             )
         )
         if not used_existing_summary:
-            prompt = _build_processing_prompt(item, raw_metadata)
+            prompt = _build_processing_prompt(
+                item,
+                raw_metadata,
+                article_body_text=article_body_text,
+            )
             content_summarizer = summarizer or get_content_summarizer()
             summarize_kwargs: dict[str, object] = {
                 "content_type": "news",

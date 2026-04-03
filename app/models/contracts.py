@@ -38,6 +38,7 @@ class TaskType(StrEnum):
     SCRAPE = "scrape"
     ANALYZE_URL = "analyze_url"
     PROCESS_CONTENT = "process_content"
+    ENRICH_NEWS_ITEM_ARTICLE = "enrich_news_item_article"
     PROCESS_NEWS_ITEM = "process_news_item"
     PROCESS_PODCAST_MEDIA = "process_podcast_media"
     DOWNLOAD_AUDIO = "download_audio"
