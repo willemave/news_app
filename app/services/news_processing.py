@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.constants import SUMMARY_KIND_SHORT_NEWS_DIGEST, SUMMARY_VERSION_V1
 from app.core.logging import get_logger
 from app.models.contracts import NewsItemStatus
 from app.models.metadata import NewsSummary
@@ -47,6 +48,17 @@ def _clean_string(value: Any) -> str | None:
     return cleaned or None
 
 
+def _clean_title(value: Any) -> str | None:
+    cleaned = _clean_string(value)
+    if cleaned is None:
+        return None
+    if cleaned.casefold() == "void":
+        return None
+    if len(cleaned) < 5:
+        return None
+    return cleaned
+
+
 def _normalize_key_points(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -66,20 +78,30 @@ def _has_materialized_summary(
     return bool(key_points or summary_text)
 
 
+def _is_generated_news_digest(raw_metadata: dict[str, Any]) -> bool:
+    return (
+        raw_metadata.get("summary_kind") == SUMMARY_KIND_SHORT_NEWS_DIGEST
+        and raw_metadata.get("summary_version") == SUMMARY_VERSION_V1
+    )
+
+
 def _extract_existing_summary(item: NewsItem) -> NewsSummary | None:
+    raw_metadata = dict(item.raw_metadata or {})
+    if not _is_generated_news_digest(raw_metadata):
+        return None
+
     item_key_points = _normalize_key_points(item.summary_key_points)
     if _has_materialized_summary(
         key_points=item_key_points,
         summary_text=item.summary_text,
     ):
         return NewsSummary(
-            title=item.summary_title,
+            title=_clean_title(item.summary_title) or _clean_title(item.article_title),
             article_url=item.article_url,
             key_points=item_key_points,
             summary=item.summary_text,
         )
 
-    raw_metadata = dict(item.raw_metadata or {})
     summary = raw_metadata.get("summary")
     if not isinstance(summary, dict):
         return None
@@ -91,7 +113,7 @@ def _extract_existing_summary(item: NewsItem) -> NewsSummary | None:
     ):
         return None
     return NewsSummary(
-        title=_clean_string(summary.get("title")) or item.article_title,
+        title=_clean_title(summary.get("title")) or _clean_title(item.article_title),
         article_url=_clean_string(summary.get("article_url")) or item.article_url,
         key_points=summary_key_points,
         summary=summary_text,
@@ -130,8 +152,9 @@ def _build_processing_prompt(item: NewsItem, raw_metadata: dict[str, Any]) -> st
         lines.append(f"Source label: {item.source_label}")
     if item.platform:
         lines.append(f"Platform: {item.platform}")
-    if item.article_title:
-        lines.append(f"Article title: {item.article_title}")
+    article_title = _clean_title(item.article_title)
+    if article_title:
+        lines.append(f"Article title: {article_title}")
     if item.article_domain:
         lines.append(f"Article domain: {item.article_domain}")
     if item.article_url:
@@ -165,7 +188,11 @@ def _fallback_summary(item: NewsItem, raw_metadata: dict[str, Any]) -> NewsSumma
 
     summary_text = item.summary_text or (key_points[0] if key_points else item.article_title)
     return NewsSummary(
-        title=item.summary_title or item.article_title or f"News item {item.id}",
+        title=(
+            _clean_title(item.summary_title)
+            or _clean_title(item.article_title)
+            or f"News item {item.id}"
+        ),
         article_url=item.article_url,
         key_points=key_points[:5],
         summary=summary_text,
@@ -173,7 +200,11 @@ def _fallback_summary(item: NewsItem, raw_metadata: dict[str, Any]) -> NewsSumma
 
 
 def _persist_summary(item: NewsItem, summary: NewsSummary, raw_metadata: dict[str, Any]) -> None:
-    item.summary_title = _clean_string(summary.title) or item.article_title or item.summary_title
+    item.summary_title = (
+        _clean_title(summary.title)
+        or _clean_title(item.article_title)
+        or item.summary_title
+    )
     normalized_article_url = (
         normalize_http_url(summary.article_url) if summary.article_url else None
     )
@@ -182,6 +213,9 @@ def _persist_summary(item: NewsItem, summary: NewsSummary, raw_metadata: dict[st
         item.canonical_story_url = normalized_article_url
     item.summary_key_points = _normalize_key_points(summary.key_points)
     item.summary_text = _clean_string(summary.summary) or item.summary_text
+    raw_metadata["summary"] = summary.model_dump(mode="json", by_alias=True, exclude_none=True)
+    raw_metadata["summary_kind"] = SUMMARY_KIND_SHORT_NEWS_DIGEST
+    raw_metadata["summary_version"] = SUMMARY_VERSION_V1
     item.raw_metadata = raw_metadata
     item.status = NewsItemStatus.READY.value
     item.processed_at = _utcnow_naive()
@@ -273,7 +307,7 @@ def process_news_item(
             content_summarizer = summarizer or get_content_summarizer()
             summarize_kwargs: dict[str, object] = {
                 "content_type": "news",
-                "title": item.article_title or item.summary_title,
+                "title": _clean_title(item.article_title) or _clean_title(item.summary_title),
                 "content_id": item.id,
             }
             if summarizer is None or _summarizer_accepts_context_kwargs(content_summarizer):

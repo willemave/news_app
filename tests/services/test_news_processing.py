@@ -199,3 +199,176 @@ def test_process_news_item_does_not_treat_title_only_row_as_summarized(db_sessio
     assert item.status == "ready"
     assert item.summary_key_points == ["Point one"]
     assert item.summary_text == "Short summary."
+
+
+def test_process_news_item_regenerates_legacy_prefilled_summary(db_session) -> None:
+    item = NewsItem(
+        ingest_key="news-item-legacy-summary",
+        visibility_scope="global",
+        platform="reddit",
+        source_type="reddit",
+        source_label="Reddit",
+        source_external_id="legacy-summary-1",
+        article_url="https://example.com/story-5",
+        article_title="Example story 5",
+        article_domain="example.com",
+        discussion_url="https://reddit.com/r/example/comments/legacy/example_story_5/",
+        summary_title="Legacy summary title",
+        summary_key_points=["Legacy point"],
+        summary_text="Legacy summary text.",
+        raw_metadata={
+            "excerpt": "Useful source excerpt for regeneration.",
+            "summary": {
+                "title": "Legacy summary title",
+                "key_points": ["Legacy point"],
+                "summary": "Legacy summary text.",
+            },
+        },
+        status="ready",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    calls: list[dict[str, object]] = []
+
+    def _summarize(*_args, **kwargs):
+        calls.append(kwargs)
+        return NewsSummary(
+            title="Fresh digest title",
+            article_url=item.article_url,
+            key_points=["Fresh point"],
+            summary="Fresh summary text.",
+        )
+
+    summarizer = SimpleNamespace(summarize=_summarize)
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=summarizer,
+    )
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert result.used_existing_summary is False
+    assert result.generated_summary is True
+    assert len(calls) == 1
+    assert item.summary_title == "Fresh digest title"
+    assert item.summary_key_points == ["Fresh point"]
+    assert item.summary_text == "Fresh summary text."
+    assert item.raw_metadata["summary_kind"] == "short_news_digest"
+    assert item.raw_metadata["summary_version"] == 1
+
+
+def test_process_news_item_reuses_generated_short_digest(db_session) -> None:
+    item = NewsItem(
+        ingest_key="news-item-generated-summary",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="generated-summary-1",
+        article_url="https://example.com/story-6",
+        article_title="Example story 6",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=126",
+        summary_title="Generated digest title",
+        summary_key_points=["Generated point"],
+        summary_text="Generated summary text.",
+        raw_metadata={
+            "summary": {
+                "title": "Generated digest title",
+                "article_url": "https://example.com/story-6",
+                "key_points": ["Generated point"],
+                "summary": "Generated summary text.",
+            },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
+        },
+        status="ready",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    calls = 0
+
+    def _summarize(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return NewsSummary(
+            title="Should not be used",
+            article_url=item.article_url,
+            key_points=["Unexpected"],
+            summary="Unexpected",
+        )
+
+    summarizer = SimpleNamespace(summarize=_summarize)
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=summarizer,
+    )
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert result.used_existing_summary is True
+    assert result.generated_summary is False
+    assert calls == 0
+    assert item.summary_title == "Generated digest title"
+    assert item.summary_key_points == ["Generated point"]
+    assert item.summary_text == "Generated summary text."
+
+
+def test_process_news_item_ignores_void_placeholder_titles(db_session) -> None:
+    item = NewsItem(
+        ingest_key="news-item-void-title",
+        visibility_scope="global",
+        platform="reddit",
+        source_type="reddit",
+        source_label="Reddit",
+        source_external_id="void-title-1",
+        article_url="https://example.com/story-7",
+        article_title="VOID",
+        article_domain="example.com",
+        discussion_url="https://reddit.com/r/example/comments/void/example_story_7/",
+        summary_title="VOID",
+        raw_metadata={
+            "excerpt": "Useful source excerpt for summarization.",
+            "discussion_payload": {"comments": []},
+        },
+        status="new",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    captured: dict[str, object] = {}
+
+    def _summarize(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return NewsSummary(
+            title="Fresh digest title",
+            article_url=item.article_url,
+            key_points=["Fresh point"],
+            summary="Fresh summary text.",
+        )
+
+    summarizer = SimpleNamespace(summarize=_summarize)
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=summarizer,
+    )
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert result.generated_summary is True
+    assert captured["kwargs"]["title"] is None
+    assert "Article title: VOID" not in captured["args"][0]
+    assert item.summary_title == "Fresh digest title"
+    assert item.status == "ready"
