@@ -27,6 +27,7 @@ from app.models.user import (
     AdminLoginResponse,
     AppleSignInRequest,
     CouncilPersonaConfig,
+    DebugUserSessionRequest,
     RefreshTokenRequest,
     TokenResponse,
     UpdateUserProfileRequest,
@@ -219,21 +220,43 @@ def apple_signin(
 @router.post("/debug/new-user", response_model=TokenResponse)
 def debug_create_user(
     db: Annotated[Session, Depends(get_db_session)],
+    request: DebugUserSessionRequest | None = None,
 ) -> TokenResponse:
     """Create a debug user session (debug mode only)."""
     is_development_env = settings.environment.lower() == "development"
     if not (settings.debug or is_development_env):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
-    apple_id = f"debug_{secrets.token_urlsafe(16)}"
-    email = f"debug+{secrets.token_urlsafe(8)}@example.com"
-    user = User(
-        apple_id=apple_id,
-        email=email,
-        full_name="Debug User",
-        is_active=True,
-    )
-    db.add(user)
+    payload = request or DebugUserSessionRequest()
+
+    if payload.user_id is not None:
+        user = db.query(User).filter(User.id == payload.user_id).first()
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Debug user not found",
+            )
+        is_new_user = False
+    else:
+        apple_id = f"debug_{secrets.token_urlsafe(16)}"
+        email = f"debug+{secrets.token_urlsafe(8)}@example.com"
+        user = User(
+            apple_id=apple_id,
+            email=email,
+            full_name="Debug User",
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+        is_new_user = True
+
+    if payload.has_completed_onboarding is not None:
+        user.has_completed_onboarding = payload.has_completed_onboarding
+    if payload.has_completed_new_user_tutorial is not None:
+        user.has_completed_new_user_tutorial = payload.has_completed_new_user_tutorial
+    if payload.has_completed_live_voice_onboarding is not None:
+        user.has_completed_live_voice_onboarding = payload.has_completed_live_voice_onboarding
+
     db.commit()
     db.refresh(user)
 
@@ -244,7 +267,7 @@ def debug_create_user(
         access_token=access_token,
         refresh_token=refresh_token,
         user=_build_user_response(db, user),
-        is_new_user=True,
+        is_new_user=is_new_user,
     )
 
 

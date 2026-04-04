@@ -68,6 +68,7 @@ from app.services.council_chat import (
     start_council_chat,
 )
 from app.services.llm_models import is_deep_research_provider, resolve_model
+from app.services.personal_markdown_library import sync_personal_markdown_for_content
 
 logger = get_logger(__name__)
 
@@ -75,6 +76,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 _SEARCH_TOOL_NAMES = {
     "exa_web_search",
+    "search_personal_library",
 }
 
 
@@ -645,6 +647,27 @@ async def create_session(
     db.add(session)
     db.commit()
     db.refresh(session)
+
+    if request.content_id:
+        try:
+            sync_personal_markdown_for_content(
+                db,
+                user_id=current_user.id,
+                content_id=request.content_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to sync personal markdown after chat session creation",
+                extra=build_log_extra(
+                    component="chat",
+                    operation="create_session",
+                    event_name="chat.session.personal_markdown",
+                    status="degraded",
+                    user_id=current_user.id,
+                    session_id=session.id,
+                    content_id=request.content_id,
+                ),
+            )
 
     logger.info(
         "Chat session created",

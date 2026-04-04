@@ -10,6 +10,7 @@ from app.models.scraper_runs import ScraperStats
 from app.services.long_form_images import enqueue_visible_long_form_image_if_needed
 from app.services.news_ingestion import (
     build_news_item_upsert_input_from_scraped_item,
+    should_enqueue_news_item_enrichment,
     upsert_news_item,
 )
 from app.services.queue import TaskType, get_queue_service
@@ -126,7 +127,10 @@ class BaseScraper(ABC):
                         news_item, was_created = upsert_news_item(db, payload)
                         db.commit()
                         db.refresh(news_item)
-                        if was_created or news_item.status != "ready":
+                        if should_enqueue_news_item_enrichment(
+                            news_item=news_item,
+                            was_created=was_created,
+                        ):
                             self.queue_service.enqueue(
                                 TaskType.ENRICH_NEWS_ITEM_ARTICLE,
                                 payload={"news_item_id": news_item.id},

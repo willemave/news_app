@@ -8,13 +8,18 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
-from app.core.db import is_sqlite_lock_error, run_with_sqlite_lock_retry
+from app.core.db import (
+    is_sqlite_lock_error,
+    run_with_sqlite_lock_retry,
+    temporary_sqlite_busy_timeout,
+)
 from app.core.logging import get_logger
 from app.models.schema import AnalyticsInteraction, Content
 
 logger = get_logger(__name__)
 
 INTERACTION_TYPE_OPENED = "opened"
+INTERACTION_BUSY_TIMEOUT_MS = 250
 
 
 @dataclass(frozen=True)
@@ -90,9 +95,10 @@ def record_content_interaction(
         ),
     )
 
-    existing_content_id = db.execute(
-        select(Content.id).where(Content.id == payload.content_id)
-    ).scalar_one_or_none()
+    with temporary_sqlite_busy_timeout(db, INTERACTION_BUSY_TIMEOUT_MS):
+        existing_content_id = db.execute(
+            select(Content.id).where(Content.id == payload.content_id)
+        ).scalar_one_or_none()
     if existing_content_id is None:
         logger.warning(
             "[CONTENT_INTERACTIONS] Content not found",
@@ -142,18 +148,19 @@ def record_content_interaction(
                 analytics_interaction_id=analytics_interaction_id,
             )
 
-        return run_with_sqlite_lock_retry(
-            db=db,
-            component="content_interactions",
-            operation="record_content_interaction",
-            work=_persist_interaction,
-            item_id=payload.content_id,
-            context_data={
-                "user_id": payload.user_id,
-                "interaction_type": payload.interaction_type,
-                "interaction_id": payload.interaction_id,
-            },
-        )
+        with temporary_sqlite_busy_timeout(db, INTERACTION_BUSY_TIMEOUT_MS):
+            return run_with_sqlite_lock_retry(
+                db=db,
+                component="content_interactions",
+                operation="record_content_interaction",
+                work=_persist_interaction,
+                item_id=payload.content_id,
+                context_data={
+                    "user_id": payload.user_id,
+                    "interaction_type": payload.interaction_type,
+                    "interaction_id": payload.interaction_id,
+                },
+            )
     except IntegrityError as exc:
         db.rollback()
         existing = db.execute(

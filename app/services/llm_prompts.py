@@ -76,7 +76,7 @@ Classification Guidelines:
 aggregator context, then produce a concise JSON object with the following fields:
 
 {{
-  "title": "Descriptive headline (max 110 characters) highlighting the core takeaway",
+  "title": "Descriptive headline highlighting the core takeaway",
   "article_url": "Canonical article URL",
   "key_points": [
     "Bullet #1 in 160 characters or less",

@@ -6,7 +6,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.declarative import declarative_base
@@ -25,6 +25,8 @@ Base = declarative_base()
 _engine = None
 _SessionLocal = None
 _sqlite_runtime_diagnostics_logged = False
+
+READONLY_SQLITE_BUSY_TIMEOUT_MS = 1_500
 
 
 def _sqlite_version_tuple(version: str) -> tuple[int, int, int]:
@@ -209,6 +211,25 @@ def run_with_sqlite_lock_retry[T](
     raise RuntimeError("SQLite retry helper exhausted without returning or raising")
 
 
+@contextmanager
+def temporary_sqlite_busy_timeout(
+    db: Session,
+    timeout_ms: int,
+) -> Generator[None]:
+    """Temporarily override SQLite busy timeout for one session-bound operation."""
+    bind = db.get_bind()
+    if bind.dialect.name != "sqlite":
+        yield
+        return
+
+    default_timeout_ms = int(get_settings().sqlite_busy_timeout_ms)
+    db.execute(text(f"PRAGMA busy_timeout={int(timeout_ms)}"))
+    try:
+        yield
+    finally:
+        db.execute(text(f"PRAGMA busy_timeout={default_timeout_ms}"))
+
+
 def _is_sqlite_url(database_url: str) -> bool:
     """Return whether the configured database URL targets SQLite."""
     return make_url(database_url).drivername.startswith("sqlite")
@@ -321,7 +342,8 @@ def get_readonly_db_session() -> Generator[Session]:
     SessionLocal = get_session_factory()
     db = SessionLocal()
     try:
-        yield db
+        with temporary_sqlite_busy_timeout(db, READONLY_SQLITE_BUSY_TIMEOUT_MS):
+            yield db
     finally:
         db.close()
 

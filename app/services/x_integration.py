@@ -25,6 +25,7 @@ from app.services.content_submission import submit_user_content
 from app.services.gateways.task_queue_gateway import get_task_queue_gateway
 from app.services.news_ingestion import (
     build_news_item_upsert_input_from_scraped_item,
+    should_enqueue_news_item_enrichment,
     upsert_news_item,
 )
 from app.services.news_list_preferences import resolve_user_news_list_preference_prompt
@@ -702,7 +703,7 @@ def _upsert_x_digest_tweet_content(
         work=_persist_news_item,
     )
     queue_gateway = get_task_queue_gateway()
-    if was_created or news_item.status != "ready":
+    if should_enqueue_news_item_enrichment(news_item=news_item, was_created=was_created):
         queue_gateway.enqueue(
             TaskType.ENRICH_NEWS_ITEM_ARTICLE,
             payload={"news_item_id": news_item.id},

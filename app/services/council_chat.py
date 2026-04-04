@@ -90,7 +90,7 @@ def build_child_context_snapshot(
     elif parent_session.content_id:
         content = db.query(Content).filter(Content.id == parent_session.content_id).first()
         if content is not None:
-            content_context = build_article_context(content, include_full_text=True)
+            content_context = build_article_context(db, content, include_full_text=True)
             if content_context:
                 context_sections.append(content_context.strip())
 

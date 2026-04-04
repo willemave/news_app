@@ -224,6 +224,21 @@ class Settings(BaseSettings):
     content_body_storage_secret_key: str | None = None
     content_body_storage_timeout_seconds: int = Field(default=30, ge=1, le=300)
     podcast_scratch_dir: Path = Field(default_factory=lambda: Path.cwd() / "data" / "scratch")
+    personal_markdown_enabled: bool = True
+    personal_markdown_root: Path = Field(
+        default_factory=lambda: Path.cwd() / "data" / "personal_markdown"
+    )
+    personal_markdown_max_slug_length: int = Field(default=80, ge=16, le=160)
+    chat_sandbox_provider: Literal["disabled", "local", "e2b"] = "disabled"
+    chat_sandbox_e2b_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CHAT_SANDBOX_E2B_API_KEY", "E2B_API_KEY"),
+    )
+    chat_sandbox_template: str | None = None
+    chat_sandbox_timeout_seconds: int = Field(default=900, ge=60, le=86_400)
+    chat_sandbox_allow_internet_access: bool = True
+    chat_sandbox_library_root: str = "/workspace/personal_markdown"
+    chat_sandbox_max_output_chars: int = Field(default=12_000, ge=1_000, le=100_000)
 
     # crawl4ai table extraction
     crawl4ai_enable_table_extraction: bool = False
@@ -294,6 +309,11 @@ class Settings(BaseSettings):
     def podcast_scratch_root(self) -> Path:
         """Return the scratch directory used by podcast media workers."""
         return self.podcast_scratch_dir.resolve()
+
+    @property
+    def personal_markdown_root_dir(self) -> Path:
+        """Return the local filesystem root for the per-user markdown library."""
+        return self.personal_markdown_root.resolve()
 
 
 @lru_cache

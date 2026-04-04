@@ -450,9 +450,7 @@ class NewsSummary(BaseModel):
         },
     )
 
-    title: str | None = Field(
-        None, min_length=5, max_length=240, description="Generated headline for the digest"
-    )
+    title: str | None = Field(None, description="Generated headline for the digest")
     article_url: str | None = Field(
         None,
         min_length=1,

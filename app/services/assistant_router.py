@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.db import get_session_factory
 from app.core.logging import get_logger
 from app.core.observability import build_log_extra
+from app.core.settings import get_settings
 from app.infrastructure.db.search.base import get_search_backend
 from app.models.chat_message_metadata import (
     AssistantFeedOption,
@@ -48,6 +49,12 @@ from app.services.llm_models import (
     DEFAULT_PROVIDER,
     build_pydantic_model,
     resolve_effective_api_key,
+)
+from app.services.personal_markdown_library import sync_personal_markdown_library_for_user
+from app.services.sandbox_runtime import (
+    PersonalLibrarySandboxSession,
+    SandboxRuntimeUnavailableError,
+    create_personal_library_sandbox_session,
 )
 
 logger = get_logger(__name__)
@@ -114,6 +121,10 @@ ASSISTANT_SYSTEM_PROMPT = (
     "Be concise, action-oriented, and explicit when you changed the user's state.\n\n"
     "Rules:\n"
     "- Use tools when they can directly answer or complete the request.\n"
+    "- If the user asks about their saved markdown library, file paths, raw markdown, "
+    "or summary markdown, call SearchMarkdownLibrary first.\n"
+    "- When SearchMarkdownLibrary returns relevant file paths, call ReadMarkdownFile "
+    "before answering from file contents.\n"
     "- If the user asks about their saved or favorited content, call SearchKnowledge first.\n"
     "- If the user asks about their in-app feed or inbox, "
     "call SearchContent first.\n"
@@ -249,6 +260,8 @@ class AssistantDeps:
     screen_context: AssistantScreenContext
     context_snapshot: str
     session_factory: sessionmaker[Session]
+    sandbox_session: PersonalLibrarySandboxSession | None = None
+    personal_library_error: str | None = None
 
 
 def _normalize_turn_text(user_text: str) -> str:
@@ -281,6 +294,19 @@ def _should_route_to_knowledge(user_text: str) -> bool:
     ):
         return True
     return any(hint in normalized for hint in KNOWLEDGE_HINTS)
+
+
+def _should_route_to_markdown_library(user_text: str) -> bool:
+    """Detect turns that should prioritize the personal markdown library."""
+
+    normalized = _normalize_turn_text(user_text)
+    if not normalized:
+        return False
+    markdown_hints = ("markdown", "file path", "filepath", "source md", "summary md", ".md")
+    file_hints = ("saved file", "library file", "raw markdown", "summary markdown")
+    if any(hint in normalized for hint in markdown_hints + file_hints):
+        return True
+    return "path" in normalized and _should_route_to_knowledge(normalized)
 
 
 def _should_route_to_web(user_text: str) -> bool:
@@ -338,6 +364,15 @@ def _build_turn_instructions(user_text: str) -> str | None:
             "or explicitly asks to subscribe to one of the returned options."
         )
 
+    if _should_route_to_markdown_library(user_text):
+        return (
+            "For this turn, call SearchMarkdownLibrary before answering. "
+            "Use a concise query derived from the user's request. "
+            "If it returns relevant file paths, call ReadMarkdownFile on the most relevant file "
+            "before answering. Only fall back to SearchKnowledge if the markdown library has no "
+            "useful file-level results."
+        )
+
     if _should_route_to_knowledge(user_text):
         return (
             "For this turn, call SearchKnowledge before answering. "
@@ -366,6 +401,13 @@ def _build_turn_instructions(user_text: str) -> str | None:
         "prefer tools over assumptions. Use SearchKnowledge for saved/favorited context "
         "and search_web for current external facts."
     )
+
+
+def _personal_library_unavailable_message(error: str | None) -> str:
+    """Render a consistent unavailability message for assistant markdown tools."""
+    if error:
+        return f"Personal markdown library is unavailable: {error}"
+    return "Personal markdown library is unavailable for this chat."
 
 
 def _should_route_to_content_search(user_text: str) -> bool:
@@ -661,6 +703,52 @@ def _get_or_create_agent(
                 limit=normalized_limit,
             )
         return _format_knowledge_hits(hits, query)
+
+    @agent.tool(name="SearchMarkdownLibrary")
+    def search_markdown_library(
+        ctx: RunContext[AssistantDeps],
+        query: str,
+        limit: int = 20,
+        glob: str = "*.md",
+    ) -> str:
+        """Search the user's sandbox-mounted personal markdown library."""
+        sandbox_session = ctx.deps.sandbox_session
+        if sandbox_session is None:
+            return _personal_library_unavailable_message(ctx.deps.personal_library_error)
+
+        normalized_limit = max(1, min(limit, 50))
+        return sandbox_session.search_files(query=query, glob=glob, limit=normalized_limit)
+
+    @agent.tool(name="ListMarkdownLibrary")
+    def list_markdown_library(
+        ctx: RunContext[AssistantDeps],
+        subpath: str = "",
+        limit: int = 200,
+    ) -> str:
+        """List markdown files in the user's sandbox-mounted personal library."""
+        sandbox_session = ctx.deps.sandbox_session
+        if sandbox_session is None:
+            return _personal_library_unavailable_message(ctx.deps.personal_library_error)
+
+        normalized_limit = max(1, min(limit, 500))
+        return sandbox_session.list_files(subpath=subpath, limit=normalized_limit)
+
+    @agent.tool(name="ReadMarkdownFile")
+    def read_markdown_file(
+        ctx: RunContext[AssistantDeps],
+        relative_path: str,
+        max_chars: int = 12_000,
+    ) -> str:
+        """Read one markdown file from the user's sandbox-mounted personal library."""
+        sandbox_session = ctx.deps.sandbox_session
+        if sandbox_session is None:
+            return _personal_library_unavailable_message(ctx.deps.personal_library_error)
+
+        normalized_max_chars = max(500, min(max_chars, 40_000))
+        return sandbox_session.read_file(
+            relative_path=relative_path,
+            max_chars=normalized_max_chars,
+        )
 
     @agent.tool(name="SearchContent")
     def search_user_content(
@@ -1034,6 +1122,47 @@ def run_assistant_turn_sync(
         return agent.run_sync(prompt, deps=deps, message_history=history)
 
 
+def _build_assistant_personal_library_runtime(
+    *,
+    db: Session,
+    user_id: int,
+) -> tuple[PersonalLibrarySandboxSession | None, str | None]:
+    """Synchronize and hydrate the personal markdown library for assistant turns."""
+    settings = get_settings()
+    if not settings.personal_markdown_enabled or settings.chat_sandbox_provider == "disabled":
+        return None, None
+
+    try:
+        sync_personal_markdown_library_for_user(db, user_id=user_id)
+        sandbox_session = create_personal_library_sandbox_session(user_id=user_id)
+        return sandbox_session, None
+    except SandboxRuntimeUnavailableError as exc:
+        return None, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Failed to prepare assistant personal markdown library",
+            extra=build_log_extra(
+                component="assistant_turn",
+                operation="build_personal_library_runtime",
+                event_name="assistant.turn.personal_library",
+                status="degraded",
+                user_id=user_id,
+                context_data={"failure_class": type(exc).__name__},
+            ),
+        )
+        return None, str(exc)
+
+
+def _close_sandbox_session(sandbox_session: PersonalLibrarySandboxSession | None) -> None:
+    """Release one assistant sandbox session."""
+    if sandbox_session is None:
+        return
+    try:
+        sandbox_session.close()
+    except Exception:
+        logger.debug("Ignoring assistant sandbox close failure", exc_info=True)
+
+
 async def process_assistant_turn_async(
     session_id: int,
     message_id: int,
@@ -1092,12 +1221,18 @@ async def process_assistant_turn_async(
             db, user_id=session.user_id, screen_context=screen_context
         )
         context_ms = (perf_counter() - context_start) * 1000
+        sandbox_session, personal_library_error = _build_assistant_personal_library_runtime(
+            db=db,
+            user_id=session.user_id,
+        )
         deps = AssistantDeps(
             user_id=session.user_id,
             session_id=session.id,
             screen_context=screen_context,
             context_snapshot=context_snapshot,
             session_factory=get_session_factory(),
+            sandbox_session=sandbox_session,
+            personal_library_error=personal_library_error,
         )
         logger.info(
             "Assistant context built",
@@ -1208,6 +1343,7 @@ async def process_assistant_turn_async(
         db.rollback()
         update_message_failed(db, message_id, str(exc))
     finally:
+        _close_sandbox_session(locals().get("deps").sandbox_session if "deps" in locals() else None)
         db.close()
 
 

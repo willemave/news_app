@@ -8,8 +8,25 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.models.schema import ContentFavorites
+from app.services.personal_markdown_library import sync_personal_markdown_for_content
 
 logger = get_logger(__name__)
+
+
+def _sync_personal_markdown_after_favorite_mutation(
+    db: Session,
+    *,
+    user_id: int,
+    content_id: int,
+) -> None:
+    try:
+        sync_personal_markdown_for_content(db, user_id=user_id, content_id=content_id)
+    except Exception:
+        logger.exception(
+            "Failed to sync personal markdown for content_id=%s, user_id=%s",
+            content_id,
+            user_id,
+        )
 
 
 def toggle_favorite(
@@ -28,6 +45,11 @@ def toggle_favorite(
         if existing:
             db.delete(existing)
             db.commit()
+            _sync_personal_markdown_after_favorite_mutation(
+                db,
+                user_id=user_id,
+                content_id=content_id,
+            )
             return (False, None)
 
         favorite = ContentFavorites(
@@ -38,6 +60,11 @@ def toggle_favorite(
         db.add(favorite)
         db.commit()
         db.refresh(favorite)
+        _sync_personal_markdown_after_favorite_mutation(
+            db,
+            user_id=user_id,
+            content_id=content_id,
+        )
         return (True, favorite)
     except IntegrityError:
         logger.exception(
@@ -77,6 +104,11 @@ def add_favorite(db: Session, content_id: int, user_id: int) -> ContentFavorites
         db.add(favorite)
         db.commit()
         db.refresh(favorite)
+        _sync_personal_markdown_after_favorite_mutation(
+            db,
+            user_id=user_id,
+            content_id=content_id,
+        )
         return favorite
     except Exception:
         logger.exception(
@@ -98,6 +130,11 @@ def remove_favorite(db: Session, content_id: int, user_id: int) -> bool:
             )
         )
         db.commit()
+        _sync_personal_markdown_after_favorite_mutation(
+            db,
+            user_id=user_id,
+            content_id=content_id,
+        )
         return result.rowcount > 0
     except Exception:
         logger.exception(

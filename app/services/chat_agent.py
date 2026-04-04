@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.core.observability import build_log_extra
+from app.core.settings import get_settings
 from app.models.chat_message_metadata import ChatMessageRenderMetadata
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.exa_client import exa_search, get_exa_client
@@ -27,6 +28,12 @@ from app.services.llm_models import (
     resolve_effective_api_key,
     resolve_model_provider,
 )
+from app.services.personal_markdown_library import sync_personal_markdown_library_for_user
+from app.services.sandbox_runtime import (
+    PersonalLibrarySandboxSession,
+    SandboxRuntimeUnavailableError,
+    create_personal_library_sandbox_session,
+)
 
 logger = get_logger(__name__)
 
@@ -37,6 +44,13 @@ TOKEN_CHARS_PER_TOKEN = 4
 SYSTEM_PROMPT_TEXT = (
     "You are an assistant helping users explore articles, news, and topics. "
     "Be concise but thorough. Help users understand what they read."
+    "\n\n"
+    "**Personal Library Tools:**\n"
+    "- If the user asks about their saved, favorited, or previously chatted items, "
+    "use search_personal_library first\n"
+    "- Use list_personal_library to inspect the library structure before reading files\n"
+    "- Use read_personal_markdown_file for exact files returned by search_personal_library\n"
+    "- Prefer these tools over guessing about the user's saved content"
     "\n\n"
     "**CRITICAL - How to Use Web Search:**\n"
     "- Use exa_web_search to research topics, verify claims, and find context\n"
@@ -203,6 +217,15 @@ class ChatDeps:
     content: Content | None
     article_context: str | None  # Pre-built context string from article/session snapshot
     context_label: str = "Article Context"
+    sandbox_session: PersonalLibrarySandboxSession | None = None
+    personal_library_error: str | None = None
+
+
+def _personal_library_unavailable_message(error: str | None) -> str:
+    """Render a consistent unavailability message for personal library tools."""
+    if error:
+        return f"Personal markdown library is unavailable: {error}"
+    return "Personal markdown library is unavailable for this chat."
 
 
 # Agent cache keyed by model spec and effective credential identity.
@@ -302,6 +325,59 @@ def get_chat_agent(
         if parts:
             return "\n".join(parts)
         return ""
+
+    @agent.tool
+    def search_personal_library(
+        ctx: RunContext[ChatDeps],
+        query: str,
+        limit: int = 20,
+        glob: str = "*.md",
+    ) -> str:
+        """Search the user's personal markdown library."""
+        sandbox_session = ctx.deps.sandbox_session
+        if sandbox_session is None:
+            return _personal_library_unavailable_message(ctx.deps.personal_library_error)
+
+        normalized_limit = max(1, min(limit, 50))
+        return sandbox_session.search_files(
+            query=query,
+            glob=glob,
+            limit=normalized_limit,
+        )
+
+    @agent.tool
+    def list_personal_library(
+        ctx: RunContext[ChatDeps],
+        subpath: str = "",
+        limit: int = 200,
+    ) -> str:
+        """List markdown files in the user's personal markdown library."""
+        sandbox_session = ctx.deps.sandbox_session
+        if sandbox_session is None:
+            return _personal_library_unavailable_message(ctx.deps.personal_library_error)
+
+        normalized_limit = max(1, min(limit, 500))
+        return sandbox_session.list_files(
+            subpath=subpath,
+            limit=normalized_limit,
+        )
+
+    @agent.tool
+    def read_personal_markdown_file(
+        ctx: RunContext[ChatDeps],
+        relative_path: str,
+        max_chars: int = 12_000,
+    ) -> str:
+        """Read one markdown file from the user's personal markdown library."""
+        sandbox_session = ctx.deps.sandbox_session
+        if sandbox_session is None:
+            return _personal_library_unavailable_message(ctx.deps.personal_library_error)
+
+        normalized_max_chars = max(500, min(max_chars, 40_000))
+        return sandbox_session.read_file(
+            relative_path=relative_path,
+            max_chars=normalized_max_chars,
+        )
 
     @agent.tool
     def exa_web_search(
@@ -707,22 +783,23 @@ def _serialize_render_metadata(
 
 
 def _build_chat_deps(
-    db: Session, session: ChatSession, include_full_text: bool = False
+    db: Session,
+    session: ChatSession,
+    include_full_text: bool = False,
+    *,
+    include_library_tools: bool = True,
 ) -> ChatDeps:
     """Construct chat dependencies (content + context) for a session."""
     content: Content | None = None
     article_context: str | None = None
     context_label = "Article Context"
+    sandbox_session: PersonalLibrarySandboxSession | None = None
+    personal_library_error: str | None = None
 
     if session.context_snapshot:
-        return ChatDeps(
-            session=session,
-            content=None,
-            article_context=session.context_snapshot,
-            context_label="Session Context",
-        )
-
-    if session.content_id:
+        article_context = session.context_snapshot
+        context_label = "Session Context"
+    elif session.content_id:
         content = db.query(Content).filter(Content.id == session.content_id).first()
         if content:
             max_system_article_tokens = int(CONTEXT_WINDOW_TOKENS * SYSTEM_AND_ARTICLE_BUDGET_RATIO)
@@ -737,12 +814,59 @@ def _build_chat_deps(
                 max_tokens=available_tokens,
             )
 
+    if include_library_tools:
+        sandbox_session, personal_library_error = _build_personal_library_runtime(db, session)
+
     return ChatDeps(
         session=session,
         content=content,
         article_context=article_context,
         context_label=context_label,
+        sandbox_session=sandbox_session,
+        personal_library_error=personal_library_error,
     )
+
+
+def _build_personal_library_runtime(
+    db: Session,
+    session: ChatSession,
+) -> tuple[PersonalLibrarySandboxSession | None, str | None]:
+    """Synchronize and hydrate the personal markdown library for a chat turn."""
+    settings = get_settings()
+    if not settings.personal_markdown_enabled or settings.chat_sandbox_provider == "disabled":
+        return None, None
+
+    try:
+        sync_personal_markdown_library_for_user(db, user_id=session.user_id)
+        sandbox_session = create_personal_library_sandbox_session(user_id=session.user_id)
+        return sandbox_session, None
+    except SandboxRuntimeUnavailableError as exc:
+        return None, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Failed to prepare personal markdown library",
+            extra=build_log_extra(
+                component="chat",
+                operation="build_personal_library_runtime",
+                event_name="chat.turn.personal_library",
+                status="degraded",
+                session_id=session.id,
+                user_id=session.user_id,
+                content_id=session.content_id,
+                context_data={"failure_class": type(exc).__name__},
+            ),
+        )
+        return None, str(exc)
+
+
+def _close_sandbox_session(sandbox_session: PersonalLibrarySandboxSession | None) -> None:
+    """Release the per-turn sandbox session."""
+    if sandbox_session is None:
+        return
+    try:
+        sandbox_session.close()
+    except Exception:
+        logger.debug("Ignoring sandbox close failure", exc_info=True)
 
 
 def _log_chat_usage(
@@ -903,7 +1027,11 @@ async def run_chat_turn(
     include_full_text = True
 
     deps_start = perf_counter()
-    deps = _build_chat_deps(db, session, include_full_text=include_full_text)
+    deps = _build_chat_deps(
+        db,
+        session,
+        include_full_text=include_full_text,
+    )
     provider_api_key = resolve_effective_api_key(
         db=db,
         user_id=session.user_id,
@@ -1022,6 +1150,8 @@ async def run_chat_turn(
         )
         db.rollback()
         raise
+    finally:
+        _close_sandbox_session(deps.sandbox_session)
 
 
 async def process_message_async(
@@ -1244,6 +1374,7 @@ async def process_message_async(
         except Exception as update_exc:
             logger.error("[AsyncChat:UPDATE_FAILED] mid=%s error=%s", message_id, update_exc)
     finally:
+        _close_sandbox_session(locals().get("deps").sandbox_session if "deps" in locals() else None)
         db.close()
 
 
@@ -1395,3 +1526,5 @@ async def generate_initial_suggestions(
         )
         db.rollback()
         raise
+    finally:
+        _close_sandbox_session(deps.sandbox_session)

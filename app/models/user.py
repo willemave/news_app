@@ -184,6 +184,17 @@ class AppleSignInRequest(BaseModel):
     full_name: str | None = None
 
 
+class DebugUserSessionRequest(BaseModel):
+    """Request schema for creating or resuming a debug user session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: int | None = Field(default=None, ge=1)
+    has_completed_onboarding: bool | None = None
+    has_completed_new_user_tutorial: bool | None = None
+    has_completed_live_voice_onboarding: bool | None = None
+
+
 class TokenResponse(BaseModel):
     """Response schema for authentication tokens."""
 

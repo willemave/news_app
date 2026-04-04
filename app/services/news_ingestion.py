@@ -69,6 +69,15 @@ def _clean_string(value: Any) -> str | None:
     return cleaned or None
 
 
+def _clean_title(value: Any) -> str | None:
+    cleaned = _clean_string(value)
+    if cleaned is None:
+        return None
+    if cleaned.casefold() == "void":
+        return None
+    return cleaned
+
+
 def _normalize_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         if value.tzinfo is None:
@@ -353,14 +362,14 @@ def build_news_item_upsert_input_from_scraped_item(item: dict[str, Any]) -> News
     )
     article_url = story_url
     article_title = (
-        _clean_string(article_meta.get("title"))
-        or _clean_string(summary_meta.get("title"))
-        or _clean_string(item.get("title"))
+        _clean_title(article_meta.get("title"))
+        or _clean_title(summary_meta.get("title"))
+        or _clean_title(item.get("title"))
     )
     article_domain = _clean_string(article_meta.get("source_domain")) or _clean_string(
         metadata.get("source")
     )
-    summary_title = _clean_string(summary_meta.get("title")) or article_title
+    summary_title = _clean_title(summary_meta.get("title")) or article_title
     summary_key_points = _normalize_key_points(summary_meta.get("key_points"))
     summary_text = _clean_string(summary_meta.get("summary"))
     source_external_id = _clean_string(item.get("source_external_id")) or _clean_string(
@@ -425,7 +434,7 @@ def build_news_item_upsert_input_from_content(content: Content) -> NewsItemUpser
 
     summary_text = _clean_string(summary_meta.get("summary"))
     summary_key_points = _normalize_key_points(summary_meta.get("key_points"))
-    summary_title = _clean_string(summary_meta.get("title")) or _clean_string(content.title)
+    summary_title = _clean_title(summary_meta.get("title")) or _clean_title(content.title)
     has_materialized_summary = _has_materialized_summary(
         summary_key_points=summary_key_points,
         summary_text=summary_text,
@@ -463,7 +472,11 @@ def build_news_item_upsert_input_from_content(content: Content) -> NewsItemUpser
         ),
         canonical_story_url=story_url,
         article_url=story_url,
-        article_title=_clean_string(article_meta.get("title")) or _clean_string(content.title),
+        article_title=(
+            _clean_title(article_meta.get("title"))
+            or _clean_title(summary_meta.get("title"))
+            or _clean_title(content.title)
+        ),
         article_domain=_clean_string(article_meta.get("source_domain"))
         or _clean_string(content.source),
         discussion_url=_normalize_url(metadata.get("discussion_url")),
@@ -554,6 +567,19 @@ def upsert_news_item(db: Session, payload: NewsItemUpsertInput) -> tuple[NewsIte
     db.add(record)
     db.flush()
     return record, True
+
+
+def should_enqueue_news_item_enrichment(
+    *,
+    news_item: NewsItem,
+    was_created: bool,
+) -> bool:
+    """Return whether one short-form item should enter the enrichment pipeline."""
+    return (
+        was_created
+        and news_item.legacy_content_id is None
+        and news_item.status != NewsItemStatus.READY.value
+    )
 
 
 def backfill_news_items_from_contents(

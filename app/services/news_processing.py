@@ -55,8 +55,6 @@ def _clean_title(value: Any) -> str | None:
         return None
     if cleaned.casefold() == "void":
         return None
-    if len(cleaned) < 5:
-        return None
     return cleaned
 
 

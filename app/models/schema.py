@@ -269,7 +269,7 @@ class NewsItem(Base):
     article_title = Column(String(500), nullable=True)
     article_domain = Column(String(255), nullable=True)
     discussion_url = Column(String(2048), nullable=True)
-    summary_title = Column(String(240), nullable=True)
+    summary_title = Column(Text, nullable=True)
     summary_key_points = Column(JSON, default=list, nullable=False)
     summary_text = Column(Text, nullable=True)
     raw_metadata = Column(JSON, default=dict, nullable=False)
