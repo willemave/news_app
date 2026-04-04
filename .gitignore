@@ -43,6 +43,7 @@ logs/
 build/
 .build/
 .deriveddata/
+.derived-data/
 *.png
 *.db-shm
 *.db-wal
