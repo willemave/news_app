@@ -27,6 +27,7 @@ final class AuthenticationViewModel: ObservableObject {
 
     private let authService = AuthenticationService.shared
     private var lastKnownUser: User?
+    private var hasAttemptedE2EAutoLogin = false
 
     init() {
         checkAuthStatus()
@@ -63,6 +64,11 @@ final class AuthenticationViewModel: ObservableObject {
 
         // No tokens at all -> user must sign in
         guard hasRefreshToken || hasAccessToken else {
+            if E2ETestLaunch.shouldAutoLogin && !hasAttemptedE2EAutoLogin {
+                hasAttemptedE2EAutoLogin = true
+                performE2EAutoLogin()
+                return
+            }
             authState = .unauthenticated
             return
         }
@@ -183,6 +189,25 @@ final class AuthenticationViewModel: ObservableObject {
             authState = .unauthenticated
         }
     }
+
+    private func performE2EAutoLogin() {
+        Task {
+            do {
+                let session = try await authService.createDebugUser(
+                    userId: E2ETestLaunch.userID,
+                    hasCompletedOnboarding: E2ETestLaunch.completeOnboarding,
+                    hasCompletedNewUserTutorial: E2ETestLaunch.completeTutorial
+                )
+                errorMessage = nil
+                lastKnownUser = session.user
+                authState = .authenticated(session.user)
+            } catch {
+                presentAuthError(error)
+                authState = .unauthenticated
+            }
+        }
+    }
+
     private func presentAuthError(_ error: Error) {
         if let authorizationError = error as? ASAuthorizationError,
            authorizationError.code == .canceled {

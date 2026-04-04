@@ -89,6 +89,8 @@ struct ContentDetailView: View {
     // Discussion sheet
     @State private var discussionPayload: ContentDiscussion?
     @State private var isLoadingDiscussion: Bool = false
+    @State private var discussionFallbackURL: URL?
+    @State private var discussionUnavailableMessage: String?
     @State private var discussionTab: DiscussionTab = .comments
     @State private var collapsedCommentIDs: Set<String> = Set()
     // Swipe haptic feedback
@@ -456,6 +458,7 @@ struct ContentDetailView: View {
         }
         .sheet(item: $activeSheet, onDismiss: {
             chatError = nil
+            discussionUnavailableMessage = nil
         }) {
             switch $0 {
             case .share:
@@ -808,6 +811,7 @@ struct ContentDetailView: View {
                         .foregroundColor(.white)
                         .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 1)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("content.detail.title.\(content.id)")
 
                     HStack(spacing: 6) {
                         HStack(spacing: 4) {
@@ -862,6 +866,7 @@ struct ContentDetailView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("content.detail.title.\(content.id)")
 
                     HStack(spacing: 6) {
                         HStack(spacing: 4) {
@@ -1338,28 +1343,36 @@ struct ContentDetailView: View {
     }
 
     private func handleDiscussionTap(content: ContentDetail, fallbackURL: URL) {
+        discussionFallbackURL = fallbackURL
+        discussionUnavailableMessage = nil
+        activeSheet = .discussion
         Task { await loadDiscussion(content: content, fallbackURL: fallbackURL) }
     }
 
     @MainActor
     private func loadDiscussion(content: ContentDetail, fallbackURL: URL) async {
-        if isLoadingDiscussion { return }
+        discussionFallbackURL = fallbackURL
+        if isLoadingDiscussion {
+            activeSheet = .discussion
+            return
+        }
         isLoadingDiscussion = true
         discussionPayload = nil
+        discussionUnavailableMessage = nil
+        activeSheet = .discussion
         defer { isLoadingDiscussion = false }
 
         do {
             let discussion = try await ContentService.shared.fetchContentDiscussion(id: content.id)
+            discussionPayload = discussion
             if discussion.hasRenderableContent {
-                discussionPayload = discussion
                 discussionTab = .comments
                 collapsedCommentIDs = []
-                activeSheet = .discussion
             } else {
-                openURL(fallbackURL)
+                discussionUnavailableMessage = discussion.unavailableMessage
             }
         } catch {
-            openURL(fallbackURL)
+            discussionUnavailableMessage = "Comments could not be loaded right now."
         }
     }
 
@@ -1367,7 +1380,9 @@ struct ContentDetailView: View {
     private var discussionSheet: some View {
         NavigationStack {
             Group {
-                if let discussion = discussionPayload {
+                if isLoadingDiscussion {
+                    discussionLoadingView
+                } else if let discussion = discussionPayload, discussion.hasRenderableContent {
                     if discussion.mode == "discussion_list" {
                         // Techmeme-style grouped links — no tabs
                         ScrollView {
@@ -1426,10 +1441,7 @@ struct ContentDetailView: View {
                         }
                     }
                 } else {
-                    Text("No discussion available.")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    discussionUnavailableView
                 }
             }
             .navigationTitle("Discussion")
@@ -1440,6 +1452,74 @@ struct ContentDetailView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var discussionLoadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Loading discussion…")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
+    }
+
+    @ViewBuilder
+    private var discussionUnavailableView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Discussion unavailable")
+                    .font(.headline)
+
+                Text(discussionUnavailableText)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let url = discussionResolvedFallbackURL {
+                Button {
+                    activeSheet = nil
+                    openURL(url)
+                } label: {
+                    Label("Open original discussion", systemImage: "arrow.up.right.square")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            if let content = viewModel.content, let url = discussionResolvedFallbackURL {
+                Button("Try again") {
+                    Task { await loadDiscussion(content: content, fallbackURL: url) }
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(20)
+    }
+
+    private var discussionResolvedFallbackURL: URL? {
+        if let discussionURL = discussionPayload?.discussionURL,
+           let url = URL(string: discussionURL) {
+            return url
+        }
+        return discussionFallbackURL
+    }
+
+    private var discussionUnavailableText: String {
+        if let discussionUnavailableMessage {
+            return discussionUnavailableMessage
+        }
+        if let discussionPayload {
+            return discussionPayload.unavailableMessage
+        }
+        return "No discussion is available for this story."
     }
 
     private struct DiscussionCommentIndex {

@@ -16,6 +16,18 @@ private let authLogger = Logger(subsystem: "com.newsly", category: "Authenticati
 final class AuthenticationService: NSObject {
     static let shared = AuthenticationService()
 
+    private struct DebugUserRequest: Encodable {
+        let userId: Int?
+        let hasCompletedOnboarding: Bool
+        let hasCompletedNewUserTutorial: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case userId = "user_id"
+            case hasCompletedOnboarding = "has_completed_onboarding"
+            case hasCompletedNewUserTutorial = "has_completed_new_user_tutorial"
+        }
+    }
+
     private override init() {
         super.init()
     }
@@ -153,10 +165,22 @@ final class AuthenticationService: NSObject {
 
     /// Create a fresh debug user (debug servers only).
     @MainActor
-    func createDebugUser() async throws -> AuthSession {
+    func createDebugUser(
+        userId: Int? = nil,
+        hasCompletedOnboarding: Bool = false,
+        hasCompletedNewUserTutorial: Bool = false
+    ) async throws -> AuthSession {
         let url = URL(string: "\(AppSettings.shared.baseURL)\(APIEndpoints.authDebugNewUser)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            DebugUserRequest(
+                userId: userId,
+                hasCompletedOnboarding: hasCompletedOnboarding,
+                hasCompletedNewUserTutorial: hasCompletedNewUserTutorial
+            )
+        )
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

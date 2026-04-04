@@ -62,6 +62,28 @@ enum ServerConfigurationDefaults {
         }
         return value
     }
+
+    static func applyLaunchOverridesIfNeeded(to userDefaults: UserDefaults) {
+        guard E2ETestLaunch.isEnabled else {
+            return
+        }
+
+        if let host = E2ETestLaunch.serverHost {
+            userDefaults.set(host, forKey: hostKey)
+        }
+
+        if let port = E2ETestLaunch.serverPort {
+            userDefaults.set(port, forKey: portKey)
+        }
+
+        if let useHTTPS = E2ETestLaunch.useHTTPS {
+            userDefaults.set(useHTTPS, forKey: useHTTPSKey)
+        }
+
+        appSettingsLogger.notice(
+            "Applied E2E launch overrides host=\(userDefaults.string(forKey: hostKey) ?? "unset", privacy: .public) port=\(userDefaults.string(forKey: portKey) ?? "unset", privacy: .public)"
+        )
+    }
 }
 
 enum LongArticleDisplayMode: String, CaseIterable {
@@ -132,5 +154,6 @@ class AppSettings: ObservableObject {
     
     private init() {
         ServerConfigurationDefaults.applyDebugDefaultsIfNeeded(to: SharedContainer.userDefaults)
+        ServerConfigurationDefaults.applyLaunchOverridesIfNeeded(to: SharedContainer.userDefaults)
     }
 }

@@ -41,9 +41,33 @@ struct ContentDiscussion: Codable {
             return !comments.isEmpty || !links.isEmpty
         }
         if mode == "discussion_list" {
-            return !discussionGroups.isEmpty
+            return !discussionGroups.isEmpty || !links.isEmpty
         }
         return false
+    }
+
+    var unavailableMessage: String {
+        if let errorMessage = normalizedMessage(errorMessage) {
+            return errorMessage
+        }
+
+        switch status {
+        case "not_ready":
+            return "Comments are still being prepared for this story."
+        case "failed":
+            return "Comments could not be loaded in the app right now."
+        default:
+            if discussionURL != nil || sourceURL != nil {
+                return "This story has a discussion link, but there is no in-app discussion payload yet."
+            }
+            return "No discussion is available for this story."
+        }
+    }
+
+    private func normalizedMessage(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

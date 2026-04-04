@@ -5,10 +5,6 @@ import XCTest
 @MainActor
 final class TabCoordinatorViewModelTests: XCTestCase {
     func testHandleTabChangeDoesNotResetOutgoingShortNewsState() {
-        let originalMode = AppSettings.shared.fastNewsMode
-        AppSettings.shared.fastNewsMode = FastNewsMode.newsList.rawValue
-        defer { AppSettings.shared.fastNewsMode = originalMode }
-
         let shortRepository = FakeContentRepository()
         let longRepository = FakeContentRepository()
         let shortViewModel = ShortNewsListViewModel(
@@ -21,16 +17,11 @@ final class TabCoordinatorViewModelTests: XCTestCase {
             readRepository: FakeReadStatusRepository(),
             unreadCountService: .shared
         )
-        let dailyDigestViewModel = DailyDigestListViewModel(
-            repository: FakeDailyNewsDigestRepository(),
-            unreadCountService: .shared
-        )
         shortViewModel.replaceItems([makeSummary(id: 1, contentType: "news")])
         longViewModel.replaceItems([makeSummary(id: 2, contentType: "article")])
 
         let coordinator = TabCoordinatorViewModel(
             shortNewsVM: shortViewModel,
-            dailyDigestVM: dailyDigestViewModel,
             longContentVM: longViewModel,
             initialTab: .shortNews
         )
@@ -43,10 +34,6 @@ final class TabCoordinatorViewModelTests: XCTestCase {
     }
 
     func testHandleTabChangeDoesNotResetOutgoingLongFormState() {
-        let originalMode = AppSettings.shared.fastNewsMode
-        AppSettings.shared.fastNewsMode = FastNewsMode.newsList.rawValue
-        defer { AppSettings.shared.fastNewsMode = originalMode }
-
         let shortRepository = FakeContentRepository()
         let longRepository = FakeContentRepository()
         let shortViewModel = ShortNewsListViewModel(
@@ -59,16 +46,11 @@ final class TabCoordinatorViewModelTests: XCTestCase {
             readRepository: FakeReadStatusRepository(),
             unreadCountService: .shared
         )
-        let dailyDigestViewModel = DailyDigestListViewModel(
-            repository: FakeDailyNewsDigestRepository(),
-            unreadCountService: .shared
-        )
         shortViewModel.replaceItems([makeSummary(id: 1, contentType: "news")])
         longViewModel.replaceItems([makeSummary(id: 2, contentType: "article")])
 
         let coordinator = TabCoordinatorViewModel(
             shortNewsVM: shortViewModel,
-            dailyDigestVM: dailyDigestViewModel,
             longContentVM: longViewModel,
             initialTab: .longContent
         )
@@ -212,38 +194,5 @@ private final class FakeReadStatusRepository: ReadStatusRepositoryType {
         Just(())
             .setFailureType(to: Error.self)
             .eraseToAnyPublisher()
-    }
-}
-
-private final class FakeDailyNewsDigestRepository: DailyNewsDigestRepositoryType {
-    func loadPage(
-        readFilter: ReadFilter,
-        cursor: String?,
-        limit: Int?
-    ) -> AnyPublisher<DailyNewsDigestListResponse, Error> {
-        Just(
-            DailyNewsDigestListResponse(
-                digests: [],
-                meta: PaginationMetadata(
-                    nextCursor: nil,
-                    hasMore: false,
-                    pageSize: 0,
-                    total: 0
-                )
-            )
-        )
-        .setFailureType(to: Error.self)
-        .eraseToAnyPublisher()
-    }
-
-    func markRead(id: Int) -> AnyPublisher<Void, Error> {
-        fatalError("unused in test")
-    }
-
-    func startBulletDigDeeperChat(
-        digestId: Int,
-        bulletId: Int
-    ) async throws -> StartDailyDigestChatResponse {
-        fatalError("unused in test")
     }
 }

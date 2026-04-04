@@ -7,6 +7,153 @@
 
 import Foundation
 
+enum E2ETestLaunch {
+    private static let arguments = ProcessInfo.processInfo.arguments
+    private static let defaults = UserDefaults.standard
+    private static let argumentValues = parsedArgumentValues()
+
+    private static func parsedArgumentValues() -> [String: String] {
+        var values: [String: String] = [:]
+        let launchArguments = Array(arguments.dropFirst())
+        var index = 0
+
+        while index < launchArguments.count {
+            let rawArgument = launchArguments[index]
+            let normalizedArgument = normalizeArgumentKey(rawArgument)
+
+            if let separatorIndex = normalizedArgument.firstIndex(of: "=") {
+                let key = String(normalizedArgument[..<separatorIndex])
+                let value = String(normalizedArgument[normalizedArgument.index(after: separatorIndex)...])
+                values[key] = value
+                index += 1
+                continue
+            }
+
+            let nextIndex = index + 1
+            if nextIndex < launchArguments.count {
+                let nextArgument = launchArguments[nextIndex]
+                if !nextArgument.hasPrefix("-") {
+                    values[normalizedArgument] = nextArgument
+                    index += 2
+                    continue
+                }
+            }
+
+            values[normalizedArgument] = "true"
+            index += 1
+        }
+
+        return values
+    }
+
+    private static func normalizeArgumentKey(_ rawArgument: String) -> String {
+        var normalized = rawArgument
+        while normalized.hasPrefix("-") {
+            normalized.removeFirst()
+        }
+        return normalized
+    }
+
+    private static func rawValue(for key: String) -> Any? {
+        if let argumentValue = argumentValues[key] {
+            return argumentValue
+        }
+        return defaults.object(forKey: key)
+    }
+
+    private static func string(for key: String) -> String? {
+        switch rawValue(for: key) {
+        case let value as String:
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        case let value?:
+            let rendered = String(describing: value).trimmingCharacters(in: .whitespacesAndNewlines)
+            return rendered.isEmpty ? nil : rendered
+        default:
+            return nil
+        }
+    }
+
+    private static func bool(for key: String) -> Bool {
+        switch rawValue(for: key) {
+        case let value as Bool:
+            return value
+        case let value as NSNumber:
+            return value.boolValue
+        case let value as String:
+            return ["1", "true", "yes"].contains(value.lowercased())
+        default:
+            if let argumentValue = argumentValues[key] {
+                return ["1", "true", "yes"].contains(argumentValue.lowercased())
+            }
+            return arguments.contains(key) || arguments.contains("-\(key)")
+        }
+    }
+
+    private static func int(for key: String) -> Int? {
+        switch rawValue(for: key) {
+        case let value as Int:
+            return value
+        case let value as NSNumber:
+            return value.intValue
+        case let value as String:
+            return Int(value)
+        default:
+            return nil
+        }
+    }
+
+    static let enabledKey = "newslyE2EEnabled"
+    static let autoLoginKey = "newslyE2EAutoLogin"
+    static let serverHostKey = "newslyE2EServerHost"
+    static let serverPortKey = "newslyE2EServerPort"
+    static let useHTTPSKey = "newslyE2EUseHTTPS"
+    static let userIDKey = "newslyE2EUserId"
+    static let completeOnboardingKey = "newslyE2ECompleteOnboarding"
+    static let completeTutorialKey = "newslyE2ECompleteTutorial"
+
+    static var isEnabled: Bool {
+        bool(for: enabledKey)
+    }
+
+    static var shouldAutoLogin: Bool {
+        isEnabled && bool(for: autoLoginKey)
+    }
+
+    static var serverHost: String? {
+        guard isEnabled else { return nil }
+        return string(for: serverHostKey)
+    }
+
+    static var serverPort: String? {
+        guard isEnabled else { return nil }
+        return string(for: serverPortKey)
+    }
+
+    static var useHTTPS: Bool? {
+        guard isEnabled else { return nil }
+        if rawValue(for: useHTTPSKey) == nil
+            && !arguments.contains(useHTTPSKey)
+            && !arguments.contains("-\(useHTTPSKey)") {
+            return nil
+        }
+        return bool(for: useHTTPSKey)
+    }
+
+    static var userID: Int? {
+        guard isEnabled else { return nil }
+        return int(for: userIDKey)
+    }
+
+    static var completeOnboarding: Bool {
+        bool(for: completeOnboardingKey)
+    }
+
+    static var completeTutorial: Bool {
+        bool(for: completeTutorialKey)
+    }
+}
+
 enum SharedContainer {
     private static let sharedKeychainInfoKey = "NewslySharedKeychainAccessGroup"
 
@@ -31,6 +178,9 @@ enum SharedContainer {
     }
 
     static var userDefaults: UserDefaults {
+        if E2ETestLaunch.isEnabled {
+            return .standard
+        }
         if let appGroupId, let defaults = UserDefaults(suiteName: appGroupId) {
             return defaults
         }

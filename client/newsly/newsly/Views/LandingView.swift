@@ -30,6 +30,7 @@ struct LandingView: View {
                 bottomCard
             }
         }
+        .accessibilityIdentifier("auth.landing.screen")
         .preferredColorScheme(.light)
         .sheet(isPresented: $showingDebugMenu) {
             DebugMenuView()
@@ -89,6 +90,7 @@ struct LandingView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 24))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("auth.continue_with_apple")
             .disabled(isLoading)
 
             if let errorMessage = authViewModel.errorMessage {

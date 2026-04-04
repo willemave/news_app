@@ -108,6 +108,7 @@ struct LongFormView: View {
             }
         }
         .screenContainer()
+        .accessibilityIdentifier("long.screen")
     }
 
     // MARK: - Bento Grid Layout
@@ -179,6 +180,7 @@ struct LongFormView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("long.row.\(content.id)")
         .onAppear {
             if content.id == allItems.last?.id {
                 viewModel.loadMoreTrigger.send(())

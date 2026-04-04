@@ -72,6 +72,7 @@ struct ContentView: View {
             .tag(RootTab.longContent)
             .tabItem {
                 Label("Long Form", systemImage: "doc.richtext")
+                    .accessibilityIdentifier("tab.long_form")
             }
             .badge(longBadge != nil ? Int(longBadge!) ?? 0 : 0)
 
@@ -92,6 +93,7 @@ struct ContentView: View {
             .tag(RootTab.shortNews)
             .tabItem {
                 Label("Fast News", systemImage: "bolt.fill")
+                    .accessibilityIdentifier("tab.fast_news")
             }
             .badge(shortBadge != nil ? Int(shortBadge!) ?? 0 : 0)
 
@@ -116,6 +118,7 @@ struct ContentView: View {
             .tag(RootTab.knowledge)
             .tabItem {
                 Label("Knowledge", systemImage: "books.vertical.fill")
+                    .accessibilityIdentifier("tab.knowledge")
             }
 
             NavigationStack {
@@ -124,6 +127,7 @@ struct ContentView: View {
             .tag(RootTab.more)
             .tabItem {
                 Label("More", systemImage: "ellipsis.circle.fill")
+                    .accessibilityIdentifier("tab.more")
             }
             .badge(moreBadge != nil ? Int(moreBadge!) ?? 0 : 0)
         }

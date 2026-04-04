@@ -175,7 +175,7 @@ struct SettingsView: View {
                         Text("Council Personas")
                             .font(.listTitle)
                             .foregroundStyle(Color.onSurface)
-                        Text("These four branches power council chat and can be switched live inside a conversation.")
+                        Text("These four branches power council chat and can be switched live with tabs inside a conversation.")
                             .font(.listCaption)
                             .foregroundStyle(Color.onSurfaceSecondary)
                     }
@@ -228,7 +228,7 @@ struct SettingsView: View {
                 }
 
                 HStack {
-                    Text("Swiping between council replies switches the active branch for future messages.")
+                    Text("Tapping a council tab switches the active branch for future messages.")
                         .font(.caption)
                         .foregroundStyle(Color.onSurfaceSecondary)
                     Spacer()

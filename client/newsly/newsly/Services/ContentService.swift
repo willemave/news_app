@@ -394,18 +394,56 @@ class ContentService {
         }
     }
 
+    func bulkMarkNewsItemsAsRead(newsItemIds: [Int]) async throws -> BulkMarkReadResponse {
+        logger.info("[ContentService] bulkMarkNewsItemsAsRead called | ids=\(newsItemIds, privacy: .public) count=\(newsItemIds.count)")
+
+        struct BulkMarkReadRequest: Codable {
+            let contentIds: [Int]
+
+            enum CodingKeys: String, CodingKey {
+                case contentIds = "content_ids"
+            }
+        }
+
+        let request = BulkMarkReadRequest(contentIds: newsItemIds)
+        let encoder = JSONEncoder()
+        let body = try encoder.encode(request)
+
+        do {
+            let response: BulkMarkReadResponse = try await client.request(
+                APIEndpoints.newsItemsMarkRead,
+                method: "POST",
+                body: body
+            )
+            logger.info("[ContentService] bulkMarkNewsItemsAsRead success | markedCount=\(response.markedCount) failedIds=\(response.failedIds, privacy: .public)")
+            return response
+        } catch {
+            logger.error("[ContentService] bulkMarkNewsItemsAsRead failed | ids=\(newsItemIds, privacy: .public) error=\(error.localizedDescription)")
+            throw error
+        }
+    }
+
     func markAllAsRead(contentType: String) async throws -> BulkMarkReadResponse? {
         var allUnreadIds: [Int] = []
         var cursor: String? = nil
 
         // Loop through all pages until hasMore is false
         repeat {
-            let response = try await fetchContentList(
-                contentType: contentType,
-                readFilter: "unread",
-                cursor: cursor,
-                limit: 100  // Fetch larger batches for efficiency
-            )
+            let response: ContentListResponse
+            if contentType == APIContentType.news.rawValue {
+                response = try await fetchNewsItemList(
+                    readFilter: "unread",
+                    cursor: cursor,
+                    limit: 100
+                )
+            } else {
+                response = try await fetchContentList(
+                    contentType: contentType,
+                    readFilter: "unread",
+                    cursor: cursor,
+                    limit: 100  // Fetch larger batches for efficiency
+                )
+            }
 
             // Collect unread IDs from this page
             let pageUnreadIds = response.contents
@@ -425,6 +463,10 @@ class ContentService {
 
         guard !allUnreadIds.isEmpty else {
             return nil
+        }
+
+        if contentType == APIContentType.news.rawValue {
+            return try await bulkMarkNewsItemsAsRead(newsItemIds: allUnreadIds)
         }
 
         return try await bulkMarkAsRead(contentIds: allUnreadIds)

@@ -94,6 +94,7 @@ struct LongFormCard: View {
                                     .foregroundStyle(content.isRead ? Color.onSurfaceSecondary.opacity(0.5) : Color.onSurfaceSecondary)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("long.action.mark_read.\(content.id)")
 
                             Button {
                                 onToggleFavorite?()
@@ -103,6 +104,7 @@ struct LongFormCard: View {
                                     .foregroundStyle(content.isFavorited ? Color.terracottaPrimary : Color.onSurfaceSecondary)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("long.action.favorite.\(content.id)")
                         }
                     }
                     .padding(.top, 4)

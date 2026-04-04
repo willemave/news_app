@@ -1024,166 +1024,83 @@ private struct CouncilCandidatesBubble: View {
     let onSelectCouncilCandidate: ((Int) -> Void)?
 
     @State private var selectedChildSessionId: Int?
-    @State private var railWidth: CGFloat = 0
-    @State private var railHeight: CGFloat = 220
-    @State private var pendingSelectionTask: Task<Void, Never>?
 
     private var candidates: [CouncilCandidate] {
         message.councilCandidates.sorted { $0.order < $1.order }
     }
 
-    private var selectedIndex: Int? {
-        guard let selectedChildSessionId else { return nil }
-        return candidates.firstIndex { $0.childSessionId == selectedChildSessionId }
+    private var selectedCandidate: CouncilCandidate? {
+        if let selectedChildSessionId,
+           let candidate = candidates.first(where: { $0.childSessionId == selectedChildSessionId }) {
+            return candidate
+        }
+
+        return candidates.first
     }
 
-    private var previousCandidate: CouncilCandidate? {
-        guard let selectedIndex, selectedIndex > 0 else { return nil }
-        return candidates[selectedIndex - 1]
-    }
-
-    private var nextCandidate: CouncilCandidate? {
-        guard let selectedIndex, selectedIndex + 1 < candidates.count else { return nil }
-        return candidates[selectedIndex + 1]
-    }
-
-    private var bubbleWidth: CGFloat {
-        let resolvedWidth = railWidth > 0 ? railWidth : UIScreen.main.bounds.width * 0.78
-        return max(resolvedWidth - 18, 280)
-    }
-
-    private var sidePeekInset: CGFloat {
-        max((railWidth - bubbleWidth) / 2, 8)
+    private var activeChildSessionId: Int? {
+        message.activeCouncilChildSessionId ?? candidates.first?.childSessionId
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear {
-                        railWidth = proxy.size.width
-                    }
-                    .onChange(of: proxy.size.width) { _, newValue in
-                        railWidth = newValue
-                    }
-            }
-            .frame(height: 0)
-
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
-                    Color.clear
-                        .frame(width: sidePeekInset)
-                        .id("council-leading-peek")
-
+                HStack(spacing: 8) {
                     ForEach(candidates) { candidate in
-                        CouncilCandidateCard(
+                        CouncilCandidateTab(
                             candidate: candidate,
-                            textColor: textColor,
-                            isActive: message.activeCouncilChildSessionId == candidate.childSessionId,
-                            isSelecting: selectingChildSessionId == candidate.childSessionId
-                        )
-                        .frame(width: bubbleWidth)
-                        .id(candidate.childSessionId)
-                    }
-
-                    Color.clear
-                        .frame(width: sidePeekInset)
-                        .id("council-trailing-peek")
-                }
-                .scrollTargetLayout()
-            }
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $selectedChildSessionId, anchor: .center)
-            .scrollDisabled(selectingChildSessionId != nil)
-            .allowsHitTesting(selectingChildSessionId == nil)
-            .frame(height: railHeight)
-            .background(alignment: .topLeading) {
-                if railWidth > 0 {
-                    ZStack(alignment: .topLeading) {
-                        ForEach(candidates) { candidate in
-                            CouncilCandidateCard(
-                                candidate: candidate,
-                                textColor: textColor,
-                                isActive: message.activeCouncilChildSessionId == candidate.childSessionId,
-                                isSelecting: false
-                            )
-                            .frame(width: bubbleWidth)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .background(
-                                GeometryReader { proxy in
-                                    Color.clear
-                                        .preference(
-                                            key: CouncilRailHeightPreferenceKey.self,
-                                            value: proxy.size.height
-                                        )
-                                }
-                            )
+                            isSelected: selectedChildSessionId == candidate.childSessionId,
+                            isActive: activeChildSessionId == candidate.childSessionId,
+                            isSelecting: selectingChildSessionId == candidate.childSessionId,
+                            isInteractionDisabled: selectingChildSessionId != nil
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedChildSessionId = candidate.childSessionId
+                            }
+                            guard activeChildSessionId != candidate.childSessionId else { return }
+                            onSelectCouncilCandidate?(candidate.childSessionId)
                         }
                     }
-                    .hidden()
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
                 }
+                .padding(.vertical, 2)
             }
+            .scrollIndicators(.hidden)
 
-            HStack(spacing: 10) {
-                CouncilNeighborHint(
-                    title: previousCandidate?.personaName,
-                    systemImage: "chevron.left",
-                    isLeading: true
+            if let selectedCandidate {
+                CouncilCandidateCard(
+                    candidate: selectedCandidate,
+                    textColor: textColor,
+                    isSelected: true,
+                    isActive: activeChildSessionId == selectedCandidate.childSessionId,
+                    isSelecting: selectingChildSessionId == selectedCandidate.childSessionId
                 )
-
-                Spacer(minLength: 0)
-
-                CouncilNeighborHint(
-                    title: nextCandidate?.personaName,
-                    systemImage: "chevron.right",
-                    isLeading: false
-                )
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .onAppear {
-            selectedChildSessionId = message.activeCouncilChildSessionId ?? candidates.first?.childSessionId
+            selectedChildSessionId = activeChildSessionId
         }
         .onChange(of: message.activeCouncilChildSessionId) { _, newValue in
-            guard let newValue else { return }
-            selectedChildSessionId = newValue
-        }
-        .onChange(of: selectedChildSessionId) { _, newValue in
-            guard let newValue else { return }
-            guard newValue != message.activeCouncilChildSessionId else { return }
-            pendingSelectionTask?.cancel()
-            pendingSelectionTask = Task {
-                try? await Task.sleep(nanoseconds: 250_000_000)
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    onSelectCouncilCandidate?(newValue)
-                }
+            if let newValue {
+                selectedChildSessionId = newValue
+                return
             }
-        }
-        .onPreferenceChange(CouncilRailHeightPreferenceKey.self) { newValue in
-            guard newValue > 0 else { return }
-            railHeight = max(newValue, 220)
-        }
-        .onDisappear {
-            pendingSelectionTask?.cancel()
-            pendingSelectionTask = nil
-        }
-    }
-}
 
-private struct CouncilRailHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+            selectedChildSessionId = candidates.first?.childSessionId
+        }
+        .onChange(of: selectingChildSessionId) { _, newValue in
+            guard newValue == nil else { return }
+            guard selectedChildSessionId != activeChildSessionId else { return }
+            selectedChildSessionId = activeChildSessionId
+        }
+        .animation(.easeInOut(duration: 0.2), value: selectedChildSessionId)
     }
 }
 
 private struct CouncilCandidateCard: View {
     let candidate: CouncilCandidate
     let textColor: UIColor
+    let isSelected: Bool
     let isActive: Bool
     let isSelecting: Bool
 
@@ -1199,8 +1116,12 @@ private struct CouncilCandidateCard: View {
                         Text("Current branch")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Color.chatAccent)
+                    } else if isSelecting {
+                        Text("Switching branch")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Color.chatAccent)
                     } else {
-                        Text("Swipe to compare")
+                        Text("Select a tab to switch")
                             .font(.caption2)
                             .foregroundStyle(Color.onSurfaceSecondary)
                     }
@@ -1233,7 +1154,7 @@ private struct CouncilCandidateCard: View {
                 bottomTrailingRadius: 16,
                 topTrailingRadius: 16
             )
-            .fill(isActive ? Color.surfaceContainer : Color.surfaceSecondary.opacity(0.92))
+            .fill(isSelected ? Color.surfaceContainer : Color.surfaceSecondary.opacity(0.92))
         )
         .overlay(
             UnevenRoundedRectangle(
@@ -1243,41 +1164,55 @@ private struct CouncilCandidateCard: View {
                 topTrailingRadius: 16
             )
             .stroke(
-                isActive ? Color.chatAccent.opacity(0.35) : Color.outlineVariant.opacity(0.18),
+                isSelected ? Color.chatAccent.opacity(0.35) : Color.outlineVariant.opacity(0.18),
                 lineWidth: 1
             )
         )
     }
 }
 
-private struct CouncilNeighborHint: View {
-    let title: String?
-    let systemImage: String
-    let isLeading: Bool
+private struct CouncilCandidateTab: View {
+    let candidate: CouncilCandidate
+    let isSelected: Bool
+    let isActive: Bool
+    let isSelecting: Bool
+    let isInteractionDisabled: Bool
+    let action: () -> Void
 
     var body: some View {
-        Group {
-            if let title {
-                HStack(spacing: 4) {
-                    if isLeading {
-                        Image(systemName: systemImage)
-                    }
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(candidate.personaName)
+                    .lineLimit(1)
 
-                    Text(title)
-                        .lineLimit(1)
-
-                    if !isLeading {
-                        Image(systemName: systemImage)
-                    }
+                if isSelecting {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if isActive {
+                    Image(systemName: "checkmark.circle.fill")
                 }
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(Color.onSurfaceSecondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.surfacePrimary.opacity(0.55))
-                .clipShape(Capsule())
             }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(isSelected ? Color.chatAccent : Color.onSurfaceSecondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(isSelected ? Color.chatAccent.opacity(0.14) : Color.surfaceSecondary.opacity(0.72))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(
+                        isSelected ? Color.chatAccent.opacity(0.32) : Color.outlineVariant.opacity(0.18),
+                        lineWidth: 1
+                    )
+            )
         }
+        .buttonStyle(.plain)
+        .disabled(isInteractionDisabled)
+        .accessibilityIdentifier("council.tab.\(candidate.childSessionId)")
+        .accessibilityLabel(isActive ? "\(candidate.personaName), current branch" : candidate.personaName)
+        .accessibilityHint("Switches the active council branch")
     }
 }
 
