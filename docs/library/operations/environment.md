@@ -44,30 +44,7 @@
 
 ---
 
-## 6. Beads Workflow (Issue Tracking)
-
-Track work using beads (`.beads/` directory). TodoWrite tool is fine for in-session task tracking.
-
-### LLM Task Planning Workflow
-1. **Start session**: Run `bd ready` to see available work
-2. **Plan complex tasks**: Use `bd create` to break work into issues with dependencies
-3. **Claim work**: `bd update <id> --status=in_progress` before starting
-4. **Complete work**: `bd close <id>` immediately when done
-5. **Iterate**: Check `bd ready` for next available task
-
-### Session Close Protocol
-Before completing work, **always run**:
-```bash
-ruff check . && ruff format .         # Lint and format Python changes
-git status                            # Check changes
-git add <files>                       # Stage code
-bd sync                               # Commit beads
-git commit -m "..."                   # Commit code
-bd sync                               # Sync any new beads
-```
----
-
-## 7. Package & Dev Tools
+## 6. Package & Dev Tools
 
 ### Package Management (uv)
 ```bash
@@ -98,11 +75,11 @@ alembic upgrade head
 scripts/start_server.sh              # API server
 scripts/start_workers.sh             # Task workers
 scripts/start_scrapers.sh            # Content scrapers
-
+```
 
 ---
 
-## 8. Preferred Dev Tools
+## 7. Preferred Dev Tools
 
 * **LLM internet search**: Use the EXA MCP `web_search_exa` tool for any web/internet lookups (and `get_code_context_exa` for external API/library docs).
 
