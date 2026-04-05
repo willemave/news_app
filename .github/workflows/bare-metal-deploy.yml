@@ -135,7 +135,7 @@ jobs:
           '"
 
           echo "→ Resolving supervisor programs to stop"
-          STOP_STATUS_OUTPUT=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl status")
+          STOP_STATUS_OUTPUT=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "cd '$REMOTE_DIR' && python3 ./scripts/run_supervisor_status.py")
           STOP_PROGRAMS=$(printf '%s\n' "$STOP_STATUS_OUTPUT" | python3 ./scripts/verify_supervisor_programs.py resolve --configured $PROGRAMS $LEGACY_PROGRAMS)
           if [[ -n "${STOP_PROGRAMS:-}" ]]; then
             echo "→ Supervisor programs to stop: $STOP_PROGRAMS"
@@ -167,7 +167,8 @@ jobs:
             set -euo pipefail
             sudo supervisorctl reread >/dev/null
             sudo supervisorctl update >/dev/null
-            sudo supervisorctl status
+            cd \"$REMOTE_DIR\"
+            python3 ./scripts/run_supervisor_status.py
           '")
           START_PROGRAMS=$(printf '%s\n' "$START_STATUS_OUTPUT" | python3 ./scripts/verify_supervisor_programs.py resolve --configured $PROGRAMS)
           if [[ -z "${START_PROGRAMS:-}" ]]; then
@@ -184,7 +185,7 @@ jobs:
             printf '%s\n' "$START_STATUS_OUTPUT"
           else
             for attempt in 1 2 3 4 5 6; do
-              STATUS_OUTPUT=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo supervisorctl status")
+              STATUS_OUTPUT=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "cd '$REMOTE_DIR' && python3 ./scripts/run_supervisor_status.py")
               MISSING_PROGRAMS=$(printf '%s\n' "$STATUS_OUTPUT" | python3 ./scripts/verify_supervisor_programs.py missing --required $REQUIRED_START_PROGRAMS)
 
               if [[ -z "${MISSING_PROGRAMS// }" ]]; then

@@ -34,6 +34,9 @@ enum APIEndpoints {
     static func newsItem(id: Int) -> String {
         return "/api/news/items/\(id)"
     }
+    static func newsItemDiscussion(id: Int) -> String {
+        return "/api/news/items/\(id)/discussion"
+    }
     static let analytics = "/api/analytics"
     static let bulkMarkRead = "/api/content/bulk-mark-read"
     static func toggleFavorite(id: Int) -> String {

@@ -1363,7 +1363,10 @@ struct ContentDetailView: View {
         defer { isLoadingDiscussion = false }
 
         do {
-            let discussion = try await ContentService.shared.fetchContentDiscussion(id: content.id)
+            let discussion = try await ContentService.shared.fetchContentDiscussion(
+                id: content.id,
+                contentType: content.contentTypeEnum
+            )
             discussionPayload = discussion
             if discussion.hasRenderableContent {
                 discussionTab = .comments

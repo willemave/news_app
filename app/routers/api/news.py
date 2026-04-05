@@ -10,9 +10,15 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content
+from app.models.schema import Content, ContentDiscussion
 from app.models.user import User
-from app.routers.api.models import BulkMarkReadRequest, ContentDetailResponse, ContentListResponse
+from app.routers.api.content_detail import _build_discussion_response
+from app.routers.api.models import (
+    BulkMarkReadRequest,
+    ContentDetailResponse,
+    ContentDiscussionResponse,
+    ContentListResponse,
+)
 from app.routers.api.news_models import ConvertNewsItemResponse
 from app.services.news_feed import (
     bulk_mark_news_items_read,
@@ -75,6 +81,38 @@ def get_news_item(
     if item is None:
         raise HTTPException(status_code=404, detail="News item not found")
     return item
+
+
+@router.get(
+    "/items/{news_item_id}/discussion",
+    response_model=ContentDiscussionResponse,
+    summary="Get one news item discussion",
+)
+def get_news_item_discussion(
+    news_item_id: Annotated[int, Path(..., gt=0)],
+    db: Annotated[Session, Depends(get_readonly_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ContentDiscussionResponse:
+    """Return discussion payload for one visible representative news item."""
+    item = get_visible_news_item(db, user_id=current_user.id, news_item_id=news_item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="News item not found")
+
+    discussion_row = None
+    if item.legacy_content_id is not None:
+        discussion_row = (
+            db.query(ContentDiscussion)
+            .filter(ContentDiscussion.content_id == item.legacy_content_id)
+            .first()
+        )
+
+    fallback_discussion_url = item.discussion_url or item.canonical_item_url
+    return _build_discussion_response(
+        content_id=news_item_id,
+        discussion_url=fallback_discussion_url,
+        platform=item.platform,
+        discussion_row=discussion_row,
+    )
 
 
 @router.post(
