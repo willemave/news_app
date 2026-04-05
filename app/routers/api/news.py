@@ -106,12 +106,31 @@ def get_news_item_discussion(
             .first()
         )
 
+    raw_metadata = (
+        item.raw_metadata
+        if discussion_row is None and isinstance(item.raw_metadata, dict)
+        else {}
+    )
+    embedded_discussion = raw_metadata.get("discussion_payload")
+    if not isinstance(embedded_discussion, dict):
+        embedded_discussion = None
+
     fallback_discussion_url = item.discussion_url or item.canonical_item_url
     return _build_discussion_response(
         content_id=news_item_id,
         discussion_url=fallback_discussion_url,
         platform=item.platform,
         discussion_row=discussion_row,
+        discussion_data=embedded_discussion,
+        status=str(raw_metadata["discussion_status"])
+        if raw_metadata.get("discussion_status")
+        else None,
+        error_message=str(raw_metadata["discussion_error"])
+        if raw_metadata.get("discussion_error")
+        else None,
+        fetched_at=str(raw_metadata["discussion_fetched_at"])
+        if raw_metadata.get("discussion_fetched_at")
+        else None,
     )
 
 

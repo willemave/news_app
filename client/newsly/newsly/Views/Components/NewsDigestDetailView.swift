@@ -151,6 +151,7 @@ struct NewsDigestDetailView: View {
                             .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("content.discussion.open")
                 }
             }
 

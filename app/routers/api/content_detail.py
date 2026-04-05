@@ -99,15 +99,59 @@ def get_content_body(
     )
 
 
+def _discussion_mode_has_renderable_content(
+    *,
+    mode: str,
+    comments: list[DiscussionCommentResponse],
+    discussion_groups: list[DiscussionGroupResponse],
+    links: list[DiscussionLinkResponse],
+) -> bool:
+    """Return whether the payload contains in-app discussion content."""
+    if mode == "comments":
+        return bool(comments or links)
+    if mode == "discussion_list":
+        return bool(discussion_groups or links)
+    return False
+
+
+def _infer_discussion_status(
+    *,
+    mode: str,
+    comments: list[DiscussionCommentResponse],
+    discussion_groups: list[DiscussionGroupResponse],
+    links: list[DiscussionLinkResponse],
+    error_message: str | None,
+    source_url: str | None,
+    discussion_url: str | None,
+) -> str:
+    """Infer a discussion status for embedded payloads without a DB row."""
+    if _discussion_mode_has_renderable_content(
+        mode=mode,
+        comments=comments,
+        discussion_groups=discussion_groups,
+        links=links,
+    ):
+        return "completed"
+    if error_message:
+        return "partial" if source_url or discussion_url else "failed"
+    if source_url or discussion_url:
+        return "partial"
+    return "not_ready"
+
+
 def _build_discussion_response(
     *,
     content_id: int,
     discussion_url: str | None,
     platform: str | None,
     discussion_row: ContentDiscussion | None,
+    discussion_data: dict | None = None,
+    status: str | None = None,
+    error_message: str | None = None,
+    fetched_at: str | None = None,
 ) -> ContentDiscussionResponse:
     """Build a typed discussion response payload."""
-    if discussion_row is None:
+    if discussion_row is None and discussion_data is None:
         return ContentDiscussionResponse(
             content_id=content_id,
             status="not_ready",
@@ -123,11 +167,12 @@ def _build_discussion_response(
             stats={},
         )
 
-    data = (
-        discussion_row.discussion_data
-        if isinstance(discussion_row.discussion_data, dict)
-        else {}
-    )
+    data = discussion_data if isinstance(discussion_data, dict) else None
+    if data is None and discussion_row is not None:
+        row_data = discussion_row.discussion_data
+        data = row_data if isinstance(row_data, dict) else {}
+    if data is None:
+        data = {}
     mode = (
         data.get("mode")
         if data.get("mode") in {"none", "comments", "discussion_list"}
@@ -195,15 +240,41 @@ def _build_discussion_response(
         )
 
     source_url = str(data.get("source_url")) if data.get("source_url") else discussion_url
+    resolved_error_message = (
+        discussion_row.error_message
+        if discussion_row is not None
+        else (str(error_message) if error_message else None)
+    )
+    resolved_status = (
+        discussion_row.status
+        if discussion_row is not None
+        else (
+            status
+            or _infer_discussion_status(
+                mode=mode,
+                comments=comments,
+                discussion_groups=groups,
+                links=links,
+                error_message=resolved_error_message,
+                source_url=source_url,
+                discussion_url=discussion_url,
+            )
+        )
+    )
+    resolved_fetched_at = (
+        discussion_row.fetched_at.isoformat()
+        if discussion_row and discussion_row.fetched_at
+        else fetched_at
+    )
     return ContentDiscussionResponse(
         content_id=content_id,
-        status=discussion_row.status,
+        status=resolved_status,
         mode=mode,
-        platform=discussion_row.platform or platform,
+        platform=(discussion_row.platform if discussion_row is not None else None) or platform,
         source_url=source_url,
         discussion_url=discussion_url,
-        fetched_at=discussion_row.fetched_at.isoformat() if discussion_row.fetched_at else None,
-        error_message=discussion_row.error_message,
+        fetched_at=resolved_fetched_at,
+        error_message=resolved_error_message,
         comments=comments,
         discussion_groups=groups,
         links=links,

@@ -14,7 +14,7 @@ from app.core.logging import get_logger
 from app.models.contracts import NewsItemStatus
 from app.models.metadata import NewsSummary
 from app.models.schema import NewsItem
-from app.services.discussion_fetcher import _build_discussion_payload
+from app.services.discussion_fetcher import fetch_and_store_news_item_discussion
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 from app.services.news_article_bodies import get_news_item_article_body_resolver
 from app.services.news_relations import reconcile_news_item_relation
@@ -292,15 +292,30 @@ def process_news_item(
 
         discussion_payload = raw_metadata.get("discussion_payload")
         if not isinstance(discussion_payload, dict):
-            discussion = _build_discussion_payload(
-                platform=item.platform or "",
-                discussion_url=item.discussion_url,
-                metadata=raw_metadata,
+            discussion_result = fetch_and_store_news_item_discussion(
+                db,
+                news_item_id=item.id,
                 comment_cap=DISCUSSION_COMMENT_CAP,
             )
-            raw_metadata["discussion_payload"] = discussion.payload
-            if discussion.error_message:
-                raw_metadata["discussion_error"] = discussion.error_message
+            db.refresh(item)
+            raw_metadata = dict(item.raw_metadata or {})
+            if not discussion_result.success:
+                logger.warning(
+                    (
+                        "News item discussion fetch failed during processing; "
+                        "continuing without discussion context"
+                    ),
+                    extra={
+                        "component": "news_processing",
+                        "operation": "process_news_item.fetch_discussion",
+                        "item_id": str(news_item_id),
+                        "context_data": {
+                            "discussion_status": discussion_result.status,
+                            "discussion_error": discussion_result.error_message,
+                            "retryable": discussion_result.retryable,
+                        },
+                    },
+                )
 
         summary_to_persist = _extract_existing_summary(item)
         used_existing_summary = bool(

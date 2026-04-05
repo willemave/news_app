@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from itertools import count
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,7 @@ from app.models.schema import (
     ContentFavorites,
     ContentReadStatus,
     ContentStatusEntry,
+    NewsItem,
     ProcessingTask,
     UserIntegrationConnection,
 )
@@ -313,6 +314,168 @@ def processing_task_factory(db_session: Session):
         return task
 
     return _create
+
+
+def _default_news_item_metadata(*, title: str, ingest_key: str) -> dict[str, Any]:
+    """Build router-visible default metadata for one news item."""
+    return {
+        "cluster": {
+            "member_ids": [ingest_key],
+            "source_labels": ["Hacker News"],
+            "domains": ["example.com"],
+            "discussion_snippets": ["Useful comment"],
+            "related_titles": [title],
+            "latest_member_ingested_at": datetime.now(UTC).isoformat(),
+        }
+    }
+
+
+@pytest.fixture
+def discussion_payload_factory():
+    """Create discussion payloads with stable defaults for API/service tests."""
+
+    def _create(
+        *,
+        discussion_url: str,
+        mode: str = "comments",
+        comments: list[dict[str, Any]] | None = None,
+        discussion_groups: list[dict[str, Any]] | None = None,
+        links: list[dict[str, Any]] | None = None,
+        stats: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_comments = comments
+        if resolved_comments is None and mode == "comments":
+            resolved_comments = [
+                {
+                    "comment_id": "c1",
+                    "author": "alice",
+                    "text": "great",
+                    "compact_text": "great",
+                    "depth": 0,
+                }
+            ]
+        if resolved_comments is None:
+            resolved_comments = []
+
+        resolved_groups = discussion_groups
+        if resolved_groups is None and mode == "discussion_list":
+            resolved_groups = [
+                {
+                    "label": "Forums",
+                    "items": [
+                        {
+                            "title": "Hacker News",
+                            "url": "https://news.ycombinator.com/item?id=123",
+                        }
+                    ],
+                }
+            ]
+        if resolved_groups is None:
+            resolved_groups = []
+
+        resolved_links = links
+        if resolved_links is None and mode == "comments":
+            resolved_links = [{"url": "https://example.com", "source": "comment"}]
+        elif resolved_links is None and mode == "discussion_list":
+            resolved_links = [
+                {
+                    "url": "https://news.ycombinator.com/item?id=123",
+                    "source": "discussion_group",
+                    "group_label": "Forums",
+                }
+            ]
+        if resolved_links is None:
+            resolved_links = []
+
+        resolved_stats = stats
+        if resolved_stats is None and mode == "comments":
+            resolved_stats = {"fetched_count": len(resolved_comments)}
+        elif resolved_stats is None and mode == "discussion_list":
+            resolved_stats = {"group_count": len(resolved_groups)}
+        if resolved_stats is None:
+            resolved_stats = {}
+
+        return {
+            "mode": mode,
+            "source_url": discussion_url,
+            "comments": resolved_comments,
+            "compact_comments": [
+                str(comment.get("compact_text") or comment.get("text") or "")
+                for comment in resolved_comments
+                if isinstance(comment, dict)
+                and str(comment.get("compact_text") or comment.get("text") or "").strip()
+            ],
+            "discussion_groups": resolved_groups,
+            "links": resolved_links,
+            "stats": resolved_stats,
+        }
+
+    return _create
+
+
+@pytest.fixture
+def news_item_factory(db_session: Session):
+    """Create persisted news items with defaults that are visible in feed/detail APIs."""
+    sequence = count(1)
+
+    def _create(**overrides: Any) -> NewsItem:
+        index = next(sequence)
+        ingest_key = overrides.pop("ingest_key", f"news-item-{index}")
+        title = overrides.pop("article_title", f"News Story {index}")
+        summary_title = overrides.pop("summary_title", title)
+        canonical_story_url = overrides.pop(
+            "canonical_story_url",
+            f"https://example.com/story-{index}",
+        )
+        article_url = overrides.pop("article_url", canonical_story_url)
+        discussion_url = overrides.pop(
+            "discussion_url",
+            f"https://news.ycombinator.com/item?id={1000 + index}",
+        )
+        source_external_id = overrides.pop("source_external_id", ingest_key)
+        ingested_at = overrides.pop("ingested_at", datetime.now(UTC).replace(tzinfo=None))
+        raw_metadata = _default_news_item_metadata(title=summary_title, ingest_key=ingest_key)
+        raw_metadata.update(overrides.pop("raw_metadata", {}))
+
+        item = NewsItem(
+            ingest_key=ingest_key,
+            visibility_scope=overrides.pop("visibility_scope", "global"),
+            owner_user_id=overrides.pop("owner_user_id", None),
+            platform=overrides.pop("platform", "hackernews"),
+            source_type=overrides.pop("source_type", "hackernews"),
+            source_label=overrides.pop("source_label", "Hacker News"),
+            source_external_id=source_external_id,
+            canonical_item_url=overrides.pop("canonical_item_url", discussion_url),
+            canonical_story_url=canonical_story_url,
+            article_url=article_url,
+            article_title=title,
+            article_domain=overrides.pop("article_domain", "example.com"),
+            discussion_url=discussion_url,
+            summary_title=summary_title,
+            summary_key_points=overrides.pop("summary_key_points", ["Point one"]),
+            summary_text=overrides.pop("summary_text", f"{summary_title} summary"),
+            raw_metadata=raw_metadata,
+            status=overrides.pop("status", "ready"),
+            representative_news_item_id=overrides.pop("representative_news_item_id", None),
+            cluster_size=overrides.pop("cluster_size", 1),
+            published_at=overrides.pop("published_at", None),
+            ingested_at=ingested_at,
+            processed_at=overrides.pop("processed_at", ingested_at),
+        )
+        for key, value in overrides.items():
+            setattr(item, key, value)
+        db_session.add(item)
+        db_session.commit()
+        db_session.refresh(item)
+        return item
+
+    return _create
+
+
+@pytest.fixture
+def visible_news_item(news_item_factory):
+    """Create a default visible representative news item."""
+    return news_item_factory()
 
 
 @pytest.fixture

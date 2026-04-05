@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from app.models.metadata import ContentType, NewsSummary
 from app.models.schema import Base, Content, NewsItem
 from app.services import news_processing as news_processing_module
+from app.services.discussion_fetcher import DiscussionFetchResult
 from app.services.news_article_bodies import NEWS_ARTICLE_BODY_REF_KEY
 from app.services.news_article_enrichment import enrich_news_item_article
 from app.services.news_processing import process_news_item
@@ -153,6 +154,159 @@ def test_process_news_item_passes_usage_persistence_context(db_session) -> None:
             "source_type": "hackernews",
         },
     }
+
+
+def test_process_news_item_fetches_discussion_via_public_news_item_flow(
+    db_session,
+    monkeypatch,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-discussion-flow",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="discussion-flow-1",
+        article_url="https://example.com/story-discussion-flow",
+        article_title="Story with discussion",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=777",
+        raw_metadata={"excerpt": "Example excerpt"},
+        status="pending",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    captured: dict[str, object] = {}
+
+    def _fetch_and_store(db, *, news_item_id: int, comment_cap: int):
+        assert news_item_id == item.id
+        assert comment_cap > 0
+        persisted_item = db.get(NewsItem, news_item_id)
+        assert persisted_item is not None
+        metadata = dict(persisted_item.raw_metadata or {})
+        metadata["discussion_payload"] = {
+            "mode": "comments",
+            "source_url": persisted_item.discussion_url,
+            "comments": [
+                {
+                    "comment_id": "c1",
+                    "author": "alice",
+                    "text": "This changed the market.",
+                    "compact_text": "This changed the market.",
+                    "depth": 0,
+                }
+            ],
+            "compact_comments": ["This changed the market."],
+            "discussion_groups": [],
+            "links": [],
+            "stats": {"declared_comment_count": 1},
+        }
+        metadata["discussion_status"] = "completed"
+        persisted_item.raw_metadata = metadata
+        db.commit()
+        return DiscussionFetchResult(success=True, status="completed", retryable=False)
+
+    def _summarize(prompt: str, **_kwargs):
+        captured["prompt"] = prompt
+        return NewsSummary(
+            title="Fresh digest title",
+            article_url=item.article_url,
+            key_points=["Fresh point"],
+            summary="Fresh summary text.",
+        )
+
+    monkeypatch.setattr(
+        news_processing_module,
+        "fetch_and_store_news_item_discussion",
+        _fetch_and_store,
+    )
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=SimpleNamespace(summarize=_summarize),
+    )
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert "Discussion snippets:" in captured["prompt"]
+    assert "This changed the market." in captured["prompt"]
+    assert item.raw_metadata["discussion_status"] == "completed"
+    assert item.status == "ready"
+
+
+def test_process_news_item_continues_when_discussion_fetch_fails(
+    db_session,
+    monkeypatch,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-discussion-failure",
+        visibility_scope="global",
+        platform="reddit",
+        source_type="reddit",
+        source_label="Reddit",
+        source_external_id="discussion-failure-1",
+        article_url="https://example.com/story-discussion-failure",
+        article_title="Story without discussion",
+        article_domain="example.com",
+        discussion_url="https://reddit.com/r/example/comments/fail/story/",
+        raw_metadata={"excerpt": "Source excerpt survives."},
+        status="pending",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    def _fetch_and_store(db, *, news_item_id: int, comment_cap: int):
+        persisted_item = db.get(NewsItem, news_item_id)
+        assert persisted_item is not None
+        metadata = dict(persisted_item.raw_metadata or {})
+        metadata["discussion_payload"] = {
+            "mode": "none",
+            "source_url": persisted_item.discussion_url,
+            "comments": [],
+            "compact_comments": [],
+            "discussion_groups": [],
+            "links": [],
+            "stats": {},
+        }
+        metadata["discussion_status"] = "failed"
+        metadata["discussion_error"] = "Discussion fetch failed: blocked"
+        persisted_item.raw_metadata = metadata
+        db.commit()
+        return DiscussionFetchResult(
+            success=False,
+            status="failed",
+            error_message="Discussion fetch failed: blocked",
+            retryable=False,
+        )
+
+    monkeypatch.setattr(
+        news_processing_module,
+        "fetch_and_store_news_item_discussion",
+        _fetch_and_store,
+    )
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=SimpleNamespace(
+            summarize=lambda *_args, **_kwargs: NewsSummary(
+                title="Recovered title",
+                article_url=item.article_url,
+                key_points=["Recovered point"],
+                summary="Recovered summary.",
+            )
+        ),
+    )
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert item.status == "ready"
+    assert item.raw_metadata["discussion_status"] == "failed"
+    assert item.raw_metadata["discussion_error"] == "Discussion fetch failed: blocked"
 
 
 def test_process_news_item_does_not_treat_title_only_row_as_summarized(db_session) -> None:

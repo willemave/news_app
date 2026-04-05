@@ -5,12 +5,14 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from app.models.schema import Content, ContentDiscussion
+from app.models.schema import Content, ContentDiscussion, NewsItem
 from app.services import discussion_fetcher
 from app.services.discussion_fetcher import (
     DiscussionFetchError,
+    DiscussionFetchResult,
     DiscussionPayload,
     fetch_and_store_discussion,
+    fetch_and_store_news_item_discussion,
 )
 from tests.services._discussion_fetcher_helpers import (
     FakeComment,
@@ -425,3 +427,117 @@ def test_fetch_and_store_discussion_preserves_concurrent_metadata_updates(
     assert content.content_metadata["external_flag"] is True
     assert content.content_metadata["top_comment"]["author"] == "alice"
     assert content.content_metadata["comment_count"] == 42
+
+
+def test_fetch_and_store_news_item_discussion_persists_payload_and_preview_fields(
+    db_session,
+    monkeypatch,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-discussion-persist",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="news-item-discussion-persist",
+        article_url="https://example.com/story",
+        article_title="Story",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=123",
+        raw_metadata={"workflow_transition": "news.ingested"},
+        status="pending",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    monkeypatch.setattr(
+        discussion_fetcher,
+        "_build_hackernews_payload",
+        lambda *args, **kwargs: DiscussionPayload(
+            status="completed",
+            mode="comments",
+            payload={
+                "mode": "comments",
+                "source_url": "https://news.ycombinator.com/item?id=123",
+                "discussion_groups": [],
+                "comments": [
+                    {
+                        "comment_id": "c1",
+                        "parent_id": None,
+                        "author": "alice",
+                        "text": "Great post",
+                        "compact_text": "Great post",
+                        "depth": 0,
+                        "created_at": None,
+                        "source_url": "https://news.ycombinator.com/item?id=123",
+                    }
+                ],
+                "compact_comments": ["Great post"],
+                "links": [],
+                "stats": {
+                    "cap": 500,
+                    "fetched_count": 1,
+                    "cap_reached": False,
+                    "declared_comment_count": 42,
+                },
+            },
+        ),
+    )
+
+    result = fetch_and_store_news_item_discussion(db_session, item.id)
+
+    assert result.success is True
+    db_session.refresh(item)
+    assert item.raw_metadata["workflow_transition"] == "news.ingested"
+    assert item.raw_metadata["discussion_status"] == "completed"
+    assert item.raw_metadata["discussion_payload"]["comments"][0]["author"] == "alice"
+    assert item.raw_metadata["top_comment"] == {"author": "alice", "text": "Great post"}
+    assert item.raw_metadata["comment_count"] == 42
+    assert isinstance(item.raw_metadata["discussion_fetched_at"], str)
+    assert "discussion_error" not in item.raw_metadata
+
+
+def test_fetch_and_store_news_item_discussion_persists_failed_status(
+    db_session,
+    monkeypatch,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-discussion-failed",
+        visibility_scope="global",
+        platform="reddit",
+        source_type="reddit",
+        source_label="Reddit",
+        source_external_id="news-item-discussion-failed",
+        article_url="https://example.com/story",
+        article_title="Story",
+        article_domain="example.com",
+        discussion_url="https://reddit.com/r/test/comments/abc123/thread/",
+        raw_metadata={},
+        status="pending",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    monkeypatch.setattr(
+        discussion_fetcher,
+        "_build_reddit_payload",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            DiscussionFetchError("blocked", retryable=False)
+        ),
+    )
+
+    result = fetch_and_store_news_item_discussion(db_session, item.id)
+
+    assert result == DiscussionFetchResult(
+        success=False,
+        status="failed",
+        error_message="Discussion fetch failed: blocked",
+        retryable=False,
+    )
+    db_session.refresh(item)
+    assert item.raw_metadata["discussion_status"] == "failed"
+    assert item.raw_metadata["discussion_payload"]["mode"] == "none"
+    assert item.raw_metadata["discussion_error"] == "Discussion fetch failed: blocked"
+    assert "discussion_fetched_at" not in item.raw_metadata

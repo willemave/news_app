@@ -1,0 +1,30 @@
+appId: "${APP_ID}"
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    arguments:
+      newslyE2EEnabled: true
+      newslyE2EAutoLogin: true
+      newslyE2EServerHost: "${SERVER_HOST}"
+      newslyE2EServerPort: "${SERVER_PORT}"
+      newslyE2EUseHTTPS: false
+      newslyE2EUserId: "${USER_ID}"
+      newslyE2ECompleteOnboarding: true
+      newslyE2ECompleteTutorial: true
+- tapOn:
+    id: tab.fast_news
+- assertVisible:
+    id: short.screen
+- assertVisible:
+    id: short.row.${CONTENT_ID}
+- tapOn:
+    id: short.row.${CONTENT_ID}
+- assertVisible:
+    id: content.detail.screen
+- tapOn:
+    id: content.discussion.open
+- assertVisible:
+    id: content.discussion.sheet
+- assertVisible:
+    id: content.discussion.comment.${COMMENT_ID}

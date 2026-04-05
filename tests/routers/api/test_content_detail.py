@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from urllib.parse import parse_qs, unquote_plus, urlparse
 
-from app.models.schema import Content, NewsItem
+from app.models.schema import Content
 
 
 def _get_display_title(fixture_data: dict) -> str:
@@ -168,6 +168,7 @@ def test_content_body_returns_visible_content(client, create_sample_content, sam
 def test_content_detail_falls_back_to_visible_news_item_when_legacy_content_is_missing(
     client,
     db_session,
+    news_item_factory,
 ) -> None:
     """Unified content detail should serve visible news items when legacy content is unavailable."""
     legacy_news = Content(
@@ -178,10 +179,9 @@ def test_content_detail_falls_back_to_visible_news_item_when_legacy_content_is_m
         status="skipped",
         content_metadata={},
     )
-    visible_news_item = NewsItem(
+    news_item_factory(
         id=6227,
         ingest_key="news-item-6227",
-        visibility_scope="global",
         platform="hackernews",
         source_type="hackernews",
         source_label="Hacker News",
@@ -200,7 +200,7 @@ def test_content_detail_falls_back_to_visible_news_item_when_legacy_content_is_m
         ingested_at=datetime(2026, 4, 2, 14, 58, tzinfo=UTC).replace(tzinfo=None),
         processed_at=datetime(2026, 4, 2, 14, 58, tzinfo=UTC).replace(tzinfo=None),
     )
-    db_session.add_all([legacy_news, visible_news_item])
+    db_session.add(legacy_news)
     db_session.commit()
 
     response = client.get("/api/content/6227")

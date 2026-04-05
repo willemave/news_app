@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
-from app.models.schema import ChatSession, ContentFavorites, ContentReadStatus
+from app.models.schema import ChatSession, ContentFavorites, ContentReadStatus, NewsItem
 from app.services.chat_agent import ChatRunResult, save_messages
 
 pytestmark = [pytest.mark.integration, pytest.mark.ios_e2e]
@@ -91,6 +93,80 @@ def test_long_form_list_mark_read_action_updates_backend_state(
         .one_or_none()
     )
     assert read_status is not None
+
+
+def test_short_form_detail_discussion_sheet_renders_embedded_comments(
+    live_server,
+    run_maestro_flow,
+    test_user,
+    db_session,
+) -> None:
+    """Comments button should open the in-app discussion sheet for news items."""
+    comment_id = "comment-1"
+    news_item = NewsItem(
+        ingest_key="ios-e2e-discussion",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="ios-e2e-discussion",
+        canonical_item_url="https://news.ycombinator.com/item?id=424242",
+        canonical_story_url="https://example.com/herbie-floating-point",
+        article_url="https://example.com/herbie-floating-point",
+        article_title="Herbie Automatically Optimizes Code to Fix Floating-Point Precision Errors",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=424242",
+        summary_title="Herbie Automatically Optimizes Code to Fix Floating-Point Precision Errors",
+        summary_key_points=[
+            "Herbie suggests numerically stable rewrites for floating-point expressions."
+        ],
+        summary_text="Herbie improves floating-point expressions by proposing stable alternatives.",
+        raw_metadata={
+            "discussion_url": "https://news.ycombinator.com/item?id=424242",
+            "summary": {
+                "article_url": "https://example.com/herbie-floating-point",
+                "summary": (
+                    "Herbie improves floating-point expressions by proposing "
+                    "stable alternatives."
+                ),
+                "key_points": [
+                    "Herbie suggests numerically stable rewrites for floating-point expressions."
+                ],
+            },
+            "discussion_payload": {
+                "mode": "comments",
+                "source_url": "https://news.ycombinator.com/item?id=424242",
+                "comments": [
+                    {
+                        "comment_id": comment_id,
+                        "author": "alice",
+                        "text": "This kind of numerical tooling saves real debugging time.",
+                        "compact_text": "This kind of numerical tooling saves real debugging time.",
+                        "depth": 0,
+                    }
+                ],
+                "discussion_groups": [],
+                "links": [],
+                "stats": {"fetched_count": 1},
+            },
+        },
+        status="ready",
+        published_at=datetime.now(UTC).replace(tzinfo=None),
+        ingested_at=datetime.now(UTC).replace(tzinfo=None),
+        processed_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db_session.add(news_item)
+    db_session.commit()
+
+    run_maestro_flow(
+        "short_form_discussion.yaml",
+        live_server=live_server,
+        user_id=test_user.id,
+        extra_env={
+            "CONTENT_ID": str(news_item.id),
+            "COMMENT_ID": comment_id,
+        },
+    )
 
 
 def test_council_tabs_switch_between_mocked_branch_replies(

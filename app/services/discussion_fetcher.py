@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict, deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import unescape
@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.models.schema import Content, ContentDiscussion
+from app.models.schema import Content, ContentDiscussion, NewsItem
 from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.utils.url_utils import normalize_http_url
 
@@ -129,109 +129,23 @@ def fetch_and_store_discussion(
             metadata=metadata,
             comment_cap=comment_cap,
         )
-    except httpx.TimeoutException as exc:
-        error_message = f"Discussion fetch timed out: {exc}"
-        _upsert_content_discussion(
-            db,
-            content_id=content_id,
-            platform=platform,
-            status="failed",
-            discussion_data={
-                "mode": "none",
-                "source_url": discussion_url,
-                "comments": [],
-                "compact_comments": [],
-                "discussion_groups": [],
-                "links": [],
-                "stats": {},
-            },
-            error_message=error_message,
-            set_fetched_at=False,
-        )
-        return DiscussionFetchResult(
-            success=False,
-            status="failed",
-            error_message=error_message,
-            retryable=True,
-        )
-    except DiscussionFetchError as exc:
-        error_message = f"Discussion fetch failed: {exc}"
-        logger.error(
-            "Discussion fetch failed for content %s",
-            content_id,
-            extra={
-                "component": "discussion_fetcher",
-                "operation": "fetch_and_store_discussion",
-                "item_id": str(content_id),
-                "context_data": {
-                    "platform": platform,
-                    "discussion_url": discussion_url,
-                    "retryable": exc.retryable,
-                    "error": str(exc),
-                },
-            },
-        )
-        _upsert_content_discussion(
-            db,
-            content_id=content_id,
-            platform=platform,
-            status="failed",
-            discussion_data={
-                "mode": "none",
-                "source_url": discussion_url,
-                "comments": [],
-                "compact_comments": [],
-                "discussion_groups": [],
-                "links": [],
-                "stats": {},
-            },
-            error_message=error_message,
-            set_fetched_at=False,
-        )
-        return DiscussionFetchResult(
-            success=False,
-            status="failed",
-            error_message=error_message,
-            retryable=exc.retryable,
-        )
     except Exception as exc:  # noqa: BLE001
-        error_message = f"Discussion fetch failed: {exc}"
-        logger.exception(
-            "Discussion fetch failed for content %s",
-            content_id,
-            extra={
-                "component": "discussion_fetcher",
-                "operation": "fetch_and_store_discussion",
-                "item_id": str(content_id),
-                "context_data": {
-                    "platform": platform,
-                    "discussion_url": discussion_url,
-                    "error": str(exc),
-                },
-            },
-        )
-        _upsert_content_discussion(
-            db,
-            content_id=content_id,
+        return _handle_discussion_fetch_exception(
+            exc,
+            item_id=content_id,
+            item_label="content",
+            operation="fetch_and_store_discussion",
             platform=platform,
-            status="failed",
-            discussion_data={
-                "mode": "none",
-                "source_url": discussion_url,
-                "comments": [],
-                "compact_comments": [],
-                "discussion_groups": [],
-                "links": [],
-                "stats": {},
-            },
-            error_message=error_message,
-            set_fetched_at=False,
-        )
-        return DiscussionFetchResult(
-            success=False,
-            status="failed",
-            error_message=error_message,
-            retryable=True,
+            discussion_url=discussion_url,
+            persist_failure=lambda error_message: _upsert_content_discussion(
+                db,
+                content_id=content_id,
+                platform=platform,
+                status="failed",
+                discussion_data=_empty_discussion_data(discussion_url),
+                error_message=error_message,
+                set_fetched_at=False,
+            ),
         )
 
     _upsert_content_discussion(
@@ -244,47 +158,12 @@ def fetch_and_store_discussion(
         set_fetched_at=True,
     )
 
-    # Denormalize first non-bot comment into content metadata for feed preview.
-    comments = payload.payload.get("comments", [])
-    top_comment: dict[str, str] | None = None
-    for comment_entry in comments:
-        if not isinstance(comment_entry, dict):
-            continue
-        author = str(comment_entry.get("author") or "unknown")
-        if author in TOP_COMMENT_SKIP_AUTHORS or any(
-            author.endswith(suffix) for suffix in TOP_COMMENT_SKIP_SUFFIXES
-        ):
-            continue
-        text = comment_entry.get("compact_text") or comment_entry.get("text") or ""
-        if text.strip():
-            top_comment = {"author": author, "text": str(text)}
-            break
-
-    # Denormalize comment count into metadata for feed preview.
-    stats = payload.payload.get("stats", {})
-    if payload.mode == "comments":
-        comment_count = stats.get("declared_comment_count")
-    elif payload.mode == "discussion_list":
-        comment_count = len(comments) if comments else None
-    else:
-        comment_count = None
-
     did_change_metadata = False
-    if top_comment:
-        if metadata.get("top_comment") != top_comment:
-            metadata["top_comment"] = top_comment
-            did_change_metadata = True
-    elif "top_comment" in metadata:
-        metadata.pop("top_comment", None)
-        did_change_metadata = True
-
-    if comment_count is not None:
-        if metadata.get("comment_count") != comment_count:
-            metadata["comment_count"] = comment_count
-            did_change_metadata = True
-    elif "comment_count" in metadata:
-        metadata.pop("comment_count", None)
-        did_change_metadata = True
+    did_change_metadata |= _apply_discussion_preview_metadata(
+        metadata,
+        discussion_data=payload.payload,
+        mode=payload.mode,
+    )
 
     if did_change_metadata:
         content.content_metadata = refresh_merge_content_metadata(
@@ -295,20 +174,63 @@ def fetch_and_store_discussion(
         )
         db.commit()
 
-    if payload.status == "failed":
+    return _result_from_payload(payload)
+
+
+def fetch_and_store_news_item_discussion(
+    db: Session,
+    news_item_id: int,
+    comment_cap: int = DEFAULT_DISCUSSION_COMMENT_CAP,
+) -> DiscussionFetchResult:
+    """Fetch and persist discussion payload directly on one news item."""
+    item = db.query(NewsItem).filter(NewsItem.id == news_item_id).first()
+    if item is None:
         return DiscussionFetchResult(
             success=False,
-            status=payload.status,
-            error_message=payload.error_message,
-            retryable=True,
+            status="failed",
+            error_message="News item not found",
+            retryable=False,
         )
 
-    return DiscussionFetchResult(
-        success=True,
+    metadata = dict(item.raw_metadata or {})
+    discussion_url = _extract_discussion_url(metadata) or normalize_http_url(item.discussion_url)
+    platform = _normalize_platform(metadata.get("platform") or item.platform)
+
+    try:
+        payload = _build_discussion_payload(
+            platform=platform,
+            discussion_url=discussion_url,
+            metadata=metadata,
+            comment_cap=comment_cap,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _handle_discussion_fetch_exception(
+            exc,
+            item_id=news_item_id,
+            item_label="news item",
+            operation="fetch_and_store_news_item_discussion",
+            platform=platform,
+            discussion_url=discussion_url,
+            persist_failure=lambda error_message: _persist_news_item_discussion_metadata(
+                db,
+                news_item_id=news_item_id,
+                status="failed",
+                discussion_data=_empty_discussion_data(discussion_url),
+                error_message=error_message,
+                set_fetched_at=False,
+            ),
+        )
+
+    _persist_news_item_discussion_metadata(
+        db,
+        news_item_id=news_item_id,
         status=payload.status,
+        discussion_data=payload.payload,
         error_message=payload.error_message,
-        retryable=False,
+        set_fetched_at=True,
     )
+
+    return _result_from_payload(payload)
 
 
 def _build_discussion_payload(
@@ -337,15 +259,7 @@ def _unsupported_payload(source_url: str, platform: str) -> DiscussionPayload:
     return DiscussionPayload(
         status="partial",
         mode="none",
-        payload={
-            "mode": "none",
-            "source_url": source_url or None,
-            "discussion_groups": [],
-            "comments": [],
-            "compact_comments": [],
-            "links": [],
-            "stats": {},
-        },
+        payload=_empty_discussion_data(source_url),
         error_message=f"Unsupported discussion platform: {platform or 'unknown'}",
     )
 
@@ -1093,3 +1007,199 @@ def _upsert_content_discussion(
     row.error_message = error_message
     row.fetched_at = datetime.now(UTC).replace(tzinfo=None) if set_fetched_at else None
     db.commit()
+
+
+def _handle_discussion_fetch_exception(
+    exc: Exception,
+    *,
+    item_id: int,
+    item_label: str,
+    operation: str,
+    platform: str,
+    discussion_url: str | None,
+    persist_failure: Callable[[str], None],
+) -> DiscussionFetchResult:
+    if isinstance(exc, httpx.TimeoutException):
+        error_message = f"Discussion fetch timed out: {exc}"
+        persist_failure(error_message)
+        return DiscussionFetchResult(
+            success=False,
+            status="failed",
+            error_message=error_message,
+            retryable=True,
+        )
+
+    error_message = f"Discussion fetch failed: {exc}"
+    if isinstance(exc, DiscussionFetchError):
+        logger.error(
+            "Discussion fetch failed for %s %s",
+            item_label,
+            item_id,
+            extra={
+                "component": "discussion_fetcher",
+                "operation": operation,
+                "item_id": str(item_id),
+                "context_data": {
+                    "platform": platform,
+                    "discussion_url": discussion_url,
+                    "retryable": exc.retryable,
+                    "error": str(exc),
+                },
+            },
+        )
+        persist_failure(error_message)
+        return DiscussionFetchResult(
+            success=False,
+            status="failed",
+            error_message=error_message,
+            retryable=exc.retryable,
+        )
+
+    logger.exception(
+        "Discussion fetch failed for %s %s",
+        item_label,
+        item_id,
+        extra={
+            "component": "discussion_fetcher",
+            "operation": operation,
+            "item_id": str(item_id),
+            "context_data": {
+                "platform": platform,
+                "discussion_url": discussion_url,
+                "error": str(exc),
+            },
+        },
+    )
+    persist_failure(error_message)
+    return DiscussionFetchResult(
+        success=False,
+        status="failed",
+        error_message=error_message,
+        retryable=True,
+    )
+
+
+def _persist_news_item_discussion_metadata(
+    db: Session,
+    *,
+    news_item_id: int,
+    status: str,
+    discussion_data: dict[str, Any],
+    error_message: str | None,
+    set_fetched_at: bool,
+) -> None:
+    item = db.query(NewsItem).filter(NewsItem.id == news_item_id).first()
+    if item is None:
+        return
+
+    metadata = dict(item.raw_metadata or {})
+    metadata["discussion_payload"] = discussion_data
+    metadata["discussion_status"] = status
+    _set_metadata_key(metadata, key="discussion_error", value=error_message)
+    _set_metadata_key(
+        metadata,
+        key="discussion_fetched_at",
+        value=datetime.now(UTC).isoformat() if set_fetched_at else None,
+    )
+    _apply_discussion_preview_metadata(
+        metadata,
+        discussion_data=discussion_data,
+        mode=str(discussion_data.get("mode") or "none"),
+    )
+
+    item.raw_metadata = metadata
+    db.commit()
+
+
+def _empty_discussion_data(source_url: str | None) -> dict[str, Any]:
+    return {
+        "mode": "none",
+        "source_url": source_url,
+        "comments": [],
+        "compact_comments": [],
+        "discussion_groups": [],
+        "links": [],
+        "stats": {},
+    }
+
+
+def _extract_discussion_preview_fields(
+    discussion_data: dict[str, Any],
+    *,
+    mode: str,
+) -> tuple[dict[str, str] | None, int | None]:
+    comments = discussion_data.get("comments", [])
+
+    top_comment: dict[str, str] | None = None
+    for comment_entry in comments:
+        if not isinstance(comment_entry, dict):
+            continue
+        author = str(comment_entry.get("author") or "unknown")
+        if author in TOP_COMMENT_SKIP_AUTHORS or any(
+            author.endswith(suffix) for suffix in TOP_COMMENT_SKIP_SUFFIXES
+        ):
+            continue
+        text = comment_entry.get("compact_text") or comment_entry.get("text") or ""
+        if text.strip():
+            top_comment = {"author": author, "text": str(text)}
+            break
+
+    stats = discussion_data.get("stats", {})
+    if mode == "comments":
+        comment_count = stats.get("declared_comment_count")
+    elif mode == "discussion_list":
+        comment_count = len(comments) if comments else None
+    else:
+        comment_count = None
+
+    return top_comment, comment_count
+
+
+def _apply_discussion_preview_metadata(
+    metadata: dict[str, Any],
+    *,
+    discussion_data: dict[str, Any],
+    mode: str,
+) -> bool:
+    top_comment, comment_count = _extract_discussion_preview_fields(
+        discussion_data,
+        mode=mode,
+    )
+    did_change = False
+    did_change |= _set_metadata_key(metadata, key="top_comment", value=top_comment)
+    did_change |= _set_metadata_key(metadata, key="comment_count", value=comment_count)
+    return did_change
+
+
+def _result_from_payload(payload: DiscussionPayload) -> DiscussionFetchResult:
+    if payload.status == "failed":
+        return DiscussionFetchResult(
+            success=False,
+            status=payload.status,
+            error_message=payload.error_message,
+            retryable=True,
+        )
+
+    return DiscussionFetchResult(
+        success=True,
+        status=payload.status,
+        error_message=payload.error_message,
+        retryable=False,
+    )
+
+
+def _set_metadata_key(
+    metadata: dict[str, Any],
+    *,
+    key: str,
+    value: Any,
+) -> bool:
+    if value is None:
+        if key in metadata:
+            metadata.pop(key, None)
+            return True
+        return False
+    if metadata.get(key) == value:
+        return False
+    metadata[key] = value
+    return True

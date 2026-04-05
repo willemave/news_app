@@ -1455,6 +1455,7 @@ struct ContentDetailView: View {
                 }
             }
         }
+        .accessibilityIdentifier("content.discussion.sheet")
     }
 
     @ViewBuilder
@@ -1671,6 +1672,7 @@ struct ContentDetailView: View {
                             }
                         }
                         .padding(.leading, indent)
+                        .accessibilityIdentifier("content.discussion.comment.\(comment.commentID)")
                         .contentShape(Rectangle())
                         .onTapGesture {
                             guard childCount > 0 else { return }
