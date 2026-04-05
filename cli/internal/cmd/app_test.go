@@ -139,6 +139,120 @@ func TestContentSubmitWaitAddsJobPayload(t *testing.T) {
 	}
 }
 
+func TestNewsListOutputsEnvelope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer newsly_ak_test" {
+			t.Fatalf("unexpected auth header: %q", got)
+		}
+		if r.Method != http.MethodGet || r.URL.Path != "/api/news/items" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("limit"); got != "2" {
+			t.Fatalf("unexpected limit query: %q", got)
+		}
+		if got := r.URL.Query().Get("read_filter"); got != "read" {
+			t.Fatalf("unexpected read_filter query: %q", got)
+		}
+		writeJSON(t, w, map[string]any{
+			"available_dates": []string{},
+			"content_types":   []string{},
+			"contents":        []any{},
+			"meta": map[string]any{
+				"has_more":    false,
+				"next_cursor": nil,
+				"page_size":   0,
+				"total":       nil,
+			},
+		})
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(configPath, config.FileConfig{
+		ServerURL: server.URL,
+		APIKey:    "newsly_ak_test",
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New("test", &stdout, &stderr)
+
+	exitCode := app.Execute(context.Background(), []string{
+		"--config", configPath,
+		"news", "list",
+		"--limit", "2",
+		"--read-filter", "read",
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if envelope["command"] != "news.list" {
+		t.Fatalf("unexpected command: %#v", envelope["command"])
+	}
+	if envelope["ok"] != true {
+		t.Fatalf("expected ok=true: %#v", envelope["ok"])
+	}
+}
+
+func TestNewsConvertOutputsEnvelope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer newsly_ak_test" {
+			t.Fatalf("unexpected auth header: %q", got)
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/api/news/items/7/convert-to-article" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		writeJSON(t, w, map[string]any{
+			"status":         "success",
+			"news_item_id":   7,
+			"new_content_id": 42,
+			"already_exists": false,
+			"message":        "Article created and queued for processing",
+		})
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Save(configPath, config.FileConfig{
+		ServerURL: server.URL,
+		APIKey:    "newsly_ak_test",
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New("test", &stdout, &stderr)
+
+	exitCode := app.Execute(context.Background(), []string{
+		"--config", configPath,
+		"news", "convert", "7",
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if envelope["command"] != "news.convert" {
+		t.Fatalf("unexpected command: %#v", envelope["command"])
+	}
+	if envelope["ok"] != true {
+		t.Fatalf("expected ok=true: %#v", envelope["ok"])
+	}
+}
+
 func writeJSON(t *testing.T, w http.ResponseWriter, payload any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")

@@ -10,114 +10,6 @@ import (
 	"github.com/go-faster/jx"
 )
 
-// Agent digest generation request for arbitrary windows.
-// Ref: #/components/schemas/AgentDigestRequest
-type AgentDigestRequest struct {
-	EndAt   time.Time                 `json:"end_at"`
-	Form    OptAgentDigestRequestForm `json:"form"`
-	StartAt time.Time                 `json:"start_at"`
-}
-
-// GetEndAt returns the value of EndAt.
-func (s *AgentDigestRequest) GetEndAt() time.Time {
-	return s.EndAt
-}
-
-// GetForm returns the value of Form.
-func (s *AgentDigestRequest) GetForm() OptAgentDigestRequestForm {
-	return s.Form
-}
-
-// GetStartAt returns the value of StartAt.
-func (s *AgentDigestRequest) GetStartAt() time.Time {
-	return s.StartAt
-}
-
-// SetEndAt sets the value of EndAt.
-func (s *AgentDigestRequest) SetEndAt(val time.Time) {
-	s.EndAt = val
-}
-
-// SetForm sets the value of Form.
-func (s *AgentDigestRequest) SetForm(val OptAgentDigestRequestForm) {
-	s.Form = val
-}
-
-// SetStartAt sets the value of StartAt.
-func (s *AgentDigestRequest) SetStartAt(val time.Time) {
-	s.StartAt = val
-}
-
-type AgentDigestRequestForm string
-
-const (
-	AgentDigestRequestFormShort AgentDigestRequestForm = "short"
-	AgentDigestRequestFormLong  AgentDigestRequestForm = "long"
-)
-
-// AllValues returns all AgentDigestRequestForm values.
-func (AgentDigestRequestForm) AllValues() []AgentDigestRequestForm {
-	return []AgentDigestRequestForm{
-		AgentDigestRequestFormShort,
-		AgentDigestRequestFormLong,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s AgentDigestRequestForm) MarshalText() ([]byte, error) {
-	switch s {
-	case AgentDigestRequestFormShort:
-		return []byte(s), nil
-	case AgentDigestRequestFormLong:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *AgentDigestRequestForm) UnmarshalText(data []byte) error {
-	switch AgentDigestRequestForm(data) {
-	case AgentDigestRequestFormShort:
-		*s = AgentDigestRequestFormShort
-		return nil
-	case AgentDigestRequestFormLong:
-		*s = AgentDigestRequestFormLong
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
-// Async agent digest generation response.
-// Ref: #/components/schemas/AgentDigestResponse
-type AgentDigestResponse struct {
-	JobID  int       `json:"job_id"`
-	Status OptString `json:"status"`
-}
-
-// GetJobID returns the value of JobID.
-func (s *AgentDigestResponse) GetJobID() int {
-	return s.JobID
-}
-
-// GetStatus returns the value of Status.
-func (s *AgentDigestResponse) GetStatus() OptString {
-	return s.Status
-}
-
-// SetJobID sets the value of JobID.
-func (s *AgentDigestResponse) SetJobID(val int) {
-	s.JobID = val
-}
-
-// SetStatus sets the value of Status.
-func (s *AgentDigestResponse) SetStatus(val OptString) {
-	s.Status = val
-}
-
-func (*AgentDigestResponse) generateDigestRes() {}
-
 // Complete simplified agent onboarding.
 // Ref: #/components/schemas/AgentOnboardingCompleteRequest
 type AgentOnboardingCompleteRequest struct {
@@ -457,6 +349,23 @@ func (s *AgentSearchResultResponseKind) UnmarshalText(data []byte) error {
 	}
 }
 
+// Request to mark multiple content items as read.
+// Ref: #/components/schemas/BulkMarkReadRequest
+type BulkMarkReadRequest struct {
+	// List of content IDs to mark as read.
+	ContentIds []int `json:"content_ids"`
+}
+
+// GetContentIds returns the value of ContentIds.
+func (s *BulkMarkReadRequest) GetContentIds() []int {
+	return s.ContentIds
+}
+
+// SetContentIds sets the value of ContentIds.
+func (s *BulkMarkReadRequest) SetContentIds(val []int) {
+	s.ContentIds = val
+}
+
 type CompleteOnboardingOK map[string]jx.Raw
 
 func (s *CompleteOnboardingOK) init() CompleteOnboardingOK {
@@ -516,6 +425,12 @@ func (s *ContentClassification) UnmarshalText(data []byte) error {
 // Detailed response for a single content item.
 // Ref: #/components/schemas/ContentDetailResponse
 type ContentDetailResponse struct {
+	// Whether canonical body text is available.
+	BodyAvailable OptBool `json:"body_available"`
+	// Resolved body format (text or markdown).
+	BodyFormat OptNilString `json:"body_format"`
+	// Resolved body kind (article, transcript, or source).
+	BodyKind OptNilString `json:"body_kind"`
 	// Bullet points from structured summary.
 	BulletPoints []ContentDetailResponseBulletPointsItem `json:"bullet_points"`
 	// Whether the current user can subscribe to the detected feed.
@@ -590,6 +505,21 @@ type ContentDetailResponse struct {
 	UpdatedAt OptNilString `json:"updated_at"`
 	// Canonical URL of the content.
 	URL string `json:"url"`
+}
+
+// GetBodyAvailable returns the value of BodyAvailable.
+func (s *ContentDetailResponse) GetBodyAvailable() OptBool {
+	return s.BodyAvailable
+}
+
+// GetBodyFormat returns the value of BodyFormat.
+func (s *ContentDetailResponse) GetBodyFormat() OptNilString {
+	return s.BodyFormat
+}
+
+// GetBodyKind returns the value of BodyKind.
+func (s *ContentDetailResponse) GetBodyKind() OptNilString {
+	return s.BodyKind
 }
 
 // GetBulletPoints returns the value of BulletPoints.
@@ -777,6 +707,21 @@ func (s *ContentDetailResponse) GetURL() string {
 	return s.URL
 }
 
+// SetBodyAvailable sets the value of BodyAvailable.
+func (s *ContentDetailResponse) SetBodyAvailable(val OptBool) {
+	s.BodyAvailable = val
+}
+
+// SetBodyFormat sets the value of BodyFormat.
+func (s *ContentDetailResponse) SetBodyFormat(val OptNilString) {
+	s.BodyFormat = val
+}
+
+// SetBodyKind sets the value of BodyKind.
+func (s *ContentDetailResponse) SetBodyKind(val OptNilString) {
+	s.BodyKind = val
+}
+
 // SetBulletPoints sets the value of BulletPoints.
 func (s *ContentDetailResponse) SetBulletPoints(val []ContentDetailResponseBulletPointsItem) {
 	s.BulletPoints = val
@@ -962,7 +907,8 @@ func (s *ContentDetailResponse) SetURL(val string) {
 	s.URL = val
 }
 
-func (*ContentDetailResponse) getContentRes() {}
+func (*ContentDetailResponse) getContentRes()  {}
+func (*ContentDetailResponse) getNewsItemRes() {}
 
 type ContentDetailResponseBulletPointsItem map[string]string
 
@@ -1063,7 +1009,8 @@ func (s *ContentListResponse) SetMeta(val PaginationMetadata) {
 	s.Meta = val
 }
 
-func (*ContentListResponse) listContentRes() {}
+func (*ContentListResponse) listContentRes()   {}
+func (*ContentListResponse) listNewsItemsRes() {}
 
 // Lifecycle statuses for content processing.
 // Ref: #/components/schemas/ContentStatus
@@ -1623,172 +1570,72 @@ func (s *ContentType) UnmarshalText(data []byte) error {
 	}
 }
 
-// Paginated response for daily digest list.
-// Ref: #/components/schemas/DailyNewsDigestListResponse
-type DailyNewsDigestListResponse struct {
-	Digests []DailyNewsDigestResponse `json:"digests"`
-	// Pagination metadata for the response.
-	Meta PaginationMetadata `json:"meta"`
+// Response for converting a news item into long-form article content.
+// Ref: #/components/schemas/ConvertNewsItemResponse
+type ConvertNewsItemResponse struct {
+	AlreadyExists bool      `json:"already_exists"`
+	Message       string    `json:"message"`
+	NewContentID  int       `json:"new_content_id"`
+	NewsItemID    int       `json:"news_item_id"`
+	Status        OptString `json:"status"`
 }
 
-// GetDigests returns the value of Digests.
-func (s *DailyNewsDigestListResponse) GetDigests() []DailyNewsDigestResponse {
-	return s.Digests
+// GetAlreadyExists returns the value of AlreadyExists.
+func (s *ConvertNewsItemResponse) GetAlreadyExists() bool {
+	return s.AlreadyExists
 }
 
-// GetMeta returns the value of Meta.
-func (s *DailyNewsDigestListResponse) GetMeta() PaginationMetadata {
-	return s.Meta
+// GetMessage returns the value of Message.
+func (s *ConvertNewsItemResponse) GetMessage() string {
+	return s.Message
 }
 
-// SetDigests sets the value of Digests.
-func (s *DailyNewsDigestListResponse) SetDigests(val []DailyNewsDigestResponse) {
-	s.Digests = val
+// GetNewContentID returns the value of NewContentID.
+func (s *ConvertNewsItemResponse) GetNewContentID() int {
+	return s.NewContentID
 }
 
-// SetMeta sets the value of Meta.
-func (s *DailyNewsDigestListResponse) SetMeta(val PaginationMetadata) {
-	s.Meta = val
+// GetNewsItemID returns the value of NewsItemID.
+func (s *ConvertNewsItemResponse) GetNewsItemID() int {
+	return s.NewsItemID
 }
 
-func (*DailyNewsDigestListResponse) listDigestsRes() {}
-
-// Summary information for one daily news digest card.
-// Ref: #/components/schemas/DailyNewsDigestResponse
-type DailyNewsDigestResponse struct {
-	// ISO timestamp when digest was generated.
-	GeneratedAt string `json:"generated_at"`
-	// Unique digest identifier.
-	ID int `json:"id"`
-	// Whether this digest card is marked read.
-	IsRead OptBool `json:"is_read"`
-	// Optional digest bullet points.
-	KeyPoints []string `json:"key_points"`
-	// Digest local date (YYYY-MM-DD).
-	LocalDate string `json:"local_date"`
-	// ISO timestamp when digest was marked read.
-	ReadAt OptNilString `json:"read_at"`
-	// Source news content IDs used for synthesis.
-	SourceContentIds []int `json:"source_content_ids"`
-	// Number of source news items included.
-	SourceCount int `json:"source_count"`
-	// Succinct daily roll-up summary.
-	Summary string `json:"summary"`
-	// IANA timezone used for local-day grouping.
-	Timezone string `json:"timezone"`
-	// Daily digest headline.
-	Title string `json:"title"`
+// GetStatus returns the value of Status.
+func (s *ConvertNewsItemResponse) GetStatus() OptString {
+	return s.Status
 }
 
-// GetGeneratedAt returns the value of GeneratedAt.
-func (s *DailyNewsDigestResponse) GetGeneratedAt() string {
-	return s.GeneratedAt
+// SetAlreadyExists sets the value of AlreadyExists.
+func (s *ConvertNewsItemResponse) SetAlreadyExists(val bool) {
+	s.AlreadyExists = val
 }
 
-// GetID returns the value of ID.
-func (s *DailyNewsDigestResponse) GetID() int {
-	return s.ID
+// SetMessage sets the value of Message.
+func (s *ConvertNewsItemResponse) SetMessage(val string) {
+	s.Message = val
 }
 
-// GetIsRead returns the value of IsRead.
-func (s *DailyNewsDigestResponse) GetIsRead() OptBool {
-	return s.IsRead
+// SetNewContentID sets the value of NewContentID.
+func (s *ConvertNewsItemResponse) SetNewContentID(val int) {
+	s.NewContentID = val
 }
 
-// GetKeyPoints returns the value of KeyPoints.
-func (s *DailyNewsDigestResponse) GetKeyPoints() []string {
-	return s.KeyPoints
+// SetNewsItemID sets the value of NewsItemID.
+func (s *ConvertNewsItemResponse) SetNewsItemID(val int) {
+	s.NewsItemID = val
 }
 
-// GetLocalDate returns the value of LocalDate.
-func (s *DailyNewsDigestResponse) GetLocalDate() string {
-	return s.LocalDate
+// SetStatus sets the value of Status.
+func (s *ConvertNewsItemResponse) SetStatus(val OptString) {
+	s.Status = val
 }
 
-// GetReadAt returns the value of ReadAt.
-func (s *DailyNewsDigestResponse) GetReadAt() OptNilString {
-	return s.ReadAt
-}
+func (*ConvertNewsItemResponse) convertNewsItemToArticleRes() {}
 
-// GetSourceContentIds returns the value of SourceContentIds.
-func (s *DailyNewsDigestResponse) GetSourceContentIds() []int {
-	return s.SourceContentIds
-}
+// ConvertNewsItemToArticleNotFound is response for ConvertNewsItemToArticle operation.
+type ConvertNewsItemToArticleNotFound struct{}
 
-// GetSourceCount returns the value of SourceCount.
-func (s *DailyNewsDigestResponse) GetSourceCount() int {
-	return s.SourceCount
-}
-
-// GetSummary returns the value of Summary.
-func (s *DailyNewsDigestResponse) GetSummary() string {
-	return s.Summary
-}
-
-// GetTimezone returns the value of Timezone.
-func (s *DailyNewsDigestResponse) GetTimezone() string {
-	return s.Timezone
-}
-
-// GetTitle returns the value of Title.
-func (s *DailyNewsDigestResponse) GetTitle() string {
-	return s.Title
-}
-
-// SetGeneratedAt sets the value of GeneratedAt.
-func (s *DailyNewsDigestResponse) SetGeneratedAt(val string) {
-	s.GeneratedAt = val
-}
-
-// SetID sets the value of ID.
-func (s *DailyNewsDigestResponse) SetID(val int) {
-	s.ID = val
-}
-
-// SetIsRead sets the value of IsRead.
-func (s *DailyNewsDigestResponse) SetIsRead(val OptBool) {
-	s.IsRead = val
-}
-
-// SetKeyPoints sets the value of KeyPoints.
-func (s *DailyNewsDigestResponse) SetKeyPoints(val []string) {
-	s.KeyPoints = val
-}
-
-// SetLocalDate sets the value of LocalDate.
-func (s *DailyNewsDigestResponse) SetLocalDate(val string) {
-	s.LocalDate = val
-}
-
-// SetReadAt sets the value of ReadAt.
-func (s *DailyNewsDigestResponse) SetReadAt(val OptNilString) {
-	s.ReadAt = val
-}
-
-// SetSourceContentIds sets the value of SourceContentIds.
-func (s *DailyNewsDigestResponse) SetSourceContentIds(val []int) {
-	s.SourceContentIds = val
-}
-
-// SetSourceCount sets the value of SourceCount.
-func (s *DailyNewsDigestResponse) SetSourceCount(val int) {
-	s.SourceCount = val
-}
-
-// SetSummary sets the value of Summary.
-func (s *DailyNewsDigestResponse) SetSummary(val string) {
-	s.Summary = val
-}
-
-// SetTimezone sets the value of Timezone.
-func (s *DailyNewsDigestResponse) SetTimezone(val string) {
-	s.Timezone = val
-}
-
-// SetTitle sets the value of Title.
-func (s *DailyNewsDigestResponse) SetTitle(val string) {
-	s.Title = val
-}
+func (*ConvertNewsItemToArticleNotFound) convertNewsItemToArticleRes() {}
 
 // Detected RSS/Atom feed from content page.
 // Ref: #/components/schemas/DetectedFeed
@@ -1847,6 +1694,11 @@ type GetContentNotFoundApplicationJSON jx.Raw
 
 func (*GetContentNotFoundApplicationJSON) getContentRes() {}
 
+// GetNewsItemNotFound is response for GetNewsItem operation.
+type GetNewsItemNotFound struct{}
+
+func (*GetNewsItemNotFound) getNewsItemRes() {}
+
 type HTTPBearer struct {
 	Token string
 	Roles []string
@@ -1887,18 +1739,20 @@ func (s *HTTPValidationError) SetDetail(val []ValidationError) {
 	s.Detail = val
 }
 
-func (*HTTPValidationError) completeOnboardingRes() {}
-func (*HTTPValidationError) generateDigestRes()     {}
-func (*HTTPValidationError) getContentRes()         {}
-func (*HTTPValidationError) getJobRes()             {}
-func (*HTTPValidationError) getOnboardingRes()      {}
-func (*HTTPValidationError) listContentRes()        {}
-func (*HTTPValidationError) listDigestsRes()        {}
-func (*HTTPValidationError) listSourcesRes()        {}
-func (*HTTPValidationError) searchAgentRes()        {}
-func (*HTTPValidationError) startOnboardingRes()    {}
-func (*HTTPValidationError) submitContentRes()      {}
-func (*HTTPValidationError) subscribeSourceRes()    {}
+func (*HTTPValidationError) completeOnboardingRes()       {}
+func (*HTTPValidationError) convertNewsItemToArticleRes() {}
+func (*HTTPValidationError) getContentRes()               {}
+func (*HTTPValidationError) getJobRes()                   {}
+func (*HTTPValidationError) getNewsItemRes()              {}
+func (*HTTPValidationError) getOnboardingRes()            {}
+func (*HTTPValidationError) listContentRes()              {}
+func (*HTTPValidationError) listNewsItemsRes()            {}
+func (*HTTPValidationError) listSourcesRes()              {}
+func (*HTTPValidationError) markNewsItemsReadRes()        {}
+func (*HTTPValidationError) searchAgentRes()              {}
+func (*HTTPValidationError) startOnboardingRes()          {}
+func (*HTTPValidationError) submitContentRes()            {}
+func (*HTTPValidationError) subscribeSourceRes()          {}
 
 // Status payload for an async processing job.
 // Ref: #/components/schemas/JobStatusResponse
@@ -2044,14 +1898,32 @@ type ListContentNotFound struct{}
 
 func (*ListContentNotFound) listContentRes() {}
 
-// ListDigestsNotFound is response for ListDigests operation.
-type ListDigestsNotFound struct{}
+// ListNewsItemsNotFound is response for ListNewsItems operation.
+type ListNewsItemsNotFound struct{}
 
-func (*ListDigestsNotFound) listDigestsRes() {}
+func (*ListNewsItemsNotFound) listNewsItemsRes() {}
 
 type ListSourcesOKApplicationJSON []ScraperConfigResponse
 
 func (*ListSourcesOKApplicationJSON) listSourcesRes() {}
+
+// MarkNewsItemsReadNotFound is response for MarkNewsItemsRead operation.
+type MarkNewsItemsReadNotFound struct{}
+
+func (*MarkNewsItemsReadNotFound) markNewsItemsReadRes() {}
+
+type MarkNewsItemsReadOK map[string]jx.Raw
+
+func (s *MarkNewsItemsReadOK) init() MarkNewsItemsReadOK {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+func (*MarkNewsItemsReadOK) markNewsItemsReadRes() {}
 
 // Status for a single onboarding discovery lane.
 // Ref: #/components/schemas/OnboardingDiscoveryLaneStatus
@@ -2370,52 +2242,6 @@ func (s *OnboardingSuggestionSuggestionType) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
-}
-
-// NewOptAgentDigestRequestForm returns new OptAgentDigestRequestForm with value set to v.
-func NewOptAgentDigestRequestForm(v AgentDigestRequestForm) OptAgentDigestRequestForm {
-	return OptAgentDigestRequestForm{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptAgentDigestRequestForm is optional AgentDigestRequestForm.
-type OptAgentDigestRequestForm struct {
-	Value AgentDigestRequestForm
-	Set   bool
-}
-
-// IsSet returns true if OptAgentDigestRequestForm was set.
-func (o OptAgentDigestRequestForm) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptAgentDigestRequestForm) Reset() {
-	var v AgentDigestRequestForm
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptAgentDigestRequestForm) SetTo(v AgentDigestRequestForm) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptAgentDigestRequestForm) Get() (v AgentDigestRequestForm, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptAgentDigestRequestForm) Or(d AgentDigestRequestForm) AgentDigestRequestForm {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
 }
 
 // NewOptBool returns new OptBool with value set to v.
@@ -3244,6 +3070,52 @@ func (o OptOnboardingFastDiscoverResponse) Or(d OnboardingFastDiscoverResponse) 
 	return d
 }
 
+// NewOptScraperConfigStatsResponse returns new OptScraperConfigStatsResponse with value set to v.
+func NewOptScraperConfigStatsResponse(v ScraperConfigStatsResponse) OptScraperConfigStatsResponse {
+	return OptScraperConfigStatsResponse{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptScraperConfigStatsResponse is optional ScraperConfigStatsResponse.
+type OptScraperConfigStatsResponse struct {
+	Value ScraperConfigStatsResponse
+	Set   bool
+}
+
+// IsSet returns true if OptScraperConfigStatsResponse was set.
+func (o OptScraperConfigStatsResponse) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptScraperConfigStatsResponse) Reset() {
+	var v ScraperConfigStatsResponse
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptScraperConfigStatsResponse) SetTo(v ScraperConfigStatsResponse) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptScraperConfigStatsResponse) Get() (v ScraperConfigStatsResponse, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptScraperConfigStatsResponse) Or(d ScraperConfigStatsResponse) ScraperConfigStatsResponse {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptString returns new OptString with value set to v.
 func NewOptString(v string) OptString {
 	return OptString{
@@ -3438,14 +3310,15 @@ func (s *PaginationMetadata) SetTotal(val OptNilInt) {
 // Response model for scraper configs.
 // Ref: #/components/schemas/ScraperConfigResponse
 type ScraperConfigResponse struct {
-	Config      ScraperConfigResponseConfig `json:"config"`
-	CreatedAt   time.Time                   `json:"created_at"`
-	DisplayName OptNilString                `json:"display_name"`
-	FeedURL     OptNilString                `json:"feed_url"`
-	ID          int                         `json:"id"`
-	IsActive    bool                        `json:"is_active"`
-	Limit       OptNilInt                   `json:"limit"`
-	ScraperType string                      `json:"scraper_type"`
+	Config      ScraperConfigResponseConfig   `json:"config"`
+	CreatedAt   time.Time                     `json:"created_at"`
+	DisplayName OptNilString                  `json:"display_name"`
+	FeedURL     OptNilString                  `json:"feed_url"`
+	ID          int                           `json:"id"`
+	IsActive    bool                          `json:"is_active"`
+	Limit       OptNilInt                     `json:"limit"`
+	ScraperType string                        `json:"scraper_type"`
+	Stats       OptScraperConfigStatsResponse `json:"stats"`
 }
 
 // GetConfig returns the value of Config.
@@ -3488,6 +3361,11 @@ func (s *ScraperConfigResponse) GetScraperType() string {
 	return s.ScraperType
 }
 
+// GetStats returns the value of Stats.
+func (s *ScraperConfigResponse) GetStats() OptScraperConfigStatsResponse {
+	return s.Stats
+}
+
 // SetConfig sets the value of Config.
 func (s *ScraperConfigResponse) SetConfig(val ScraperConfigResponseConfig) {
 	s.Config = val
@@ -3528,6 +3406,11 @@ func (s *ScraperConfigResponse) SetScraperType(val string) {
 	s.ScraperType = val
 }
 
+// SetStats sets the value of Stats.
+func (s *ScraperConfigResponse) SetStats(val OptScraperConfigStatsResponse) {
+	s.Stats = val
+}
+
 func (*ScraperConfigResponse) subscribeSourceRes() {}
 
 type ScraperConfigResponseConfig map[string]jx.Raw
@@ -3539,6 +3422,110 @@ func (s *ScraperConfigResponseConfig) init() ScraperConfigResponseConfig {
 		*s = m
 	}
 	return m
+}
+
+// Derived stats for a single scraper configuration.
+// Ref: #/components/schemas/ScraperConfigStatsResponse
+type ScraperConfigStatsResponse struct {
+	AverageIntervalHours OptNilFloat64  `json:"average_interval_hours"`
+	CompletedCount       int            `json:"completed_count"`
+	IntervalSampleSize   OptInt         `json:"interval_sample_size"`
+	LatestProcessedAt    OptNilDateTime `json:"latest_processed_at"`
+	LatestPublicationAt  OptNilDateTime `json:"latest_publication_at"`
+	NextExpectedAt       OptNilDateTime `json:"next_expected_at"`
+	ProcessingCount      int            `json:"processing_count"`
+	TotalCount           int            `json:"total_count"`
+	UnreadCount          int            `json:"unread_count"`
+}
+
+// GetAverageIntervalHours returns the value of AverageIntervalHours.
+func (s *ScraperConfigStatsResponse) GetAverageIntervalHours() OptNilFloat64 {
+	return s.AverageIntervalHours
+}
+
+// GetCompletedCount returns the value of CompletedCount.
+func (s *ScraperConfigStatsResponse) GetCompletedCount() int {
+	return s.CompletedCount
+}
+
+// GetIntervalSampleSize returns the value of IntervalSampleSize.
+func (s *ScraperConfigStatsResponse) GetIntervalSampleSize() OptInt {
+	return s.IntervalSampleSize
+}
+
+// GetLatestProcessedAt returns the value of LatestProcessedAt.
+func (s *ScraperConfigStatsResponse) GetLatestProcessedAt() OptNilDateTime {
+	return s.LatestProcessedAt
+}
+
+// GetLatestPublicationAt returns the value of LatestPublicationAt.
+func (s *ScraperConfigStatsResponse) GetLatestPublicationAt() OptNilDateTime {
+	return s.LatestPublicationAt
+}
+
+// GetNextExpectedAt returns the value of NextExpectedAt.
+func (s *ScraperConfigStatsResponse) GetNextExpectedAt() OptNilDateTime {
+	return s.NextExpectedAt
+}
+
+// GetProcessingCount returns the value of ProcessingCount.
+func (s *ScraperConfigStatsResponse) GetProcessingCount() int {
+	return s.ProcessingCount
+}
+
+// GetTotalCount returns the value of TotalCount.
+func (s *ScraperConfigStatsResponse) GetTotalCount() int {
+	return s.TotalCount
+}
+
+// GetUnreadCount returns the value of UnreadCount.
+func (s *ScraperConfigStatsResponse) GetUnreadCount() int {
+	return s.UnreadCount
+}
+
+// SetAverageIntervalHours sets the value of AverageIntervalHours.
+func (s *ScraperConfigStatsResponse) SetAverageIntervalHours(val OptNilFloat64) {
+	s.AverageIntervalHours = val
+}
+
+// SetCompletedCount sets the value of CompletedCount.
+func (s *ScraperConfigStatsResponse) SetCompletedCount(val int) {
+	s.CompletedCount = val
+}
+
+// SetIntervalSampleSize sets the value of IntervalSampleSize.
+func (s *ScraperConfigStatsResponse) SetIntervalSampleSize(val OptInt) {
+	s.IntervalSampleSize = val
+}
+
+// SetLatestProcessedAt sets the value of LatestProcessedAt.
+func (s *ScraperConfigStatsResponse) SetLatestProcessedAt(val OptNilDateTime) {
+	s.LatestProcessedAt = val
+}
+
+// SetLatestPublicationAt sets the value of LatestPublicationAt.
+func (s *ScraperConfigStatsResponse) SetLatestPublicationAt(val OptNilDateTime) {
+	s.LatestPublicationAt = val
+}
+
+// SetNextExpectedAt sets the value of NextExpectedAt.
+func (s *ScraperConfigStatsResponse) SetNextExpectedAt(val OptNilDateTime) {
+	s.NextExpectedAt = val
+}
+
+// SetProcessingCount sets the value of ProcessingCount.
+func (s *ScraperConfigStatsResponse) SetProcessingCount(val int) {
+	s.ProcessingCount = val
+}
+
+// SetTotalCount sets the value of TotalCount.
+func (s *ScraperConfigStatsResponse) SetTotalCount(val int) {
+	s.TotalCount = val
+}
+
+// SetUnreadCount sets the value of UnreadCount.
+func (s *ScraperConfigStatsResponse) SetUnreadCount(val int) {
+	s.UnreadCount = val
 }
 
 type SubmitContentCreated ContentSubmissionResponse

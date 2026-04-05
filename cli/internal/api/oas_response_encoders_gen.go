@@ -44,9 +44,9 @@ func encodeCompleteOnboardingResponse(response CompleteOnboardingRes, w http.Res
 	}
 }
 
-func encodeGenerateDigestResponse(response GenerateDigestRes, w http.ResponseWriter, span trace.Span) error {
+func encodeConvertNewsItemToArticleResponse(response ConvertNewsItemToArticleRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *AgentDigestResponse:
+	case *ConvertNewsItemResponse:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
@@ -56,6 +56,12 @@ func encodeGenerateDigestResponse(response GenerateDigestRes, w http.ResponseWri
 		if _, err := e.WriteTo(w); err != nil {
 			return errors.Wrap(err, "write")
 		}
+
+		return nil
+
+	case *ConvertNewsItemToArticleNotFound:
+		w.WriteHeader(404)
+		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -156,6 +162,45 @@ func encodeGetJobResponse(response GetJobRes, w http.ResponseWriter, span trace.
 	}
 }
 
+func encodeGetNewsItemResponse(response GetNewsItemRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ContentDetailResponse:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *GetNewsItemNotFound:
+		w.WriteHeader(404)
+		span.SetStatus(codes.Error, http.StatusText(404))
+
+		return nil
+
+	case *HTTPValidationError:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(422)
+		span.SetStatus(codes.Error, http.StatusText(422))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
 func encodeGetOnboardingResponse(response GetOnboardingRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *OnboardingDiscoveryStatusResponse:
@@ -228,9 +273,9 @@ func encodeListContentResponse(response ListContentRes, w http.ResponseWriter, s
 	}
 }
 
-func encodeListDigestsResponse(response ListDigestsRes, w http.ResponseWriter, span trace.Span) error {
+func encodeListNewsItemsResponse(response ListNewsItemsRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *DailyNewsDigestListResponse:
+	case *ContentListResponse:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
@@ -243,7 +288,7 @@ func encodeListDigestsResponse(response ListDigestsRes, w http.ResponseWriter, s
 
 		return nil
 
-	case *ListDigestsNotFound:
+	case *ListNewsItemsNotFound:
 		w.WriteHeader(404)
 		span.SetStatus(codes.Error, http.StatusText(404))
 
@@ -279,6 +324,45 @@ func encodeListSourcesResponse(response ListSourcesRes, w http.ResponseWriter, s
 		if _, err := e.WriteTo(w); err != nil {
 			return errors.Wrap(err, "write")
 		}
+
+		return nil
+
+	case *HTTPValidationError:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(422)
+		span.SetStatus(codes.Error, http.StatusText(422))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeMarkNewsItemsReadResponse(response MarkNewsItemsReadRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *MarkNewsItemsReadOK:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *MarkNewsItemsReadNotFound:
+		w.WriteHeader(404)
+		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 

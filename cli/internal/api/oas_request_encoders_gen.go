@@ -24,8 +24,8 @@ func encodeCompleteOnboardingRequest(
 	return nil
 }
 
-func encodeGenerateDigestRequest(
-	req *AgentDigestRequest,
+func encodeMarkNewsItemsReadRequest(
+	req *BulkMarkReadRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

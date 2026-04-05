@@ -212,6 +212,122 @@
         "title": "AgentDigestResponse",
         "type": "object"
       },
+      "AgentLibraryDocumentResponse": {
+        "description": "One manifest entry for a personal markdown document.",
+        "properties": {
+          "checksum_sha256": {
+            "title": "Checksum Sha256",
+            "type": "string"
+          },
+          "content_id": {
+            "title": "Content Id",
+            "type": "integer"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variant": {
+            "enum": [
+              "source",
+              "summary"
+            ],
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relative_path",
+          "content_id",
+          "variant",
+          "size_bytes",
+          "checksum_sha256"
+        ],
+        "title": "AgentLibraryDocumentResponse",
+        "type": "object"
+      },
+      "AgentLibraryFileResponse": {
+        "description": "One markdown document payload for CLI sync download.",
+        "properties": {
+          "checksum_sha256": {
+            "title": "Checksum Sha256",
+            "type": "string"
+          },
+          "content_id": {
+            "title": "Content Id",
+            "type": "integer"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variant": {
+            "enum": [
+              "source",
+              "summary"
+            ],
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relative_path",
+          "content_id",
+          "variant",
+          "checksum_sha256",
+          "text"
+        ],
+        "title": "AgentLibraryFileResponse",
+        "type": "object"
+      },
+      "AgentLibraryManifestResponse": {
+        "description": "Manifest of markdown documents available for CLI sync.",
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentLibraryDocumentResponse"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "include_source": {
+            "default": false,
+            "title": "Include Source",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "documents"
+        ],
+        "title": "AgentLibraryManifestResponse",
+        "type": "object"
+      },
       "AgentOnboardingCompleteRequest": {
         "description": "Complete simplified agent onboarding.",
         "properties": {
@@ -710,10 +826,24 @@
       "ChatMessageDto": {
         "description": "Flattened chat message returned to clients.",
         "properties": {
+          "active_council_child_session_id": {
+            "description": "Currently selected council branch for council candidate rows",
+            "nullable": true,
+            "title": "Active Council Child Session Id",
+            "type": "integer"
+          },
           "content": {
             "description": "Message content",
             "title": "Content",
             "type": "string"
+          },
+          "council_candidates": {
+            "description": "Optional council reply candidates attached to the assistant message",
+            "items": {
+              "$ref": "#/components/schemas/CouncilCandidate"
+            },
+            "title": "Council Candidates",
+            "type": "array"
           },
           "display_type": {
             "$ref": "#/components/schemas/ChatMessageDisplayType",
@@ -817,6 +947,12 @@
       "ChatSessionSummaryDto": {
         "description": "Summary of a chat session.",
         "properties": {
+          "active_child_session_id": {
+            "description": "Currently selected hidden branch session for council chat",
+            "nullable": true,
+            "title": "Active Child Session Id",
+            "type": "integer"
+          },
           "article_source": {
             "description": "Source name of the article (for empty session display)",
             "nullable": true,
@@ -843,6 +979,12 @@
             "nullable": true,
             "title": "Content Id",
             "type": "integer"
+          },
+          "council_mode": {
+            "default": false,
+            "description": "True when this visible session is using council chat mode",
+            "title": "Council Mode",
+            "type": "boolean"
           },
           "created_at": {
             "format": "date-time",
@@ -939,6 +1081,199 @@
         "title": "ChatSessionSummaryDto",
         "type": "object"
       },
+      "CliLinkApproveRequest": {
+        "description": "Authenticated request to approve one pending CLI link session.",
+        "properties": {
+          "approve_token": {
+            "maxLength": 255,
+            "minLength": 8,
+            "title": "Approve Token",
+            "type": "string"
+          },
+          "device_name": {
+            "maxLength": 255,
+            "nullable": true,
+            "title": "Device Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve_token"
+        ],
+        "title": "CliLinkApproveRequest",
+        "type": "object"
+      },
+      "CliLinkApproveResponse": {
+        "description": "Approval response after issuing a CLI API key.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "key_prefix": {
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "approved",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "key_prefix",
+          "expires_at"
+        ],
+        "title": "CliLinkApproveResponse",
+        "type": "object"
+      },
+      "CliLinkPollResponse": {
+        "description": "Polling response for a CLI waiting on mobile approval.",
+        "properties": {
+          "api_key": {
+            "nullable": true,
+            "title": "Api Key",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "key_prefix": {
+            "nullable": true,
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "claimed",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "expires_at"
+        ],
+        "title": "CliLinkPollResponse",
+        "type": "object"
+      },
+      "CliLinkStartRequest": {
+        "description": "Request to start a new CLI QR-link session.",
+        "properties": {
+          "device_name": {
+            "maxLength": 255,
+            "nullable": true,
+            "title": "Device Name",
+            "type": "string"
+          }
+        },
+        "title": "CliLinkStartRequest",
+        "type": "object"
+      },
+      "CliLinkStartResponse": {
+        "description": "Unauthenticated response for bootstrapping CLI QR login.",
+        "properties": {
+          "approve_url": {
+            "title": "Approve Url",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "poll_interval_seconds": {
+            "default": 2,
+            "title": "Poll Interval Seconds",
+            "type": "integer"
+          },
+          "poll_token": {
+            "title": "Poll Token",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "poll_token",
+          "approve_url",
+          "expires_at"
+        ],
+        "title": "CliLinkStartResponse",
+        "type": "object"
+      },
+      "ContentBodyResponse": {
+        "description": "Resolved canonical body payload.",
+        "properties": {
+          "content_id": {
+            "description": "Content identifier",
+            "title": "Content Id",
+            "type": "integer"
+          },
+          "format": {
+            "description": "Body format",
+            "title": "Format",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Body kind",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "description": "Full canonical body text",
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "ISO timestamp of the body pointer update",
+            "nullable": true,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variant": {
+            "description": "Canonical body variant",
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_id",
+          "variant",
+          "kind",
+          "format",
+          "text"
+        ],
+        "title": "ContentBodyResponse",
+        "type": "object"
+      },
       "ContentClassification": {
         "description": "User-visible read prioritization classification.",
         "enum": [
@@ -951,6 +1286,9 @@
       "ContentDetailResponse": {
         "description": "Detailed response for a single content item.",
         "example": {
+          "body_available": true,
+          "body_format": "text",
+          "body_kind": "article",
           "bullet_points": [
             {
               "category": "key_finding",
@@ -1042,6 +1380,24 @@
           "url": "https://example.com/article"
         },
         "properties": {
+          "body_available": {
+            "default": false,
+            "description": "Whether canonical body text is available",
+            "title": "Body Available",
+            "type": "boolean"
+          },
+          "body_format": {
+            "description": "Resolved body format (text or markdown)",
+            "nullable": true,
+            "title": "Body Format",
+            "type": "string"
+          },
+          "body_kind": {
+            "description": "Resolved body kind (article, transcript, or source)",
+            "nullable": true,
+            "title": "Body Kind",
+            "type": "string"
+          },
           "bullet_points": {
             "description": "Bullet points from structured summary",
             "items": {
@@ -1797,12 +2153,130 @@
         "title": "ConvertNewsResponse",
         "type": "object"
       },
+      "CouncilCandidate": {
+        "description": "One council reply candidate rendered inside the parent transcript.",
+        "properties": {
+          "child_session_id": {
+            "minimum": 1.0,
+            "title": "Child Session Id",
+            "type": "integer"
+          },
+          "content": {
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "order": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Order",
+            "type": "integer"
+          },
+          "persona_id": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Persona Id",
+            "type": "string"
+          },
+          "persona_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Persona Name",
+            "type": "string"
+          },
+          "status": {
+            "default": "completed",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "persona_id",
+          "persona_name",
+          "child_session_id",
+          "content",
+          "order"
+        ],
+        "title": "CouncilCandidate",
+        "type": "object"
+      },
+      "CouncilPersonaConfig": {
+        "additionalProperties": false,
+        "description": "User-configurable persona preset for council chat.",
+        "properties": {
+          "display_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "instruction_prompt": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Instruction Prompt",
+            "type": "string"
+          },
+          "sort_order": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "instruction_prompt",
+          "sort_order"
+        ],
+        "title": "CouncilPersonaConfig",
+        "type": "object"
+      },
+      "CouncilSelectRequest": {
+        "description": "Request to switch the active branch for a council chat.",
+        "properties": {
+          "child_session_id": {
+            "minimum": 1.0,
+            "title": "Child Session Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "child_session_id"
+        ],
+        "title": "CouncilSelectRequest",
+        "type": "object"
+      },
+      "CouncilStartRequest": {
+        "description": "Request to start council mode from an existing parent session.",
+        "properties": {
+          "message": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "CouncilStartRequest",
+        "type": "object"
+      },
       "CreateChatSessionRequest": {
         "description": "Request to create a new chat session.",
         "example": {
           "content_id": 123,
           "initial_message": "What are the key insights from this article?",
-          "llm_provider": "anthropic"
+          "llm_provider": "openai"
         },
         "properties": {
           "content_id": {
@@ -1827,7 +2301,7 @@
           },
           "llm_provider": {
             "$ref": "#/components/schemas/LLMProvider",
-            "description": "LLM provider (defaults to anthropic)",
+            "description": "LLM provider (defaults to openai)",
             "nullable": true
           },
           "topic": {
@@ -2017,6 +2491,35 @@
           "content_context_attached"
         ],
         "title": "CreateVoiceSessionResponse",
+        "type": "object"
+      },
+      "DebugUserSessionRequest": {
+        "additionalProperties": false,
+        "description": "Request schema for creating or resuming a debug user session.",
+        "properties": {
+          "has_completed_live_voice_onboarding": {
+            "nullable": true,
+            "title": "Has Completed Live Voice Onboarding",
+            "type": "boolean"
+          },
+          "has_completed_new_user_tutorial": {
+            "nullable": true,
+            "title": "Has Completed New User Tutorial",
+            "type": "boolean"
+          },
+          "has_completed_onboarding": {
+            "nullable": true,
+            "title": "Has Completed Onboarding",
+            "type": "boolean"
+          },
+          "user_id": {
+            "minimum": 1.0,
+            "nullable": true,
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "title": "DebugUserSessionRequest",
         "type": "object"
       },
       "DetectedFeed": {
@@ -2901,11 +3404,8 @@
             "type": "integer"
           },
           "target_type": {
+            "const": "content",
             "description": "Narration target family",
-            "enum": [
-              "content",
-              "news-digest"
-            ],
             "title": "Target Type",
             "type": "string"
           },
@@ -2922,326 +3422,6 @@
           "narration_text"
         ],
         "title": "NarrationResponse",
-        "type": "object"
-      },
-      "NewsDigestBulletResponse": {
-        "description": "One persisted digest bullet.",
-        "properties": {
-          "citations": {
-            "items": {
-              "$ref": "#/components/schemas/NewsDigestCitationResponse"
-            },
-            "title": "Citations",
-            "type": "array"
-          },
-          "details": {
-            "description": "Expanded bullet details",
-            "title": "Details",
-            "type": "string"
-          },
-          "id": {
-            "description": "Bullet identifier",
-            "title": "Id",
-            "type": "integer"
-          },
-          "position": {
-            "description": "Bullet order within the digest",
-            "minimum": 1.0,
-            "title": "Position",
-            "type": "integer"
-          },
-          "source_count": {
-            "description": "Number of cited items",
-            "minimum": 0.0,
-            "title": "Source Count",
-            "type": "integer"
-          },
-          "topic": {
-            "description": "Short bullet topic",
-            "title": "Topic",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "position",
-          "topic",
-          "details",
-          "source_count"
-        ],
-        "title": "NewsDigestBulletResponse",
-        "type": "object"
-      },
-      "NewsDigestCitationResponse": {
-        "description": "One supporting citation for a digest bullet.",
-        "properties": {
-          "article_url": {
-            "description": "Canonical article URL when available",
-            "nullable": true,
-            "title": "Article Url",
-            "type": "string"
-          },
-          "label": {
-            "description": "Source label",
-            "nullable": true,
-            "title": "Label",
-            "type": "string"
-          },
-          "news_item_id": {
-            "description": "Supporting news item identifier",
-            "title": "News Item Id",
-            "type": "integer"
-          },
-          "title": {
-            "description": "Best title for the cited item",
-            "title": "Title",
-            "type": "string"
-          },
-          "url": {
-            "description": "Preferred outward URL",
-            "nullable": true,
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "news_item_id",
-          "title"
-        ],
-        "title": "NewsDigestCitationResponse",
-        "type": "object"
-      },
-      "NewsDigestListResponse": {
-        "description": "Paginated digest listing.",
-        "properties": {
-          "digests": {
-            "items": {
-              "$ref": "#/components/schemas/NewsDigestResponse"
-            },
-            "title": "Digests",
-            "type": "array"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/PaginationMetadata"
-          }
-        },
-        "required": [
-          "meta"
-        ],
-        "title": "NewsDigestListResponse",
-        "type": "object"
-      },
-      "NewsDigestResponse": {
-        "description": "Digest run detail payload.",
-        "properties": {
-          "bullets": {
-            "items": {
-              "$ref": "#/components/schemas/NewsDigestBulletResponse"
-            },
-            "title": "Bullets",
-            "type": "array"
-          },
-          "generated_at": {
-            "description": "When the digest was generated",
-            "format": "date-time",
-            "title": "Generated At",
-            "type": "string"
-          },
-          "group_count": {
-            "description": "Number of persisted bullets",
-            "minimum": 0.0,
-            "title": "Group Count",
-            "type": "integer"
-          },
-          "id": {
-            "description": "Digest identifier",
-            "title": "Id",
-            "type": "integer"
-          },
-          "is_read": {
-            "description": "Whether the digest has been marked read",
-            "title": "Is Read",
-            "type": "boolean"
-          },
-          "read_at": {
-            "description": "When the digest was marked read",
-            "format": "date-time",
-            "nullable": true,
-            "title": "Read At",
-            "type": "string"
-          },
-          "source_count": {
-            "description": "Number of covered news items",
-            "minimum": 0.0,
-            "title": "Source Count",
-            "type": "integer"
-          },
-          "summary": {
-            "description": "Digest summary",
-            "title": "Summary",
-            "type": "string"
-          },
-          "timezone": {
-            "description": "IANA timezone for rollover logic",
-            "title": "Timezone",
-            "type": "string"
-          },
-          "title": {
-            "description": "Digest title",
-            "title": "Title",
-            "type": "string"
-          },
-          "trigger_reason": {
-            "description": "Why this digest run was created",
-            "title": "Trigger Reason",
-            "type": "string"
-          },
-          "window_end_at": {
-            "description": "Newest included item ingest time",
-            "format": "date-time",
-            "title": "Window End At",
-            "type": "string"
-          },
-          "window_start_at": {
-            "description": "Oldest included item ingest time",
-            "format": "date-time",
-            "title": "Window Start At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "timezone",
-          "title",
-          "summary",
-          "source_count",
-          "group_count",
-          "trigger_reason",
-          "is_read",
-          "generated_at",
-          "window_start_at",
-          "window_end_at"
-        ],
-        "title": "NewsDigestResponse",
-        "type": "object"
-      },
-      "NewsItemResponse": {
-        "description": "Visible news item detail payload.",
-        "properties": {
-          "article_domain": {
-            "nullable": true,
-            "title": "Article Domain",
-            "type": "string"
-          },
-          "article_title": {
-            "nullable": true,
-            "title": "Article Title",
-            "type": "string"
-          },
-          "article_url": {
-            "nullable": true,
-            "title": "Article Url",
-            "type": "string"
-          },
-          "canonical_item_url": {
-            "nullable": true,
-            "title": "Canonical Item Url",
-            "type": "string"
-          },
-          "canonical_story_url": {
-            "nullable": true,
-            "title": "Canonical Story Url",
-            "type": "string"
-          },
-          "discussion_url": {
-            "nullable": true,
-            "title": "Discussion Url",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "ingested_at": {
-            "format": "date-time",
-            "title": "Ingested At",
-            "type": "string"
-          },
-          "owner_user_id": {
-            "nullable": true,
-            "title": "Owner User Id",
-            "type": "integer"
-          },
-          "platform": {
-            "nullable": true,
-            "title": "Platform",
-            "type": "string"
-          },
-          "processed_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Processed At",
-            "type": "string"
-          },
-          "published_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Published At",
-            "type": "string"
-          },
-          "raw_metadata": {
-            "additionalProperties": true,
-            "title": "Raw Metadata",
-            "type": "object"
-          },
-          "source_external_id": {
-            "nullable": true,
-            "title": "Source External Id",
-            "type": "string"
-          },
-          "source_label": {
-            "nullable": true,
-            "title": "Source Label",
-            "type": "string"
-          },
-          "source_type": {
-            "nullable": true,
-            "title": "Source Type",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "summary_key_points": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Summary Key Points",
-            "type": "array"
-          },
-          "summary_text": {
-            "nullable": true,
-            "title": "Summary Text",
-            "type": "string"
-          },
-          "summary_title": {
-            "nullable": true,
-            "title": "Summary Title",
-            "type": "string"
-          },
-          "visibility_scope": {
-            "title": "Visibility Scope",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "visibility_scope",
-          "status",
-          "ingested_at"
-        ],
-        "title": "NewsItemResponse",
         "type": "object"
       },
       "OnboardingAudioDiscoverRequest": {
@@ -3399,6 +3579,12 @@
             "title": "Inferred Topics",
             "type": "array"
           },
+          "news_list_preference_prompt": {
+            "maxLength": 4000,
+            "nullable": true,
+            "title": "News List Preference Prompt",
+            "type": "string"
+          },
           "profile_summary": {
             "nullable": true,
             "title": "Profile Summary",
@@ -3422,12 +3608,6 @@
             "maxLength": 50,
             "nullable": true,
             "title": "Twitter Username",
-            "type": "string"
-          },
-          "x_digest_filter_prompt": {
-            "maxLength": 4000,
-            "nullable": true,
-            "title": "X Digest Filter Prompt",
             "type": "string"
           }
         },
@@ -4103,7 +4283,18 @@
           "id": 1,
           "is_active": true,
           "limit": 10,
-          "scraper_type": "substack"
+          "scraper_type": "substack",
+          "stats": {
+            "average_interval_hours": 24.0,
+            "completed_count": 7,
+            "interval_sample_size": 3,
+            "latest_processed_at": "2026-03-30T21:30:00Z",
+            "latest_publication_at": "2026-03-30T20:00:00Z",
+            "next_expected_at": "2026-04-01T08:00:00Z",
+            "processing_count": 1,
+            "total_count": 8,
+            "unread_count": 3
+          }
         },
         "properties": {
           "config": {
@@ -4142,6 +4333,10 @@
           "scraper_type": {
             "title": "Scraper Type",
             "type": "string"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ScraperConfigStatsResponse",
+            "nullable": true
           }
         },
         "required": [
@@ -4152,6 +4347,63 @@
           "created_at"
         ],
         "title": "ScraperConfigResponse",
+        "type": "object"
+      },
+      "ScraperConfigStatsResponse": {
+        "description": "Derived stats for a single scraper configuration.",
+        "properties": {
+          "average_interval_hours": {
+            "nullable": true,
+            "title": "Average Interval Hours",
+            "type": "number"
+          },
+          "completed_count": {
+            "title": "Completed Count",
+            "type": "integer"
+          },
+          "interval_sample_size": {
+            "default": 0,
+            "title": "Interval Sample Size",
+            "type": "integer"
+          },
+          "latest_processed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Latest Processed At",
+            "type": "string"
+          },
+          "latest_publication_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Latest Publication At",
+            "type": "string"
+          },
+          "next_expected_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Next Expected At",
+            "type": "string"
+          },
+          "processing_count": {
+            "title": "Processing Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_count",
+          "completed_count",
+          "unread_count",
+          "processing_count"
+        ],
+        "title": "ScraperConfigStatsResponse",
         "type": "object"
       },
       "SendChatMessageRequest": {
@@ -4202,35 +4454,6 @@
           "message_id"
         ],
         "title": "SendMessageResponse",
-        "type": "object"
-      },
-      "StartDailyDigestChatResponse": {
-        "description": "Response returned after starting a news-digest dig-deeper chat.",
-        "properties": {
-          "message_id": {
-            "description": "Pending message identifier",
-            "title": "Message Id",
-            "type": "integer"
-          },
-          "session": {
-            "$ref": "#/components/schemas/ChatSessionSummaryDto"
-          },
-          "status": {
-            "$ref": "#/components/schemas/MessageProcessingStatus",
-            "default": "processing",
-            "description": "Current processing status for the seeded message"
-          },
-          "user_message": {
-            "$ref": "#/components/schemas/ChatMessageDto",
-            "description": "Seeded processing user message"
-          }
-        },
-        "required": [
-          "session",
-          "user_message",
-          "message_id"
-        ],
-        "title": "StartDailyDigestChatResponse",
         "type": "object"
       },
       "SubmissionStatusListResponse": {
@@ -4645,12 +4868,6 @@
             "title": "News",
             "type": "integer"
           },
-          "news_digest_count": {
-            "default": 0,
-            "description": "Number of unread news digest cards",
-            "title": "News Digest Count",
-            "type": "integer"
-          },
           "podcast": {
             "description": "Number of unread podcasts",
             "title": "Podcast",
@@ -4668,7 +4885,7 @@
       "UpdateChatSessionRequest": {
         "description": "Request to update a chat session.",
         "example": {
-          "llm_provider": "anthropic"
+          "llm_provider": "openai"
         },
         "properties": {
           "llm_model_hint": {
@@ -4691,33 +4908,32 @@
         "additionalProperties": false,
         "description": "Request schema for updating the authenticated user's profile.",
         "properties": {
+          "council_personas": {
+            "items": {
+              "$ref": "#/components/schemas/CouncilPersonaConfig"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "nullable": true,
+            "title": "Council Personas",
+            "type": "array"
+          },
           "full_name": {
             "maxLength": 255,
             "nullable": true,
             "title": "Full Name",
             "type": "string"
           },
-          "news_digest_interval_hours": {
+          "news_list_preference_prompt": {
+            "maxLength": 4000,
             "nullable": true,
-            "title": "News Digest Interval Hours",
-            "type": "integer"
-          },
-          "news_digest_timezone": {
-            "maxLength": 100,
-            "nullable": true,
-            "title": "News Digest Timezone",
+            "title": "News List Preference Prompt",
             "type": "string"
           },
           "twitter_username": {
             "maxLength": 50,
             "nullable": true,
             "title": "Twitter Username",
-            "type": "string"
-          },
-          "x_digest_filter_prompt": {
-            "maxLength": 4000,
-            "nullable": true,
-            "title": "X Digest Filter Prompt",
             "type": "string"
           }
         },
@@ -4825,6 +5041,13 @@
             "title": "Apple Id",
             "type": "string"
           },
+          "council_personas": {
+            "items": {
+              "$ref": "#/components/schemas/CouncilPersonaConfig"
+            },
+            "title": "Council Personas",
+            "type": "array"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -4868,14 +5091,9 @@
             "title": "Is Admin",
             "type": "boolean"
           },
-          "news_digest_interval_hours": {
-            "default": 6,
-            "title": "News Digest Interval Hours",
-            "type": "integer"
-          },
-          "news_digest_timezone": {
-            "default": "UTC",
-            "title": "News Digest Timezone",
+          "news_list_preference_prompt": {
+            "nullable": true,
+            "title": "News List Preference Prompt",
             "type": "string"
           },
           "twitter_username": {
@@ -4885,11 +5103,6 @@
           },
           "updated_at": {
             "title": "Updated At",
-            "type": "string"
-          },
-          "x_digest_filter_prompt": {
-            "nullable": true,
-            "title": "X Digest Filter Prompt",
             "type": "string"
           }
         },
@@ -5152,53 +5365,6 @@
   },
   "openapi": "3.0.3",
   "paths": {
-    "/api/agent/digests": {
-      "post": {
-        "description": "Queue arbitrary-window digest generation for agent clients.",
-        "operationId": "generateDigest",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentDigestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentDigestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Generate Digest",
-        "tags": [
-          "digests"
-        ]
-      }
-    },
     "/api/agent/onboarding": {
       "post": {
         "description": "Start simplified async onboarding.",
@@ -5472,6 +5638,18 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "Whether to include the available_dates metadata used by filterable list UIs. Disable for feed surfaces that do not show date filters.",
+            "in": "query",
+            "name": "include_available_dates",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Whether to include the available_dates metadata used by filterable list UIs. Disable for feed surfaces that do not show date filters.",
+              "title": "Include Available Dates",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -5680,9 +5858,10 @@
         ]
       }
     },
-    "/api/news/digests": {
+    "/api/news/items": {
       "get": {
-        "operationId": "listNewsDigests",
+        "description": "Return the visible representative news feed for the current user.",
+        "operationId": "listNewsItems",
         "parameters": [
           {
             "description": "Filter by read status",
@@ -5727,7 +5906,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NewsDigestListResponse"
+                  "$ref": "#/components/schemas/ContentListResponse"
                 }
               }
             },
@@ -5752,150 +5931,33 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "List news digest runs",
+        "summary": "List visible news items",
         "tags": [
           "news"
         ]
       }
     },
-    "/api/news/digests/{digest_id}": {
-      "get": {
-        "operationId": "getNewsDigest",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "digest_id",
-            "required": true,
-            "schema": {
-              "exclusiveMinimum": true,
-              "minimum": 0,
-              "title": "Digest Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NewsDigestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "description": "Not found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Get one digest run",
-        "tags": [
-          "news"
-        ]
-      }
-    },
-    "/api/news/digests/{digest_id}/bullets/{bullet_id}/dig-deeper": {
+    "/api/news/items/mark-read": {
       "post": {
-        "operationId": "startNewsDigestBulletDigDeeper",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "digest_id",
-            "required": true,
-            "schema": {
-              "exclusiveMinimum": true,
-              "minimum": 0,
-              "title": "Digest Id",
-              "type": "integer"
+        "description": "Mark the given visible representative news items as read.",
+        "operationId": "markNewsItemsRead",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkMarkReadRequest"
+              }
             }
           },
-          {
-            "in": "path",
-            "name": "bullet_id",
-            "required": true,
-            "schema": {
-              "exclusiveMinimum": true,
-              "minimum": 0,
-              "title": "Bullet Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StartDailyDigestChatResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "description": "Not found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
+          "required": true
         },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Start a bullet-focused news digest chat",
-        "tags": [
-          "news"
-        ]
-      }
-    },
-    "/api/news/digests/{digest_id}/mark-read": {
-      "post": {
-        "operationId": "markNewsDigestRead",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "digest_id",
-            "required": true,
-            "schema": {
-              "exclusiveMinimum": true,
-              "minimum": 0,
-              "title": "Digest Id",
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Mark News Digest Read Api News Digests  Digest Id  Mark Read Post",
+                  "title": "Response Mark News Items Read Api News Items Mark Read Post",
                   "type": "object"
                 }
               }
@@ -5921,7 +5983,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Mark one digest run as read",
+        "summary": "Mark visible news items as read",
         "tags": [
           "news"
         ]
@@ -5929,6 +5991,7 @@
     },
     "/api/news/items/{news_item_id}": {
       "get": {
+        "description": "Return one visible representative news item.",
         "operationId": "getNewsItem",
         "parameters": [
           {
@@ -5948,7 +6011,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NewsItemResponse"
+                  "$ref": "#/components/schemas/ContentDetailResponse"
                 }
               }
             },
@@ -5981,6 +6044,7 @@
     },
     "/api/news/items/{news_item_id}/convert-to-article": {
       "post": {
+        "description": "Convert one representative news item into article content.",
         "operationId": "convertNewsItemToArticle",
         "parameters": [
           {
@@ -6156,11 +6220,7 @@
       "name": "onboarding"
     },
     {
-      "description": "Agent-driven digest generation routes.",
-      "name": "digests"
-    },
-    {
-      "description": "News digest runs and short-form news items.",
+      "description": "Visible short-form news item routes.",
       "name": "news"
     },
     {

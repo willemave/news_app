@@ -22,12 +22,12 @@ func (UnimplementedHandler) CompleteOnboarding(ctx context.Context, req *AgentOn
 	return r, ht.ErrNotImplemented
 }
 
-// GenerateDigest implements generateDigest operation.
+// ConvertNewsItemToArticle implements convertNewsItemToArticle operation.
 //
-// Queue arbitrary-window digest generation for agent clients.
+// Convert one representative news item into article content.
 //
-// POST /api/agent/digests
-func (UnimplementedHandler) GenerateDigest(ctx context.Context, req *AgentDigestRequest) (r GenerateDigestRes, _ error) {
+// POST /api/news/items/{news_item_id}/convert-to-article
+func (UnimplementedHandler) ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (r ConvertNewsItemToArticleRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -46,6 +46,15 @@ func (UnimplementedHandler) GetContent(ctx context.Context, params GetContentPar
 //
 // GET /api/jobs/{job_id}
 func (UnimplementedHandler) GetJob(ctx context.Context, params GetJobParams) (r GetJobRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetNewsItem implements getNewsItem operation.
+//
+// Return one visible representative news item.
+//
+// GET /api/news/items/{news_item_id}
+func (UnimplementedHandler) GetNewsItem(ctx context.Context, params GetNewsItemParams) (r GetNewsItemRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -70,12 +79,12 @@ func (UnimplementedHandler) ListContent(ctx context.Context, params ListContentP
 	return r, ht.ErrNotImplemented
 }
 
-// ListDigests implements listDigests operation.
+// ListNewsItems implements listNewsItems operation.
 //
-// List per-user daily digest rows.
+// Return the visible representative news feed for the current user.
 //
-// GET /api/content/daily-digests
-func (UnimplementedHandler) ListDigests(ctx context.Context, params ListDigestsParams) (r ListDigestsRes, _ error) {
+// GET /api/news/items
+func (UnimplementedHandler) ListNewsItems(ctx context.Context, params ListNewsItemsParams) (r ListNewsItemsRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -85,6 +94,15 @@ func (UnimplementedHandler) ListDigests(ctx context.Context, params ListDigestsP
 //
 // GET /api/scrapers/
 func (UnimplementedHandler) ListSources(ctx context.Context, params ListSourcesParams) (r ListSourcesRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// MarkNewsItemsRead implements markNewsItemsRead operation.
+//
+// Mark the given visible representative news items as read.
+//
+// POST /api/news/items/mark-read
+func (UnimplementedHandler) MarkNewsItemsRead(ctx context.Context, req *BulkMarkReadRequest) (r MarkNewsItemsReadRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

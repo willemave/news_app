@@ -3,22 +3,6 @@
 package api
 
 // setDefaults set default value of fields.
-func (s *AgentDigestRequest) setDefaults() {
-	{
-		val := AgentDigestRequestForm("short")
-		s.Form.SetTo(val)
-	}
-}
-
-// setDefaults set default value of fields.
-func (s *AgentDigestResponse) setDefaults() {
-	{
-		val := string("queued")
-		s.Status.SetTo(val)
-	}
-}
-
-// setDefaults set default value of fields.
 func (s *AgentOnboardingCompleteRequest) setDefaults() {
 	{
 		val := bool(false)
@@ -40,6 +24,10 @@ func (s *AgentSearchRequest) setDefaults() {
 
 // setDefaults set default value of fields.
 func (s *ContentDetailResponse) setDefaults() {
+	{
+		val := bool(false)
+		s.BodyAvailable.SetTo(val)
+	}
 	{
 		val := bool(false)
 		s.CanSubscribe.SetTo(val)
@@ -75,10 +63,10 @@ func (s *ContentSummaryResponse) setDefaults() {
 }
 
 // setDefaults set default value of fields.
-func (s *DailyNewsDigestResponse) setDefaults() {
+func (s *ConvertNewsItemResponse) setDefaults() {
 	{
-		val := bool(false)
-		s.IsRead.SetTo(val)
+		val := string("success")
+		s.Status.SetTo(val)
 	}
 }
 
@@ -123,6 +111,14 @@ func (s *PaginationMetadata) setDefaults() {
 	{
 		val := bool(false)
 		s.HasMore.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
+func (s *ScraperConfigStatsResponse) setDefaults() {
+	{
+		val := int(0)
+		s.IntervalSampleSize.SetTo(val)
 	}
 }
 

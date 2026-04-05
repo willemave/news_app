@@ -235,24 +235,24 @@ func (s *Server) handleCompleteOnboardingRequest(args [1]string, argsEscaped boo
 	}
 }
 
-// handleGenerateDigestRequest handles generateDigest operation.
+// handleConvertNewsItemToArticleRequest handles convertNewsItemToArticle operation.
 //
-// Queue arbitrary-window digest generation for agent clients.
+// Convert one representative news item into article content.
 //
-// POST /api/agent/digests
-func (s *Server) handleGenerateDigestRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+// POST /api/news/items/{news_item_id}/convert-to-article
+func (s *Server) handleConvertNewsItemToArticleRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("generateDigest"),
+		otelogen.OperationID("convertNewsItemToArticle"),
 		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.HTTPRouteKey.String("/api/agent/digests"),
+		semconv.HTTPRouteKey.String("/api/news/items/{news_item_id}/convert-to-article"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
-	ctx, span := s.cfg.Tracer.Start(r.Context(), GenerateDigestOperation,
+	ctx, span := s.cfg.Tracer.Start(r.Context(), ConvertNewsItemToArticleOperation,
 		trace.WithAttributes(otelAttrs...),
 		serverSpanKind,
 	)
@@ -307,15 +307,15 @@ func (s *Server) handleGenerateDigestRequest(args [0]string, argsEscaped bool, w
 		}
 		err          error
 		opErrContext = ogenerrors.OperationContext{
-			Name: GenerateDigestOperation,
-			ID:   "generateDigest",
+			Name: ConvertNewsItemToArticleOperation,
+			ID:   "convertNewsItemToArticle",
 		}
 	)
 	{
 		type bitset = [1]uint8
 		var satisfied bitset
 		{
-			sctx, ok, err := s.securityHTTPBearer(ctx, GenerateDigestOperation, r)
+			sctx, ok, err := s.securityHTTPBearer(ctx, ConvertNewsItemToArticleOperation, r)
 			if err != nil {
 				err = &ogenerrors.SecurityError{
 					OperationContext: opErrContext,
@@ -355,41 +355,41 @@ func (s *Server) handleGenerateDigestRequest(args [0]string, argsEscaped bool, w
 			return
 		}
 	}
-
-	var rawBody []byte
-	request, rawBody, close, err := s.decodeGenerateDigestRequest(r)
+	params, err := decodeConvertNewsItemToArticleParams(args, argsEscaped, r)
 	if err != nil {
-		err = &ogenerrors.DecodeRequestError{
+		err = &ogenerrors.DecodeParamsError{
 			OperationContext: opErrContext,
 			Err:              err,
 		}
-		defer recordError("DecodeRequest", err)
+		defer recordError("DecodeParams", err)
 		s.cfg.ErrorHandler(ctx, w, r, err)
 		return
 	}
-	defer func() {
-		if err := close(); err != nil {
-			recordError("CloseRequest", err)
-		}
-	}()
 
-	var response GenerateDigestRes
+	var rawBody []byte
+
+	var response ConvertNewsItemToArticleRes
 	if m := s.cfg.Middleware; m != nil {
 		mreq := middleware.Request{
 			Context:          ctx,
-			OperationName:    GenerateDigestOperation,
-			OperationSummary: "Generate Digest",
-			OperationID:      "generateDigest",
-			Body:             request,
+			OperationName:    ConvertNewsItemToArticleOperation,
+			OperationSummary: "Convert one news item into article content",
+			OperationID:      "convertNewsItemToArticle",
+			Body:             nil,
 			RawBody:          rawBody,
-			Params:           middleware.Parameters{},
-			Raw:              r,
+			Params: middleware.Parameters{
+				{
+					Name: "news_item_id",
+					In:   "path",
+				}: params.NewsItemID,
+			},
+			Raw: r,
 		}
 
 		type (
-			Request  = *AgentDigestRequest
-			Params   = struct{}
-			Response = GenerateDigestRes
+			Request  = struct{}
+			Params   = ConvertNewsItemToArticleParams
+			Response = ConvertNewsItemToArticleRes
 		)
 		response, err = middleware.HookMiddleware[
 			Request,
@@ -398,14 +398,14 @@ func (s *Server) handleGenerateDigestRequest(args [0]string, argsEscaped bool, w
 		](
 			m,
 			mreq,
-			nil,
+			unpackConvertNewsItemToArticleParams,
 			func(ctx context.Context, request Request, params Params) (response Response, err error) {
-				response, err = s.h.GenerateDigest(ctx, request)
+				response, err = s.h.ConvertNewsItemToArticle(ctx, params)
 				return response, err
 			},
 		)
 	} else {
-		response, err = s.h.GenerateDigest(ctx, request)
+		response, err = s.h.ConvertNewsItemToArticle(ctx, params)
 	}
 	if err != nil {
 		defer recordError("Internal", err)
@@ -413,7 +413,7 @@ func (s *Server) handleGenerateDigestRequest(args [0]string, argsEscaped bool, w
 		return
 	}
 
-	if err := encodeGenerateDigestResponse(response, w, span); err != nil {
+	if err := encodeConvertNewsItemToArticleResponse(response, w, span); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -796,6 +796,193 @@ func (s *Server) handleGetJobRequest(args [1]string, argsEscaped bool, w http.Re
 	}
 }
 
+// handleGetNewsItemRequest handles getNewsItem operation.
+//
+// Return one visible representative news item.
+//
+// GET /api/news/items/{news_item_id}
+func (s *Server) handleGetNewsItemRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getNewsItem"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.HTTPRouteKey.String("/api/news/items/{news_item_id}"),
+	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
+
+	// Start a span for this request.
+	ctx, span := s.cfg.Tracer.Start(r.Context(), GetNewsItemOperation,
+		trace.WithAttributes(otelAttrs...),
+		serverSpanKind,
+	)
+	defer span.End()
+
+	// Add Labeler to context.
+	labeler := &Labeler{attrs: otelAttrs}
+	ctx = contextWithLabeler(ctx, labeler)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		elapsedDuration := time.Since(startTime)
+
+		attrSet := labeler.AttributeSet()
+		attrs := attrSet.ToSlice()
+		code := statusWriter.status
+		if code != 0 {
+			codeAttr := semconv.HTTPResponseStatusCode(code)
+			attrs = append(attrs, codeAttr)
+			span.SetAttributes(codeAttr)
+		}
+		attrOpt := metric.WithAttributes(attrs...)
+
+		// Increment request counter.
+		s.requests.Add(ctx, 1, attrOpt)
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		s.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), attrOpt)
+	}()
+
+	var (
+		recordError = func(stage string, err error) {
+			span.RecordError(err)
+
+			// https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+			// Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
+			// unless there was another error (e.g., network error receiving the response body; or 3xx codes with
+			// max redirects exceeded), in which case status MUST be set to Error.
+			code := statusWriter.status
+			if code < 100 || code >= 500 {
+				span.SetStatus(codes.Error, stage)
+			}
+
+			attrSet := labeler.AttributeSet()
+			attrs := attrSet.ToSlice()
+			if code != 0 {
+				attrs = append(attrs, semconv.HTTPResponseStatusCode(code))
+			}
+
+			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: GetNewsItemOperation,
+			ID:   "getNewsItem",
+		}
+	)
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			sctx, ok, err := s.securityHTTPBearer(ctx, GetNewsItemOperation, r)
+			if err != nil {
+				err = &ogenerrors.SecurityError{
+					OperationContext: opErrContext,
+					Security:         "HTTPBearer",
+					Err:              err,
+				}
+				defer recordError("Security:HTTPBearer", err)
+				s.cfg.ErrorHandler(ctx, w, r, err)
+				return
+			}
+			if ok {
+				satisfied[0] |= 1 << 0
+				ctx = sctx
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			err = &ogenerrors.SecurityError{
+				OperationContext: opErrContext,
+				Err:              ogenerrors.ErrSecurityRequirementIsNotSatisfied,
+			}
+			defer recordError("Security", err)
+			s.cfg.ErrorHandler(ctx, w, r, err)
+			return
+		}
+	}
+	params, err := decodeGetNewsItemParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response GetNewsItemRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    GetNewsItemOperation,
+			OperationSummary: "Get one news item",
+			OperationID:      "getNewsItem",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "news_item_id",
+					In:   "path",
+				}: params.NewsItemID,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = GetNewsItemParams
+			Response = GetNewsItemRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackGetNewsItemParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.GetNewsItem(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.GetNewsItem(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeGetNewsItemResponse(response, w, span); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleGetOnboardingRequest handles getOnboarding operation.
 //
 // Return onboarding run status.
@@ -1149,6 +1336,10 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 					Name: "limit",
 					In:   "query",
 				}: params.Limit,
+				{
+					Name: "include_available_dates",
+					In:   "query",
+				}: params.IncludeAvailableDates,
 			},
 			Raw: r,
 		}
@@ -1189,24 +1380,24 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 	}
 }
 
-// handleListDigestsRequest handles listDigests operation.
+// handleListNewsItemsRequest handles listNewsItems operation.
 //
-// List per-user daily digest rows.
+// Return the visible representative news feed for the current user.
 //
-// GET /api/content/daily-digests
-func (s *Server) handleListDigestsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+// GET /api/news/items
+func (s *Server) handleListNewsItemsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("listDigests"),
+		otelogen.OperationID("listNewsItems"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/api/content/daily-digests"),
+		semconv.HTTPRouteKey.String("/api/news/items"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
-	ctx, span := s.cfg.Tracer.Start(r.Context(), ListDigestsOperation,
+	ctx, span := s.cfg.Tracer.Start(r.Context(), ListNewsItemsOperation,
 		trace.WithAttributes(otelAttrs...),
 		serverSpanKind,
 	)
@@ -1261,15 +1452,15 @@ func (s *Server) handleListDigestsRequest(args [0]string, argsEscaped bool, w ht
 		}
 		err          error
 		opErrContext = ogenerrors.OperationContext{
-			Name: ListDigestsOperation,
-			ID:   "listDigests",
+			Name: ListNewsItemsOperation,
+			ID:   "listNewsItems",
 		}
 	)
 	{
 		type bitset = [1]uint8
 		var satisfied bitset
 		{
-			sctx, ok, err := s.securityHTTPBearer(ctx, ListDigestsOperation, r)
+			sctx, ok, err := s.securityHTTPBearer(ctx, ListNewsItemsOperation, r)
 			if err != nil {
 				err = &ogenerrors.SecurityError{
 					OperationContext: opErrContext,
@@ -1309,7 +1500,7 @@ func (s *Server) handleListDigestsRequest(args [0]string, argsEscaped bool, w ht
 			return
 		}
 	}
-	params, err := decodeListDigestsParams(args, argsEscaped, r)
+	params, err := decodeListNewsItemsParams(args, argsEscaped, r)
 	if err != nil {
 		err = &ogenerrors.DecodeParamsError{
 			OperationContext: opErrContext,
@@ -1322,13 +1513,13 @@ func (s *Server) handleListDigestsRequest(args [0]string, argsEscaped bool, w ht
 
 	var rawBody []byte
 
-	var response ListDigestsRes
+	var response ListNewsItemsRes
 	if m := s.cfg.Middleware; m != nil {
 		mreq := middleware.Request{
 			Context:          ctx,
-			OperationName:    ListDigestsOperation,
-			OperationSummary: "List daily news digest cards",
-			OperationID:      "listDigests",
+			OperationName:    ListNewsItemsOperation,
+			OperationSummary: "List visible news items",
+			OperationID:      "listNewsItems",
 			Body:             nil,
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
@@ -1350,8 +1541,8 @@ func (s *Server) handleListDigestsRequest(args [0]string, argsEscaped bool, w ht
 
 		type (
 			Request  = struct{}
-			Params   = ListDigestsParams
-			Response = ListDigestsRes
+			Params   = ListNewsItemsParams
+			Response = ListNewsItemsRes
 		)
 		response, err = middleware.HookMiddleware[
 			Request,
@@ -1360,14 +1551,14 @@ func (s *Server) handleListDigestsRequest(args [0]string, argsEscaped bool, w ht
 		](
 			m,
 			mreq,
-			unpackListDigestsParams,
+			unpackListNewsItemsParams,
 			func(ctx context.Context, request Request, params Params) (response Response, err error) {
-				response, err = s.h.ListDigests(ctx, params)
+				response, err = s.h.ListNewsItems(ctx, params)
 				return response, err
 			},
 		)
 	} else {
-		response, err = s.h.ListDigests(ctx, params)
+		response, err = s.h.ListNewsItems(ctx, params)
 	}
 	if err != nil {
 		defer recordError("Internal", err)
@@ -1375,7 +1566,7 @@ func (s *Server) handleListDigestsRequest(args [0]string, argsEscaped bool, w ht
 		return
 	}
 
-	if err := encodeListDigestsResponse(response, w, span); err != nil {
+	if err := encodeListNewsItemsResponse(response, w, span); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -1567,6 +1758,193 @@ func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w ht
 	}
 
 	if err := encodeListSourcesResponse(response, w, span); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleMarkNewsItemsReadRequest handles markNewsItemsRead operation.
+//
+// Mark the given visible representative news items as read.
+//
+// POST /api/news/items/mark-read
+func (s *Server) handleMarkNewsItemsReadRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("markNewsItemsRead"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.HTTPRouteKey.String("/api/news/items/mark-read"),
+	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
+
+	// Start a span for this request.
+	ctx, span := s.cfg.Tracer.Start(r.Context(), MarkNewsItemsReadOperation,
+		trace.WithAttributes(otelAttrs...),
+		serverSpanKind,
+	)
+	defer span.End()
+
+	// Add Labeler to context.
+	labeler := &Labeler{attrs: otelAttrs}
+	ctx = contextWithLabeler(ctx, labeler)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		elapsedDuration := time.Since(startTime)
+
+		attrSet := labeler.AttributeSet()
+		attrs := attrSet.ToSlice()
+		code := statusWriter.status
+		if code != 0 {
+			codeAttr := semconv.HTTPResponseStatusCode(code)
+			attrs = append(attrs, codeAttr)
+			span.SetAttributes(codeAttr)
+		}
+		attrOpt := metric.WithAttributes(attrs...)
+
+		// Increment request counter.
+		s.requests.Add(ctx, 1, attrOpt)
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		s.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), attrOpt)
+	}()
+
+	var (
+		recordError = func(stage string, err error) {
+			span.RecordError(err)
+
+			// https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+			// Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
+			// unless there was another error (e.g., network error receiving the response body; or 3xx codes with
+			// max redirects exceeded), in which case status MUST be set to Error.
+			code := statusWriter.status
+			if code < 100 || code >= 500 {
+				span.SetStatus(codes.Error, stage)
+			}
+
+			attrSet := labeler.AttributeSet()
+			attrs := attrSet.ToSlice()
+			if code != 0 {
+				attrs = append(attrs, semconv.HTTPResponseStatusCode(code))
+			}
+
+			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: MarkNewsItemsReadOperation,
+			ID:   "markNewsItemsRead",
+		}
+	)
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			sctx, ok, err := s.securityHTTPBearer(ctx, MarkNewsItemsReadOperation, r)
+			if err != nil {
+				err = &ogenerrors.SecurityError{
+					OperationContext: opErrContext,
+					Security:         "HTTPBearer",
+					Err:              err,
+				}
+				defer recordError("Security:HTTPBearer", err)
+				s.cfg.ErrorHandler(ctx, w, r, err)
+				return
+			}
+			if ok {
+				satisfied[0] |= 1 << 0
+				ctx = sctx
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			err = &ogenerrors.SecurityError{
+				OperationContext: opErrContext,
+				Err:              ogenerrors.ErrSecurityRequirementIsNotSatisfied,
+			}
+			defer recordError("Security", err)
+			s.cfg.ErrorHandler(ctx, w, r, err)
+			return
+		}
+	}
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeMarkNewsItemsReadRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response MarkNewsItemsReadRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    MarkNewsItemsReadOperation,
+			OperationSummary: "Mark visible news items as read",
+			OperationID:      "markNewsItemsRead",
+			Body:             request,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = *BulkMarkReadRequest
+			Params   = struct{}
+			Response = MarkNewsItemsReadRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.MarkNewsItemsRead(ctx, request)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.MarkNewsItemsRead(ctx, request)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeMarkNewsItemsReadResponse(response, w, span); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)

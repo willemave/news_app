@@ -2,8 +2,7 @@ package cmd
 
 import (
 	"context"
-	"errors"
-	"time"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -12,65 +11,11 @@ import (
 )
 
 func (a *App) newDigestCommand() *cobra.Command {
-	digestCmd := &cobra.Command{
-		Use:     "digest",
-		Aliases: []string{"digests"},
-		Short:   "Generate and list daily digests",
+	newsCmd := &cobra.Command{
+		Use:     "news",
+		Aliases: []string{"digest", "digests"},
+		Short:   "List, inspect, and convert visible news items",
 	}
-
-	var generateArgs struct {
-		StartAt string
-		EndAt   string
-		Form    string
-		Wait    waitFlags
-	}
-	generateCmd := &cobra.Command{
-		Use:   "generate",
-		Short: "Generate a digest for an arbitrary time window",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if generateArgs.Wait.Wait && generateArgs.Wait.Interval <= 0 {
-				return a.renderError("digest.generate", errors.New("wait-interval must be greater than zero"))
-			}
-			startAt, err := time.Parse(time.RFC3339, generateArgs.StartAt)
-			if err != nil {
-				return a.renderError("digest.generate", err)
-			}
-			endAt, err := time.Parse(time.RFC3339, generateArgs.EndAt)
-			if err != nil {
-				return a.renderError("digest.generate", err)
-			}
-			request := &api.AgentDigestRequest{
-				StartAt: startAt,
-				EndAt:   endAt,
-			}
-			request.Form.SetTo(api.AgentDigestRequestForm(generateArgs.Form))
-
-			return a.runRemote(cmd, "digest.generate", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
-				data, err := client.GenerateDigest(ctx, request)
-				if err != nil {
-					return commandResult{}, err
-				}
-				result := commandResult{Data: data}
-				if generateArgs.Wait.Wait {
-					job, err := client.WaitForJob(ctx, data.JobID, runtime.WaitOptions{
-						Interval: generateArgs.Wait.Interval,
-						Timeout:  generateArgs.Wait.Timeout,
-					})
-					if err != nil {
-						return commandResult{}, err
-					}
-					result.Job = job
-				}
-				return result, nil
-			})
-		},
-	}
-	generateCmd.Flags().StringVar(&generateArgs.StartAt, "start-at", "", "Inclusive RFC3339 start time")
-	generateCmd.Flags().StringVar(&generateArgs.EndAt, "end-at", "", "Exclusive RFC3339 end time")
-	generateCmd.Flags().StringVar(&generateArgs.Form, "form", "short", "Digest form: short or long")
-	_ = generateCmd.MarkFlagRequired("start-at")
-	_ = generateCmd.MarkFlagRequired("end-at")
-	a.addWaitFlags(generateCmd, &generateArgs.Wait)
 
 	var listArgs struct {
 		Limit      int
@@ -79,16 +24,16 @@ func (a *App) newDigestCommand() *cobra.Command {
 	}
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List generated daily digests",
+		Short: "List visible news items",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.runRemote(cmd, "digest.list", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
-				params := api.ListDigestsParams{}
+			return a.runRemote(cmd, "news.list", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
+				params := api.ListNewsItemsParams{}
 				params.Limit.SetTo(listArgs.Limit)
 				params.ReadFilter.SetTo(listArgs.ReadFilter)
 				if listArgs.Cursor != "" {
 					params.Cursor.SetTo(listArgs.Cursor)
 				}
-				data, err := client.ListDigests(ctx, params)
+				data, err := client.ListNewsItems(ctx, params)
 				if err != nil {
 					return commandResult{}, err
 				}
@@ -96,10 +41,48 @@ func (a *App) newDigestCommand() *cobra.Command {
 			})
 		},
 	}
-	listCmd.Flags().IntVar(&listArgs.Limit, "limit", 25, "Max digests to return")
+	listCmd.Flags().IntVar(&listArgs.Limit, "limit", 25, "Max items to return")
 	listCmd.Flags().StringVar(&listArgs.Cursor, "cursor", "", "Pagination cursor")
 	listCmd.Flags().StringVar(&listArgs.ReadFilter, "read-filter", "unread", "Read filter: unread, read, or all")
 
-	digestCmd.AddCommand(generateCmd, listCmd)
-	return digestCmd
+	getCmd := &cobra.Command{
+		Use:   "get <news-item-id>",
+		Short: "Fetch one news item",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			newsItemID, err := strconv.Atoi(args[0])
+			if err != nil {
+				return a.renderError("news.get", err)
+			}
+			return a.runRemote(cmd, "news.get", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
+				data, err := client.GetNewsItem(ctx, newsItemID)
+				if err != nil {
+					return commandResult{}, err
+				}
+				return commandResult{Data: data}, nil
+			})
+		},
+	}
+
+	convertCmd := &cobra.Command{
+		Use:   "convert <news-item-id>",
+		Short: "Convert one news item into an article",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			newsItemID, err := strconv.Atoi(args[0])
+			if err != nil {
+				return a.renderError("news.convert", err)
+			}
+			return a.runRemote(cmd, "news.convert", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
+				data, err := client.ConvertNewsItemToArticle(ctx, newsItemID)
+				if err != nil {
+					return commandResult{}, err
+				}
+				return commandResult{Data: data}, nil
+			})
+		},
+	}
+
+	newsCmd.AddCommand(listCmd, getCmd, convertCmd)
+	return newsCmd
 }

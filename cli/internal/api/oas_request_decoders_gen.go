@@ -85,8 +85,8 @@ func (s *Server) decodeCompleteOnboardingRequest(r *http.Request) (
 	}
 }
 
-func (s *Server) decodeGenerateDigestRequest(r *http.Request) (
-	req *AgentDigestRequest,
+func (s *Server) decodeMarkNewsItemsReadRequest(r *http.Request) (
+	req *BulkMarkReadRequest,
 	rawBody []byte,
 	close func() error,
 	rerr error,
@@ -133,7 +133,7 @@ func (s *Server) decodeGenerateDigestRequest(r *http.Request) (
 		rawBody = append(rawBody, buf...)
 		d := jx.DecodeBytes(buf)
 
-		var request AgentDigestRequest
+		var request BulkMarkReadRequest
 		if err := func() error {
 			if err := request.Decode(d); err != nil {
 				return err

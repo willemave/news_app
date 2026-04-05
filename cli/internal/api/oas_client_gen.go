@@ -34,12 +34,12 @@ type Invoker interface {
 	//
 	// POST /api/agent/onboarding/{run_id}/complete
 	CompleteOnboarding(ctx context.Context, request *AgentOnboardingCompleteRequest, params CompleteOnboardingParams) (CompleteOnboardingRes, error)
-	// GenerateDigest invokes generateDigest operation.
+	// ConvertNewsItemToArticle invokes convertNewsItemToArticle operation.
 	//
-	// Queue arbitrary-window digest generation for agent clients.
+	// Convert one representative news item into article content.
 	//
-	// POST /api/agent/digests
-	GenerateDigest(ctx context.Context, request *AgentDigestRequest) (GenerateDigestRes, error)
+	// POST /api/news/items/{news_item_id}/convert-to-article
+	ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (ConvertNewsItemToArticleRes, error)
 	// GetContent invokes getContent operation.
 	//
 	// Retrieve detailed information about a specific content item.
@@ -52,6 +52,12 @@ type Invoker interface {
 	//
 	// GET /api/jobs/{job_id}
 	GetJob(ctx context.Context, params GetJobParams) (GetJobRes, error)
+	// GetNewsItem invokes getNewsItem operation.
+	//
+	// Return one visible representative news item.
+	//
+	// GET /api/news/items/{news_item_id}
+	GetNewsItem(ctx context.Context, params GetNewsItemParams) (GetNewsItemRes, error)
 	// GetOnboarding invokes getOnboarding operation.
 	//
 	// Return onboarding run status.
@@ -67,18 +73,24 @@ type Invoker interface {
 	//
 	// GET /api/content/
 	ListContent(ctx context.Context, params ListContentParams) (ListContentRes, error)
-	// ListDigests invokes listDigests operation.
+	// ListNewsItems invokes listNewsItems operation.
 	//
-	// List per-user daily digest rows.
+	// Return the visible representative news feed for the current user.
 	//
-	// GET /api/content/daily-digests
-	ListDigests(ctx context.Context, params ListDigestsParams) (ListDigestsRes, error)
+	// GET /api/news/items
+	ListNewsItems(ctx context.Context, params ListNewsItemsParams) (ListNewsItemsRes, error)
 	// ListSources invokes listSources operation.
 	//
 	// List scraper configurations for the current user.
 	//
 	// GET /api/scrapers/
 	ListSources(ctx context.Context, params ListSourcesParams) (ListSourcesRes, error)
+	// MarkNewsItemsRead invokes markNewsItemsRead operation.
+	//
+	// Mark the given visible representative news items as read.
+	//
+	// POST /api/news/items/mark-read
+	MarkNewsItemsRead(ctx context.Context, request *BulkMarkReadRequest) (MarkNewsItemsReadRes, error)
 	// SearchAgent invokes searchAgent operation.
 	//
 	// Search external/provider-backed sources for the agent CLI.
@@ -276,21 +288,21 @@ func (c *Client) sendCompleteOnboarding(ctx context.Context, request *AgentOnboa
 	return result, nil
 }
 
-// GenerateDigest invokes generateDigest operation.
+// ConvertNewsItemToArticle invokes convertNewsItemToArticle operation.
 //
-// Queue arbitrary-window digest generation for agent clients.
+// Convert one representative news item into article content.
 //
-// POST /api/agent/digests
-func (c *Client) GenerateDigest(ctx context.Context, request *AgentDigestRequest) (GenerateDigestRes, error) {
-	res, err := c.sendGenerateDigest(ctx, request)
+// POST /api/news/items/{news_item_id}/convert-to-article
+func (c *Client) ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (ConvertNewsItemToArticleRes, error) {
+	res, err := c.sendConvertNewsItemToArticle(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendGenerateDigest(ctx context.Context, request *AgentDigestRequest) (res GenerateDigestRes, err error) {
+func (c *Client) sendConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (res ConvertNewsItemToArticleRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("generateDigest"),
+		otelogen.OperationID("convertNewsItemToArticle"),
 		semconv.HTTPRequestMethodKey.String("POST"),
-		semconv.URLTemplateKey.String("/api/agent/digests"),
+		semconv.URLTemplateKey.String("/api/news/items/{news_item_id}/convert-to-article"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -306,7 +318,7 @@ func (c *Client) sendGenerateDigest(ctx context.Context, request *AgentDigestReq
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, GenerateDigestOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, ConvertNewsItemToArticleOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -323,8 +335,27 @@ func (c *Client) sendGenerateDigest(ctx context.Context, request *AgentDigestReq
 
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/api/agent/digests"
+	var pathParts [3]string
+	pathParts[0] = "/api/news/items/"
+	{
+		// Encode "news_item_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "news_item_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.NewsItemID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/convert-to-article"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeRequest"
@@ -332,16 +363,13 @@ func (c *Client) sendGenerateDigest(ctx context.Context, request *AgentDigestReq
 	if err != nil {
 		return res, errors.Wrap(err, "create request")
 	}
-	if err := encodeGenerateDigestRequest(request, r); err != nil {
-		return res, errors.Wrap(err, "encode request")
-	}
 
 	{
 		type bitset = [1]uint8
 		var satisfied bitset
 		{
 			stage = "Security:HTTPBearer"
-			switch err := c.securityHTTPBearer(ctx, GenerateDigestOperation, r); {
+			switch err := c.securityHTTPBearer(ctx, ConvertNewsItemToArticleOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -378,7 +406,7 @@ func (c *Client) sendGenerateDigest(ctx context.Context, request *AgentDigestReq
 	defer body.Close()
 
 	stage = "DecodeResponse"
-	result, err := decodeGenerateDigestResponse(resp)
+	result, err := decodeConvertNewsItemToArticleResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -629,6 +657,131 @@ func (c *Client) sendGetJob(ctx context.Context, params GetJobParams) (res GetJo
 
 	stage = "DecodeResponse"
 	result, err := decodeGetJobResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetNewsItem invokes getNewsItem operation.
+//
+// Return one visible representative news item.
+//
+// GET /api/news/items/{news_item_id}
+func (c *Client) GetNewsItem(ctx context.Context, params GetNewsItemParams) (GetNewsItemRes, error) {
+	res, err := c.sendGetNewsItem(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetNewsItem(ctx context.Context, params GetNewsItemParams) (res GetNewsItemRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getNewsItem"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/api/news/items/{news_item_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetNewsItemOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/api/news/items/"
+	{
+		// Encode "news_item_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "news_item_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.NewsItemID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:HTTPBearer"
+			switch err := c.securityHTTPBearer(ctx, GetNewsItemOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"HTTPBearer\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetNewsItemResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -911,6 +1064,23 @@ func (c *Client) sendListContent(ctx context.Context, params ListContentParams) 
 			return res, errors.Wrap(err, "encode query")
 		}
 	}
+	{
+		// Encode "include_available_dates" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "include_available_dates",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.IncludeAvailableDates.Get(); ok {
+				return e.EncodeValue(conv.BoolToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
 	u.RawQuery = q.Values().Encode()
 
 	stage = "EncodeRequest"
@@ -969,21 +1139,21 @@ func (c *Client) sendListContent(ctx context.Context, params ListContentParams) 
 	return result, nil
 }
 
-// ListDigests invokes listDigests operation.
+// ListNewsItems invokes listNewsItems operation.
 //
-// List per-user daily digest rows.
+// Return the visible representative news feed for the current user.
 //
-// GET /api/content/daily-digests
-func (c *Client) ListDigests(ctx context.Context, params ListDigestsParams) (ListDigestsRes, error) {
-	res, err := c.sendListDigests(ctx, params)
+// GET /api/news/items
+func (c *Client) ListNewsItems(ctx context.Context, params ListNewsItemsParams) (ListNewsItemsRes, error) {
+	res, err := c.sendListNewsItems(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendListDigests(ctx context.Context, params ListDigestsParams) (res ListDigestsRes, err error) {
+func (c *Client) sendListNewsItems(ctx context.Context, params ListNewsItemsParams) (res ListNewsItemsRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("listDigests"),
+		otelogen.OperationID("listNewsItems"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/api/content/daily-digests"),
+		semconv.URLTemplateKey.String("/api/news/items"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -999,7 +1169,7 @@ func (c *Client) sendListDigests(ctx context.Context, params ListDigestsParams) 
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, ListDigestsOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, ListNewsItemsOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -1017,7 +1187,7 @@ func (c *Client) sendListDigests(ctx context.Context, params ListDigestsParams) 
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
 	var pathParts [1]string
-	pathParts[0] = "/api/content/daily-digests"
+	pathParts[0] = "/api/news/items"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeQueryParams"
@@ -1086,7 +1256,7 @@ func (c *Client) sendListDigests(ctx context.Context, params ListDigestsParams) 
 		var satisfied bitset
 		{
 			stage = "Security:HTTPBearer"
-			switch err := c.securityHTTPBearer(ctx, ListDigestsOperation, r); {
+			switch err := c.securityHTTPBearer(ctx, ListNewsItemsOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -1123,7 +1293,7 @@ func (c *Client) sendListDigests(ctx context.Context, params ListDigestsParams) 
 	defer body.Close()
 
 	stage = "DecodeResponse"
-	result, err := decodeListDigestsResponse(resp)
+	result, err := decodeListNewsItemsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1269,6 +1439,116 @@ func (c *Client) sendListSources(ctx context.Context, params ListSourcesParams) 
 
 	stage = "DecodeResponse"
 	result, err := decodeListSourcesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// MarkNewsItemsRead invokes markNewsItemsRead operation.
+//
+// Mark the given visible representative news items as read.
+//
+// POST /api/news/items/mark-read
+func (c *Client) MarkNewsItemsRead(ctx context.Context, request *BulkMarkReadRequest) (MarkNewsItemsReadRes, error) {
+	res, err := c.sendMarkNewsItemsRead(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendMarkNewsItemsRead(ctx context.Context, request *BulkMarkReadRequest) (res MarkNewsItemsReadRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("markNewsItemsRead"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/api/news/items/mark-read"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, MarkNewsItemsReadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/api/news/items/mark-read"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeMarkNewsItemsReadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:HTTPBearer"
+			switch err := c.securityHTTPBearer(ctx, MarkNewsItemsReadOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"HTTPBearer\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeMarkNewsItemsReadResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

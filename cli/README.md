@@ -72,8 +72,9 @@ go run ./cmd/newsly-agent onboarding start --brief "I want startup, infra, and M
 go run ./cmd/newsly-agent onboarding complete 77 --accept-all
 go run ./cmd/newsly-agent sources list
 go run ./cmd/newsly-agent sources add https://example.com/feed.xml --feed-type atom
-go run ./cmd/newsly-agent digest generate --start-at 2026-03-07T00:00:00Z --end-at 2026-03-08T00:00:00Z --wait
-go run ./cmd/newsly-agent digest list --read-filter unread
+go run ./cmd/newsly-agent news list --read-filter unread
+go run ./cmd/newsly-agent news get 123
+go run ./cmd/newsly-agent news convert 123
 ```
 
 ## Regeneration

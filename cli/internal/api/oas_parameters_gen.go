@@ -79,6 +79,89 @@ func decodeCompleteOnboardingParams(args [1]string, argsEscaped bool, r *http.Re
 	return params, nil
 }
 
+// ConvertNewsItemToArticleParams is parameters of convertNewsItemToArticle operation.
+type ConvertNewsItemToArticleParams struct {
+	NewsItemID int
+}
+
+func unpackConvertNewsItemToArticleParams(packed middleware.Parameters) (params ConvertNewsItemToArticleParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "news_item_id",
+			In:   "path",
+		}
+		params.NewsItemID = packed[key].(int)
+	}
+	return params
+}
+
+func decodeConvertNewsItemToArticleParams(args [1]string, argsEscaped bool, r *http.Request) (params ConvertNewsItemToArticleParams, _ error) {
+	// Decode path: news_item_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "news_item_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToInt(val)
+				if err != nil {
+					return err
+				}
+
+				params.NewsItemID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := (validate.Int{
+					MinSet:        true,
+					Min:           0,
+					MaxSet:        false,
+					Max:           0,
+					MinExclusive:  true,
+					MaxExclusive:  false,
+					MultipleOfSet: false,
+					MultipleOf:    0,
+					Pattern:       nil,
+				}).Validate(int64(params.NewsItemID)); err != nil {
+					return errors.Wrap(err, "int")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "news_item_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetContentParams is parameters of getContent operation.
 type GetContentParams struct {
 	// Content ID.
@@ -228,6 +311,89 @@ func decodeGetJobParams(args [1]string, argsEscaped bool, r *http.Request) (para
 	return params, nil
 }
 
+// GetNewsItemParams is parameters of getNewsItem operation.
+type GetNewsItemParams struct {
+	NewsItemID int
+}
+
+func unpackGetNewsItemParams(packed middleware.Parameters) (params GetNewsItemParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "news_item_id",
+			In:   "path",
+		}
+		params.NewsItemID = packed[key].(int)
+	}
+	return params
+}
+
+func decodeGetNewsItemParams(args [1]string, argsEscaped bool, r *http.Request) (params GetNewsItemParams, _ error) {
+	// Decode path: news_item_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "news_item_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToInt(val)
+				if err != nil {
+					return err
+				}
+
+				params.NewsItemID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := (validate.Int{
+					MinSet:        true,
+					Min:           0,
+					MaxSet:        false,
+					Max:           0,
+					MinExclusive:  true,
+					MaxExclusive:  false,
+					MultipleOfSet: false,
+					MultipleOf:    0,
+					Pattern:       nil,
+				}).Validate(int64(params.NewsItemID)); err != nil {
+					return errors.Wrap(err, "int")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "news_item_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetOnboardingParams is parameters of getOnboarding operation.
 type GetOnboardingParams struct {
 	RunID int
@@ -306,6 +472,9 @@ type ListContentParams struct {
 	Cursor OptNilString `json:",omitempty,omitzero"`
 	// Number of items per page (max 100).
 	Limit OptInt `json:",omitempty,omitzero"`
+	// Whether to include the available_dates metadata used by filterable list UIs. Disable for feed
+	// surfaces that do not show date filters.
+	IncludeAvailableDates OptBool `json:",omitempty,omitzero"`
 }
 
 func unpackListContentParams(packed middleware.Parameters) (params ListContentParams) {
@@ -352,6 +521,15 @@ func unpackListContentParams(packed middleware.Parameters) (params ListContentPa
 		}
 		if v, ok := packed[key]; ok {
 			params.Limit = v.(OptInt)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "include_available_dates",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.IncludeAvailableDates = v.(OptBool)
 		}
 	}
 	return params
@@ -677,19 +855,65 @@ func decodeListContentParams(args [0]string, argsEscaped bool, r *http.Request) 
 			Err:  err,
 		}
 	}
+	// Set default value for query: include_available_dates.
+	{
+		val := bool(true)
+		params.IncludeAvailableDates.SetTo(val)
+	}
+	// Decode query: include_available_dates.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "include_available_dates",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotIncludeAvailableDatesVal bool
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToBool(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotIncludeAvailableDatesVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.IncludeAvailableDates.SetTo(paramsDotIncludeAvailableDatesVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "include_available_dates",
+			In:   "query",
+			Err:  err,
+		}
+	}
 	return params, nil
 }
 
-// ListDigestsParams is parameters of listDigests operation.
-type ListDigestsParams struct {
-	// Filter by read status (all/read/unread).
+// ListNewsItemsParams is parameters of listNewsItems operation.
+type ListNewsItemsParams struct {
+	// Filter by read status.
 	ReadFilter OptString `json:",omitempty,omitzero"`
-	// Pagination cursor for next page.
+	// Opaque cursor token.
 	Cursor OptNilString `json:",omitempty,omitzero"`
 	Limit  OptInt       `json:",omitempty,omitzero"`
 }
 
-func unpackListDigestsParams(packed middleware.Parameters) (params ListDigestsParams) {
+func unpackListNewsItemsParams(packed middleware.Parameters) (params ListNewsItemsParams) {
 	{
 		key := middleware.ParameterKey{
 			Name: "read_filter",
@@ -720,7 +944,7 @@ func unpackListDigestsParams(packed middleware.Parameters) (params ListDigestsPa
 	return params
 }
 
-func decodeListDigestsParams(args [0]string, argsEscaped bool, r *http.Request) (params ListDigestsParams, _ error) {
+func decodeListNewsItemsParams(args [0]string, argsEscaped bool, r *http.Request) (params ListNewsItemsParams, _ error) {
 	q := uri.NewQueryDecoder(r.URL.Query())
 	// Set default value for query: read_filter.
 	{

@@ -5,8 +5,8 @@ type CompleteOnboardingRes interface {
 	completeOnboardingRes()
 }
 
-type GenerateDigestRes interface {
-	generateDigestRes()
+type ConvertNewsItemToArticleRes interface {
+	convertNewsItemToArticleRes()
 }
 
 type GetContentRes interface {
@@ -17,6 +17,10 @@ type GetJobRes interface {
 	getJobRes()
 }
 
+type GetNewsItemRes interface {
+	getNewsItemRes()
+}
+
 type GetOnboardingRes interface {
 	getOnboardingRes()
 }
@@ -25,12 +29,16 @@ type ListContentRes interface {
 	listContentRes()
 }
 
-type ListDigestsRes interface {
-	listDigestsRes()
+type ListNewsItemsRes interface {
+	listNewsItemsRes()
 }
 
 type ListSourcesRes interface {
 	listSourcesRes()
+}
+
+type MarkNewsItemsReadRes interface {
+	markNewsItemsReadRes()
 }
 
 type SearchAgentRes interface {

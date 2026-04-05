@@ -14,12 +14,12 @@ type Handler interface {
 	//
 	// POST /api/agent/onboarding/{run_id}/complete
 	CompleteOnboarding(ctx context.Context, req *AgentOnboardingCompleteRequest, params CompleteOnboardingParams) (CompleteOnboardingRes, error)
-	// GenerateDigest implements generateDigest operation.
+	// ConvertNewsItemToArticle implements convertNewsItemToArticle operation.
 	//
-	// Queue arbitrary-window digest generation for agent clients.
+	// Convert one representative news item into article content.
 	//
-	// POST /api/agent/digests
-	GenerateDigest(ctx context.Context, req *AgentDigestRequest) (GenerateDigestRes, error)
+	// POST /api/news/items/{news_item_id}/convert-to-article
+	ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (ConvertNewsItemToArticleRes, error)
 	// GetContent implements getContent operation.
 	//
 	// Retrieve detailed information about a specific content item.
@@ -32,6 +32,12 @@ type Handler interface {
 	//
 	// GET /api/jobs/{job_id}
 	GetJob(ctx context.Context, params GetJobParams) (GetJobRes, error)
+	// GetNewsItem implements getNewsItem operation.
+	//
+	// Return one visible representative news item.
+	//
+	// GET /api/news/items/{news_item_id}
+	GetNewsItem(ctx context.Context, params GetNewsItemParams) (GetNewsItemRes, error)
 	// GetOnboarding implements getOnboarding operation.
 	//
 	// Return onboarding run status.
@@ -47,18 +53,24 @@ type Handler interface {
 	//
 	// GET /api/content/
 	ListContent(ctx context.Context, params ListContentParams) (ListContentRes, error)
-	// ListDigests implements listDigests operation.
+	// ListNewsItems implements listNewsItems operation.
 	//
-	// List per-user daily digest rows.
+	// Return the visible representative news feed for the current user.
 	//
-	// GET /api/content/daily-digests
-	ListDigests(ctx context.Context, params ListDigestsParams) (ListDigestsRes, error)
+	// GET /api/news/items
+	ListNewsItems(ctx context.Context, params ListNewsItemsParams) (ListNewsItemsRes, error)
 	// ListSources implements listSources operation.
 	//
 	// List scraper configurations for the current user.
 	//
 	// GET /api/scrapers/
 	ListSources(ctx context.Context, params ListSourcesParams) (ListSourcesRes, error)
+	// MarkNewsItemsRead implements markNewsItemsRead operation.
+	//
+	// Mark the given visible representative news items as read.
+	//
+	// POST /api/news/items/mark-read
+	MarkNewsItemsRead(ctx context.Context, req *BulkMarkReadRequest) (MarkNewsItemsReadRes, error)
 	// SearchAgent implements searchAgent operation.
 	//
 	// Search external/provider-backed sources for the agent CLI.

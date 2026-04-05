@@ -189,21 +189,6 @@ func (c *Client) CompleteOnboarding(ctx context.Context, runID int, request *api
 	}
 }
 
-func (c *Client) GenerateDigest(ctx context.Context, request *api.AgentDigestRequest) (*api.AgentDigestResponse, error) {
-	res, err := c.raw.GenerateDigest(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	switch value := res.(type) {
-	case *api.AgentDigestResponse:
-		return value, nil
-	case *api.HTTPValidationError:
-		return nil, validationError(value)
-	default:
-		return nil, unexpectedResponse(value)
-	}
-}
-
 func (c *Client) ListContent(ctx context.Context, params api.ListContentParams) (*api.ContentListResponse, error) {
 	res, err := c.raw.ListContent(ctx, params)
 	if err != nil {
@@ -264,16 +249,67 @@ func (c *Client) SubmitContent(ctx context.Context, request *api.SubmitContentRe
 	}
 }
 
-func (c *Client) ListDigests(ctx context.Context, params api.ListDigestsParams) (*api.DailyNewsDigestListResponse, error) {
-	res, err := c.raw.ListDigests(ctx, params)
+func (c *Client) ListNewsItems(ctx context.Context, params api.ListNewsItemsParams) (*api.ContentListResponse, error) {
+	res, err := c.raw.ListNewsItems(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 	switch value := res.(type) {
-	case *api.DailyNewsDigestListResponse:
+	case *api.ContentListResponse:
 		return value, nil
-	case *api.ListDigestsNotFound:
-		return nil, &APIError{Message: "digest route not found", StatusCode: http.StatusNotFound}
+	case *api.ListNewsItemsNotFound:
+		return nil, &APIError{Message: "news route not found", StatusCode: http.StatusNotFound}
+	case *api.HTTPValidationError:
+		return nil, validationError(value)
+	default:
+		return nil, unexpectedResponse(value)
+	}
+}
+
+func (c *Client) GetNewsItem(ctx context.Context, newsItemID int) (*api.ContentDetailResponse, error) {
+	res, err := c.raw.GetNewsItem(ctx, api.GetNewsItemParams{NewsItemID: newsItemID})
+	if err != nil {
+		return nil, err
+	}
+	switch value := res.(type) {
+	case *api.ContentDetailResponse:
+		return value, nil
+	case *api.GetNewsItemNotFound:
+		return nil, &APIError{Message: "news item not found", StatusCode: http.StatusNotFound}
+	case *api.HTTPValidationError:
+		return nil, validationError(value)
+	default:
+		return nil, unexpectedResponse(value)
+	}
+}
+
+func (c *Client) ConvertNewsItemToArticle(ctx context.Context, newsItemID int) (*api.ConvertNewsItemResponse, error) {
+	res, err := c.raw.ConvertNewsItemToArticle(ctx, api.ConvertNewsItemToArticleParams{NewsItemID: newsItemID})
+	if err != nil {
+		return nil, err
+	}
+	switch value := res.(type) {
+	case *api.ConvertNewsItemResponse:
+		return value, nil
+	case *api.ConvertNewsItemToArticleNotFound:
+		return nil, &APIError{Message: "news item not found", StatusCode: http.StatusNotFound}
+	case *api.HTTPValidationError:
+		return nil, validationError(value)
+	default:
+		return nil, unexpectedResponse(value)
+	}
+}
+
+func (c *Client) MarkNewsItemsRead(ctx context.Context, request *api.BulkMarkReadRequest) (any, error) {
+	res, err := c.raw.MarkNewsItemsRead(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	switch value := res.(type) {
+	case *api.MarkNewsItemsReadOK:
+		return normalize(value)
+	case *api.MarkNewsItemsReadNotFound:
+		return nil, &APIError{Message: "news route not found", StatusCode: http.StatusNotFound}
 	case *api.HTTPValidationError:
 		return nil, validationError(value)
 	default:
