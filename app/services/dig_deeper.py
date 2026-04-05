@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.domain.converters import content_to_domain
+from app.models.content_mapper import content_to_domain
 from app.models.schema import ChatSession, Content, ContentDiscussion, ProcessingTask
 from app.services.chat_agent import create_processing_message, process_message_async
 from app.services.llm_models import DEFAULT_MODEL, DEFAULT_PROVIDER
@@ -134,9 +134,7 @@ def _build_discussion_context(db: Session, content_id: int | None) -> str | None
         return None
 
     discussion = (
-        db.query(ContentDiscussion)
-        .filter(ContentDiscussion.content_id == content_id)
-        .first()
+        db.query(ContentDiscussion).filter(ContentDiscussion.content_id == content_id).first()
     )
     if discussion is None:
         return None

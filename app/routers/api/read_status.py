@@ -5,13 +5,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
-from app.application.commands import mark_read as mark_read_command
-from app.application.queries import get_recently_read as get_recently_read_query
+from app.commands import mark_read as mark_read_command
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.models.user import User
-from app.routers.api.models import BulkMarkReadRequest, ContentListResponse
+from app.queries import get_recently_read as get_recently_read_query
+from app.models.api.common import BulkMarkReadRequest, ContentListResponse
 
 logger = get_logger(__name__)
 

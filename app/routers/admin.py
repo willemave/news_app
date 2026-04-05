@@ -13,18 +13,24 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Session
 
-from app.application.commands import create_api_key, revoke_api_key
-from app.application.queries import list_api_keys
+from app.commands import create_api_key, revoke_api_key
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import ADMIN_SESSION_COOKIE, require_admin
 from app.core.settings import get_settings
-from app.models.schema import Content, OnboardingDiscoveryRun, ProcessingTask
-from app.models.user import User
-from app.routers.admin_conversational_models import AdminConversationalHealthResponse
-from app.routers.api.models import (
+from app.models.api.admin_conversational import AdminConversationalHealthResponse
+from app.models.api.common import (
     OnboardingAudioDiscoverRequest,
     OnboardingAudioLanePreviewResponse,
 )
+from app.models.internal.admin_eval import (
+    EVAL_MODEL_LABELS,
+    EVAL_MODEL_SPECS,
+    LONGFORM_TEMPLATE_LABELS,
+    AdminEvalRunRequest,
+)
+from app.models.schema import Content, OnboardingDiscoveryRun, ProcessingTask
+from app.models.user import User
+from app.queries import list_api_keys
 from app.services.admin_conversational_agent import (
     AgentConversationRuntime,
     build_available_knowledge_context,
@@ -38,14 +44,7 @@ from app.services.admin_conversational_agent import (
     start_agent_session,
     stream_agent_turn,
 )
-from app.services.admin_eval import (
-    EVAL_MODEL_LABELS,
-    EVAL_MODEL_SPECS,
-    LONGFORM_TEMPLATE_LABELS,
-    AdminEvalRunRequest,
-    get_default_pricing,
-    run_admin_eval,
-)
+from app.services.admin_eval import get_default_pricing, run_admin_eval
 from app.services.onboarding import preview_audio_lane_plan
 from app.templates import templates
 

@@ -12,14 +12,14 @@ from app.core.deps import get_current_user
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentDiscussion
 from app.models.user import User
-from app.routers.api.content_detail import _build_discussion_response
-from app.routers.api.models import (
+from app.queries.get_content_discussion import build_discussion_response
+from app.models.api.common import (
     BulkMarkReadRequest,
     ContentDetailResponse,
     ContentDiscussionResponse,
     ContentListResponse,
 )
-from app.routers.api.news_models import ConvertNewsItemResponse
+from app.models.api.news import ConvertNewsItemResponse
 from app.services.news_feed import (
     bulk_mark_news_items_read,
     get_visible_news_item,
@@ -116,7 +116,7 @@ def get_news_item_discussion(
         embedded_discussion = None
 
     fallback_discussion_url = item.discussion_url or item.canonical_item_url
-    return _build_discussion_response(
+    return build_discussion_response(
         content_id=news_item_id,
         discussion_url=fallback_discussion_url,
         platform=item.platform,

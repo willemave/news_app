@@ -13,7 +13,7 @@ from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.observability import build_log_extra, sanitize_url_for_logs
 from app.core.settings import get_settings
-from app.domain.converters import content_to_domain, domain_to_content
+from app.models.content_mapper import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
 from app.scraping.youtube_unified import YouTubeClientConfig, load_youtube_client_config
 from app.services.apple_podcasts import resolve_apple_podcast_episode
@@ -599,12 +599,8 @@ class PodcastDownloadWorker:
 
         except Exception as e:
             error_msg = str(e)
-            failed_audio_url = (
-                sanitize_url_for_logs(audio_url) if "audio_url" in locals() else None
-            )
-            failed_duration_ms = (
-                datetime.now(UTC) - download_started_at
-            ).total_seconds() * 1000
+            failed_audio_url = sanitize_url_for_logs(audio_url) if "audio_url" in locals() else None
+            failed_duration_ms = (datetime.now(UTC) - download_started_at).total_seconds() * 1000
             logger.exception(
                 "Podcast download failed",
                 extra=self._log_extra(

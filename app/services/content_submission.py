@@ -19,15 +19,6 @@ from app.services.long_form_images import enqueue_visible_long_form_image_if_nee
 from app.services.queue import TaskQueue, TaskStatus, TaskType
 from app.services.scraper_configs import ensure_inbox_status
 
-# Re-export for backwards compatibility
-from app.services.url_detection import (  # noqa: F401
-    PLATFORMS_SKIP_LLM_ANALYSIS,
-    PODCAST_HOST_PLATFORMS,
-    PODCAST_PATH_KEYWORDS,
-    infer_content_type_and_platform,
-    should_use_llm_analysis,
-)
-
 logger = get_logger(__name__)
 
 URL_ADAPTER = TypeAdapter(HttpUrl)

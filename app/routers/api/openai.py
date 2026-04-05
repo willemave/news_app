@@ -3,22 +3,15 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
 
 from app.core.deps import get_current_user
+from app.models.api.common import RealtimeTokenResponse
+from app.models.api.openai import AudioTranscriptionResponse
 from app.models.user import User
-from app.routers.api.models import RealtimeTokenResponse
 from app.services import openai_realtime
 from app.services.openai_llm import get_openai_transcription_service
 
 router = APIRouter(prefix="/openai", tags=["openai"])
-
-
-class AudioTranscriptionResponse(BaseModel):
-    """Transcription payload returned for uploaded audio."""
-
-    transcript: str
-    language: str | None = None
 
 
 @router.post(

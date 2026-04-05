@@ -8,20 +8,20 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
-from app.application.commands import (
+from app.commands import (
     complete_agent_onboarding,
     generate_agent_digest,
     start_agent_onboarding,
 )
-from app.application.queries import (
+from app.core.db import get_db_session, get_readonly_db_session
+from app.core.deps import get_current_user
+from app.models.user import User
+from app.queries import (
     get_agent_onboarding_status,
     get_job_status,
     search_external_results,
 )
-from app.core.db import get_db_session, get_readonly_db_session
-from app.core.deps import get_current_user
-from app.models.user import User
-from app.routers.api.models import (
+from app.models.api.common import (
     AgentDigestRequest,
     AgentDigestResponse,
     AgentLibraryDocumentResponse,

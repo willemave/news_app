@@ -7,10 +7,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants import TWEET_SUGGESTION_MODEL
-from app.models.content_submission import (  # noqa: F401
-    ContentSubmissionResponse,
-    SubmitContentRequest,
-)
 from app.models.contracts import (
     ContentClassification,
     ContentStatus,

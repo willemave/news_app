@@ -14,7 +14,7 @@ from app.routers.api import (
     stats,
     submission,
 )
-from app.routers.api.models import (
+from app.models.api.common import (
     BulkMarkReadRequest,
     ChatGPTUrlResponse,
     ContentDetailResponse,

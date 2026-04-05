@@ -5,12 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.chat_message_metadata import AssistantFeedOption, CouncilCandidate
+from app.models.internal.assistant import AssistantScreenContext
 from app.services.llm_models import LLMProvider as ChatModelProvider
-
-MAX_VISIBLE_CONTENT_IDS = 12
 
 
 class ChatMessageRole(StrEnum):
@@ -107,28 +106,8 @@ class CouncilSelectRequest(BaseModel):
     child_session_id: int = Field(..., ge=1)
 
 
-class AssistantScreenContextDto(BaseModel):
-    """Compact screen context passed to the assistant router."""
-
-    screen_type: str = Field(default="unknown", max_length=64)
-    screen_title: str | None = Field(default=None, max_length=200)
-    content_id: int | None = Field(default=None, ge=1)
-    visible_content_ids: list[int] = Field(
-        default_factory=list,
-        max_length=MAX_VISIBLE_CONTENT_IDS,
-    )
-    selected_topic: str | None = Field(default=None, max_length=200)
-    query: str | None = Field(default=None, max_length=200)
-    note: str | None = Field(default=None, max_length=500)
-
-    @field_validator("visible_content_ids", mode="before")
-    @classmethod
-    def truncate_visible_content_ids(cls, value: object) -> object:
-        """Bound client-provided visible content IDs to the supported limit."""
-
-        if isinstance(value, list):
-            return value[:MAX_VISIBLE_CONTENT_IDS]
-        return value
+class AssistantScreenContextDto(AssistantScreenContext):
+    """API schema wrapper for assistant screen context."""
 
 
 class AssistantTurnRequest(BaseModel):

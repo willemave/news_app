@@ -9,7 +9,7 @@ from typing import Literal
 
 from sqlalchemy.orm import Session
 
-from app.infrastructure.security.key_hashing import hash_api_key, verify_api_key_hash
+from app.core.api_keys import hash_api_key, verify_api_key_hash
 from app.models.schema import CliLinkSession, UserApiKey
 from app.models.user import User
 from app.repositories.api_key_repository import create_api_key

@@ -2,16 +2,16 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
-from app.application.commands import toggle_favorite as toggle_favorite_command
-from app.application.queries import get_favorites as get_favorites_query
+from app.commands import remove_favorite as remove_favorite_command
+from app.commands import toggle_favorite as toggle_favorite_command
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
-from app.models.schema import Content
 from app.models.user import User
-from app.routers.api.models import ContentListResponse
+from app.queries import get_favorites as get_favorites_query
+from app.models.api.common import ContentListResponse
 
 router = APIRouter()
 
@@ -51,18 +51,7 @@ async def unfavorite_content(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Remove content from favorites."""
-    content = db.query(Content).filter(Content.id == content_id).first()
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    from app.repositories import favorites_repository
-
-    removed = favorites_repository.remove_favorite(db, content_id, current_user.id)
-    return {
-        "status": "success" if removed else "not_found",
-        "content_id": content_id,
-        "message": "Removed from favorites" if removed else "Content was not favorited",
-    }
+    return remove_favorite_command.execute(db, user_id=current_user.id, content_id=content_id)
 
 
 @router.get(

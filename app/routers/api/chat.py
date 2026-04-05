@@ -20,17 +20,7 @@ from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.core.observability import build_log_extra
-from app.domain.converters import content_to_domain
-from app.models.chat_message_metadata import ChatMessageRenderMetadata
-from app.models.schema import (
-    ChatMessage,
-    ChatSession,
-    Content,
-    ContentFavorites,
-    MessageProcessingStatus,
-)
-from app.models.user import User
-from app.routers.api.chat_models import (
+from app.models.api.chat import (
     AssistantTurnRequest,
     AssistantTurnResponse,
     ChatMessageDisplayType,
@@ -47,13 +37,23 @@ from app.routers.api.chat_models import (
     SendMessageResponse,
     UpdateChatSessionRequest,
 )
-from app.routers.api.chat_models import (
+from app.models.api.chat import (
     MessageProcessingStatus as MessageProcessingStatusDto,
 )
+from app.models.chat_message_metadata import ChatMessageRenderMetadata
+from app.models.content_mapper import content_to_domain
+from app.models.internal.assistant import AssistantScreenContext
+from app.models.schema import (
+    ChatMessage,
+    ChatSession,
+    Content,
+    ContentFavorites,
+    MessageProcessingStatus,
+)
+from app.models.user import User
 from app.services.assistant_router import (
     ASSISTANT_SESSION_TYPES,
     KNOWLEDGE_SESSION_TYPE,
-    AssistantScreenContext,
     build_screen_context_snapshot,
     create_assistant_session,
     process_assistant_turn_async,
@@ -997,7 +997,7 @@ async def create_assistant_turn(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> AssistantTurnResponse:
     """Create or continue an assistant-driven chat turn with screen context."""
-    screen_context = AssistantScreenContext.model_validate(request.screen_context.model_dump())
+    screen_context: AssistantScreenContext = request.screen_context
     session: ChatSession
 
     if request.session_id is not None:

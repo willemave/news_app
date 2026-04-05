@@ -21,7 +21,7 @@ from app.models.contracts import (
 )
 from app.models.pagination import PaginationMetadata
 from app.models.schema import NewsItem, NewsItemReadStatus
-from app.routers.api.models import (
+from app.models.api.common import (
     ContentDetailResponse,
     ContentListResponse,
     ContentSummaryResponse,

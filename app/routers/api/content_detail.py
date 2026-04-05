@@ -1,35 +1,24 @@
 """Content detail and chat URL endpoints."""
 
 from typing import Annotated
-from urllib.parse import quote_plus
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
-from app.application.queries import get_content_detail as get_content_detail_query
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
-from app.models.schema import ContentDiscussion
 from app.models.user import User
-from app.presenters.content_presenter import build_domain_content
-from app.repositories.content_detail_repository import (
-    get_content_discussion as get_content_discussion_repository,
-)
-from app.repositories.content_detail_repository import (
-    get_visible_content,
-)
-from app.routers.api.models import (
+from app.queries import get_content_body as get_content_body_query
+from app.queries import get_content_chat_url as get_content_chat_url_query
+from app.queries import get_content_detail as get_content_detail_query
+from app.queries import get_content_discussion as get_content_discussion_query
+from app.models.api.common import (
     ChatGPTUrlResponse,
     ContentBodyResponse,
     ContentDetailResponse,
     ContentDiscussionResponse,
-    DiscussionCommentResponse,
-    DiscussionGroupResponse,
-    DiscussionItemResponse,
-    DiscussionLinkResponse,
 )
-from app.services.content_bodies import ContentBodyVariant, get_content_body_resolver
 
 router = APIRouter()
 
@@ -76,209 +65,11 @@ def get_content_body(
     ] = "source",
 ) -> ContentBodyResponse:
     """Return canonical body text for a content item."""
-    content = get_visible_content(db, user_id=current_user.id, content_id=content_id)
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    resolver = get_content_body_resolver()
-    resolved = resolver.resolve(
+    return get_content_body_query.execute(
         db,
-        content=content,
-        variant=ContentBodyVariant(variant),
-    )
-    if resolved is None:
-        raise HTTPException(status_code=404, detail="Content body not found")
-
-    return ContentBodyResponse(
-        content_id=resolved.content_id,
-        variant=resolved.variant.value,
-        kind=resolved.kind,
-        format=resolved.format.value,
-        text=resolved.text,
-        updated_at=resolved.updated_at.isoformat() if resolved.updated_at else None,
-    )
-
-
-def _discussion_mode_has_renderable_content(
-    *,
-    mode: str,
-    comments: list[DiscussionCommentResponse],
-    discussion_groups: list[DiscussionGroupResponse],
-    links: list[DiscussionLinkResponse],
-) -> bool:
-    """Return whether the payload contains in-app discussion content."""
-    if mode == "comments":
-        return bool(comments or links)
-    if mode == "discussion_list":
-        return bool(discussion_groups or links)
-    return False
-
-
-def _infer_discussion_status(
-    *,
-    mode: str,
-    comments: list[DiscussionCommentResponse],
-    discussion_groups: list[DiscussionGroupResponse],
-    links: list[DiscussionLinkResponse],
-    error_message: str | None,
-    source_url: str | None,
-    discussion_url: str | None,
-) -> str:
-    """Infer a discussion status for embedded payloads without a DB row."""
-    if _discussion_mode_has_renderable_content(
-        mode=mode,
-        comments=comments,
-        discussion_groups=discussion_groups,
-        links=links,
-    ):
-        return "completed"
-    if error_message:
-        return "partial" if source_url or discussion_url else "failed"
-    if source_url or discussion_url:
-        return "partial"
-    return "not_ready"
-
-
-def _build_discussion_response(
-    *,
-    content_id: int,
-    discussion_url: str | None,
-    platform: str | None,
-    discussion_row: ContentDiscussion | None,
-    discussion_data: dict | None = None,
-    status: str | None = None,
-    error_message: str | None = None,
-    fetched_at: str | None = None,
-) -> ContentDiscussionResponse:
-    """Build a typed discussion response payload."""
-    if discussion_row is None and discussion_data is None:
-        return ContentDiscussionResponse(
-            content_id=content_id,
-            status="not_ready",
-            mode="none",
-            platform=platform,
-            source_url=discussion_url,
-            discussion_url=discussion_url,
-            fetched_at=None,
-            error_message=None,
-            comments=[],
-            discussion_groups=[],
-            links=[],
-            stats={},
-        )
-
-    data = discussion_data if isinstance(discussion_data, dict) else None
-    if data is None and discussion_row is not None:
-        row_data = discussion_row.discussion_data
-        data = row_data if isinstance(row_data, dict) else {}
-    if data is None:
-        data = {}
-    mode = (
-        data.get("mode")
-        if data.get("mode") in {"none", "comments", "discussion_list"}
-        else "none"
-    )
-
-    comments: list[DiscussionCommentResponse] = []
-    for entry in data.get("comments", []):
-        if not isinstance(entry, dict):
-            continue
-        comment_id = str(entry.get("comment_id") or "").strip()
-        if not comment_id:
-            continue
-        comments.append(
-            DiscussionCommentResponse(
-                comment_id=comment_id,
-                parent_id=str(entry.get("parent_id")) if entry.get("parent_id") else None,
-                author=str(entry.get("author")) if entry.get("author") else None,
-                text=str(entry.get("text") or ""),
-                compact_text=str(entry.get("compact_text"))
-                if entry.get("compact_text")
-                else None,
-                depth=int(entry.get("depth") or 0),
-                created_at=str(entry.get("created_at")) if entry.get("created_at") else None,
-                source_url=str(entry.get("source_url")) if entry.get("source_url") else None,
-            )
-        )
-
-    groups: list[DiscussionGroupResponse] = []
-    for raw_group in data.get("discussion_groups", []):
-        if not isinstance(raw_group, dict):
-            continue
-        label = str(raw_group.get("label") or "").strip()
-        if not label:
-            continue
-
-        items: list[DiscussionItemResponse] = []
-        for raw_item in raw_group.get("items", []):
-            if not isinstance(raw_item, dict):
-                continue
-            url = str(raw_item.get("url") or "").strip()
-            if not url:
-                continue
-            title = str(raw_item.get("title") or url)
-            items.append(DiscussionItemResponse(title=title, url=url))
-        groups.append(DiscussionGroupResponse(label=label, items=items))
-
-    links: list[DiscussionLinkResponse] = []
-    for raw_link in data.get("links", []):
-        if not isinstance(raw_link, dict):
-            continue
-        url = str(raw_link.get("url") or "").strip()
-        if not url:
-            continue
-        links.append(
-            DiscussionLinkResponse(
-                url=url,
-                source=str(raw_link.get("source") or "unknown"),
-                comment_id=str(raw_link.get("comment_id")) if raw_link.get("comment_id") else None,
-                group_label=str(raw_link.get("group_label"))
-                if raw_link.get("group_label")
-                else None,
-                title=str(raw_link.get("title")) if raw_link.get("title") else None,
-            )
-        )
-
-    source_url = str(data.get("source_url")) if data.get("source_url") else discussion_url
-    resolved_error_message = (
-        discussion_row.error_message
-        if discussion_row is not None
-        else (str(error_message) if error_message else None)
-    )
-    resolved_status = (
-        discussion_row.status
-        if discussion_row is not None
-        else (
-            status
-            or _infer_discussion_status(
-                mode=mode,
-                comments=comments,
-                discussion_groups=groups,
-                links=links,
-                error_message=resolved_error_message,
-                source_url=source_url,
-                discussion_url=discussion_url,
-            )
-        )
-    )
-    resolved_fetched_at = (
-        discussion_row.fetched_at.isoformat()
-        if discussion_row and discussion_row.fetched_at
-        else fetched_at
-    )
-    return ContentDiscussionResponse(
+        user_id=current_user.id,
         content_id=content_id,
-        status=resolved_status,
-        mode=mode,
-        platform=(discussion_row.platform if discussion_row is not None else None) or platform,
-        source_url=source_url,
-        discussion_url=discussion_url,
-        fetched_at=resolved_fetched_at,
-        error_message=resolved_error_message,
-        comments=comments,
-        discussion_groups=groups,
-        links=links,
-        stats=data.get("stats") if isinstance(data.get("stats"), dict) else {},
+        variant=variant,
     )
 
 
@@ -303,23 +94,10 @@ def get_content_discussion(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDiscussionResponse:
     """Return stored discussion payload for a content item."""
-    content, discussion_row = get_content_discussion_repository(
+    return get_content_discussion_query.execute(
         db,
         user_id=current_user.id,
         content_id=content_id,
-    )
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
-    discussion_url = metadata.get("discussion_url")
-    platform = metadata.get("platform") or content.platform
-
-    return _build_discussion_response(
-        content_id=content_id,
-        discussion_url=str(discussion_url) if discussion_url else None,
-        platform=str(platform) if platform else None,
-        discussion_row=discussion_row,
     )
 
 
@@ -346,114 +124,9 @@ def get_chatgpt_url(
     If ``user_prompt`` is provided, it is prepended to the generated prompt so the
     selection the user made in the UI appears as the first message in ChatGPT.
     """
-    content = get_visible_content(db, user_id=current_user.id, content_id=content_id)
-
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    try:
-        domain_content = build_domain_content(content)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to process content metadata: {str(e)}"
-        ) from e
-
-    resolver = get_content_body_resolver()
-    resolved_body = resolver.resolve(db, content=content, variant=ContentBodyVariant.SOURCE)
-
-    # Build the prompt with context
-    prompt_parts = []
-
-    if user_prompt:
-        prompt_parts.append("USER PROMPT:")
-        prompt_parts.append(user_prompt.strip())
-        prompt_parts.append("")
-
-    # Add title and source context
-    prompt_parts.append(f"I'd like to discuss this {domain_content.content_type.value}:")
-    prompt_parts.append(f"Title: {domain_content.display_title}")
-
-    if domain_content.source:
-        prompt_parts.append(f"Source: {domain_content.source}")
-
-    if domain_content.publication_date:
-        prompt_parts.append(f"Published: {domain_content.publication_date.strftime('%B %d, %Y')}")
-
-    prompt_parts.append("")  # Empty line for separation
-    if resolved_body and resolved_body.text.strip():
-        label = "Transcript" if resolved_body.kind == "transcript" else "Full Content"
-        prompt_parts.append(f"{label}:")
-        prompt_parts.append(resolved_body.text.strip())
-
-    # Add the main content
-    if resolved_body and resolved_body.text.strip():
-        content_text = resolved_body.text.strip()
-    elif domain_content.content_type.value == "podcast" and domain_content.transcript:
-        prompt_parts.append("TRANSCRIPT:")
-        content_text = domain_content.transcript
-    elif domain_content.full_markdown:
-        prompt_parts.append("ARTICLE:")
-        content_text = domain_content.full_markdown
-    elif domain_content.summary:
-        prompt_parts.append("SUMMARY:")
-        content_text = domain_content.summary
-    else:
-        # Fallback to structured summary if available
-        if domain_content.structured_summary:
-            prompt_parts.append("KEY POINTS:")
-            if domain_content.bullet_points:
-                for bullet in domain_content.bullet_points:
-                    prompt_parts.append(f"• {bullet.get('text', '')}")
-            if domain_content.quotes:
-                prompt_parts.append("\nQUOTES:")
-                for quote in domain_content.quotes:
-                    prompt_parts.append(f'"{quote.get("text", "")}"')
-                    if quote.get("context"):
-                        prompt_parts.append(f"  - {quote['context']}")
-        content_text = ""
-
-    # Combine all parts
-    full_prompt = "\n".join(prompt_parts)
-
-    # Add content text if available
-    if content_text:
-        full_prompt += "\n" + content_text
-
-    # URL length limit (conservative estimate for browser compatibility)
-    max_url_length = 8000
-    base_url = "https://chat.openai.com/?q="
-
-    # Check if we need to truncate
-    truncated = False
-    encoded_prompt = quote_plus(full_prompt)
-    full_url = base_url + encoded_prompt
-
-    if len(full_url) > max_url_length:
-        # Truncate the content to fit
-        truncated = True
-        available_space = max_url_length - len(base_url) - 100  # Leave some buffer
-
-        # Try to keep the context and truncate the content
-        context_part = "\n".join(prompt_parts)
-        encoded_context = quote_plus(context_part)
-
-        if len(encoded_context) < available_space:
-            # Add as much content as possible
-            remaining_space = available_space - len(encoded_context)
-            truncated_content = content_text[: remaining_space // 3]  # Rough estimate for encoding
-            truncated_prompt = (
-                context_part
-                + "\n"
-                + truncated_content
-                + "\n\n[Content truncated for URL length...]"
-            )
-        else:
-            # Even context is too long, just use title and basic info
-            truncated_prompt = f"Chat about: {domain_content.display_title}"
-            if domain_content.source:
-                truncated_prompt += f" from {domain_content.source}"
-
-        encoded_prompt = quote_plus(truncated_prompt)
-        full_url = base_url + encoded_prompt
-
-    return ChatGPTUrlResponse(chat_url=full_url, truncated=truncated)
+    return get_content_chat_url_query.execute(
+        db,
+        user_id=current_user.id,
+        content_id=content_id,
+        user_prompt=user_prompt,
+    )

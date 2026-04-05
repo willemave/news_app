@@ -7,11 +7,11 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
-from app.domain.converters import content_to_domain
+from app.models.content_display import is_ready_for_list
+from app.models.content_mapper import content_to_domain
 from app.models.contracts import TaskStatus
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry, ProcessingTask
-from app.presenters.content_presenter import is_ready_for_list
 from app.services.queue import QueueService, TaskType
 from app.utils.image_paths import get_content_images_dir
 
@@ -62,11 +62,7 @@ def has_active_generate_image_task(db: Session, content_id: int) -> bool:
         db.query(ProcessingTask.id)
         .filter(ProcessingTask.content_id == content_id)
         .filter(ProcessingTask.task_type == TaskType.GENERATE_IMAGE.value)
-        .filter(
-            ProcessingTask.status.in_(
-                [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
-            )
-        )
+        .filter(ProcessingTask.status.in_([TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]))
         .first()
     )
 
@@ -137,11 +133,7 @@ def enqueue_visible_long_form_images_for_content_ids(
     effective_queue_service = queue_service or QueueService()
     enqueued_task_ids: list[int] = []
     unique_content_ids = list(dict.fromkeys(content_ids))
-    contents = (
-        db.query(Content)
-        .filter(Content.id.in_(unique_content_ids))
-        .all()
-    )
+    contents = db.query(Content).filter(Content.id.in_(unique_content_ids)).all()
     for content in contents:
         task_id = enqueue_visible_long_form_image_if_needed(
             db,
@@ -163,11 +155,7 @@ def cancel_ineligible_pending_generate_image_tasks(
     if not task_ids:
         return []
 
-    tasks = (
-        db.query(ProcessingTask)
-        .filter(ProcessingTask.id.in_(task_ids))
-        .all()
-    )
+    tasks = db.query(ProcessingTask).filter(ProcessingTask.id.in_(task_ids)).all()
     completed_at = datetime.now(UTC).replace(tzinfo=None)
     for task in tasks:
         task.status = TaskStatus.FAILED.value

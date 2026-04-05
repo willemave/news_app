@@ -7,20 +7,19 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.orm import Session
 
-from app.application.commands import submit_content as submit_content_command
+from app.commands import submit_content as submit_content_command
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
+from app.models.api.common import (
+    SubmissionStatusListResponse,
+    SubmissionStatusResponse,
+)
+from app.models.content_submission import ContentSubmissionResponse, SubmitContentRequest
 from app.models.metadata import ContentStatus
 from app.models.pagination import PaginationMetadata
 from app.models.schema import Content
 from app.models.user import User
-from app.routers.api.models import (
-    ContentSubmissionResponse,
-    SubmissionStatusListResponse,
-    SubmissionStatusResponse,
-    SubmitContentRequest,
-)
 from app.utils.pagination import PaginationCursor
 
 router = APIRouter()

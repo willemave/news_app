@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.logging import get_logger
+from app.models.internal.feed_backfill import FeedBackfillRequest, FeedBackfillResult
 from app.models.schema import Content, UserScraperConfig
 from app.scraping.atom_unified import AtomScraper
 from app.scraping.podcast_unified import PodcastUnifiedScraper
@@ -19,27 +19,6 @@ from app.services.scraper_configs import build_feed_payloads
 logger = get_logger(__name__)
 
 DEFAULT_FEED_SCRAPE_LIMIT = 10
-MAX_BACKFILL_COUNT = 50
-
-
-class FeedBackfillRequest(BaseModel):
-    """Input for backfilling a single feed."""
-
-    user_id: int = Field(..., gt=0)
-    config_id: int = Field(..., gt=0)
-    count: int = Field(..., ge=1, le=MAX_BACKFILL_COUNT)
-
-
-class FeedBackfillResult(BaseModel):
-    """Result from a feed backfill run."""
-
-    config_id: int
-    base_limit: int
-    target_limit: int
-    scraped: int
-    saved: int
-    duplicates: int
-    errors: int
 
 
 def resolve_feed_config_for_content(

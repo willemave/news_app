@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 import feedparser
 import httpx
 import trafilatura
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.builtin_tools import WebSearchTool
 from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
@@ -21,12 +20,29 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
+from app.models.internal.content_analyzer import (
+    ContentAnalysisOutput,
+    ContentAnalysisResult,
+    InstructionLink,
+    InstructionResult,
+)
 from app.services.feed_detection import extract_feed_links
 from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_models import build_pydantic_model
 from app.services.llm_usage import record_usage
 
 logger = get_logger(__name__)
+
+__all__ = [
+    "AnalysisError",
+    "CONTENT_ANALYSIS_MODEL",
+    "CONTENT_ANALYZER_SYSTEM_PROMPT",
+    "ContentAnalysisOutput",
+    "ContentAnalysisResult",
+    "InstructionLink",
+    "InstructionResult",
+    "get_content_analyzer",
+]
 
 # Configuration - use Responses API with web search
 CONTENT_ANALYSIS_MODEL = "gpt-5.4"
@@ -50,74 +66,6 @@ AUDIO_FILE_PATTERNS = [
     r'(https?://[^\s"\'<>]+\.wav(?:\?[^\s"\'<>]*)?)',
     r'(https?://[^\s"\'<>]+\.ogg(?:\?[^\s"\'<>]*)?)',
 ]
-
-
-class ContentAnalysisResult(BaseModel):
-    """Structured output schema for content analysis."""
-
-    content_type: Literal["article", "podcast", "video"] = Field(
-        ...,
-        description=(
-            "Type of content: 'article' for web pages/blog posts/news, "
-            "'podcast' for audio episodes, 'video' for video content"
-        ),
-    )
-    original_url: str = Field(..., description="The URL that was analyzed")
-    media_url: str | None = Field(
-        None,
-        description=(
-            "Direct URL to media file (mp3/mp4/m4a/webm) for podcasts/videos. "
-            "Extract from page HTML if available. Look for audio/video source tags, "
-            "RSS feed enclosures, or download links."
-        ),
-    )
-    media_format: str | None = Field(
-        None,
-        description="Media file format/extension: mp3, mp4, m4a, webm, etc.",
-    )
-    title: str | None = Field(None, description="Content title if detectable from the page")
-    description: str | None = Field(None, description="Brief description or subtitle if available")
-    duration_seconds: int | None = Field(
-        None, description="Duration in seconds for audio/video content if mentioned"
-    )
-    platform: str | None = Field(
-        None,
-        description=(
-            "Platform name in lowercase: spotify, apple_podcasts, youtube, "
-            "substack, medium, transistor, anchor, simplecast, etc."
-        ),
-    )
-    confidence: float = Field(
-        default=0.8,
-        ge=0.0,
-        le=1.0,
-        description="Confidence score for the content type detection (0.0-1.0)",
-    )
-
-
-class InstructionLink(BaseModel):
-    """Single link result derived from instruction handling."""
-
-    url: str = Field(..., max_length=2048)
-    title: str | None = Field(None, max_length=500)
-    context: str | None = Field(None, max_length=1000)
-    content_type: Literal["article", "podcast", "video", "news", "unknown"] | None = None
-    platform: str | None = Field(None, max_length=50)
-    source: str | None = Field(None, max_length=200)
-
-
-class InstructionResult(BaseModel):
-    """Result for share instruction processing."""
-
-    text: str | None = Field(None, max_length=2000)
-    links: list[InstructionLink] = Field(default_factory=list)
-
-
-class ContentAnalysisOutput(BaseModel):
-    """Combined analysis output for URL analysis + instruction handling."""
-
-    analysis: ContentAnalysisResult
-    instruction: InstructionResult | None = None
 
 
 @dataclass

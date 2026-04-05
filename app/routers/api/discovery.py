@@ -14,15 +14,7 @@ from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.models.content_submission import SubmitContentRequest
-from app.models.schema import (
-    ContentFavorites,
-    FeedDiscoveryRun,
-    FeedDiscoverySuggestion,
-    UserScraperConfig,
-)
-from app.models.user import User
-from app.routers.api.models import (
+from app.models.api.common import (
     DiscoveryAddItemRequest,
     DiscoveryAddItemResponse,
     DiscoveryDismissRequest,
@@ -37,11 +29,20 @@ from app.routers.api.models import (
     PodcastEpisodeSearchResponse,
     PodcastEpisodeSearchResultResponse,
 )
+from app.models.content_submission import SubmitContentRequest
+from app.models.internal.scraper_configs import CreateUserScraperConfig
+from app.models.schema import (
+    ContentFavorites,
+    FeedDiscoveryRun,
+    FeedDiscoverySuggestion,
+    UserScraperConfig,
+)
+from app.models.user import User
 from app.services.content_submission import submit_user_content
 from app.services.gateways.task_queue_gateway import get_task_queue_gateway
 from app.services.podcast_search import search_podcast_episodes
 from app.services.queue import TaskType
-from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
+from app.services.scraper_configs import create_user_scraper_config
 
 logger = get_logger(__name__)
 

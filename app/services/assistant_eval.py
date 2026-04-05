@@ -28,6 +28,7 @@ from app.core.db import Base
 from app.core.settings import get_settings
 from app.models.chat_message_metadata import AssistantFeedOption
 from app.models.contracts import TaskStatus, TaskType
+from app.models.internal.assistant import AssistantScreenContext
 from app.models.schema import (
     Content,
     ContentFavorites,
@@ -42,7 +43,6 @@ from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope
 from app.services.assistant_router import (
     AssistantDeps,
-    AssistantScreenContext,
     _extract_render_metadata,
     build_screen_context_snapshot,
     create_assistant_session,

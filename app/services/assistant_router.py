@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from time import perf_counter
 
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
 from sqlalchemy import and_, func, or_
@@ -20,18 +19,19 @@ from app.core.db import get_session_factory
 from app.core.logging import get_logger
 from app.core.observability import build_log_extra
 from app.core.settings import get_settings
-from app.infrastructure.db.search.base import get_search_backend
 from app.models.chat_message_metadata import (
     AssistantFeedOption,
     AssistantFeedOptionsResult,
     ChatMessageRenderMetadata,
 )
 from app.models.content_submission import SubmitContentRequest
+from app.models.internal.assistant import AssistantScreenContext
 from app.models.metadata import ContentType
 from app.models.schema import ChatSession, Content, UserScraperConfig
 from app.models.user import User
 from app.repositories import favorites_repository, read_status_repository
 from app.repositories.content_feed_query import build_user_feed_query
+from app.repositories.search_backend import get_search_backend
 from app.services.admin_conversational_agent import search_knowledge
 from app.services.assistant_feed_finder import find_feed_options as find_feed_options_service
 from app.services.chat_agent import (
@@ -71,7 +71,6 @@ ASSISTANT_SESSION_TYPES = {
     *LEGACY_KNOWLEDGE_SESSION_TYPES,
     "weekly_discovery",
 }
-MAX_VISIBLE_CONTENT_IDS = 12
 SUBSCRIPTION_QUERY_STOPWORDS = {
     "a",
     "an",
@@ -225,30 +224,6 @@ FEED_DISCOVERY_ACTION_HINTS = (
     "recommend",
     "subscribe",
 )
-
-
-class AssistantScreenContext(BaseModel):
-    """Compact client-provided screen context for an assistant turn."""
-
-    screen_type: str = Field(default="unknown", max_length=64)
-    screen_title: str | None = Field(default=None, max_length=200)
-    content_id: int | None = Field(default=None, ge=1)
-    visible_content_ids: list[int] = Field(
-        default_factory=list,
-        max_length=MAX_VISIBLE_CONTENT_IDS,
-    )
-    selected_topic: str | None = Field(default=None, max_length=200)
-    query: str | None = Field(default=None, max_length=200)
-    note: str | None = Field(default=None, max_length=500)
-
-    @field_validator("visible_content_ids", mode="before")
-    @classmethod
-    def truncate_visible_content_ids(cls, value: object) -> object:
-        """Bound visible content IDs before validation rejects oversized payloads."""
-
-        if isinstance(value, list):
-            return value[:MAX_VISIBLE_CONTENT_IDS]
-        return value
 
 
 @dataclass

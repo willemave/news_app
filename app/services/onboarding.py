@@ -15,19 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_NEW_FEED_LIMIT
 from app.core.logging import get_logger
-from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import (
-    Content,
-    ContentStatusEntry,
-    FeedDiscoveryRun,
-    FeedDiscoverySuggestion,
-    OnboardingDiscoveryLane,
-    OnboardingDiscoveryRun,
-    OnboardingDiscoverySuggestion,
-)
-from app.models.user import User
-from app.repositories.content_repository import apply_visibility_filters, build_visibility_context
-from app.routers.api.models import (
+from app.models.api.common import (
     OnboardingAudioDiscoverRequest,
     OnboardingAudioDiscoverResponse,
     OnboardingAudioLanePreview,
@@ -45,6 +33,19 @@ from app.routers.api.models import (
     OnboardingVoiceParseRequest,
     OnboardingVoiceParseResponse,
 )
+from app.models.internal.scraper_configs import CreateUserScraperConfig
+from app.models.metadata import ContentStatus, ContentType
+from app.models.schema import (
+    Content,
+    ContentStatusEntry,
+    FeedDiscoveryRun,
+    FeedDiscoverySuggestion,
+    OnboardingDiscoveryLane,
+    OnboardingDiscoveryRun,
+    OnboardingDiscoverySuggestion,
+)
+from app.models.user import User
+from app.repositories.content_repository import apply_visibility_filters, build_visibility_context
 from app.scraping.atom_unified import load_atom_feeds
 from app.scraping.substack_unified import load_substack_feeds
 from app.services.exa_client import ExaSearchResult, exa_search
@@ -53,7 +54,7 @@ from app.services.llm_agents import get_basic_agent
 from app.services.long_form_images import enqueue_visible_long_form_images_for_content_ids
 from app.services.news_list_preferences import normalize_news_list_preference_prompt
 from app.services.queue import TaskType
-from app.services.scraper_configs import CreateUserScraperConfig, create_user_scraper_config
+from app.services.scraper_configs import create_user_scraper_config
 from app.services.x_integration import normalize_twitter_username
 from app.utils.paths import resolve_config_path
 

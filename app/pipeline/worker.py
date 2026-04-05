@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.domain.converters import content_to_domain, domain_to_content
+from app.models.content_mapper import content_to_domain, domain_to_content
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.metadata_state import (
     normalize_metadata_shape,
@@ -797,14 +797,11 @@ class ContentWorker:
     ) -> bool:
         """Handle canonical URL uniqueness conflicts as terminal, non-retryable outcomes."""
         error_text = str(exc).lower()
-        looks_like_canonical_conflict = (
-            "contents.url, contents.content_type" in error_text
-            or (
-                "duplicate key value violates unique constraint" in error_text
-                and "contents" in error_text
-                and "url" in error_text
-                and "content_type" in error_text
-            )
+        looks_like_canonical_conflict = "contents.url, contents.content_type" in error_text or (
+            "duplicate key value violates unique constraint" in error_text
+            and "contents" in error_text
+            and "url" in error_text
+            and "content_type" in error_text
         )
         if not looks_like_canonical_conflict:
             return False

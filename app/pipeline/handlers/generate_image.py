@@ -43,7 +43,7 @@ class GenerateImageHandler:
                     )
                     return TaskResult.ok()
 
-                from app.domain.converters import content_to_domain
+                from app.models.content_mapper import content_to_domain
                 from app.services.image_generation import get_image_generation_service
                 from app.utils.image_urls import build_content_image_url, build_thumbnail_url
 

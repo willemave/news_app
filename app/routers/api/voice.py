@@ -18,7 +18,7 @@ from app.core.logging import get_logger
 from app.core.security import verify_token
 from app.core.settings import get_settings
 from app.models.user import User
-from app.routers.api.voice_models import (
+from app.models.api.voice import (
     VOICE_CLIENT_EVENT_ADAPTER,
     CreateVoiceSessionRequest,
     CreateVoiceSessionResponse,

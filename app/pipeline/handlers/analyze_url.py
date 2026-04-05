@@ -11,6 +11,7 @@ from app.constants import (
     SELF_SUBMISSION_SOURCE,
 )
 from app.core.logging import get_logger
+from app.models.internal.feed_backfill import FeedBackfillRequest
 from app.models.metadata import ContentStatus, ContentType
 from app.models.metadata_state import normalize_metadata_shape, update_processing_state
 from app.models.schema import Content, ProcessingTask
@@ -21,7 +22,7 @@ from app.services.apple_podcasts import resolve_apple_podcast_episode
 from app.services.content_analyzer import AnalysisError
 from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.content_submission import normalize_url
-from app.services.feed_backfill import FeedBackfillRequest, backfill_feed_for_config
+from app.services.feed_backfill import backfill_feed_for_config
 from app.services.feed_detection import FeedDetector, detect_feeds_from_html
 from app.services.feed_subscription import subscribe_to_detected_feed_result
 from app.services.gateways.http_gateway import get_http_gateway

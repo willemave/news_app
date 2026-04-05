@@ -7,12 +7,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.application.commands import delete_user_llm_integration, upsert_user_llm_integration
-from app.application.queries import list_user_llm_integrations
+from app.commands import delete_user_llm_integration, upsert_user_llm_integration
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.routers.api.models import (
+from app.queries import list_user_llm_integrations
+from app.models.api.common import (
     IntegrationDisconnectResponse,
     UpsertUserLlmIntegrationRequest,
     UserLlmIntegrationResponse,
