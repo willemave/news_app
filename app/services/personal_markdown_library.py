@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from sqlalchemy import distinct
@@ -22,6 +24,7 @@ logger = get_logger(__name__)
 CONTENT_ID_PATTERN = re.compile(r"__c(?P<content_id>\d+)\.md$")
 VARIANT_SOURCE = "source"
 VARIANT_SUMMARY = "summary"
+MarkdownVariant = Literal["source", "summary"]
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,25 @@ class PersonalMarkdownSyncResult:
     user_id: int
     written_files: list[Path]
     deleted_files: list[Path]
+
+
+@dataclass(frozen=True)
+class PersonalMarkdownDocument:
+    """One rendered markdown document available for user sync/export."""
+
+    relative_path: Path
+    content_id: int
+    variant: MarkdownVariant
+    updated_at: datetime | None
+    text: str
+
+    @property
+    def checksum_sha256(self) -> str:
+        return hashlib.sha256(self.text.encode("utf-8")).hexdigest()
+
+    @property
+    def size_bytes(self) -> int:
+        return len(self.text.encode("utf-8"))
 
 
 def get_personal_markdown_user_root(user_id: int) -> Path:
@@ -99,6 +121,35 @@ def sync_personal_markdown_library_for_user(
         written_files=written_files,
         deleted_files=deleted_files,
     )
+
+
+def collect_personal_markdown_documents_for_user(
+    db: Session,
+    *,
+    user_id: int,
+    include_source: bool = False,
+) -> list[PersonalMarkdownDocument]:
+    """Return rendered markdown documents for one user's exportable library."""
+    settings = get_settings()
+    if not settings.personal_markdown_enabled:
+        return []
+
+    qualifying_reasons = _load_qualifying_content_reasons(db, user_id=user_id)
+    documents: list[PersonalMarkdownDocument] = []
+    for content_id, reasons in qualifying_reasons.items():
+        content = db.query(Content).filter(Content.id == content_id).first()
+        if content is None:
+            continue
+        documents.extend(
+            _build_content_markdown_documents(
+                db=db,
+                user_id=user_id,
+                content=content,
+                reasons=reasons,
+                include_source=include_source,
+            )
+        )
+    return documents
 
 
 def sync_personal_markdown_for_content(
@@ -225,12 +276,6 @@ def _sync_content_markdown_files(
     content: Content,
     reasons: PersonalMarkdownReasons,
 ) -> list[Path]:
-    resolver = get_content_body_resolver()
-    source_text = resolver.resolve_text(db, content=content, variant=ContentBodyVariant.SOURCE)
-    summary_text = resolver.resolve_text(db, content=content, variant=ContentBodyVariant.RENDERED)
-    if not summary_text:
-        summary_text = _build_summary_markdown(content)
-
     deleted_files = _delete_content_files(user_root, int(content.id))
     if deleted_files:
         logger.debug(
@@ -239,24 +284,22 @@ def _sync_content_markdown_files(
             user_id,
         )
 
-    source_slug = _slugify_segment(_content_source_name(content))
-    content_type = _slugify_segment(content.content_type or "unknown")
-    base_dir = user_root / content_type / source_slug
+    base_dir = user_root / _markdown_relative_base_dir(content)
     base_dir.mkdir(parents=True, exist_ok=True)
 
     written_files: list[Path] = []
-    for variant, body in ((VARIANT_SOURCE, source_text), (VARIANT_SUMMARY, summary_text)):
-        cleaned_body = (body or "").strip()
-        if not cleaned_body:
-            continue
-
+    for variant, body, _updated_at in _iter_content_markdown_variants(
+        db=db,
+        content=content,
+        include_source=True,
+    ):
         path = base_dir / _build_filename(content=content, variant=variant)
         path.write_text(
             _render_markdown_document(
                 user_id=user_id,
                 content=content,
                 variant=variant,
-                body=cleaned_body,
+                body=body,
                 reasons=reasons,
             ),
             encoding="utf-8",
@@ -267,7 +310,87 @@ def _sync_content_markdown_files(
     return written_files
 
 
-def _build_filename(*, content: Content, variant: str) -> str:
+def _build_content_markdown_documents(
+    *,
+    db: Session,
+    user_id: int,
+    content: Content,
+    reasons: PersonalMarkdownReasons,
+    include_source: bool,
+) -> list[PersonalMarkdownDocument]:
+    base_dir = _markdown_relative_base_dir(content)
+
+    documents: list[PersonalMarkdownDocument] = []
+    for variant, body, updated_at in _iter_content_markdown_variants(
+        db=db,
+        content=content,
+        include_source=include_source,
+    ):
+        relative_path = base_dir / _build_filename(content=content, variant=variant)
+        documents.append(
+            PersonalMarkdownDocument(
+                relative_path=relative_path,
+                content_id=int(content.id),
+                variant=variant,
+                updated_at=updated_at,
+                text=_render_markdown_document(
+                    user_id=user_id,
+                    content=content,
+                    variant=variant,
+                    body=body,
+                    reasons=reasons,
+                ),
+            )
+        )
+    return documents
+
+
+def _iter_content_markdown_variants(
+    *,
+    db: Session,
+    content: Content,
+    include_source: bool,
+) -> list[tuple[MarkdownVariant, str, datetime | None]]:
+    resolver = get_content_body_resolver()
+    rendered_body = resolver.resolve(db, content=content, variant=ContentBodyVariant.RENDERED)
+    source_body = (
+        resolver.resolve(db, content=content, variant=ContentBodyVariant.SOURCE)
+        if include_source
+        else None
+    )
+
+    variant_specs: list[tuple[MarkdownVariant, str | None, datetime | None]] = [
+        (
+            VARIANT_SUMMARY,
+            (rendered_body.text if rendered_body else None) or _build_summary_markdown(content),
+            rendered_body.updated_at if rendered_body else getattr(content, "updated_at", None),
+        )
+    ]
+    if include_source:
+        variant_specs.insert(
+            0,
+            (
+                VARIANT_SOURCE,
+                source_body.text if source_body else None,
+                source_body.updated_at if source_body else getattr(content, "updated_at", None),
+            ),
+        )
+
+    variants: list[tuple[MarkdownVariant, str, datetime | None]] = []
+    for variant, body, updated_at in variant_specs:
+        cleaned_body = (body or "").strip()
+        if cleaned_body:
+            variants.append((variant, cleaned_body, updated_at))
+    return variants
+
+
+def _markdown_relative_base_dir(content: Content) -> Path:
+    source_slug = _slugify_segment(_content_source_name(content))
+    content_type = _slugify_segment(content.content_type or "unknown")
+    return Path(content_type) / source_slug
+
+
+def _build_filename(*, content: Content, variant: MarkdownVariant) -> str:
     settings = get_settings()
     slug = _slugify_segment(
         content.title or "untitled",
@@ -281,7 +404,7 @@ def _render_markdown_document(
     *,
     user_id: int,
     content: Content,
-    variant: str,
+    variant: MarkdownVariant,
     body: str,
     reasons: PersonalMarkdownReasons,
 ) -> str:

@@ -1137,6 +1137,79 @@ class ApiKeyCreateResponse(BaseModel):
     record: ApiKeySummaryResponse
 
 
+class CliLinkStartRequest(BaseModel):
+    """Request to start a new CLI QR-link session."""
+
+    device_name: str | None = Field(default=None, max_length=255)
+
+
+class CliLinkStartResponse(BaseModel):
+    """Unauthenticated response for bootstrapping CLI QR login."""
+
+    session_id: str
+    status: Literal["pending"]
+    poll_token: str
+    approve_url: str
+    expires_at: datetime
+    poll_interval_seconds: int = 2
+
+
+class CliLinkApproveRequest(BaseModel):
+    """Authenticated request to approve one pending CLI link session."""
+
+    approve_token: str = Field(..., min_length=8, max_length=255)
+    device_name: str | None = Field(default=None, max_length=255)
+
+
+class CliLinkApproveResponse(BaseModel):
+    """Approval response after issuing a CLI API key."""
+
+    session_id: str
+    status: Literal["approved"]
+    key_prefix: str
+    expires_at: datetime
+
+
+class CliLinkPollResponse(BaseModel):
+    """Polling response for a CLI waiting on mobile approval."""
+
+    session_id: str
+    status: Literal["pending", "approved", "claimed", "expired"]
+    expires_at: datetime
+    api_key: str | None = None
+    key_prefix: str | None = None
+
+
+class AgentLibraryDocumentResponse(BaseModel):
+    """One manifest entry for a personal markdown document."""
+
+    relative_path: str
+    content_id: int
+    variant: Literal["source", "summary"]
+    updated_at: datetime | None = None
+    size_bytes: int
+    checksum_sha256: str
+
+
+class AgentLibraryManifestResponse(BaseModel):
+    """Manifest of markdown documents available for CLI sync."""
+
+    generated_at: datetime
+    include_source: bool = False
+    documents: list[AgentLibraryDocumentResponse]
+
+
+class AgentLibraryFileResponse(BaseModel):
+    """One markdown document payload for CLI sync download."""
+
+    relative_path: str
+    content_id: int
+    variant: Literal["source", "summary"]
+    updated_at: datetime | None = None
+    checksum_sha256: str
+    text: str
+
+
 class UserLlmIntegrationResponse(BaseModel):
     """User-managed LLM integration summary."""
 
