@@ -8,17 +8,6 @@
             "title": "Access Token",
             "type": "string"
           },
-          "openai_api_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Openai Api Key"
-          },
           "refresh_token": {
             "title": "Refresh Token",
             "type": "string"
@@ -186,6 +175,417 @@
         "title": "AdminLoginResponse",
         "type": "object"
       },
+      "AgentDigestRequest": {
+        "description": "Agent digest generation request for arbitrary windows.",
+        "properties": {
+          "end_at": {
+            "format": "date-time",
+            "title": "End At",
+            "type": "string"
+          },
+          "form": {
+            "default": "short",
+            "enum": [
+              "short",
+              "long"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_at",
+          "end_at"
+        ],
+        "title": "AgentDigestRequest",
+        "type": "object"
+      },
+      "AgentDigestResponse": {
+        "description": "Async agent digest generation response.",
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "integer"
+          },
+          "status": {
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "AgentDigestResponse",
+        "type": "object"
+      },
+      "AgentLibraryDocumentResponse": {
+        "description": "One manifest entry for a personal markdown document.",
+        "properties": {
+          "checksum_sha256": {
+            "title": "Checksum Sha256",
+            "type": "string"
+          },
+          "content_id": {
+            "title": "Content Id",
+            "type": "integer"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "variant": {
+            "enum": [
+              "source",
+              "summary"
+            ],
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relative_path",
+          "content_id",
+          "variant",
+          "size_bytes",
+          "checksum_sha256"
+        ],
+        "title": "AgentLibraryDocumentResponse",
+        "type": "object"
+      },
+      "AgentLibraryFileResponse": {
+        "description": "One markdown document payload for CLI sync download.",
+        "properties": {
+          "checksum_sha256": {
+            "title": "Checksum Sha256",
+            "type": "string"
+          },
+          "content_id": {
+            "title": "Content Id",
+            "type": "integer"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "variant": {
+            "enum": [
+              "source",
+              "summary"
+            ],
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relative_path",
+          "content_id",
+          "variant",
+          "checksum_sha256",
+          "text"
+        ],
+        "title": "AgentLibraryFileResponse",
+        "type": "object"
+      },
+      "AgentLibraryManifestResponse": {
+        "description": "Manifest of markdown documents available for CLI sync.",
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentLibraryDocumentResponse"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "include_source": {
+            "default": false,
+            "title": "Include Source",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "documents"
+        ],
+        "title": "AgentLibraryManifestResponse",
+        "type": "object"
+      },
+      "AgentOnboardingCompleteRequest": {
+        "description": "Complete simplified agent onboarding.",
+        "properties": {
+          "accept_all": {
+            "default": false,
+            "title": "Accept All",
+            "type": "boolean"
+          },
+          "selected_subreddits": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Selected Subreddits",
+            "type": "array"
+          },
+          "source_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Source Ids",
+            "type": "array"
+          }
+        },
+        "title": "AgentOnboardingCompleteRequest",
+        "type": "object"
+      },
+      "AgentOnboardingStartRequest": {
+        "description": "Simplified async onboarding start request.",
+        "properties": {
+          "brief": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Brief",
+            "type": "string"
+          },
+          "preferences": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferences"
+          },
+          "seed_feeds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Seed Feeds",
+            "type": "array"
+          },
+          "seed_urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Seed Urls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "brief"
+        ],
+        "title": "AgentOnboardingStartRequest",
+        "type": "object"
+      },
+      "AgentOnboardingStartResponse": {
+        "description": "Simplified async onboarding start response.",
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status"
+        ],
+        "title": "AgentOnboardingStartResponse",
+        "type": "object"
+      },
+      "AgentSearchRequest": {
+        "description": "Machine-oriented external search request.",
+        "properties": {
+          "include_podcasts": {
+            "default": true,
+            "title": "Include Podcasts",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 10,
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "AgentSearchRequest",
+        "type": "object"
+      },
+      "AgentSearchResponse": {
+        "description": "Machine-oriented external search response.",
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AgentSearchResultResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "title": "AgentSearchResponse",
+        "type": "object"
+      },
+      "AgentSearchResultResponse": {
+        "description": "One agent search result.",
+        "properties": {
+          "feed_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feed Url"
+          },
+          "kind": {
+            "enum": [
+              "web",
+              "podcast"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "url"
+        ],
+        "title": "AgentSearchResultResponse",
+        "type": "object"
+      },
       "AppleSignInRequest": {
         "description": "Request schema for Apple Sign In.",
         "properties": {
@@ -221,6 +621,290 @@
           "id_token"
         ],
         "title": "AppleSignInRequest",
+        "type": "object"
+      },
+      "AssistantFeedOption": {
+        "description": "Validated feed option surfaced on an assistant message.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "evidence_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Url"
+          },
+          "feed_format": {
+            "default": "rss",
+            "enum": [
+              "rss",
+              "atom"
+            ],
+            "title": "Feed Format",
+            "type": "string"
+          },
+          "feed_type": {
+            "enum": [
+              "atom",
+              "substack",
+              "podcast_rss"
+            ],
+            "title": "Feed Type",
+            "type": "string"
+          },
+          "feed_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Feed Url",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 40,
+            "minLength": 8,
+            "title": "Id",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "site_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Site Url",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "site_url",
+          "feed_url",
+          "feed_type"
+        ],
+        "title": "AssistantFeedOption",
+        "type": "object"
+      },
+      "AssistantScreenContextDto": {
+        "description": "Compact screen context passed to the assistant router.",
+        "properties": {
+          "content_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "screen_title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screen Title"
+          },
+          "screen_type": {
+            "default": "unknown",
+            "maxLength": 64,
+            "title": "Screen Type",
+            "type": "string"
+          },
+          "selected_topic": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Topic"
+          },
+          "visible_content_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 12,
+            "title": "Visible Content Ids",
+            "type": "array"
+          }
+        },
+        "title": "AssistantScreenContextDto",
+        "type": "object"
+      },
+      "AssistantTurnRequest": {
+        "description": "Request to create or continue a screen-aware assistant conversation.",
+        "properties": {
+          "message": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "screen_context": {
+            "$ref": "#/components/schemas/AssistantScreenContextDto"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "AssistantTurnRequest",
+        "type": "object"
+      },
+      "AssistantTurnResponse": {
+        "description": "Response returned after creating or continuing an assistant turn.",
+        "properties": {
+          "message_id": {
+            "description": "Pending assistant message identifier",
+            "title": "Message Id",
+            "type": "integer"
+          },
+          "session": {
+            "$ref": "#/components/schemas/ChatSessionSummaryDto"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MessageProcessingStatus",
+            "default": "processing",
+            "description": "Current processing status"
+          },
+          "user_message": {
+            "$ref": "#/components/schemas/ChatMessageDto"
+          }
+        },
+        "required": [
+          "session",
+          "user_message",
+          "message_id"
+        ],
+        "title": "AssistantTurnResponse",
+        "type": "object"
+      },
+      "AudioTranscriptionResponse": {
+        "description": "Transcription payload returned for uploaded audio.",
+        "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "transcript": {
+            "title": "Transcript",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transcript"
+        ],
+        "title": "AudioTranscriptionResponse",
+        "type": "object"
+      },
+      "Body_adminApiKeysCreate": {
+        "properties": {
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "Body_adminApiKeysCreate",
+        "type": "object"
+      },
+      "Body_transcribeOpenaiTranscriptionsAudio": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_transcribeOpenaiTranscriptionsAudio",
         "type": "object"
       },
       "BulkMarkReadRequest": {
@@ -274,13 +958,47 @@
         "title": "ChatGPTUrlResponse",
         "type": "object"
       },
+      "ChatMessageDisplayType": {
+        "description": "Display type for a chat message row.",
+        "enum": [
+          "message",
+          "process_summary"
+        ],
+        "title": "ChatMessageDisplayType",
+        "type": "string"
+      },
       "ChatMessageDto": {
         "description": "Flattened chat message returned to clients.",
         "properties": {
+          "active_council_child_session_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Currently selected council branch for council candidate rows",
+            "title": "Active Council Child Session Id"
+          },
           "content": {
             "description": "Message content",
             "title": "Content",
             "type": "string"
+          },
+          "council_candidates": {
+            "description": "Optional council reply candidates attached to the assistant message",
+            "items": {
+              "$ref": "#/components/schemas/CouncilCandidate"
+            },
+            "title": "Council Candidates",
+            "type": "array"
+          },
+          "display_type": {
+            "$ref": "#/components/schemas/ChatMessageDisplayType",
+            "default": "message",
+            "description": "Display treatment for this row in the chat transcript"
           },
           "error": {
             "anyOf": [
@@ -294,10 +1012,30 @@
             "description": "Error message if processing failed",
             "title": "Error"
           },
+          "feed_options": {
+            "description": "Optional validated feed options attached to the assistant message",
+            "items": {
+              "$ref": "#/components/schemas/AssistantFeedOption"
+            },
+            "title": "Feed Options",
+            "type": "array"
+          },
           "id": {
             "description": "Unique message identifier",
             "title": "Id",
             "type": "integer"
+          },
+          "process_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Compact label for process-summary rows",
+            "title": "Process Label"
           },
           "role": {
             "$ref": "#/components/schemas/ChatMessageRole",
@@ -307,6 +1045,18 @@
             "description": "Chat session ID",
             "title": "Session Id",
             "type": "integer"
+          },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Backing async chat_messages row ID used for status polling",
+            "title": "Source Message Id"
           },
           "status": {
             "$ref": "#/components/schemas/MessageProcessingStatus",
@@ -365,6 +1115,18 @@
       "ChatSessionSummaryDto": {
         "description": "Summary of a chat session.",
         "properties": {
+          "active_child_session_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Currently selected hidden branch session for council chat",
+            "title": "Active Child Session Id"
+          },
           "article_source": {
             "anyOf": [
               {
@@ -421,6 +1183,12 @@
               }
             ],
             "title": "Content Id"
+          },
+          "council_mode": {
+            "default": false,
+            "description": "True when this visible session is using council chat mode",
+            "title": "Council Mode",
+            "type": "boolean"
           },
           "created_at": {
             "format": "date-time",
@@ -559,6 +1327,229 @@
         "title": "ChatSessionSummaryDto",
         "type": "object"
       },
+      "CliLinkApproveRequest": {
+        "description": "Authenticated request to approve one pending CLI link session.",
+        "properties": {
+          "approve_token": {
+            "maxLength": 255,
+            "minLength": 8,
+            "title": "Approve Token",
+            "type": "string"
+          },
+          "device_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
+          }
+        },
+        "required": [
+          "approve_token"
+        ],
+        "title": "CliLinkApproveRequest",
+        "type": "object"
+      },
+      "CliLinkApproveResponse": {
+        "description": "Approval response after issuing a CLI API key.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "key_prefix": {
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "approved",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "key_prefix",
+          "expires_at"
+        ],
+        "title": "CliLinkApproveResponse",
+        "type": "object"
+      },
+      "CliLinkPollResponse": {
+        "description": "Polling response for a CLI waiting on mobile approval.",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "key_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Prefix"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "claimed",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "expires_at"
+        ],
+        "title": "CliLinkPollResponse",
+        "type": "object"
+      },
+      "CliLinkStartRequest": {
+        "description": "Request to start a new CLI QR-link session.",
+        "properties": {
+          "device_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
+          }
+        },
+        "title": "CliLinkStartRequest",
+        "type": "object"
+      },
+      "CliLinkStartResponse": {
+        "description": "Unauthenticated response for bootstrapping CLI QR login.",
+        "properties": {
+          "approve_url": {
+            "title": "Approve Url",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "poll_interval_seconds": {
+            "default": 2,
+            "title": "Poll Interval Seconds",
+            "type": "integer"
+          },
+          "poll_token": {
+            "title": "Poll Token",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "poll_token",
+          "approve_url",
+          "expires_at"
+        ],
+        "title": "CliLinkStartResponse",
+        "type": "object"
+      },
+      "ContentBodyResponse": {
+        "description": "Resolved canonical body payload.",
+        "properties": {
+          "content_id": {
+            "description": "Content identifier",
+            "title": "Content Id",
+            "type": "integer"
+          },
+          "format": {
+            "description": "Body format",
+            "title": "Format",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Body kind",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "description": "Full canonical body text",
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO timestamp of the body pointer update",
+            "title": "Updated At"
+          },
+          "variant": {
+            "description": "Canonical body variant",
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_id",
+          "variant",
+          "kind",
+          "format",
+          "text"
+        ],
+        "title": "ContentBodyResponse",
+        "type": "object"
+      },
       "ContentClassification": {
         "description": "User-visible read prioritization classification.",
         "enum": [
@@ -571,6 +1562,9 @@
       "ContentDetailResponse": {
         "description": "Detailed response for a single content item.",
         "example": {
+          "body_available": true,
+          "body_format": "text",
+          "body_kind": "article",
           "bullet_points": [
             {
               "category": "key_finding",
@@ -662,6 +1656,36 @@
           "url": "https://example.com/article"
         },
         "properties": {
+          "body_available": {
+            "default": false,
+            "description": "Whether canonical body text is available",
+            "title": "Body Available",
+            "type": "boolean"
+          },
+          "body_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved body format (text or markdown)",
+            "title": "Body Format"
+          },
+          "body_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved body kind (article, transcript, or source)",
+            "title": "Body Kind"
+          },
           "bullet_points": {
             "description": "Bullet points from structured summary",
             "items": {
@@ -1358,6 +2382,18 @@
             ],
             "description": "Content classification (to_read/skip)"
           },
+          "comment_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Discussion comment count from aggregator or discussion fetcher",
+            "title": "Comment Count"
+          },
           "content_type": {
             "$ref": "#/components/schemas/ContentType",
             "description": "Type of content (article/podcast/news)"
@@ -1625,6 +2661,40 @@
         "title": "ContentType",
         "type": "string"
       },
+      "ConvertNewsItemResponse": {
+        "description": "Response for converting a news item into long-form article content.",
+        "properties": {
+          "already_exists": {
+            "title": "Already Exists",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "new_content_id": {
+            "title": "New Content Id",
+            "type": "integer"
+          },
+          "news_item_id": {
+            "title": "News Item Id",
+            "type": "integer"
+          },
+          "status": {
+            "default": "success",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "news_item_id",
+          "new_content_id",
+          "already_exists",
+          "message"
+        ],
+        "title": "ConvertNewsItemResponse",
+        "type": "object"
+      },
       "ConvertNewsResponse": {
         "description": "Response for converting news link to article.",
         "example": {
@@ -1671,12 +2741,130 @@
         "title": "ConvertNewsResponse",
         "type": "object"
       },
+      "CouncilCandidate": {
+        "description": "One council reply candidate rendered inside the parent transcript.",
+        "properties": {
+          "child_session_id": {
+            "minimum": 1.0,
+            "title": "Child Session Id",
+            "type": "integer"
+          },
+          "content": {
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "order": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Order",
+            "type": "integer"
+          },
+          "persona_id": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Persona Id",
+            "type": "string"
+          },
+          "persona_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Persona Name",
+            "type": "string"
+          },
+          "status": {
+            "default": "completed",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "persona_id",
+          "persona_name",
+          "child_session_id",
+          "content",
+          "order"
+        ],
+        "title": "CouncilCandidate",
+        "type": "object"
+      },
+      "CouncilPersonaConfig": {
+        "additionalProperties": false,
+        "description": "User-configurable persona preset for council chat.",
+        "properties": {
+          "display_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "instruction_prompt": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Instruction Prompt",
+            "type": "string"
+          },
+          "sort_order": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "instruction_prompt",
+          "sort_order"
+        ],
+        "title": "CouncilPersonaConfig",
+        "type": "object"
+      },
+      "CouncilSelectRequest": {
+        "description": "Request to switch the active branch for a council chat.",
+        "properties": {
+          "child_session_id": {
+            "minimum": 1.0,
+            "title": "Child Session Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "child_session_id"
+        ],
+        "title": "CouncilSelectRequest",
+        "type": "object"
+      },
+      "CouncilStartRequest": {
+        "description": "Request to start council mode from an existing parent session.",
+        "properties": {
+          "message": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "CouncilStartRequest",
+        "type": "object"
+      },
       "CreateChatSessionRequest": {
         "description": "Request to create a new chat session.",
         "example": {
           "content_id": 123,
           "initial_message": "What are the key insights from this article?",
-          "llm_provider": "anthropic"
+          "llm_provider": "openai"
         },
         "properties": {
           "content_id": {
@@ -1726,7 +2914,7 @@
                 "type": "null"
               }
             ],
-            "description": "LLM provider (defaults to anthropic)"
+            "description": "LLM provider (defaults to openai)"
           },
           "topic": {
             "anyOf": [
@@ -1945,6 +3133,59 @@
           "content_context_attached"
         ],
         "title": "CreateVoiceSessionResponse",
+        "type": "object"
+      },
+      "DebugUserSessionRequest": {
+        "additionalProperties": false,
+        "description": "Request schema for creating or resuming a debug user session.",
+        "properties": {
+          "has_completed_live_voice_onboarding": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Completed Live Voice Onboarding"
+          },
+          "has_completed_new_user_tutorial": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Completed New User Tutorial"
+          },
+          "has_completed_onboarding": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Completed Onboarding"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "title": "DebugUserSessionRequest",
         "type": "object"
       },
       "DetectedFeed": {
@@ -2688,6 +3929,103 @@
         "title": "IntegrationDisconnectResponse",
         "type": "object"
       },
+      "JobStatusResponse": {
+        "description": "Status payload for an async processing job.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "content_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Id"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "queue_name": {
+            "title": "Queue Name",
+            "type": "string"
+          },
+          "retry_count": {
+            "default": 0,
+            "title": "Retry Count",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_type",
+          "status",
+          "queue_name"
+        ],
+        "title": "JobStatusResponse",
+        "type": "object"
+      },
       "LLMProvider": {
         "description": "Supported LLM providers.",
         "enum": [
@@ -2790,6 +4128,113 @@
         "title": "MessageStatusResponse",
         "type": "object"
       },
+      "MixedSearchFeedResultResponse": {
+        "description": "Validated feed/source result for mixed search.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "evidence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Url"
+          },
+          "feed_format": {
+            "title": "Feed Format",
+            "type": "string"
+          },
+          "feed_type": {
+            "title": "Feed Type",
+            "type": "string"
+          },
+          "feed_url": {
+            "title": "Feed Url",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "site_url": {
+            "title": "Site Url",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "site_url",
+          "feed_url",
+          "feed_type",
+          "feed_format"
+        ],
+        "title": "MixedSearchFeedResultResponse",
+        "type": "object"
+      },
+      "MixedSearchResponse": {
+        "description": "Sectioned mixed search results for the More > Search screen.",
+        "properties": {
+          "content": {
+            "items": {
+              "$ref": "#/components/schemas/ContentSummaryResponse"
+            },
+            "title": "Content",
+            "type": "array"
+          },
+          "feeds": {
+            "items": {
+              "$ref": "#/components/schemas/MixedSearchFeedResultResponse"
+            },
+            "title": "Feeds",
+            "type": "array"
+          },
+          "podcasts": {
+            "items": {
+              "$ref": "#/components/schemas/PodcastEpisodeSearchResultResponse"
+            },
+            "title": "Podcasts",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "MixedSearchResponse",
+        "type": "object"
+      },
       "ModelPricing": {
         "description": "Optional pricing inputs for estimated cost calculations.",
         "properties": {
@@ -2819,6 +4264,40 @@
           }
         },
         "title": "ModelPricing",
+        "type": "object"
+      },
+      "NarrationResponse": {
+        "description": "Unified narration payload for any supported narration target.",
+        "properties": {
+          "narration_text": {
+            "description": "Plain-text narration script for voice playback",
+            "title": "Narration Text",
+            "type": "string"
+          },
+          "target_id": {
+            "description": "Target identifier within the target family",
+            "title": "Target Id",
+            "type": "integer"
+          },
+          "target_type": {
+            "const": "content",
+            "description": "Narration target family",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "title": {
+            "description": "Resolved title for spoken playback",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id",
+          "title",
+          "narration_text"
+        ],
+        "title": "NarrationResponse",
         "type": "object"
       },
       "OnboardingAudioDiscoverRequest": {
@@ -3000,6 +4479,18 @@
             ],
             "title": "Inferred Topics"
           },
+          "news_list_preference_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "News List Preference Prompt"
+          },
           "profile_summary": {
             "anyOf": [
               {
@@ -3048,6 +4539,10 @@
             "title": "Has Completed New User Tutorial",
             "type": "boolean"
           },
+          "has_completed_onboarding": {
+            "title": "Has Completed Onboarding",
+            "type": "boolean"
+          },
           "inbox_count_estimate": {
             "title": "Inbox Count Estimate",
             "type": "integer"
@@ -3076,6 +4571,7 @@
           "status",
           "inbox_count_estimate",
           "longform_status",
+          "has_completed_onboarding",
           "has_completed_new_user_tutorial"
         ],
         "title": "OnboardingCompleteResponse",
@@ -3884,7 +5380,18 @@
           "id": 1,
           "is_active": true,
           "limit": 10,
-          "scraper_type": "substack"
+          "scraper_type": "substack",
+          "stats": {
+            "average_interval_hours": 24.0,
+            "completed_count": 7,
+            "interval_sample_size": 3,
+            "latest_processed_at": "2026-03-30T21:30:00Z",
+            "latest_publication_at": "2026-03-30T20:00:00Z",
+            "next_expected_at": "2026-04-01T08:00:00Z",
+            "processing_count": 1,
+            "total_count": 8,
+            "unread_count": 3
+          }
         },
         "properties": {
           "config": {
@@ -3941,6 +5448,16 @@
           "scraper_type": {
             "title": "Scraper Type",
             "type": "string"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScraperConfigStatsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3951,6 +5468,87 @@
           "created_at"
         ],
         "title": "ScraperConfigResponse",
+        "type": "object"
+      },
+      "ScraperConfigStatsResponse": {
+        "description": "Derived stats for a single scraper configuration.",
+        "properties": {
+          "average_interval_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Interval Hours"
+          },
+          "completed_count": {
+            "title": "Completed Count",
+            "type": "integer"
+          },
+          "interval_sample_size": {
+            "default": 0,
+            "title": "Interval Sample Size",
+            "type": "integer"
+          },
+          "latest_processed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Processed At"
+          },
+          "latest_publication_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Publication At"
+          },
+          "next_expected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Expected At"
+          },
+          "processing_count": {
+            "title": "Processing Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_count",
+          "completed_count",
+          "unread_count",
+          "processing_count"
+        ],
+        "title": "ScraperConfigStatsResponse",
         "type": "object"
       },
       "SendChatMessageRequest": {
@@ -4293,17 +5891,6 @@
             "title": "Is New User",
             "type": "boolean"
           },
-          "openai_api_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Openai Api Key"
-          },
           "refresh_token": {
             "title": "Refresh Token",
             "type": "string"
@@ -4521,7 +6108,7 @@
       "UpdateChatSessionRequest": {
         "description": "Request to update a chat session.",
         "example": {
-          "llm_provider": "anthropic"
+          "llm_provider": "openai"
         },
         "properties": {
           "llm_model_hint": {
@@ -4553,8 +6140,25 @@
         "type": "object"
       },
       "UpdateUserProfileRequest": {
+        "additionalProperties": false,
         "description": "Request schema for updating the authenticated user's profile.",
         "properties": {
+          "council_personas": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CouncilPersonaConfig"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Council Personas"
+          },
           "full_name": {
             "anyOf": [
               {
@@ -4566,6 +6170,18 @@
               }
             ],
             "title": "Full Name"
+          },
+          "news_list_preference_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "News List Preference Prompt"
           },
           "twitter_username": {
             "anyOf": [
@@ -4625,12 +6241,95 @@
         "title": "UpdateUserScraperConfig",
         "type": "object"
       },
+      "UpsertUserLlmIntegrationRequest": {
+        "description": "Request to store a user-managed LLM provider key.",
+        "properties": {
+          "api_key": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key"
+        ],
+        "title": "UpsertUserLlmIntegrationRequest",
+        "type": "object"
+      },
+      "UserLlmIntegrationResponse": {
+        "description": "User-managed LLM integration summary.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "provider": {
+            "enum": [
+              "anthropic",
+              "openai",
+              "google"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "provider",
+          "configured"
+        ],
+        "title": "UserLlmIntegrationResponse",
+        "type": "object"
+      },
+      "UserLlmIntegrationTestResponse": {
+        "description": "Response for validating presence of a user-managed LLM key.",
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "provider": {
+            "enum": [
+              "anthropic",
+              "openai",
+              "google"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "ok"
+        ],
+        "title": "UserLlmIntegrationTestResponse",
+        "type": "object"
+      },
       "UserResponse": {
         "description": "Schema for user API responses.",
         "properties": {
           "apple_id": {
             "title": "Apple Id",
             "type": "string"
+          },
+          "council_personas": {
+            "items": {
+              "$ref": "#/components/schemas/CouncilPersonaConfig"
+            },
+            "title": "Council Personas",
+            "type": "array"
           },
           "created_at": {
             "title": "Created At",
@@ -4660,6 +6359,10 @@
             "title": "Has Completed New User Tutorial",
             "type": "boolean"
           },
+          "has_completed_onboarding": {
+            "title": "Has Completed Onboarding",
+            "type": "boolean"
+          },
           "has_x_bookmark_sync": {
             "default": false,
             "title": "Has X Bookmark Sync",
@@ -4676,6 +6379,17 @@
           "is_admin": {
             "title": "Is Admin",
             "type": "boolean"
+          },
+          "news_list_preference_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "News List Preference Prompt"
           },
           "twitter_username": {
             "anyOf": [
@@ -4699,6 +6413,7 @@
           "apple_id",
           "is_admin",
           "is_active",
+          "has_completed_onboarding",
           "has_completed_new_user_tutorial",
           "has_completed_live_voice_onboarding",
           "created_at",
@@ -5014,7 +6729,7 @@
     "/admin/": {
       "get": {
         "description": "Admin dashboard with system statistics and event logs.",
-        "operationId": "admin_dashboard_admin__get",
+        "operationId": "adminDashboard",
         "parameters": [
           {
             "in": "query",
@@ -5071,10 +6786,115 @@
         ]
       }
     },
+    "/admin/api-keys": {
+      "get": {
+        "description": "Render admin API key management UI.",
+        "operationId": "adminApiKeysPage",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Admin Api Keys Page",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/api-keys/create": {
+      "post": {
+        "description": "Create an API key for a target user and reveal it once.",
+        "operationId": "adminApiKeysCreate",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_adminApiKeysCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Api Keys Create",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/api-keys/{api_key_id}/revoke": {
+      "post": {
+        "description": "Revoke an API key and return to the admin list.",
+        "operationId": "adminApiKeysRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_key_id",
+            "required": true,
+            "schema": {
+              "title": "Api Key Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Api Keys Revoke",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/admin/conversational": {
       "get": {
         "description": "Render admin conversational prototype UI.",
-        "operationId": "admin_conversational_page_admin_conversational_get",
+        "operationId": "adminConversationalPage",
         "responses": {
           "200": {
             "content": {
@@ -5096,7 +6916,7 @@
     "/admin/conversational/health": {
       "get": {
         "description": "Report readiness for admin conversational features.",
-        "operationId": "admin_conversational_health_admin_conversational_health_get",
+        "operationId": "adminConversationalHealth",
         "responses": {
           "200": {
             "content": {
@@ -5118,7 +6938,7 @@
     "/admin/errors": {
       "get": {
         "description": "Analyze recent error logs and present an HTML dashboard (no LLM calls).",
-        "operationId": "errors_dashboard_admin_errors_get",
+        "operationId": "errorsDashboard",
         "parameters": [
           {
             "in": "query",
@@ -5184,8 +7004,8 @@
     },
     "/admin/errors/reset": {
       "post": {
-        "description": "Reset all error logs by deleting all log files in the errors directory\nand removing failed EventLog entries from the database.\n\nReturns:\n    Redirect to errors dashboard\n\nRaises:\n    HTTPException: If there's an error during deletion",
-        "operationId": "reset_error_logs_admin_errors_reset_post",
+        "description": "Reset all error logs by deleting all log files in the errors directory.\n\nReturns:\n    Redirect to errors dashboard\n\nRaises:\n    HTTPException: If there's an error during deletion",
+        "operationId": "resetErrorLogs",
         "responses": {
           "200": {
             "content": {
@@ -5202,7 +7022,7 @@
     "/admin/evals/summaries": {
       "get": {
         "description": "Render admin summary eval UI.",
-        "operationId": "admin_eval_summaries_page_admin_evals_summaries_get",
+        "operationId": "adminEvalSummariesPage",
         "responses": {
           "200": {
             "content": {
@@ -5224,7 +7044,7 @@
     "/admin/evals/summaries/run": {
       "post": {
         "description": "Run summary/title eval against selected models and content samples.",
-        "operationId": "admin_eval_summaries_run_admin_evals_summaries_run_post",
+        "operationId": "adminEvalSummariesRun",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5241,7 +7061,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Admin Eval Summaries Run Admin Evals Summaries Run Post",
+                  "title": "Response Adminevalsummariesrun",
                   "type": "object"
                 }
               }
@@ -5265,10 +7085,29 @@
         ]
       }
     },
+    "/admin/llm-usage": {
+      "get": {
+        "description": "Show recent persisted LLM usage rows with lightweight filtering.",
+        "operationId": "llmUsageDashboard",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Llm Usage Dashboard"
+      }
+    },
     "/admin/logs": {
       "get": {
         "description": "List all log files with recent error logs.",
-        "operationId": "list_logs_admin_logs_get",
+        "operationId": "listLogs",
         "responses": {
           "200": {
             "content": {
@@ -5287,7 +7126,7 @@
     "/admin/logs/{filename}": {
       "get": {
         "description": "View specific log file content.",
-        "operationId": "view_log_admin_logs__filename__get",
+        "operationId": "viewLog",
         "parameters": [
           {
             "in": "path",
@@ -5327,7 +7166,7 @@
     "/admin/logs/{filename}/download": {
       "get": {
         "description": "Download a log file.",
-        "operationId": "download_log_admin_logs__filename__download_get",
+        "operationId": "downloadLog",
         "parameters": [
           {
             "in": "path",
@@ -5365,7 +7204,7 @@
     "/admin/onboarding/lane-preview": {
       "get": {
         "description": "Render admin tool for onboarding lane preview.",
-        "operationId": "onboarding_lane_preview_page_admin_onboarding_lane_preview_get",
+        "operationId": "onboardingLanePreviewPage",
         "responses": {
           "200": {
             "content": {
@@ -5385,7 +7224,7 @@
       },
       "post": {
         "description": "Preview generated onboarding lanes from transcript input.",
-        "operationId": "onboarding_lane_preview_admin_onboarding_lane_preview_post",
+        "operationId": "onboardingLanePreview",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5424,10 +7263,530 @@
         ]
       }
     },
+    "/api/agent/cli/link/start": {
+      "post": {
+        "description": "Create an unauthenticated QR approval session for the CLI.",
+        "operationId": "startCliLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CliLinkStartRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliLinkStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Cli Link",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/cli/link/{session_id}": {
+      "get": {
+        "description": "Poll a pending CLI link session without requiring existing auth.",
+        "operationId": "pollCliLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "poll_token",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 8,
+              "title": "Poll Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliLinkPollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poll Cli Link",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/cli/link/{session_id}/approve": {
+      "post": {
+        "description": "Approve one pending CLI link session from the authenticated app.",
+        "operationId": "approveCliLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliLinkApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliLinkApproveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Cli Link",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/digests": {
+      "post": {
+        "description": "Queue arbitrary-window digest generation for agent clients.",
+        "operationId": "generateDigest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AgentDigestRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDigestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate Digest",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/library/file": {
+      "get": {
+        "description": "Return one rendered markdown document by relative manifest path.",
+        "operationId": "getAgentLibraryFile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLibraryFileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Agent Library File",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/library/manifest": {
+      "get": {
+        "description": "Return manifest metadata for exportable per-user markdown files.",
+        "operationId": "getAgentLibraryManifest",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_source",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Source",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLibraryManifestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Agent Library Manifest",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/onboarding": {
+      "post": {
+        "description": "Start simplified async onboarding.",
+        "operationId": "startOnboarding",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentOnboardingStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentOnboardingStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Onboarding",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/onboarding/{run_id}": {
+      "get": {
+        "description": "Return onboarding run status.",
+        "operationId": "getOnboarding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingDiscoveryStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Onboarding",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/onboarding/{run_id}/complete": {
+      "post": {
+        "description": "Complete onboarding from simplified selections.",
+        "operationId": "completeOnboarding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentOnboardingCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Completeonboarding",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Complete Onboarding",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/search": {
+      "post": {
+        "description": "Search external/provider-backed sources for the agent CLI.",
+        "operationId": "searchAgent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search Agent",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/analytics": {
       "post": {
         "description": "Record a user-content interaction for analytics with idempotency support.",
-        "operationId": "post_content_interaction_api_analytics_post",
+        "operationId": "postAnalyticsContentInteraction",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5477,7 +7836,7 @@
     "/api/content/": {
       "get": {
         "description": "Retrieve a list of content items with optional filtering by content type and date. Supports multiple content types via repeated query parameters (e.g., ?content_type=article&content_type=podcast). Supports cursor-based pagination for efficient loading.",
-        "operationId": "list_contents_api_content__get",
+        "operationId": "listContents",
         "parameters": [
           {
             "description": "Filter by content type(s). Can be specified multiple times for multiple types (article/podcast/news)",
@@ -5563,6 +7922,18 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "Whether to include the available_dates metadata used by filterable list UIs. Disable for feed surfaces that do not show date filters.",
+            "in": "query",
+            "name": "include_available_dates",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Whether to include the available_dates metadata used by filterable list UIs. Disable for feed surfaces that do not show date filters.",
+              "title": "Include Available Dates",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -5604,7 +7975,7 @@
     "/api/content/bulk-mark-read": {
       "post": {
         "description": "Mark multiple content items as read in a single request.",
-        "operationId": "bulk_mark_read_api_content_bulk_mark_read_post",
+        "operationId": "bulkContentMarkRead",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5621,7 +7992,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Bulk Mark Read Api Content Bulk Mark Read Post",
+                  "title": "Response Bulkcontentmarkread",
                   "type": "object"
                 }
               }
@@ -5659,10 +8030,61 @@
         ]
       }
     },
+    "/api/content/chat/assistant/turns": {
+      "post": {
+        "description": "Create or continue an assistant-driven chat turn with screen context.",
+        "operationId": "createContentChatAssistantTurn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantTurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create or continue a contextual assistant turn",
+        "tags": [
+          "content",
+          "chat"
+        ]
+      }
+    },
     "/api/content/chat/messages/{message_id}/status": {
       "get": {
         "description": "Poll for the status of an async message. Returns the assistant response when completed.",
-        "operationId": "get_message_status_api_content_chat_messages__message_id__status_get",
+        "operationId": "getContentChatMessageStatus",
         "parameters": [
           {
             "description": "Message ID to poll",
@@ -5717,7 +8139,7 @@
     "/api/content/chat/sessions": {
       "get": {
         "description": "List all chat sessions for the current user, ordered by most recent activity.",
-        "operationId": "list_sessions_api_content_chat_sessions_get",
+        "operationId": "listContentChatSessions",
         "parameters": [
           {
             "description": "Filter by content ID",
@@ -5760,7 +8182,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ChatSessionSummaryDto"
                   },
-                  "title": "Response List Sessions Api Content Chat Sessions Get",
+                  "title": "Response Listcontentchatsessions",
                   "type": "array"
                 }
               }
@@ -5794,7 +8216,7 @@
       },
       "post": {
         "description": "Create a new chat session, optionally associated with an article.",
-        "operationId": "create_session_api_content_chat_sessions_post",
+        "operationId": "createContentChatSession",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5845,7 +8267,7 @@
     "/api/content/chat/sessions/{session_id}": {
       "delete": {
         "description": "Soft-delete a chat session for the current user by archiving it.",
-        "operationId": "delete_session_api_content_chat_sessions__session_id__delete",
+        "operationId": "deleteContentChatSession",
         "parameters": [
           {
             "description": "Chat session ID",
@@ -5891,7 +8313,7 @@
       },
       "get": {
         "description": "Get a chat session with its message history.",
-        "operationId": "get_session_api_content_chat_sessions__session_id__get",
+        "operationId": "getContentChatSession",
         "parameters": [
           {
             "description": "Chat session ID",
@@ -5944,7 +8366,7 @@
       },
       "patch": {
         "description": "Update a chat session's settings, such as the LLM provider.",
-        "operationId": "update_session_api_content_chat_sessions__session_id__patch",
+        "operationId": "updateContentChatSession",
         "parameters": [
           {
             "description": "Chat session ID",
@@ -6006,10 +8428,140 @@
         ]
       }
     },
+    "/api/content/chat/sessions/{session_id}/council/select": {
+      "post": {
+        "description": "Switch the active council branch and return the merged parent transcript.",
+        "operationId": "selectContentChatSessionsCouncilModeBranch",
+        "parameters": [
+          {
+            "description": "Chat session ID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "Chat session ID",
+              "exclusiveMinimum": 0,
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CouncilSelectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionDetailDto"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Select council branch",
+        "tags": [
+          "content",
+          "chat"
+        ]
+      }
+    },
+    "/api/content/chat/sessions/{session_id}/council/start": {
+      "post": {
+        "description": "Fork the current chat into four persona branches and persist the council row.",
+        "operationId": "startContentChatSessionsCouncilMode",
+        "parameters": [
+          {
+            "description": "Chat session ID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "Chat session ID",
+              "exclusiveMinimum": 0,
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CouncilStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionDetailDto"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start council mode",
+        "tags": [
+          "content",
+          "chat"
+        ]
+      }
+    },
     "/api/content/chat/sessions/{session_id}/initial-suggestions": {
       "post": {
         "description": "Generate initial follow-up question suggestions for an article-based session. Only works for sessions with a content_id (article-based sessions).",
-        "operationId": "get_initial_suggestions_api_content_chat_sessions__session_id__initial_suggestions_post",
+        "operationId": "getContentChatSessionsInitialSuggestions",
         "parameters": [
           {
             "description": "Chat session ID",
@@ -6064,7 +8616,7 @@
     "/api/content/chat/sessions/{session_id}/messages": {
       "post": {
         "description": "Send a message in a chat session. Returns immediately with a message_id to poll for completion. The assistant response is processed in the background.",
-        "operationId": "send_message_api_content_chat_sessions__session_id__messages_post",
+        "operationId": "sendContentChatSessionsMessage",
         "parameters": [
           {
             "description": "Chat session ID",
@@ -6129,7 +8681,7 @@
     "/api/content/favorites/list": {
       "get": {
         "description": "Retrieve all favorited content items with cursor-based pagination.",
-        "operationId": "get_favorites_api_content_favorites_list_get",
+        "operationId": "getContentListFavorites",
         "parameters": [
           {
             "description": "Pagination cursor for next page",
@@ -6203,10 +8755,77 @@
         ]
       }
     },
+    "/api/content/narration/{target_type}/{target_id}": {
+      "get": {
+        "description": "Return narration text or MP3 audio for one target.",
+        "operationId": "getContentNarration",
+        "parameters": [
+          {
+            "description": "Narration target type",
+            "in": "path",
+            "name": "target_type",
+            "required": true,
+            "schema": {
+              "const": "content",
+              "description": "Narration target type",
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target identifier",
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "description": "Target identifier",
+              "exclusiveMinimum": 0,
+              "title": "Target Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NarrationResponse"
+                }
+              },
+              "audio/mpeg": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get narration text or audio for a content target",
+        "tags": [
+          "content"
+        ]
+      }
+    },
     "/api/content/recently-read/list": {
       "get": {
         "description": "Retrieve all read content items sorted by read time (most recent first) with cursor-based pagination.",
-        "operationId": "get_recently_read_api_content_recently_read_list_get",
+        "operationId": "getContentListRecentlyRead",
         "parameters": [
           {
             "description": "Pagination cursor for next page",
@@ -6283,7 +8902,7 @@
     "/api/content/scrapers/": {
       "get": {
         "description": "List scraper configurations for the current user.",
-        "operationId": "list_scraper_configs_api_content_scrapers__get",
+        "operationId": "listContentScraperConfigs",
         "parameters": [
           {
             "in": "query",
@@ -6326,7 +8945,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ScraperConfigResponse"
                   },
-                  "title": "Response List Scraper Configs Api Content Scrapers  Get",
+                  "title": "Response Listcontentscraperconfigs",
                   "type": "array"
                 }
               }
@@ -6360,7 +8979,7 @@
       },
       "post": {
         "description": "Create a scraper config for the current user.",
-        "operationId": "create_scraper_config_api_content_scrapers__post",
+        "operationId": "createContentScraperConfig",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6411,7 +9030,7 @@
     "/api/content/scrapers/subscribe": {
       "post": {
         "description": "Subscribe to a feed detected from content.\n\nConvenience endpoint that creates a scraper config from a detected feed.",
-        "operationId": "subscribe_to_feed_api_content_scrapers_subscribe_post",
+        "operationId": "subscribeContentScrapersToFeed",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6462,7 +9081,7 @@
     "/api/content/scrapers/{config_id}": {
       "delete": {
         "description": "Delete a scraper config for the current user.",
-        "operationId": "delete_scraper_config_endpoint_api_content_scrapers__config_id__delete",
+        "operationId": "deleteContentScraperConfigEndpoint",
         "parameters": [
           {
             "in": "path",
@@ -6505,7 +9124,7 @@
       },
       "put": {
         "description": "Update a scraper config belonging to the current user.",
-        "operationId": "update_scraper_config_api_content_scrapers__config_id__put",
+        "operationId": "updateContentScraperConfig",
         "parameters": [
           {
             "in": "path",
@@ -6567,7 +9186,7 @@
     "/api/content/search": {
       "get": {
         "description": "Case-insensitive string search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.",
-        "operationId": "search_contents_api_content_search_get",
+        "operationId": "searchContents",
         "parameters": [
           {
             "description": "Search query (min 2 characters)",
@@ -6679,10 +9298,79 @@
         ]
       }
     },
+    "/api/content/search/mixed": {
+      "get": {
+        "description": "Explicit-submit mixed search used by the app Search screen. Returns local content matches plus external feed/source and podcast sections.",
+        "operationId": "searchMixedContents",
+        "parameters": [
+          {
+            "description": "Search query (min 2 characters)",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Search query (min 2 characters)",
+              "maxLength": 200,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max results per section",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Max results per section",
+              "maximum": 25,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MixedSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search content, feeds, and podcasts in sectioned form",
+        "tags": [
+          "content"
+        ]
+      }
+    },
     "/api/content/search/podcasts": {
       "get": {
         "description": "Search external podcast episode pages and return addable episode URLs. Uses the same online discovery search infrastructure with provider fallbacks.",
-        "operationId": "search_podcast_episode_matches_api_content_search_podcasts_get",
+        "operationId": "searchContentPodcastEpisodeMatches",
         "parameters": [
           {
             "description": "Podcast search query (min 2 characters)",
@@ -6751,7 +9439,7 @@
     "/api/content/stats/long-form": {
       "get": {
         "description": "Return long-form stats for the authenticated user, including totals, read/unread, favorites, and processing counts.",
-        "operationId": "get_long_form_stats_api_content_stats_long_form_get",
+        "operationId": "getContentLongFormStats",
         "responses": {
           "200": {
             "content": {
@@ -6781,7 +9469,7 @@
     "/api/content/stats/processing-count": {
       "get": {
         "description": "Return queued/pending/processing counts for the authenticated user, including long-form and short-form (news) inbox content.",
-        "operationId": "get_processing_count_api_content_stats_processing_count_get",
+        "operationId": "getContentStatsProcessingCount",
         "responses": {
           "200": {
             "content": {
@@ -6811,7 +9499,7 @@
     "/api/content/stats/unread-counts": {
       "get": {
         "description": "Get the total count of unread items for each content type.",
-        "operationId": "get_unread_counts_api_content_stats_unread_counts_get",
+        "operationId": "getContentStatsUnreadCounts",
         "responses": {
           "200": {
             "content": {
@@ -6841,7 +9529,7 @@
     "/api/content/submissions/list": {
       "get": {
         "description": "Returns self-submitted content items that are not yet completed, including processing, failed, and skipped statuses.",
-        "operationId": "list_submission_statuses_api_content_submissions_list_get",
+        "operationId": "listContentSubmissionStatuses",
         "parameters": [
           {
             "description": "Pagination cursor for next page",
@@ -6915,7 +9603,7 @@
     "/api/content/submit": {
       "post": {
         "description": "Submit article or podcast URLs for processing. Only http/https URLs are accepted.",
-        "operationId": "submit_content_api_content_submit_post",
+        "operationId": "submitContent",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6927,6 +9615,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentSubmissionResponse"
+                }
+              }
+            },
+            "description": "Existing content matched and reused"
+          },
           "201": {
             "content": {
               "application/json": {
@@ -6965,7 +9663,7 @@
     "/api/content/{content_id}": {
       "get": {
         "description": "Retrieve detailed information about a specific content item.",
-        "operationId": "get_content_detail_api_content__content_id__get",
+        "operationId": "getContentDetail",
         "parameters": [
           {
             "description": "Content ID",
@@ -7023,10 +9721,77 @@
         ]
       }
     },
+    "/api/content/{content_id}/body": {
+      "get": {
+        "description": "Retrieve the canonical body text for a content item via the backend proxy.",
+        "operationId": "getContentBody",
+        "parameters": [
+          {
+            "description": "Content ID",
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "description": "Content ID",
+              "exclusiveMinimum": 0,
+              "title": "Content Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Body variant",
+            "in": "query",
+            "name": "variant",
+            "required": false,
+            "schema": {
+              "default": "source",
+              "description": "Body variant",
+              "pattern": "^(source|rendered)$",
+              "title": "Variant",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentBodyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get canonical content body",
+        "tags": [
+          "content"
+        ]
+      }
+    },
     "/api/content/{content_id}/chat-url": {
       "get": {
         "description": "Generate a URL to open ChatGPT with the content's full text for discussion.",
-        "operationId": "get_chatgpt_url_api_content__content_id__chat_url_get",
+        "operationId": "getContentChatChatgptUrl",
         "parameters": [
           {
             "description": "Content ID",
@@ -7085,6 +9850,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get ChatGPT URL for content",
         "tags": [
           "content"
@@ -7094,7 +9864,7 @@
     "/api/content/{content_id}/convert-to-article": {
       "post": {
         "description": "Convert a news content item to a full article by extracting the article URL from the news metadata and creating a new article content entry. If the article already exists, returns the existing article ID.",
-        "operationId": "convert_news_to_article_api_content__content_id__convert_to_article_post",
+        "operationId": "convertContentNewsToArticle",
         "parameters": [
           {
             "description": "News content ID",
@@ -7146,7 +9916,7 @@
     "/api/content/{content_id}/discussion": {
       "get": {
         "description": "Return in-app discussion data for the content item. Techmeme items return grouped discussion links. Hacker News and Reddit items return normalized comments + links.",
-        "operationId": "get_content_discussion_api_content__content_id__discussion_get",
+        "operationId": "getContentDiscussion",
         "parameters": [
           {
             "description": "Content ID",
@@ -7207,7 +9977,7 @@
     "/api/content/{content_id}/download-more": {
       "post": {
         "description": "Trigger a one-off backfill for the feed that produced this content, attempting to fetch additional older items without changing the feed's ongoing limit.",
-        "operationId": "download_more_from_series_api_content__content_id__download_more_post",
+        "operationId": "downloadContentMoreFromSeries",
         "parameters": [
           {
             "description": "Content ID",
@@ -7277,7 +10047,7 @@
     "/api/content/{content_id}/favorite": {
       "post": {
         "description": "Toggle the favorite status of a specific content item.",
-        "operationId": "toggle_favorite_api_content__content_id__favorite_post",
+        "operationId": "toggleContentFavorite",
         "parameters": [
           {
             "description": "Content ID",
@@ -7298,7 +10068,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Toggle Favorite Api Content  Content Id  Favorite Post",
+                  "title": "Response Togglecontentfavorite",
                   "type": "object"
                 }
               }
@@ -7336,7 +10106,7 @@
     "/api/content/{content_id}/mark-read": {
       "post": {
         "description": "Mark a specific content item as read.",
-        "operationId": "mark_content_read_api_content__content_id__mark_read_post",
+        "operationId": "markContentRead",
         "parameters": [
           {
             "description": "Content ID",
@@ -7357,7 +10127,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Mark Content Read Api Content  Content Id  Mark Read Post",
+                  "title": "Response Markcontentread",
                   "type": "object"
                 }
               }
@@ -7395,7 +10165,7 @@
     "/api/content/{content_id}/mark-unread": {
       "delete": {
         "description": "Remove the read status from a specific content item.",
-        "operationId": "mark_content_unread_api_content__content_id__mark_unread_delete",
+        "operationId": "markContentUnread",
         "parameters": [
           {
             "description": "Content ID",
@@ -7416,7 +10186,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Mark Content Unread Api Content  Content Id  Mark Unread Delete",
+                  "title": "Response Markcontentunread",
                   "type": "object"
                 }
               }
@@ -7454,7 +10224,7 @@
     "/api/content/{content_id}/tweet-suggestions": {
       "post": {
         "description": "Generate 3 tweet suggestions for a content item using Gemini. Supports all content types. Requires JWT authentication.",
-        "operationId": "get_tweet_suggestions_api_content__content_id__tweet_suggestions_post",
+        "operationId": "getContentTweetSuggestions",
         "parameters": [
           {
             "description": "Content ID",
@@ -7524,7 +10294,7 @@
     "/api/content/{content_id}/unfavorite": {
       "delete": {
         "description": "Remove a specific content item from favorites.",
-        "operationId": "unfavorite_content_api_content__content_id__unfavorite_delete",
+        "operationId": "unfavoriteContent",
         "parameters": [
           {
             "description": "Content ID",
@@ -7545,7 +10315,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Unfavorite Content Api Content  Content Id  Unfavorite Delete",
+                  "title": "Response Unfavoritecontent",
                   "type": "object"
                 }
               }
@@ -7582,7 +10352,7 @@
     },
     "/api/discovery/add-item": {
       "post": {
-        "operationId": "add_discovery_items_api_discovery_add_item_post",
+        "operationId": "addDiscoveryItems",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7625,7 +10395,7 @@
     },
     "/api/discovery/clear": {
       "post": {
-        "operationId": "clear_discovery_suggestions_api_discovery_clear_post",
+        "operationId": "clearDiscoverySuggestions",
         "responses": {
           "200": {
             "content": {
@@ -7648,7 +10418,7 @@
     },
     "/api/discovery/dismiss": {
       "post": {
-        "operationId": "dismiss_discovery_suggestions_api_discovery_dismiss_post",
+        "operationId": "dismissDiscoverySuggestions",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7691,7 +10461,7 @@
     },
     "/api/discovery/history": {
       "get": {
-        "operationId": "get_discovery_history_api_discovery_history_get",
+        "operationId": "getDiscoveryHistory",
         "parameters": [
           {
             "in": "query",
@@ -7738,7 +10508,7 @@
     },
     "/api/discovery/refresh": {
       "post": {
-        "operationId": "refresh_discovery_api_discovery_refresh_post",
+        "operationId": "refreshDiscovery",
         "responses": {
           "200": {
             "content": {
@@ -7761,7 +10531,7 @@
     },
     "/api/discovery/search/podcasts": {
       "get": {
-        "operationId": "search_discovery_podcast_episodes_api_discovery_search_podcasts_get",
+        "operationId": "searchDiscoveryPodcastEpisodes",
         "parameters": [
           {
             "description": "Podcast episode search query",
@@ -7821,7 +10591,7 @@
     },
     "/api/discovery/subscribe": {
       "post": {
-        "operationId": "subscribe_discovery_suggestions_api_discovery_subscribe_post",
+        "operationId": "subscribeDiscoverySuggestions",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7864,7 +10634,7 @@
     },
     "/api/discovery/suggestions": {
       "get": {
-        "operationId": "get_discovery_suggestions_api_discovery_suggestions_get",
+        "operationId": "getDiscoverySuggestions",
         "responses": {
           "200": {
             "content": {
@@ -7885,10 +10655,195 @@
         "summary": "Get discovery suggestions"
       }
     },
+    "/api/integrations/llm": {
+      "get": {
+        "description": "List user-managed LLM provider keys.",
+        "operationId": "getLlmIntegrations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserLlmIntegrationResponse"
+                  },
+                  "title": "Response Getllmintegrations",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Llm Integrations",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/integrations/llm/{provider}": {
+      "delete": {
+        "description": "Delete a user-managed LLM provider key.",
+        "operationId": "deleteLlmIntegration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Deletellmintegration",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Llm Integration",
+        "tags": [
+          "integrations"
+        ]
+      },
+      "put": {
+        "description": "Store or update a user-managed LLM provider key.",
+        "operationId": "putLlmIntegration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertUserLlmIntegrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserLlmIntegrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Llm Integration",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/integrations/llm/{provider}/test": {
+      "post": {
+        "description": "Validate presence of a user-managed LLM provider key.",
+        "operationId": "testLlmIntegration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserLlmIntegrationTestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Llm Integration",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
     "/api/integrations/x/connection": {
       "delete": {
         "description": "Disconnect the user's X integration.",
-        "operationId": "disconnect_x_api_integrations_x_connection_delete",
+        "operationId": "disconnectIntegrationsConnectionX",
         "responses": {
           "200": {
             "content": {
@@ -7913,7 +10868,7 @@
       },
       "get": {
         "description": "Return current X connection status for the authenticated user.",
-        "operationId": "get_x_connection_api_integrations_x_connection_get",
+        "operationId": "getIntegrationsXConnection",
         "responses": {
           "200": {
             "content": {
@@ -7940,7 +10895,7 @@
     "/api/integrations/x/oauth/exchange": {
       "post": {
         "description": "Exchange OAuth callback code and persist X connection.",
-        "operationId": "exchange_x_oauth_code_api_integrations_x_oauth_exchange_post",
+        "operationId": "exchangeIntegrationsXOauthCode",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7987,7 +10942,7 @@
     "/api/integrations/x/oauth/start": {
       "post": {
         "description": "Start X OAuth flow and return authorize URL.",
-        "operationId": "start_x_oauth_flow_api_integrations_x_oauth_start_post",
+        "operationId": "startIntegrationsXOauthFlow",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8031,10 +10986,351 @@
         ]
       }
     },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "description": "Return async job status.",
+        "operationId": "getJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Job",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/news/items": {
+      "get": {
+        "description": "Return the visible representative news feed for the current user.",
+        "operationId": "listNewsItems",
+        "parameters": [
+          {
+            "description": "Filter by read status",
+            "in": "query",
+            "name": "read_filter",
+            "required": false,
+            "schema": {
+              "default": "unread",
+              "description": "Filter by read status",
+              "pattern": "^(all|read|unread)$",
+              "title": "Read Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque cursor token",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor token",
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List visible news items",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/items/mark-read": {
+      "post": {
+        "description": "Mark the given visible representative news items as read.",
+        "operationId": "markNewsItemsRead",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkMarkReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Marknewsitemsread",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark visible news items as read",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/items/{news_item_id}": {
+      "get": {
+        "description": "Return one visible representative news item.",
+        "operationId": "getNewsItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "news_item_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "News Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get one news item",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/items/{news_item_id}/convert-to-article": {
+      "post": {
+        "description": "Convert one representative news item into article content.",
+        "operationId": "convertNewsItemToArticle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "news_item_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "News Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertNewsItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Convert one news item into article content",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/news/items/{news_item_id}/discussion": {
+      "get": {
+        "description": "Return discussion payload for one visible representative news item.",
+        "operationId": "getNewsItemDiscussion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "news_item_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "News Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentDiscussionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get one news item discussion",
+        "tags": [
+          "news"
+        ]
+      }
+    },
     "/api/onboarding/audio-discover": {
       "post": {
         "description": "Start onboarding discovery from an audio transcript.",
-        "operationId": "start_audio_discovery_flow_api_onboarding_audio_discover_post",
+        "operationId": "startOnboardingDiscoverAudioDiscoveryFlow",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8081,7 +11377,7 @@
     "/api/onboarding/complete": {
       "post": {
         "description": "Persist onboarding selections and queue crawlers.",
-        "operationId": "complete_onboarding_flow_api_onboarding_complete_post",
+        "operationId": "completeOnboardingFlow",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8128,7 +11424,7 @@
     "/api/onboarding/discovery-status": {
       "get": {
         "description": "Poll onboarding discovery status for a run.",
-        "operationId": "onboarding_discovery_status_api_onboarding_discovery_status_get",
+        "operationId": "onboardingDiscoveryStatus",
         "parameters": [
           {
             "in": "query",
@@ -8176,7 +11472,7 @@
     "/api/onboarding/fast-discover": {
       "post": {
         "description": "Return fast discovery suggestions for onboarding.",
-        "operationId": "run_fast_discover_api_onboarding_fast_discover_post",
+        "operationId": "runOnboardingFastDiscover",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8223,7 +11519,7 @@
     "/api/onboarding/parse-voice": {
       "post": {
         "description": "Parse onboarding transcript into profile fields.",
-        "operationId": "parse_voice_api_onboarding_parse_voice_post",
+        "operationId": "parseOnboardingVoice",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8270,7 +11566,7 @@
     "/api/onboarding/profile": {
       "post": {
         "description": "Build onboarding profile summary.",
-        "operationId": "build_profile_api_onboarding_profile_post",
+        "operationId": "buildOnboardingProfile",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8317,7 +11613,7 @@
     "/api/onboarding/tutorial-complete": {
       "post": {
         "description": "Mark tutorial completion flag for current user.",
-        "operationId": "tutorial_complete_api_onboarding_tutorial_complete_post",
+        "operationId": "tutorialOnboardingComplete",
         "responses": {
           "200": {
             "content": {
@@ -8344,7 +11640,7 @@
     "/api/openai/realtime/token": {
       "post": {
         "description": "Create a short-lived token for OpenAI Realtime sessions.",
-        "operationId": "create_realtime_token_api_openai_realtime_token_post",
+        "operationId": "createOpenaiRealtimeToken",
         "responses": {
           "200": {
             "content": {
@@ -8368,10 +11664,57 @@
         ]
       }
     },
+    "/api/openai/transcriptions": {
+      "post": {
+        "description": "Transcribe uploaded audio without exposing provider API keys to the client.",
+        "operationId": "transcribeOpenaiTranscriptionsAudio",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_transcribeOpenaiTranscriptionsAudio"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioTranscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Transcribe uploaded audio via the backend",
+        "tags": [
+          "openai"
+        ]
+      }
+    },
     "/api/scrapers/": {
       "get": {
         "description": "List scraper configurations for the current user.",
-        "operationId": "list_scraper_configs_api_scrapers__get",
+        "operationId": "listScraperConfigs",
         "parameters": [
           {
             "in": "query",
@@ -8414,7 +11757,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ScraperConfigResponse"
                   },
-                  "title": "Response List Scraper Configs Api Scrapers  Get",
+                  "title": "Response Listscraperconfigs",
                   "type": "array"
                 }
               }
@@ -8444,7 +11787,7 @@
       },
       "post": {
         "description": "Create a scraper config for the current user.",
-        "operationId": "create_scraper_config_api_scrapers__post",
+        "operationId": "createScraperConfig",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8491,7 +11834,7 @@
     "/api/scrapers/subscribe": {
       "post": {
         "description": "Subscribe to a feed detected from content.\n\nConvenience endpoint that creates a scraper config from a detected feed.",
-        "operationId": "subscribe_to_feed_api_scrapers_subscribe_post",
+        "operationId": "subscribeScrapersToFeed",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8538,7 +11881,7 @@
     "/api/scrapers/{config_id}": {
       "delete": {
         "description": "Delete a scraper config for the current user.",
-        "operationId": "delete_scraper_config_endpoint_api_scrapers__config_id__delete",
+        "operationId": "deleteScraperConfigEndpoint",
         "parameters": [
           {
             "in": "path",
@@ -8577,7 +11920,7 @@
       },
       "put": {
         "description": "Update a scraper config belonging to the current user.",
-        "operationId": "update_scraper_config_api_scrapers__config_id__put",
+        "operationId": "updateScraperConfig",
         "parameters": [
           {
             "in": "path",
@@ -8635,7 +11978,7 @@
     "/api/voice/health": {
       "get": {
         "description": "Return dependency readiness for voice APIs.",
-        "operationId": "voice_health_api_voice_health_get",
+        "operationId": "voiceHealth",
         "responses": {
           "200": {
             "content": {
@@ -8662,7 +12005,7 @@
     "/api/voice/sessions": {
       "post": {
         "description": "Create or resume an authenticated voice session.",
-        "operationId": "create_or_resume_voice_session_api_voice_sessions_post",
+        "operationId": "createOrResumeVoiceSession",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8709,7 +12052,7 @@
     "/auth/admin/login": {
       "get": {
         "description": "Render admin login page.\n\nArgs:\n    request: FastAPI request object\n\nReturns:\n    HTML login page",
-        "operationId": "admin_login_page_auth_admin_login_get",
+        "operationId": "adminLoginPage",
         "responses": {
           "200": {
             "content": {
@@ -8729,7 +12072,7 @@
       },
       "post": {
         "description": "Admin login with password.\n\nArgs:\n    request: Admin login request with password\n    response: FastAPI response to set cookie\n\nReturns:\n    Success message\n\nRaises:\n    HTTPException: 401 if password is incorrect",
-        "operationId": "admin_login_auth_admin_login_post",
+        "operationId": "adminLogin",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8771,14 +12114,14 @@
     "/auth/admin/logout": {
       "post": {
         "description": "Admin logout.\n\nArgs:\n    response: FastAPI response to delete cookie\n\nReturns:\n    Success message",
-        "operationId": "admin_logout_auth_admin_logout_post",
+        "operationId": "adminLogout",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Admin Logout Auth Admin Logout Post",
+                  "title": "Response Adminlogout",
                   "type": "object"
                 }
               }
@@ -8795,7 +12138,7 @@
     "/auth/apple": {
       "post": {
         "description": "Authenticate with Apple Sign In.\n\nCreates new user if first time, otherwise logs in existing user.\n\nArgs:\n    request: Apple Sign In request with id_token, email, and optional full_name\n    db: Database session\n\nReturns:\n    Access token, refresh token, and user data\n\nRaises:\n    HTTPException: 401 if Apple token is invalid",
-        "operationId": "apple_signin_auth_apple_post",
+        "operationId": "appleSignin",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8837,7 +12180,24 @@
     "/auth/debug/new-user": {
       "post": {
         "description": "Create a debug user session (debug mode only).",
-        "operationId": "debug_create_user_auth_debug_new_user_post",
+        "operationId": "debugNewCreateUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DebugUserSessionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -8848,6 +12208,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Debug Create User",
@@ -8859,7 +12229,7 @@
     "/auth/me": {
       "get": {
         "description": "Get current authenticated user information.\n\nArgs:\n    current_user: Current authenticated user from JWT token\n\nReturns:\n    Current user information\n\nRaises:\n    HTTPException: 401 if token is invalid",
-        "operationId": "get_current_user_info_auth_me_get",
+        "operationId": "getMeCurrentUserInfo",
         "responses": {
           "200": {
             "content": {
@@ -8884,7 +12254,7 @@
       },
       "patch": {
         "description": "Update authenticated user's profile fields.",
-        "operationId": "update_current_user_info_auth_me_patch",
+        "operationId": "updateMeCurrentUserInfo",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8931,7 +12301,7 @@
     "/auth/refresh": {
       "post": {
         "description": "Refresh access token using refresh token.\n\nImplements refresh token rotation for enhanced security:\n- Issues new access token (30 min expiry)\n- Issues new refresh token (90 day expiry)\n- Old refresh token is invalidated (client should discard)\n\nThis ensures active users stay logged in indefinitely while\nmaintaining security through token rotation.\n\nArgs:\n    request: Refresh token request\n    db: Database session\n\nReturns:\n    New access token and new refresh token\n\nRaises:\n    HTTPException: 401 if refresh token is invalid",
-        "operationId": "refresh_token_auth_refresh_post",
+        "operationId": "refreshToken",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8972,7 +12342,7 @@
     },
     "/health": {
       "get": {
-        "operationId": "health_check_health_get",
+        "operationId": "healthCheck",
         "responses": {
           "200": {
             "content": {

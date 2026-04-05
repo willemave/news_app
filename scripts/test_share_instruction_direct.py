@@ -15,10 +15,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.core.db import get_db
+from app.models.content_submission import SubmitContentRequest
 from app.models.schema import Content
 from app.models.user import User
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
-from app.routers.api.models import SubmitContentRequest
 from app.services.content_submission import submit_user_content
 from app.services.queue import QueueService, TaskType
 

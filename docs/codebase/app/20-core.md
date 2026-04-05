@@ -16,6 +16,7 @@ Core runtime infrastructure: environment settings, database/session lifecycle, s
 ## Modules and files
 | File | Key symbols | Notes |
 |---|---|---|
+| `app/core/api_keys.py` | `GeneratedApiKey`, `generate_api_key`, `extract_key_prefix`, `hash_api_key`, `verify_api_key_hash`, `is_api_key_token` | Helpers for Newsly API key parsing, generation, hashing, and verification. |
 | `app/core/__init__.py` | n/a | Core application modules. |
 | `app/core/db.py` | `init_db`, `get_engine`, `get_session_factory`, `get_db`, `get_db_session`, `get_readonly_db_session`, `run_migrations` | Functions: `init_db`, `get_engine`, `get_session_factory`, `get_db`, `get_db_session`, `get_readonly_db_session`, `run_migrations` |
 | `app/core/deps.py` | `AdminAuthRequired`, `get_current_user`, `get_optional_user`, `get_or_create_admin_user`, `require_admin` | FastAPI dependencies for authentication and authorization. |

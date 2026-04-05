@@ -32,7 +32,7 @@ Newsly is a content ingestion and reading system with four major surfaces:
 The backend is not split into microservices. Most application logic lives in one deployable FastAPI codebase with clear internal boundaries:
 
 - routers and HTML endpoints in `app/routers/`
-- router-facing application entrypoints in `app/application/`
+- router-facing commands and queries in `app/commands/` and `app/queries/`
 - persistence/query logic in `app/repositories/`
 - orchestration and external integrations in `app/services/`
 - task execution in `app/pipeline/`
@@ -134,11 +134,11 @@ Important files:
 - `app/core/deps.py`
 - `app/core/logging.py`
 
-### 5.2 `app/application/`
+### 5.2 `app/commands/` and `app/queries/`
 
 Router-facing use-case entrypoints. These modules are intentionally thin and stable.
 
-Commands:
+Commands in `app/commands/`:
 
 - content submission and ingestion
 - mark read / unread
@@ -148,7 +148,7 @@ Commands:
 - upsert and delete user-managed LLM provider keys
 - queue agent digest generation
 
-Queries:
+Queries in `app/queries/`:
 
 - list/search content cards
 - content detail
@@ -178,36 +178,32 @@ Notable repository slices:
 - `user_integration_repository.py`
   - user-managed provider credentials
 
-### 5.4 `app/presenters/`
+### 5.4 Content response builders
 
-Maps persisted content into API DTOs. The presenter layer owns:
+The old top-level presenter package was collapsed into the API and models layers:
 
-- image URL resolution
-- normalization of news-specific presentation fields
-- list readiness checks
-- detected-feed presentation
+- `app/routers/api/content_responses.py`
+  - builds content list/detail API DTOs
+- `app/models/content_display.py`
+  - image URL resolution, list readiness checks, and feed-subscription affordances
 
-### 5.5 `app/infrastructure/`
+### 5.5 Search and API key helpers
 
-Holds implementation seams rather than business rules:
+Implementation seams now live alongside the layers that use them:
 
-- `app/infrastructure/db/search/`
+- `app/repositories/search_backend.py`
   - search backend abstraction with SQLite FTS vs generic fallback
-- `app/infrastructure/http/`
-  - HTTP gateway implementation
-- `app/infrastructure/queue/`
-  - queue gateway implementation
-- `app/infrastructure/security/`
-  - API key formatting/hashing helpers
+- `app/core/api_keys.py`
+  - API key formatting, generation, hashing, and verification helpers
 
-### 5.6 `app/domain/`
+### 5.6 Content mapping helpers
 
-Small domain conversion layer used to move between ORM records and canonical `ContentData`.
+The old top-level domain package was collapsed into `app/models/`:
 
-Important files:
-
-- `app/domain/converters.py`
-- `app/domain/content_form.py`
+- `app/models/content_mapper.py`
+  - converts ORM `Content` rows to and from canonical `ContentData`
+- `app/models/content_form.py`
+  - derives canonical short/long form labels from content type
 
 ### 5.7 `app/services/`
 
@@ -1059,10 +1055,10 @@ Search is intentionally abstracted from the routers.
 
 ### 16.1 Content search
 
-`app/application/queries/search_content_cards.py` uses:
+`app/queries/search_content_cards.py` uses:
 
 - `build_user_feed_query(...)`
-- a backend returned by `app/infrastructure/db/search/base.py`
+- a backend returned by `app/repositories/search_backend.py`
 
 Search backend selection:
 
@@ -1123,15 +1119,28 @@ The client has dedicated flows for:
 
 ### 17.4 Generated API contracts
 
-The repo contains generated Swift API contract models under:
+The canonical public HTTP contract is the checked-in OpenAPI export:
+
+- `docs/library/reference/openapi.json`
+
+Derived generated client artifacts are checked in under:
 
 - `client/newsly/newsly/Models/Generated/`
+- `client/newsly/OpenAPI/Generated/`
+- `cli/openapi/agent-openapi.json`
+- `cli/internal/api/`
 
 Supporting scripts:
 
 - `scripts/export_openapi_schema.py`
 - `scripts/export_agent_openapi_schema.py`
 - `scripts/generate_ios_contracts.py`
+- `scripts/generate_ios_openapi_artifacts.sh`
+- `scripts/generate_agent_cli_artifacts.sh`
+- `scripts/regenerate_public_contracts.sh`
+- `scripts/check_public_contracts.sh`
+
+OpenAPI is authoritative for the public wire format. Checked-in Go and Swift generated artifacts must be regenerated from those scripts rather than edited manually.
 
 ## 18. iOS Share Extension
 

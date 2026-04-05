@@ -1,19 +1,19 @@
-# app/domain/
+# Content mapping helpers
 
-Source folder: `app/domain`
+Source files: `app/models/content_mapper.py`, `app/models/content_form.py`
 
 ## Purpose
-Thin domain translation layer between SQLAlchemy ORM rows and the normalized `ContentData` model used by presenters and pipeline code.
+Translate SQLAlchemy content rows to the normalized `ContentData` model and keep small content-shape helpers close to the shared model layer.
 
 ## Runtime behavior
-- Normalizes ORM data into a stable domain object so downstream code does not need to know SQLAlchemy column details.
-- Concentrates conversion logic for list/detail views, worker processing, and metadata-driven rendering in one place.
+- Normalizes ORM data into a stable content object so application queries, services, and workers do not need to know raw column details.
+- Concentrates `ContentData` conversion and content-form helpers under `app/models/` instead of a separate top-level domain package.
 
 ## Inventory scope
-- Direct file inventory for `app/domain`.
+- Direct file inventory for the content-mapping helpers that replaced `app/domain`.
 
 ## Modules and files
 | File | Key symbols | Notes |
 |---|---|---|
-| `app/domain/__init__.py` | n/a | Domain models and business logic. |
-| `app/domain/converters.py` | `content_to_domain`, `domain_to_content` | Converters between domain models and database models. |
+| `app/models/content_mapper.py` | `content_to_domain`, `domain_to_content` | Converts between ORM `Content` rows and canonical `ContentData`. |
+| `app/models/content_form.py` | `derive_content_form` | Derives canonical short/long form labels from content type. |
