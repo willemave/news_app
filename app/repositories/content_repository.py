@@ -2,10 +2,9 @@
 
 from dataclasses import dataclass
 
-from sqlalchemy import and_, column, exists, select, table, text
+from sqlalchemy import and_, exists, select
 from sqlalchemy.orm import Session
 
-from app.infrastructure.db.search.base import get_search_backend
 from app.models.metadata import ContentStatus
 from app.models.schema import Content, ContentFavorites, ContentReadStatus, ContentStatusEntry
 
@@ -77,18 +76,3 @@ def get_visible_content_query(db: Session, context: VisibilityContext, include_f
     else:
         query = db.query(Content)
     return apply_visibility_filters(query, context)
-
-
-def sqlite_fts_available(db: Session) -> bool:
-    """Compatibility wrapper for the active search backend."""
-    return get_search_backend(db).supports_full_text()
-
-
-def apply_sqlite_fts_filter(query, match_query: str):
-    """Join against FTS table and apply MATCH clause."""
-    fts_table = table("content_fts", column("rowid"))
-    return (
-        query.join(fts_table, fts_table.c.rowid == Content.id)
-        .filter(text("content_fts MATCH :match_query"))
-        .params(match_query=match_query)
-    )

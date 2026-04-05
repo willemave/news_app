@@ -6,8 +6,12 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app.infrastructure.security.api_keys import extract_key_prefix, generate_api_key
-from app.infrastructure.security.key_hashing import hash_api_key, verify_api_key_hash
+from app.core.api_keys import (
+    extract_key_prefix,
+    generate_api_key,
+    hash_api_key,
+    verify_api_key_hash,
+)
 from app.models.schema import UserApiKey
 
 

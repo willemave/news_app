@@ -20,6 +20,7 @@ from app.core.observability import (
     summarize_request_payload,
 )
 from app.core.settings import get_settings
+from app.openapi import build_operation_id
 from app.routers import admin, api_content, auth, logs
 from app.routers.api import (
     agent,
@@ -72,6 +73,7 @@ app = FastAPI(
     title=settings.app_name,
     version="2.0.0",
     description="Unified News Aggregation System",
+    generate_unique_id_function=build_operation_id,
     lifespan=lifespan,
 )
 

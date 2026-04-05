@@ -1,6 +1,6 @@
 """
 Unified metadata models for content types.
-Merges functionality from app/schemas/metadata.py and app/domain/content.py.
+Merges functionality from legacy metadata/domain modules into one model surface.
 """
 
 from __future__ import annotations
@@ -922,7 +922,7 @@ class NewsMetadata(BaseContentMetadata):
     )
 
 
-# Processing result from app/domain/content.py
+# Processing result model retained from the legacy content domain layer
 class ProcessingResult(BaseModel):
     """Result from content processing."""
 
@@ -945,7 +945,7 @@ class ProcessingError(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-# ContentData wrapper from app/domain/content.py with enhancements
+# Unified content wrapper retained from the legacy content domain layer
 class ContentData(BaseModel):
     """
     Unified content data model for passing between layers.
