@@ -25,6 +25,9 @@ func TestResolveRuntimePrecedence(t *testing.T) {
 	if runtimeCfg.APIKey != "flag-key" {
 		t.Fatalf("api key precedence mismatch: %q", runtimeCfg.APIKey)
 	}
+	if runtimeCfg.LibraryRoot == "" {
+		t.Fatalf("expected default library root")
+	}
 }
 
 func TestMaskedAPIKey(t *testing.T) {

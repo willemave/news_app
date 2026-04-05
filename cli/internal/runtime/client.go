@@ -35,7 +35,10 @@ func (e *APIError) Error() string {
 }
 
 type Client struct {
-	raw *api.Client
+	raw        *api.Client
+	baseURL    string
+	apiKey     string
+	httpClient *http.Client
 }
 
 type bearerSource struct {
@@ -56,7 +59,12 @@ func NewClient(cfg config.RuntimeConfig, timeout time.Duration) (*Client, error)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{raw: rawClient}, nil
+	return &Client{
+		raw:        rawClient,
+		baseURL:    strings.TrimRight(cfg.ServerURL, "/"),
+		apiKey:     cfg.APIKey,
+		httpClient: httpClient,
+	}, nil
 }
 
 func (c *Client) GetJob(ctx context.Context, jobID int) (*api.JobStatusResponse, error) {

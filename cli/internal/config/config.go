@@ -16,14 +16,16 @@ const (
 )
 
 type FileConfig struct {
-	ServerURL string `json:"server_url,omitempty"`
-	APIKey    string `json:"api_key,omitempty"`
+	ServerURL   string `json:"server_url,omitempty"`
+	APIKey      string `json:"api_key,omitempty"`
+	LibraryRoot string `json:"library_root,omitempty"`
 }
 
 type RuntimeConfig struct {
-	Path      string
-	ServerURL string
-	APIKey    string
+	Path        string
+	ServerURL   string
+	APIKey      string
+	LibraryRoot string
 }
 
 func DefaultPath() string {
@@ -32,6 +34,14 @@ func DefaultPath() string {
 		return ".newsly-agent.json"
 	}
 	return filepath.Join(home, ".config", "newsly-agent", "config.json")
+}
+
+func DefaultLibraryRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ".newsly-agent-library"
+	}
+	return filepath.Join(home, ".local", "share", "newsly-agent", "library")
 }
 
 func ResolvePath(explicit string) string {
@@ -65,6 +75,7 @@ func Load(path string) (FileConfig, error) {
 	}
 	cfg.ServerURL = strings.TrimSpace(cfg.ServerURL)
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
+	cfg.LibraryRoot = cleanPath(strings.TrimSpace(cfg.LibraryRoot))
 	return cfg, nil
 }
 
@@ -93,6 +104,7 @@ func Update(path string, update func(FileConfig) FileConfig) (FileConfig, error)
 	cfg = update(cfg)
 	cfg.ServerURL = strings.TrimSpace(cfg.ServerURL)
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
+	cfg.LibraryRoot = cleanPath(strings.TrimSpace(cfg.LibraryRoot))
 	if err := Save(path, cfg); err != nil {
 		return FileConfig{}, err
 	}
@@ -107,9 +119,10 @@ func ResolveRuntime(pathOverride string, serverOverride string, apiKeyOverride s
 	}
 
 	runtimeCfg := RuntimeConfig{
-		Path:      path,
-		ServerURL: fileCfg.ServerURL,
-		APIKey:    fileCfg.APIKey,
+		Path:        path,
+		ServerURL:   fileCfg.ServerURL,
+		APIKey:      fileCfg.APIKey,
+		LibraryRoot: fileCfg.LibraryRoot,
 	}
 
 	if value := strings.TrimSpace(os.Getenv(EnvServerURL)); value != "" {
@@ -124,13 +137,23 @@ func ResolveRuntime(pathOverride string, serverOverride string, apiKeyOverride s
 	if value := strings.TrimSpace(apiKeyOverride); value != "" {
 		runtimeCfg.APIKey = value
 	}
+	if runtimeCfg.LibraryRoot == "" {
+		runtimeCfg.LibraryRoot = DefaultLibraryRoot()
+	}
 
 	return runtimeCfg, nil
 }
 
-func (c RuntimeConfig) ValidateRemote() error {
+func (c RuntimeConfig) ValidateServerOnly() error {
 	if strings.TrimSpace(c.ServerURL) == "" {
 		return errors.New("missing server_url; run `newsly-agent config set server ...` first")
+	}
+	return nil
+}
+
+func (c RuntimeConfig) ValidateRemote() error {
+	if err := c.ValidateServerOnly(); err != nil {
+		return err
 	}
 	if strings.TrimSpace(c.APIKey) == "" {
 		return errors.New("missing api_key; run `newsly-agent config set api-key ...` first")

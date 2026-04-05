@@ -76,8 +76,10 @@ func New(version string, stdout io.Writer, stderr io.Writer) *App {
 
 	rootCmd.AddCommand(
 		app.newConfigCommand(),
+		app.newAuthCommand(),
 		app.newJobsCommand(),
 		app.newContentCommand(),
+		app.newLibraryCommand(),
 		app.newSearchCommand(),
 		app.newSourcesCommand(),
 		app.newOnboardingCommand(),
