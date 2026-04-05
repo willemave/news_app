@@ -3,6 +3,30 @@
 package api
 
 // setDefaults set default value of fields.
+func (s *AgentDigestRequest) setDefaults() {
+	{
+		val := AgentDigestRequestForm("short")
+		s.Form.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
+func (s *AgentDigestResponse) setDefaults() {
+	{
+		val := string("queued")
+		s.Status.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
+func (s *AgentLibraryManifestResponse) setDefaults() {
+	{
+		val := bool(false)
+		s.IncludeSource.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
 func (s *AgentOnboardingCompleteRequest) setDefaults() {
 	{
 		val := bool(false)
@@ -19,6 +43,14 @@ func (s *AgentSearchRequest) setDefaults() {
 	{
 		val := int(10)
 		s.Limit.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
+func (s *CliLinkStartResponse) setDefaults() {
+	{
+		val := int(2)
+		s.PollIntervalSeconds.SetTo(val)
 	}
 }
 

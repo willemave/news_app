@@ -10,6 +10,380 @@ import (
 	"github.com/go-faster/jx"
 )
 
+// Agent digest generation request for arbitrary windows.
+// Ref: #/components/schemas/AgentDigestRequest
+type AgentDigestRequest struct {
+	EndAt   time.Time                 `json:"end_at"`
+	Form    OptAgentDigestRequestForm `json:"form"`
+	StartAt time.Time                 `json:"start_at"`
+}
+
+// GetEndAt returns the value of EndAt.
+func (s *AgentDigestRequest) GetEndAt() time.Time {
+	return s.EndAt
+}
+
+// GetForm returns the value of Form.
+func (s *AgentDigestRequest) GetForm() OptAgentDigestRequestForm {
+	return s.Form
+}
+
+// GetStartAt returns the value of StartAt.
+func (s *AgentDigestRequest) GetStartAt() time.Time {
+	return s.StartAt
+}
+
+// SetEndAt sets the value of EndAt.
+func (s *AgentDigestRequest) SetEndAt(val time.Time) {
+	s.EndAt = val
+}
+
+// SetForm sets the value of Form.
+func (s *AgentDigestRequest) SetForm(val OptAgentDigestRequestForm) {
+	s.Form = val
+}
+
+// SetStartAt sets the value of StartAt.
+func (s *AgentDigestRequest) SetStartAt(val time.Time) {
+	s.StartAt = val
+}
+
+type AgentDigestRequestForm string
+
+const (
+	AgentDigestRequestFormShort AgentDigestRequestForm = "short"
+	AgentDigestRequestFormLong  AgentDigestRequestForm = "long"
+)
+
+// AllValues returns all AgentDigestRequestForm values.
+func (AgentDigestRequestForm) AllValues() []AgentDigestRequestForm {
+	return []AgentDigestRequestForm{
+		AgentDigestRequestFormShort,
+		AgentDigestRequestFormLong,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AgentDigestRequestForm) MarshalText() ([]byte, error) {
+	switch s {
+	case AgentDigestRequestFormShort:
+		return []byte(s), nil
+	case AgentDigestRequestFormLong:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AgentDigestRequestForm) UnmarshalText(data []byte) error {
+	switch AgentDigestRequestForm(data) {
+	case AgentDigestRequestFormShort:
+		*s = AgentDigestRequestFormShort
+		return nil
+	case AgentDigestRequestFormLong:
+		*s = AgentDigestRequestFormLong
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Async agent digest generation response.
+// Ref: #/components/schemas/AgentDigestResponse
+type AgentDigestResponse struct {
+	JobID  int       `json:"job_id"`
+	Status OptString `json:"status"`
+}
+
+// GetJobID returns the value of JobID.
+func (s *AgentDigestResponse) GetJobID() int {
+	return s.JobID
+}
+
+// GetStatus returns the value of Status.
+func (s *AgentDigestResponse) GetStatus() OptString {
+	return s.Status
+}
+
+// SetJobID sets the value of JobID.
+func (s *AgentDigestResponse) SetJobID(val int) {
+	s.JobID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *AgentDigestResponse) SetStatus(val OptString) {
+	s.Status = val
+}
+
+func (*AgentDigestResponse) generateDigestRes() {}
+
+// One manifest entry for a personal markdown document.
+// Ref: #/components/schemas/AgentLibraryDocumentResponse
+type AgentLibraryDocumentResponse struct {
+	ChecksumSHA256 string                              `json:"checksum_sha256"`
+	ContentID      int                                 `json:"content_id"`
+	RelativePath   string                              `json:"relative_path"`
+	SizeBytes      int                                 `json:"size_bytes"`
+	UpdatedAt      OptNilDateTime                      `json:"updated_at"`
+	Variant        AgentLibraryDocumentResponseVariant `json:"variant"`
+}
+
+// GetChecksumSHA256 returns the value of ChecksumSHA256.
+func (s *AgentLibraryDocumentResponse) GetChecksumSHA256() string {
+	return s.ChecksumSHA256
+}
+
+// GetContentID returns the value of ContentID.
+func (s *AgentLibraryDocumentResponse) GetContentID() int {
+	return s.ContentID
+}
+
+// GetRelativePath returns the value of RelativePath.
+func (s *AgentLibraryDocumentResponse) GetRelativePath() string {
+	return s.RelativePath
+}
+
+// GetSizeBytes returns the value of SizeBytes.
+func (s *AgentLibraryDocumentResponse) GetSizeBytes() int {
+	return s.SizeBytes
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *AgentLibraryDocumentResponse) GetUpdatedAt() OptNilDateTime {
+	return s.UpdatedAt
+}
+
+// GetVariant returns the value of Variant.
+func (s *AgentLibraryDocumentResponse) GetVariant() AgentLibraryDocumentResponseVariant {
+	return s.Variant
+}
+
+// SetChecksumSHA256 sets the value of ChecksumSHA256.
+func (s *AgentLibraryDocumentResponse) SetChecksumSHA256(val string) {
+	s.ChecksumSHA256 = val
+}
+
+// SetContentID sets the value of ContentID.
+func (s *AgentLibraryDocumentResponse) SetContentID(val int) {
+	s.ContentID = val
+}
+
+// SetRelativePath sets the value of RelativePath.
+func (s *AgentLibraryDocumentResponse) SetRelativePath(val string) {
+	s.RelativePath = val
+}
+
+// SetSizeBytes sets the value of SizeBytes.
+func (s *AgentLibraryDocumentResponse) SetSizeBytes(val int) {
+	s.SizeBytes = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *AgentLibraryDocumentResponse) SetUpdatedAt(val OptNilDateTime) {
+	s.UpdatedAt = val
+}
+
+// SetVariant sets the value of Variant.
+func (s *AgentLibraryDocumentResponse) SetVariant(val AgentLibraryDocumentResponseVariant) {
+	s.Variant = val
+}
+
+type AgentLibraryDocumentResponseVariant string
+
+const (
+	AgentLibraryDocumentResponseVariantSource  AgentLibraryDocumentResponseVariant = "source"
+	AgentLibraryDocumentResponseVariantSummary AgentLibraryDocumentResponseVariant = "summary"
+)
+
+// AllValues returns all AgentLibraryDocumentResponseVariant values.
+func (AgentLibraryDocumentResponseVariant) AllValues() []AgentLibraryDocumentResponseVariant {
+	return []AgentLibraryDocumentResponseVariant{
+		AgentLibraryDocumentResponseVariantSource,
+		AgentLibraryDocumentResponseVariantSummary,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AgentLibraryDocumentResponseVariant) MarshalText() ([]byte, error) {
+	switch s {
+	case AgentLibraryDocumentResponseVariantSource:
+		return []byte(s), nil
+	case AgentLibraryDocumentResponseVariantSummary:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AgentLibraryDocumentResponseVariant) UnmarshalText(data []byte) error {
+	switch AgentLibraryDocumentResponseVariant(data) {
+	case AgentLibraryDocumentResponseVariantSource:
+		*s = AgentLibraryDocumentResponseVariantSource
+		return nil
+	case AgentLibraryDocumentResponseVariantSummary:
+		*s = AgentLibraryDocumentResponseVariantSummary
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// One markdown document payload for CLI sync download.
+// Ref: #/components/schemas/AgentLibraryFileResponse
+type AgentLibraryFileResponse struct {
+	ChecksumSHA256 string                          `json:"checksum_sha256"`
+	ContentID      int                             `json:"content_id"`
+	RelativePath   string                          `json:"relative_path"`
+	Text           string                          `json:"text"`
+	UpdatedAt      OptNilDateTime                  `json:"updated_at"`
+	Variant        AgentLibraryFileResponseVariant `json:"variant"`
+}
+
+// GetChecksumSHA256 returns the value of ChecksumSHA256.
+func (s *AgentLibraryFileResponse) GetChecksumSHA256() string {
+	return s.ChecksumSHA256
+}
+
+// GetContentID returns the value of ContentID.
+func (s *AgentLibraryFileResponse) GetContentID() int {
+	return s.ContentID
+}
+
+// GetRelativePath returns the value of RelativePath.
+func (s *AgentLibraryFileResponse) GetRelativePath() string {
+	return s.RelativePath
+}
+
+// GetText returns the value of Text.
+func (s *AgentLibraryFileResponse) GetText() string {
+	return s.Text
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *AgentLibraryFileResponse) GetUpdatedAt() OptNilDateTime {
+	return s.UpdatedAt
+}
+
+// GetVariant returns the value of Variant.
+func (s *AgentLibraryFileResponse) GetVariant() AgentLibraryFileResponseVariant {
+	return s.Variant
+}
+
+// SetChecksumSHA256 sets the value of ChecksumSHA256.
+func (s *AgentLibraryFileResponse) SetChecksumSHA256(val string) {
+	s.ChecksumSHA256 = val
+}
+
+// SetContentID sets the value of ContentID.
+func (s *AgentLibraryFileResponse) SetContentID(val int) {
+	s.ContentID = val
+}
+
+// SetRelativePath sets the value of RelativePath.
+func (s *AgentLibraryFileResponse) SetRelativePath(val string) {
+	s.RelativePath = val
+}
+
+// SetText sets the value of Text.
+func (s *AgentLibraryFileResponse) SetText(val string) {
+	s.Text = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *AgentLibraryFileResponse) SetUpdatedAt(val OptNilDateTime) {
+	s.UpdatedAt = val
+}
+
+// SetVariant sets the value of Variant.
+func (s *AgentLibraryFileResponse) SetVariant(val AgentLibraryFileResponseVariant) {
+	s.Variant = val
+}
+
+func (*AgentLibraryFileResponse) getAgentLibraryFileRes() {}
+
+type AgentLibraryFileResponseVariant string
+
+const (
+	AgentLibraryFileResponseVariantSource  AgentLibraryFileResponseVariant = "source"
+	AgentLibraryFileResponseVariantSummary AgentLibraryFileResponseVariant = "summary"
+)
+
+// AllValues returns all AgentLibraryFileResponseVariant values.
+func (AgentLibraryFileResponseVariant) AllValues() []AgentLibraryFileResponseVariant {
+	return []AgentLibraryFileResponseVariant{
+		AgentLibraryFileResponseVariantSource,
+		AgentLibraryFileResponseVariantSummary,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AgentLibraryFileResponseVariant) MarshalText() ([]byte, error) {
+	switch s {
+	case AgentLibraryFileResponseVariantSource:
+		return []byte(s), nil
+	case AgentLibraryFileResponseVariantSummary:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AgentLibraryFileResponseVariant) UnmarshalText(data []byte) error {
+	switch AgentLibraryFileResponseVariant(data) {
+	case AgentLibraryFileResponseVariantSource:
+		*s = AgentLibraryFileResponseVariantSource
+		return nil
+	case AgentLibraryFileResponseVariantSummary:
+		*s = AgentLibraryFileResponseVariantSummary
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Manifest of markdown documents available for CLI sync.
+// Ref: #/components/schemas/AgentLibraryManifestResponse
+type AgentLibraryManifestResponse struct {
+	Documents     []AgentLibraryDocumentResponse `json:"documents"`
+	GeneratedAt   time.Time                      `json:"generated_at"`
+	IncludeSource OptBool                        `json:"include_source"`
+}
+
+// GetDocuments returns the value of Documents.
+func (s *AgentLibraryManifestResponse) GetDocuments() []AgentLibraryDocumentResponse {
+	return s.Documents
+}
+
+// GetGeneratedAt returns the value of GeneratedAt.
+func (s *AgentLibraryManifestResponse) GetGeneratedAt() time.Time {
+	return s.GeneratedAt
+}
+
+// GetIncludeSource returns the value of IncludeSource.
+func (s *AgentLibraryManifestResponse) GetIncludeSource() OptBool {
+	return s.IncludeSource
+}
+
+// SetDocuments sets the value of Documents.
+func (s *AgentLibraryManifestResponse) SetDocuments(val []AgentLibraryDocumentResponse) {
+	s.Documents = val
+}
+
+// SetGeneratedAt sets the value of GeneratedAt.
+func (s *AgentLibraryManifestResponse) SetGeneratedAt(val time.Time) {
+	s.GeneratedAt = val
+}
+
+// SetIncludeSource sets the value of IncludeSource.
+func (s *AgentLibraryManifestResponse) SetIncludeSource(val OptBool) {
+	s.IncludeSource = val
+}
+
+func (*AgentLibraryManifestResponse) getAgentLibraryManifestRes() {}
+
 // Complete simplified agent onboarding.
 // Ref: #/components/schemas/AgentOnboardingCompleteRequest
 type AgentOnboardingCompleteRequest struct {
@@ -365,6 +739,290 @@ func (s *BulkMarkReadRequest) GetContentIds() []int {
 func (s *BulkMarkReadRequest) SetContentIds(val []int) {
 	s.ContentIds = val
 }
+
+// Authenticated request to approve one pending CLI link session.
+// Ref: #/components/schemas/CliLinkApproveRequest
+type CliLinkApproveRequest struct {
+	ApproveToken string       `json:"approve_token"`
+	DeviceName   OptNilString `json:"device_name"`
+}
+
+// GetApproveToken returns the value of ApproveToken.
+func (s *CliLinkApproveRequest) GetApproveToken() string {
+	return s.ApproveToken
+}
+
+// GetDeviceName returns the value of DeviceName.
+func (s *CliLinkApproveRequest) GetDeviceName() OptNilString {
+	return s.DeviceName
+}
+
+// SetApproveToken sets the value of ApproveToken.
+func (s *CliLinkApproveRequest) SetApproveToken(val string) {
+	s.ApproveToken = val
+}
+
+// SetDeviceName sets the value of DeviceName.
+func (s *CliLinkApproveRequest) SetDeviceName(val OptNilString) {
+	s.DeviceName = val
+}
+
+// Approval response after issuing a CLI API key.
+// Ref: #/components/schemas/CliLinkApproveResponse
+type CliLinkApproveResponse struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	KeyPrefix string    `json:"key_prefix"`
+	SessionID string    `json:"session_id"`
+	Status    string    `json:"status"`
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *CliLinkApproveResponse) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetKeyPrefix returns the value of KeyPrefix.
+func (s *CliLinkApproveResponse) GetKeyPrefix() string {
+	return s.KeyPrefix
+}
+
+// GetSessionID returns the value of SessionID.
+func (s *CliLinkApproveResponse) GetSessionID() string {
+	return s.SessionID
+}
+
+// GetStatus returns the value of Status.
+func (s *CliLinkApproveResponse) GetStatus() string {
+	return s.Status
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *CliLinkApproveResponse) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetKeyPrefix sets the value of KeyPrefix.
+func (s *CliLinkApproveResponse) SetKeyPrefix(val string) {
+	s.KeyPrefix = val
+}
+
+// SetSessionID sets the value of SessionID.
+func (s *CliLinkApproveResponse) SetSessionID(val string) {
+	s.SessionID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *CliLinkApproveResponse) SetStatus(val string) {
+	s.Status = val
+}
+
+func (*CliLinkApproveResponse) approveCliLinkRes() {}
+
+// Polling response for a CLI waiting on mobile approval.
+// Ref: #/components/schemas/CliLinkPollResponse
+type CliLinkPollResponse struct {
+	APIKey    OptNilString              `json:"api_key"`
+	ExpiresAt time.Time                 `json:"expires_at"`
+	KeyPrefix OptNilString              `json:"key_prefix"`
+	SessionID string                    `json:"session_id"`
+	Status    CliLinkPollResponseStatus `json:"status"`
+}
+
+// GetAPIKey returns the value of APIKey.
+func (s *CliLinkPollResponse) GetAPIKey() OptNilString {
+	return s.APIKey
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *CliLinkPollResponse) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetKeyPrefix returns the value of KeyPrefix.
+func (s *CliLinkPollResponse) GetKeyPrefix() OptNilString {
+	return s.KeyPrefix
+}
+
+// GetSessionID returns the value of SessionID.
+func (s *CliLinkPollResponse) GetSessionID() string {
+	return s.SessionID
+}
+
+// GetStatus returns the value of Status.
+func (s *CliLinkPollResponse) GetStatus() CliLinkPollResponseStatus {
+	return s.Status
+}
+
+// SetAPIKey sets the value of APIKey.
+func (s *CliLinkPollResponse) SetAPIKey(val OptNilString) {
+	s.APIKey = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *CliLinkPollResponse) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetKeyPrefix sets the value of KeyPrefix.
+func (s *CliLinkPollResponse) SetKeyPrefix(val OptNilString) {
+	s.KeyPrefix = val
+}
+
+// SetSessionID sets the value of SessionID.
+func (s *CliLinkPollResponse) SetSessionID(val string) {
+	s.SessionID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *CliLinkPollResponse) SetStatus(val CliLinkPollResponseStatus) {
+	s.Status = val
+}
+
+func (*CliLinkPollResponse) pollCliLinkRes() {}
+
+type CliLinkPollResponseStatus string
+
+const (
+	CliLinkPollResponseStatusPending  CliLinkPollResponseStatus = "pending"
+	CliLinkPollResponseStatusApproved CliLinkPollResponseStatus = "approved"
+	CliLinkPollResponseStatusClaimed  CliLinkPollResponseStatus = "claimed"
+	CliLinkPollResponseStatusExpired  CliLinkPollResponseStatus = "expired"
+)
+
+// AllValues returns all CliLinkPollResponseStatus values.
+func (CliLinkPollResponseStatus) AllValues() []CliLinkPollResponseStatus {
+	return []CliLinkPollResponseStatus{
+		CliLinkPollResponseStatusPending,
+		CliLinkPollResponseStatusApproved,
+		CliLinkPollResponseStatusClaimed,
+		CliLinkPollResponseStatusExpired,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s CliLinkPollResponseStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case CliLinkPollResponseStatusPending:
+		return []byte(s), nil
+	case CliLinkPollResponseStatusApproved:
+		return []byte(s), nil
+	case CliLinkPollResponseStatusClaimed:
+		return []byte(s), nil
+	case CliLinkPollResponseStatusExpired:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *CliLinkPollResponseStatus) UnmarshalText(data []byte) error {
+	switch CliLinkPollResponseStatus(data) {
+	case CliLinkPollResponseStatusPending:
+		*s = CliLinkPollResponseStatusPending
+		return nil
+	case CliLinkPollResponseStatusApproved:
+		*s = CliLinkPollResponseStatusApproved
+		return nil
+	case CliLinkPollResponseStatusClaimed:
+		*s = CliLinkPollResponseStatusClaimed
+		return nil
+	case CliLinkPollResponseStatusExpired:
+		*s = CliLinkPollResponseStatusExpired
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Request to start a new CLI QR-link session.
+// Ref: #/components/schemas/CliLinkStartRequest
+type CliLinkStartRequest struct {
+	DeviceName OptNilString `json:"device_name"`
+}
+
+// GetDeviceName returns the value of DeviceName.
+func (s *CliLinkStartRequest) GetDeviceName() OptNilString {
+	return s.DeviceName
+}
+
+// SetDeviceName sets the value of DeviceName.
+func (s *CliLinkStartRequest) SetDeviceName(val OptNilString) {
+	s.DeviceName = val
+}
+
+// Unauthenticated response for bootstrapping CLI QR login.
+// Ref: #/components/schemas/CliLinkStartResponse
+type CliLinkStartResponse struct {
+	ApproveURL          string    `json:"approve_url"`
+	ExpiresAt           time.Time `json:"expires_at"`
+	PollIntervalSeconds OptInt    `json:"poll_interval_seconds"`
+	PollToken           string    `json:"poll_token"`
+	SessionID           string    `json:"session_id"`
+	Status              string    `json:"status"`
+}
+
+// GetApproveURL returns the value of ApproveURL.
+func (s *CliLinkStartResponse) GetApproveURL() string {
+	return s.ApproveURL
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *CliLinkStartResponse) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetPollIntervalSeconds returns the value of PollIntervalSeconds.
+func (s *CliLinkStartResponse) GetPollIntervalSeconds() OptInt {
+	return s.PollIntervalSeconds
+}
+
+// GetPollToken returns the value of PollToken.
+func (s *CliLinkStartResponse) GetPollToken() string {
+	return s.PollToken
+}
+
+// GetSessionID returns the value of SessionID.
+func (s *CliLinkStartResponse) GetSessionID() string {
+	return s.SessionID
+}
+
+// GetStatus returns the value of Status.
+func (s *CliLinkStartResponse) GetStatus() string {
+	return s.Status
+}
+
+// SetApproveURL sets the value of ApproveURL.
+func (s *CliLinkStartResponse) SetApproveURL(val string) {
+	s.ApproveURL = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *CliLinkStartResponse) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetPollIntervalSeconds sets the value of PollIntervalSeconds.
+func (s *CliLinkStartResponse) SetPollIntervalSeconds(val OptInt) {
+	s.PollIntervalSeconds = val
+}
+
+// SetPollToken sets the value of PollToken.
+func (s *CliLinkStartResponse) SetPollToken(val string) {
+	s.PollToken = val
+}
+
+// SetSessionID sets the value of SessionID.
+func (s *CliLinkStartResponse) SetSessionID(val string) {
+	s.SessionID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *CliLinkStartResponse) SetStatus(val string) {
+	s.Status = val
+}
+
+func (*CliLinkStartResponse) startCliLinkRes() {}
 
 type CompleteOnboardingOK map[string]jx.Raw
 
@@ -907,8 +1565,8 @@ func (s *ContentDetailResponse) SetURL(val string) {
 	s.URL = val
 }
 
-func (*ContentDetailResponse) getContentRes()  {}
-func (*ContentDetailResponse) getNewsItemRes() {}
+func (*ContentDetailResponse) getContentDetailRes() {}
+func (*ContentDetailResponse) getNewsItemRes()      {}
 
 type ContentDetailResponseBulletPointsItem map[string]string
 
@@ -1009,7 +1667,7 @@ func (s *ContentListResponse) SetMeta(val PaginationMetadata) {
 	s.Meta = val
 }
 
-func (*ContentListResponse) listContentRes()   {}
+func (*ContentListResponse) listContentsRes()  {}
 func (*ContentListResponse) listNewsItemsRes() {}
 
 // Lifecycle statuses for content processing.
@@ -1690,9 +2348,9 @@ func (s *DetectedFeed) SetURL(val string) {
 	s.URL = val
 }
 
-type GetContentNotFoundApplicationJSON jx.Raw
+type GetContentDetailNotFoundApplicationJSON jx.Raw
 
-func (*GetContentNotFoundApplicationJSON) getContentRes() {}
+func (*GetContentDetailNotFoundApplicationJSON) getContentDetailRes() {}
 
 // GetNewsItemNotFound is response for GetNewsItem operation.
 type GetNewsItemNotFound struct{}
@@ -1739,20 +2397,26 @@ func (s *HTTPValidationError) SetDetail(val []ValidationError) {
 	s.Detail = val
 }
 
+func (*HTTPValidationError) approveCliLinkRes()           {}
 func (*HTTPValidationError) completeOnboardingRes()       {}
 func (*HTTPValidationError) convertNewsItemToArticleRes() {}
-func (*HTTPValidationError) getContentRes()               {}
+func (*HTTPValidationError) generateDigestRes()           {}
+func (*HTTPValidationError) getAgentLibraryFileRes()      {}
+func (*HTTPValidationError) getAgentLibraryManifestRes()  {}
+func (*HTTPValidationError) getContentDetailRes()         {}
 func (*HTTPValidationError) getJobRes()                   {}
 func (*HTTPValidationError) getNewsItemRes()              {}
 func (*HTTPValidationError) getOnboardingRes()            {}
-func (*HTTPValidationError) listContentRes()              {}
+func (*HTTPValidationError) listContentsRes()             {}
 func (*HTTPValidationError) listNewsItemsRes()            {}
-func (*HTTPValidationError) listSourcesRes()              {}
+func (*HTTPValidationError) listScraperConfigsRes()       {}
 func (*HTTPValidationError) markNewsItemsReadRes()        {}
+func (*HTTPValidationError) pollCliLinkRes()              {}
 func (*HTTPValidationError) searchAgentRes()              {}
+func (*HTTPValidationError) startCliLinkRes()             {}
 func (*HTTPValidationError) startOnboardingRes()          {}
 func (*HTTPValidationError) submitContentRes()            {}
-func (*HTTPValidationError) subscribeSourceRes()          {}
+func (*HTTPValidationError) subscribeScrapersToFeedRes()  {}
 
 // Status payload for an async processing job.
 // Ref: #/components/schemas/JobStatusResponse
@@ -1893,19 +2557,19 @@ func (s *JobStatusResponsePayload) init() JobStatusResponsePayload {
 	return m
 }
 
-// ListContentNotFound is response for ListContent operation.
-type ListContentNotFound struct{}
+// ListContentsNotFound is response for ListContents operation.
+type ListContentsNotFound struct{}
 
-func (*ListContentNotFound) listContentRes() {}
+func (*ListContentsNotFound) listContentsRes() {}
 
 // ListNewsItemsNotFound is response for ListNewsItems operation.
 type ListNewsItemsNotFound struct{}
 
 func (*ListNewsItemsNotFound) listNewsItemsRes() {}
 
-type ListSourcesOKApplicationJSON []ScraperConfigResponse
+type ListScraperConfigsOKApplicationJSON []ScraperConfigResponse
 
-func (*ListSourcesOKApplicationJSON) listSourcesRes() {}
+func (*ListScraperConfigsOKApplicationJSON) listScraperConfigsRes() {}
 
 // MarkNewsItemsReadNotFound is response for MarkNewsItemsRead operation.
 type MarkNewsItemsReadNotFound struct{}
@@ -2244,6 +2908,98 @@ func (s *OnboardingSuggestionSuggestionType) UnmarshalText(data []byte) error {
 	}
 }
 
+// NewOptAgentDigestRequest returns new OptAgentDigestRequest with value set to v.
+func NewOptAgentDigestRequest(v AgentDigestRequest) OptAgentDigestRequest {
+	return OptAgentDigestRequest{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptAgentDigestRequest is optional AgentDigestRequest.
+type OptAgentDigestRequest struct {
+	Value AgentDigestRequest
+	Set   bool
+}
+
+// IsSet returns true if OptAgentDigestRequest was set.
+func (o OptAgentDigestRequest) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptAgentDigestRequest) Reset() {
+	var v AgentDigestRequest
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptAgentDigestRequest) SetTo(v AgentDigestRequest) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptAgentDigestRequest) Get() (v AgentDigestRequest, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptAgentDigestRequest) Or(d AgentDigestRequest) AgentDigestRequest {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptAgentDigestRequestForm returns new OptAgentDigestRequestForm with value set to v.
+func NewOptAgentDigestRequestForm(v AgentDigestRequestForm) OptAgentDigestRequestForm {
+	return OptAgentDigestRequestForm{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptAgentDigestRequestForm is optional AgentDigestRequestForm.
+type OptAgentDigestRequestForm struct {
+	Value AgentDigestRequestForm
+	Set   bool
+}
+
+// IsSet returns true if OptAgentDigestRequestForm was set.
+func (o OptAgentDigestRequestForm) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptAgentDigestRequestForm) Reset() {
+	var v AgentDigestRequestForm
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptAgentDigestRequestForm) SetTo(v AgentDigestRequestForm) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptAgentDigestRequestForm) Get() (v AgentDigestRequestForm, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptAgentDigestRequestForm) Or(d AgentDigestRequestForm) AgentDigestRequestForm {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptBool returns new OptBool with value set to v.
 func NewOptBool(v bool) OptBool {
 	return OptBool{
@@ -2284,6 +3040,52 @@ func (o OptBool) Get() (v bool, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptBool) Or(d bool) bool {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptCliLinkStartRequest returns new OptCliLinkStartRequest with value set to v.
+func NewOptCliLinkStartRequest(v CliLinkStartRequest) OptCliLinkStartRequest {
+	return OptCliLinkStartRequest{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptCliLinkStartRequest is optional CliLinkStartRequest.
+type OptCliLinkStartRequest struct {
+	Value CliLinkStartRequest
+	Set   bool
+}
+
+// IsSet returns true if OptCliLinkStartRequest was set.
+func (o OptCliLinkStartRequest) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptCliLinkStartRequest) Reset() {
+	var v CliLinkStartRequest
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptCliLinkStartRequest) SetTo(v CliLinkStartRequest) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptCliLinkStartRequest) Get() (v CliLinkStartRequest, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptCliLinkStartRequest) Or(d CliLinkStartRequest) CliLinkStartRequest {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -3411,7 +4213,7 @@ func (s *ScraperConfigResponse) SetStats(val OptScraperConfigStatsResponse) {
 	s.Stats = val
 }
 
-func (*ScraperConfigResponse) subscribeSourceRes() {}
+func (*ScraperConfigResponse) subscribeScrapersToFeedRes() {}
 
 type ScraperConfigResponseConfig map[string]jx.Raw
 

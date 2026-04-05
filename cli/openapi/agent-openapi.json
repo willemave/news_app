@@ -736,7 +736,7 @@
         "title": "AudioTranscriptionResponse",
         "type": "object"
       },
-      "Body_admin_api_keys_create_admin_api_keys_create_post": {
+      "Body_adminApiKeysCreate": {
         "properties": {
           "user_id": {
             "title": "User Id",
@@ -746,10 +746,10 @@
         "required": [
           "user_id"
         ],
-        "title": "Body_admin_api_keys_create_admin_api_keys_create_post",
+        "title": "Body_adminApiKeysCreate",
         "type": "object"
       },
-      "Body_transcribe_audio_api_openai_transcriptions_post": {
+      "Body_transcribeOpenaiTranscriptionsAudio": {
         "properties": {
           "file": {
             "format": "binary",
@@ -760,7 +760,7 @@
         "required": [
           "file"
         ],
-        "title": "Body_transcribe_audio_api_openai_transcriptions_post",
+        "title": "Body_transcribeOpenaiTranscriptionsAudio",
         "type": "object"
       },
       "BulkMarkReadRequest": {
@@ -5365,6 +5365,312 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/api/agent/cli/link/start": {
+      "post": {
+        "description": "Create an unauthenticated QR approval session for the CLI.",
+        "operationId": "startCliLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliLinkStartRequest",
+                "nullable": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliLinkStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Cli Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/agent/cli/link/{session_id}": {
+      "get": {
+        "description": "Poll a pending CLI link session without requiring existing auth.",
+        "operationId": "pollCliLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "poll_token",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 8,
+              "title": "Poll Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliLinkPollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poll Cli Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/agent/cli/link/{session_id}/approve": {
+      "post": {
+        "description": "Approve one pending CLI link session from the authenticated app.",
+        "operationId": "approveCliLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliLinkApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliLinkApproveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Cli Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/agent/digests": {
+      "post": {
+        "description": "Queue arbitrary-window digest generation for agent clients.",
+        "operationId": "generateDigest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentDigestRequest",
+                "nullable": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDigestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate Digest",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/api/agent/library/file": {
+      "get": {
+        "description": "Return one rendered markdown document by relative manifest path.",
+        "operationId": "getAgentLibraryFile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLibraryFileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Agent Library File",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/agent/library/manifest": {
+      "get": {
+        "description": "Return manifest metadata for exportable per-user markdown files.",
+        "operationId": "getAgentLibraryManifest",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_source",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Source",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLibraryManifestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Agent Library Manifest",
+        "tags": [
+          "library"
+        ]
+      }
+    },
     "/api/agent/onboarding": {
       "post": {
         "description": "Start simplified async onboarding.",
@@ -5491,7 +5797,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Complete Onboarding Api Agent Onboarding  Run Id  Complete Post",
+                  "title": "Response Completeonboarding",
                   "type": "object"
                 }
               }
@@ -5570,7 +5876,7 @@
     "/api/content/": {
       "get": {
         "description": "Retrieve a list of content items with optional filtering by content type and date. Supports multiple content types via repeated query parameters (e.g., ?content_type=article&content_type=podcast). Supports cursor-based pagination for efficient loading.",
-        "operationId": "listContent",
+        "operationId": "listContents",
         "parameters": [
           {
             "description": "Filter by content type(s). Can be specified multiple times for multiple types (article/podcast/news)",
@@ -5751,7 +6057,7 @@
     "/api/content/{content_id}": {
       "get": {
         "description": "Retrieve detailed information about a specific content item.",
-        "operationId": "getContent",
+        "operationId": "getContentDetail",
         "parameters": [
           {
             "description": "Content ID",
@@ -5957,7 +6263,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Mark News Items Read Api News Items Mark Read Post",
+                  "title": "Response Marknewsitemsread",
                   "type": "object"
                 }
               }
@@ -6098,7 +6404,7 @@
     "/api/scrapers/": {
       "get": {
         "description": "List scraper configurations for the current user.",
-        "operationId": "listSources",
+        "operationId": "listScraperConfigs",
         "parameters": [
           {
             "in": "query",
@@ -6129,7 +6435,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ScraperConfigResponse"
                   },
-                  "title": "Response List Scraper Configs Api Scrapers  Get",
+                  "title": "Response Listscraperconfigs",
                   "type": "array"
                 }
               }
@@ -6161,7 +6467,7 @@
     "/api/scrapers/subscribe": {
       "post": {
         "description": "Subscribe to a feed detected from content.\n\nConvenience endpoint that creates a scraper config from a detected feed.",
-        "operationId": "subscribeSource",
+        "operationId": "subscribeScrapersToFeed",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6212,6 +6518,10 @@
       "name": "jobs"
     },
     {
+      "description": "CLI bootstrap and approval routes.",
+      "name": "auth"
+    },
+    {
       "description": "Provider-backed discovery search.",
       "name": "search"
     },
@@ -6230,6 +6540,10 @@
     {
       "description": "Runtime source subscription routes.",
       "name": "sources"
+    },
+    {
+      "description": "Per-user markdown library sync routes.",
+      "name": "library"
     }
   ]
 }

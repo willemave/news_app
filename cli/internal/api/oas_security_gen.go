@@ -34,20 +34,24 @@ func findAuthorization(h http.Header, prefix string) (string, bool) {
 
 // operationRolesHTTPBearer is a private map storing roles per operation.
 var operationRolesHTTPBearer = map[string][]string{
+	ApproveCliLinkOperation:           []string{},
 	CompleteOnboardingOperation:       []string{},
 	ConvertNewsItemToArticleOperation: []string{},
-	GetContentOperation:               []string{},
+	GenerateDigestOperation:           []string{},
+	GetAgentLibraryFileOperation:      []string{},
+	GetAgentLibraryManifestOperation:  []string{},
+	GetContentDetailOperation:         []string{},
 	GetJobOperation:                   []string{},
 	GetNewsItemOperation:              []string{},
 	GetOnboardingOperation:            []string{},
-	ListContentOperation:              []string{},
+	ListContentsOperation:             []string{},
 	ListNewsItemsOperation:            []string{},
-	ListSourcesOperation:              []string{},
+	ListScraperConfigsOperation:       []string{},
 	MarkNewsItemsReadOperation:        []string{},
 	SearchAgentOperation:              []string{},
 	StartOnboardingOperation:          []string{},
 	SubmitContentOperation:            []string{},
-	SubscribeSourceOperation:          []string{},
+	SubscribeScrapersToFeedOperation:  []string{},
 }
 
 // GetRolesForHTTPBearer returns the required roles for the given operation.

@@ -11,6 +11,39 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+func encodeApproveCliLinkResponse(response ApproveCliLinkRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *CliLinkApproveResponse:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *HTTPValidationError:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(422)
+		span.SetStatus(codes.Error, http.StatusText(422))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
 func encodeCompleteOnboardingResponse(response CompleteOnboardingRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *CompleteOnboardingOK:
@@ -83,7 +116,106 @@ func encodeConvertNewsItemToArticleResponse(response ConvertNewsItemToArticleRes
 	}
 }
 
-func encodeGetContentResponse(response GetContentRes, w http.ResponseWriter, span trace.Span) error {
+func encodeGenerateDigestResponse(response GenerateDigestRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *AgentDigestResponse:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *HTTPValidationError:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(422)
+		span.SetStatus(codes.Error, http.StatusText(422))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetAgentLibraryFileResponse(response GetAgentLibraryFileRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *AgentLibraryFileResponse:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *HTTPValidationError:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(422)
+		span.SetStatus(codes.Error, http.StatusText(422))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetAgentLibraryManifestResponse(response GetAgentLibraryManifestRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *AgentLibraryManifestResponse:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *HTTPValidationError:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(422)
+		span.SetStatus(codes.Error, http.StatusText(422))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetContentDetailResponse(response GetContentDetailRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *ContentDetailResponse:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -98,7 +230,7 @@ func encodeGetContentResponse(response GetContentRes, w http.ResponseWriter, spa
 
 		return nil
 
-	case *GetContentNotFoundApplicationJSON:
+	case *GetContentDetailNotFoundApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(404)
 		span.SetStatus(codes.Error, http.StatusText(404))
@@ -234,7 +366,7 @@ func encodeGetOnboardingResponse(response GetOnboardingRes, w http.ResponseWrite
 	}
 }
 
-func encodeListContentResponse(response ListContentRes, w http.ResponseWriter, span trace.Span) error {
+func encodeListContentsResponse(response ListContentsRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *ContentListResponse:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -249,7 +381,7 @@ func encodeListContentResponse(response ListContentRes, w http.ResponseWriter, s
 
 		return nil
 
-	case *ListContentNotFound:
+	case *ListContentsNotFound:
 		w.WriteHeader(404)
 		span.SetStatus(codes.Error, http.StatusText(404))
 
@@ -312,9 +444,9 @@ func encodeListNewsItemsResponse(response ListNewsItemsRes, w http.ResponseWrite
 	}
 }
 
-func encodeListSourcesResponse(response ListSourcesRes, w http.ResponseWriter, span trace.Span) error {
+func encodeListScraperConfigsResponse(response ListScraperConfigsRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *ListSourcesOKApplicationJSON:
+	case *ListScraperConfigsOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
@@ -384,9 +516,75 @@ func encodeMarkNewsItemsReadResponse(response MarkNewsItemsReadRes, w http.Respo
 	}
 }
 
+func encodePollCliLinkResponse(response PollCliLinkRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *CliLinkPollResponse:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *HTTPValidationError:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(422)
+		span.SetStatus(codes.Error, http.StatusText(422))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
 func encodeSearchAgentResponse(response SearchAgentRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *AgentSearchResponse:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *HTTPValidationError:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(422)
+		span.SetStatus(codes.Error, http.StatusText(422))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeStartCliLinkResponse(response StartCliLinkRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *CliLinkStartResponse:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
@@ -502,7 +700,7 @@ func encodeSubmitContentResponse(response SubmitContentRes, w http.ResponseWrite
 	}
 }
 
-func encodeSubscribeSourceResponse(response SubscribeSourceRes, w http.ResponseWriter, span trace.Span) error {
+func encodeSubscribeScrapersToFeedResponse(response SubscribeScrapersToFeedRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *ScraperConfigResponse:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

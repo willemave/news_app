@@ -13,6 +13,15 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// ApproveCliLink implements approveCliLink operation.
+//
+// Approve one pending CLI link session from the authenticated app.
+//
+// POST /api/agent/cli/link/{session_id}/approve
+func (UnimplementedHandler) ApproveCliLink(ctx context.Context, req *CliLinkApproveRequest, params ApproveCliLinkParams) (r ApproveCliLinkRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CompleteOnboarding implements completeOnboarding operation.
 //
 // Complete onboarding from simplified selections.
@@ -31,12 +40,39 @@ func (UnimplementedHandler) ConvertNewsItemToArticle(ctx context.Context, params
 	return r, ht.ErrNotImplemented
 }
 
-// GetContent implements getContent operation.
+// GenerateDigest implements generateDigest operation.
+//
+// Queue arbitrary-window digest generation for agent clients.
+//
+// POST /api/agent/digests
+func (UnimplementedHandler) GenerateDigest(ctx context.Context, req OptAgentDigestRequest) (r GenerateDigestRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetAgentLibraryFile implements getAgentLibraryFile operation.
+//
+// Return one rendered markdown document by relative manifest path.
+//
+// GET /api/agent/library/file
+func (UnimplementedHandler) GetAgentLibraryFile(ctx context.Context, params GetAgentLibraryFileParams) (r GetAgentLibraryFileRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetAgentLibraryManifest implements getAgentLibraryManifest operation.
+//
+// Return manifest metadata for exportable per-user markdown files.
+//
+// GET /api/agent/library/manifest
+func (UnimplementedHandler) GetAgentLibraryManifest(ctx context.Context, params GetAgentLibraryManifestParams) (r GetAgentLibraryManifestRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetContentDetail implements getContentDetail operation.
 //
 // Retrieve detailed information about a specific content item.
 //
 // GET /api/content/{content_id}
-func (UnimplementedHandler) GetContent(ctx context.Context, params GetContentParams) (r GetContentRes, _ error) {
+func (UnimplementedHandler) GetContentDetail(ctx context.Context, params GetContentDetailParams) (r GetContentDetailRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -67,7 +103,7 @@ func (UnimplementedHandler) GetOnboarding(ctx context.Context, params GetOnboard
 	return r, ht.ErrNotImplemented
 }
 
-// ListContent implements listContent operation.
+// ListContents implements listContents operation.
 //
 // Retrieve a list of content items with optional filtering by content type and date. Supports
 // multiple content types via repeated query parameters (e.g.,
@@ -75,7 +111,7 @@ func (UnimplementedHandler) GetOnboarding(ctx context.Context, params GetOnboard
 // loading.
 //
 // GET /api/content/
-func (UnimplementedHandler) ListContent(ctx context.Context, params ListContentParams) (r ListContentRes, _ error) {
+func (UnimplementedHandler) ListContents(ctx context.Context, params ListContentsParams) (r ListContentsRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -88,12 +124,12 @@ func (UnimplementedHandler) ListNewsItems(ctx context.Context, params ListNewsIt
 	return r, ht.ErrNotImplemented
 }
 
-// ListSources implements listSources operation.
+// ListScraperConfigs implements listScraperConfigs operation.
 //
 // List scraper configurations for the current user.
 //
 // GET /api/scrapers/
-func (UnimplementedHandler) ListSources(ctx context.Context, params ListSourcesParams) (r ListSourcesRes, _ error) {
+func (UnimplementedHandler) ListScraperConfigs(ctx context.Context, params ListScraperConfigsParams) (r ListScraperConfigsRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -106,12 +142,30 @@ func (UnimplementedHandler) MarkNewsItemsRead(ctx context.Context, req *BulkMark
 	return r, ht.ErrNotImplemented
 }
 
+// PollCliLink implements pollCliLink operation.
+//
+// Poll a pending CLI link session without requiring existing auth.
+//
+// GET /api/agent/cli/link/{session_id}
+func (UnimplementedHandler) PollCliLink(ctx context.Context, params PollCliLinkParams) (r PollCliLinkRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // SearchAgent implements searchAgent operation.
 //
 // Search external/provider-backed sources for the agent CLI.
 //
 // POST /api/agent/search
 func (UnimplementedHandler) SearchAgent(ctx context.Context, req *AgentSearchRequest) (r SearchAgentRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// StartCliLink implements startCliLink operation.
+//
+// Create an unauthenticated QR approval session for the CLI.
+//
+// POST /api/agent/cli/link/start
+func (UnimplementedHandler) StartCliLink(ctx context.Context, req OptCliLinkStartRequest) (r StartCliLinkRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -133,12 +187,12 @@ func (UnimplementedHandler) SubmitContent(ctx context.Context, req *SubmitConten
 	return r, ht.ErrNotImplemented
 }
 
-// SubscribeSource implements subscribeSource operation.
+// SubscribeScrapersToFeed implements subscribeScrapersToFeed operation.
 //
 // Subscribe to a feed detected from content.
 // Convenience endpoint that creates a scraper config from a detected feed.
 //
 // POST /api/scrapers/subscribe
-func (UnimplementedHandler) SubscribeSource(ctx context.Context, req *SubscribeToFeedRequest) (r SubscribeSourceRes, _ error) {
+func (UnimplementedHandler) SubscribeScrapersToFeed(ctx context.Context, req *SubscribeToFeedRequest) (r SubscribeScrapersToFeedRes, _ error) {
 	return r, ht.ErrNotImplemented
 }

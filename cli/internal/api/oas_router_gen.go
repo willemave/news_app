@@ -11,46 +11,61 @@ import (
 )
 
 var (
-	rn17AllowedHeaders = map[string]string{
-		"POST": "Authorization,Content-Type",
-	}
-	rn2AllowedHeaders = map[string]string{
-		"GET": "Authorization",
+	rn24AllowedHeaders = map[string]string{
+		"POST": "Content-Type",
 	}
 	rn3AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
-	rn16AllowedHeaders = map[string]string{
-		"POST": "Authorization,Content-Type",
-	}
-	rn8AllowedHeaders = map[string]string{
-		"GET": "Authorization",
-	}
-	rn18AllowedHeaders = map[string]string{
-		"POST": "Authorization,Content-Type",
-	}
-	rn9AllowedHeaders = map[string]string{
-		"GET": "Authorization",
-	}
-	rn11AllowedHeaders = map[string]string{
-		"GET": "Authorization",
-	}
 	rn12AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn13AllowedHeaders = map[string]string{
 		"GET": "Authorization",
 	}
-	rn14AllowedHeaders = map[string]string{
+	rn15AllowedHeaders = map[string]string{
+		"GET": "Authorization",
+	}
+	rn25AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
 	rn6AllowedHeaders = map[string]string{
 		"GET": "Authorization",
 	}
 	rn7AllowedHeaders = map[string]string{
-		"POST": "Authorization",
+		"POST": "Authorization,Content-Type",
 	}
-	rn13AllowedHeaders = map[string]string{
+	rn23AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn16AllowedHeaders = map[string]string{
+		"GET": "Authorization",
+	}
+	rn26AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn17AllowedHeaders = map[string]string{
 		"GET": "Authorization",
 	}
 	rn19AllowedHeaders = map[string]string{
+		"GET": "Authorization",
+	}
+	rn20AllowedHeaders = map[string]string{
+		"GET": "Authorization",
+	}
+	rn22AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn10AllowedHeaders = map[string]string{
+		"GET": "Authorization",
+	}
+	rn11AllowedHeaders = map[string]string{
+		"POST": "Authorization",
+	}
+	rn21AllowedHeaders = map[string]string{
+		"GET": "Authorization",
+	}
+	rn27AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
 )
@@ -118,6 +133,190 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 				switch elem[0] {
+				case 'c': // Prefix: "cli/link/"
+
+					if l := len("cli/link/"); len(elem) >= l && elem[0:l] == "cli/link/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case 's': // Prefix: "start"
+						origElem := elem
+						if l := len("start"); len(elem) >= l && elem[0:l] == "start" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "POST":
+								s.handleStartCliLinkRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "POST",
+									allowedHeaders: rn24AllowedHeaders,
+									acceptPost:     "application/json",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+						elem = origElem
+					}
+					// Param: "session_id"
+					// Match until "/"
+					idx := strings.IndexByte(elem, '/')
+					if idx < 0 {
+						idx = len(elem)
+					}
+					args[0] = elem[:idx]
+					elem = elem[idx:]
+
+					if len(elem) == 0 {
+						switch r.Method {
+						case "GET":
+							s.handlePollCliLinkRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "GET",
+								allowedHeaders: nil,
+								acceptPost:     "",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/approve"
+
+						if l := len("/approve"); len(elem) >= l && elem[0:l] == "/approve" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "POST":
+								s.handleApproveCliLinkRequest([1]string{
+									args[0],
+								}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "POST",
+									allowedHeaders: rn3AllowedHeaders,
+									acceptPost:     "application/json",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					}
+
+				case 'd': // Prefix: "digests"
+
+					if l := len("digests"); len(elem) >= l && elem[0:l] == "digests" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "POST":
+							s.handleGenerateDigestRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "POST",
+								allowedHeaders: rn12AllowedHeaders,
+								acceptPost:     "application/json",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
+				case 'l': // Prefix: "library/"
+
+					if l := len("library/"); len(elem) >= l && elem[0:l] == "library/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case 'f': // Prefix: "file"
+
+						if l := len("file"); len(elem) >= l && elem[0:l] == "file" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "GET":
+								s.handleGetAgentLibraryFileRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET",
+									allowedHeaders: rn13AllowedHeaders,
+									acceptPost:     "",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					case 'm': // Prefix: "manifest"
+
+						if l := len("manifest"); len(elem) >= l && elem[0:l] == "manifest" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "GET":
+								s.handleGetAgentLibraryManifestRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET",
+									allowedHeaders: rn15AllowedHeaders,
+									acceptPost:     "",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					}
+
 				case 'o': // Prefix: "onboarding"
 
 					if l := len("onboarding"); len(elem) >= l && elem[0:l] == "onboarding" {
@@ -133,7 +332,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn17AllowedHeaders,
+								allowedHeaders: rn25AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -168,7 +367,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							default:
 								s.notAllowed(w, r, notAllowedParams{
 									allowedMethods: "GET",
-									allowedHeaders: rn2AllowedHeaders,
+									allowedHeaders: rn6AllowedHeaders,
 									acceptPost:     "",
 									acceptPatch:    "",
 								})
@@ -195,7 +394,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 								default:
 									s.notAllowed(w, r, notAllowedParams{
 										allowedMethods: "POST",
-										allowedHeaders: rn3AllowedHeaders,
+										allowedHeaders: rn7AllowedHeaders,
 										acceptPost:     "application/json",
 										acceptPatch:    "",
 									})
@@ -224,7 +423,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn16AllowedHeaders,
+								allowedHeaders: rn23AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -246,11 +445,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if len(elem) == 0 {
 					switch r.Method {
 					case "GET":
-						s.handleListContentRequest([0]string{}, elemIsEscaped, w, r)
+						s.handleListContentsRequest([0]string{}, elemIsEscaped, w, r)
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "GET",
-							allowedHeaders: rn8AllowedHeaders,
+							allowedHeaders: rn16AllowedHeaders,
 							acceptPost:     "",
 							acceptPatch:    "",
 						})
@@ -275,7 +474,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn18AllowedHeaders,
+								allowedHeaders: rn26AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -299,13 +498,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					// Leaf node.
 					switch r.Method {
 					case "GET":
-						s.handleGetContentRequest([1]string{
+						s.handleGetContentDetailRequest([1]string{
 							args[0],
 						}, elemIsEscaped, w, r)
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "GET",
-							allowedHeaders: rn9AllowedHeaders,
+							allowedHeaders: rn17AllowedHeaders,
 							acceptPost:     "",
 							acceptPatch:    "",
 						})
@@ -341,7 +540,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "GET",
-							allowedHeaders: rn11AllowedHeaders,
+							allowedHeaders: rn19AllowedHeaders,
 							acceptPost:     "",
 							acceptPatch:    "",
 						})
@@ -365,7 +564,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "GET",
-							allowedHeaders: rn12AllowedHeaders,
+							allowedHeaders: rn20AllowedHeaders,
 							acceptPost:     "",
 							acceptPatch:    "",
 						})
@@ -402,7 +601,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							default:
 								s.notAllowed(w, r, notAllowedParams{
 									allowedMethods: "POST",
-									allowedHeaders: rn14AllowedHeaders,
+									allowedHeaders: rn22AllowedHeaders,
 									acceptPost:     "application/json",
 									acceptPatch:    "",
 								})
@@ -431,7 +630,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "GET",
-								allowedHeaders: rn6AllowedHeaders,
+								allowedHeaders: rn10AllowedHeaders,
 								acceptPost:     "",
 								acceptPatch:    "",
 							})
@@ -458,7 +657,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							default:
 								s.notAllowed(w, r, notAllowedParams{
 									allowedMethods: "POST",
-									allowedHeaders: rn7AllowedHeaders,
+									allowedHeaders: rn11AllowedHeaders,
 									acceptPost:     "",
 									acceptPatch:    "",
 								})
@@ -482,11 +681,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if len(elem) == 0 {
 					switch r.Method {
 					case "GET":
-						s.handleListSourcesRequest([0]string{}, elemIsEscaped, w, r)
+						s.handleListScraperConfigsRequest([0]string{}, elemIsEscaped, w, r)
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "GET",
-							allowedHeaders: rn13AllowedHeaders,
+							allowedHeaders: rn21AllowedHeaders,
 							acceptPost:     "",
 							acceptPatch:    "",
 						})
@@ -507,11 +706,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						// Leaf node.
 						switch r.Method {
 						case "POST":
-							s.handleSubscribeSourceRequest([0]string{}, elemIsEscaped, w, r)
+							s.handleSubscribeScrapersToFeedRequest([0]string{}, elemIsEscaped, w, r)
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn19AllowedHeaders,
+								allowedHeaders: rn27AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -634,6 +833,186 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					break
 				}
 				switch elem[0] {
+				case 'c': // Prefix: "cli/link/"
+
+					if l := len("cli/link/"); len(elem) >= l && elem[0:l] == "cli/link/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case 's': // Prefix: "start"
+						origElem := elem
+						if l := len("start"); len(elem) >= l && elem[0:l] == "start" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "POST":
+								r.name = StartCliLinkOperation
+								r.summary = "Start Cli Link"
+								r.operationID = "startCliLink"
+								r.operationGroup = ""
+								r.pathPattern = "/api/agent/cli/link/start"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+						elem = origElem
+					}
+					// Param: "session_id"
+					// Match until "/"
+					idx := strings.IndexByte(elem, '/')
+					if idx < 0 {
+						idx = len(elem)
+					}
+					args[0] = elem[:idx]
+					elem = elem[idx:]
+
+					if len(elem) == 0 {
+						switch method {
+						case "GET":
+							r.name = PollCliLinkOperation
+							r.summary = "Poll Cli Link"
+							r.operationID = "pollCliLink"
+							r.operationGroup = ""
+							r.pathPattern = "/api/agent/cli/link/{session_id}"
+							r.args = args
+							r.count = 1
+							return r, true
+						default:
+							return
+						}
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/approve"
+
+						if l := len("/approve"); len(elem) >= l && elem[0:l] == "/approve" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "POST":
+								r.name = ApproveCliLinkOperation
+								r.summary = "Approve Cli Link"
+								r.operationID = "approveCliLink"
+								r.operationGroup = ""
+								r.pathPattern = "/api/agent/cli/link/{session_id}/approve"
+								r.args = args
+								r.count = 1
+								return r, true
+							default:
+								return
+							}
+						}
+
+					}
+
+				case 'd': // Prefix: "digests"
+
+					if l := len("digests"); len(elem) >= l && elem[0:l] == "digests" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "POST":
+							r.name = GenerateDigestOperation
+							r.summary = "Generate Digest"
+							r.operationID = "generateDigest"
+							r.operationGroup = ""
+							r.pathPattern = "/api/agent/digests"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 'l': // Prefix: "library/"
+
+					if l := len("library/"); len(elem) >= l && elem[0:l] == "library/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case 'f': // Prefix: "file"
+
+						if l := len("file"); len(elem) >= l && elem[0:l] == "file" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "GET":
+								r.name = GetAgentLibraryFileOperation
+								r.summary = "Get Agent Library File"
+								r.operationID = "getAgentLibraryFile"
+								r.operationGroup = ""
+								r.pathPattern = "/api/agent/library/file"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+					case 'm': // Prefix: "manifest"
+
+						if l := len("manifest"); len(elem) >= l && elem[0:l] == "manifest" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "GET":
+								r.name = GetAgentLibraryManifestOperation
+								r.summary = "Get Agent Library Manifest"
+								r.operationID = "getAgentLibraryManifest"
+								r.operationGroup = ""
+								r.pathPattern = "/api/agent/library/manifest"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+					}
+
 				case 'o': // Prefix: "onboarding"
 
 					if l := len("onboarding"); len(elem) >= l && elem[0:l] == "onboarding" {
@@ -758,9 +1137,9 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 				if len(elem) == 0 {
 					switch method {
 					case "GET":
-						r.name = ListContentOperation
+						r.name = ListContentsOperation
 						r.summary = "List content items"
-						r.operationID = "listContent"
+						r.operationID = "listContents"
 						r.operationGroup = ""
 						r.pathPattern = "/api/content/"
 						r.args = args
@@ -811,9 +1190,9 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					// Leaf node.
 					switch method {
 					case "GET":
-						r.name = GetContentOperation
+						r.name = GetContentDetailOperation
 						r.summary = "Get content details"
-						r.operationID = "getContent"
+						r.operationID = "getContentDetail"
 						r.operationGroup = ""
 						r.pathPattern = "/api/content/{content_id}"
 						r.args = args
@@ -986,9 +1365,9 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 				if len(elem) == 0 {
 					switch method {
 					case "GET":
-						r.name = ListSourcesOperation
+						r.name = ListScraperConfigsOperation
 						r.summary = "List Scraper Configs"
-						r.operationID = "listSources"
+						r.operationID = "listScraperConfigs"
 						r.operationGroup = ""
 						r.pathPattern = "/api/scrapers/"
 						r.args = args
@@ -1011,9 +1390,9 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						// Leaf node.
 						switch method {
 						case "POST":
-							r.name = SubscribeSourceOperation
+							r.name = SubscribeScrapersToFeedOperation
 							r.summary = "Subscribe To Feed"
-							r.operationID = "subscribeSource"
+							r.operationID = "subscribeScrapersToFeed"
 							r.operationGroup = ""
 							r.pathPattern = "/api/scrapers/subscribe"
 							r.args = args

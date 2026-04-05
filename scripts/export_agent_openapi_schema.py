@@ -16,62 +16,26 @@ if str(REPO_ROOT) not in sys.path:
 from app.core.settings import get_settings  # noqa: E402
 
 ALLOWED_OPERATIONS: dict[tuple[str, str], dict[str, Any]] = {
-    ("/api/jobs/{job_id}", "get"): {
-        "operation_id": "getJob",
-        "tags": ["jobs"],
-    },
-    ("/api/agent/search", "post"): {
-        "operation_id": "searchAgent",
-        "tags": ["search"],
-    },
-    ("/api/agent/onboarding", "post"): {
-        "operation_id": "startOnboarding",
-        "tags": ["onboarding"],
-    },
-    ("/api/agent/onboarding/{run_id}", "get"): {
-        "operation_id": "getOnboarding",
-        "tags": ["onboarding"],
-    },
-    ("/api/agent/onboarding/{run_id}/complete", "post"): {
-        "operation_id": "completeOnboarding",
-        "tags": ["onboarding"],
-    },
-    ("/api/content/", "get"): {
-        "operation_id": "listContent",
-        "tags": ["content"],
-    },
-    ("/api/content/{content_id}", "get"): {
-        "operation_id": "getContent",
-        "tags": ["content"],
-    },
-    ("/api/content/submit", "post"): {
-        "operation_id": "submitContent",
-        "tags": ["content"],
-    },
-    ("/api/news/items", "get"): {
-        "operation_id": "listNewsItems",
-        "tags": ["news"],
-    },
-    ("/api/news/items/mark-read", "post"): {
-        "operation_id": "markNewsItemsRead",
-        "tags": ["news"],
-    },
-    ("/api/news/items/{news_item_id}", "get"): {
-        "operation_id": "getNewsItem",
-        "tags": ["news"],
-    },
-    ("/api/news/items/{news_item_id}/convert-to-article", "post"): {
-        "operation_id": "convertNewsItemToArticle",
-        "tags": ["news"],
-    },
-    ("/api/scrapers/", "get"): {
-        "operation_id": "listSources",
-        "tags": ["sources"],
-    },
-    ("/api/scrapers/subscribe", "post"): {
-        "operation_id": "subscribeSource",
-        "tags": ["sources"],
-    },
+    ("/api/jobs/{job_id}", "get"): {"tags": ["jobs"]},
+    ("/api/agent/search", "post"): {"tags": ["search"]},
+    ("/api/agent/onboarding", "post"): {"tags": ["onboarding"]},
+    ("/api/agent/onboarding/{run_id}", "get"): {"tags": ["onboarding"]},
+    ("/api/agent/onboarding/{run_id}/complete", "post"): {"tags": ["onboarding"]},
+    ("/api/agent/digests", "post"): {"tags": ["news"]},
+    ("/api/agent/cli/link/start", "post"): {"tags": ["auth"]},
+    ("/api/agent/cli/link/{session_id}/approve", "post"): {"tags": ["auth"]},
+    ("/api/agent/cli/link/{session_id}", "get"): {"tags": ["auth"]},
+    ("/api/agent/library/manifest", "get"): {"tags": ["library"]},
+    ("/api/agent/library/file", "get"): {"tags": ["library"]},
+    ("/api/content/", "get"): {"tags": ["content"]},
+    ("/api/content/{content_id}", "get"): {"tags": ["content"]},
+    ("/api/content/submit", "post"): {"tags": ["content"]},
+    ("/api/news/items", "get"): {"tags": ["news"]},
+    ("/api/news/items/mark-read", "post"): {"tags": ["news"]},
+    ("/api/news/items/{news_item_id}", "get"): {"tags": ["news"]},
+    ("/api/news/items/{news_item_id}/convert-to-article", "post"): {"tags": ["news"]},
+    ("/api/scrapers/", "get"): {"tags": ["sources"]},
+    ("/api/scrapers/subscribe", "post"): {"tags": ["sources"]},
 }
 
 
@@ -137,7 +101,6 @@ def build_agent_openapi_schema() -> dict[str, Any]:
         operation = full_schema.get("paths", {}).get(path, {}).get(method)
         if operation is None:
             continue
-        operation["operationId"] = overrides["operation_id"]
         operation["tags"] = overrides["tags"]
         filtered_paths.setdefault(path, {})[method] = operation
 
@@ -154,11 +117,13 @@ def build_agent_openapi_schema() -> dict[str, Any]:
         "paths": filtered_paths,
         "tags": [
             {"name": "jobs", "description": "Async job status routes."},
+            {"name": "auth", "description": "CLI bootstrap and approval routes."},
             {"name": "search", "description": "Provider-backed discovery search."},
             {"name": "onboarding", "description": "Simplified onboarding routes."},
             {"name": "news", "description": "Visible short-form news item routes."},
             {"name": "content", "description": "Content listing, detail, and submission."},
             {"name": "sources", "description": "Runtime source subscription routes."},
+            {"name": "library", "description": "Per-user markdown library sync routes."},
         ],
     }
     return _normalize_openapi_30_shapes(schema)

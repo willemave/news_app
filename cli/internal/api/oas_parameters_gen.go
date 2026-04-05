@@ -14,6 +14,91 @@ import (
 	"github.com/ogen-go/ogen/validate"
 )
 
+// ApproveCliLinkParams is parameters of approveCliLink operation.
+type ApproveCliLinkParams struct {
+	SessionID string
+}
+
+func unpackApproveCliLinkParams(packed middleware.Parameters) (params ApproveCliLinkParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "session_id",
+			In:   "path",
+		}
+		params.SessionID = packed[key].(string)
+	}
+	return params
+}
+
+func decodeApproveCliLinkParams(args [1]string, argsEscaped bool, r *http.Request) (params ApproveCliLinkParams, _ error) {
+	// Decode path: session_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "session_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SessionID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := (validate.String{
+					MinLength:     8,
+					MinLengthSet:  true,
+					MaxLength:     64,
+					MaxLengthSet:  true,
+					Email:         false,
+					Hostname:      false,
+					Regex:         nil,
+					MinNumeric:    0,
+					MinNumericSet: false,
+					MaxNumeric:    0,
+					MaxNumericSet: false,
+				}).Validate(string(params.SessionID)); err != nil {
+					return errors.Wrap(err, "string")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "session_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // CompleteOnboardingParams is parameters of completeOnboarding operation.
 type CompleteOnboardingParams struct {
 	RunID int
@@ -162,13 +247,159 @@ func decodeConvertNewsItemToArticleParams(args [1]string, argsEscaped bool, r *h
 	return params, nil
 }
 
-// GetContentParams is parameters of getContent operation.
-type GetContentParams struct {
+// GetAgentLibraryFileParams is parameters of getAgentLibraryFile operation.
+type GetAgentLibraryFileParams struct {
+	Path string
+}
+
+func unpackGetAgentLibraryFileParams(packed middleware.Parameters) (params GetAgentLibraryFileParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "path",
+			In:   "query",
+		}
+		params.Path = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetAgentLibraryFileParams(args [0]string, argsEscaped bool, r *http.Request) (params GetAgentLibraryFileParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode query: path.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "path",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Path = c
+				return nil
+			}); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := (validate.String{
+					MinLength:     1,
+					MinLengthSet:  true,
+					MaxLength:     1024,
+					MaxLengthSet:  true,
+					Email:         false,
+					Hostname:      false,
+					Regex:         nil,
+					MinNumeric:    0,
+					MinNumericSet: false,
+					MaxNumeric:    0,
+					MaxNumericSet: false,
+				}).Validate(string(params.Path)); err != nil {
+					return errors.Wrap(err, "string")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "path",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetAgentLibraryManifestParams is parameters of getAgentLibraryManifest operation.
+type GetAgentLibraryManifestParams struct {
+	IncludeSource OptBool `json:",omitempty,omitzero"`
+}
+
+func unpackGetAgentLibraryManifestParams(packed middleware.Parameters) (params GetAgentLibraryManifestParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "include_source",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.IncludeSource = v.(OptBool)
+		}
+	}
+	return params
+}
+
+func decodeGetAgentLibraryManifestParams(args [0]string, argsEscaped bool, r *http.Request) (params GetAgentLibraryManifestParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Set default value for query: include_source.
+	{
+		val := bool(false)
+		params.IncludeSource.SetTo(val)
+	}
+	// Decode query: include_source.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "include_source",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotIncludeSourceVal bool
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToBool(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotIncludeSourceVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.IncludeSource.SetTo(paramsDotIncludeSourceVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "include_source",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetContentDetailParams is parameters of getContentDetail operation.
+type GetContentDetailParams struct {
 	// Content ID.
 	ContentID int
 }
 
-func unpackGetContentParams(packed middleware.Parameters) (params GetContentParams) {
+func unpackGetContentDetailParams(packed middleware.Parameters) (params GetContentDetailParams) {
 	{
 		key := middleware.ParameterKey{
 			Name: "content_id",
@@ -179,7 +410,7 @@ func unpackGetContentParams(packed middleware.Parameters) (params GetContentPara
 	return params
 }
 
-func decodeGetContentParams(args [1]string, argsEscaped bool, r *http.Request) (params GetContentParams, _ error) {
+func decodeGetContentDetailParams(args [1]string, argsEscaped bool, r *http.Request) (params GetContentDetailParams, _ error) {
 	// Decode path: content_id.
 	if err := func() error {
 		param := args[0]
@@ -459,8 +690,8 @@ func decodeGetOnboardingParams(args [1]string, argsEscaped bool, r *http.Request
 	return params, nil
 }
 
-// ListContentParams is parameters of listContent operation.
-type ListContentParams struct {
+// ListContentsParams is parameters of listContents operation.
+type ListContentsParams struct {
 	// Filter by content type(s). Can be specified multiple times for multiple types
 	// (article/podcast/news).
 	ContentType OptNilStringArray `json:",omitempty,omitzero"`
@@ -477,7 +708,7 @@ type ListContentParams struct {
 	IncludeAvailableDates OptBool `json:",omitempty,omitzero"`
 }
 
-func unpackListContentParams(packed middleware.Parameters) (params ListContentParams) {
+func unpackListContentsParams(packed middleware.Parameters) (params ListContentsParams) {
 	{
 		key := middleware.ParameterKey{
 			Name: "content_type",
@@ -535,7 +766,7 @@ func unpackListContentParams(packed middleware.Parameters) (params ListContentPa
 	return params
 }
 
-func decodeListContentParams(args [0]string, argsEscaped bool, r *http.Request) (params ListContentParams, _ error) {
+func decodeListContentsParams(args [0]string, argsEscaped bool, r *http.Request) (params ListContentsParams, _ error) {
 	q := uri.NewQueryDecoder(r.URL.Query())
 	// Decode query: content_type.
 	if err := func() error {
@@ -1134,13 +1365,13 @@ func decodeListNewsItemsParams(args [0]string, argsEscaped bool, r *http.Request
 	return params, nil
 }
 
-// ListSourcesParams is parameters of listSources operation.
-type ListSourcesParams struct {
+// ListScraperConfigsParams is parameters of listScraperConfigs operation.
+type ListScraperConfigsParams struct {
 	Type  OptNilString `json:",omitempty,omitzero"`
 	Types OptNilString `json:",omitempty,omitzero"`
 }
 
-func unpackListSourcesParams(packed middleware.Parameters) (params ListSourcesParams) {
+func unpackListScraperConfigsParams(packed middleware.Parameters) (params ListScraperConfigsParams) {
 	{
 		key := middleware.ParameterKey{
 			Name: "type",
@@ -1162,7 +1393,7 @@ func unpackListSourcesParams(packed middleware.Parameters) (params ListSourcesPa
 	return params
 }
 
-func decodeListSourcesParams(args [0]string, argsEscaped bool, r *http.Request) (params ListSourcesParams, _ error) {
+func decodeListScraperConfigsParams(args [0]string, argsEscaped bool, r *http.Request) (params ListScraperConfigsParams, _ error) {
 	q := uri.NewQueryDecoder(r.URL.Query())
 	// Decode query: type.
 	if err := func() error {
@@ -1242,6 +1473,156 @@ func decodeListSourcesParams(args [0]string, argsEscaped bool, r *http.Request) 
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "types",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// PollCliLinkParams is parameters of pollCliLink operation.
+type PollCliLinkParams struct {
+	SessionID string
+	PollToken string
+}
+
+func unpackPollCliLinkParams(packed middleware.Parameters) (params PollCliLinkParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "session_id",
+			In:   "path",
+		}
+		params.SessionID = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "poll_token",
+			In:   "query",
+		}
+		params.PollToken = packed[key].(string)
+	}
+	return params
+}
+
+func decodePollCliLinkParams(args [1]string, argsEscaped bool, r *http.Request) (params PollCliLinkParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode path: session_id.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "session_id",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.SessionID = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := (validate.String{
+					MinLength:     8,
+					MinLengthSet:  true,
+					MaxLength:     64,
+					MaxLengthSet:  true,
+					Email:         false,
+					Hostname:      false,
+					Regex:         nil,
+					MinNumeric:    0,
+					MinNumericSet: false,
+					MaxNumeric:    0,
+					MaxNumericSet: false,
+				}).Validate(string(params.SessionID)); err != nil {
+					return errors.Wrap(err, "string")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "session_id",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode query: poll_token.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "poll_token",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.PollToken = c
+				return nil
+			}); err != nil {
+				return err
+			}
+			if err := func() error {
+				if err := (validate.String{
+					MinLength:     8,
+					MinLengthSet:  true,
+					MaxLength:     255,
+					MaxLengthSet:  true,
+					Email:         false,
+					Hostname:      false,
+					Regex:         nil,
+					MinNumeric:    0,
+					MinNumericSet: false,
+					MaxNumeric:    0,
+					MaxNumericSet: false,
+				}).Validate(string(params.PollToken)); err != nil {
+					return errors.Wrap(err, "string")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "poll_token",
 			In:   "query",
 			Err:  err,
 		}

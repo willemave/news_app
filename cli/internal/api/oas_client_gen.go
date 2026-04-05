@@ -28,6 +28,12 @@ func trimTrailingSlashes(u *url.URL) {
 
 // Invoker invokes operations described by OpenAPI v3 specification.
 type Invoker interface {
+	// ApproveCliLink invokes approveCliLink operation.
+	//
+	// Approve one pending CLI link session from the authenticated app.
+	//
+	// POST /api/agent/cli/link/{session_id}/approve
+	ApproveCliLink(ctx context.Context, request *CliLinkApproveRequest, params ApproveCliLinkParams) (ApproveCliLinkRes, error)
 	// CompleteOnboarding invokes completeOnboarding operation.
 	//
 	// Complete onboarding from simplified selections.
@@ -40,12 +46,30 @@ type Invoker interface {
 	//
 	// POST /api/news/items/{news_item_id}/convert-to-article
 	ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (ConvertNewsItemToArticleRes, error)
-	// GetContent invokes getContent operation.
+	// GenerateDigest invokes generateDigest operation.
+	//
+	// Queue arbitrary-window digest generation for agent clients.
+	//
+	// POST /api/agent/digests
+	GenerateDigest(ctx context.Context, request OptAgentDigestRequest) (GenerateDigestRes, error)
+	// GetAgentLibraryFile invokes getAgentLibraryFile operation.
+	//
+	// Return one rendered markdown document by relative manifest path.
+	//
+	// GET /api/agent/library/file
+	GetAgentLibraryFile(ctx context.Context, params GetAgentLibraryFileParams) (GetAgentLibraryFileRes, error)
+	// GetAgentLibraryManifest invokes getAgentLibraryManifest operation.
+	//
+	// Return manifest metadata for exportable per-user markdown files.
+	//
+	// GET /api/agent/library/manifest
+	GetAgentLibraryManifest(ctx context.Context, params GetAgentLibraryManifestParams) (GetAgentLibraryManifestRes, error)
+	// GetContentDetail invokes getContentDetail operation.
 	//
 	// Retrieve detailed information about a specific content item.
 	//
 	// GET /api/content/{content_id}
-	GetContent(ctx context.Context, params GetContentParams) (GetContentRes, error)
+	GetContentDetail(ctx context.Context, params GetContentDetailParams) (GetContentDetailRes, error)
 	// GetJob invokes getJob operation.
 	//
 	// Return async job status.
@@ -64,7 +88,7 @@ type Invoker interface {
 	//
 	// GET /api/agent/onboarding/{run_id}
 	GetOnboarding(ctx context.Context, params GetOnboardingParams) (GetOnboardingRes, error)
-	// ListContent invokes listContent operation.
+	// ListContents invokes listContents operation.
 	//
 	// Retrieve a list of content items with optional filtering by content type and date. Supports
 	// multiple content types via repeated query parameters (e.g.,
@@ -72,31 +96,43 @@ type Invoker interface {
 	// loading.
 	//
 	// GET /api/content/
-	ListContent(ctx context.Context, params ListContentParams) (ListContentRes, error)
+	ListContents(ctx context.Context, params ListContentsParams) (ListContentsRes, error)
 	// ListNewsItems invokes listNewsItems operation.
 	//
 	// Return the visible representative news feed for the current user.
 	//
 	// GET /api/news/items
 	ListNewsItems(ctx context.Context, params ListNewsItemsParams) (ListNewsItemsRes, error)
-	// ListSources invokes listSources operation.
+	// ListScraperConfigs invokes listScraperConfigs operation.
 	//
 	// List scraper configurations for the current user.
 	//
 	// GET /api/scrapers/
-	ListSources(ctx context.Context, params ListSourcesParams) (ListSourcesRes, error)
+	ListScraperConfigs(ctx context.Context, params ListScraperConfigsParams) (ListScraperConfigsRes, error)
 	// MarkNewsItemsRead invokes markNewsItemsRead operation.
 	//
 	// Mark the given visible representative news items as read.
 	//
 	// POST /api/news/items/mark-read
 	MarkNewsItemsRead(ctx context.Context, request *BulkMarkReadRequest) (MarkNewsItemsReadRes, error)
+	// PollCliLink invokes pollCliLink operation.
+	//
+	// Poll a pending CLI link session without requiring existing auth.
+	//
+	// GET /api/agent/cli/link/{session_id}
+	PollCliLink(ctx context.Context, params PollCliLinkParams) (PollCliLinkRes, error)
 	// SearchAgent invokes searchAgent operation.
 	//
 	// Search external/provider-backed sources for the agent CLI.
 	//
 	// POST /api/agent/search
 	SearchAgent(ctx context.Context, request *AgentSearchRequest) (SearchAgentRes, error)
+	// StartCliLink invokes startCliLink operation.
+	//
+	// Create an unauthenticated QR approval session for the CLI.
+	//
+	// POST /api/agent/cli/link/start
+	StartCliLink(ctx context.Context, request OptCliLinkStartRequest) (StartCliLinkRes, error)
 	// StartOnboarding invokes startOnboarding operation.
 	//
 	// Start simplified async onboarding.
@@ -109,13 +145,13 @@ type Invoker interface {
 	//
 	// POST /api/content/submit
 	SubmitContent(ctx context.Context, request *SubmitContentRequest) (SubmitContentRes, error)
-	// SubscribeSource invokes subscribeSource operation.
+	// SubscribeScrapersToFeed invokes subscribeScrapersToFeed operation.
 	//
 	// Subscribe to a feed detected from content.
 	// Convenience endpoint that creates a scraper config from a detected feed.
 	//
 	// POST /api/scrapers/subscribe
-	SubscribeSource(ctx context.Context, request *SubscribeToFeedRequest) (SubscribeSourceRes, error)
+	SubscribeScrapersToFeed(ctx context.Context, request *SubscribeToFeedRequest) (SubscribeScrapersToFeedRes, error)
 }
 
 // Client implements OAS client.
@@ -157,6 +193,135 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 		return c.serverURL
 	}
 	return u
+}
+
+// ApproveCliLink invokes approveCliLink operation.
+//
+// Approve one pending CLI link session from the authenticated app.
+//
+// POST /api/agent/cli/link/{session_id}/approve
+func (c *Client) ApproveCliLink(ctx context.Context, request *CliLinkApproveRequest, params ApproveCliLinkParams) (ApproveCliLinkRes, error) {
+	res, err := c.sendApproveCliLink(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendApproveCliLink(ctx context.Context, request *CliLinkApproveRequest, params ApproveCliLinkParams) (res ApproveCliLinkRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("approveCliLink"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/api/agent/cli/link/{session_id}/approve"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ApproveCliLinkOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/api/agent/cli/link/"
+	{
+		// Encode "session_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "session_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SessionID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/approve"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeApproveCliLinkRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:HTTPBearer"
+			switch err := c.securityHTTPBearer(ctx, ApproveCliLinkOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"HTTPBearer\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeApproveCliLinkResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
 }
 
 // CompleteOnboarding invokes completeOnboarding operation.
@@ -414,19 +579,382 @@ func (c *Client) sendConvertNewsItemToArticle(ctx context.Context, params Conver
 	return result, nil
 }
 
-// GetContent invokes getContent operation.
+// GenerateDigest invokes generateDigest operation.
+//
+// Queue arbitrary-window digest generation for agent clients.
+//
+// POST /api/agent/digests
+func (c *Client) GenerateDigest(ctx context.Context, request OptAgentDigestRequest) (GenerateDigestRes, error) {
+	res, err := c.sendGenerateDigest(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendGenerateDigest(ctx context.Context, request OptAgentDigestRequest) (res GenerateDigestRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("generateDigest"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/api/agent/digests"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GenerateDigestOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/api/agent/digests"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeGenerateDigestRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:HTTPBearer"
+			switch err := c.securityHTTPBearer(ctx, GenerateDigestOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"HTTPBearer\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGenerateDigestResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetAgentLibraryFile invokes getAgentLibraryFile operation.
+//
+// Return one rendered markdown document by relative manifest path.
+//
+// GET /api/agent/library/file
+func (c *Client) GetAgentLibraryFile(ctx context.Context, params GetAgentLibraryFileParams) (GetAgentLibraryFileRes, error) {
+	res, err := c.sendGetAgentLibraryFile(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetAgentLibraryFile(ctx context.Context, params GetAgentLibraryFileParams) (res GetAgentLibraryFileRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getAgentLibraryFile"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/api/agent/library/file"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetAgentLibraryFileOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/api/agent/library/file"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "path" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "path",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.Path))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:HTTPBearer"
+			switch err := c.securityHTTPBearer(ctx, GetAgentLibraryFileOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"HTTPBearer\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetAgentLibraryFileResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetAgentLibraryManifest invokes getAgentLibraryManifest operation.
+//
+// Return manifest metadata for exportable per-user markdown files.
+//
+// GET /api/agent/library/manifest
+func (c *Client) GetAgentLibraryManifest(ctx context.Context, params GetAgentLibraryManifestParams) (GetAgentLibraryManifestRes, error) {
+	res, err := c.sendGetAgentLibraryManifest(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetAgentLibraryManifest(ctx context.Context, params GetAgentLibraryManifestParams) (res GetAgentLibraryManifestRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getAgentLibraryManifest"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/api/agent/library/manifest"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetAgentLibraryManifestOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/api/agent/library/manifest"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "include_source" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "include_source",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.IncludeSource.Get(); ok {
+				return e.EncodeValue(conv.BoolToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:HTTPBearer"
+			switch err := c.securityHTTPBearer(ctx, GetAgentLibraryManifestOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"HTTPBearer\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetAgentLibraryManifestResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetContentDetail invokes getContentDetail operation.
 //
 // Retrieve detailed information about a specific content item.
 //
 // GET /api/content/{content_id}
-func (c *Client) GetContent(ctx context.Context, params GetContentParams) (GetContentRes, error) {
-	res, err := c.sendGetContent(ctx, params)
+func (c *Client) GetContentDetail(ctx context.Context, params GetContentDetailParams) (GetContentDetailRes, error) {
+	res, err := c.sendGetContentDetail(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendGetContent(ctx context.Context, params GetContentParams) (res GetContentRes, err error) {
+func (c *Client) sendGetContentDetail(ctx context.Context, params GetContentDetailParams) (res GetContentDetailRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("getContent"),
+		otelogen.OperationID("getContentDetail"),
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.URLTemplateKey.String("/api/content/{content_id}"),
 	}
@@ -444,7 +972,7 @@ func (c *Client) sendGetContent(ctx context.Context, params GetContentParams) (r
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, GetContentOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, GetContentDetailOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -494,7 +1022,7 @@ func (c *Client) sendGetContent(ctx context.Context, params GetContentParams) (r
 		var satisfied bitset
 		{
 			stage = "Security:HTTPBearer"
-			switch err := c.securityHTTPBearer(ctx, GetContentOperation, r); {
+			switch err := c.securityHTTPBearer(ctx, GetContentDetailOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -531,7 +1059,7 @@ func (c *Client) sendGetContent(ctx context.Context, params GetContentParams) (r
 	defer body.Close()
 
 	stage = "DecodeResponse"
-	result, err := decodeGetContentResponse(resp)
+	result, err := decodeGetContentDetailResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -914,7 +1442,7 @@ func (c *Client) sendGetOnboarding(ctx context.Context, params GetOnboardingPara
 	return result, nil
 }
 
-// ListContent invokes listContent operation.
+// ListContents invokes listContents operation.
 //
 // Retrieve a list of content items with optional filtering by content type and date. Supports
 // multiple content types via repeated query parameters (e.g.,
@@ -922,14 +1450,14 @@ func (c *Client) sendGetOnboarding(ctx context.Context, params GetOnboardingPara
 // loading.
 //
 // GET /api/content/
-func (c *Client) ListContent(ctx context.Context, params ListContentParams) (ListContentRes, error) {
-	res, err := c.sendListContent(ctx, params)
+func (c *Client) ListContents(ctx context.Context, params ListContentsParams) (ListContentsRes, error) {
+	res, err := c.sendListContents(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendListContent(ctx context.Context, params ListContentParams) (res ListContentRes, err error) {
+func (c *Client) sendListContents(ctx context.Context, params ListContentsParams) (res ListContentsRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("listContent"),
+		otelogen.OperationID("listContents"),
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.URLTemplateKey.String("/api/content/"),
 	}
@@ -947,7 +1475,7 @@ func (c *Client) sendListContent(ctx context.Context, params ListContentParams) 
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, ListContentOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, ListContentsOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -1094,7 +1622,7 @@ func (c *Client) sendListContent(ctx context.Context, params ListContentParams) 
 		var satisfied bitset
 		{
 			stage = "Security:HTTPBearer"
-			switch err := c.securityHTTPBearer(ctx, ListContentOperation, r); {
+			switch err := c.securityHTTPBearer(ctx, ListContentsOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -1131,7 +1659,7 @@ func (c *Client) sendListContent(ctx context.Context, params ListContentParams) 
 	defer body.Close()
 
 	stage = "DecodeResponse"
-	result, err := decodeListContentResponse(resp)
+	result, err := decodeListContentsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1301,19 +1829,19 @@ func (c *Client) sendListNewsItems(ctx context.Context, params ListNewsItemsPara
 	return result, nil
 }
 
-// ListSources invokes listSources operation.
+// ListScraperConfigs invokes listScraperConfigs operation.
 //
 // List scraper configurations for the current user.
 //
 // GET /api/scrapers/
-func (c *Client) ListSources(ctx context.Context, params ListSourcesParams) (ListSourcesRes, error) {
-	res, err := c.sendListSources(ctx, params)
+func (c *Client) ListScraperConfigs(ctx context.Context, params ListScraperConfigsParams) (ListScraperConfigsRes, error) {
+	res, err := c.sendListScraperConfigs(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendListSources(ctx context.Context, params ListSourcesParams) (res ListSourcesRes, err error) {
+func (c *Client) sendListScraperConfigs(ctx context.Context, params ListScraperConfigsParams) (res ListScraperConfigsRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("listSources"),
+		otelogen.OperationID("listScraperConfigs"),
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.URLTemplateKey.String("/api/scrapers/"),
 	}
@@ -1331,7 +1859,7 @@ func (c *Client) sendListSources(ctx context.Context, params ListSourcesParams) 
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, ListSourcesOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, ListScraperConfigsOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -1401,7 +1929,7 @@ func (c *Client) sendListSources(ctx context.Context, params ListSourcesParams) 
 		var satisfied bitset
 		{
 			stage = "Security:HTTPBearer"
-			switch err := c.securityHTTPBearer(ctx, ListSourcesOperation, r); {
+			switch err := c.securityHTTPBearer(ctx, ListScraperConfigsOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -1438,7 +1966,7 @@ func (c *Client) sendListSources(ctx context.Context, params ListSourcesParams) 
 	defer body.Close()
 
 	stage = "DecodeResponse"
-	result, err := decodeListSourcesResponse(resp)
+	result, err := decodeListScraperConfigsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1556,6 +2084,116 @@ func (c *Client) sendMarkNewsItemsRead(ctx context.Context, request *BulkMarkRea
 	return result, nil
 }
 
+// PollCliLink invokes pollCliLink operation.
+//
+// Poll a pending CLI link session without requiring existing auth.
+//
+// GET /api/agent/cli/link/{session_id}
+func (c *Client) PollCliLink(ctx context.Context, params PollCliLinkParams) (PollCliLinkRes, error) {
+	res, err := c.sendPollCliLink(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendPollCliLink(ctx context.Context, params PollCliLinkParams) (res PollCliLinkRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("pollCliLink"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/api/agent/cli/link/{session_id}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PollCliLinkOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/api/agent/cli/link/"
+	{
+		// Encode "session_id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "session_id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SessionID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "poll_token" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "poll_token",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.PollToken))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodePollCliLinkResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // SearchAgent invokes searchAgent operation.
 //
 // Search external/provider-backed sources for the agent CLI.
@@ -1659,6 +2297,83 @@ func (c *Client) sendSearchAgent(ctx context.Context, request *AgentSearchReques
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchAgentResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// StartCliLink invokes startCliLink operation.
+//
+// Create an unauthenticated QR approval session for the CLI.
+//
+// POST /api/agent/cli/link/start
+func (c *Client) StartCliLink(ctx context.Context, request OptCliLinkStartRequest) (StartCliLinkRes, error) {
+	res, err := c.sendStartCliLink(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendStartCliLink(ctx context.Context, request OptCliLinkStartRequest) (res StartCliLinkRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("startCliLink"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/api/agent/cli/link/start"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, StartCliLinkOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/api/agent/cli/link/start"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeStartCliLinkRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer body.Close()
+
+	stage = "DecodeResponse"
+	result, err := decodeStartCliLinkResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1886,20 +2601,20 @@ func (c *Client) sendSubmitContent(ctx context.Context, request *SubmitContentRe
 	return result, nil
 }
 
-// SubscribeSource invokes subscribeSource operation.
+// SubscribeScrapersToFeed invokes subscribeScrapersToFeed operation.
 //
 // Subscribe to a feed detected from content.
 // Convenience endpoint that creates a scraper config from a detected feed.
 //
 // POST /api/scrapers/subscribe
-func (c *Client) SubscribeSource(ctx context.Context, request *SubscribeToFeedRequest) (SubscribeSourceRes, error) {
-	res, err := c.sendSubscribeSource(ctx, request)
+func (c *Client) SubscribeScrapersToFeed(ctx context.Context, request *SubscribeToFeedRequest) (SubscribeScrapersToFeedRes, error) {
+	res, err := c.sendSubscribeScrapersToFeed(ctx, request)
 	return res, err
 }
 
-func (c *Client) sendSubscribeSource(ctx context.Context, request *SubscribeToFeedRequest) (res SubscribeSourceRes, err error) {
+func (c *Client) sendSubscribeScrapersToFeed(ctx context.Context, request *SubscribeToFeedRequest) (res SubscribeScrapersToFeedRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("subscribeSource"),
+		otelogen.OperationID("subscribeScrapersToFeed"),
 		semconv.HTTPRequestMethodKey.String("POST"),
 		semconv.URLTemplateKey.String("/api/scrapers/subscribe"),
 	}
@@ -1917,7 +2632,7 @@ func (c *Client) sendSubscribeSource(ctx context.Context, request *SubscribeToFe
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, SubscribeSourceOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, SubscribeScrapersToFeedOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -1943,7 +2658,7 @@ func (c *Client) sendSubscribeSource(ctx context.Context, request *SubscribeToFe
 	if err != nil {
 		return res, errors.Wrap(err, "create request")
 	}
-	if err := encodeSubscribeSourceRequest(request, r); err != nil {
+	if err := encodeSubscribeScrapersToFeedRequest(request, r); err != nil {
 		return res, errors.Wrap(err, "encode request")
 	}
 
@@ -1952,7 +2667,7 @@ func (c *Client) sendSubscribeSource(ctx context.Context, request *SubscribeToFe
 		var satisfied bitset
 		{
 			stage = "Security:HTTPBearer"
-			switch err := c.securityHTTPBearer(ctx, SubscribeSourceOperation, r); {
+			switch err := c.securityHTTPBearer(ctx, SubscribeScrapersToFeedOperation, r); {
 			case err == nil: // if NO error
 				satisfied[0] |= 1 << 0
 			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
@@ -1989,7 +2704,7 @@ func (c *Client) sendSubscribeSource(ctx context.Context, request *SubscribeToFe
 	defer body.Close()
 
 	stage = "DecodeResponse"
-	result, err := decodeSubscribeSourceResponse(resp)
+	result, err := decodeSubscribeScrapersToFeedResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

@@ -33,6 +33,208 @@ func (c *codeRecorder) Unwrap() http.ResponseWriter {
 	return c.ResponseWriter
 }
 
+// handleApproveCliLinkRequest handles approveCliLink operation.
+//
+// Approve one pending CLI link session from the authenticated app.
+//
+// POST /api/agent/cli/link/{session_id}/approve
+func (s *Server) handleApproveCliLinkRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("approveCliLink"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.HTTPRouteKey.String("/api/agent/cli/link/{session_id}/approve"),
+	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
+
+	// Start a span for this request.
+	ctx, span := s.cfg.Tracer.Start(r.Context(), ApproveCliLinkOperation,
+		trace.WithAttributes(otelAttrs...),
+		serverSpanKind,
+	)
+	defer span.End()
+
+	// Add Labeler to context.
+	labeler := &Labeler{attrs: otelAttrs}
+	ctx = contextWithLabeler(ctx, labeler)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		elapsedDuration := time.Since(startTime)
+
+		attrSet := labeler.AttributeSet()
+		attrs := attrSet.ToSlice()
+		code := statusWriter.status
+		if code != 0 {
+			codeAttr := semconv.HTTPResponseStatusCode(code)
+			attrs = append(attrs, codeAttr)
+			span.SetAttributes(codeAttr)
+		}
+		attrOpt := metric.WithAttributes(attrs...)
+
+		// Increment request counter.
+		s.requests.Add(ctx, 1, attrOpt)
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		s.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), attrOpt)
+	}()
+
+	var (
+		recordError = func(stage string, err error) {
+			span.RecordError(err)
+
+			// https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+			// Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
+			// unless there was another error (e.g., network error receiving the response body; or 3xx codes with
+			// max redirects exceeded), in which case status MUST be set to Error.
+			code := statusWriter.status
+			if code < 100 || code >= 500 {
+				span.SetStatus(codes.Error, stage)
+			}
+
+			attrSet := labeler.AttributeSet()
+			attrs := attrSet.ToSlice()
+			if code != 0 {
+				attrs = append(attrs, semconv.HTTPResponseStatusCode(code))
+			}
+
+			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: ApproveCliLinkOperation,
+			ID:   "approveCliLink",
+		}
+	)
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			sctx, ok, err := s.securityHTTPBearer(ctx, ApproveCliLinkOperation, r)
+			if err != nil {
+				err = &ogenerrors.SecurityError{
+					OperationContext: opErrContext,
+					Security:         "HTTPBearer",
+					Err:              err,
+				}
+				defer recordError("Security:HTTPBearer", err)
+				s.cfg.ErrorHandler(ctx, w, r, err)
+				return
+			}
+			if ok {
+				satisfied[0] |= 1 << 0
+				ctx = sctx
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			err = &ogenerrors.SecurityError{
+				OperationContext: opErrContext,
+				Err:              ogenerrors.ErrSecurityRequirementIsNotSatisfied,
+			}
+			defer recordError("Security", err)
+			s.cfg.ErrorHandler(ctx, w, r, err)
+			return
+		}
+	}
+	params, err := decodeApproveCliLinkParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeApproveCliLinkRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response ApproveCliLinkRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    ApproveCliLinkOperation,
+			OperationSummary: "Approve Cli Link",
+			OperationID:      "approveCliLink",
+			Body:             request,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "session_id",
+					In:   "path",
+				}: params.SessionID,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = *CliLinkApproveRequest
+			Params   = ApproveCliLinkParams
+			Response = ApproveCliLinkRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackApproveCliLinkParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.ApproveCliLink(ctx, request, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.ApproveCliLink(ctx, request, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeApproveCliLinkResponse(response, w, span); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleCompleteOnboardingRequest handles completeOnboarding operation.
 //
 // Complete onboarding from simplified selections.
@@ -422,24 +624,24 @@ func (s *Server) handleConvertNewsItemToArticleRequest(args [1]string, argsEscap
 	}
 }
 
-// handleGetContentRequest handles getContent operation.
+// handleGenerateDigestRequest handles generateDigest operation.
 //
-// Retrieve detailed information about a specific content item.
+// Queue arbitrary-window digest generation for agent clients.
 //
-// GET /api/content/{content_id}
-func (s *Server) handleGetContentRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+// POST /api/agent/digests
+func (s *Server) handleGenerateDigestRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("getContent"),
-		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/api/content/{content_id}"),
+		otelogen.OperationID("generateDigest"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.HTTPRouteKey.String("/api/agent/digests"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
-	ctx, span := s.cfg.Tracer.Start(r.Context(), GetContentOperation,
+	ctx, span := s.cfg.Tracer.Start(r.Context(), GenerateDigestOperation,
 		trace.WithAttributes(otelAttrs...),
 		serverSpanKind,
 	)
@@ -494,15 +696,15 @@ func (s *Server) handleGetContentRequest(args [1]string, argsEscaped bool, w htt
 		}
 		err          error
 		opErrContext = ogenerrors.OperationContext{
-			Name: GetContentOperation,
-			ID:   "getContent",
+			Name: GenerateDigestOperation,
+			ID:   "generateDigest",
 		}
 	)
 	{
 		type bitset = [1]uint8
 		var satisfied bitset
 		{
-			sctx, ok, err := s.securityHTTPBearer(ctx, GetContentOperation, r)
+			sctx, ok, err := s.securityHTTPBearer(ctx, GenerateDigestOperation, r)
 			if err != nil {
 				err = &ogenerrors.SecurityError{
 					OperationContext: opErrContext,
@@ -542,7 +744,194 @@ func (s *Server) handleGetContentRequest(args [1]string, argsEscaped bool, w htt
 			return
 		}
 	}
-	params, err := decodeGetContentParams(args, argsEscaped, r)
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeGenerateDigestRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response GenerateDigestRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    GenerateDigestOperation,
+			OperationSummary: "Generate Digest",
+			OperationID:      "generateDigest",
+			Body:             request,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = OptAgentDigestRequest
+			Params   = struct{}
+			Response = GenerateDigestRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.GenerateDigest(ctx, request)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.GenerateDigest(ctx, request)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeGenerateDigestResponse(response, w, span); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleGetAgentLibraryFileRequest handles getAgentLibraryFile operation.
+//
+// Return one rendered markdown document by relative manifest path.
+//
+// GET /api/agent/library/file
+func (s *Server) handleGetAgentLibraryFileRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getAgentLibraryFile"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.HTTPRouteKey.String("/api/agent/library/file"),
+	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
+
+	// Start a span for this request.
+	ctx, span := s.cfg.Tracer.Start(r.Context(), GetAgentLibraryFileOperation,
+		trace.WithAttributes(otelAttrs...),
+		serverSpanKind,
+	)
+	defer span.End()
+
+	// Add Labeler to context.
+	labeler := &Labeler{attrs: otelAttrs}
+	ctx = contextWithLabeler(ctx, labeler)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		elapsedDuration := time.Since(startTime)
+
+		attrSet := labeler.AttributeSet()
+		attrs := attrSet.ToSlice()
+		code := statusWriter.status
+		if code != 0 {
+			codeAttr := semconv.HTTPResponseStatusCode(code)
+			attrs = append(attrs, codeAttr)
+			span.SetAttributes(codeAttr)
+		}
+		attrOpt := metric.WithAttributes(attrs...)
+
+		// Increment request counter.
+		s.requests.Add(ctx, 1, attrOpt)
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		s.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), attrOpt)
+	}()
+
+	var (
+		recordError = func(stage string, err error) {
+			span.RecordError(err)
+
+			// https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+			// Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
+			// unless there was another error (e.g., network error receiving the response body; or 3xx codes with
+			// max redirects exceeded), in which case status MUST be set to Error.
+			code := statusWriter.status
+			if code < 100 || code >= 500 {
+				span.SetStatus(codes.Error, stage)
+			}
+
+			attrSet := labeler.AttributeSet()
+			attrs := attrSet.ToSlice()
+			if code != 0 {
+				attrs = append(attrs, semconv.HTTPResponseStatusCode(code))
+			}
+
+			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: GetAgentLibraryFileOperation,
+			ID:   "getAgentLibraryFile",
+		}
+	)
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			sctx, ok, err := s.securityHTTPBearer(ctx, GetAgentLibraryFileOperation, r)
+			if err != nil {
+				err = &ogenerrors.SecurityError{
+					OperationContext: opErrContext,
+					Security:         "HTTPBearer",
+					Err:              err,
+				}
+				defer recordError("Security:HTTPBearer", err)
+				s.cfg.ErrorHandler(ctx, w, r, err)
+				return
+			}
+			if ok {
+				satisfied[0] |= 1 << 0
+				ctx = sctx
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			err = &ogenerrors.SecurityError{
+				OperationContext: opErrContext,
+				Err:              ogenerrors.ErrSecurityRequirementIsNotSatisfied,
+			}
+			defer recordError("Security", err)
+			s.cfg.ErrorHandler(ctx, w, r, err)
+			return
+		}
+	}
+	params, err := decodeGetAgentLibraryFileParams(args, argsEscaped, r)
 	if err != nil {
 		err = &ogenerrors.DecodeParamsError{
 			OperationContext: opErrContext,
@@ -555,13 +944,387 @@ func (s *Server) handleGetContentRequest(args [1]string, argsEscaped bool, w htt
 
 	var rawBody []byte
 
-	var response GetContentRes
+	var response GetAgentLibraryFileRes
 	if m := s.cfg.Middleware; m != nil {
 		mreq := middleware.Request{
 			Context:          ctx,
-			OperationName:    GetContentOperation,
+			OperationName:    GetAgentLibraryFileOperation,
+			OperationSummary: "Get Agent Library File",
+			OperationID:      "getAgentLibraryFile",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "path",
+					In:   "query",
+				}: params.Path,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = GetAgentLibraryFileParams
+			Response = GetAgentLibraryFileRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackGetAgentLibraryFileParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.GetAgentLibraryFile(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.GetAgentLibraryFile(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeGetAgentLibraryFileResponse(response, w, span); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleGetAgentLibraryManifestRequest handles getAgentLibraryManifest operation.
+//
+// Return manifest metadata for exportable per-user markdown files.
+//
+// GET /api/agent/library/manifest
+func (s *Server) handleGetAgentLibraryManifestRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getAgentLibraryManifest"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.HTTPRouteKey.String("/api/agent/library/manifest"),
+	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
+
+	// Start a span for this request.
+	ctx, span := s.cfg.Tracer.Start(r.Context(), GetAgentLibraryManifestOperation,
+		trace.WithAttributes(otelAttrs...),
+		serverSpanKind,
+	)
+	defer span.End()
+
+	// Add Labeler to context.
+	labeler := &Labeler{attrs: otelAttrs}
+	ctx = contextWithLabeler(ctx, labeler)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		elapsedDuration := time.Since(startTime)
+
+		attrSet := labeler.AttributeSet()
+		attrs := attrSet.ToSlice()
+		code := statusWriter.status
+		if code != 0 {
+			codeAttr := semconv.HTTPResponseStatusCode(code)
+			attrs = append(attrs, codeAttr)
+			span.SetAttributes(codeAttr)
+		}
+		attrOpt := metric.WithAttributes(attrs...)
+
+		// Increment request counter.
+		s.requests.Add(ctx, 1, attrOpt)
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		s.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), attrOpt)
+	}()
+
+	var (
+		recordError = func(stage string, err error) {
+			span.RecordError(err)
+
+			// https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+			// Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
+			// unless there was another error (e.g., network error receiving the response body; or 3xx codes with
+			// max redirects exceeded), in which case status MUST be set to Error.
+			code := statusWriter.status
+			if code < 100 || code >= 500 {
+				span.SetStatus(codes.Error, stage)
+			}
+
+			attrSet := labeler.AttributeSet()
+			attrs := attrSet.ToSlice()
+			if code != 0 {
+				attrs = append(attrs, semconv.HTTPResponseStatusCode(code))
+			}
+
+			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: GetAgentLibraryManifestOperation,
+			ID:   "getAgentLibraryManifest",
+		}
+	)
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			sctx, ok, err := s.securityHTTPBearer(ctx, GetAgentLibraryManifestOperation, r)
+			if err != nil {
+				err = &ogenerrors.SecurityError{
+					OperationContext: opErrContext,
+					Security:         "HTTPBearer",
+					Err:              err,
+				}
+				defer recordError("Security:HTTPBearer", err)
+				s.cfg.ErrorHandler(ctx, w, r, err)
+				return
+			}
+			if ok {
+				satisfied[0] |= 1 << 0
+				ctx = sctx
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			err = &ogenerrors.SecurityError{
+				OperationContext: opErrContext,
+				Err:              ogenerrors.ErrSecurityRequirementIsNotSatisfied,
+			}
+			defer recordError("Security", err)
+			s.cfg.ErrorHandler(ctx, w, r, err)
+			return
+		}
+	}
+	params, err := decodeGetAgentLibraryManifestParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response GetAgentLibraryManifestRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    GetAgentLibraryManifestOperation,
+			OperationSummary: "Get Agent Library Manifest",
+			OperationID:      "getAgentLibraryManifest",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "include_source",
+					In:   "query",
+				}: params.IncludeSource,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = GetAgentLibraryManifestParams
+			Response = GetAgentLibraryManifestRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackGetAgentLibraryManifestParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.GetAgentLibraryManifest(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.GetAgentLibraryManifest(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeGetAgentLibraryManifestResponse(response, w, span); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleGetContentDetailRequest handles getContentDetail operation.
+//
+// Retrieve detailed information about a specific content item.
+//
+// GET /api/content/{content_id}
+func (s *Server) handleGetContentDetailRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getContentDetail"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.HTTPRouteKey.String("/api/content/{content_id}"),
+	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
+
+	// Start a span for this request.
+	ctx, span := s.cfg.Tracer.Start(r.Context(), GetContentDetailOperation,
+		trace.WithAttributes(otelAttrs...),
+		serverSpanKind,
+	)
+	defer span.End()
+
+	// Add Labeler to context.
+	labeler := &Labeler{attrs: otelAttrs}
+	ctx = contextWithLabeler(ctx, labeler)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		elapsedDuration := time.Since(startTime)
+
+		attrSet := labeler.AttributeSet()
+		attrs := attrSet.ToSlice()
+		code := statusWriter.status
+		if code != 0 {
+			codeAttr := semconv.HTTPResponseStatusCode(code)
+			attrs = append(attrs, codeAttr)
+			span.SetAttributes(codeAttr)
+		}
+		attrOpt := metric.WithAttributes(attrs...)
+
+		// Increment request counter.
+		s.requests.Add(ctx, 1, attrOpt)
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		s.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), attrOpt)
+	}()
+
+	var (
+		recordError = func(stage string, err error) {
+			span.RecordError(err)
+
+			// https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+			// Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
+			// unless there was another error (e.g., network error receiving the response body; or 3xx codes with
+			// max redirects exceeded), in which case status MUST be set to Error.
+			code := statusWriter.status
+			if code < 100 || code >= 500 {
+				span.SetStatus(codes.Error, stage)
+			}
+
+			attrSet := labeler.AttributeSet()
+			attrs := attrSet.ToSlice()
+			if code != 0 {
+				attrs = append(attrs, semconv.HTTPResponseStatusCode(code))
+			}
+
+			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: GetContentDetailOperation,
+			ID:   "getContentDetail",
+		}
+	)
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			sctx, ok, err := s.securityHTTPBearer(ctx, GetContentDetailOperation, r)
+			if err != nil {
+				err = &ogenerrors.SecurityError{
+					OperationContext: opErrContext,
+					Security:         "HTTPBearer",
+					Err:              err,
+				}
+				defer recordError("Security:HTTPBearer", err)
+				s.cfg.ErrorHandler(ctx, w, r, err)
+				return
+			}
+			if ok {
+				satisfied[0] |= 1 << 0
+				ctx = sctx
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			err = &ogenerrors.SecurityError{
+				OperationContext: opErrContext,
+				Err:              ogenerrors.ErrSecurityRequirementIsNotSatisfied,
+			}
+			defer recordError("Security", err)
+			s.cfg.ErrorHandler(ctx, w, r, err)
+			return
+		}
+	}
+	params, err := decodeGetContentDetailParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response GetContentDetailRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    GetContentDetailOperation,
 			OperationSummary: "Get content details",
-			OperationID:      "getContent",
+			OperationID:      "getContentDetail",
 			Body:             nil,
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
@@ -575,8 +1338,8 @@ func (s *Server) handleGetContentRequest(args [1]string, argsEscaped bool, w htt
 
 		type (
 			Request  = struct{}
-			Params   = GetContentParams
-			Response = GetContentRes
+			Params   = GetContentDetailParams
+			Response = GetContentDetailRes
 		)
 		response, err = middleware.HookMiddleware[
 			Request,
@@ -585,14 +1348,14 @@ func (s *Server) handleGetContentRequest(args [1]string, argsEscaped bool, w htt
 		](
 			m,
 			mreq,
-			unpackGetContentParams,
+			unpackGetContentDetailParams,
 			func(ctx context.Context, request Request, params Params) (response Response, err error) {
-				response, err = s.h.GetContent(ctx, params)
+				response, err = s.h.GetContentDetail(ctx, params)
 				return response, err
 			},
 		)
 	} else {
-		response, err = s.h.GetContent(ctx, params)
+		response, err = s.h.GetContentDetail(ctx, params)
 	}
 	if err != nil {
 		defer recordError("Internal", err)
@@ -600,7 +1363,7 @@ func (s *Server) handleGetContentRequest(args [1]string, argsEscaped bool, w htt
 		return
 	}
 
-	if err := encodeGetContentResponse(response, w, span); err != nil {
+	if err := encodeGetContentDetailResponse(response, w, span); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -1170,7 +1933,7 @@ func (s *Server) handleGetOnboardingRequest(args [1]string, argsEscaped bool, w 
 	}
 }
 
-// handleListContentRequest handles listContent operation.
+// handleListContentsRequest handles listContents operation.
 //
 // Retrieve a list of content items with optional filtering by content type and date. Supports
 // multiple content types via repeated query parameters (e.g.,
@@ -1178,11 +1941,11 @@ func (s *Server) handleGetOnboardingRequest(args [1]string, argsEscaped bool, w 
 // loading.
 //
 // GET /api/content/
-func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListContentsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("listContent"),
+		otelogen.OperationID("listContents"),
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/api/content/"),
 	}
@@ -1190,7 +1953,7 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
-	ctx, span := s.cfg.Tracer.Start(r.Context(), ListContentOperation,
+	ctx, span := s.cfg.Tracer.Start(r.Context(), ListContentsOperation,
 		trace.WithAttributes(otelAttrs...),
 		serverSpanKind,
 	)
@@ -1245,15 +2008,15 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 		}
 		err          error
 		opErrContext = ogenerrors.OperationContext{
-			Name: ListContentOperation,
-			ID:   "listContent",
+			Name: ListContentsOperation,
+			ID:   "listContents",
 		}
 	)
 	{
 		type bitset = [1]uint8
 		var satisfied bitset
 		{
-			sctx, ok, err := s.securityHTTPBearer(ctx, ListContentOperation, r)
+			sctx, ok, err := s.securityHTTPBearer(ctx, ListContentsOperation, r)
 			if err != nil {
 				err = &ogenerrors.SecurityError{
 					OperationContext: opErrContext,
@@ -1293,7 +2056,7 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 			return
 		}
 	}
-	params, err := decodeListContentParams(args, argsEscaped, r)
+	params, err := decodeListContentsParams(args, argsEscaped, r)
 	if err != nil {
 		err = &ogenerrors.DecodeParamsError{
 			OperationContext: opErrContext,
@@ -1306,13 +2069,13 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 
 	var rawBody []byte
 
-	var response ListContentRes
+	var response ListContentsRes
 	if m := s.cfg.Middleware; m != nil {
 		mreq := middleware.Request{
 			Context:          ctx,
-			OperationName:    ListContentOperation,
+			OperationName:    ListContentsOperation,
 			OperationSummary: "List content items",
-			OperationID:      "listContent",
+			OperationID:      "listContents",
 			Body:             nil,
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
@@ -1346,8 +2109,8 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 
 		type (
 			Request  = struct{}
-			Params   = ListContentParams
-			Response = ListContentRes
+			Params   = ListContentsParams
+			Response = ListContentsRes
 		)
 		response, err = middleware.HookMiddleware[
 			Request,
@@ -1356,14 +2119,14 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 		](
 			m,
 			mreq,
-			unpackListContentParams,
+			unpackListContentsParams,
 			func(ctx context.Context, request Request, params Params) (response Response, err error) {
-				response, err = s.h.ListContent(ctx, params)
+				response, err = s.h.ListContents(ctx, params)
 				return response, err
 			},
 		)
 	} else {
-		response, err = s.h.ListContent(ctx, params)
+		response, err = s.h.ListContents(ctx, params)
 	}
 	if err != nil {
 		defer recordError("Internal", err)
@@ -1371,7 +2134,7 @@ func (s *Server) handleListContentRequest(args [0]string, argsEscaped bool, w ht
 		return
 	}
 
-	if err := encodeListContentResponse(response, w, span); err != nil {
+	if err := encodeListContentsResponse(response, w, span); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -1575,16 +2338,16 @@ func (s *Server) handleListNewsItemsRequest(args [0]string, argsEscaped bool, w 
 	}
 }
 
-// handleListSourcesRequest handles listSources operation.
+// handleListScraperConfigsRequest handles listScraperConfigs operation.
 //
 // List scraper configurations for the current user.
 //
 // GET /api/scrapers/
-func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListScraperConfigsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("listSources"),
+		otelogen.OperationID("listScraperConfigs"),
 		semconv.HTTPRequestMethodKey.String("GET"),
 		semconv.HTTPRouteKey.String("/api/scrapers/"),
 	}
@@ -1592,7 +2355,7 @@ func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w ht
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
-	ctx, span := s.cfg.Tracer.Start(r.Context(), ListSourcesOperation,
+	ctx, span := s.cfg.Tracer.Start(r.Context(), ListScraperConfigsOperation,
 		trace.WithAttributes(otelAttrs...),
 		serverSpanKind,
 	)
@@ -1647,15 +2410,15 @@ func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w ht
 		}
 		err          error
 		opErrContext = ogenerrors.OperationContext{
-			Name: ListSourcesOperation,
-			ID:   "listSources",
+			Name: ListScraperConfigsOperation,
+			ID:   "listScraperConfigs",
 		}
 	)
 	{
 		type bitset = [1]uint8
 		var satisfied bitset
 		{
-			sctx, ok, err := s.securityHTTPBearer(ctx, ListSourcesOperation, r)
+			sctx, ok, err := s.securityHTTPBearer(ctx, ListScraperConfigsOperation, r)
 			if err != nil {
 				err = &ogenerrors.SecurityError{
 					OperationContext: opErrContext,
@@ -1695,7 +2458,7 @@ func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w ht
 			return
 		}
 	}
-	params, err := decodeListSourcesParams(args, argsEscaped, r)
+	params, err := decodeListScraperConfigsParams(args, argsEscaped, r)
 	if err != nil {
 		err = &ogenerrors.DecodeParamsError{
 			OperationContext: opErrContext,
@@ -1708,13 +2471,13 @@ func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w ht
 
 	var rawBody []byte
 
-	var response ListSourcesRes
+	var response ListScraperConfigsRes
 	if m := s.cfg.Middleware; m != nil {
 		mreq := middleware.Request{
 			Context:          ctx,
-			OperationName:    ListSourcesOperation,
+			OperationName:    ListScraperConfigsOperation,
 			OperationSummary: "List Scraper Configs",
-			OperationID:      "listSources",
+			OperationID:      "listScraperConfigs",
 			Body:             nil,
 			RawBody:          rawBody,
 			Params: middleware.Parameters{
@@ -1732,8 +2495,8 @@ func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w ht
 
 		type (
 			Request  = struct{}
-			Params   = ListSourcesParams
-			Response = ListSourcesRes
+			Params   = ListScraperConfigsParams
+			Response = ListScraperConfigsRes
 		)
 		response, err = middleware.HookMiddleware[
 			Request,
@@ -1742,14 +2505,14 @@ func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w ht
 		](
 			m,
 			mreq,
-			unpackListSourcesParams,
+			unpackListScraperConfigsParams,
 			func(ctx context.Context, request Request, params Params) (response Response, err error) {
-				response, err = s.h.ListSources(ctx, params)
+				response, err = s.h.ListScraperConfigs(ctx, params)
 				return response, err
 			},
 		)
 	} else {
-		response, err = s.h.ListSources(ctx, params)
+		response, err = s.h.ListScraperConfigs(ctx, params)
 	}
 	if err != nil {
 		defer recordError("Internal", err)
@@ -1757,7 +2520,7 @@ func (s *Server) handleListSourcesRequest(args [0]string, argsEscaped bool, w ht
 		return
 	}
 
-	if err := encodeListSourcesResponse(response, w, span); err != nil {
+	if err := encodeListScraperConfigsResponse(response, w, span); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -1953,6 +2716,153 @@ func (s *Server) handleMarkNewsItemsReadRequest(args [0]string, argsEscaped bool
 	}
 }
 
+// handlePollCliLinkRequest handles pollCliLink operation.
+//
+// Poll a pending CLI link session without requiring existing auth.
+//
+// GET /api/agent/cli/link/{session_id}
+func (s *Server) handlePollCliLinkRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("pollCliLink"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.HTTPRouteKey.String("/api/agent/cli/link/{session_id}"),
+	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
+
+	// Start a span for this request.
+	ctx, span := s.cfg.Tracer.Start(r.Context(), PollCliLinkOperation,
+		trace.WithAttributes(otelAttrs...),
+		serverSpanKind,
+	)
+	defer span.End()
+
+	// Add Labeler to context.
+	labeler := &Labeler{attrs: otelAttrs}
+	ctx = contextWithLabeler(ctx, labeler)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		elapsedDuration := time.Since(startTime)
+
+		attrSet := labeler.AttributeSet()
+		attrs := attrSet.ToSlice()
+		code := statusWriter.status
+		if code != 0 {
+			codeAttr := semconv.HTTPResponseStatusCode(code)
+			attrs = append(attrs, codeAttr)
+			span.SetAttributes(codeAttr)
+		}
+		attrOpt := metric.WithAttributes(attrs...)
+
+		// Increment request counter.
+		s.requests.Add(ctx, 1, attrOpt)
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		s.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), attrOpt)
+	}()
+
+	var (
+		recordError = func(stage string, err error) {
+			span.RecordError(err)
+
+			// https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+			// Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
+			// unless there was another error (e.g., network error receiving the response body; or 3xx codes with
+			// max redirects exceeded), in which case status MUST be set to Error.
+			code := statusWriter.status
+			if code < 100 || code >= 500 {
+				span.SetStatus(codes.Error, stage)
+			}
+
+			attrSet := labeler.AttributeSet()
+			attrs := attrSet.ToSlice()
+			if code != 0 {
+				attrs = append(attrs, semconv.HTTPResponseStatusCode(code))
+			}
+
+			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: PollCliLinkOperation,
+			ID:   "pollCliLink",
+		}
+	)
+	params, err := decodePollCliLinkParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response PollCliLinkRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    PollCliLinkOperation,
+			OperationSummary: "Poll Cli Link",
+			OperationID:      "pollCliLink",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "session_id",
+					In:   "path",
+				}: params.SessionID,
+				{
+					Name: "poll_token",
+					In:   "query",
+				}: params.PollToken,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = PollCliLinkParams
+			Response = PollCliLinkRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackPollCliLinkParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.PollCliLink(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.PollCliLink(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodePollCliLinkResponse(response, w, span); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleSearchAgentRequest handles searchAgent operation.
 //
 // Search external/provider-backed sources for the agent CLI.
@@ -2132,6 +3042,149 @@ func (s *Server) handleSearchAgentRequest(args [0]string, argsEscaped bool, w ht
 	}
 
 	if err := encodeSearchAgentResponse(response, w, span); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleStartCliLinkRequest handles startCliLink operation.
+//
+// Create an unauthenticated QR approval session for the CLI.
+//
+// POST /api/agent/cli/link/start
+func (s *Server) handleStartCliLinkRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("startCliLink"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.HTTPRouteKey.String("/api/agent/cli/link/start"),
+	}
+	// Add attributes from config.
+	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
+
+	// Start a span for this request.
+	ctx, span := s.cfg.Tracer.Start(r.Context(), StartCliLinkOperation,
+		trace.WithAttributes(otelAttrs...),
+		serverSpanKind,
+	)
+	defer span.End()
+
+	// Add Labeler to context.
+	labeler := &Labeler{attrs: otelAttrs}
+	ctx = contextWithLabeler(ctx, labeler)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		elapsedDuration := time.Since(startTime)
+
+		attrSet := labeler.AttributeSet()
+		attrs := attrSet.ToSlice()
+		code := statusWriter.status
+		if code != 0 {
+			codeAttr := semconv.HTTPResponseStatusCode(code)
+			attrs = append(attrs, codeAttr)
+			span.SetAttributes(codeAttr)
+		}
+		attrOpt := metric.WithAttributes(attrs...)
+
+		// Increment request counter.
+		s.requests.Add(ctx, 1, attrOpt)
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		s.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), attrOpt)
+	}()
+
+	var (
+		recordError = func(stage string, err error) {
+			span.RecordError(err)
+
+			// https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+			// Span Status MUST be left unset if HTTP status code was in the 1xx, 2xx or 3xx ranges,
+			// unless there was another error (e.g., network error receiving the response body; or 3xx codes with
+			// max redirects exceeded), in which case status MUST be set to Error.
+			code := statusWriter.status
+			if code < 100 || code >= 500 {
+				span.SetStatus(codes.Error, stage)
+			}
+
+			attrSet := labeler.AttributeSet()
+			attrs := attrSet.ToSlice()
+			if code != 0 {
+				attrs = append(attrs, semconv.HTTPResponseStatusCode(code))
+			}
+
+			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: StartCliLinkOperation,
+			ID:   "startCliLink",
+		}
+	)
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeStartCliLinkRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response StartCliLinkRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    StartCliLinkOperation,
+			OperationSummary: "Start Cli Link",
+			OperationID:      "startCliLink",
+			Body:             request,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = OptCliLinkStartRequest
+			Params   = struct{}
+			Response = StartCliLinkRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.StartCliLink(ctx, request)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.StartCliLink(ctx, request)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeStartCliLinkResponse(response, w, span); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -2514,17 +3567,17 @@ func (s *Server) handleSubmitContentRequest(args [0]string, argsEscaped bool, w 
 	}
 }
 
-// handleSubscribeSourceRequest handles subscribeSource operation.
+// handleSubscribeScrapersToFeedRequest handles subscribeScrapersToFeed operation.
 //
 // Subscribe to a feed detected from content.
 // Convenience endpoint that creates a scraper config from a detected feed.
 //
 // POST /api/scrapers/subscribe
-func (s *Server) handleSubscribeSourceRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSubscribeScrapersToFeedRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("subscribeSource"),
+		otelogen.OperationID("subscribeScrapersToFeed"),
 		semconv.HTTPRequestMethodKey.String("POST"),
 		semconv.HTTPRouteKey.String("/api/scrapers/subscribe"),
 	}
@@ -2532,7 +3585,7 @@ func (s *Server) handleSubscribeSourceRequest(args [0]string, argsEscaped bool, 
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
 
 	// Start a span for this request.
-	ctx, span := s.cfg.Tracer.Start(r.Context(), SubscribeSourceOperation,
+	ctx, span := s.cfg.Tracer.Start(r.Context(), SubscribeScrapersToFeedOperation,
 		trace.WithAttributes(otelAttrs...),
 		serverSpanKind,
 	)
@@ -2587,15 +3640,15 @@ func (s *Server) handleSubscribeSourceRequest(args [0]string, argsEscaped bool, 
 		}
 		err          error
 		opErrContext = ogenerrors.OperationContext{
-			Name: SubscribeSourceOperation,
-			ID:   "subscribeSource",
+			Name: SubscribeScrapersToFeedOperation,
+			ID:   "subscribeScrapersToFeed",
 		}
 	)
 	{
 		type bitset = [1]uint8
 		var satisfied bitset
 		{
-			sctx, ok, err := s.securityHTTPBearer(ctx, SubscribeSourceOperation, r)
+			sctx, ok, err := s.securityHTTPBearer(ctx, SubscribeScrapersToFeedOperation, r)
 			if err != nil {
 				err = &ogenerrors.SecurityError{
 					OperationContext: opErrContext,
@@ -2637,7 +3690,7 @@ func (s *Server) handleSubscribeSourceRequest(args [0]string, argsEscaped bool, 
 	}
 
 	var rawBody []byte
-	request, rawBody, close, err := s.decodeSubscribeSourceRequest(r)
+	request, rawBody, close, err := s.decodeSubscribeScrapersToFeedRequest(r)
 	if err != nil {
 		err = &ogenerrors.DecodeRequestError{
 			OperationContext: opErrContext,
@@ -2653,13 +3706,13 @@ func (s *Server) handleSubscribeSourceRequest(args [0]string, argsEscaped bool, 
 		}
 	}()
 
-	var response SubscribeSourceRes
+	var response SubscribeScrapersToFeedRes
 	if m := s.cfg.Middleware; m != nil {
 		mreq := middleware.Request{
 			Context:          ctx,
-			OperationName:    SubscribeSourceOperation,
+			OperationName:    SubscribeScrapersToFeedOperation,
 			OperationSummary: "Subscribe To Feed",
-			OperationID:      "subscribeSource",
+			OperationID:      "subscribeScrapersToFeed",
 			Body:             request,
 			RawBody:          rawBody,
 			Params:           middleware.Parameters{},
@@ -2669,7 +3722,7 @@ func (s *Server) handleSubscribeSourceRequest(args [0]string, argsEscaped bool, 
 		type (
 			Request  = *SubscribeToFeedRequest
 			Params   = struct{}
-			Response = SubscribeSourceRes
+			Response = SubscribeScrapersToFeedRes
 		)
 		response, err = middleware.HookMiddleware[
 			Request,
@@ -2680,12 +3733,12 @@ func (s *Server) handleSubscribeSourceRequest(args [0]string, argsEscaped bool, 
 			mreq,
 			nil,
 			func(ctx context.Context, request Request, params Params) (response Response, err error) {
-				response, err = s.h.SubscribeSource(ctx, request)
+				response, err = s.h.SubscribeScrapersToFeed(ctx, request)
 				return response, err
 			},
 		)
 	} else {
-		response, err = s.h.SubscribeSource(ctx, request)
+		response, err = s.h.SubscribeScrapersToFeed(ctx, request)
 	}
 	if err != nil {
 		defer recordError("Internal", err)
@@ -2693,7 +3746,7 @@ func (s *Server) handleSubscribeSourceRequest(args [0]string, argsEscaped bool, 
 		return
 	}
 
-	if err := encodeSubscribeSourceResponse(response, w, span); err != nil {
+	if err := encodeSubscribeScrapersToFeedResponse(response, w, span); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)

@@ -8,6 +8,12 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// ApproveCliLink implements approveCliLink operation.
+	//
+	// Approve one pending CLI link session from the authenticated app.
+	//
+	// POST /api/agent/cli/link/{session_id}/approve
+	ApproveCliLink(ctx context.Context, req *CliLinkApproveRequest, params ApproveCliLinkParams) (ApproveCliLinkRes, error)
 	// CompleteOnboarding implements completeOnboarding operation.
 	//
 	// Complete onboarding from simplified selections.
@@ -20,12 +26,30 @@ type Handler interface {
 	//
 	// POST /api/news/items/{news_item_id}/convert-to-article
 	ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (ConvertNewsItemToArticleRes, error)
-	// GetContent implements getContent operation.
+	// GenerateDigest implements generateDigest operation.
+	//
+	// Queue arbitrary-window digest generation for agent clients.
+	//
+	// POST /api/agent/digests
+	GenerateDigest(ctx context.Context, req OptAgentDigestRequest) (GenerateDigestRes, error)
+	// GetAgentLibraryFile implements getAgentLibraryFile operation.
+	//
+	// Return one rendered markdown document by relative manifest path.
+	//
+	// GET /api/agent/library/file
+	GetAgentLibraryFile(ctx context.Context, params GetAgentLibraryFileParams) (GetAgentLibraryFileRes, error)
+	// GetAgentLibraryManifest implements getAgentLibraryManifest operation.
+	//
+	// Return manifest metadata for exportable per-user markdown files.
+	//
+	// GET /api/agent/library/manifest
+	GetAgentLibraryManifest(ctx context.Context, params GetAgentLibraryManifestParams) (GetAgentLibraryManifestRes, error)
+	// GetContentDetail implements getContentDetail operation.
 	//
 	// Retrieve detailed information about a specific content item.
 	//
 	// GET /api/content/{content_id}
-	GetContent(ctx context.Context, params GetContentParams) (GetContentRes, error)
+	GetContentDetail(ctx context.Context, params GetContentDetailParams) (GetContentDetailRes, error)
 	// GetJob implements getJob operation.
 	//
 	// Return async job status.
@@ -44,7 +68,7 @@ type Handler interface {
 	//
 	// GET /api/agent/onboarding/{run_id}
 	GetOnboarding(ctx context.Context, params GetOnboardingParams) (GetOnboardingRes, error)
-	// ListContent implements listContent operation.
+	// ListContents implements listContents operation.
 	//
 	// Retrieve a list of content items with optional filtering by content type and date. Supports
 	// multiple content types via repeated query parameters (e.g.,
@@ -52,31 +76,43 @@ type Handler interface {
 	// loading.
 	//
 	// GET /api/content/
-	ListContent(ctx context.Context, params ListContentParams) (ListContentRes, error)
+	ListContents(ctx context.Context, params ListContentsParams) (ListContentsRes, error)
 	// ListNewsItems implements listNewsItems operation.
 	//
 	// Return the visible representative news feed for the current user.
 	//
 	// GET /api/news/items
 	ListNewsItems(ctx context.Context, params ListNewsItemsParams) (ListNewsItemsRes, error)
-	// ListSources implements listSources operation.
+	// ListScraperConfigs implements listScraperConfigs operation.
 	//
 	// List scraper configurations for the current user.
 	//
 	// GET /api/scrapers/
-	ListSources(ctx context.Context, params ListSourcesParams) (ListSourcesRes, error)
+	ListScraperConfigs(ctx context.Context, params ListScraperConfigsParams) (ListScraperConfigsRes, error)
 	// MarkNewsItemsRead implements markNewsItemsRead operation.
 	//
 	// Mark the given visible representative news items as read.
 	//
 	// POST /api/news/items/mark-read
 	MarkNewsItemsRead(ctx context.Context, req *BulkMarkReadRequest) (MarkNewsItemsReadRes, error)
+	// PollCliLink implements pollCliLink operation.
+	//
+	// Poll a pending CLI link session without requiring existing auth.
+	//
+	// GET /api/agent/cli/link/{session_id}
+	PollCliLink(ctx context.Context, params PollCliLinkParams) (PollCliLinkRes, error)
 	// SearchAgent implements searchAgent operation.
 	//
 	// Search external/provider-backed sources for the agent CLI.
 	//
 	// POST /api/agent/search
 	SearchAgent(ctx context.Context, req *AgentSearchRequest) (SearchAgentRes, error)
+	// StartCliLink implements startCliLink operation.
+	//
+	// Create an unauthenticated QR approval session for the CLI.
+	//
+	// POST /api/agent/cli/link/start
+	StartCliLink(ctx context.Context, req OptCliLinkStartRequest) (StartCliLinkRes, error)
 	// StartOnboarding implements startOnboarding operation.
 	//
 	// Start simplified async onboarding.
@@ -89,13 +125,13 @@ type Handler interface {
 	//
 	// POST /api/content/submit
 	SubmitContent(ctx context.Context, req *SubmitContentRequest) (SubmitContentRes, error)
-	// SubscribeSource implements subscribeSource operation.
+	// SubscribeScrapersToFeed implements subscribeScrapersToFeed operation.
 	//
 	// Subscribe to a feed detected from content.
 	// Convenience endpoint that creates a scraper config from a detected feed.
 	//
 	// POST /api/scrapers/subscribe
-	SubscribeSource(ctx context.Context, req *SubscribeToFeedRequest) (SubscribeSourceRes, error)
+	SubscribeScrapersToFeed(ctx context.Context, req *SubscribeToFeedRequest) (SubscribeScrapersToFeedRes, error)
 }
 
 // Server implements http server based on OpenAPI v3 specification and

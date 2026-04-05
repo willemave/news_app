@@ -6,18 +6,24 @@ package api
 type OperationName = string
 
 const (
+	ApproveCliLinkOperation           OperationName = "ApproveCliLink"
 	CompleteOnboardingOperation       OperationName = "CompleteOnboarding"
 	ConvertNewsItemToArticleOperation OperationName = "ConvertNewsItemToArticle"
-	GetContentOperation               OperationName = "GetContent"
+	GenerateDigestOperation           OperationName = "GenerateDigest"
+	GetAgentLibraryFileOperation      OperationName = "GetAgentLibraryFile"
+	GetAgentLibraryManifestOperation  OperationName = "GetAgentLibraryManifest"
+	GetContentDetailOperation         OperationName = "GetContentDetail"
 	GetJobOperation                   OperationName = "GetJob"
 	GetNewsItemOperation              OperationName = "GetNewsItem"
 	GetOnboardingOperation            OperationName = "GetOnboarding"
-	ListContentOperation              OperationName = "ListContent"
+	ListContentsOperation             OperationName = "ListContents"
 	ListNewsItemsOperation            OperationName = "ListNewsItems"
-	ListSourcesOperation              OperationName = "ListSources"
+	ListScraperConfigsOperation       OperationName = "ListScraperConfigs"
 	MarkNewsItemsReadOperation        OperationName = "MarkNewsItemsRead"
+	PollCliLinkOperation              OperationName = "PollCliLink"
 	SearchAgentOperation              OperationName = "SearchAgent"
+	StartCliLinkOperation             OperationName = "StartCliLink"
 	StartOnboardingOperation          OperationName = "StartOnboarding"
 	SubmitContentOperation            OperationName = "SubmitContent"
-	SubscribeSourceOperation          OperationName = "SubscribeSource"
+	SubscribeScrapersToFeedOperation  OperationName = "SubscribeScrapersToFeed"
 )
