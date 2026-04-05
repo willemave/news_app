@@ -162,12 +162,20 @@ struct EditorialArchetypeReaction: Codable, Identifiable {
     }
 }
 
+struct EditorialDetailSection: Identifiable {
+    let title: String
+    let items: [String]
+
+    var id: String { title }
+}
+
 struct EditorialNarrativeSummary: Codable {
     let title: String?
     let editorialNarrative: String
     let quotes: [Quote]
     let archetypeReactions: [EditorialArchetypeReaction]?
     let keyPoints: [EditorialKeyPoint]
+    let sourceDetailsRaw: [String: AnyCodable]?
     let classification: String?
     let summarizationDate: String?
 
@@ -177,6 +185,7 @@ struct EditorialNarrativeSummary: Codable {
         case quotes
         case archetypeReactions = "archetype_reactions"
         case keyPoints = "key_points"
+        case sourceDetailsRaw = "source_details"
         case classification
         case summarizationDate = "summarization_date"
     }
@@ -186,5 +195,95 @@ struct EditorialNarrativeSummary: Codable {
             .split(separator: "\n\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    var sourceTemplate: String? {
+        sourceDetailsRaw?["template"]?.value as? String
+    }
+
+    var sourceTemplateDisplayName: String? {
+        switch sourceTemplate {
+        case "podcast":
+            return "Podcast Frame"
+        case "substack":
+            return "Essay Frame"
+        case "twitter":
+            return "Post Frame"
+        case "research":
+            return "Research Frame"
+        case "github":
+            return "Repo Frame"
+        default:
+            return nil
+        }
+    }
+
+    var sourceDetailSections: [EditorialDetailSection] {
+        switch sourceTemplate {
+        case "podcast":
+            return compactSections(
+                ("Thesis", [stringValue("thesis")].compactMap { $0 }),
+                ("Speakers", stringArray("speakers")),
+                ("Notable Arguments", stringArray("notable_arguments")),
+                ("Practical Takeaways", stringArray("practical_takeaways"))
+            )
+        case "substack":
+            return compactSections(
+                ("Thesis", [stringValue("thesis")].compactMap { $0 }),
+                ("Supporting Arguments", stringArray("supporting_arguments")),
+                ("Evidence", stringArray("evidence")),
+                ("Implications", stringArray("implications"))
+            )
+        case "twitter":
+            return compactSections(
+                ("Primary Claim", [stringValue("primary_claim")].compactMap { $0 }),
+                ("Evidence", stringArray("evidence")),
+                ("Caveats", stringArray("caveats")),
+                ("Linked Context", stringArray("linked_context"))
+            )
+        case "research":
+            return compactSections(
+                ("Hypothesis", [stringValue("hypothesis")].compactMap { $0 }),
+                ("Methods", stringArray("methods")),
+                ("Arguments", stringArray("arguments")),
+                ("Limitations", stringArray("limitations")),
+                ("Implications", stringArray("implications"))
+            )
+        case "github":
+            return compactSections(
+                ("Overview", [stringValue("overview")].compactMap { $0 }),
+                ("Architecture", stringArray("architecture")),
+                ("Interfaces", stringArray("interfaces")),
+                ("Setup Constraints", stringArray("setup_constraints")),
+                ("Maturity Signals", stringArray("maturity_signals")),
+                ("Best-Fit Use Cases", stringArray("best_fit_use_cases"))
+            )
+        default:
+            return []
+        }
+    }
+
+    private func stringValue(_ key: String) -> String? {
+        guard let value = sourceDetailsRaw?[key]?.value as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func stringArray(_ key: String) -> [String] {
+        guard let values = sourceDetailsRaw?[key]?.value as? [Any] else { return [] }
+        return values.compactMap { rawValue in
+            guard let value = rawValue as? String else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    private func compactSections(
+        _ candidates: (String, [String])...
+    ) -> [EditorialDetailSection] {
+        candidates.compactMap { title, items in
+            guard !items.isEmpty else { return nil }
+            return EditorialDetailSection(title: title, items: items)
+        }
     }
 }

@@ -58,6 +58,33 @@ struct EditorialNarrativeSummaryView: View {
                 }
             }
 
+            if !summary.sourceDetailSections.isEmpty {
+                sectionHeader(
+                    summary.sourceTemplateDisplayName ?? "Structured Details",
+                    icon: "square.stack.3d.up",
+                    tint: .teal,
+                    uppercase: false
+                )
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(summary.sourceDetailSections) { section in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(section.title)
+                                .font(.footnote)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                                .textCase(.uppercase)
+                                .tracking(0.5)
+
+                            VStack(alignment: .leading, spacing: EditorialNarrativeDesign.itemSpacing) {
+                                ForEach(section.items, id: \.self) { item in
+                                    bulletRow(text: item)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if showsSupportingContext, !summary.quotes.isEmpty {
                 sectionHeader("Notable Quotes", icon: "quote.opening", tint: .purple)
                 VStack(alignment: .leading, spacing: 16) {
@@ -197,6 +224,7 @@ struct EditorialNarrativeSummaryView: View {
                     EditorialKeyPoint(point: "Reliability and observability requirements are narrowing model/vendor choices."),
                     EditorialKeyPoint(point: "Teams with tighter operational controls are shipping faster despite stricter review."),
                 ],
+                sourceDetailsRaw: nil,
                 classification: "to_read",
                 summarizationDate: "2026-02-08T12:00:00Z"
             )

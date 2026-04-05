@@ -256,7 +256,7 @@ struct ContentDetail: Codable, Identifiable {
     /// Parse the raw summary as EditorialNarrativeSummary (returns nil if not editorial format)
     var editorialSummary: EditorialNarrativeSummary? {
         guard resolvedSummaryKind == "long_editorial_narrative",
-              resolvedSummaryVersion == 1,
+              (resolvedSummaryVersion == 1 || resolvedSummaryVersion == 2),
               let raw = structuredSummaryRaw else {
             return nil
         }
