@@ -1,6 +1,7 @@
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, status
@@ -40,6 +41,17 @@ from app.services.langfuse_tracing import (
 # Initialize
 settings = get_settings()
 logger = setup_logging()
+
+
+def _ensure_static_mount_directories() -> tuple[Path, Path]:
+    """Create local static mount directories before Starlette validates them."""
+    images_dir = settings.images_base_dir.resolve()
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    static_dir = Path("static").resolve()
+    static_dir.mkdir(parents=True, exist_ok=True)
+
+    return images_dir, static_dir
 
 
 @asynccontextmanager
@@ -299,8 +311,9 @@ app.add_middleware(
 )
 
 # Mount static files (images first so they bypass repo static)
-app.mount("/static/images", StaticFiles(directory=settings.images_base_dir), name="static-images")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+images_static_dir, repo_static_dir = _ensure_static_mount_directories()
+app.mount("/static/images", StaticFiles(directory=images_static_dir), name="static-images")
+app.mount("/static", StaticFiles(directory=repo_static_dir), name="static")
 
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["auth"])

@@ -5,10 +5,15 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
-from app.main import app
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from app.core.settings import get_settings  # noqa: E402
 
 ALLOWED_OPERATIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("/api/jobs/{job_id}", "get"): {
@@ -107,11 +112,7 @@ def _normalize_openapi_30_shapes(value: Any) -> Any:
             continue
 
         concrete = concrete_options[0]
-        merged = {
-            key: item
-            for key, item in normalized.items()
-            if key not in {"anyOf", "oneOf"}
-        }
+        merged = {key: item for key, item in normalized.items() if key not in {"anyOf", "oneOf"}}
         if isinstance(concrete, dict):
             merged = {**concrete, **merged}
         merged["nullable"] = True
@@ -123,6 +124,12 @@ def _normalize_openapi_30_shapes(value: Any) -> Any:
 
 def build_agent_openapi_schema() -> dict[str, Any]:
     """Build a filtered, CLI-focused OpenAPI schema."""
+    settings = get_settings()
+    settings.images_base_dir.resolve().mkdir(parents=True, exist_ok=True)
+    Path("static").resolve().mkdir(parents=True, exist_ok=True)
+
+    from app.main import app
+
     full_schema = copy.deepcopy(app.openapi())
 
     filtered_paths: dict[str, dict[str, Any]] = {}
@@ -141,8 +148,7 @@ def build_agent_openapi_schema() -> dict[str, Any]:
             "title": "Newsly Agent CLI API",
             "version": str(full_schema.get("info", {}).get("version", "1.0.0")),
             "description": (
-                "Filtered machine-oriented API contract for the standalone "
-                "newsly-agent CLI."
+                "Filtered machine-oriented API contract for the standalone newsly-agent CLI."
             ),
         },
         "paths": filtered_paths,
