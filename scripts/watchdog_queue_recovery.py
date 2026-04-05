@@ -4,7 +4,7 @@
 Runs the same safety actions operators have been running manually:
 1. Move media tasks into the dedicated media queue.
 2. Requeue stale media processing tasks.
-3. Requeue stale process_content processing tasks.
+3. Requeue stale content-pipeline processing tasks.
 
 The script supports one-shot mode (cron) and loop mode (supervisor/systemd).
 """
@@ -66,6 +66,7 @@ class WatchdogRunResult:
     moved_media: ActionResult
     requeued_media: ActionResult
     requeued_process_content: ActionResult
+    requeued_process_news_item: ActionResult
     requeued_generate_news_digest: ActionResult
 
     @property
@@ -75,6 +76,7 @@ class WatchdogRunResult:
             self.moved_media.touched_count
             + self.requeued_media.touched_count
             + self.requeued_process_content.touched_count
+            + self.requeued_process_news_item.touched_count
             + self.requeued_generate_news_digest.touched_count
         )
 
@@ -120,11 +122,7 @@ def _move_media_tasks(
     query = (
         session.query(ProcessingTask)
         .filter(ProcessingTask.task_type.in_(MEDIA_TASK_TYPES))
-        .filter(
-            ProcessingTask.status.in_(
-                [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
-            )
-        )
+        .filter(ProcessingTask.status.in_([TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]))
         .filter(ProcessingTask.queue_name != TaskQueue.MEDIA.value)
         .order_by(ProcessingTask.id.asc())
     )
@@ -205,6 +203,7 @@ def _record_watchdog_events(result: WatchdogRunResult) -> None:
         result.moved_media,
         result.requeued_media,
         result.requeued_process_content,
+        result.requeued_process_news_item,
         result.requeued_generate_news_digest,
     ]
     for action in action_results:
@@ -242,6 +241,7 @@ def _record_watchdog_events(result: WatchdogRunResult) -> None:
                 "moved_media": result.moved_media.touched_count,
                 "requeued_media": result.requeued_media.touched_count,
                 "requeued_process_content": result.requeued_process_content.touched_count,
+                "requeued_process_news_item": result.requeued_process_news_item.touched_count,
                 "requeued_generate_news_digest": (
                     result.requeued_generate_news_digest.touched_count
                 ),
@@ -260,6 +260,7 @@ def _send_slack_alert(webhook_url: str, result: WatchdogRunResult) -> tuple[bool
             f" move_media={result.moved_media.touched_count}"
             f" requeue_media={result.requeued_media.touched_count}"
             f" requeue_process_content={result.requeued_process_content.touched_count}"
+            f" requeue_process_news_item={result.requeued_process_news_item.touched_count}"
         )
     }
 
@@ -305,6 +306,7 @@ def run_watchdog_once(
     media_stale_hours: float | None = None,
     transcribe_stale_hours: float | None = None,
     process_content_stale_hours: float,
+    process_news_item_stale_hours: float | None = None,
     generate_news_digest_stale_hours: float | None = None,
     alert_threshold: int,
     slack_webhook_url: str | None,
@@ -319,9 +321,7 @@ def run_watchdog_once(
         else (transcribe_stale_hours if transcribe_stale_hours is not None else 2.0)
     )
     effective_generate_news_digest_stale_hours = (
-        generate_news_digest_stale_hours
-        if generate_news_digest_stale_hours is not None
-        else 2.0
+        generate_news_digest_stale_hours if generate_news_digest_stale_hours is not None else 2.0
     )
 
     moved_media = _move_media_tasks(
@@ -345,6 +345,19 @@ def run_watchdog_once(
         dry_run=dry_run,
         limit=action_limit,
     )
+    effective_process_news_item_stale_hours = (
+        process_news_item_stale_hours
+        if process_news_item_stale_hours is not None
+        else process_content_stale_hours
+    )
+    requeued_process_news_item = _requeue_stale_tasks(
+        session,
+        task_types=[TaskType.PROCESS_NEWS_ITEM.value],
+        action_name="requeue_stale_process_news_item",
+        stale_hours=effective_process_news_item_stale_hours,
+        dry_run=dry_run,
+        limit=action_limit,
+    )
     requeued_generate_news_digest = _requeue_stale_tasks(
         session,
         task_types=[TaskType.GENERATE_NEWS_DIGEST.value],
@@ -362,6 +375,7 @@ def run_watchdog_once(
         moved_media=moved_media,
         requeued_media=requeued_media,
         requeued_process_content=requeued_process_content,
+        requeued_process_news_item=requeued_process_news_item,
         requeued_generate_news_digest=requeued_generate_news_digest,
     )
 
@@ -421,6 +435,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Requeue process_content processing tasks older than this many hours",
     )
     parser.add_argument(
+        "--process-news-item-stale-hours",
+        type=float,
+        default=_env_float(
+            "QUEUE_WATCHDOG_PROCESS_NEWS_ITEM_STALE_HOURS",
+            _env_float("QUEUE_WATCHDOG_PROCESS_CONTENT_STALE_HOURS", 2.0),
+        ),
+        help="Requeue process_news_item processing tasks older than this many hours",
+    )
+    parser.add_argument(
         "--alert-threshold",
         type=int,
         default=_env_int("QUEUE_WATCHDOG_ALERT_THRESHOLD", 1),
@@ -461,10 +484,8 @@ def _print_result(result: WatchdogRunResult) -> None:
     print(f"  dry_run: {result.dry_run}")
     print(f"  move_media: {result.moved_media.touched_count}")
     print(f"  requeue_stale_media: {result.requeued_media.touched_count}")
-    print(
-        "  requeue_stale_process_content: "
-        f"{result.requeued_process_content.touched_count}"
-    )
+    print(f"  requeue_stale_process_content: {result.requeued_process_content.touched_count}")
+    print(f"  requeue_stale_process_news_item: {result.requeued_process_news_item.touched_count}")
     print(
         "  requeue_stale_generate_news_digest: "
         f"{result.requeued_generate_news_digest.touched_count}"
@@ -505,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
                             args.generate_news_digest_stale_hours
                         ),
                         process_content_stale_hours=float(args.process_content_stale_hours),
+                        process_news_item_stale_hours=float(args.process_news_item_stale_hours),
                         alert_threshold=max(int(args.alert_threshold), 1),
                         slack_webhook_url=args.slack_webhook_url,
                         dry_run=bool(args.dry_run),

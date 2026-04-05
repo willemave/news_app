@@ -156,6 +156,55 @@ def test_process_news_item_passes_usage_persistence_context(db_session) -> None:
     }
 
 
+def test_process_news_item_uses_sqlite_retry_for_finalize(
+    db_session,
+    monkeypatch,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-finalize-retry",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="125b",
+        article_url="https://example.com/story-3b",
+        article_title="Example story 3b",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=1253",
+        raw_metadata={"excerpt": "Example excerpt"},
+        status="pending",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    operations: list[str] = []
+
+    def _retry(**kwargs):
+        operations.append(str(kwargs["operation"]))
+        return kwargs["work"]()
+
+    monkeypatch.setattr(news_processing_module, "run_with_sqlite_lock_retry", _retry)
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=SimpleNamespace(
+            summarize=lambda *_args, **_kwargs: NewsSummary(
+                title="Retry-backed title",
+                article_url=item.article_url,
+                key_points=["Point one"],
+                summary="Short summary.",
+            )
+        ),
+    )
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert item.status == "ready"
+    assert operations == ["process_news_item.finalize"]
+
+
 def test_process_news_item_fetches_discussion_via_public_news_item_flow(
     db_session,
     monkeypatch,
@@ -307,6 +356,48 @@ def test_process_news_item_continues_when_discussion_fetch_fails(
     assert item.status == "ready"
     assert item.raw_metadata["discussion_status"] == "failed"
     assert item.raw_metadata["discussion_error"] == "Discussion fetch failed: blocked"
+
+
+def test_process_news_item_uses_sqlite_retry_for_failure_persist(
+    db_session,
+    monkeypatch,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-failure-retry",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="discussion-failure-2",
+        article_url="https://example.com/story-discussion-failure-2",
+        article_title="Story with invalid summary output",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=778",
+        raw_metadata={"excerpt": "Example excerpt"},
+        status="pending",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    operations: list[str] = []
+
+    def _retry(**kwargs):
+        operations.append(str(kwargs["operation"]))
+        return kwargs["work"]()
+
+    monkeypatch.setattr(news_processing_module, "run_with_sqlite_lock_retry", _retry)
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=SimpleNamespace(summarize=lambda *_args, **_kwargs: {"bad": "payload"}),
+    )
+
+    db_session.refresh(item)
+    assert result.success is False
+    assert item.status == "failed"
+    assert operations == ["process_news_item.mark_failed"]
 
 
 def test_process_news_item_does_not_treat_title_only_row_as_summarized(db_session) -> None:

@@ -44,6 +44,8 @@ MULTI_VIEW_WEIGHTS = {
     "content": 0.35,
     "provenance": 0.10,
 }
+SEMANTIC_PREFILTER_MIN_TITLE_TOKEN_OVERLAP = 1
+SEMANTIC_PREFILTER_MAX_CANDIDATES = 12
 
 
 def _utcnow_naive() -> datetime:
@@ -153,6 +155,63 @@ def relaxed_lexical_guard(
 
     overlap = (left_tokens or match_tokens(left)) & (right_tokens or match_tokens(right))
     return len(overlap) >= 1
+
+
+def _normalized_domain(item: NewsItem) -> str | None:
+    domain = _clean_string(item.article_domain)
+    return domain.casefold() if domain else None
+
+
+def _normalized_source(item: NewsItem) -> str | None:
+    source = _clean_string(item.source_label)
+    return source.casefold() if source else None
+
+
+def _semantic_prefilter_candidates(
+    item: NewsItem,
+    candidates: list[NewsItem],
+) -> tuple[list[NewsItem], dict[int, set[str]], set[str]]:
+    """Narrow semantic matching to title-adjacent candidates.
+
+    The runtime worker cannot afford to embed every recent ready representative
+    on CPU. Exact URL/id keys are handled before this function runs, so here we
+    only keep candidates that share at least one normalized title token with the
+    item and then rank that shortlist by lexical overlap plus source/domain cues.
+    """
+    item_tokens = match_tokens(item)
+    if not item_tokens:
+        return [], {}, item_tokens
+
+    item_domain = _normalized_domain(item)
+    item_source = _normalized_source(item)
+    ranked: list[tuple[int, int, int, int, NewsItem, set[str]]] = []
+    for index, candidate in enumerate(candidates):
+        candidate_tokens = match_tokens(candidate)
+        overlap = len(item_tokens & candidate_tokens)
+        if overlap < SEMANTIC_PREFILTER_MIN_TITLE_TOKEN_OVERLAP:
+            continue
+
+        domain_match = int(item_domain is not None and item_domain == _normalized_domain(candidate))
+        source_match = int(item_source is not None and item_source == _normalized_source(candidate))
+        ranked.append(
+            (
+                overlap,
+                domain_match,
+                source_match,
+                -index,
+                candidate,
+                candidate_tokens,
+            )
+        )
+
+    if not ranked:
+        return [], {}, item_tokens
+
+    ranked.sort(key=lambda entry: entry[:4], reverse=True)
+    selected = ranked[:SEMANTIC_PREFILTER_MAX_CANDIDATES]
+    selected_candidates = [candidate for *_prefix, candidate, _tokens in selected]
+    selected_tokens = {candidate.id: tokens for *_prefix, candidate, tokens in selected}
+    return selected_candidates, selected_tokens, item_tokens
 
 
 def _combine_view_scores(*, view_scores: dict[str, list[float | None]]) -> list[float]:
@@ -354,9 +413,11 @@ def find_related_representative(
     lookback_floor = _utcnow_naive() - timedelta(days=settings.news_list_related_lookback_days)
     query = query.filter(NewsItem.ingested_at >= lookback_floor)
 
-    candidates = query.order_by(NewsItem.ingested_at.desc(), NewsItem.id.desc()).limit(
-        settings.news_list_max_related_candidates
-    ).all()
+    candidates = (
+        query.order_by(NewsItem.ingested_at.desc(), NewsItem.id.desc())
+        .limit(settings.news_list_max_related_candidates)
+        .all()
+    )
     if not candidates:
         return None
 
@@ -366,30 +427,35 @@ def find_related_representative(
             if exact_relation_key(candidate) == exact_key:
                 return candidate
 
+    semantic_candidates, candidate_tokens_by_id, item_tokens = _semantic_prefilter_candidates(
+        item,
+        candidates,
+    )
+    if not semantic_candidates:
+        return None
+
     similarity_scores = _combine_view_scores(
         view_scores={
             "title": _view_similarity_scores(
                 item,
-                candidates,
+                semantic_candidates,
                 view_builder=title_matching_text,
             ),
             "content": _view_similarity_scores(
                 item,
-                candidates,
+                semantic_candidates,
                 view_builder=content_matching_text,
             ),
             "provenance": _view_similarity_scores(
                 item,
-                candidates,
+                semantic_candidates,
                 view_builder=provenance_matching_text,
             ),
         },
     )
     best_candidate: NewsItem | None = None
     best_score = -1.0
-    item_tokens: set[str] | None = None
-    candidate_tokens_by_id: dict[int, set[str]] = {}
-    for index, candidate in enumerate(candidates):
+    for index, candidate in enumerate(semantic_candidates):
         score = float(similarity_scores[index])
         if score >= settings.news_list_primary_similarity_threshold and score > best_score:
             best_candidate = candidate
@@ -398,19 +464,12 @@ def find_related_representative(
         if score < settings.news_list_secondary_similarity_threshold or score <= best_score:
             continue
 
-        if item_tokens is None:
-            item_tokens = match_tokens(item)
-        candidate_tokens = candidate_tokens_by_id.setdefault(
-            candidate.id,
-            match_tokens(candidate),
-        )
-        if (
-            relaxed_lexical_guard(
-                item,
-                candidate,
-                left_tokens=item_tokens,
-                right_tokens=candidate_tokens,
-            )
+        candidate_tokens = candidate_tokens_by_id[candidate.id]
+        if relaxed_lexical_guard(
+            item,
+            candidate,
+            left_tokens=item_tokens,
+            right_tokens=candidate_tokens,
         ):
             best_candidate = candidate
             best_score = score

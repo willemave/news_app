@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from time import perf_counter
 
 from sqlalchemy import func
+
+# Match the other cron-driven entrypoints so `python scripts/run_feed_discovery.py`
+# resolves the repo-local `app` package on production.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.db import get_db
 from app.core.logging import get_logger, setup_logging

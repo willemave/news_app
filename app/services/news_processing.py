@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.constants import SUMMARY_KIND_SHORT_NEWS_DIGEST, SUMMARY_VERSION_V1
+from app.core.db import run_with_sqlite_lock_retry
 from app.core.logging import get_logger
 from app.models.contracts import NewsItemStatus
 from app.models.metadata import NewsSummary
@@ -207,9 +208,7 @@ def _fallback_summary(item: NewsItem, raw_metadata: dict[str, Any]) -> NewsSumma
 
 def _persist_summary(item: NewsItem, summary: NewsSummary, raw_metadata: dict[str, Any]) -> None:
     item.summary_title = (
-        _clean_title(summary.title)
-        or _clean_title(item.article_title)
-        or item.summary_title
+        _clean_title(summary.title) or _clean_title(item.article_title) or item.summary_title
     )
     normalized_article_url = (
         normalize_http_url(summary.article_url) if summary.article_url else None
@@ -235,9 +234,54 @@ def _finalize_processed_item(
     summary: NewsSummary,
 ) -> None:
     """Persist one summary, reconcile clustering, and commit."""
-    _persist_summary(item, summary, raw_metadata)
-    reconcile_news_item_relation(db, news_item_id=item.id)
-    db.commit()
+
+    def _write() -> None:
+        target = db.query(NewsItem).filter(NewsItem.id == item.id).first()
+        if target is None:
+            raise ValueError(f"News item {item.id} not found")
+        _persist_summary(target, summary, dict(raw_metadata))
+        reconcile_news_item_relation(db, news_item_id=target.id)
+        db.commit()
+
+    run_with_sqlite_lock_retry(
+        db=db,
+        component="news_processing",
+        operation="process_news_item.finalize",
+        item_id=str(item.id),
+        context_data={"news_item_id": item.id},
+        work=_write,
+    )
+    db.refresh(item)
+
+
+def _mark_processing_failure(
+    db: Session,
+    *,
+    news_item_id: int,
+    error_message: str,
+) -> str:
+    """Persist a failed processing state with SQLite lock retries."""
+
+    def _write() -> str:
+        item = db.query(NewsItem).filter(NewsItem.id == news_item_id).first()
+        if item is None:
+            return NewsItemStatus.FAILED.value
+        raw_metadata = dict(item.raw_metadata or {})
+        raw_metadata["processing_error"] = error_message
+        item.raw_metadata = raw_metadata
+        item.status = NewsItemStatus.FAILED.value
+        item.processed_at = _utcnow_naive()
+        db.commit()
+        return item.status
+
+    return run_with_sqlite_lock_retry(
+        db=db,
+        component="news_processing",
+        operation="process_news_item.mark_failed",
+        item_id=str(news_item_id),
+        context_data={"news_item_id": news_item_id},
+        work=_write,
+    )
 
 
 def _summarizer_accepts_context_kwargs(summarizer: object) -> bool:
@@ -389,15 +433,14 @@ def process_news_item(
                 error_message=str(exc),
                 retryable=True,
             )
-        raw_metadata = dict(item.raw_metadata or {})
-        raw_metadata["processing_error"] = str(exc)
-        item.raw_metadata = raw_metadata
-        item.status = NewsItemStatus.FAILED.value
-        item.processed_at = _utcnow_naive()
-        db.commit()
+        failed_status = _mark_processing_failure(
+            db,
+            news_item_id=news_item_id,
+            error_message=str(exc),
+        )
         return NewsItemProcessingResult(
             success=False,
-            status=item.status,
+            status=failed_status,
             error_message=str(exc),
             retryable=True,
         )

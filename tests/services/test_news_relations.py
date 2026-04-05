@@ -8,7 +8,10 @@ import numpy as np
 
 from app.models.schema import NewsItem, NewsItemReadStatus
 from app.services.news_feed import count_unread_news_items
-from app.services.news_relations import reconcile_news_item_relation
+from app.services.news_relations import (
+    SEMANTIC_PREFILTER_MAX_CANDIDATES,
+    reconcile_news_item_relation,
+)
 
 
 def _news_item(
@@ -255,3 +258,73 @@ def test_reconcile_news_item_relation_rejects_topical_neighbor_under_multiview_s
 
     db_session.refresh(adjacent)
     assert adjacent.representative_news_item_id is None
+
+
+def test_reconcile_news_item_relation_skips_embeddings_without_title_overlap(
+    db_session,
+    monkeypatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_encode(texts: list[str]) -> np.ndarray:
+        calls.append(texts)
+        return np.eye(len(texts), dtype=float)
+
+    monkeypatch.setattr("app.services.news_relations.encode_news_texts", fake_encode)
+
+    _news_item(
+        db_session,
+        ingest_key="rep-unrelated",
+        source_external_id="500",
+        title="OpenAI ships new coding agent",
+        story_url="https://example.com/story-500",
+    )
+    unrelated = _news_item(
+        db_session,
+        ingest_key="unrelated",
+        source_external_id="501",
+        title="Mediterranean cooking guide for spring dinners",
+        story_url="https://example.com/story-501",
+    )
+
+    reconcile_news_item_relation(db_session, news_item_id=unrelated.id)
+    db_session.commit()
+
+    db_session.refresh(unrelated)
+    assert unrelated.representative_news_item_id is None
+    assert calls == []
+
+
+def test_reconcile_news_item_relation_caps_semantic_prefilter_candidates(
+    db_session,
+    monkeypatch,
+) -> None:
+    call_lengths: list[int] = []
+
+    def fake_encode(texts: list[str]) -> np.ndarray:
+        call_lengths.append(len(texts))
+        return np.eye(len(texts), dtype=float)
+
+    monkeypatch.setattr("app.services.news_relations.encode_news_texts", fake_encode)
+
+    for index in range(20):
+        _news_item(
+            db_session,
+            ingest_key=f"rep-cap-{index}",
+            source_external_id=f"6{index:02d}",
+            title=f"OpenAI coding agent launch report {index}",
+            story_url=f"https://example.com/story-cap-{index}",
+        )
+
+    related = _news_item(
+        db_session,
+        ingest_key="related-cap",
+        source_external_id="699",
+        title="OpenAI coding agent launch follow-up",
+        story_url="https://example.com/story-cap-related",
+    )
+
+    reconcile_news_item_relation(db_session, news_item_id=related.id)
+
+    assert call_lengths
+    assert max(call_lengths) == SEMANTIC_PREFILTER_MAX_CANDIDATES + 1
