@@ -20,6 +20,7 @@ from app.services.content_analyzer import CONTENT_ANALYSIS_MODEL, CONTENT_ANALYZ
 from app.services.content_bodies import get_content_body_resolver
 from app.services.llm_prompts import generate_summary_prompt
 from app.services.llm_summarization import DEFAULT_SUMMARIZATION_MODELS
+from app.services.summarization_templates import resolve_summarization_prompt_route
 
 FAILURE_LEVELS = {"ERROR", "CRITICAL"}
 DEFAULT_COMPONENTS = ("summarization", "llm_summarization", "content_analyzer")
@@ -694,6 +695,18 @@ def _extract_summarize_context(
     metadata = content.content_metadata or {}
     notes: list[str] = [f"content_type={content.content_type}"]
     content_type = (content.content_type or "").lower()
+    prompt_type, max_bullets, max_quotes = resolve_summarization_prompt_route(
+        content_type,
+        url=str(content.url),
+        platform=content.platform,
+        metadata=metadata,
+    )
+    notes.append(f"prompt_type={prompt_type}")
+
+    if content_type not in {"article", "news", "podcast"}:
+        notes.append("unsupported_content_type_for_summarize")
+        return "", prompt_type, max_bullets, max_quotes, notes
+
     source_text = get_content_body_resolver().resolve_text(session, content=content)
 
     if content_type == "article":
@@ -702,7 +715,7 @@ def _extract_summarize_context(
             or _extract_str(metadata.get("content"))
             or _extract_str(metadata.get("content_to_summarize"))
         )
-        return text_payload, "editorial_narrative", 10, 4, notes
+        return text_payload, prompt_type, max_bullets, max_quotes, notes
 
     if content_type == "news":
         raw_content = (
@@ -714,8 +727,8 @@ def _extract_summarize_context(
         if context and raw_content:
             text_payload = f"Context:\n{context}\n\nArticle Content:\n{raw_content}"
             notes.append("aggregator_context=present")
-            return text_payload, "news_digest", 4, 0, notes
-        return raw_content, "news_digest", 4, 0, notes
+            return text_payload, prompt_type, max_bullets, max_quotes, notes
+        return raw_content, prompt_type, max_bullets, max_quotes, notes
 
     if content_type == "podcast":
         text_payload = (
@@ -723,10 +736,9 @@ def _extract_summarize_context(
             or _extract_str(metadata.get("transcript"))
             or _extract_str(metadata.get("content_to_summarize"))
         )
-        return text_payload, "editorial_narrative", 10, 4, notes
+        return text_payload, prompt_type, max_bullets, max_quotes, notes
 
-    notes.append("unsupported_content_type_for_summarize")
-    return "", "editorial_narrative", 10, 4, notes
+    return "", prompt_type, max_bullets, max_quotes, notes
 
 
 def _default_model_for_summarize(content_type: str | None, prompt_type: str) -> str:
@@ -734,6 +746,8 @@ def _default_model_for_summarize(content_type: str | None, prompt_type: str) -> 
     normalized_content_type = (content_type or "").lower()
     if normalized_content_type in DEFAULT_SUMMARIZATION_MODELS:
         return DEFAULT_SUMMARIZATION_MODELS[normalized_content_type]
+    if prompt_type.startswith("editorial_"):
+        return DEFAULT_SUMMARIZATION_MODELS["editorial_narrative"]
     if prompt_type in DEFAULT_SUMMARIZATION_MODELS:
         return DEFAULT_SUMMARIZATION_MODELS[prompt_type]
     return DEFAULT_SUMMARIZATION_MODELS["article"]

@@ -94,3 +94,47 @@ def test_editorial_narrative_summary_ignores_legacy_archetype_reactions() -> Non
 
     assert len(summary.key_points) == 4
     assert "archetype_reactions" not in summary.model_dump(mode="json")
+
+
+def test_editorial_narrative_summary_accepts_research_source_details() -> None:
+    summary = EditorialNarrativeSummary.model_validate(
+        {
+            "title": "Research Summary",
+            "editorial_narrative": (
+                "Paragraph one explains the paper's core question, setup, and key result with "
+                "enough concrete detail to satisfy the narrative summary validation rules.\n\n"
+                "Paragraph two covers the evidence, caveats, and why the result matters for "
+                "builders or researchers evaluating the work."
+            ),
+            "quotes": [
+                {
+                    "text": "A direct quote from the paper with enough detail.",
+                    "attribution": "Paper",
+                },
+                {
+                    "text": "A second quote describing the result or limitation in detail.",
+                    "attribution": "Authors",
+                },
+            ],
+            "key_points": [
+                {"point": "Point one with concrete research detail."},
+                {"point": "Point two with concrete research detail."},
+                {"point": "Point three with concrete research detail."},
+                {"point": "Point four with concrete research detail."},
+            ],
+            "source_details": {
+                "template": "research",
+                "hypothesis": "Scaling retrieval on curated corpora improves answer quality.",
+                "methods": ["Benchmarking against three retrieval baselines."],
+                "arguments": [
+                    "The tuned retrieval path materially improved answer relevance.",
+                    "Most gains came from corpus curation rather than model size.",
+                ],
+                "limitations": ["The evaluation set is narrow and enterprise-focused."],
+                "implications": ["Teams should measure data quality before changing models."],
+            },
+        }
+    )
+
+    assert summary.source_details is not None
+    assert summary.source_details.template == "research"

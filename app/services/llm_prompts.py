@@ -3,6 +3,92 @@ Shared LLM prompt generation for content summarization.
 Used by both OpenAI and Anthropic LLM services to ensure consistency.
 """
 
+SPECIALIZED_EDITORIAL_TEMPLATE_CONFIGS = {
+    "editorial_podcast": {
+        "source_name": "a podcast transcript or episode",
+        "template": "podcast",
+        "source_fields": [
+            '    "thesis": "The central claim or frame of the episode",',
+            '    "speakers": ["Named speakers or roles"],',
+            '    "notable_arguments": ["Important argument or perspective"],',
+            '    "practical_takeaways": ["Operational or practical takeaway"]',
+        ],
+        "source_guidelines": [
+            "Capture the guest or host thesis, not just the topic area.",
+            "Use speakers to distinguish viewpoints when the conversation includes disagreement or contrast.",
+            "Prefer practical takeaways, execution advice, and concrete examples over banter or scene-setting.",
+        ],
+        "user_message": "Podcast Transcript:\n\n{content}",
+    },
+    "editorial_substack": {
+        "source_name": "a newsletter or essay",
+        "template": "substack",
+        "source_fields": [
+            '    "thesis": "The author\'s central thesis",',
+            '    "supporting_arguments": ["Major supporting argument"],',
+            '    "evidence": ["Evidence, examples, or references the author uses"],',
+            '    "implications": ["What follows if the thesis is right"]',
+        ],
+        "source_guidelines": [
+            "Treat the piece as an argument: identify the thesis, the support, and the implications.",
+            "Separate the author's framing from the strongest evidence they actually provide.",
+            "Call out omissions or weak support in key_points when relevant.",
+        ],
+        "user_message": "Essay Content:\n\n{content}",
+    },
+    "editorial_twitter": {
+        "source_name": "an X/Twitter post or linked thread",
+        "template": "twitter",
+        "source_fields": [
+            '    "primary_claim": "The main claim or assertion being made",',
+            '    "evidence": ["Evidence directly supplied in the post or linked context"],',
+            '    "caveats": ["Important missing context, uncertainty, or caveat"],',
+            '    "linked_context": ["Key context from links, screenshots, or embedded references when available"]',
+        ],
+        "source_guidelines": [
+            "Distinguish clearly between what is asserted, what is evidenced, and what remains uncertain.",
+            "If the post links to a richer source, prioritize the linked source over the rhetoric of the post.",
+            "Keep the narrative tighter and less essay-like than for a long article.",
+        ],
+        "user_message": "Post and Linked Context:\n\n{content}",
+    },
+    "editorial_research": {
+        "source_name": "a research paper or technical PDF",
+        "template": "research",
+        "source_fields": [
+            '    "hypothesis": "The central research question, thesis, or hypothesis",',
+            '    "methods": ["Method, dataset, experiment, or evidence base"],',
+            '    "arguments": ["Main claim or result supported by the work"],',
+            '    "limitations": ["Important limitation, confound, or scope boundary"],',
+            '    "implications": ["Practical or research implication"]',
+        ],
+        "source_guidelines": [
+            "Prioritize hypothesis, methods, results, and limitations over rhetorical framing.",
+            "Do not overstate conclusions beyond what the evidence supports.",
+            "When possible, preserve quantitative findings, evaluation conditions, and important caveats.",
+        ],
+        "user_message": "Research Content:\n\n{content}",
+    },
+    "editorial_github": {
+        "source_name": "a GitHub repository or technical project documentation",
+        "template": "github",
+        "source_fields": [
+            '    "overview": "What the project is for and what problem it solves",',
+            '    "architecture": ["Core subsystem, design choice, or structural pattern"],',
+            '    "interfaces": ["CLI, API, SDK, workflow, or integration surface"],',
+            '    "setup_constraints": ["Important dependency, setup, or environment constraint"],',
+            '    "maturity_signals": ["Maintenance, documentation, tests, adoption, or stability signal"],',
+            '    "best_fit_use_cases": ["Who should use it and for what"]',
+        ],
+        "source_guidelines": [
+            "Summarize the repo like a technical product: purpose, architecture, interfaces, and adoption signals.",
+            "Call out setup friction, hidden dependencies, or maturity limits instead of treating the README as marketing.",
+            "Prefer what a developer needs to know before using or extending the project.",
+        ],
+        "user_message": "Repository or Documentation Content:\n\n{content}",
+    },
+}
+
 
 # ruff: noqa: E501
 def generate_summary_prompt(
@@ -16,7 +102,7 @@ def generate_summary_prompt(
     - User message template is for variable content (not cached)
 
     Args:
-        content_type: Type of content ("article", "podcast", "news_digest", "hackernews", "interleaved", "long_bullets", "editorial_narrative")
+        content_type: Type of content ("article", "podcast", "news_digest", "hackernews", "interleaved", "long_bullets", "editorial_narrative", "editorial_podcast", "editorial_substack", "editorial_twitter", "editorial_research", "editorial_github")
         max_bullet_points: Maximum number of bullet points to generate
         max_quotes: Maximum number of quotes to extract
 
@@ -25,8 +111,10 @@ def generate_summary_prompt(
         The user_message_template contains a {content} placeholder.
     """
     normalized_type = content_type.lower()
-    if normalized_type in {"article", "podcast"}:
+    if normalized_type == "article":
         normalized_type = "editorial_narrative"
+    elif normalized_type == "podcast":
+        normalized_type = "editorial_podcast"
     if normalized_type == "news":
         normalized_type = "news_digest"
     content_type = normalized_type
@@ -128,6 +216,54 @@ Guidelines:
 """
 
         user_message = "Daily News Rollup Context:\n\n{content}"
+
+    elif content_type in SPECIALIZED_EDITORIAL_TEMPLATE_CONFIGS:
+        config = SPECIALIZED_EDITORIAL_TEMPLATE_CONFIGS[content_type]
+        source_details_block = '  "source_details": {\n'
+        source_details_block += f'    "template": "{config["template"]}",\n'
+        source_details_block += "\n".join(config["source_fields"])
+        source_details_block += "\n  },\n"
+        source_guidelines_text = "\n".join(f"- {guideline}" for guideline in config["source_guidelines"])
+        system_message = f"""You are an expert editor writing an information-dense narrative summary for {config["source_name"]}.
+
+Return a JSON object with exactly these fields:
+{{
+  "title": "Descriptive title (max 110 characters)",
+  "editorial_narrative": "1-2 tight paragraphs with a clear thesis and factual synthesis",
+  "quotes": [
+    {{
+      "text": "Direct quote from the content (min 10 chars)",
+      "attribution": "Who said it (optional)"
+    }}
+  ],
+  "key_points": [
+    {{
+      "point": "Concrete key point"
+    }}
+  ],
+{source_details_block}  "classification": "to_read" | "skip",
+  "summarization_date": "ISO 8601 timestamp"
+}}
+
+Guidelines:
+- Start the first paragraph with the core thesis or the most consequential takeaway.
+- Use only 1-2 paragraphs for the full narrative.
+- Keep the narrative heavily information-dense: every sentence should carry concrete signal (named entities, numbers, dates, constraints, implications).
+- Target roughly 140-220 words across the full narrative.
+- Avoid filler, repetition, and generic framing.
+- Include 2-{max_quotes} direct quotes; integrate quotes naturally into the narrative prose when possible.
+- key_points: include 4-{max_bullet_points} non-overlapping points.
+- Each key point must be specific and evidence-oriented, not vague advice.
+- There may be technical terms in the content; preserve exact spelling.
+- Keep source_details accurate, concise, and fully grounded in the source. Do not invent structure that the source does not support.
+{source_guidelines_text}
+- Never include markdown or any fields outside this schema.
+
+Classification Guidelines:
+- Set classification to "skip" if the content lacks depth, evidence, or practical signal.
+- Set classification to "to_read" if the content delivers substantial insight, original reporting, or high-signal analysis.
+"""
+        user_message = config["user_message"]
 
     elif content_type == "editorial_narrative":
         system_message = f"""You are an expert editor writing an information-dense narrative summary.

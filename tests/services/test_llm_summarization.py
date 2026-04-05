@@ -155,6 +155,30 @@ def test_content_summarizer_uses_gpt_5_4_mini_for_articles(
     assert captured_model_specs == ["openai:gpt-5.4-mini"]
 
 
+def test_content_summarizer_uses_editorial_model_for_specialized_prompt_types(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_resolves: list[tuple[str | None, str | None]] = []
+    captured_model_specs: list[str] = []
+
+    def fake_resolve(provider: str | None, hint: str | None) -> tuple[str, str]:
+        captured_resolves.append((provider, hint))
+        return provider or "openai", f"{provider}:{hint}"
+
+    def fake_get_basic_agent(model_spec, output_type, system_prompt):  # noqa: ANN001
+        del system_prompt
+        captured_model_specs.append(model_spec)
+        return FakeAgent(_agent_output_for_type(output_type))
+
+    monkeypatch.setattr(llm_summarization, "get_basic_agent", fake_get_basic_agent)
+
+    summarizer = llm_summarization.ContentSummarizer(_model_resolver=fake_resolve)
+    summarizer.summarize("body", content_type="editorial_research")
+
+    assert captured_resolves == [("openai", "gpt-5.4")]
+    assert captured_model_specs == ["openai:gpt-5.4"]
+
+
 def test_content_summarizer_respects_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_resolves: list[tuple[str | None, str | None]] = []
     captured_model_specs: list[str] = []

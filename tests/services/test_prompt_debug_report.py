@@ -140,6 +140,51 @@ def test_reconstruct_summarize_prompt_from_content_metadata() -> None:
         engine.dispose()
 
 
+def test_reconstruct_summarize_prompt_uses_research_template_for_pdf() -> None:
+    engine, session_factory = _build_test_session_factory()
+    try:
+        with session_factory() as session:
+            content = Content(
+                id=43,
+                content_type="article",
+                url="https://example.com/paper.pdf",
+                title="Paper",
+                source="test",
+                status="failed",
+                content_metadata={
+                    "content": "Prompt reconstruction text for a paper.",
+                    "content_type": "pdf",
+                },
+            )
+            session.add(content)
+            session.commit()
+
+        failure = FailureRecord(
+            phase="summarize",
+            timestamp=datetime.now(UTC),
+            component="summarization",
+            operation="llm_summarization",
+            source_file="errors/summarization.jsonl",
+            item_id="43",
+            content_id=43,
+            url="https://example.com/paper.pdf",
+            model=None,
+            error_type="RuntimeError",
+            error_message="boom",
+            context_data={},
+        )
+
+        snapshot = reconstruct_summarize_prompt(failure=failure, db_session_factory=session_factory)
+
+        assert snapshot.reconstruction_quality == "full"
+        assert snapshot.system_prompt is not None
+        assert '"template": "research"' in snapshot.system_prompt
+        assert any(note == "prompt_type=editorial_research" for note in snapshot.notes)
+    finally:
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
 def test_reconstruct_analyze_url_prompt_partial() -> None:
     """Analyze prompt reconstruction should return a partial skeleton when URL is present."""
     failure = FailureRecord(

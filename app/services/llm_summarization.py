@@ -22,6 +22,7 @@ from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import resolve_model
 from app.services.llm_prompts import generate_summary_prompt
 from app.services.llm_usage import record_usage
+from app.services.summarization_templates import is_editorial_prompt_type
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,11 @@ SummarizationPromptType = Literal[
     "long_bullets",
     "news_digest",
     "editorial_narrative",
+    "editorial_podcast",
+    "editorial_substack",
+    "editorial_twitter",
+    "editorial_research",
+    "editorial_github",
 ]
 SummarizationOutputType = (
     type[StructuredSummary]
@@ -91,7 +97,7 @@ def resolve_summarization_output_type(
     """Return the pydantic output type for a canonical summarization prompt type."""
     if prompt_type == "news_digest":
         return NewsSummary
-    if prompt_type == "editorial_narrative":
+    if is_editorial_prompt_type(prompt_type):
         return EditorialNarrativeSummary
     if prompt_type == "long_bullets":
         return BulletedSummary
@@ -109,21 +115,31 @@ def resolve_summarization_spec(
     normalized_type = _normalize_content_type(content_type)
     default_article_model = models.get("article", DEFAULT_ARTICLE_MODEL_SPEC)
 
-    if normalized_type in {"article", "podcast"}:
+    editorial_default_model = models.get("editorial_narrative", default_article_model)
+
+    if normalized_type == "article":
         prompt_type: SummarizationPromptType = "editorial_narrative"
         default_model_spec = models.get(normalized_type, default_article_model)
+    elif normalized_type == "podcast":
+        prompt_type = "editorial_podcast"
+        default_model_spec = models.get(normalized_type, editorial_default_model)
     elif normalized_type == "news":
         prompt_type = "news_digest"
         default_model_spec = models.get("news", models.get("news_digest", default_article_model))
     elif normalized_type in {
         "editorial_narrative",
+        "editorial_podcast",
+        "editorial_substack",
+        "editorial_twitter",
+        "editorial_research",
+        "editorial_github",
         "interleaved",
         "long_bullets",
         "news_digest",
         "structured",
     }:
         prompt_type = cast(SummarizationPromptType, normalized_type)
-        default_model_spec = models.get(normalized_type, default_article_model)
+        default_model_spec = models.get(normalized_type, editorial_default_model)
     else:
         prompt_type = "structured"
         default_model_spec = models.get(normalized_type, default_article_model)

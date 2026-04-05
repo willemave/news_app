@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from html import unescape
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -289,6 +289,69 @@ class EditorialKeyPoint(BaseModel):
     point: str = Field(..., min_length=10, max_length=500)
 
 
+class PodcastSourceDetails(BaseModel):
+    """Structured details for podcast summaries."""
+
+    template: Literal["podcast"] = "podcast"
+    thesis: str = Field(..., min_length=20, max_length=500)
+    speakers: list[str] = Field(..., min_length=1, max_length=6)
+    notable_arguments: list[str] = Field(..., min_length=2, max_length=5)
+    practical_takeaways: list[str] = Field(..., min_length=2, max_length=5)
+
+
+class SubstackSourceDetails(BaseModel):
+    """Structured details for essay/newsletter summaries."""
+
+    template: Literal["substack"] = "substack"
+    thesis: str = Field(..., min_length=20, max_length=500)
+    supporting_arguments: list[str] = Field(..., min_length=2, max_length=5)
+    evidence: list[str] = Field(..., min_length=1, max_length=5)
+    implications: list[str] = Field(..., min_length=1, max_length=5)
+
+
+class TwitterSourceDetails(BaseModel):
+    """Structured details for X/Twitter summaries."""
+
+    template: Literal["twitter"] = "twitter"
+    primary_claim: str = Field(..., min_length=15, max_length=400)
+    evidence: list[str] = Field(..., min_length=1, max_length=4)
+    caveats: list[str] = Field(..., min_length=1, max_length=4)
+    linked_context: list[str] = Field(default_factory=list, max_length=4)
+
+
+class ResearchSourceDetails(BaseModel):
+    """Structured details for research article summaries."""
+
+    template: Literal["research"] = "research"
+    hypothesis: str = Field(..., min_length=20, max_length=500)
+    methods: list[str] = Field(..., min_length=1, max_length=5)
+    arguments: list[str] = Field(..., min_length=2, max_length=6)
+    limitations: list[str] = Field(..., min_length=1, max_length=5)
+    implications: list[str] = Field(..., min_length=1, max_length=5)
+
+
+class GitHubSourceDetails(BaseModel):
+    """Structured details for GitHub repository or docs summaries."""
+
+    template: Literal["github"] = "github"
+    overview: str = Field(..., min_length=20, max_length=500)
+    architecture: list[str] = Field(..., min_length=1, max_length=5)
+    interfaces: list[str] = Field(..., min_length=1, max_length=5)
+    setup_constraints: list[str] = Field(..., min_length=1, max_length=5)
+    maturity_signals: list[str] = Field(..., min_length=1, max_length=5)
+    best_fit_use_cases: list[str] = Field(..., min_length=1, max_length=5)
+
+
+EditorialSourceDetails = Annotated[
+    PodcastSourceDetails
+    | SubstackSourceDetails
+    | TwitterSourceDetails
+    | ResearchSourceDetails
+    | GitHubSourceDetails,
+    Field(discriminator="template"),
+]
+
+
 class EditorialArchetypeReaction(BaseModel):
     """Persona-style reaction block for long-form summaries."""
 
@@ -332,6 +395,19 @@ class EditorialNarrativeSummary(BaseModel):
                     {"point": "Tool consolidation is reducing duplicated agent infrastructure."},
                     {"point": "Teams that enforce evaluation gates ship faster over time."},
                 ],
+                "source_details": {
+                    "template": "github",
+                    "overview": "Open source workflow runtime for long-lived agent tasks.",
+                    "architecture": [
+                        "Core runtime coordinates task state and plugin execution."
+                    ],
+                    "interfaces": [
+                        "CLI entrypoints, local configuration files, and plugin hooks."
+                    ],
+                    "setup_constraints": ["Requires Python 3.11 and local plugin access."],
+                    "maturity_signals": ["Active maintenance and concrete production examples."],
+                    "best_fit_use_cases": ["Developer workflow automation and local agents."],
+                },
                 "classification": "to_read",
                 "summarization_date": "2026-02-08T10:30:00Z",
             }
@@ -351,6 +427,10 @@ class EditorialNarrativeSummary(BaseModel):
     )
     key_points: list[EditorialKeyPoint] = Field(
         ..., min_length=4, max_length=12, description="4-12 concrete key points"
+    )
+    source_details: EditorialSourceDetails | None = Field(
+        None,
+        description="Optional source-specific structured details for specialized templates",
     )
     classification: str = Field(
         default="to_read",
@@ -625,7 +705,7 @@ def _parse_summary_payload(
             return BulletedSummary.model_validate(value)
         raise ValueError(f"Unsupported summary version: {summary_version}")
     if summary_kind == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE:
-        if summary_version == SUMMARY_VERSION_V1:
+        if summary_version in {SUMMARY_VERSION_V1, SUMMARY_VERSION_V2}:
             return EditorialNarrativeSummary.model_validate(value)
         raise ValueError(f"Unsupported summary version: {summary_version}")
     if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:

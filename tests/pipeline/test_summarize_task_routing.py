@@ -5,7 +5,11 @@ from unittest.mock import Mock
 
 from sqlalchemy.orm import sessionmaker
 
-from app.constants import SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE, SUMMARY_VERSION_V1
+from app.constants import (
+    SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
+    SUMMARY_VERSION_V1,
+    SUMMARY_VERSION_V2,
+)
 from app.models.metadata import EditorialNarrativeSummary, NewsSummary
 from app.models.schema import Content, ContentStatusEntry
 from app.pipeline.handlers.summarize import SummarizeHandler
@@ -158,6 +162,69 @@ def test_summarize_article_does_not_enqueue_image_when_not_visible(db_session) -
 
     assert handler.handle(task, context).success is True
     queue_service.enqueue.assert_not_called()
+
+
+def test_summarize_pdf_article_uses_research_template_and_version_v2(db_session) -> None:
+    content = Content(
+        content_type="article",
+        url="https://example.com/paper.pdf",
+        status="processing",
+        content_metadata={
+            "content": "Some research content",
+            "content_type": "pdf",
+        },
+    )
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
+
+    queue_service = Mock()
+    llm_service = Mock()
+    llm_service.summarize.return_value = EditorialNarrativeSummary(
+        title="Paper Title",
+        editorial_narrative=(
+            "First paragraph explains the research question, the setup, and the strongest "
+            "result with concrete detail and measurable signal.\n\n"
+            "Second paragraph covers the evidence, limitations, and practical implications "
+            "for teams evaluating whether the result generalizes."
+        ),
+        quotes=[
+            {"text": "Quote one with enough detail for validation.", "attribution": "Paper"},
+            {"text": "Quote two with enough detail for validation.", "attribution": "Authors"},
+        ],
+        key_points=[
+            {"point": "Key point one with concrete detail and consequence."},
+            {"point": "Key point two with concrete detail and consequence."},
+            {"point": "Key point three with concrete detail and consequence."},
+            {"point": "Key point four with concrete detail and consequence."},
+        ],
+        source_details={
+            "template": "research",
+            "hypothesis": "This paper tests a concrete scaling claim.",
+            "methods": ["Evaluation across benchmark suites."],
+            "arguments": [
+                "The main method improves the target metric.",
+                "The improvement depends on dataset quality.",
+            ],
+            "limitations": ["The benchmark coverage is narrow."],
+            "implications": ["Teams should validate on in-domain data."],
+        },
+    )
+    handler = SummarizeHandler()
+    context = _build_context(db_session, queue_service, llm_service)
+
+    task = TaskEnvelope(
+        id=22,
+        task_type=TaskType.SUMMARIZE,
+        content_id=content.id,
+    )
+
+    assert handler.handle(task, context).success is True
+    llm_service.summarize.assert_called_once()
+    assert llm_service.summarize.call_args.kwargs["content_type"] == "editorial_research"
+    db_session.refresh(content)
+    assert content.content_metadata["summary_kind"] == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
+    assert content.content_metadata["summary_version"] == SUMMARY_VERSION_V2
 
 
 def test_summarize_article_falls_back_to_content_to_summarize(db_session) -> None:

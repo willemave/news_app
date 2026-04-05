@@ -32,6 +32,10 @@ from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.dig_deeper import enqueue_dig_deeper_task
 from app.services.long_form_images import enqueue_visible_long_form_image_if_needed
 from app.services.queue import TaskType
+from app.services.summarization_templates import (
+    resolve_editorial_summary_version,
+    resolve_summarization_prompt_route,
+)
 from app.utils.summarization_inputs import (
     build_summarization_payload,
     compute_summarization_input_fingerprint,
@@ -323,19 +327,15 @@ class SummarizeHandler:
                     )
                     return TaskResult.ok()
 
-                summarization_type = content.content_type
+                summarization_type, max_bullet_points, max_quotes = (
+                    resolve_summarization_prompt_route(
+                        content.content_type,
+                        url=content.url,
+                        platform=content.platform,
+                        metadata=metadata,
+                    )
+                )
                 provider_override = None
-                max_bullet_points = 6
-                max_quotes = 8
-
-                if content.content_type == "news":
-                    summarization_type = "news_digest"
-                    max_bullet_points = 4
-                    max_quotes = 0
-                elif content.content_type in ("article", "podcast"):
-                    summarization_type = "editorial_narrative"
-                    max_bullet_points = 10
-                    max_quotes = 4
 
                 logger.info(
                     "Calling LLM for content %s: provider=%s, type=%s, "
@@ -414,7 +414,9 @@ class SummarizeHandler:
                         summary_version = SUMMARY_VERSION_V1
                     elif isinstance(summary, EditorialNarrativeSummary):
                         summary_kind = SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
-                        summary_version = SUMMARY_VERSION_V1
+                        summary_version = resolve_editorial_summary_version(
+                            summarization_type
+                        )
                     elif isinstance(summary, BulletedSummary):
                         summary_kind = SUMMARY_KIND_LONG_BULLETS
                         summary_version = SUMMARY_VERSION_V1
