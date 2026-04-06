@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.db import run_with_sqlite_lock_retry, temporary_sqlite_busy_timeout
@@ -25,6 +27,16 @@ def _read_status_extra(operation: str, **context_data: Any) -> dict[str, Any]:
     }
 
 
+def _content_read_insert_for_dialect(db: Session):
+    """Return a dialect-aware insert builder for content read-status writes."""
+    dialect_name = db.get_bind().dialect.name
+    if dialect_name == "sqlite":
+        return sqlite_insert(ContentReadStatus)
+    if dialect_name == "postgresql":
+        return postgresql_insert(ContentReadStatus)
+    raise ValueError(f"Unsupported database dialect for content read status: {dialect_name}")
+
+
 def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentReadStatus | None:
     """Mark content as read for a user."""
     logger.info(
@@ -34,33 +46,34 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
         extra=_read_status_extra("mark_content_as_read", content_id=content_id, user_id=user_id),
     )
     try:
-        def _write() -> ContentReadStatus:
+
+        def _write() -> int:
             with temporary_sqlite_busy_timeout(db, READ_STATUS_BUSY_TIMEOUT_MS):
-                existing = db.execute(
-                    select(ContentReadStatus).where(
-                        ContentReadStatus.content_id == content_id,
-                        ContentReadStatus.user_id == user_id,
+                read_at = datetime.now(UTC).replace(tzinfo=None)
+                stmt = (
+                    _content_read_insert_for_dialect(db)
+                    .values(
+                        {
+                            "user_id": user_id,
+                            "content_id": content_id,
+                            "read_at": read_at,
+                            "created_at": read_at,
+                        }
                     )
-                ).scalar_one_or_none()
-                read_at = datetime.now(UTC)
-
-                if existing:
-                    existing.read_at = read_at
-                    db.commit()
-                    db.refresh(existing)
-                    return existing
-
-                read_status = ContentReadStatus(
-                    user_id=user_id,
-                    content_id=content_id,
-                    read_at=read_at,
+                    .on_conflict_do_update(
+                        index_elements=[
+                            ContentReadStatus.user_id,
+                            ContentReadStatus.content_id,
+                        ],
+                        set_={"read_at": read_at},
+                    )
+                    .returning(ContentReadStatus.id)
                 )
-                db.add(read_status)
+                read_status_id = int(db.execute(stmt).scalar_one())
                 db.commit()
-                db.refresh(read_status)
-                return read_status
+                return read_status_id
 
-        return run_with_sqlite_lock_retry(
+        read_status_id = run_with_sqlite_lock_retry(
             db=db,
             component="read_status",
             operation="mark_content_as_read",
@@ -68,19 +81,9 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
             item_id=content_id,
             context_data={"user_id": user_id},
         )
-    except IntegrityError as exc:
-        logger.warning(
-            "[READ_STATUS] Integrity error while marking read",
-            extra=_read_status_extra(
-                "mark_content_as_read",
-                content_id=content_id,
-                user_id=user_id,
-                error=str(exc),
-            ),
-            exc_info=True,
-        )
-        db.rollback()
-        return None
+        return db.execute(
+            select(ContentReadStatus).where(ContentReadStatus.id == read_status_id)
+        ).scalar_one_or_none()
     except OperationalError as exc:
         logger.warning(
             "[READ_STATUS] SQLite lock while marking read",
@@ -119,37 +122,32 @@ def mark_contents_as_read(
         return 0, []
 
     try:
+
         def _write() -> tuple[int, list[int]]:
             with temporary_sqlite_busy_timeout(db, READ_STATUS_BUSY_TIMEOUT_MS):
-                timestamp = datetime.now(UTC)
-                existing_records = (
-                    db.execute(
-                        select(ContentReadStatus).where(
-                            ContentReadStatus.content_id.in_(unique_ids),
-                            ContentReadStatus.user_id == user_id,
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                existing_ids = {record.content_id for record in existing_records}
-                for record in existing_records:
-                    record.read_at = timestamp
-
-                new_ids = sorted(unique_ids - existing_ids)
-                if new_ids:
-                    db.bulk_save_objects(
+                timestamp = datetime.now(UTC).replace(tzinfo=None)
+                stmt = (
+                    _content_read_insert_for_dialect(db)
+                    .values(
                         [
-                            ContentReadStatus(
-                                user_id=user_id,
-                                content_id=content_id,
-                                read_at=timestamp,
-                                created_at=timestamp,
-                            )
-                            for content_id in new_ids
+                            {
+                                "user_id": user_id,
+                                "content_id": content_id,
+                                "read_at": timestamp,
+                                "created_at": timestamp,
+                            }
+                            for content_id in sorted(unique_ids)
                         ]
                     )
-
+                    .on_conflict_do_update(
+                        index_elements=[
+                            ContentReadStatus.user_id,
+                            ContentReadStatus.content_id,
+                        ],
+                        set_={"read_at": timestamp},
+                    )
+                )
+                db.execute(stmt)
                 db.commit()
                 return len(unique_ids), []
 
@@ -160,22 +158,6 @@ def mark_contents_as_read(
             work=_write,
             context_data={"user_id": user_id, "content_count": len(unique_ids)},
         )
-    except IntegrityError as exc:
-        logger.warning(
-            "[READ_STATUS] Integrity error during bulk mark; retrying individually",
-            extra=_read_status_extra("mark_contents_as_read", user_id=user_id, error=str(exc)),
-            exc_info=True,
-        )
-        db.rollback()
-        failed_ids: list[int] = []
-        marked_count = 0
-        for content_id in sorted(unique_ids):
-            result = mark_content_as_read(db, content_id, user_id)
-            if result is None:
-                failed_ids.append(content_id)
-                continue
-            marked_count += 1
-        return marked_count, failed_ids
     except OperationalError as exc:
         logger.warning(
             "[READ_STATUS] SQLite lock during bulk mark",

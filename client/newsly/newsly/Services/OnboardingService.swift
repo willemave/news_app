@@ -32,6 +32,9 @@ final class OnboardingService {
     }
 
     func audioDiscover(request: OnboardingAudioDiscoverRequest) async throws -> OnboardingAudioDiscoverResponse {
+        if let fixtureResponse = OnboardingE2EFixtureStore.shared?.audioDiscoverResponse {
+            return fixtureResponse
+        }
         let body = try JSONEncoder().encode(request)
         return try await client.request(
             APIEndpoints.onboardingAudioDiscover,
@@ -41,6 +44,9 @@ final class OnboardingService {
     }
 
     func discoveryStatus(runId: Int) async throws -> OnboardingDiscoveryStatusResponse {
+        if let fixtureResponse = OnboardingE2EFixtureStore.shared?.discoveryStatusResponse {
+            return fixtureResponse
+        }
         let queryItems = [URLQueryItem(name: "run_id", value: String(runId))]
         return try await client.request(
             APIEndpoints.onboardingDiscoveryStatus,

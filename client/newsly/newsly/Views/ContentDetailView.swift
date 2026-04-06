@@ -54,7 +54,7 @@ private enum DetailDesign {
     // Hero
     static let heroHeight: CGFloat = 220
     static let parallaxHeroHeight: CGFloat = 340
-    static let parallaxRate: CGFloat = 0.5
+    static let parallaxRate: CGFloat = 0.25
 }
 
 private let detailLogger = Logger(subsystem: "com.newsly", category: "ContentDetailView")
@@ -794,8 +794,8 @@ struct ContentDetailView: View {
                 LinearGradient(
                     gradient: Gradient(stops: [
                         .init(color: .clear, location: 0.0),
-                        .init(color: .clear, location: 0.2),
-                        .init(color: Color.surfacePrimary.opacity(0.5), location: 0.55),
+                        .init(color: .clear, location: 0.45),
+                        .init(color: Color.surfacePrimary.opacity(0.5), location: 0.7),
                         .init(color: Color.surfacePrimary, location: 1.0)
                     ]),
                     startPoint: .top,

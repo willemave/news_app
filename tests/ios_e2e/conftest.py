@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import shutil
 import socket
@@ -26,6 +28,7 @@ from app.models.schema import Base
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAESTRO_FLOW_DIR = REPO_ROOT / ".maestro" / "flows"
+FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 DEFAULT_APP_ID = "org.willemaw.newsly"
 
 
@@ -198,3 +201,16 @@ def run_maestro_flow(maestro_bin: str) -> callable:
         return result
 
     return _run
+
+
+def _load_json_fixture(name: str) -> dict:
+    fixture_path = FIXTURES_DIR / f"{name}.json"
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def ios_onboarding_personalized_fixture() -> str:
+    """Return the personalized onboarding fixture encoded for launch arguments."""
+    fixture = _load_json_fixture("ios_onboarding_personalized")
+    payload = json.dumps(fixture, separators=(",", ":")).encode("utf-8")
+    return base64.b64encode(payload).decode("utf-8")

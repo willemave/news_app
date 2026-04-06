@@ -112,10 +112,22 @@ final class OnboardingViewModel: ObservableObject {
     func startAudioCaptureIfNeeded() async {
         guard !didAutoStartRecording else { return }
         didAutoStartRecording = true
+        if let transcript = OnboardingE2EFixtureStore.shared?.transcript {
+            audioState = .transcribing
+            stopAudioTimer()
+            await beginDiscovery(transcript: transcript)
+            return
+        }
         await startAudioCapture()
     }
 
     func startAudioCapture() async {
+        if let transcript = OnboardingE2EFixtureStore.shared?.transcript {
+            audioState = .transcribing
+            stopAudioTimer()
+            await beginDiscovery(transcript: transcript)
+            return
+        }
         configureDictationCallbacks()
         errorMessage = nil
         hasMicPermissionDenied = false

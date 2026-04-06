@@ -89,7 +89,7 @@ class ContentDetailViewModel: ObservableObject {
             // Auto-mark as read if not already read
             if !fetched.isRead {
                 logger.info("[ContentDetail] Content not read, marking as read | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public)")
-                try await contentService.markContentAsRead(id: contentId)
+                try await contentService.markContentAsRead(id: contentId, contentType: fetched.contentTypeEnum)
                 logger.info("[ContentDetail] Successfully marked as read | contentId=\(self.contentId)")
 
                 // Post notification so list views can update their local state

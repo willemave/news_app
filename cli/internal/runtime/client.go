@@ -189,15 +189,15 @@ func (c *Client) CompleteOnboarding(ctx context.Context, runID int, request *api
 	}
 }
 
-func (c *Client) ListContent(ctx context.Context, params api.ListContentParams) (*api.ContentListResponse, error) {
-	res, err := c.raw.ListContent(ctx, params)
+func (c *Client) ListContent(ctx context.Context, params api.ListContentsParams) (*api.ContentListResponse, error) {
+	res, err := c.raw.ListContents(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 	switch value := res.(type) {
 	case *api.ContentListResponse:
 		return value, nil
-	case *api.ListContentNotFound:
+	case *api.ListContentsNotFound:
 		return nil, &APIError{Message: "content route not found", StatusCode: http.StatusNotFound}
 	case *api.HTTPValidationError:
 		return nil, validationError(value)
@@ -207,14 +207,14 @@ func (c *Client) ListContent(ctx context.Context, params api.ListContentParams) 
 }
 
 func (c *Client) GetContent(ctx context.Context, contentID int) (*api.ContentDetailResponse, error) {
-	res, err := c.raw.GetContent(ctx, api.GetContentParams{ContentID: contentID})
+	res, err := c.raw.GetContentDetail(ctx, api.GetContentDetailParams{ContentID: contentID})
 	if err != nil {
 		return nil, err
 	}
 	switch value := res.(type) {
 	case *api.ContentDetailResponse:
 		return value, nil
-	case *api.GetContentNotFoundApplicationJSON:
+	case *api.GetContentDetailNotFoundApplicationJSON:
 		payload, _ := normalizeJSONRaw(value)
 		return nil, &APIError{
 			Message:    "content not found",
@@ -317,13 +317,13 @@ func (c *Client) MarkNewsItemsRead(ctx context.Context, request *api.BulkMarkRea
 	}
 }
 
-func (c *Client) ListSources(ctx context.Context, params api.ListSourcesParams) ([]api.ScraperConfigResponse, error) {
-	res, err := c.raw.ListSources(ctx, params)
+func (c *Client) ListSources(ctx context.Context, params api.ListScraperConfigsParams) ([]api.ScraperConfigResponse, error) {
+	res, err := c.raw.ListScraperConfigs(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 	switch value := res.(type) {
-	case *api.ListSourcesOKApplicationJSON:
+	case *api.ListScraperConfigsOKApplicationJSON:
 		return []api.ScraperConfigResponse(*value), nil
 	case *api.HTTPValidationError:
 		return nil, validationError(value)
@@ -333,7 +333,7 @@ func (c *Client) ListSources(ctx context.Context, params api.ListSourcesParams) 
 }
 
 func (c *Client) SubscribeSource(ctx context.Context, request *api.SubscribeToFeedRequest) (*api.ScraperConfigResponse, error) {
-	res, err := c.raw.SubscribeSource(ctx, request)
+	res, err := c.raw.SubscribeScrapersToFeed(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +377,7 @@ func normalize(value any) (any, error) {
 }
 
 func normalizeJSONRaw(value any) (any, error) {
-	raw, ok := value.(*api.GetContentNotFoundApplicationJSON)
+	raw, ok := value.(*api.GetContentDetailNotFoundApplicationJSON)
 	if !ok {
 		return normalize(value)
 	}

@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, PendingRollbackError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -223,11 +223,45 @@ def temporary_sqlite_busy_timeout(
         return
 
     default_timeout_ms = int(get_settings().sqlite_busy_timeout_ms)
+    restore_stmt = text(f"PRAGMA busy_timeout={default_timeout_ms}")
     db.execute(text(f"PRAGMA busy_timeout={int(timeout_ms)}"))
     try:
         yield
     finally:
-        db.execute(text(f"PRAGMA busy_timeout={default_timeout_ms}"))
+        try:
+            db.execute(restore_stmt)
+        except PendingRollbackError:
+            db.rollback()
+            try:
+                db.execute(restore_stmt)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "SQLite busy timeout restore skipped after rollback",
+                    extra=build_log_extra(
+                        component="database",
+                        operation="temporary_sqlite_busy_timeout",
+                        status="degraded",
+                        context_data={
+                            "timeout_ms": int(timeout_ms),
+                            "restored_timeout_ms": default_timeout_ms,
+                            "error": str(exc),
+                        },
+                    ),
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "SQLite busy timeout restore skipped",
+                extra=build_log_extra(
+                    component="database",
+                    operation="temporary_sqlite_busy_timeout",
+                    status="degraded",
+                    context_data={
+                        "timeout_ms": int(timeout_ms),
+                        "restored_timeout_ms": default_timeout_ms,
+                        "error": str(exc),
+                    },
+                ),
+            )
 
 
 def _is_sqlite_url(database_url: str) -> bool:

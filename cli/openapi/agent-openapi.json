@@ -614,7 +614,7 @@
         "type": "object"
       },
       "AssistantScreenContextDto": {
-        "description": "Compact screen context passed to the assistant router.",
+        "description": "API schema wrapper for assistant screen context.",
         "properties": {
           "content_id": {
             "minimum": 1.0,

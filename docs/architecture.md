@@ -2,7 +2,7 @@
 
 > Canonical architecture reference for the FastAPI backend, DB-backed processing pipeline, discovery and chat systems, and the SwiftUI iOS client.
 
-**Last Updated:** 2026-03-27  
+**Last Updated:** 2026-04-05  
 **Repository Root:** `news_app/`  
 **Primary Runtime:** Python 3.13, FastAPI, SQLAlchemy 2, Pydantic v2, pydantic-ai  
 **Primary Clients:** SwiftUI iOS app, iOS Share Extension, Jinja admin UI, machine-facing agent/CLI APIs  
@@ -14,7 +14,7 @@
 - `docs/architecture.md`
   - This file. It explains system boundaries, runtime flows, package responsibilities, data model, APIs, workers, and operational constraints.
 - `docs/codebase/`
-  - Generated folder-by-folder reference for `app/`, `client/`, and `config/`.
+  - Codex-generated folder-by-folder reference for `app/`, `cli/`, and `client/`, plus a small `config/` support section.
 - `docs/library/`
   - Durable operational, deployment, integration, and feature docs.
 - `docs/initiatives/`
@@ -1250,7 +1250,8 @@ Representative scripts under `scripts/`:
 - `scripts/export_openapi_schema.py`
 - `scripts/export_agent_openapi_schema.py`
 - `scripts/generate_ios_contracts.py`
-- `scripts/generate_codebase_docs.py`
+- `docs/generate_codebase_docs.sh`
+- `docs/generate_architecture.sh`
 - `scripts/update-docs-from-commit.sh`
 
 ### 21.6 Diagnostics and reports

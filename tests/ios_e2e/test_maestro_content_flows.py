@@ -126,8 +126,7 @@ def test_short_form_detail_discussion_sheet_renders_embedded_comments(
             "summary": {
                 "article_url": "https://example.com/herbie-floating-point",
                 "summary": (
-                    "Herbie improves floating-point expressions by proposing "
-                    "stable alternatives."
+                    "Herbie improves floating-point expressions by proposing stable alternatives."
                 ),
                 "key_points": [
                     "Herbie suggests numerically stable rewrites for floating-point expressions."
@@ -258,3 +257,23 @@ def test_council_tabs_switch_between_mocked_branch_replies(
     parent_session = db_session.query(ChatSession).filter(ChatSession.id == session.id).one()
     assert parent_session.council_mode is True
     assert parent_session.active_child_session_id is not None
+
+
+def test_personalized_onboarding_flow_uses_seeded_fixture_data(
+    live_server,
+    run_maestro_flow,
+    test_user,
+    db_session,
+    ios_onboarding_personalized_fixture,
+) -> None:
+    """Personalized onboarding should be Maestro-testable via deterministic launch fixtures."""
+    run_maestro_flow(
+        "onboarding_personalized.yaml",
+        live_server=live_server,
+        user_id=test_user.id,
+        extra_env={"ONBOARDING_FIXTURE": ios_onboarding_personalized_fixture},
+    )
+
+    db_session.refresh(test_user)
+    assert test_user.has_completed_onboarding is True
+    assert test_user.has_completed_new_user_tutorial is True

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, PendingRollbackError
 
 import app.core.db as core_db
 
@@ -285,3 +285,54 @@ def test_temporary_sqlite_busy_timeout_overrides_and_restores(
         if core_db._engine is not None:
             core_db._engine.dispose()
         _reset_db_globals(monkeypatch)
+
+
+def test_temporary_sqlite_busy_timeout_recovers_from_pending_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It should restore the timeout after a failed transaction rolls back."""
+    settings = SimpleNamespace(sqlite_busy_timeout_ms=30_000)
+    monkeypatch.setattr(core_db, "get_settings", lambda: settings)
+
+    class DummyBind:
+        class dialect:
+            name = "sqlite"
+
+    class DummySession:
+        def __init__(self) -> None:
+            self.execute_calls: list[str] = []
+            self.rollback_calls = 0
+            self.failed = False
+
+        def get_bind(self) -> DummyBind:
+            return DummyBind()
+
+        def execute(self, statement):  # noqa: ANN001
+            sql = str(statement)
+            self.execute_calls.append(sql)
+            if sql == "PRAGMA busy_timeout=250":
+                return None
+            if sql == "PRAGMA busy_timeout=30000" and self.failed:
+                raise PendingRollbackError("session is in a failed state")
+            return None
+
+        def rollback(self) -> None:
+            self.rollback_calls += 1
+            self.failed = False
+
+    db = DummySession()
+
+    with pytest.raises(OperationalError), core_db.temporary_sqlite_busy_timeout(db, 250):
+        db.failed = True
+        raise OperationalError(
+            "UPDATE foo",
+            {},
+            sqlite3.OperationalError("database is locked"),
+        )
+
+    assert db.rollback_calls == 1
+    assert db.execute_calls == [
+        "PRAGMA busy_timeout=250",
+        "PRAGMA busy_timeout=30000",
+        "PRAGMA busy_timeout=30000",
+    ]

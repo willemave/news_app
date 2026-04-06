@@ -21,7 +21,7 @@ func (a *App) newSourcesCommand() *cobra.Command {
 		Short: "List configured sources",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runRemote(cmd, "sources.list", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
-				params := api.ListSourcesParams{}
+				params := api.ListScraperConfigsParams{}
 				if listType != "" {
 					params.Type.SetTo(listType)
 				}

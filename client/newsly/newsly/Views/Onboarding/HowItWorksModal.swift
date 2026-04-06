@@ -63,6 +63,8 @@ struct HowItWorksModal: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 24)
             .padding(.bottom, 16)
+            .accessibilityIdentifier("onboarding.tutorial.complete")
         }
+        .accessibilityIdentifier("onboarding.tutorial.screen")
     }
 }

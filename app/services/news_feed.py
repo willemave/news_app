@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import and_, exists, func, or_, select, text
+from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.core.db import run_with_sqlite_lock_retry
-from app.core.settings import get_settings
+from app.core.db import run_with_sqlite_lock_retry, temporary_sqlite_busy_timeout
+from app.models.api.common import (
+    ContentDetailResponse,
+    ContentListResponse,
+    ContentSummaryResponse,
+)
 from app.models.contracts import (
     ContentClassification,
     ContentStatus,
@@ -21,26 +26,20 @@ from app.models.contracts import (
 )
 from app.models.pagination import PaginationMetadata
 from app.models.schema import NewsItem, NewsItemReadStatus
-from app.models.api.common import (
-    ContentDetailResponse,
-    ContentListResponse,
-    ContentSummaryResponse,
-)
 from app.utils.pagination import PaginationCursor
 from app.utils.url_utils import normalize_http_url
 
 READ_STATUS_BUSY_TIMEOUT_MS = 250
 
 
-@contextmanager
-def _temporary_busy_timeout(db: Session, timeout_ms: int):
-    """Temporarily override the SQLite busy timeout for a short write."""
-    default_timeout_ms = int(get_settings().sqlite_busy_timeout_ms)
-    db.execute(text(f"PRAGMA busy_timeout={int(timeout_ms)}"))
-    try:
-        yield
-    finally:
-        db.execute(text(f"PRAGMA busy_timeout={default_timeout_ms}"))
+def _read_status_insert_for_dialect(db: Session):
+    """Return a dialect-aware insert builder for news-item read-status writes."""
+    dialect_name = db.get_bind().dialect.name
+    if dialect_name == "sqlite":
+        return sqlite_insert(NewsItemReadStatus)
+    if dialect_name == "postgresql":
+        return postgresql_insert(NewsItemReadStatus)
+    raise ValueError(f"Unsupported database dialect for news read status: {dialect_name}")
 
 
 def _coerce_utc(value: datetime | None) -> datetime | None:
@@ -363,11 +362,7 @@ def get_visible_news_item_detail(
 
 def get_visible_news_item(db: Session, *, user_id: int, news_item_id: int) -> NewsItem | None:
     """Return a visible representative news item row or ``None`` when inaccessible."""
-    return (
-        _visible_news_item_query(db, user_id=user_id)
-        .filter(NewsItem.id == news_item_id)
-        .first()
-    )
+    return _visible_news_item_query(db, user_id=user_id).filter(NewsItem.id == news_item_id).first()
 
 
 def bulk_mark_news_items_read(
@@ -393,34 +388,42 @@ def bulk_mark_news_items_read(
             "total_requested": len(requested_ids),
         }
 
-    existing_ids = {
-        row.news_item_id
-        for row in db.query(NewsItemReadStatus.news_item_id)
-        .filter(NewsItemReadStatus.user_id == user_id)
-        .filter(NewsItemReadStatus.news_item_id.in_(visible_ids))
-        .all()
-    }
-    news_item_ids_to_mark = sorted(visible_ids - existing_ids)
     try:
-        def _write() -> None:
-            with _temporary_busy_timeout(db, READ_STATUS_BUSY_TIMEOUT_MS):
-                now = datetime.now(UTC).replace(tzinfo=None)
-                for news_item_id in news_item_ids_to_mark:
-                    db.add(
-                        NewsItemReadStatus(
-                            user_id=user_id,
-                            news_item_id=news_item_id,
-                            read_at=now,
-                        )
-                    )
-                db.commit()
 
-        run_with_sqlite_lock_retry(
+        def _write() -> int:
+            with temporary_sqlite_busy_timeout(db, READ_STATUS_BUSY_TIMEOUT_MS):
+                timestamp = datetime.now(UTC).replace(tzinfo=None)
+                stmt = (
+                    _read_status_insert_for_dialect(db)
+                    .values(
+                        [
+                            {
+                                "user_id": user_id,
+                                "news_item_id": news_item_id,
+                                "read_at": timestamp,
+                                "created_at": timestamp,
+                            }
+                            for news_item_id in sorted(visible_ids)
+                        ]
+                    )
+                    .on_conflict_do_nothing(
+                        index_elements=[
+                            NewsItemReadStatus.user_id,
+                            NewsItemReadStatus.news_item_id,
+                        ]
+                    )
+                    .returning(NewsItemReadStatus.news_item_id)
+                )
+                inserted_ids = db.execute(stmt).scalars().all()
+                db.commit()
+                return len(inserted_ids)
+
+        marked_count = run_with_sqlite_lock_retry(
             db=db,
             component="news_feed",
             operation="bulk_mark_news_items_read",
             work=_write,
-            context_data={"user_id": user_id, "content_count": len(news_item_ids_to_mark)},
+            context_data={"user_id": user_id, "content_count": len(visible_ids)},
         )
     except OperationalError:
         db.rollback()
@@ -432,7 +435,7 @@ def bulk_mark_news_items_read(
         }
     return {
         "status": "success",
-        "marked_count": len(news_item_ids_to_mark),
+        "marked_count": marked_count,
         "failed_ids": sorted(set(requested_ids) - visible_ids),
         "total_requested": len(requested_ids),
     }

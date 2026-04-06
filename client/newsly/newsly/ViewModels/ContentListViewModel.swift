@@ -138,10 +138,9 @@ class ContentListViewModel: CursorPaginatedViewModel {
     
     func markAsRead(_ contentId: Int) async {
         do {
-            try await contentService.markContentAsRead(id: contentId)
-
             if let index = contents.firstIndex(where: { $0.id == contentId }) {
                 let current = contents[index]
+                try await contentService.markContentAsRead(id: contentId, contentType: current.contentTypeEnum)
                 contents[index] = current.updating(isRead: true)
 
                 switch current.apiContentType {

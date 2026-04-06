@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f0f23"/>
+      <stop offset="50%" style="stop-color:#1a1a3e"/>
+      <stop offset="100%" style="stop-color:#0d0d2b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:0.3"/>
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:0"/>
+    </linearGradient>
+    <filter id="blur1">
+      <feGaussianBlur stdDeviation="40"/>
+    </filter>
+    <filter id="blur2">
+      <feGaussianBlur stdDeviation="60"/>
+    </filter>
+    <clipPath id="rounded">
+      <rect width="1200" height="400" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#rounded)">
+    <!-- Background -->
+    <rect width="1200" height="400" fill="url(#bg)"/>
+
+    <!-- Ambient glow orbs -->
+    <circle cx="200" cy="300" r="200" fill="#6366f1" opacity="0.07" filter="url(#blur2)"/>
+    <circle cx="900" cy="100" r="250" fill="#8b5cf6" opacity="0.06" filter="url(#blur2)"/>
+    <circle cx="600" cy="200" r="150" fill="#a78bfa" opacity="0.04" filter="url(#blur1)"/>
+
+    <!-- Subtle grid pattern -->
+    <g opacity="0.04" stroke="#8b5cf6" stroke-width="0.5">
+      <line x1="0" y1="50" x2="1200" y2="50"/>
+      <line x1="0" y1="100" x2="1200" y2="100"/>
+      <line x1="0" y1="150" x2="1200" y2="150"/>
+      <line x1="0" y1="200" x2="1200" y2="200"/>
+      <line x1="0" y1="250" x2="1200" y2="250"/>
+      <line x1="0" y1="300" x2="1200" y2="300"/>
+      <line x1="0" y1="350" x2="1200" y2="350"/>
+      <line x1="100" y1="0" x2="100" y2="400"/>
+      <line x1="200" y1="0" x2="200" y2="400"/>
+      <line x1="300" y1="0" x2="300" y2="400"/>
+      <line x1="400" y1="0" x2="400" y2="400"/>
+      <line x1="500" y1="0" x2="500" y2="400"/>
+      <line x1="600" y1="0" x2="600" y2="400"/>
+      <line x1="700" y1="0" x2="700" y2="400"/>
+      <line x1="800" y1="0" x2="800" y2="400"/>
+      <line x1="900" y1="0" x2="900" y2="400"/>
+      <line x1="1000" y1="0" x2="1000" y2="400"/>
+      <line x1="1100" y1="0" x2="1100" y2="400"/>
+    </g>
+
+    <!-- Decorative nodes and connections (knowledge graph aesthetic) -->
+    <g opacity="0.15">
+      <!-- Connection lines -->
+      <line x1="120" y1="80" x2="250" y2="160" stroke="#6366f1" stroke-width="1"/>
+      <line x1="250" y1="160" x2="180" y2="280" stroke="#8b5cf6" stroke-width="1"/>
+      <line x1="250" y1="160" x2="380" y2="120" stroke="#6366f1" stroke-width="0.8"/>
+      <line x1="180" y1="280" x2="320" y2="320" stroke="#a78bfa" stroke-width="0.8"/>
+
+      <line x1="850" y1="90" x2="980" y2="160" stroke="#6366f1" stroke-width="1"/>
+      <line x1="980" y1="160" x2="920" y2="280" stroke="#8b5cf6" stroke-width="1"/>
+      <line x1="980" y1="160" x2="1080" y2="240" stroke="#6366f1" stroke-width="0.8"/>
+      <line x1="1080" y1="240" x2="1050" y2="340" stroke="#a78bfa" stroke-width="0.8"/>
+      <line x1="920" y1="280" x2="1050" y2="340" stroke="#6366f1" stroke-width="0.6"/>
+
+      <!-- Nodes -->
+      <circle cx="120" cy="80" r="4" fill="#6366f1"/>
+      <circle cx="250" cy="160" r="5" fill="#8b5cf6"/>
+      <circle cx="180" cy="280" r="3.5" fill="#a78bfa"/>
+      <circle cx="380" cy="120" r="3" fill="#6366f1"/>
+      <circle cx="320" cy="320" r="3" fill="#8b5cf6"/>
+
+      <circle cx="850" cy="90" r="4" fill="#6366f1"/>
+      <circle cx="980" cy="160" r="5" fill="#8b5cf6"/>
+      <circle cx="920" cy="280" r="3.5" fill="#a78bfa"/>
+      <circle cx="1080" cy="240" r="4" fill="#6366f1"/>
+      <circle cx="1050" cy="340" r="3" fill="#8b5cf6"/>
+    </g>
+
+    <!-- Icon: stylized document/brain -->
+    <g transform="translate(505, 60)">
+      <!-- Outer ring -->
+      <circle cx="95" cy="55" r="42" stroke="url(#accent)" stroke-width="2" fill="none" opacity="0.3"/>
+      <!-- Inner document shape -->
+      <rect x="75" y="30" width="40" height="50" rx="4" stroke="url(#accent)" stroke-width="2" fill="#6366f1" fill-opacity="0.15"/>
+      <!-- Text lines on document -->
+      <line x1="83" y1="44" x2="107" y2="44" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+      <line x1="83" y1="52" x2="103" y2="52" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+      <line x1="83" y1="60" x2="100" y2="60" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+      <!-- Sparkle/AI indicator -->
+      <circle cx="112" cy="33" r="6" fill="#8b5cf6" opacity="0.6"/>
+      <circle cx="112" cy="33" r="3" fill="#c4b5fd"/>
+      <!-- Signal arcs -->
+      <path d="M 122 28 Q 130 33 122 38" stroke="#a78bfa" stroke-width="1.2" fill="none" opacity="0.5"/>
+      <path d="M 126 24 Q 138 33 126 42" stroke="#a78bfa" stroke-width="1" fill="none" opacity="0.3"/>
+    </g>
+
+    <!-- Title -->
+    <text x="600" y="210" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="56" font-weight="700" fill="white" letter-spacing="-1">Newsly</text>
+
+    <!-- Tagline -->
+    <text x="600" y="252" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="18" fill="#a5a5c9" letter-spacing="0.5">Your AI-powered knowledge companion</text>
+
+    <!-- Accent line -->
+    <rect x="540" y="270" width="120" height="2" rx="1" fill="url(#accent)" opacity="0.6"/>
+
+    <!-- Feature pills -->
+    <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12" letter-spacing="0.3">
+      <g transform="translate(235, 295)">
+        <rect width="112" height="28" rx="14" fill="#6366f1" fill-opacity="0.15" stroke="#6366f1" stroke-width="0.8" stroke-opacity="0.3"/>
+        <text x="56" y="18" text-anchor="middle" fill="#a5b4fc">RSS &amp; Feeds</text>
+      </g>
+      <g transform="translate(362, 295)">
+        <rect width="118" height="28" rx="14" fill="#6366f1" fill-opacity="0.15" stroke="#6366f1" stroke-width="0.8" stroke-opacity="0.3"/>
+        <text x="59" y="18" text-anchor="middle" fill="#a5b4fc">AI Summaries</text>
+      </g>
+      <g transform="translate(495, 295)">
+        <rect width="120" height="28" rx="14" fill="#6366f1" fill-opacity="0.15" stroke="#6366f1" stroke-width="0.8" stroke-opacity="0.3"/>
+        <text x="60" y="18" text-anchor="middle" fill="#a5b4fc">Expert Council</text>
+      </g>
+      <g transform="translate(630, 295)">
+        <rect width="110" height="28" rx="14" fill="#6366f1" fill-opacity="0.15" stroke="#6366f1" stroke-width="0.8" stroke-opacity="0.3"/>
+        <text x="55" y="18" text-anchor="middle" fill="#a5b4fc">Discovery</text>
+      </g>
+      <g transform="translate(755, 295)">
+        <rect width="100" height="28" rx="14" fill="#6366f1" fill-opacity="0.15" stroke="#6366f1" stroke-width="0.8" stroke-opacity="0.3"/>
+        <text x="50" y="18" text-anchor="middle" fill="#a5b4fc">Native iOS</text>
+      </g>
+      <g transform="translate(870, 295)">
+        <rect width="105" height="28" rx="14" fill="#6366f1" fill-opacity="0.15" stroke="#6366f1" stroke-width="0.8" stroke-opacity="0.3"/>
+        <text x="52" y="18" text-anchor="middle" fill="#a5b4fc">MD Sync</text>
+      </g>
+    </g>
+
+    <!-- Bottom fade -->
+    <rect y="380" width="1200" height="20" fill="url(#bg)" opacity="0.5"/>
+  </g>
+</svg>

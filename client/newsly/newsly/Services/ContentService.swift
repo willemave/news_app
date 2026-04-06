@@ -355,13 +355,21 @@ class ContentService {
         )
     }
     
-    func markContentAsRead(id: Int) async throws {
-        logger.info("[ContentService] markContentAsRead called | id=\(id)")
+    func markContentAsRead(id: Int, contentType: ContentType? = nil) async throws {
+        logger.info(
+            "[ContentService] markContentAsRead called | id=\(id) contentType=\(contentType?.rawValue ?? "nil", privacy: .public)"
+        )
         do {
-            try await client.requestVoid(APIEndpoints.markContentRead(id: id), method: "POST")
+            if contentType == .news {
+                _ = try await bulkMarkNewsItemsAsRead(newsItemIds: [id])
+            } else {
+                try await client.requestVoid(APIEndpoints.markContentRead(id: id), method: "POST")
+            }
             logger.info("[ContentService] markContentAsRead success | id=\(id)")
         } catch {
-            logger.error("[ContentService] markContentAsRead failed | id=\(id) error=\(error.localizedDescription)")
+            logger.error(
+                "[ContentService] markContentAsRead failed | id=\(id) contentType=\(contentType?.rawValue ?? "nil", privacy: .public) error=\(error.localizedDescription)"
+            )
             throw error
         }
     }

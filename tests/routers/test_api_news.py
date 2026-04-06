@@ -182,6 +182,48 @@ def test_mark_news_items_read_returns_failed_ids_when_sqlite_is_locked(
     }
 
 
+def test_mark_news_items_read_is_idempotent_for_existing_rows(
+    client,
+    db_session,
+    test_user,
+) -> None:
+    representative = _create_news_item(
+        db_session,
+        ingest_key="rep-existing",
+        summary_title="Representative story",
+    )
+    db_session.add(
+        NewsItemReadStatus(
+            user_id=test_user.id,
+            news_item_id=representative.id,
+            read_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/api/news/items/mark-read",
+        json={"content_ids": [representative.id]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "marked_count": 0,
+        "failed_ids": [],
+        "total_requested": 1,
+    }
+    assert (
+        db_session.query(NewsItemReadStatus)
+        .filter(
+            NewsItemReadStatus.user_id == test_user.id,
+            NewsItemReadStatus.news_item_id == representative.id,
+        )
+        .count()
+        == 1
+    )
+
+
 def test_list_news_items_uses_denormalized_comment_count_when_available(
     client,
     db_session,

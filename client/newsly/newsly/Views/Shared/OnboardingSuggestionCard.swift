@@ -59,6 +59,7 @@ struct OnboardingSuggestionCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(EditorialCardButtonStyle())
+        .accessibilityIdentifier("onboarding.suggestion.\(suggestion.stableKey)")
     }
 
     private var typeIcon: String {

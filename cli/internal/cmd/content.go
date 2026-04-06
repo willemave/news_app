@@ -29,7 +29,7 @@ func (a *App) newContentCommand() *cobra.Command {
 		Short: "List content cards",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runRemote(cmd, "content.list", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
-				params := api.ListContentParams{}
+				params := api.ListContentsParams{}
 				params.Limit.SetTo(listArgs.Limit)
 				if listArgs.Cursor != "" {
 					params.Cursor.SetTo(listArgs.Cursor)

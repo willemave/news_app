@@ -111,6 +111,7 @@ enum E2ETestLaunch {
     static let userIDKey = "newslyE2EUserId"
     static let completeOnboardingKey = "newslyE2ECompleteOnboarding"
     static let completeTutorialKey = "newslyE2ECompleteTutorial"
+    static let onboardingFixtureKey = "newslyE2EOnboardingFixture"
 
     static var isEnabled: Bool {
         bool(for: enabledKey)
@@ -151,6 +152,11 @@ enum E2ETestLaunch {
 
     static var completeTutorial: Bool {
         bool(for: completeTutorialKey)
+    }
+
+    static var onboardingFixture: String? {
+        guard isEnabled else { return nil }
+        return string(for: onboardingFixtureKey)
     }
 }
 

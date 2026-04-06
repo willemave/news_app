@@ -38,6 +38,7 @@ struct OnboardingFlowView: View {
         .task {
             await viewModel.resumeDiscoveryIfNeeded()
         }
+        .accessibilityIdentifier("onboarding.screen")
     }
 
     @ViewBuilder
@@ -95,7 +96,8 @@ struct OnboardingFlowView: View {
                     icon: "mic.fill",
                     title: "Personalize with voice",
                     subtitle: "Tell us your interests in 30 seconds",
-                    isPrimary: true
+                    isPrimary: true,
+                    accessibilityID: "onboarding.choice.personalized"
                 ) {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         viewModel.startPersonalized()
@@ -106,7 +108,8 @@ struct OnboardingFlowView: View {
                     icon: "wand.and.stars",
                     title: "Start with defaults",
                     subtitle: "We'll pick popular tech & news feeds",
-                    isPrimary: false
+                    isPrimary: false,
+                    accessibilityID: "onboarding.choice.defaults"
                 ) {
                     viewModel.chooseDefaults()
                 }
@@ -121,6 +124,7 @@ struct OnboardingFlowView: View {
         }
         .padding(24)
         .padding(.bottom, 8)
+        .accessibilityIdentifier("onboarding.choice.screen")
     }
 
     private func choiceCard(
@@ -128,6 +132,7 @@ struct OnboardingFlowView: View {
         title: String,
         subtitle: String,
         isPrimary: Bool,
+        accessibilityID: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -159,6 +164,7 @@ struct OnboardingFlowView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityID)
     }
 
     // MARK: - Audio
@@ -197,6 +203,7 @@ struct OnboardingFlowView: View {
                 .font(.callout)
                 .foregroundColor(.watercolorSlate.opacity(0.5))
                 .padding(.bottom, 16)
+                .accessibilityIdentifier("onboarding.audio.skip")
             }
 
             if let error = viewModel.errorMessage {
@@ -210,6 +217,7 @@ struct OnboardingFlowView: View {
         .task {
             await viewModel.startAudioCaptureIfNeeded()
         }
+        .accessibilityIdentifier("onboarding.audio.screen")
     }
 
     private var audioProcessingView: some View {
@@ -277,10 +285,12 @@ struct OnboardingFlowView: View {
                 }
                 .font(.callout)
                 .foregroundColor(.watercolorSlate.opacity(0.5))
+                .accessibilityIdentifier("onboarding.loading.use_defaults")
             }
             .padding(.bottom, 16)
         }
         .padding(.horizontal, 24)
+        .accessibilityIdentifier("onboarding.loading.screen")
     }
 
     // MARK: - Suggestions
@@ -353,6 +363,7 @@ struct OnboardingFlowView: View {
                     Task { await viewModel.completeOnboarding() }
                 }
                 .disabled(viewModel.isLoading)
+                .accessibilityIdentifier("onboarding.complete")
 
                 if let error = viewModel.errorMessage {
                     Text(error)
@@ -364,6 +375,7 @@ struct OnboardingFlowView: View {
             .padding(.vertical, 16)
             .glassCard(cornerRadius: 0)
         }
+        .accessibilityIdentifier("onboarding.suggestions.screen")
     }
 
     private func suggestionSection(
@@ -427,6 +439,7 @@ struct OnboardingFlowView: View {
                 .padding(.vertical, 10)
                 .background(Color.white.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .accessibilityIdentifier("onboarding.input.twitter_username")
         }
     }
 
@@ -448,6 +461,7 @@ struct OnboardingFlowView: View {
                 .padding(.vertical, 8)
                 .background(Color.white.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .accessibilityIdentifier("onboarding.input.news_preferences")
         }
     }
 }
