@@ -10,6 +10,9 @@ import Foundation
 
 @MainActor
 final class SearchViewModel: ObservableObject {
+    // Keep the auto-updating local search compact so each keystroke does less work.
+    private let localSearchResultLimit = 10
+
     @Published var searchText: String = ""
     @Published var contentResults: [ContentSummary] = []
     @Published var feedResults: [MixedSearchFeedResult] = []
@@ -138,7 +141,7 @@ final class SearchViewModel: ObservableObject {
             let response = try await contentService.searchContent(
                 query: query,
                 contentType: "all",
-                limit: 25,
+                limit: localSearchResultLimit,
                 cursor: nil
             )
             guard !Task.isCancelled else { return }
