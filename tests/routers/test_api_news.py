@@ -35,6 +35,8 @@ def _create_news_item(
     *,
     ingest_key: str,
     summary_title: str,
+    article_title: str | None = None,
+    summary_text: str | None = None,
     is_representative: bool = True,
     representative_news_item_id: int | None = None,
     raw_metadata: dict | None = None,
@@ -64,12 +66,12 @@ def _create_news_item(
         canonical_item_url=f"https://news.ycombinator.com/item?id={ingest_key}",
         canonical_story_url=f"https://example.com/{ingest_key}",
         article_url=f"https://example.com/{ingest_key}",
-        article_title=summary_title,
+        article_title=article_title or summary_title,
         article_domain="example.com",
         discussion_url=f"https://news.ycombinator.com/item?id={ingest_key}",
         summary_title=summary_title,
         summary_key_points=["Point one", "Point two"],
-        summary_text=f"{summary_title} summary",
+        summary_text=summary_text or f"{summary_title} summary",
         raw_metadata=metadata,
         representative_news_item_id=None if is_representative else representative_news_item_id,
         cluster_size=2 if is_representative else 1,
@@ -265,6 +267,29 @@ def test_get_news_item_detail_includes_cluster_metadata(client, db_session) -> N
     assert payload["display_title"] == "Detail story"
     assert payload["metadata"]["cluster"]["related_titles"] == ["Detail story"]
     assert payload["metadata"]["summary"]["key_points"] == ["Point one", "Point two"]
+
+
+def test_list_news_items_falls_back_from_placeholder_titles(client, db_session) -> None:
+    news_item = _create_news_item(
+        db_session,
+        ingest_key="skill-0",
+        summary_title="SKILL0",
+        article_title="SKILL0",
+        summary_text=(
+            "A Hugging Face space demo that explains how a tiny skill model works in practice."
+        ),
+    )
+    db_session.commit()
+
+    response = client.get("/api/news/items")
+    assert response.status_code == 200
+
+    payload = response.json()
+    expected_title = (
+        "A Hugging Face space demo that explains how a tiny skill model works in practice."
+    )
+    assert payload["contents"][0]["title"] == expected_title
+    assert payload["contents"][0]["id"] == news_item.id
 
 
 def test_get_news_item_detail_restores_key_points_when_summary_metadata_is_empty(

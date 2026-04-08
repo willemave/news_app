@@ -13,7 +13,10 @@ from pydantic_ai import Agent
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import build_pydantic_model
 from app.services.llm_prompts import generate_summary_prompt
-from app.services.llm_summarization import resolve_summarization_output_type
+from app.services.llm_summarization import (
+    resolve_summarization_output_type,
+    resolve_summarization_spec,
+)
 
 SummaryEvalContentType = Literal["article", "podcast", "news"]
 LongformTemplate = Literal[
@@ -36,8 +39,11 @@ DEFAULT_SUMMARY_EVAL_DATASET = Path("tests") / "evals" / "summary_generation.yam
 class SummaryEvalDefaults(BaseModel):
     """Defaults shared across all summary-generation eval cases."""
 
-    model_spec: str = Field(default="openai:gpt-5.4", min_length=1)
-    judge_model_spec: str = Field(default="openai:gpt-5.4", min_length=1)
+    model_spec: str | None = Field(default=None, min_length=1)
+    judge_model_spec: str = Field(
+        default="anthropic:claude-opus-4-1-20250805",
+        min_length=1,
+    )
     longform_template: LongformTemplate = "editorial_narrative_v1"
 
 
@@ -51,7 +57,7 @@ class SummaryEvalCase(BaseModel):
     existing_title: str | None = Field(default=None, min_length=1, max_length=500)
     bad_titles: list[str] = Field(default_factory=list)
     reference_titles: list[str] = Field(default_factory=list)
-    notes: str | None = Field(default=None, min_length=1)
+    evaluation_criteria: str | None = Field(default=None, min_length=1)
     source_id: int | None = Field(default=None, ge=1)
     source_kind: Literal["content", "news_item"] | None = None
     source_url: str | None = Field(default=None, min_length=1, max_length=2048)
@@ -68,9 +74,11 @@ class SummaryEvalCase(BaseModel):
     @model_validator(mode="after")
     def validate_case_has_eval_guidance(self) -> SummaryEvalCase:
         """Ensure each case contains enough guidance for title grading."""
-        if self.notes or self.bad_titles or self.reference_titles:
+        if self.evaluation_criteria or self.bad_titles or self.reference_titles:
             return self
-        raise ValueError("Each summary eval case needs notes, bad_titles, or reference_titles")
+        raise ValueError(
+            "Each summary eval case needs evaluation_criteria, bad_titles, or reference_titles"
+        )
 
 
 class SummaryEvalSuite(BaseModel):
@@ -162,6 +170,28 @@ def _build_user_message(user_template: str, content_payload: str, title: str | N
     return user_template.format(content=content_payload)
 
 
+def _resolve_generation_model_spec(
+    *,
+    case: SummaryEvalCase,
+    defaults: SummaryEvalDefaults,
+) -> str:
+    """Resolve the generation model spec using real app routing by default."""
+    if defaults.model_spec:
+        return defaults.model_spec
+
+    if case.content_type == "news":
+        return resolve_summarization_spec(case.content_type)[2]
+
+    if defaults.longform_template == "editorial_narrative_v1":
+        return resolve_summarization_spec(case.content_type)[2]
+
+    prompt_type, _, _ = _resolve_prompt_settings(
+        case.content_type,
+        longform_template=defaults.longform_template,
+    )
+    return resolve_summarization_spec(prompt_type)[2]
+
+
 def _extract_result_payload(result: Any) -> dict[str, Any]:
     """Normalize pydantic-ai result output into a JSON-serializable dict."""
     output = getattr(result, "output", None)
@@ -215,7 +245,7 @@ def build_title_judge_prompt(
     reference_titles = (
         "\n".join(f"- {title}" for title in case.reference_titles) or "- None provided"
     )
-    notes = case.notes or "No extra notes."
+    evaluation_criteria = case.evaluation_criteria or "No extra evaluation criteria."
     return (
         "You are grading a generated title for a summary-generation eval.\n\n"
         "Decide whether the generated title is grounded, specific, and materially better "
@@ -228,7 +258,7 @@ def build_title_judge_prompt(
         f"Existing title: {case.existing_title or 'None'}\n"
         f"Known bad titles:\n{bad_titles}\n\n"
         f"Reference good titles:\n{reference_titles}\n\n"
-        f"Case notes:\n{notes}\n\n"
+        f"Evaluation criteria:\n{evaluation_criteria}\n\n"
         f"Source evidence:\n{case.input_text}\n\n"
         f"Generated title:\n{generated_title}\n\n"
         f"Full generated payload:\n{payload_json}\n\n"
@@ -274,7 +304,7 @@ def run_summary_eval_case(
     case: SummaryEvalCase,
 ) -> SummaryEvalCaseResult:
     """Run one summary-generation eval case."""
-    model_spec = defaults.model_spec
+    model_spec = _resolve_generation_model_spec(case=case, defaults=defaults)
     judge_model_spec = defaults.judge_model_spec
 
     try:

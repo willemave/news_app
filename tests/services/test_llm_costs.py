@@ -1,5 +1,9 @@
 """Tests for LLM usage persistence helpers."""
 
+from contextlib import contextmanager
+
+from sqlalchemy import text
+
 from app.models.schema import LlmUsageRecord
 from app.services import llm_costs
 
@@ -54,6 +58,59 @@ def test_record_llm_usage_allows_unknown_pricing(db_session, monkeypatch) -> Non
     assert persisted.output_tokens == 8
     assert persisted.total_tokens == 20
     assert persisted.cost_usd is None
+
+
+def test_record_llm_usage_rolls_back_when_flush_fails(db_session, monkeypatch) -> None:
+    monkeypatch.setattr(llm_costs, "MODEL_PRICING", {})
+
+    rollback_calls = []
+    original_rollback = db_session.rollback
+
+    def fake_flush() -> None:
+        raise llm_costs.SQLAlchemyError("database is locked")
+
+    def fake_rollback() -> None:
+        rollback_calls.append(True)
+        original_rollback()
+
+    monkeypatch.setattr(db_session, "flush", fake_flush)
+    monkeypatch.setattr(db_session, "rollback", fake_rollback)
+
+    result = llm_costs.record_llm_usage(
+        db_session,
+        provider="openai",
+        model="unknown-model",
+        feature="chat",
+        operation="chat.async",
+        usage={"input": 12, "output": 8, "total": 20},
+    )
+
+    assert result is None
+    assert rollback_calls == [True]
+    assert db_session.execute(text("select 1")).scalar_one() == 1
+
+
+def test_record_llm_usage_out_of_band_uses_dedicated_session(db_session, monkeypatch) -> None:
+    monkeypatch.setattr(llm_costs, "MODEL_PRICING", {})
+
+    @contextmanager
+    def fake_get_db():
+        yield db_session
+        db_session.commit()
+
+    monkeypatch.setattr(llm_costs, "get_db", fake_get_db)
+
+    record = llm_costs.record_llm_usage_out_of_band(
+        provider="openai",
+        model="unknown-model",
+        feature="chat",
+        operation="chat.async",
+        usage={"input": 12, "output": 8, "total": 20},
+    )
+
+    assert record is not None
+    persisted = db_session.query(LlmUsageRecord).filter(LlmUsageRecord.id == record.id).one()
+    assert persisted.total_tokens == 20
 
 
 def test_estimate_cost_uses_google_alias_pricing(monkeypatch) -> None:

@@ -48,6 +48,13 @@ class SubmitContentRequest(BaseModel):
             "after processing completes."
         ),
     )
+    favorite_and_mark_read: bool = Field(
+        False,
+        description=(
+            "When true, download and summarize the submitted content, then mark it as "
+            "read and add it to the user's favorites."
+        ),
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -60,6 +67,7 @@ class SubmitContentRequest(BaseModel):
                 "crawl_links": True,
                 "subscribe_to_feed": False,
                 "share_and_chat": False,
+                "favorite_and_mark_read": False,
             }
         }
     )

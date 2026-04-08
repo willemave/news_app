@@ -42,6 +42,48 @@ def test_content_data_normalizes_noisy_news_article_title() -> None:
     assert "<div>" not in title.lower()
 
 
+def test_content_data_drops_placeholder_news_article_title() -> None:
+    content = ContentData(
+        content_type=ContentType.NEWS,
+        url="https://news.ycombinator.com/item?id=1234",
+        status=ContentStatus.COMPLETED,
+        metadata=_build_news_metadata("SKILL0"),
+    )
+
+    assert content.metadata["article"].get("title") is None
+
+
+def test_content_data_display_title_falls_back_to_summary_text() -> None:
+    content = ContentData(
+        content_type=ContentType.NEWS,
+        url="https://news.ycombinator.com/item?id=4321",
+        title="SKILL0",
+        status=ContentStatus.COMPLETED,
+        metadata={
+            "source": "artificial",
+            "article": {
+                "url": "https://openclaw.army/learn",
+                "title": "SKILL0",
+                "source_domain": "openclaw.army",
+            },
+            "summary_kind": "short_news_digest",
+            "summary_version": 1,
+            "summary": {
+                "title": "SKILL0",
+                "summary": (
+                    "A Hugging Face space demo that explains how a tiny skill model "
+                    "works in practice."
+                ),
+            },
+        },
+    )
+
+    assert (
+        content.display_title
+        == "A Hugging Face space demo that explains how a tiny skill model works in practice."
+    )
+
+
 def test_content_to_domain_handles_noisy_news_article_title() -> None:
     db_content = DBContent(
         id=21461,

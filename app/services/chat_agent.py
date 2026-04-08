@@ -19,7 +19,7 @@ from app.models.chat_message_metadata import ChatMessageRenderMetadata
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.exa_client import exa_search, get_exa_client
 from app.services.langfuse_tracing import langfuse_trace_context
-from app.services.llm_costs import extract_usage_from_result, record_llm_usage
+from app.services.llm_costs import extract_usage_from_result, record_llm_usage_out_of_band
 from app.services.llm_models import (  # noqa: F401 (re-export for API schemas)
     LLMProvider as ChatModelProvider,
 )
@@ -871,7 +871,6 @@ def _close_sandbox_session(sandbox_session: PersonalLibrarySandboxSession | None
 
 def _log_chat_usage(
     result: object,
-    db: Session,
     session: ChatSession,
     session_id: int,
     message_id: int | None,
@@ -883,8 +882,7 @@ def _log_chat_usage(
         return
 
     try:
-        usage = record_llm_usage(
-            db,
+        usage = record_llm_usage_out_of_band(
             provider=resolve_model_provider(session.llm_model),
             model=session.llm_model,
             feature="chat",
@@ -1081,7 +1079,7 @@ async def run_chat_turn(
             provider_api_key=provider_api_key,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
-        _log_chat_usage(result, db, session, session.id, None, "sync")
+        _log_chat_usage(result, session, session.id, None, "sync")
         new_messages = result.new_messages()
         save_messages(
             db,
@@ -1176,6 +1174,7 @@ async def process_message_async(
         task_id: Optional queue task identifier.
     """
     from app.core.db import get_session_factory
+
     total_start = perf_counter()
     logger.info(
         "Async chat turn started",
@@ -1280,7 +1279,7 @@ async def process_message_async(
             provider_api_key=provider_api_key,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
-        _log_chat_usage(result, db, session, session_id, message_id, "async")
+        _log_chat_usage(result, session, session_id, message_id, "async")
 
         # Extract tool calls info
         tool_calls = getattr(result, "tool_calls", []) or []
@@ -1462,7 +1461,7 @@ async def generate_initial_suggestions(
             provider_api_key=provider_api_key,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
-        _log_chat_usage(result, db, session, session.id, None, "initial_suggestions")
+        _log_chat_usage(result, session, session.id, None, "initial_suggestions")
         new_messages = result.new_messages()
         save_start = perf_counter()
         save_messages(db, session.id, new_messages)

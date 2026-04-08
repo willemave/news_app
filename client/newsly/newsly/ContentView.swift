@@ -15,6 +15,7 @@ struct ContentView: View {
     @StateObject private var readingStateStore = ReadingStateStore()
     @StateObject private var tabCoordinator: TabCoordinatorViewModel
     @StateObject private var chatSessionManager = ActiveChatSessionManager.shared
+    @StateObject private var chatNavigation = ChatNavigationCoordinator.shared
     @StateObject private var submissionStatusViewModel = SubmissionStatusViewModel()
     @ObservedObject private var settings = AppSettings.shared
 
@@ -147,8 +148,11 @@ struct ContentView: View {
                 restoreIfNeeded()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .openChatSession)) { notification in
-            handleOpenChatSession(notification)
+        .onReceive(chatNavigation.$pendingRoute) { route in
+            guard let route else { return }
+            logger.info("[Navigation] openChatSession sessionId=\(route.sessionId, privacy: .public)")
+            openChatSession(route: route)
+            chatNavigation.clear(route: route)
         }
         .task {
             await unreadCountService.refreshCounts()
@@ -202,31 +206,6 @@ struct ContentView: View {
             }
             logger.info("[NavigationRestore] pathRestored idsCount=\(currentIds.count, privacy: .public)")
         }
-    }
-
-    private func handleOpenChatSession(_ notification: Notification) {
-        let sessionId: Int?
-        if let id = notification.userInfo?["session_id"] as? Int {
-            sessionId = id
-        } else if let id = notification.userInfo?["session_id"] as? NSNumber {
-            sessionId = id.intValue
-        } else {
-            sessionId = nil
-        }
-        let pendingCouncilPrompt = notification.userInfo?["pending_council_prompt"] as? String
-
-        guard let sessionId else {
-            logger.error("[Notification] openChatSession missing session_id")
-            return
-        }
-
-        logger.info("[Notification] openChatSession sessionId=\(sessionId, privacy: .public)")
-        openChatSession(
-            route: ChatSessionRoute(
-                sessionId: sessionId,
-                pendingCouncilPrompt: pendingCouncilPrompt
-            )
-        )
     }
 
     private func openChatSession(route: ChatSessionRoute) {

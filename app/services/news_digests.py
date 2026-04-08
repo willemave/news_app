@@ -257,12 +257,8 @@ def _dedupe_selected_cluster_item_ids(
     selected_ids: list[int],
 ) -> list[int]:
     representative_items = _dedupe_exact_cluster_items(cluster)
-    representative_id_by_key = {
-        _citation_group_key(item): item.id for item in representative_items
-    }
-    group_key_by_item_id = {
-        item.id: _citation_group_key(item) for item in cluster.items
-    }
+    representative_id_by_key = {_citation_group_key(item): item.id for item in representative_items}
+    group_key_by_item_id = {item.id: _citation_group_key(item) for item in cluster.items}
 
     deduped_ids: list[int] = []
     seen_group_keys: set[tuple[str, str]] = set()
@@ -720,7 +716,6 @@ def _generate_bullet_draft(
             "news_digest_bullet",
             result,
             model_spec=settings.news_group_model,
-            db=db,
             persist={
                 "feature": "news_digests",
                 "operation": "news_digests.generate_bullet",
@@ -771,12 +766,8 @@ def _generate_curated_cluster_bullets(
     db: Session | None = None,
 ) -> tuple[list[NewsDigestCuratedBulletDraft], bool]:
     settings = get_settings()
-    cluster_by_rank = {
-        rank: cluster for rank, cluster in enumerate(clusters, start=1)
-    }
-    system_prompt = _build_group_system_prompt(
-        resolve_user_news_digest_preference_prompt(user)
-    )
+    cluster_by_rank = {rank: cluster for rank, cluster in enumerate(clusters, start=1)}
+    system_prompt = _build_group_system_prompt(resolve_user_news_digest_preference_prompt(user))
     try:
         agent = get_basic_agent(
             settings.news_group_model,
@@ -791,7 +782,6 @@ def _generate_curated_cluster_bullets(
             "news_digest_curate",
             result,
             model_spec=settings.news_group_model,
-            db=db,
             persist={
                 "feature": "news_digests",
                 "operation": "news_digests.curate_clusters",
@@ -863,7 +853,6 @@ def _generate_header_draft(
             "news_digest_header",
             result,
             model_spec=settings.news_header_model,
-            db=db,
             persist={
                 "feature": "news_digests",
                 "operation": "news_digests.generate_header",

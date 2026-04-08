@@ -93,10 +93,12 @@ def test_summarize_uses_agent_and_title_prefix(monkeypatch: pytest.MonkeyPatch) 
 
 def test_summarize_news_uses_news_summary_output_type(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_output_types = []
+    captured_system_prompts: list[str] = []
 
     def fake_get_basic_agent(model_spec, output_type, system_prompt):  # noqa: ANN001
-        del model_spec, system_prompt
+        del model_spec
         captured_output_types.append(output_type)
+        captured_system_prompts.append(system_prompt)
         return FakeAgent(_agent_output_for_type(output_type))
 
     monkeypatch.setattr(llm_summarization, "get_basic_agent", fake_get_basic_agent)
@@ -107,6 +109,8 @@ def test_summarize_news_uses_news_summary_output_type(monkeypatch: pytest.Monkey
     assert isinstance(result, NewsSummary)
     assert result.title == "News Title"
     assert captured_output_types == [NewsSummary]
+    assert "rewritten headline" in captured_system_prompts[0].lower()
+    assert "placeholder" in captured_system_prompts[0].lower()
 
 
 def test_content_summarizer_resolves_default_models(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -252,8 +256,10 @@ def test_summarize_returns_none_for_empty_payload() -> None:
 
 def test_summarize_persists_usage_when_db_and_metadata_provided(
     db_session,
+    llm_usage_db,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    del llm_usage_db
     summary = _editorial_summary()
     fake_agent = FakeAgent(
         summary,
@@ -275,6 +281,7 @@ def test_summarize_persists_usage_when_db_and_metadata_provided(
     )
 
     assert result == summary
+    db_session.commit()
     row = db_session.query(LlmUsageRecord).one()
     assert row.feature == "summarization"
     assert row.operation == "summarization.llm_summarization"

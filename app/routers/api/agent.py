@@ -15,12 +15,6 @@ from app.commands import (
 )
 from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
-from app.models.user import User
-from app.queries import (
-    get_agent_onboarding_status,
-    get_job_status,
-    search_external_results,
-)
 from app.models.api.common import (
     AgentDigestRequest,
     AgentDigestResponse,
@@ -39,6 +33,12 @@ from app.models.api.common import (
     CliLinkStartResponse,
     JobStatusResponse,
     OnboardingDiscoveryStatusResponse,
+)
+from app.models.user import User
+from app.queries import (
+    get_agent_onboarding_status,
+    get_job_status,
+    search_external_results,
 )
 from app.services.cli_link import (
     approve_cli_link_session,
@@ -204,7 +204,7 @@ def poll_cli_link(
 def get_agent_library_manifest(
     db: Annotated[Session, Depends(get_readonly_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-    include_source: Annotated[bool, Query()] = False,
+    include_source: Annotated[bool, Query()] = True,
 ) -> AgentLibraryManifestResponse:
     """Return manifest metadata for exportable per-user markdown files."""
     documents = collect_personal_markdown_documents_for_user(

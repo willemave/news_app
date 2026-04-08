@@ -622,6 +622,55 @@ def test_process_news_item_ignores_void_placeholder_titles(db_session) -> None:
     assert item.status == "ready"
 
 
+def test_process_news_item_rewrites_placeholder_generated_title_from_summary_text(
+    db_session,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-skill-title",
+        visibility_scope="global",
+        platform="hackernews",
+        source_type="hackernews",
+        source_label="Hacker News",
+        source_external_id="skill-title-1",
+        article_url="https://example.com/story-skill-title",
+        article_title="SKILL0",
+        article_domain="example.com",
+        discussion_url="https://news.ycombinator.com/item?id=skill-title-1",
+        raw_metadata={
+            "excerpt": "A concise source excerpt.",
+            "aggregator": {"title": "SKILL0", "author": "alice"},
+            "discussion_payload": {"comments": []},
+        },
+        status="new",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    result = process_news_item(
+        db_session,
+        news_item_id=item.id,
+        summarizer=SimpleNamespace(
+            summarize=lambda prompt, **_kwargs: NewsSummary(
+                title="SKILL0",
+                article_url=item.article_url,
+                key_points=["One concrete point."],
+                summary=(
+                    "A Hugging Face space demo that explains how a tiny skill model "
+                    "works in practice."
+                ),
+            )
+        ),
+    )
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert item.summary_title == (
+        "A Hugging Face space demo that explains how a tiny skill model works in practice."
+    )
+    assert item.raw_metadata["summary"]["title"] == item.summary_title
+
+
 def test_process_news_item_accepts_long_generated_titles(db_session) -> None:
     long_title = "A" * 400
     item = NewsItem(

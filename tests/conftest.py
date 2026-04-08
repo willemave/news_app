@@ -76,6 +76,28 @@ def db(test_db):
 
 
 @pytest.fixture
+def llm_usage_db(test_db, monkeypatch):
+    """Route out-of-band LLM usage writes to the current test database."""
+    from app.services import llm_costs
+
+    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_db)
+
+    @contextmanager
+    def _get_db():
+        session = TestSessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    monkeypatch.setattr(llm_costs, "get_db", _get_db)
+
+
+@pytest.fixture
 def user_factory(db_session: Session):
     """Create persisted users with sensible defaults."""
     sequence = count(1)

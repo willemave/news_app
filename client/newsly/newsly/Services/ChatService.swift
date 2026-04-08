@@ -284,12 +284,8 @@ class ChatService {
         contentId: Int,
         provider: ChatModelProvider = .openai
     ) async throws -> ChatSessionSummary {
-        // Check for existing session
-        if let existing = try await getSessionForContent(contentId: contentId) {
-            return existing
-        }
-
-        // Create new session
+        // Source-launched article chats should always create a fresh thread so
+        // the conversation state and selected provider stay scoped to this run.
         return try await createSession(
             contentId: contentId,
             provider: provider

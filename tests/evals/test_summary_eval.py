@@ -15,8 +15,7 @@ def test_load_summary_eval_suite_parses_yaml(tmp_path: Path) -> None:
             [
                 "suite: summary_generation_v1",
                 "defaults:",
-                "  model_spec: openai:gpt-5.4",
-                "  judge_model_spec: openai:gpt-5.4",
+                "  judge_model_spec: anthropic:claude-opus-4-1-20250805",
                 "  longform_template: editorial_narrative_v1",
                 "cases:",
                 "  - id: case-1",
@@ -27,7 +26,7 @@ def test_load_summary_eval_suite_parses_yaml(tmp_path: Path) -> None:
                 "      - wow",
                 "    reference_titles:",
                 "      - A specific title about the underlying announcement",
-                "    notes: Replace reaction text with the actual takeaway.",
+                "    evaluation_criteria: Replace reaction text with the actual takeaway.",
                 "    input_text: >",
                 "      The source announces a concrete product launch and why it matters.",
             ]
@@ -38,7 +37,8 @@ def test_load_summary_eval_suite_parses_yaml(tmp_path: Path) -> None:
     suite = summary_eval.load_summary_eval_suite(dataset)
 
     assert suite.suite == "summary_generation_v1"
-    assert suite.defaults.model_spec == "openai:gpt-5.4"
+    assert suite.defaults.model_spec is None
+    assert suite.defaults.judge_model_spec == "anthropic:claude-opus-4-1-20250805"
     assert suite.cases[0].id == "case-1"
     assert suite.cases[0].bad_titles == ["wow"]
 
@@ -64,7 +64,7 @@ def test_run_summary_eval_case_fails_when_generated_title_matches_bad_title(
             existing_title="wow",
             bad_titles=["wow"],
             reference_titles=["Concrete title about the event"],
-            notes="Bad titles are generic reactions.",
+            evaluation_criteria="Bad titles are generic reactions.",
         ),
     )
 
@@ -105,8 +105,7 @@ def test_run_summary_eval_case_uses_judge_verdict(monkeypatch) -> None:
     result = summary_eval.run_summary_eval_case(
         suite_name="summary_generation_v1",
         defaults=summary_eval.SummaryEvalDefaults(
-            model_spec="openai:gpt-5.4",
-            judge_model_spec="openai:gpt-5.4",
+            judge_model_spec="anthropic:claude-opus-4-1-20250805",
         ),
         case=summary_eval.SummaryEvalCase(
             id="perplexity",
@@ -121,7 +120,7 @@ def test_run_summary_eval_case_uses_judge_verdict(monkeypatch) -> None:
                     "Through Federal Returns"
                 )
             ],
-            notes="Good titles should name the product and tax feature.",
+            evaluation_criteria="Good titles should name the product and tax feature.",
         ),
     )
 
@@ -139,8 +138,8 @@ def test_run_summary_eval_suite_supports_case_selection(monkeypatch) -> None:
             suite=suite_name,
             case_id=case.id,
             content_type=case.content_type,
-            model_spec="openai:gpt-5.4",
-            judge_model_spec="openai:gpt-5.4",
+            model_spec="google:gemini-3.1-flash-lite-preview",
+            judge_model_spec="anthropic:claude-opus-4-1-20250805",
             prompt_type="news_digest",
             passed=True,
             generated_title="Synthetic title",
@@ -171,3 +170,33 @@ def test_run_summary_eval_suite_supports_case_selection(monkeypatch) -> None:
     report = summary_eval.run_summary_eval_suite(suite, case_id="case-2")
 
     assert [result.case_id for result in report.results] == ["case-2"]
+
+
+def test_resolve_generation_model_spec_uses_real_app_defaults() -> None:
+    """Default eval generation model should follow production summarization routing."""
+
+    article_case = summary_eval.SummaryEvalCase(
+        id="article-case",
+        content_type="article",
+        input_text="Article body",
+        bad_titles=["bad"],
+        reference_titles=["good"],
+    )
+    news_case = summary_eval.SummaryEvalCase(
+        id="news-case",
+        content_type="news",
+        input_text="News body",
+        bad_titles=["bad"],
+        reference_titles=["good"],
+    )
+
+    defaults = summary_eval.SummaryEvalDefaults()
+
+    assert (
+        summary_eval._resolve_generation_model_spec(case=article_case, defaults=defaults)
+        == "openai:gpt-5.4-mini"
+    )
+    assert (
+        summary_eval._resolve_generation_model_spec(case=news_case, defaults=defaults)
+        == "google:gemini-3.1-flash-lite-preview"
+    )

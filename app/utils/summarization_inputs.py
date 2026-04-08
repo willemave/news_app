@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from app.models.metadata import ContentType
+from app.utils.title_utils import clean_title
 
 WHITESPACE_PATTERN = re.compile(r"\s+")
 
@@ -17,7 +18,7 @@ def build_news_context(metadata: dict[str, Any]) -> str:
     aggregator = metadata.get("aggregator", {})
     lines: list[str] = []
 
-    article_title = article.get("title") or ""
+    article_title = clean_title(article.get("title")) or ""
     article_url = article.get("url") or ""
 
     if article_title:
@@ -27,7 +28,7 @@ def build_news_context(metadata: dict[str, Any]) -> str:
 
     if aggregator:
         name = aggregator.get("name") or metadata.get("platform")
-        agg_title = aggregator.get("title")
+        agg_title = clean_title(aggregator.get("title"))
         agg_url = metadata.get("discussion_url") or aggregator.get("url")
         author = aggregator.get("author")
 

@@ -29,23 +29,50 @@ def _make_content() -> Content:
     )
 
 
-def test_agent_library_manifest_defaults_to_summary_only(
-    client,
-    db_session,
-    test_user,
-) -> None:
-    """Manifest should return only summary markdown unless source export is requested."""
+def _seed_favorited_content(db_session, test_user) -> Content:
     content = _make_content()
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
     favorites_repository.add_favorite(db_session, content.id, test_user.id)
+    return content
+
+
+def test_agent_library_manifest_defaults_to_source_and_summary(
+    client,
+    db_session,
+    test_user,
+) -> None:
+    """Manifest should include both summary and source markdown by default."""
+    _seed_favorited_content(db_session, test_user)
 
     response = client.get("/api/agent/library/manifest")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["documents"]
+    assert payload["include_source"] is True
+    assert len(payload["documents"]) == 2
+    variants = {document["variant"] for document in payload["documents"]}
+    assert variants == {"source", "summary"}
+
+
+def test_agent_library_manifest_can_exclude_source_when_requested(
+    client,
+    db_session,
+    test_user,
+) -> None:
+    """Manifest should still support summary-only export when requested."""
+    content = _seed_favorited_content(db_session, test_user)
+
+    response = client.get(
+        "/api/agent/library/manifest",
+        params={"include_source": "false"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["include_source"] is False
     assert len(payload["documents"]) == 1
     document = payload["documents"][0]
     assert document["variant"] == "summary"
@@ -60,11 +87,7 @@ def test_agent_library_manifest_can_include_source_and_download_document(
     test_user,
 ) -> None:
     """Library sync should expose both manifest metadata and file contents."""
-    content = _make_content()
-    db_session.add(content)
-    db_session.commit()
-    db_session.refresh(content)
-    favorites_repository.add_favorite(db_session, content.id, test_user.id)
+    _seed_favorited_content(db_session, test_user)
 
     manifest_response = client.get(
         "/api/agent/library/manifest",

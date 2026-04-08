@@ -113,8 +113,9 @@ def test_matching_text_prefers_one_title_and_excludes_source_label() -> None:
     assert "Body summary text." in matching_text
 
 
-def test_build_cluster_payload_dedupes_repeated_post_identity_but_keeps_distinct_discussions(
-) -> None:
+def test_build_cluster_payload_dedupes_repeated_post_identity_but_keeps_distinct_discussions() -> (
+    None
+):
     first = _build_news_item(
         101,
         story_url="https://example.com/story-shared",
@@ -372,7 +373,7 @@ def test_generate_curated_cluster_bullets_uses_user_prompt_and_sanitizes_ids(mon
     assert used_batch is True
     assert "Prefer semiconductor supply chain and AI infra." in captured["system_prompt"]
     assert "prefer one very short headline" in captured["system_prompt"]
-    assert "\"cluster_rank\": 1" in captured["prompt"]
+    assert '"cluster_rank": 1' in captured["prompt"]
     assert curated[0].draft.news_item_ids == [21]
 
 
@@ -412,7 +413,12 @@ def test_generate_curated_cluster_bullets_raises_when_batch_generation_fails(mon
         )
 
 
-def test_generate_curated_cluster_bullets_persists_usage(db_session, monkeypatch) -> None:
+def test_generate_curated_cluster_bullets_persists_usage(
+    db_session,
+    llm_usage_db,
+    monkeypatch,
+) -> None:
+    del llm_usage_db
     user = User(apple_id="digest-usage-user", email="digest-usage@example.com")
     cluster = news_digests.NewsDigestCluster(
         items=[
@@ -460,13 +466,19 @@ def test_generate_curated_cluster_bullets_persists_usage(db_session, monkeypatch
 
     assert used_batch is True
     assert len(curated) == 1
+    db_session.commit()
     row = db_session.query(LlmUsageRecord).one()
     assert row.feature == "news_digests"
     assert row.operation == "news_digests.curate_clusters"
     assert row.total_tokens == 75
 
 
-def test_generate_header_draft_persists_usage(db_session, monkeypatch) -> None:
+def test_generate_header_draft_persists_usage(
+    db_session,
+    llm_usage_db,
+    monkeypatch,
+) -> None:
+    del llm_usage_db
     bullets = [
         NewsDigestBulletDraft(
             topic="Chip packaging bottlenecks",
@@ -502,6 +514,7 @@ def test_generate_header_draft_persists_usage(db_session, monkeypatch) -> None:
     )
 
     assert draft.title == "Morning infra digest"
+    db_session.commit()
     row = db_session.query(LlmUsageRecord).one()
     assert row.feature == "news_digests"
     assert row.operation == "news_digests.generate_header"

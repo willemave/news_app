@@ -16,6 +16,7 @@ from app.core.logging import get_logger
 from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.metadata import ContentType
 from app.models.schema import Content, NewsItem
+from app.utils.title_utils import clean_title
 from app.utils.url_utils import normalize_http_url
 
 logger = get_logger(__name__)
@@ -70,12 +71,7 @@ def _clean_string(value: Any) -> str | None:
 
 
 def _clean_title(value: Any) -> str | None:
-    cleaned = _clean_string(value)
-    if cleaned is None:
-        return None
-    if cleaned.casefold() == "void":
-        return None
-    return cleaned
+    return clean_title(value)
 
 
 def _normalize_datetime(value: Any) -> datetime | None:
@@ -526,10 +522,7 @@ def upsert_news_item(db: Session, payload: NewsItemUpsertInput) -> tuple[NewsIte
             existing.summary_key_points = payload.summary_key_points
         existing.summary_text = payload.summary_text or existing.summary_text
         existing.raw_metadata = {**dict(existing.raw_metadata or {}), **payload.raw_metadata}
-        if (
-            existing.status != NewsItemStatus.READY.value
-            or payload.status == NewsItemStatus.READY
-        ):
+        if existing.status != NewsItemStatus.READY.value or payload.status == NewsItemStatus.READY:
             existing.status = payload.status.value
         existing.published_at = payload.published_at or existing.published_at
         existing.ingested_at = payload.ingested_at or existing.ingested_at or _utcnow_naive()

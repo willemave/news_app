@@ -139,7 +139,7 @@ struct ContentDetailView: View {
                                     openChatSession(sessionId: activeSession.id, contentId: content.id)
                                 },
                                 onDismiss: {
-                                    chatSessionManager.markAsViewed(contentId: content.id)
+                                    chatSessionManager.markAsViewed(sessionId: activeSession.id)
                                 },
                                 style: .inline
                             )
@@ -501,19 +501,35 @@ struct ContentDetailView: View {
         activeSheet = .chat
     }
 
-    private func startChat(contentId: Int, prompt: String? = nil) async {
+    private func startChat(
+        contentId: Int,
+        provider: ChatModelProvider = .openai,
+        prompt: String? = nil
+    ) async {
         guard !isStartingChat else { return }
 
         isStartingChat = true
         chatError = nil
 
         do {
-            let session = try await ChatService.shared.startArticleChat(contentId: contentId)
+            let session = try await ChatService.shared.startArticleChat(
+                contentId: contentId,
+                provider: provider
+            )
+            var pendingResponse: SendChatMessageResponse?
             if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                _ = try await ChatService.shared.sendMessageAsync(sessionId: session.id, message: prompt)
+                pendingResponse = try await ChatService.shared.sendMessageAsync(
+                    sessionId: session.id,
+                    message: prompt
+                )
             }
             activeSheet = nil
-            openChatSession(sessionId: session.id, contentId: contentId)
+            openChatSession(
+                sessionId: session.id,
+                contentId: contentId,
+                initialUserMessage: pendingResponse?.userMessage,
+                pendingMessageId: pendingResponse?.messageId
+            )
         } catch {
             chatError = error.localizedDescription
         }
@@ -521,14 +537,21 @@ struct ContentDetailView: View {
         isStartingChat = false
     }
 
-    private func startCouncilWithPrompt(_ prompt: String, contentId: Int) async {
+    private func startCouncilWithPrompt(
+        _ prompt: String,
+        contentId: Int,
+        provider: ChatModelProvider = .openai
+    ) async {
         guard !isStartingChat else { return }
 
         isStartingChat = true
         chatError = nil
 
         do {
-            let session = try await ChatService.shared.startArticleChat(contentId: contentId)
+            let session = try await ChatService.shared.startArticleChat(
+                contentId: contentId,
+                provider: provider
+            )
             activeSheet = nil
             openChatSession(
                 sessionId: session.id,
@@ -566,13 +589,18 @@ struct ContentDetailView: View {
 
         do {
             let session = try await ChatService.shared.startDeepResearch(contentId: contentId)
-            _ = try await ChatService.shared.sendMessageAsync(
+            let pendingResponse = try await ChatService.shared.sendMessageAsync(
                 sessionId: session.id,
                 message: prompt
             )
 
             activeSheet = nil
-            openChatSession(sessionId: session.id, contentId: contentId)
+            openChatSession(
+                sessionId: session.id,
+                contentId: contentId,
+                initialUserMessage: pendingResponse.userMessage,
+                pendingMessageId: pendingResponse.messageId
+            )
         } catch {
             chatError = error.localizedDescription
         }
@@ -584,17 +612,20 @@ struct ContentDetailView: View {
     private func openChatSession(
         sessionId: Int,
         contentId: Int,
+        initialUserMessage: ChatMessage? = nil,
+        pendingMessageId: Int? = nil,
         pendingCouncilPrompt: String? = nil
     ) {
-        chatSessionManager.stopTracking(contentId: contentId)
-        var userInfo: [String: Any] = ["session_id": sessionId]
-        if let pendingCouncilPrompt, !pendingCouncilPrompt.isEmpty {
-            userInfo["pending_council_prompt"] = pendingCouncilPrompt
-        }
-        NotificationCenter.default.post(
-            name: .openChatSession,
-            object: nil,
-            userInfo: userInfo
+        chatSessionManager.stopTracking(sessionId: sessionId)
+        ChatNavigationCoordinator.shared.open(
+            ChatSessionRoute(
+                sessionId: sessionId,
+                contentId: contentId,
+                initialUserMessageText: initialUserMessage?.content,
+                initialUserMessageTimestamp: initialUserMessage?.timestamp,
+                pendingMessageId: pendingMessageId,
+                pendingCouncilPrompt: pendingCouncilPrompt
+            )
         )
     }
 
@@ -1291,7 +1322,12 @@ struct ContentDetailView: View {
                     subtitle: "Ask your own question about this story",
                     disabled: isStartingChat,
                     action: {
-                        Task { await startChat(contentId: content.id) }
+                        Task {
+                            await startChat(
+                                contentId: content.id,
+                                provider: .openai
+                            )
+                        }
                     }
                 )
                 sheetOptionRow(
@@ -1301,7 +1337,13 @@ struct ContentDetailView: View {
                     subtitle: "Explore key points in detail",
                     disabled: isStartingChat,
                     action: {
-                        Task { await startChat(contentId: content.id, prompt: deepDivePrompt(for: content)) }
+                        Task {
+                            await startChat(
+                                contentId: content.id,
+                                provider: .openai,
+                                prompt: deepDivePrompt(for: content)
+                            )
+                        }
                     }
                 )
                 sheetOptionRow(
@@ -1311,7 +1353,13 @@ struct ContentDetailView: View {
                     subtitle: "Compare four saved perspectives",
                     disabled: isStartingChat,
                     action: {
-                        Task { await startCouncilWithPrompt(councilPrompt(for: content), contentId: content.id) }
+                        Task {
+                            await startCouncilWithPrompt(
+                                councilPrompt(for: content),
+                                contentId: content.id,
+                                provider: .openai
+                            )
+                        }
                     }
                 )
                 sheetOptionRow(
@@ -1321,7 +1369,13 @@ struct ContentDetailView: View {
                     subtitle: "Verify claims with sources",
                     disabled: isStartingChat,
                     action: {
-                        Task { await startChat(contentId: content.id, prompt: corroboratePrompt(for: content)) }
+                        Task {
+                            await startChat(
+                                contentId: content.id,
+                                provider: .openai,
+                                prompt: corroboratePrompt(for: content)
+                            )
+                        }
                     }
                 )
                 sheetOptionRow(

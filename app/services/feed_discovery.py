@@ -561,7 +561,6 @@ def _select_directions_llm(
         "direction_select",
         result,
         model_spec=model_spec,
-        db=db,
         persist={
             "feature": "feed_discovery",
             "operation": "feed_discovery.direction_select",
@@ -653,7 +652,6 @@ def _plan_lanes_llm(
         "lane_plan",
         result,
         model_spec=model_spec,
-        db=db,
         persist={
             "feature": "feed_discovery",
             "operation": "feed_discovery.lane_plan",
@@ -717,7 +715,6 @@ def _extract_candidates_llm(
         f"candidate_extract:{lane.name}",
         result,
         model_spec=model_spec,
-        db=db,
         persist={
             "feature": "feed_discovery",
             "operation": "feed_discovery.candidate_extract",

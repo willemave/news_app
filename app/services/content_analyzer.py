@@ -368,7 +368,6 @@ PAGE CONTENT (truncated):
                     "analyze_url",
                     result,
                     model_spec=f"openai:{CONTENT_ANALYSIS_MODEL}",
-                    db=db,
                     persist=usage_persist,
                 )
             except ModelHTTPError as exc:

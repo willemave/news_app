@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.observability import build_log_extra
 from app.models.schema import LlmUsageRecord
@@ -175,7 +177,34 @@ def record_llm_usage(
         metadata_json=metadata or {},
     )
     db.add(record)
-    db.flush()
+    try:
+        db.flush()
+    except SQLAlchemyError:
+        # Usage tracking must never poison the caller's session.
+        db.rollback()
+        logger.warning(
+            "Failed to persist LLM usage record; continuing without telemetry",
+            extra=build_log_extra(
+                component="llm_costs",
+                operation=operation,
+                event_name="llm.usage",
+                status="degraded",
+                request_id=request_id,
+                task_id=task_id,
+                content_id=content_id,
+                session_id=session_id,
+                message_id=message_id,
+                user_id=user_id,
+                source=source,
+                context_data={
+                    "provider": provider_name,
+                    "model": model,
+                    "feature": feature,
+                    "pricing_version": PRICING_VERSION,
+                },
+            ),
+        )
+        return None
 
     logger.info(
         "Recorded LLM usage",
@@ -207,6 +236,70 @@ def record_llm_usage(
     return record
 
 
+def record_llm_usage_out_of_band(
+    *,
+    provider: str | None,
+    model: str,
+    feature: str,
+    operation: str,
+    source: str | None = None,
+    usage: dict[str, int | None] | None,
+    request_id: str | None = None,
+    task_id: int | None = None,
+    content_id: int | None = None,
+    session_id: int | None = None,
+    message_id: int | None = None,
+    user_id: int | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> LlmUsageRecord | None:
+    """Persist one LLM usage record using a dedicated short-lived session."""
+    if usage is None:
+        return None
+
+    try:
+        with get_db() as db:
+            return record_llm_usage(
+                db,
+                provider=provider,
+                model=model,
+                feature=feature,
+                operation=operation,
+                source=source,
+                usage=usage,
+                request_id=request_id,
+                task_id=task_id,
+                content_id=content_id,
+                session_id=session_id,
+                message_id=message_id,
+                user_id=user_id,
+                metadata=metadata,
+            )
+    except SQLAlchemyError:
+        logger.warning(
+            "Failed to persist out-of-band LLM usage record; continuing without telemetry",
+            extra=build_log_extra(
+                component="llm_costs",
+                operation=operation,
+                event_name="llm.usage",
+                status="degraded",
+                request_id=request_id,
+                task_id=task_id,
+                content_id=content_id,
+                session_id=session_id,
+                message_id=message_id,
+                user_id=user_id,
+                source=source,
+                context_data={
+                    "provider": provider or resolve_model_provider(model),
+                    "model": model,
+                    "feature": feature,
+                    "pricing_version": PRICING_VERSION,
+                },
+            ),
+        )
+        return None
+
+
 def estimate_cost_usd(
     *,
     provider: str,
@@ -233,9 +326,7 @@ def estimate_cost_usd(
     if input_rate is None or output_rate is None:
         return None
 
-    cost = (
-        (input_tokens / 1_000_000) * input_rate + (output_tokens / 1_000_000) * output_rate
-    )
+    cost = (input_tokens / 1_000_000) * input_rate + (output_tokens / 1_000_000) * output_rate
     return round(cost, 8)
 
 

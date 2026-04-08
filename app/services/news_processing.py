@@ -19,6 +19,7 @@ from app.services.discussion_fetcher import fetch_and_store_news_item_discussion
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 from app.services.news_article_bodies import get_news_item_article_body_resolver
 from app.services.news_relations import reconcile_news_item_relation
+from app.utils.title_utils import clean_title, resolve_title_candidate
 from app.utils.url_utils import normalize_http_url
 
 logger = get_logger(__name__)
@@ -51,12 +52,7 @@ def _clean_string(value: Any) -> str | None:
 
 
 def _clean_title(value: Any) -> str | None:
-    cleaned = _clean_string(value)
-    if cleaned is None:
-        return None
-    if cleaned.casefold() == "void":
-        return None
-    return cleaned
+    return clean_title(value)
 
 
 def _normalize_key_points(value: Any) -> list[str]:
@@ -167,8 +163,9 @@ def _build_processing_prompt(
 
     aggregator = raw_metadata.get("aggregator")
     if isinstance(aggregator, dict):
-        if _clean_string(aggregator.get("title")):
-            lines.append(f"Aggregator title: {_clean_string(aggregator.get('title'))}")
+        aggregator_title = clean_title(aggregator.get("title"))
+        if aggregator_title:
+            lines.append(f"Aggregator title: {aggregator_title}")
         if _clean_string(aggregator.get("author")):
             lines.append(f"Aggregator author: {_clean_string(aggregator.get('author'))}")
 
@@ -207,9 +204,14 @@ def _fallback_summary(item: NewsItem, raw_metadata: dict[str, Any]) -> NewsSumma
 
 
 def _persist_summary(item: NewsItem, summary: NewsSummary, raw_metadata: dict[str, Any]) -> None:
-    item.summary_title = (
-        _clean_title(summary.title) or _clean_title(item.article_title) or item.summary_title
+    resolved_title = resolve_title_candidate(
+        summary.title,
+        item.article_title,
+        item.summary_title,
+        summary_text=summary.summary or item.summary_text,
     )
+    if resolved_title:
+        item.summary_title = resolved_title
     normalized_article_url = (
         normalize_http_url(summary.article_url) if summary.article_url else None
     )
@@ -218,7 +220,10 @@ def _persist_summary(item: NewsItem, summary: NewsSummary, raw_metadata: dict[st
         item.canonical_story_url = normalized_article_url
     item.summary_key_points = _normalize_key_points(summary.key_points)
     item.summary_text = _clean_string(summary.summary) or item.summary_text
-    raw_metadata["summary"] = summary.model_dump(mode="json", by_alias=True, exclude_none=True)
+    raw_summary = summary.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if resolved_title:
+        raw_summary["title"] = resolved_title
+    raw_metadata["summary"] = raw_summary
     raw_metadata["summary_kind"] = SUMMARY_KIND_SHORT_NEWS_DIGEST
     raw_metadata["summary_version"] = SUMMARY_VERSION_V1
     item.raw_metadata = raw_metadata

@@ -589,12 +589,7 @@ def _find_subscription_content_matches(
     if total_matches == 0:
         return [], 0
 
-    rows = (
-        matched_query
-        .order_by(Content.created_at.desc(), Content.id.desc())
-        .limit(limit)
-        .all()
-    )
+    rows = matched_query.order_by(Content.created_at.desc(), Content.id.desc()).limit(limit).all()
     return rows, total_matches
 
 
@@ -747,15 +742,13 @@ def _get_or_create_agent(
                 content_query = search_backend.apply_search(feed_query, normalized_query)
                 total_content_matches = content_query.order_by(None).count()
                 content_rows = (
-                    content_query
-                    .order_by(Content.created_at.desc(), Content.id.desc())
+                    content_query.order_by(Content.created_at.desc(), Content.id.desc())
                     .limit(normalized_limit)
                     .all()
                 )
                 if not content_rows:
                     content_rows = (
-                        feed_query
-                        .order_by(Content.created_at.desc(), Content.id.desc())
+                        feed_query.order_by(Content.created_at.desc(), Content.id.desc())
                         .limit(normalized_limit)
                         .all()
                     )
@@ -1261,7 +1254,7 @@ async def process_assistant_turn_async(
         )
         agent_ms = (perf_counter() - agent_start) * 1000
         render_metadata = _extract_render_metadata(result.new_messages())
-        _log_chat_usage(result, db, session, session_id, message_id, source)
+        _log_chat_usage(result, session, session_id, message_id, source)
         update_message_completed(
             db,
             message_id,

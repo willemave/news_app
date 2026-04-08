@@ -6,9 +6,7 @@ from contextvars import ContextVar, Token
 from copy import deepcopy
 from typing import Any
 
-from sqlalchemy.orm import Session
-
-from app.services.llm_costs import extract_usage_from_result, record_llm_usage
+from app.services.llm_costs import extract_usage_from_result, record_llm_usage_out_of_band
 
 _USAGE_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("llm_usage_context", default=None)
 
@@ -38,7 +36,6 @@ def record_usage(
     result: object,
     *,
     model_spec: str | None = None,
-    db: Session | None = None,
     persist: dict[str, Any] | None = None,
 ) -> None:
     """Record usage for a single LLM call into the current context."""
@@ -63,9 +60,8 @@ def record_usage(
             step_entry[key] += value
             usage_context["total"][key] += value
 
-    if db is not None and persist:
-        record_llm_usage(
-            db,
+    if persist:
+        record_llm_usage_out_of_band(
             provider=persist.get("provider"),
             model=model_spec or persist.get("model") or "unknown",
             feature=persist["feature"],

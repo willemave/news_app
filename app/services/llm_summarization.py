@@ -260,9 +260,7 @@ class ContentSummarizer:
 
         try:
             payload = (
-                content.decode("utf-8", errors="ignore")
-                if isinstance(content, bytes)
-                else content
+                content.decode("utf-8", errors="ignore") if isinstance(content, bytes) else content
             )
             if not payload:
                 logger.warning("Empty summarization payload provided")
@@ -304,7 +302,6 @@ class ContentSummarizer:
                     "summarize",
                     result,
                     model_spec=model_spec,
-                    db=db,
                     persist=usage_persist,
                 )
             except Exception as model_error:  # noqa: BLE001

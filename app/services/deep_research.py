@@ -17,7 +17,7 @@ from app.core.observability import build_log_extra
 from app.core.settings import get_settings
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.langfuse_tracing import langfuse_trace_context
-from app.services.llm_costs import record_llm_usage
+from app.services.llm_costs import record_llm_usage_out_of_band
 from app.services.llm_models import DEEP_RESEARCH_MODEL
 
 try:
@@ -442,6 +442,7 @@ async def process_deep_research_message(
     from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
     from app.core.db import get_session_factory
+
     total_start = perf_counter()
     logger.info(
         "Deep research turn started",
@@ -581,8 +582,7 @@ async def process_deep_research_message(
                     ),
                 )
                 if result.usage:
-                    record_llm_usage(
-                        db,
+                    record_llm_usage_out_of_band(
                         provider="deep_research",
                         model=DEEP_RESEARCH_MODEL,
                         feature="chat",

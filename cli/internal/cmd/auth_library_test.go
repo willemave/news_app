@@ -82,10 +82,21 @@ func TestLibrarySyncDownloadsAndPrunesFiles(t *testing.T) {
 		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/agent/library/manifest":
+			if got := r.URL.Query().Get("include_source"); got != "true" {
+				t.Fatalf("unexpected include_source query: %q", got)
+			}
 			writeJSON(t, w, map[string]any{
 				"generated_at":   "2026-04-04T18:00:00Z",
-				"include_source": false,
+				"include_source": true,
 				"documents": []map[string]any{
+					{
+						"relative_path":   "article/example/new-doc__2026-04-03__source__c1.md",
+						"content_id":      1,
+						"variant":         "source",
+						"updated_at":      "2026-04-04T17:59:00Z",
+						"size_bytes":      16,
+						"checksum_sha256": "source-sha",
+					},
 					{
 						"relative_path":   "article/example/new-doc__2026-04-03__summary__c1.md",
 						"content_id":      1,
@@ -97,17 +108,28 @@ func TestLibrarySyncDownloadsAndPrunesFiles(t *testing.T) {
 				},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/agent/library/file":
-			if got := r.URL.Query().Get("path"); got != "article/example/new-doc__2026-04-03__summary__c1.md" {
+			switch got := r.URL.Query().Get("path"); got {
+			case "article/example/new-doc__2026-04-03__source__c1.md":
+				writeJSON(t, w, map[string]any{
+					"relative_path":   got,
+					"content_id":      1,
+					"variant":         "source",
+					"updated_at":      "2026-04-04T17:59:00Z",
+					"checksum_sha256": "source-sha",
+					"text":            "Raw article body\n",
+				})
+			case "article/example/new-doc__2026-04-03__summary__c1.md":
+				writeJSON(t, w, map[string]any{
+					"relative_path":   got,
+					"content_id":      1,
+					"variant":         "summary",
+					"updated_at":      "2026-04-04T17:59:00Z",
+					"checksum_sha256": "new-sha",
+					"text":            "# Hello\n",
+				})
+			default:
 				t.Fatalf("unexpected file path query: %q", got)
 			}
-			writeJSON(t, w, map[string]any{
-				"relative_path":   "article/example/new-doc__2026-04-03__summary__c1.md",
-				"content_id":      1,
-				"variant":         "summary",
-				"updated_at":      "2026-04-04T17:59:00Z",
-				"checksum_sha256": "new-sha",
-				"text":            "# Hello\n",
-			})
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -156,6 +178,14 @@ func TestLibrarySyncDownloadsAndPrunesFiles(t *testing.T) {
 	}
 	if string(data) != "# Hello\n" {
 		t.Fatalf("unexpected synced file contents: %q", string(data))
+	}
+	sourcePath := filepath.Join(libraryRoot, "article", "example", "new-doc__2026-04-03__source__c1.md")
+	sourceData, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read synced source file: %v", err)
+	}
+	if string(sourceData) != "Raw article body\n" {
+		t.Fatalf("unexpected synced source file contents: %q", string(sourceData))
 	}
 	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
 		t.Fatalf("expected stale file to be pruned, stat err=%v", err)

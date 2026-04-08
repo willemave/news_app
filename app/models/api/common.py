@@ -480,9 +480,7 @@ class ContentDetailResponse(BaseModel):
     body_kind: str | None = Field(
         None, description="Resolved body kind (article, transcript, or source)"
     )
-    body_format: str | None = Field(
-        None, description="Resolved body format (text or markdown)"
-    )
+    body_format: str | None = Field(None, description="Resolved body format (text or markdown)")
     news_article_url: str | None = Field(
         None, description="Canonical article link for news content"
     )
@@ -1191,7 +1189,7 @@ class AgentLibraryManifestResponse(BaseModel):
     """Manifest of markdown documents available for CLI sync."""
 
     generated_at: datetime
-    include_source: bool = False
+    include_source: bool = True
     documents: list[AgentLibraryDocumentResponse]
 
 

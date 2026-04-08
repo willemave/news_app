@@ -5,9 +5,7 @@ Merges functionality from legacy metadata/domain modules into one model surface.
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
-from html import unescape
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -34,6 +32,7 @@ from app.models.contracts import (
     ContentType,
 )
 from app.utils.summary_utils import extract_short_summary, extract_summary_text
+from app.utils.title_utils import clean_title, resolve_display_title
 
 
 # Structured summary components from app/schemas/metadata.py
@@ -398,12 +397,8 @@ class EditorialNarrativeSummary(BaseModel):
                 "source_details": {
                     "template": "github",
                     "overview": "Open source workflow runtime for long-lived agent tasks.",
-                    "architecture": [
-                        "Core runtime coordinates task state and plugin execution."
-                    ],
-                    "interfaces": [
-                        "CLI entrypoints, local configuration files, and plugin hooks."
-                    ],
+                    "architecture": ["Core runtime coordinates task state and plugin execution."],
+                    "interfaces": ["CLI entrypoints, local configuration files, and plugin hooks."],
                     "setup_constraints": ["Requires Python 3.11 and local plugin access."],
                     "maturity_signals": ["Active maintenance and concrete production examples."],
                     "best_fit_use_cases": ["Developer workflow automation and local agents."],
@@ -559,7 +554,6 @@ class NewsSummary(BaseModel):
         description="Timestamp when the digest was generated",
     )
 
-
     @field_validator("article_url")
     @classmethod
     def validate_article_url(cls, value: str | None) -> str | None:
@@ -587,8 +581,7 @@ class DailyNewsRollupSummary(BaseModel):
                 "bullets": [
                     {
                         "text": (
-                            "AI developer tooling and automation launches dominated "
-                            "software news."
+                            "AI developer tooling and automation launches dominated software news."
                         ),
                         "source_indexes": [1, 2],
                     },
@@ -654,19 +647,7 @@ class NewsArticleMetadata(BaseModel):
     @classmethod
     def normalize_title(cls, value: str | None) -> str | None:
         """Normalize noisy titles and enforce max length defensively."""
-        if value is None:
-            return None
-        title = str(value)
-        # Drop script/style blocks and strip HTML tags to avoid persisting page markup as title.
-        title = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", title)
-        title = re.sub(r"(?is)<[^>]+>", " ", title)
-        title = unescape(title)
-        title = re.sub(r"\s+", " ", title).strip()
-        if not title:
-            return None
-        if len(title) > 500:
-            return title[:500]
-        return title
+        return clean_title(value)
 
 
 class NewsAggregatorMetadata(BaseModel):
@@ -677,6 +658,12 @@ class NewsAggregatorMetadata(BaseModel):
     external_id: str | None = Field(None, max_length=200)
     author: str | None = Field(None, max_length=200)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        """Normalize noisy aggregator titles and drop placeholders."""
+        return clean_title(value)
 
 
 SummaryPayload = (
@@ -951,9 +938,7 @@ class ContentData(BaseModel):
     Unified content data model for passing between layers.
     """
 
-    model_config = ConfigDict(
-        ignored_types=(property,)
-    )
+    model_config = ConfigDict(ignored_types=(property,))
 
     id: int | None = None
     content_type: ContentType
@@ -1048,9 +1033,8 @@ class ContentData(BaseModel):
     def display_title(self) -> str:
         """Get title to display - prefer summary title over content title."""
         summary_data = self.metadata.get("summary")
-        if isinstance(summary_data, dict) and summary_data.get("title"):
-            return summary_data["title"]
-        return self.title or "Untitled"
+        summary_title = summary_data.get("title") if isinstance(summary_data, dict) else None
+        return resolve_display_title(summary_title, self.title, summary_text=self.summary)
 
     @property
     def short_summary(self) -> str | None:

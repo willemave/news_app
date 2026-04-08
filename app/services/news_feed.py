@@ -27,6 +27,7 @@ from app.models.contracts import (
 from app.models.pagination import PaginationMetadata
 from app.models.schema import NewsItem, NewsItemReadStatus
 from app.utils.pagination import PaginationCursor
+from app.utils.title_utils import resolve_display_title, resolve_title_candidate
 from app.utils.url_utils import normalize_http_url
 
 READ_STATUS_BUSY_TIMEOUT_MS = 250
@@ -139,12 +140,23 @@ def _content_classification(item: NewsItem) -> ContentClassification | None:
     return None
 
 
+def _news_item_display_title(item: NewsItem) -> str:
+    """Resolve a news-item title that avoids placeholder source labels."""
+    return resolve_display_title(
+        item.summary_title,
+        item.article_title,
+        summary_text=item.summary_text,
+        fallback=f"News item {item.id}",
+    )
+
+
 def _present_summary(item: NewsItem, *, is_read: bool) -> ContentSummaryResponse:
     cluster = _cluster_metadata(item)
     discussion_snippets = cluster.get("discussion_snippets")
     top_comment = _top_comment(item)
     if top_comment is None and isinstance(discussion_snippets, list) and discussion_snippets:
         top_comment = {"author": "Related", "text": str(discussion_snippets[0]).strip()}
+    display_title = _news_item_display_title(item)
 
     return ContentSummaryResponse(
         id=item.id,
@@ -152,7 +164,7 @@ def _present_summary(item: NewsItem, *, is_read: bool) -> ContentSummaryResponse
         url=_resolve_item_url(item),
         source_url=item.canonical_item_url or item.discussion_url,
         discussion_url=item.discussion_url,
-        title=item.summary_title or item.article_title,
+        title=display_title,
         source=item.source_label,
         platform=item.platform,
         status=_content_status(item),
@@ -178,21 +190,33 @@ def _present_summary(item: NewsItem, *, is_read: bool) -> ContentSummaryResponse
 
 def _present_detail(item: NewsItem, *, is_read: bool) -> ContentDetailResponse:
     metadata = dict(item.raw_metadata or {})
+    display_title = _news_item_display_title(item)
     article = metadata.get("article")
     if not isinstance(article, dict):
         article = {}
     article.setdefault("url", item.article_url or item.canonical_story_url)
-    article.setdefault("title", item.article_title or item.summary_title)
+    article["title"] = resolve_display_title(
+        article.get("title"),
+        display_title,
+        summary_text=item.summary_text,
+        fallback=display_title,
+    )
     article.setdefault("source_domain", item.article_domain)
     metadata["article"] = article
 
     summary = metadata.get("summary")
     if not isinstance(summary, dict):
         summary = {}
-    summary_title = item.summary_title or item.article_title
+    raw_summary_text = summary.get("summary")
+    summary_text = raw_summary_text if isinstance(raw_summary_text, str) else item.summary_text
+    summary_title = resolve_title_candidate(
+        summary.get("title"),
+        display_title,
+        summary_text=summary_text,
+    )
     article_url = item.article_url or item.canonical_story_url
     summary_key_points = list(item.summary_key_points or [])
-    if summary_title and not summary.get("title"):
+    if summary_title:
         summary["title"] = summary_title
     if article_url and not summary.get("article_url"):
         summary["article_url"] = article_url
@@ -211,8 +235,8 @@ def _present_detail(item: NewsItem, *, is_read: bool) -> ContentDetailResponse:
         url=_resolve_item_url(item),
         source_url=item.canonical_item_url or item.discussion_url,
         discussion_url=item.discussion_url,
-        title=item.article_title,
-        display_title=item.summary_title or item.article_title or f"News item {item.id}",
+        title=display_title,
+        display_title=display_title,
         source=item.source_label,
         status=_content_status(item),
         error_message=None,

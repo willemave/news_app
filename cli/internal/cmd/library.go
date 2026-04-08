@@ -25,9 +25,11 @@ func (a *App) newLibraryCommand() *cobra.Command {
 		Short: "Sync the personal markdown library to local disk",
 	}
 
-	var args struct {
+	args := struct {
 		Dir           string
 		IncludeSource bool
+	}{
+		IncludeSource: true,
 	}
 
 	syncCmd := &cobra.Command{
@@ -132,7 +134,7 @@ func (a *App) newLibraryCommand() *cobra.Command {
 	}
 
 	syncCmd.Flags().StringVar(&args.Dir, "dir", "", "Override the local sync directory")
-	syncCmd.Flags().BoolVar(&args.IncludeSource, "include-source", false, "Also sync source/full-text markdown")
+	syncCmd.Flags().BoolVar(&args.IncludeSource, "include-source", true, "Sync source/full-text markdown alongside summaries")
 
 	libraryCmd.AddCommand(syncCmd)
 	return libraryCmd

@@ -26,7 +26,6 @@ class ChatSessionViewModel: ObservableObject {
     // Voice dictation state
     @Published var isRecording = false
     @Published var isTranscribing = false
-    @Published var activeTranscript: String = ""
     @Published private(set) var voiceDictationAvailable = false
 
     private let chatService = ChatService.shared
@@ -50,9 +49,8 @@ class ChatSessionViewModel: ObservableObject {
         self.initialPendingMessageId = initialPendingMessageId
         self.pendingCouncilPrompt = pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.messages = initialPendingUserMessage.map { [$0] } ?? []
-        let resolvedService = transcriptionService ?? RealtimeTranscriptionService()
+        let resolvedService = transcriptionService ?? VoiceDictationService.shared
         self.transcriptionService = resolvedService
-        configureTranscriptionCallbacks()
     }
 
     init(
@@ -68,9 +66,8 @@ class ChatSessionViewModel: ObservableObject {
         self.initialPendingMessageId = initialPendingMessageId
         self.pendingCouncilPrompt = pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.messages = initialPendingUserMessage.map { [$0] } ?? []
-        let resolvedService = transcriptionService ?? RealtimeTranscriptionService()
+        let resolvedService = transcriptionService ?? VoiceDictationService.shared
         self.transcriptionService = resolvedService
-        configureTranscriptionCallbacks()
     }
 
     deinit {
@@ -426,7 +423,6 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
             return
         }
         configureTranscriptionCallbacks()
-        activeTranscript = ""
         do {
             try await transcriptionService.start()
             isRecording = true
@@ -441,8 +437,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         logger.info("[ViewModel] Stopping voice recording")
 
         do {
-            let transcription = try await transcriptionService.stop()
-            let trimmedTranscription = transcription.trimmingCharacters(
+            let trimmedTranscription = try await transcriptionService.stop().trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
             logger.info("[ViewModel] Transcription complete | length=\(trimmedTranscription.count)")
@@ -450,16 +445,17 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
             isTranscribing = false
             guard !trimmedTranscription.isEmpty else {
                 errorMessage = "I didn't catch that. Try again."
-                activeTranscript = ""
                 return
             }
-            activeTranscript = trimmedTranscription
-            await sendMessage(text: trimmedTranscription)
-            activeTranscript = ""
+            let existingInput = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if existingInput.isEmpty {
+                inputText = trimmedTranscription
+            } else {
+                inputText = "\(existingInput) \(trimmedTranscription)"
+            }
         } catch {
             logger.error("[ViewModel] Voice transcription error: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
-            activeTranscript = ""
             isRecording = false
             isTranscribing = false
         }
@@ -470,12 +466,6 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         transcriptionService.cancel()
         isRecording = false
         isTranscribing = false
-        activeTranscript = ""
-    }
-
-    /// Check if voice dictation is available.
-    private var isVoiceDictationAvailable: Bool {
-        transcriptionService.isAvailable
     }
 
     private var hasVoiceAuthToken: Bool {
@@ -490,12 +480,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     private func configureTranscriptionCallbacks() {
         transcriptionService.onTranscriptDelta = nil
-        transcriptionService.onTranscriptFinal = { [weak self] transcript in
-            Task { @MainActor in
-                guard let self else { return }
-                self.updateTranscriptPreview(transcript)
-            }
-        }
+        transcriptionService.onTranscriptFinal = nil
         transcriptionService.onStopReason = { [weak self] reason in
             Task { @MainActor in
                 guard let self else { return }
@@ -505,9 +490,6 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
                 case .silenceAutoStop, .cancel, .failure:
                     self.isRecording = false
                     self.isTranscribing = false
-                    if reason != .silenceAutoStop {
-                        self.activeTranscript = ""
-                    }
                 }
             }
         }
@@ -516,7 +498,6 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
                 self?.errorMessage = message
                 self?.isRecording = false
                 self?.isTranscribing = false
-                self?.activeTranscript = ""
             }
         }
         transcriptionService.onStateChange = { [weak self] state in
@@ -535,19 +516,5 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
                 }
             }
         }
-        transcriptionService.onTranscriptDelta = { [weak self] delta in
-            Task { @MainActor in
-                self?.updateTranscriptPreview(delta)
-            }
-        }
-    }
-
-    private func updateTranscriptPreview(_ text: String) {
-        let cleaned = text
-            .replacingOccurrences(of: "...", with: "")
-            .replacingOccurrences(of: "\u{2026}", with: "")
-        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        activeTranscript = trimmed
     }
 }

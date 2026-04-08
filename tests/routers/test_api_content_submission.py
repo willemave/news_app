@@ -5,7 +5,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ContentReadStatus, ContentStatusEntry, ProcessingTask
+from app.models.schema import (
+    Content,
+    ContentFavorites,
+    ContentReadStatus,
+    ContentStatusEntry,
+    ProcessingTask,
+)
 from app.services.queue import TaskQueue, TaskStatus, TaskType
 
 
@@ -527,3 +533,88 @@ def test_share_and_chat_existing_completed_enqueues_dig_deeper_task(client, db_s
     )
     assert task is not None
     assert task.queue_name == TaskQueue.CHAT.value
+
+
+def test_submit_favorite_and_mark_read_marks_read_and_favorites(client, db_session, test_user):
+    """Submitting with favorite_and_mark_read should mark the item read and save it."""
+    response = client.post(
+        "/api/content/submit",
+        json={"url": "https://example.com/favorite-article", "favorite_and_mark_read": True},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+
+    created = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+    assert created is not None
+
+    favorite_row = (
+        db_session.query(ContentFavorites)
+        .filter(
+            ContentFavorites.user_id == test_user.id,
+            ContentFavorites.content_id == created.id,
+        )
+        .first()
+    )
+    assert favorite_row is not None
+
+    read_status_row = (
+        db_session.query(ContentReadStatus)
+        .filter(
+            ContentReadStatus.user_id == test_user.id,
+            ContentReadStatus.content_id == created.id,
+        )
+        .first()
+    )
+    assert read_status_row is not None
+
+    task = db_session.query(ProcessingTask).filter_by(content_id=created.id).first()
+    assert task is not None
+    assert task.task_type == TaskType.ANALYZE_URL.value
+
+
+def test_existing_completed_submission_favorite_and_mark_read_reuses_record(
+    client,
+    db_session,
+    test_user,
+):
+    """Completed content should be favorited and marked read without reanalysis."""
+    existing = Content(
+        url="https://example.com/existing-favorite",
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.COMPLETED.value,
+        source=SELF_SUBMISSION_SOURCE,
+        content_metadata={},
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    response = client.post(
+        "/api/content/submit",
+        json={"url": existing.url, "favorite_and_mark_read": True},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["content_id"] == existing.id
+    assert data["task_id"] is None
+
+    favorite_row = (
+        db_session.query(ContentFavorites)
+        .filter(
+            ContentFavorites.user_id == test_user.id,
+            ContentFavorites.content_id == existing.id,
+        )
+        .first()
+    )
+    assert favorite_row is not None
+
+    read_status_row = (
+        db_session.query(ContentReadStatus)
+        .filter(
+            ContentReadStatus.user_id == test_user.id,
+            ContentReadStatus.content_id == existing.id,
+        )
+        .first()
+    )
+    assert read_status_row is not None

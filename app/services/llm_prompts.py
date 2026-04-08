@@ -180,6 +180,9 @@ Guidelines:
 - There may be technical terms in the content, please don't make any spelling errors.
 - Keep each key point self-contained, concrete, and free of markdown or numbering.
 - Prefer action verbs, quantitative figures, and clear implications.
+- Make the title a rewritten headline, not a source label, reaction, promotional framing, or placeholder.
+- If the source title is weak, generic, or token-like rewrite
+  it into a factual headline that names the subject and the change.
 - If the content is low-value or promotional, set classification to "skip" but still
   surface truthful key points.
 - Never include markdown, topics, quotes, or any extra fields.
@@ -223,7 +226,9 @@ Guidelines:
         source_details_block += f'    "template": "{config["template"]}",\n'
         source_details_block += "\n".join(config["source_fields"])
         source_details_block += "\n  },\n"
-        source_guidelines_text = "\n".join(f"- {guideline}" for guideline in config["source_guidelines"])
+        source_guidelines_text = "\n".join(
+            f"- {guideline}" for guideline in config["source_guidelines"]
+        )
         system_message = f"""You are an expert editor writing an information-dense narrative summary for {config["source_name"]}.
 
 Return a JSON object with exactly these fields:

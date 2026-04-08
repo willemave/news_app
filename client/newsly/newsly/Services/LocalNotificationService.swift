@@ -100,19 +100,9 @@ extension LocalNotificationService: UNUserNotificationCenterDelegate {
            type == "chat_completed",
            let sessionId = userInfo["sessionId"] as? Int {
             logger.info("User tapped chat completion notification for session \(sessionId)")
-            // Post notification for navigation handling
             await MainActor.run {
-                NotificationCenter.default.post(
-                    name: .openChatSession,
-                    object: nil,
-                    userInfo: ["sessionId": sessionId]
-                )
+                ChatNavigationCoordinator.shared.open(ChatSessionRoute(sessionId: sessionId))
             }
         }
     }
-}
-
-// MARK: - Notification Names
-extension Notification.Name {
-    static let openChatSession = Notification.Name("openChatSession")
 }

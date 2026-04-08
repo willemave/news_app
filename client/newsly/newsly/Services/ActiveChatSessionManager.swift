@@ -31,11 +31,11 @@ struct ActiveChatSession: Identifiable, Equatable {
 class ActiveChatSessionManager: ObservableObject {
     static let shared = ActiveChatSessionManager()
 
-    /// Active sessions being polled, keyed by content ID for quick lookup
-    @Published private(set) var activeSessions: [Int: ActiveChatSession] = [:]  // contentId -> session
+    /// Active sessions being polled, keyed by session ID
+    @Published private(set) var activeSessions: [Int: ActiveChatSession] = [:]  // sessionId -> session
 
-    /// Completed sessions that haven't been viewed yet
-    @Published private(set) var completedSessions: [Int: ActiveChatSession] = [:]  // contentId -> session
+    /// Completed sessions that haven't been viewed yet, keyed by session ID
+    @Published private(set) var completedSessions: [Int: ActiveChatSession] = [:]  // sessionId -> session
 
     private let chatService = ChatService.shared
     private let notificationService = LocalNotificationService.shared
@@ -46,7 +46,8 @@ class ActiveChatSessionManager: ObservableObject {
     /// Maximum polling attempts (120 = 60 seconds)
     private let maxPollingAttempts = 120
 
-    private var pollingTasks: [Int: Task<Void, Never>] = [:]  // contentId -> task
+    private var pollingTasks: [Int: Task<Void, Never>] = [:]  // sessionId -> task
+    private var sessionIdsByContentId: [Int: [Int]] = [:]  // contentId -> newest-first session IDs
 
     private init() {}
 
@@ -65,33 +66,54 @@ class ActiveChatSessionManager: ObservableObject {
             status: .processing
         )
 
-        activeSessions[contentId] = activeSession
+        activeSessions[session.id] = activeSession
+        insertSessionReference(sessionId: session.id, contentId: contentId)
         logger.info("Started tracking session \(session.id) for content \(contentId)")
 
         // Start background polling
         let task = Task {
-            await pollForCompletion(contentId: contentId, messageId: messageId)
+            await pollForCompletion(sessionId: session.id, contentId: contentId, messageId: messageId)
         }
-        pollingTasks[contentId] = task
+        pollingTasks[session.id] = task
     }
 
     /// Stop tracking a session (e.g., when user opens the chat view)
-    func stopTracking(contentId: Int) {
-        pollingTasks[contentId]?.cancel()
-        pollingTasks.removeValue(forKey: contentId)
-        activeSessions.removeValue(forKey: contentId)
-        completedSessions.removeValue(forKey: contentId)
-        logger.info("Stopped tracking for content \(contentId)")
+    func stopTracking(sessionId: Int) {
+        pollingTasks[sessionId]?.cancel()
+        pollingTasks.removeValue(forKey: sessionId)
+
+        let session = activeSessions.removeValue(forKey: sessionId) ?? completedSessions.removeValue(forKey: sessionId)
+        if let session {
+            removeSessionReference(sessionId: sessionId, contentId: session.contentId)
+            logger.info("Stopped tracking session \(sessionId) for content \(session.contentId)")
+        } else {
+            logger.info("Stopped tracking session \(sessionId)")
+        }
     }
 
     /// Mark a completed session as viewed (dismisses banner)
-    func markAsViewed(contentId: Int) {
-        completedSessions.removeValue(forKey: contentId)
+    func markAsViewed(sessionId: Int) {
+        guard let session = completedSessions.removeValue(forKey: sessionId) else { return }
+        removeSessionReference(sessionId: sessionId, contentId: session.contentId)
     }
 
     /// Get active session for a content ID if any
     func getSession(forContentId contentId: Int) -> ActiveChatSession? {
-        return activeSessions[contentId] ?? completedSessions[contentId]
+        let sessionIds = sessionIdsByContentId[contentId] ?? []
+
+        for sessionId in sessionIds {
+            if let session = activeSessions[sessionId] {
+                return session
+            }
+        }
+
+        for sessionId in sessionIds {
+            if let session = completedSessions[sessionId] {
+                return session
+            }
+        }
+
+        return nil
     }
 
     /// Check if there's an active or completed session for this content
@@ -110,7 +132,7 @@ class ActiveChatSessionManager: ObservableObject {
     }
 
     /// Poll for message completion
-    private func pollForCompletion(contentId: Int, messageId: Int) async {
+    private func pollForCompletion(sessionId: Int, contentId: Int, messageId: Int) async {
         var attempts = 0
 
         while attempts < maxPollingAttempts {
@@ -121,12 +143,12 @@ class ActiveChatSessionManager: ObservableObject {
 
                 switch status.status {
                 case .completed:
-                    await handleCompletion(contentId: contentId, success: true)
+                    await handleCompletion(sessionId: sessionId, contentId: contentId)
                     return
 
                 case .failed:
                     let errorMsg = status.error ?? "Unknown error"
-                    await handleFailure(contentId: contentId, error: errorMsg)
+                    await handleFailure(sessionId: sessionId, contentId: contentId, error: errorMsg)
                     return
 
                 case .processing:
@@ -138,22 +160,22 @@ class ActiveChatSessionManager: ObservableObject {
                 return
             } catch {
                 logger.error("Polling error for content \(contentId): \(error.localizedDescription)")
-                await handleFailure(contentId: contentId, error: error.localizedDescription)
+                await handleFailure(sessionId: sessionId, contentId: contentId, error: error.localizedDescription)
                 return
             }
         }
 
         // Timeout
-        await handleFailure(contentId: contentId, error: "Request timed out")
+        await handleFailure(sessionId: sessionId, contentId: contentId, error: "Request timed out")
     }
 
-    private func handleCompletion(contentId: Int, success: Bool) async {
-        guard var session = activeSessions[contentId] else { return }
+    private func handleCompletion(sessionId: Int, contentId: Int) async {
+        guard var session = activeSessions[sessionId] else { return }
 
         session.status = .completed
-        activeSessions.removeValue(forKey: contentId)
-        completedSessions[contentId] = session
-        pollingTasks.removeValue(forKey: contentId)
+        activeSessions.removeValue(forKey: sessionId)
+        completedSessions[sessionId] = session
+        pollingTasks.removeValue(forKey: sessionId)
 
         logger.info("Chat completed for content \(contentId)")
 
@@ -165,14 +187,32 @@ class ActiveChatSessionManager: ObservableObject {
         )
     }
 
-    private func handleFailure(contentId: Int, error: String) async {
-        guard var session = activeSessions[contentId] else { return }
+    private func handleFailure(sessionId: Int, contentId: Int, error: String) async {
+        guard var session = activeSessions[sessionId] else { return }
 
         session.status = .failed(error)
-        activeSessions.removeValue(forKey: contentId)
-        completedSessions[contentId] = session
-        pollingTasks.removeValue(forKey: contentId)
+        activeSessions.removeValue(forKey: sessionId)
+        completedSessions[sessionId] = session
+        pollingTasks.removeValue(forKey: sessionId)
 
         logger.error("Chat failed for content \(contentId): \(error)")
+    }
+
+    private func insertSessionReference(sessionId: Int, contentId: Int) {
+        var sessionIds = sessionIdsByContentId[contentId] ?? []
+        sessionIds.removeAll { $0 == sessionId }
+        sessionIds.insert(sessionId, at: 0)
+        sessionIdsByContentId[contentId] = sessionIds
+    }
+
+    private func removeSessionReference(sessionId: Int, contentId: Int) {
+        guard var sessionIds = sessionIdsByContentId[contentId] else { return }
+        sessionIds.removeAll { $0 == sessionId }
+
+        if sessionIds.isEmpty {
+            sessionIdsByContentId.removeValue(forKey: contentId)
+        } else {
+            sessionIdsByContentId[contentId] = sessionIds
+        }
     }
 }

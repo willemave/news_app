@@ -79,7 +79,13 @@ def test_validate_feed_candidate_rejects_html_article() -> None:
     assert result is None
 
 
-def test_classify_feed_type_with_llm_persists_usage(db_session, monkeypatch) -> None:
+def test_classify_feed_type_with_llm_persists_usage(
+    db_session,
+    llm_usage_db,
+    monkeypatch,
+) -> None:
+    del llm_usage_db
+
     class _Agent:
         def run_sync(self, _prompt, model_settings=None):  # noqa: ANN001
             del model_settings
@@ -112,6 +118,7 @@ def test_classify_feed_type_with_llm_persists_usage(db_session, monkeypatch) -> 
     )
 
     assert result is not None
+    db_session.commit()
     row = db_session.query(LlmUsageRecord).one()
     assert row.feature == "feed_detection"
     assert row.operation == "feed_detection.classify_feed_type"

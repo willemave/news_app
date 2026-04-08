@@ -45,6 +45,10 @@ final class ShareViewController: UIViewController {
     private let contentStack = UIStackView()
     private let titleLabel = UILabel()
     private let optionsStack = UIStackView()
+    private let favoriteToggleView = ToggleRowView(
+        title: "Add to favorites",
+        description: "Download and summarize this item, then mark it read and save it for memory sync."
+    )
     private let submitButton = UIButton(type: .system)
 
     override func viewDidLoad() {
@@ -104,6 +108,7 @@ final class ShareViewController: UIViewController {
 
         contentStack.addArrangedSubview(titleLabel)
         contentStack.addArrangedSubview(optionsStack)
+        contentStack.addArrangedSubview(favoriteToggleView)
         contentStack.addArrangedSubview(submitButton)
 
         view.addSubview(contentStack)
@@ -137,6 +142,7 @@ final class ShareViewController: UIViewController {
         optionViews.forEach { mode, view in
             view.isSelected = (mode == linkHandlingMode)
         }
+        updateFavoriteToggleAvailability()
     }
 
     private func updateSubmitState() {
@@ -226,6 +232,14 @@ final class ShareViewController: UIViewController {
         }
     }
 
+    private func updateFavoriteToggleAvailability() {
+        let isAvailable = linkHandlingMode != .addFeed
+        if !isAvailable && favoriteToggleView.isOn {
+            favoriteToggleView.isOn = false
+        }
+        favoriteToggleView.isEnabled = isAvailable
+    }
+
     // MARK: - API Submission
 
     private func submitURL(_ url: URL) async throws {
@@ -234,6 +248,7 @@ final class ShareViewController: UIViewController {
             "url": url.absoluteString,
             "crawl_links": linkHandlingMode == .addLinks,
             "share_and_chat": false,
+            "favorite_and_mark_read": favoriteToggleView.isOn,
             "subscribe_to_feed": linkHandlingMode == .addFeed,
         ]
         if let platform = handler.platform {
@@ -323,7 +338,6 @@ private final class OptionRowView: UIControl {
         rowStack.spacing = 12
         rowStack.translatesAutoresizingMaskIntoConstraints = false
         rowStack.isUserInteractionEnabled = false
-
         addSubview(rowStack)
 
         NSLayoutConstraint.activate([
@@ -368,6 +382,78 @@ private final class OptionRowView: UIControl {
         } else {
             backgroundColor = isSelected ? UIColor.systemBackground : UIColor.secondarySystemBackground
         }
+    }
+}
+
+private final class ToggleRowView: UIControl {
+
+    private let titleLabel = UILabel()
+    private let descriptionLabel = UILabel()
+    private let toggleSwitch = UISwitch()
+
+    var isOn: Bool {
+        get { toggleSwitch.isOn }
+        set { toggleSwitch.setOn(newValue, animated: false) }
+    }
+
+    override var isEnabled: Bool {
+        didSet {
+            toggleSwitch.isEnabled = isEnabled
+            alpha = isEnabled ? 1.0 : 0.5
+        }
+    }
+
+    init(title: String, description: String) {
+        super.init(frame: .zero)
+
+        layer.cornerRadius = 12
+        layer.borderWidth = 1
+        layer.borderColor = UIColor.separator.cgColor
+        backgroundColor = .secondarySystemBackground
+        isUserInteractionEnabled = true
+
+        titleLabel.text = title
+        titleLabel.font = UIFont.preferredFont(forTextStyle: .body)
+        titleLabel.textColor = .label
+
+        descriptionLabel.text = description
+        descriptionLabel.font = UIFont.preferredFont(forTextStyle: .footnote)
+        descriptionLabel.textColor = .secondaryLabel
+        descriptionLabel.numberOfLines = 0
+
+        toggleSwitch.setContentHuggingPriority(.required, for: .horizontal)
+        toggleSwitch.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let labelsStack = UIStackView(arrangedSubviews: [titleLabel, descriptionLabel])
+        labelsStack.axis = .vertical
+        labelsStack.spacing = 4
+        labelsStack.alignment = .fill
+
+        let rowStack = UIStackView(arrangedSubviews: [labelsStack, toggleSwitch])
+        rowStack.axis = .horizontal
+        rowStack.alignment = .center
+        rowStack.spacing = 12
+        rowStack.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(rowStack)
+
+        NSLayoutConstraint.activate([
+            rowStack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            rowStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            rowStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            rowStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+        ])
+
+        addTarget(self, action: #selector(handleControlTapped), for: .touchUpInside)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func handleControlTapped() {
+        guard isEnabled else { return }
+        isOn.toggle()
     }
 }
 

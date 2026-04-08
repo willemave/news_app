@@ -388,7 +388,6 @@ def classify_feed_type_with_llm(
             "feed_classification",
             run_result,
             model_spec=model_spec or FEED_CLASSIFICATION_MODEL,
-            db=db,
             persist=usage_persist,
         )
         result = run_result.output

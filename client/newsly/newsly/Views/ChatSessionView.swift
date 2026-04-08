@@ -812,7 +812,7 @@ struct ChatSessionView: View {
                 .disabled(sendButtonDisabled)
             }
 
-            if viewModel.isTranscribing || viewModel.isRecording || !viewModel.activeTranscript.isEmpty {
+            if viewModel.isTranscribing || viewModel.isRecording {
                 VStack(alignment: .leading, spacing: 4) {
                     if viewModel.isTranscribing {
                         HStack(spacing: 4) {
@@ -833,13 +833,6 @@ struct ChatSessionView: View {
                                 .font(.terracottaBodySmall)
                                 .foregroundColor(.onSurfaceSecondary)
                         }
-                    }
-
-                    if !viewModel.activeTranscript.isEmpty {
-                        Text(viewModel.activeTranscript)
-                            .font(.terracottaBodySmall)
-                            .foregroundColor(.onSurfaceSecondary)
-                            .lineLimit(2)
                     }
                 }
                 .transition(.opacity)
