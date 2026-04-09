@@ -439,7 +439,7 @@ func (s *Server) handleCompleteOnboardingRequest(args [1]string, argsEscaped boo
 
 // handleConvertNewsItemToArticleRequest handles convertNewsItemToArticle operation.
 //
-// Convert one representative news item into article content.
+// Convert one representative news item into saved article content.
 //
 // POST /api/news/items/{news_item_id}/convert-to-article
 func (s *Server) handleConvertNewsItemToArticleRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {

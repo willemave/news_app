@@ -94,7 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--app-dir", default=None, help="Remote app checkout directory")
     parser.add_argument("--logs-dir", default=None, help="Primary remote logs directory")
     parser.add_argument("--service-log-dir", default=None, help="Remote service log directory")
-    parser.add_argument("--remote-db-path", default=None, help="Remote SQLite database path")
+    parser.add_argument(
+        "--remote-db-path",
+        default=None,
+        help="Remote SQLAlchemy database URL used when --remote-context-source=direct",
+    )
     parser.add_argument("--remote-python", default=None, help="Remote Python executable path")
     parser.add_argument(
         "--remote-context-source",
@@ -299,7 +303,7 @@ def _handle_debug(args: argparse.Namespace, *, config: AdminConfig) -> CommandRe
         raise AdminCLIError(f"Unsupported debug command: {args.debug_command}")
 
     logs_dir = Path(args.local_logs_dir or config.local_logs_dir)
-    db_path = Path(args.local_db_path or config.local_db_path)
+    db_target = args.local_db_path or str(config.local_db_path)
     output_dir = Path(args.output_dir or config.prompt_report_output_dir)
     components = tuple(
         args.components or ("summarization", "llm_summarization", "content_analyzer")
@@ -308,7 +312,10 @@ def _handle_debug(args: argparse.Namespace, *, config: AdminConfig) -> CommandRe
     if not args.skip_sync_logs:
         _sync_logs(config, destination=logs_dir)
     if not args.skip_sync_db:
-        _sync_database(config, destination=db_path)
+        raise AdminCLIError(
+            "Local database sync no longer supports SQLite snapshots. "
+            "Pass --skip-sync-db and provide a PostgreSQL URL via --local-db-path."
+        )
 
     from app.services.prompt_debug_report import (
         PromptReportOptions,
@@ -319,7 +326,7 @@ def _handle_debug(args: argparse.Namespace, *, config: AdminConfig) -> CommandRe
 
     options = PromptReportOptions(
         logs_dir=logs_dir,
-        db_url=f"sqlite:///{db_path}",
+        db_url=_resolve_database_url(db_target),
         hours=args.hours,
         since=_parse_datetime_arg(args.since, end_of_day=False),
         until=_parse_datetime_arg(args.until, end_of_day=True),
@@ -338,7 +345,7 @@ def _handle_debug(args: argparse.Namespace, *, config: AdminConfig) -> CommandRe
             "total_failures": report.total_failures,
             "total_records_scanned": report.total_records_scanned,
             "logs_dir": str(logs_dir),
-            "db_path": str(db_path),
+            "db_path": str(db_target),
         },
         warnings=[],
     )
@@ -376,22 +383,20 @@ def _sync_logs(config: AdminConfig, *, destination: Path) -> dict[str, Any]:
 
 
 def _sync_database(config: AdminConfig, *, destination: Path) -> dict[str, Any]:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    remote_backup_path = "/tmp/news_app_admin_backup.db"
-    backup_command = (
-        f"sqlite3 {config.remote_db_path!r} '.backup {remote_backup_path}'"
+    del config, destination
+    raise AdminCLIError(
+        "Local database sync no longer supports SQLite snapshots. "
+        "Use --skip-sync-db with a reachable PostgreSQL URL."
     )
-    cleanup_command = f"rm -f {remote_backup_path!r}"
-    subprocess.run(["ssh", config.remote, backup_command], text=True, check=True)
-    try:
-        subprocess.run(
-            ["rsync", "-avz", f"{config.remote}:{remote_backup_path}", str(destination)],
-            text=True,
-            check=True,
+
+
+def _resolve_database_url(raw_value: str) -> str:
+    value = str(raw_value).strip()
+    if "://" not in value:
+        raise AdminCLIError(
+            "Expected a full SQLAlchemy database URL for --local-db-path after SQLite removal."
         )
-    finally:
-        subprocess.run(["ssh", config.remote, cleanup_command], text=True, check=False)
-    return {"destination": str(destination)}
+    return value
 
 
 def _remote_path_exists(config: AdminConfig, remote_path: str) -> bool:

@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -17,6 +18,20 @@ var terminalJobStatuses = map[string]struct{}{
 	"completed": {},
 	"failed":    {},
 	"skipped":   {},
+}
+
+func normalizeStatus(status string) string {
+	return strings.ToLower(strings.TrimSpace(status))
+}
+
+func isTerminalStatus(status string) bool {
+	_, ok := terminalJobStatuses[normalizeStatus(status)]
+	return ok
+}
+
+func IsFailedOrSkippedStatus(status string) bool {
+	normalized := normalizeStatus(status)
+	return normalized == "failed" || normalized == "skipped"
 }
 
 type WaitOptions struct {
@@ -39,6 +54,16 @@ type Client struct {
 	baseURL    string
 	apiKey     string
 	httpClient *http.Client
+}
+
+type SubmissionStatusResponse struct {
+	ID           int    `json:"id"`
+	Status       string `json:"status"`
+	ErrorMessage string `json:"error_message"`
+}
+
+type SubmissionStatusListResponse struct {
+	Submissions []SubmissionStatusResponse `json:"submissions"`
 }
 
 type bearerSource struct {
@@ -89,7 +114,7 @@ func (c *Client) WaitForJob(ctx context.Context, jobID int, wait WaitOptions) (*
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := terminalJobStatuses[strings.ToLower(job.Status)]; ok {
+		if isTerminalStatus(job.Status) {
 			return job, nil
 		}
 		if time.Now().After(deadline) {
@@ -105,6 +130,55 @@ func (c *Client) WaitForJob(ctx context.Context, jobID int, wait WaitOptions) (*
 	}
 }
 
+func (c *Client) WaitForSubmittedContent(ctx context.Context, contentID int, wait WaitOptions) (*api.ContentDetailResponse, error) {
+	deadline := time.Now().Add(wait.Timeout)
+	for {
+		content, err := c.GetContent(ctx, contentID)
+		if err == nil {
+			return content, nil
+		}
+
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+			return nil, err
+		}
+
+		submissions, err := c.ListSubmissionStatuses(ctx, 100)
+		if err != nil {
+			return nil, err
+		}
+		for _, submission := range submissions.Submissions {
+			if submission.ID != contentID {
+				continue
+			}
+			if IsFailedOrSkippedStatus(submission.Status) {
+				payload, _ := normalize(submission)
+				message := fmt.Sprintf("submission %d %s", contentID, normalizeStatus(submission.Status))
+				if strings.TrimSpace(submission.ErrorMessage) != "" {
+					message = submission.ErrorMessage
+				}
+				return nil, &APIError{
+					Message: message,
+					Payload: payload,
+				}
+			}
+			break
+		}
+
+		if time.Now().After(deadline) {
+			return nil, &APIError{
+				Message: fmt.Sprintf("timed out waiting for content %d to become available", contentID),
+				Payload: map[string]any{
+					"content_id": contentID,
+				},
+			}
+		}
+		if err := sleepContext(ctx, wait.Interval); err != nil {
+			return nil, err
+		}
+	}
+}
+
 func (c *Client) WaitForOnboarding(ctx context.Context, runID int, wait WaitOptions) (*api.OnboardingDiscoveryStatusResponse, error) {
 	deadline := time.Now().Add(wait.Timeout)
 	for {
@@ -112,7 +186,7 @@ func (c *Client) WaitForOnboarding(ctx context.Context, runID int, wait WaitOpti
 		if err != nil {
 			return nil, err
 		}
-		status := strings.ToLower(run.RunStatus)
+		status := normalizeStatus(run.RunStatus)
 		if status == "completed" || status == "failed" {
 			return run, nil
 		}
@@ -249,6 +323,18 @@ func (c *Client) SubmitContent(ctx context.Context, request *api.SubmitContentRe
 	}
 }
 
+func (c *Client) ListSubmissionStatuses(ctx context.Context, limit int) (*SubmissionStatusListResponse, error) {
+	query := url.Values{}
+	if limit > 0 {
+		query.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	var response SubmissionStatusListResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/content/submissions/list", nil, true, query, &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 func (c *Client) ListNewsItems(ctx context.Context, params api.ListNewsItemsParams) (*api.ContentListResponse, error) {
 	res, err := c.raw.ListNewsItems(ctx, params)
 	if err != nil {
@@ -300,23 +386,6 @@ func (c *Client) ConvertNewsItemToArticle(ctx context.Context, newsItemID int) (
 	}
 }
 
-func (c *Client) MarkNewsItemsRead(ctx context.Context, request *api.BulkMarkReadRequest) (any, error) {
-	res, err := c.raw.MarkNewsItemsRead(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	switch value := res.(type) {
-	case *api.MarkNewsItemsReadOK:
-		return normalize(value)
-	case *api.MarkNewsItemsReadNotFound:
-		return nil, &APIError{Message: "news route not found", StatusCode: http.StatusNotFound}
-	case *api.HTTPValidationError:
-		return nil, validationError(value)
-	default:
-		return nil, unexpectedResponse(value)
-	}
-}
-
 func (c *Client) ListSources(ctx context.Context, params api.ListScraperConfigsParams) ([]api.ScraperConfigResponse, error) {
 	res, err := c.raw.ListScraperConfigs(ctx, params)
 	if err != nil {
@@ -333,18 +402,11 @@ func (c *Client) ListSources(ctx context.Context, params api.ListScraperConfigsP
 }
 
 func (c *Client) SubscribeSource(ctx context.Context, request *api.SubscribeToFeedRequest) (*api.ScraperConfigResponse, error) {
-	res, err := c.raw.SubscribeScrapersToFeed(ctx, request)
-	if err != nil {
+	var response api.ScraperConfigResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/scrapers/subscribe", request, true, nil, &response); err != nil {
 		return nil, err
 	}
-	switch value := res.(type) {
-	case *api.ScraperConfigResponse:
-		return value, nil
-	case *api.HTTPValidationError:
-		return nil, validationError(value)
-	default:
-		return nil, unexpectedResponse(value)
-	}
+	return &response, nil
 }
 
 func validationError(value *api.HTTPValidationError) error {

@@ -15,7 +15,7 @@ def _config() -> AdminConfig:
         app_dir="/opt/news_app",
         logs_dir="/data/logs",
         service_log_dir="/var/log/news_app",
-        remote_db_path="/data/news_app.db",
+        remote_db_path="postgresql://newsly:secret@127.0.0.1:5432/news_app",
         remote_python=".venv/bin/python",
         remote_context_source="direct",
         local_logs_dir=None,  # type: ignore[arg-type]
@@ -49,6 +49,6 @@ def test_run_remote_module_builds_expected_ssh_command(monkeypatch):
     ]
     assert captured["input"] == (
         '{"payload": {"limit": 10}, "context_override": {"database_url": '
-        '"sqlite:////data/news_app.db", "logs_dir": "/data/logs", '
+        '"postgresql://newsly:secret@127.0.0.1:5432/news_app", "logs_dir": "/data/logs", '
         '"service_log_dir": "/var/log/news_app"}}'
     )

@@ -355,7 +355,7 @@ def admin_dashboard(
         db.query(Content)
         .filter(
             (Content.content_metadata["summary"].is_(None))
-            | (Content.content_metadata["summary"] == "null")
+            | (Content.content_metadata["summary"].as_string() == "null")
         )
         .filter(Content.error_message.is_not(None))
         .order_by(desc(Content.created_at))

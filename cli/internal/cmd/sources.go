@@ -2,12 +2,17 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/willem/news_app/cli/internal/api"
 	"github.com/willem/news_app/cli/internal/runtime"
 )
+
+var supportedFeedTypes = []string{"atom", "substack", "podcast_rss"}
 
 func (a *App) newSourcesCommand() *cobra.Command {
 	sourcesCmd := &cobra.Command{
@@ -44,6 +49,16 @@ func (a *App) newSourcesCommand() *cobra.Command {
 		Short: "Subscribe to a feed",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, positional []string) error {
+			if !slices.Contains(supportedFeedTypes, addArgs.FeedType) {
+				return a.renderError(
+					"sources.add",
+					fmt.Errorf(
+						"unsupported feed type %q; expected one of: %s",
+						addArgs.FeedType,
+						strings.Join(supportedFeedTypes, ", "),
+					),
+				)
+			}
 			request := &api.SubscribeToFeedRequest{
 				FeedURL:  positional[0],
 				FeedType: addArgs.FeedType,
@@ -60,7 +75,12 @@ func (a *App) newSourcesCommand() *cobra.Command {
 			})
 		},
 	}
-	addCmd.Flags().StringVar(&addArgs.FeedType, "feed-type", "", "Feed type to subscribe to")
+	addCmd.Flags().StringVar(
+		&addArgs.FeedType,
+		"feed-type",
+		"",
+		"Feed type to subscribe to (atom, substack, podcast_rss)",
+	)
 	addCmd.Flags().StringVar(&addArgs.DisplayName, "display-name", "", "Optional display name")
 	_ = addCmd.MarkFlagRequired("feed-type")
 

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -50,9 +49,9 @@ func (a *App) newDigestCommand() *cobra.Command {
 		Short: "Fetch one news item",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			newsItemID, err := strconv.Atoi(args[0])
+			newsItemID, err := a.parseIntArg("news.get", args[0])
 			if err != nil {
-				return a.renderError("news.get", err)
+				return err
 			}
 			return a.runRemote(cmd, "news.get", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
 				data, err := client.GetNewsItem(ctx, newsItemID)
@@ -69,9 +68,9 @@ func (a *App) newDigestCommand() *cobra.Command {
 		Short: "Convert one news item into an article",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			newsItemID, err := strconv.Atoi(args[0])
+			newsItemID, err := a.parseIntArg("news.convert", args[0])
 			if err != nil {
-				return a.renderError("news.convert", err)
+				return err
 			}
 			return a.runRemote(cmd, "news.convert", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
 				data, err := client.ConvertNewsItemToArticle(ctx, newsItemID)

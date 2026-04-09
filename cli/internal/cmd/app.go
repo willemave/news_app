@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -28,7 +29,6 @@ type rootOptions struct {
 	APIKey     string
 	Output     string
 	Timeout    time.Duration
-	Verbose    bool
 }
 
 type waitFlags struct {
@@ -72,7 +72,6 @@ func New(version string, stdout io.Writer, stderr io.Writer) *App {
 	rootCmd.PersistentFlags().StringVar(&app.opts.APIKey, "api-key", "", "Override the API key for this command")
 	rootCmd.PersistentFlags().StringVar(&app.opts.Output, "output", "json", "Output format: json or text")
 	rootCmd.PersistentFlags().DurationVar(&app.opts.Timeout, "timeout", 30*time.Second, "HTTP timeout")
-	rootCmd.PersistentFlags().BoolVar(&app.opts.Verbose, "verbose", false, "Enable verbose diagnostics")
 
 	rootCmd.AddCommand(
 		app.newConfigCommand(),
@@ -104,6 +103,40 @@ func (a *App) Execute(ctx context.Context, args []string) int {
 	return 0
 }
 
+func (a *App) parseIntArg(commandName string, raw string) (int, error) {
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, a.renderError(commandName, err)
+	}
+	return value, nil
+}
+
+func (a *App) resolveRuntimeConfig() (config.RuntimeConfig, error) {
+	return config.ResolveRuntime(a.opts.ConfigPath, a.opts.ServerURL, a.opts.APIKey)
+}
+
+func (a *App) newRuntimeClient(runtimeCfg config.RuntimeConfig) (*runtime.Client, error) {
+	return runtime.NewClient(runtimeCfg, a.opts.Timeout)
+}
+
+func (a *App) updateConfig(
+	cmd *cobra.Command,
+	commandName string,
+	update func(config.FileConfig) config.FileConfig,
+	data func(path string, cfg config.FileConfig) any,
+) error {
+	return a.runLocal(cmd, commandName, func(_ context.Context) (commandResult, error) {
+		path := config.ResolvePath(a.opts.ConfigPath)
+		cfg, err := config.Update(path, update)
+		if err != nil {
+			return commandResult{}, err
+		}
+		return commandResult{
+			Data: data(path, cfg),
+		}, nil
+	})
+}
+
 func (a *App) runLocal(cmd *cobra.Command, commandName string, fn func(context.Context) (commandResult, error)) error {
 	result, err := fn(cmd.Context())
 	if err != nil {
@@ -113,7 +146,7 @@ func (a *App) runLocal(cmd *cobra.Command, commandName string, fn func(context.C
 }
 
 func (a *App) runRemote(cmd *cobra.Command, commandName string, fn func(context.Context, *runtime.Client) (commandResult, error)) error {
-	runtimeCfg, err := config.ResolveRuntime(a.opts.ConfigPath, a.opts.ServerURL, a.opts.APIKey)
+	runtimeCfg, err := a.resolveRuntimeConfig()
 	if err != nil {
 		return a.renderError(commandName, err)
 	}
@@ -121,7 +154,7 @@ func (a *App) runRemote(cmd *cobra.Command, commandName string, fn func(context.
 		return a.renderErrorWithPath(commandName, runtimeCfg.Path, err)
 	}
 
-	client, err := runtime.NewClient(runtimeCfg, a.opts.Timeout)
+	client, err := a.newRuntimeClient(runtimeCfg)
 	if err != nil {
 		return a.renderErrorWithPath(commandName, runtimeCfg.Path, err)
 	}
@@ -176,4 +209,25 @@ func (a *App) addWaitFlags(command *cobra.Command, flags *waitFlags) {
 	command.Flags().BoolVar(&flags.Wait, "wait", false, "Wait for the async operation to finish")
 	command.Flags().DurationVar(&flags.Interval, "wait-interval", 2*time.Second, "Polling interval while waiting")
 	command.Flags().DurationVar(&flags.Timeout, "wait-timeout", 2*time.Minute, "Maximum time to wait")
+}
+
+func waitOptions(flags waitFlags) (runtime.WaitOptions, error) {
+	if flags.Interval <= 0 {
+		return runtime.WaitOptions{}, errors.New("wait-interval must be greater than zero")
+	}
+	return runtime.WaitOptions{
+		Interval: flags.Interval,
+		Timeout:  flags.Timeout,
+	}, nil
+}
+
+func optionalWaitOptions(flags waitFlags) (runtime.WaitOptions, bool, error) {
+	if !flags.Wait {
+		return runtime.WaitOptions{}, false, nil
+	}
+	options, err := waitOptions(flags)
+	if err != nil {
+		return runtime.WaitOptions{}, false, err
+	}
+	return options, true, nil
 }

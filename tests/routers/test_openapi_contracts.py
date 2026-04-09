@@ -41,5 +41,9 @@ def test_agent_openapi_schema_includes_cli_auth_and_library_routes() -> None:
         schema["paths"]["/api/agent/library/manifest"]["get"]["operationId"]
         == "getAgentLibraryManifest"
     )
+    assert (
+        schema["paths"]["/api/content/submissions/list"]["get"]["operationId"]
+        == "listContentSubmissionStatuses"
+    )
     assert schema["paths"]["/api/agent/digests"]["post"]["tags"] == ["news"]
-    assert {tag["name"] for tag in schema["tags"]} >= {"auth", "library", "news"}
+    assert {tag["name"] for tag in schema["tags"]} >= {"auth", "content", "library", "news"}

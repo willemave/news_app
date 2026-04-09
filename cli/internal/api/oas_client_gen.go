@@ -42,7 +42,7 @@ type Invoker interface {
 	CompleteOnboarding(ctx context.Context, request *AgentOnboardingCompleteRequest, params CompleteOnboardingParams) (CompleteOnboardingRes, error)
 	// ConvertNewsItemToArticle invokes convertNewsItemToArticle operation.
 	//
-	// Convert one representative news item into article content.
+	// Convert one representative news item into saved article content.
 	//
 	// POST /api/news/items/{news_item_id}/convert-to-article
 	ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (ConvertNewsItemToArticleRes, error)
@@ -455,7 +455,7 @@ func (c *Client) sendCompleteOnboarding(ctx context.Context, request *AgentOnboa
 
 // ConvertNewsItemToArticle invokes convertNewsItemToArticle operation.
 //
-// Convert one representative news item into article content.
+// Convert one representative news item into saved article content.
 //
 // POST /api/news/items/{news_item_id}/convert-to-article
 func (c *Client) ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (ConvertNewsItemToArticleRes, error) {

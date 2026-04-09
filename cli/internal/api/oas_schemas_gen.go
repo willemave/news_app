@@ -4350,6 +4350,9 @@ type SubmitContentRequest struct {
 	ContentType OptContentType `json:"content_type"`
 	// Whether to create additional content items from relevant links discovered on the submitted page.
 	CrawlLinks OptBool `json:"crawl_links"`
+	// When true, download and summarize the submitted content, then mark it as read and add it to the
+	// user's favorites.
+	FavoriteAndMarkRead OptBool `json:"favorite_and_mark_read"`
 	// Optional instruction for analyzing the submitted URL.
 	Instruction OptNilString `json:"instruction"`
 	// Optional platform hint (e.g., spotify, substack).
@@ -4374,6 +4377,11 @@ func (s *SubmitContentRequest) GetContentType() OptContentType {
 // GetCrawlLinks returns the value of CrawlLinks.
 func (s *SubmitContentRequest) GetCrawlLinks() OptBool {
 	return s.CrawlLinks
+}
+
+// GetFavoriteAndMarkRead returns the value of FavoriteAndMarkRead.
+func (s *SubmitContentRequest) GetFavoriteAndMarkRead() OptBool {
+	return s.FavoriteAndMarkRead
 }
 
 // GetInstruction returns the value of Instruction.
@@ -4414,6 +4422,11 @@ func (s *SubmitContentRequest) SetContentType(val OptContentType) {
 // SetCrawlLinks sets the value of CrawlLinks.
 func (s *SubmitContentRequest) SetCrawlLinks(val OptBool) {
 	s.CrawlLinks = val
+}
+
+// SetFavoriteAndMarkRead sets the value of FavoriteAndMarkRead.
+func (s *SubmitContentRequest) SetFavoriteAndMarkRead(val OptBool) {
+	s.FavoriteAndMarkRead = val
 }
 
 // SetInstruction sets the value of Instruction.

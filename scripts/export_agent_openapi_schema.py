@@ -30,6 +30,7 @@ ALLOWED_OPERATIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("/api/content/", "get"): {"tags": ["content"]},
     ("/api/content/{content_id}", "get"): {"tags": ["content"]},
     ("/api/content/submit", "post"): {"tags": ["content"]},
+    ("/api/content/submissions/list", "get"): {"tags": ["content"]},
     ("/api/news/items", "get"): {"tags": ["news"]},
     ("/api/news/items/mark-read", "post"): {"tags": ["news"]},
     ("/api/news/items/{news_item_id}", "get"): {"tags": ["news"]},

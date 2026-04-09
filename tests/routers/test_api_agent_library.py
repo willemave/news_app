@@ -17,13 +17,18 @@ def _make_content() -> Content:
         publication_date=datetime(2026, 4, 3, 8, 0, 0, tzinfo=UTC).replace(tzinfo=None),
         status="completed",
         content_metadata={
+            "summary_kind": "long_structured",
+            "summary_version": 1,
             "content": "Raw body text from the article.",
             "summary": {
-                "summary_kind": "default",
-                "summary_version": "v1",
-                "title": "How Agents Work",
                 "overview": "A compact summary of how agents work.",
-                "full_markdown": "# How Agents Work\n\nA compact summary of how agents work.\n",
+                "bullet_points": [
+                    {"text": "Agents coordinate tools."},
+                    {"text": "Execution needs boundaries."},
+                ],
+                "quotes": [{"text": "Agents need clear boundaries."}],
+                "topics": ["Agents"],
+                "summarization_date": "2026-04-03T12:00:00Z",
             },
         },
     )

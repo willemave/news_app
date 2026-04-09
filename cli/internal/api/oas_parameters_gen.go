@@ -346,7 +346,7 @@ func decodeGetAgentLibraryManifestParams(args [0]string, argsEscaped bool, r *ht
 	q := uri.NewQueryDecoder(r.URL.Query())
 	// Set default value for query: include_source.
 	{
-		val := bool(false)
+		val := bool(true)
 		params.IncludeSource.SetTo(val)
 	}
 	// Decode query: include_source.

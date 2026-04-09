@@ -7623,7 +7623,7 @@ internal struct Client: APIProtocol {
     }
     /// Convert one news item into article content
     ///
-    /// Convert one representative news item into article content.
+    /// Convert one representative news item into saved article content.
     ///
     /// - Remark: HTTP `POST /api/news/items/{news_item_id}/convert-to-article`.
     /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/convert-to-article/post(convertNewsItemToArticle)`.
@@ -8415,68 +8415,6 @@ internal struct Client: APIProtocol {
             }
         )
     }
-    /// Create OpenAI Realtime token
-    ///
-    /// Create a short-lived token for OpenAI Realtime sessions.
-    ///
-    /// - Remark: HTTP `POST /api/openai/realtime/token`.
-    /// - Remark: Generated from `#/paths//api/openai/realtime/token/post(createOpenaiRealtimeToken)`.
-    internal func createOpenaiRealtimeToken(_ input: Operations.CreateOpenaiRealtimeToken.Input) async throws -> Operations.CreateOpenaiRealtimeToken.Output {
-        try await client.send(
-            input: input,
-            forOperation: Operations.CreateOpenaiRealtimeToken.id,
-            serializer: { input in
-                let path = try converter.renderedPath(
-                    template: "/api/openai/realtime/token",
-                    parameters: []
-                )
-                var request: HTTPTypes.HTTPRequest = .init(
-                    soar_path: path,
-                    method: .post
-                )
-                suppressMutabilityWarning(&request)
-                converter.setAcceptHeader(
-                    in: &request.headerFields,
-                    contentTypes: input.headers.accept
-                )
-                return (request, nil)
-            },
-            deserializer: { response, responseBody in
-                switch response.status.code {
-                case 200:
-                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.CreateOpenaiRealtimeToken.Output.Ok.Body
-                    let chosenContentType = try converter.bestContentType(
-                        received: contentType,
-                        options: [
-                            "application/json"
-                        ]
-                    )
-                    switch chosenContentType {
-                    case "application/json":
-                        body = try await converter.getResponseBodyAsJSON(
-                            Components.Schemas.RealtimeTokenResponse.self,
-                            from: responseBody,
-                            transforming: { value in
-                                .json(value)
-                            }
-                        )
-                    default:
-                        preconditionFailure("bestContentType chose an invalid content type.")
-                    }
-                    return .ok(.init(body: body))
-                default:
-                    return .undocumented(
-                        statusCode: response.status.code,
-                        .init(
-                            headerFields: response.headerFields,
-                            body: responseBody
-                        )
-                    )
-                }
-            }
-        )
-    }
     /// Transcribe uploaded audio via the backend
     ///
     /// Transcribe uploaded audio without exposing provider API keys to the client.
@@ -8585,6 +8523,68 @@ internal struct Client: APIProtocol {
                         preconditionFailure("bestContentType chose an invalid content type.")
                     }
                     return .unprocessableContent(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
+    /// Check uploaded-audio transcription availability
+    ///
+    /// Return whether backend-managed audio transcription is configured.
+    ///
+    /// - Remark: HTTP `GET /api/openai/transcriptions/health`.
+    /// - Remark: Generated from `#/paths//api/openai/transcriptions/health/get(transcriptionOpenaiHealth)`.
+    internal func transcriptionOpenaiHealth(_ input: Operations.TranscriptionOpenaiHealth.Input) async throws -> Operations.TranscriptionOpenaiHealth.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.TranscriptionOpenaiHealth.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/openai/transcriptions/health",
+                    parameters: []
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .get
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                return (request, nil)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 200:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.TranscriptionOpenaiHealth.Output.Ok.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.AudioTranscriptionHealthResponse.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .ok(.init(body: body))
                 default:
                     return .undocumented(
                         statusCode: response.status.code,
@@ -8999,161 +8999,6 @@ internal struct Client: APIProtocol {
                 case 422:
                     let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
                     let body: Operations.DeleteScraperConfigEndpoint.Output.UnprocessableContent.Body
-                    let chosenContentType = try converter.bestContentType(
-                        received: contentType,
-                        options: [
-                            "application/json"
-                        ]
-                    )
-                    switch chosenContentType {
-                    case "application/json":
-                        body = try await converter.getResponseBodyAsJSON(
-                            Components.Schemas.HTTPValidationError.self,
-                            from: responseBody,
-                            transforming: { value in
-                                .json(value)
-                            }
-                        )
-                    default:
-                        preconditionFailure("bestContentType chose an invalid content type.")
-                    }
-                    return .unprocessableContent(.init(body: body))
-                default:
-                    return .undocumented(
-                        statusCode: response.status.code,
-                        .init(
-                            headerFields: response.headerFields,
-                            body: responseBody
-                        )
-                    )
-                }
-            }
-        )
-    }
-    /// Voice Health
-    ///
-    /// Return dependency readiness for voice APIs.
-    ///
-    /// - Remark: HTTP `GET /api/voice/health`.
-    /// - Remark: Generated from `#/paths//api/voice/health/get(voiceHealth)`.
-    internal func voiceHealth(_ input: Operations.VoiceHealth.Input) async throws -> Operations.VoiceHealth.Output {
-        try await client.send(
-            input: input,
-            forOperation: Operations.VoiceHealth.id,
-            serializer: { input in
-                let path = try converter.renderedPath(
-                    template: "/api/voice/health",
-                    parameters: []
-                )
-                var request: HTTPTypes.HTTPRequest = .init(
-                    soar_path: path,
-                    method: .get
-                )
-                suppressMutabilityWarning(&request)
-                converter.setAcceptHeader(
-                    in: &request.headerFields,
-                    contentTypes: input.headers.accept
-                )
-                return (request, nil)
-            },
-            deserializer: { response, responseBody in
-                switch response.status.code {
-                case 200:
-                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.VoiceHealth.Output.Ok.Body
-                    let chosenContentType = try converter.bestContentType(
-                        received: contentType,
-                        options: [
-                            "application/json"
-                        ]
-                    )
-                    switch chosenContentType {
-                    case "application/json":
-                        body = try await converter.getResponseBodyAsJSON(
-                            Components.Schemas.VoiceHealthResponse.self,
-                            from: responseBody,
-                            transforming: { value in
-                                .json(value)
-                            }
-                        )
-                    default:
-                        preconditionFailure("bestContentType chose an invalid content type.")
-                    }
-                    return .ok(.init(body: body))
-                default:
-                    return .undocumented(
-                        statusCode: response.status.code,
-                        .init(
-                            headerFields: response.headerFields,
-                            body: responseBody
-                        )
-                    )
-                }
-            }
-        )
-    }
-    /// Create Or Resume Voice Session
-    ///
-    /// Create or resume an authenticated voice session.
-    ///
-    /// - Remark: HTTP `POST /api/voice/sessions`.
-    /// - Remark: Generated from `#/paths//api/voice/sessions/post(createOrResumeVoiceSession)`.
-    internal func createOrResumeVoiceSession(_ input: Operations.CreateOrResumeVoiceSession.Input) async throws -> Operations.CreateOrResumeVoiceSession.Output {
-        try await client.send(
-            input: input,
-            forOperation: Operations.CreateOrResumeVoiceSession.id,
-            serializer: { input in
-                let path = try converter.renderedPath(
-                    template: "/api/voice/sessions",
-                    parameters: []
-                )
-                var request: HTTPTypes.HTTPRequest = .init(
-                    soar_path: path,
-                    method: .post
-                )
-                suppressMutabilityWarning(&request)
-                converter.setAcceptHeader(
-                    in: &request.headerFields,
-                    contentTypes: input.headers.accept
-                )
-                let body: OpenAPIRuntime.HTTPBody?
-                switch input.body {
-                case let .json(value):
-                    body = try converter.setRequiredRequestBodyAsJSON(
-                        value,
-                        headerFields: &request.headerFields,
-                        contentType: "application/json; charset=utf-8"
-                    )
-                }
-                return (request, body)
-            },
-            deserializer: { response, responseBody in
-                switch response.status.code {
-                case 200:
-                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.CreateOrResumeVoiceSession.Output.Ok.Body
-                    let chosenContentType = try converter.bestContentType(
-                        received: contentType,
-                        options: [
-                            "application/json"
-                        ]
-                    )
-                    switch chosenContentType {
-                    case "application/json":
-                        body = try await converter.getResponseBodyAsJSON(
-                            Components.Schemas.CreateVoiceSessionResponse.self,
-                            from: responseBody,
-                            transforming: { value in
-                                .json(value)
-                            }
-                        )
-                    default:
-                        preconditionFailure("bestContentType chose an invalid content type.")
-                    }
-                    return .ok(.init(body: body))
-                case 422:
-                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.CreateOrResumeVoiceSession.Output.UnprocessableContent.Body
                     let chosenContentType = try converter.bestContentType(
                         received: contentType,
                         options: [

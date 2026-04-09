@@ -22,7 +22,14 @@ struct CLILinkScanPayload: Equatable {
     let approveToken: String
 
     static func parse(from scannedCode: String) throws -> CLILinkScanPayload {
-        guard let components = URLComponents(string: scannedCode),
+        guard let url = URL(string: scannedCode) else {
+            throw CLILinkError.invalidScannedCode
+        }
+        return try parse(from: url)
+    }
+
+    static func parse(from url: URL) throws -> CLILinkScanPayload {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.scheme == "newsly",
               components.host == "cli-link"
         else {
@@ -41,6 +48,13 @@ struct CLILinkScanPayload: Equatable {
             throw CLILinkError.missingApproveToken
         }
         return CLILinkScanPayload(sessionID: sessionID, approveToken: approveToken)
+    }
+
+    static func canHandle(_ url: URL) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        return components.scheme == "newsly" && components.host == "cli-link"
     }
 }
 

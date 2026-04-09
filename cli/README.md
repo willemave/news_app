@@ -38,6 +38,13 @@ go run ./cmd/newsly-agent config set api-key newsly_ak_...
 go run ./cmd/newsly-agent config show
 ```
 
+Link the CLI to the mobile app with a terminal QR code:
+
+```bash
+cd cli
+go run ./cmd/newsly-agent --server http://localhost:8000 auth login
+```
+
 ## Output
 
 JSON is the default. Use `--output text` for terminal-friendly output.
@@ -77,10 +84,51 @@ go run ./cmd/newsly-agent news get 123
 go run ./cmd/newsly-agent news convert 123
 ```
 
+Notes:
+
+- `content submit --wait` and `content summarize --wait` now block until the submitted item is fetchable via `content get`, not just until the first async job reaches a terminal state.
+- `content summarize` submits the URL in "favorite and mark read" mode so the finished item is saved and marked read once processing completes.
+- `sources add --feed-type` accepts `atom`, `substack`, or `podcast_rss`.
+
 ## Regeneration
 
 The CLI-specific OpenAPI contract and generated client are checked in. Regenerate both with:
 
 ```bash
 ./scripts/generate_agent_cli_artifacts.sh
+```
+
+## Local Smoke Test
+
+To exercise the local CLI against a local backend, including the real QR auth flow and markdown library sync:
+
+```bash
+python3 scripts/test_agent_cli_local_e2e.py --fresh-auth
+```
+
+The script:
+
+- checks `http://localhost:8000/health`
+- builds the current local CLI into `.tmp/newsly-agent-local-smoke/`
+- stores an isolated CLI config and library root under `.tmp/newsly-agent-local-smoke/`
+- runs `auth login` and waits for you to approve the QR link in the Newsly app
+- exercises `content list`, `content get` when available, `sources list`, and `library sync`
+
+To also exercise the submit-and-wait path:
+
+```bash
+python3 scripts/test_agent_cli_local_e2e.py \
+  --fresh-auth \
+  --submit-url https://example.com/article
+```
+
+Useful knobs for slower local Docker stacks:
+
+```bash
+python3 scripts/test_agent_cli_local_e2e.py \
+  --server http://127.0.0.1:8011 \
+  --skip-auth \
+  --cli-timeout 60s \
+  --submit-url https://example.com/article \
+  --submit-wait-timeout 4m
 ```

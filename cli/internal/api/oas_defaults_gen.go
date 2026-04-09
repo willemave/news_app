@@ -21,7 +21,7 @@ func (s *AgentDigestResponse) setDefaults() {
 // setDefaults set default value of fields.
 func (s *AgentLibraryManifestResponse) setDefaults() {
 	{
-		val := bool(false)
+		val := bool(true)
 		s.IncludeSource.SetTo(val)
 	}
 }
@@ -159,6 +159,10 @@ func (s *SubmitContentRequest) setDefaults() {
 	{
 		val := bool(false)
 		s.CrawlLinks.SetTo(val)
+	}
+	{
+		val := bool(false)
+		s.FavoriteAndMarkRead.SetTo(val)
 	}
 	{
 		val := bool(false)

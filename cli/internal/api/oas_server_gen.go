@@ -22,7 +22,7 @@ type Handler interface {
 	CompleteOnboarding(ctx context.Context, req *AgentOnboardingCompleteRequest, params CompleteOnboardingParams) (CompleteOnboardingRes, error)
 	// ConvertNewsItemToArticle implements convertNewsItemToArticle operation.
 	//
-	// Convert one representative news item into article content.
+	// Convert one representative news item into saved article content.
 	//
 	// POST /api/news/items/{news_item_id}/convert-to-article
 	ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (ConvertNewsItemToArticleRes, error)

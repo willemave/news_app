@@ -316,7 +316,7 @@
             "type": "string"
           },
           "include_source": {
-            "default": false,
+            "default": true,
             "title": "Include Source",
             "type": "boolean"
           }
@@ -715,6 +715,20 @@
           "message_id"
         ],
         "title": "AssistantTurnResponse",
+        "type": "object"
+      },
+      "AudioTranscriptionHealthResponse": {
+        "description": "Dependency readiness for uploaded-audio transcription.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "AudioTranscriptionHealthResponse",
         "type": "object"
       },
       "AudioTranscriptionResponse": {
@@ -2204,7 +2218,7 @@
       },
       "CouncilPersonaConfig": {
         "additionalProperties": false,
-        "description": "User-configurable persona preset for council chat.",
+        "description": "User-configurable expert for council chat.\n\nEach expert represents a real person whose perspective the user values.\nThe ``instruction_prompt`` is kept for backward compatibility but is no\nlonger required \u2014 the council chat service generates a rich impersonation\nprompt from the ``display_name`` at runtime.",
         "properties": {
           "display_name": {
             "maxLength": 80,
@@ -2219,13 +2233,13 @@
             "type": "string"
           },
           "instruction_prompt": {
+            "default": "",
             "maxLength": 1500,
-            "minLength": 1,
             "title": "Instruction Prompt",
             "type": "string"
           },
           "sort_order": {
-            "maximum": 3.0,
+            "maximum": 2.0,
             "minimum": 0.0,
             "title": "Sort Order",
             "type": "integer"
@@ -2234,7 +2248,6 @@
         "required": [
           "id",
           "display_name",
-          "instruction_prompt",
           "sort_order"
         ],
         "title": "CouncilPersonaConfig",
@@ -2365,143 +2378,10 @@
         "title": "CreateUserScraperConfig",
         "type": "object"
       },
-      "CreateVoiceSessionRequest": {
-        "description": "Request payload for creating or resuming a voice session.",
-        "properties": {
-          "chat_session_id": {
-            "description": "Optional existing chat session ID for live continuation.",
-            "minimum": 1.0,
-            "nullable": true,
-            "title": "Chat Session Id",
-            "type": "integer"
-          },
-          "content_id": {
-            "description": "Optional content item for contextual live voice.",
-            "minimum": 1.0,
-            "nullable": true,
-            "title": "Content Id",
-            "type": "integer"
-          },
-          "launch_mode": {
-            "default": "general",
-            "description": "Voice entrypoint mode.",
-            "enum": [
-              "general",
-              "article_voice",
-              "dictate_summary"
-            ],
-            "title": "Launch Mode",
-            "type": "string"
-          },
-          "request_intro": {
-            "default": false,
-            "description": "Request first-use intro turn when user has not completed onboarding.",
-            "title": "Request Intro",
-            "type": "boolean"
-          },
-          "sample_rate_hz": {
-            "default": 16000,
-            "description": "Client microphone sample rate.",
-            "maximum": 48000.0,
-            "minimum": 8000.0,
-            "title": "Sample Rate Hz",
-            "type": "integer"
-          },
-          "session_id": {
-            "description": "Optional existing session ID for reconnect/resume.",
-            "maxLength": 128,
-            "nullable": true,
-            "title": "Session Id",
-            "type": "string"
-          },
-          "source_surface": {
-            "default": "knowledge_live",
-            "description": "Client surface that launched live voice.",
-            "enum": [
-              "knowledge_live",
-              "chat_session",
-              "content_detail"
-            ],
-            "title": "Source Surface",
-            "type": "string"
-          }
-        },
-        "title": "CreateVoiceSessionRequest",
-        "type": "object"
-      },
-      "CreateVoiceSessionResponse": {
-        "description": "Session metadata required to open websocket streaming.",
-        "properties": {
-          "audio_format": {
-            "default": "pcm16",
-            "title": "Audio Format",
-            "type": "string"
-          },
-          "channels": {
-            "default": 1,
-            "title": "Channels",
-            "type": "integer"
-          },
-          "chat_session_id": {
-            "title": "Chat Session Id",
-            "type": "integer"
-          },
-          "content_context_attached": {
-            "title": "Content Context Attached",
-            "type": "boolean"
-          },
-          "launch_mode": {
-            "enum": [
-              "general",
-              "article_voice",
-              "dictate_summary"
-            ],
-            "title": "Launch Mode",
-            "type": "string"
-          },
-          "max_input_seconds": {
-            "title": "Max Input Seconds",
-            "type": "integer"
-          },
-          "sample_rate_hz": {
-            "title": "Sample Rate Hz",
-            "type": "integer"
-          },
-          "session_id": {
-            "title": "Session Id",
-            "type": "string"
-          },
-          "tts_output_format": {
-            "title": "Tts Output Format",
-            "type": "string"
-          },
-          "websocket_path": {
-            "title": "Websocket Path",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id",
-          "websocket_path",
-          "sample_rate_hz",
-          "tts_output_format",
-          "max_input_seconds",
-          "chat_session_id",
-          "launch_mode",
-          "content_context_attached"
-        ],
-        "title": "CreateVoiceSessionResponse",
-        "type": "object"
-      },
       "DebugUserSessionRequest": {
         "additionalProperties": false,
         "description": "Request schema for creating or resuming a debug user session.",
         "properties": {
-          "has_completed_live_voice_onboarding": {
-            "nullable": true,
-            "title": "Has Completed Live Voice Onboarding",
-            "type": "boolean"
-          },
           "has_completed_new_user_tutorial": {
             "nullable": true,
             "title": "Has Completed New User Tutorial",
@@ -4121,39 +4001,6 @@
         "title": "ProcessingCountResponse",
         "type": "object"
       },
-      "RealtimeTokenResponse": {
-        "description": "Ephemeral token for OpenAI Realtime sessions.",
-        "properties": {
-          "expires_at": {
-            "nullable": true,
-            "title": "Expires At",
-            "type": "integer"
-          },
-          "model": {
-            "nullable": true,
-            "title": "Model",
-            "type": "string"
-          },
-          "session_type": {
-            "enum": [
-              "realtime",
-              "transcription"
-            ],
-            "nullable": true,
-            "title": "Session Type",
-            "type": "string"
-          },
-          "token": {
-            "title": "Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "token"
-        ],
-        "title": "RealtimeTokenResponse",
-        "type": "object"
-      },
       "RecordContentInteractionRequest": {
         "description": "Request to record a user interaction with content.",
         "example": {
@@ -4557,6 +4404,7 @@
         "example": {
           "content_type": "podcast",
           "crawl_links": true,
+          "favorite_and_mark_read": false,
           "instruction": "Add all links mentioned in the episode page",
           "platform": "spotify",
           "share_and_chat": false,
@@ -4574,6 +4422,12 @@
             "default": false,
             "description": "Whether to create additional content items from relevant links discovered on the submitted page.",
             "title": "Crawl Links",
+            "type": "boolean"
+          },
+          "favorite_and_mark_read": {
+            "default": false,
+            "description": "When true, download and summarize the submitted content, then mark it as read and add it to the user's favorites.",
+            "title": "Favorite And Mark Read",
             "type": "boolean"
           },
           "instruction": {
@@ -4912,8 +4766,8 @@
             "items": {
               "$ref": "#/components/schemas/CouncilPersonaConfig"
             },
-            "maxItems": 4,
-            "minItems": 4,
+            "maxItems": 3,
+            "minItems": 2,
             "nullable": true,
             "title": "Council Personas",
             "type": "array"
@@ -5062,10 +4916,6 @@
             "title": "Full Name",
             "type": "string"
           },
-          "has_completed_live_voice_onboarding": {
-            "title": "Has Completed Live Voice Onboarding",
-            "type": "boolean"
-          },
           "has_completed_new_user_tutorial": {
             "title": "Has Completed New User Tutorial",
             "type": "boolean"
@@ -5114,7 +4964,6 @@
           "is_active",
           "has_completed_onboarding",
           "has_completed_new_user_tutorial",
-          "has_completed_live_voice_onboarding",
           "created_at",
           "updated_at"
         ],
@@ -5159,71 +5008,6 @@
           "type"
         ],
         "title": "ValidationError",
-        "type": "object"
-      },
-      "VoiceHealthResponse": {
-        "description": "Capabilities and readiness for voice pipeline dependencies.",
-        "properties": {
-          "anthropic_api_configured": {
-            "title": "Anthropic Api Configured",
-            "type": "boolean"
-          },
-          "elevenlabs_api_configured": {
-            "title": "Elevenlabs Api Configured",
-            "type": "boolean"
-          },
-          "elevenlabs_package_available": {
-            "title": "Elevenlabs Package Available",
-            "type": "boolean"
-          },
-          "exa_api_configured": {
-            "title": "Exa Api Configured",
-            "type": "boolean"
-          },
-          "readiness_reasons": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Readiness Reasons",
-            "type": "array"
-          },
-          "ready": {
-            "title": "Ready",
-            "type": "boolean"
-          },
-          "stt_model_id": {
-            "title": "Stt Model Id",
-            "type": "string"
-          },
-          "tts_model_id": {
-            "nullable": true,
-            "title": "Tts Model Id",
-            "type": "string"
-          },
-          "tts_output_format": {
-            "nullable": true,
-            "title": "Tts Output Format",
-            "type": "string"
-          },
-          "tts_voice_id": {
-            "nullable": true,
-            "title": "Tts Voice Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "ready",
-          "elevenlabs_api_configured",
-          "elevenlabs_package_available",
-          "anthropic_api_configured",
-          "exa_api_configured",
-          "stt_model_id",
-          "tts_voice_id",
-          "tts_model_id",
-          "tts_output_format",
-          "readiness_reasons"
-        ],
-        "title": "VoiceHealthResponse",
         "type": "object"
       },
       "XConnectionResponse": {
@@ -5632,7 +5416,7 @@
             "name": "include_source",
             "required": false,
             "schema": {
-              "default": false,
+              "default": true,
               "title": "Include Source",
               "type": "boolean"
             }
@@ -5994,6 +5778,74 @@
         ]
       }
     },
+    "/api/content/submissions/list": {
+      "get": {
+        "description": "Returns self-submitted content items that are not yet completed, including processing, failed, and skipped statuses.",
+        "operationId": "listContentSubmissionStatuses",
+        "parameters": [
+          {
+            "description": "Pagination cursor for next page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Pagination cursor for next page",
+              "nullable": true,
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of items per page (max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Number of items per page (max 100)",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionStatusListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List user-submitted content still processing or failed",
+        "tags": [
+          "content"
+        ]
+      }
+    },
     "/api/content/submit": {
       "post": {
         "description": "Submit article or podcast URLs for processing. Only http/https URLs are accepted.",
@@ -6350,7 +6202,7 @@
     },
     "/api/news/items/{news_item_id}/convert-to-article": {
       "post": {
-        "description": "Convert one representative news item into article content.",
+        "description": "Convert one representative news item into saved article content.",
         "operationId": "convertNewsItemToArticle",
         "parameters": [
           {

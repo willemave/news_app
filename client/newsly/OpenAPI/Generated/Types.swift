@@ -614,7 +614,7 @@ internal protocol APIProtocol: Sendable {
     func getNewsItem(_ input: Operations.GetNewsItem.Input) async throws -> Operations.GetNewsItem.Output
     /// Convert one news item into article content
     ///
-    /// Convert one representative news item into article content.
+    /// Convert one representative news item into saved article content.
     ///
     /// - Remark: HTTP `POST /api/news/items/{news_item_id}/convert-to-article`.
     /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/convert-to-article/post(convertNewsItemToArticle)`.
@@ -675,13 +675,6 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /api/onboarding/tutorial-complete`.
     /// - Remark: Generated from `#/paths//api/onboarding/tutorial-complete/post(tutorialOnboardingComplete)`.
     func tutorialOnboardingComplete(_ input: Operations.TutorialOnboardingComplete.Input) async throws -> Operations.TutorialOnboardingComplete.Output
-    /// Create OpenAI Realtime token
-    ///
-    /// Create a short-lived token for OpenAI Realtime sessions.
-    ///
-    /// - Remark: HTTP `POST /api/openai/realtime/token`.
-    /// - Remark: Generated from `#/paths//api/openai/realtime/token/post(createOpenaiRealtimeToken)`.
-    func createOpenaiRealtimeToken(_ input: Operations.CreateOpenaiRealtimeToken.Input) async throws -> Operations.CreateOpenaiRealtimeToken.Output
     /// Transcribe uploaded audio via the backend
     ///
     /// Transcribe uploaded audio without exposing provider API keys to the client.
@@ -689,6 +682,13 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /api/openai/transcriptions`.
     /// - Remark: Generated from `#/paths//api/openai/transcriptions/post(transcribeOpenaiTranscriptionsAudio)`.
     func transcribeOpenaiTranscriptionsAudio(_ input: Operations.TranscribeOpenaiTranscriptionsAudio.Input) async throws -> Operations.TranscribeOpenaiTranscriptionsAudio.Output
+    /// Check uploaded-audio transcription availability
+    ///
+    /// Return whether backend-managed audio transcription is configured.
+    ///
+    /// - Remark: HTTP `GET /api/openai/transcriptions/health`.
+    /// - Remark: Generated from `#/paths//api/openai/transcriptions/health/get(transcriptionOpenaiHealth)`.
+    func transcriptionOpenaiHealth(_ input: Operations.TranscriptionOpenaiHealth.Input) async throws -> Operations.TranscriptionOpenaiHealth.Output
     /// List Scraper Configs
     ///
     /// List scraper configurations for the current user.
@@ -726,20 +726,6 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `DELETE /api/scrapers/{config_id}`.
     /// - Remark: Generated from `#/paths//api/scrapers/{config_id}/delete(deleteScraperConfigEndpoint)`.
     func deleteScraperConfigEndpoint(_ input: Operations.DeleteScraperConfigEndpoint.Input) async throws -> Operations.DeleteScraperConfigEndpoint.Output
-    /// Voice Health
-    ///
-    /// Return dependency readiness for voice APIs.
-    ///
-    /// - Remark: HTTP `GET /api/voice/health`.
-    /// - Remark: Generated from `#/paths//api/voice/health/get(voiceHealth)`.
-    func voiceHealth(_ input: Operations.VoiceHealth.Input) async throws -> Operations.VoiceHealth.Output
-    /// Create Or Resume Voice Session
-    ///
-    /// Create or resume an authenticated voice session.
-    ///
-    /// - Remark: HTTP `POST /api/voice/sessions`.
-    /// - Remark: Generated from `#/paths//api/voice/sessions/post(createOrResumeVoiceSession)`.
-    func createOrResumeVoiceSession(_ input: Operations.CreateOrResumeVoiceSession.Input) async throws -> Operations.CreateOrResumeVoiceSession.Output
     /// Admin Login Page
     ///
     /// Render admin login page.
@@ -2069,7 +2055,7 @@ extension APIProtocol {
     }
     /// Convert one news item into article content
     ///
-    /// Convert one representative news item into article content.
+    /// Convert one representative news item into saved article content.
     ///
     /// - Remark: HTTP `POST /api/news/items/{news_item_id}/convert-to-article`.
     /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/convert-to-article/post(convertNewsItemToArticle)`.
@@ -2196,15 +2182,6 @@ extension APIProtocol {
     internal func tutorialOnboardingComplete(headers: Operations.TutorialOnboardingComplete.Input.Headers = .init()) async throws -> Operations.TutorialOnboardingComplete.Output {
         try await tutorialOnboardingComplete(Operations.TutorialOnboardingComplete.Input(headers: headers))
     }
-    /// Create OpenAI Realtime token
-    ///
-    /// Create a short-lived token for OpenAI Realtime sessions.
-    ///
-    /// - Remark: HTTP `POST /api/openai/realtime/token`.
-    /// - Remark: Generated from `#/paths//api/openai/realtime/token/post(createOpenaiRealtimeToken)`.
-    internal func createOpenaiRealtimeToken(headers: Operations.CreateOpenaiRealtimeToken.Input.Headers = .init()) async throws -> Operations.CreateOpenaiRealtimeToken.Output {
-        try await createOpenaiRealtimeToken(Operations.CreateOpenaiRealtimeToken.Input(headers: headers))
-    }
     /// Transcribe uploaded audio via the backend
     ///
     /// Transcribe uploaded audio without exposing provider API keys to the client.
@@ -2219,6 +2196,15 @@ extension APIProtocol {
             headers: headers,
             body: body
         ))
+    }
+    /// Check uploaded-audio transcription availability
+    ///
+    /// Return whether backend-managed audio transcription is configured.
+    ///
+    /// - Remark: HTTP `GET /api/openai/transcriptions/health`.
+    /// - Remark: Generated from `#/paths//api/openai/transcriptions/health/get(transcriptionOpenaiHealth)`.
+    internal func transcriptionOpenaiHealth(headers: Operations.TranscriptionOpenaiHealth.Input.Headers = .init()) async throws -> Operations.TranscriptionOpenaiHealth.Output {
+        try await transcriptionOpenaiHealth(Operations.TranscriptionOpenaiHealth.Input(headers: headers))
     }
     /// List Scraper Configs
     ///
@@ -2291,30 +2277,6 @@ extension APIProtocol {
         try await deleteScraperConfigEndpoint(Operations.DeleteScraperConfigEndpoint.Input(
             path: path,
             headers: headers
-        ))
-    }
-    /// Voice Health
-    ///
-    /// Return dependency readiness for voice APIs.
-    ///
-    /// - Remark: HTTP `GET /api/voice/health`.
-    /// - Remark: Generated from `#/paths//api/voice/health/get(voiceHealth)`.
-    internal func voiceHealth(headers: Operations.VoiceHealth.Input.Headers = .init()) async throws -> Operations.VoiceHealth.Output {
-        try await voiceHealth(Operations.VoiceHealth.Input(headers: headers))
-    }
-    /// Create Or Resume Voice Session
-    ///
-    /// Create or resume an authenticated voice session.
-    ///
-    /// - Remark: HTTP `POST /api/voice/sessions`.
-    /// - Remark: Generated from `#/paths//api/voice/sessions/post(createOrResumeVoiceSession)`.
-    internal func createOrResumeVoiceSession(
-        headers: Operations.CreateOrResumeVoiceSession.Input.Headers = .init(),
-        body: Operations.CreateOrResumeVoiceSession.Input.Body
-    ) async throws -> Operations.CreateOrResumeVoiceSession.Output {
-        try await createOrResumeVoiceSession(Operations.CreateOrResumeVoiceSession.Input(
-            headers: headers,
-            body: body
         ))
     }
     /// Admin Login Page
@@ -3128,7 +3090,7 @@ internal enum Components {
                 case title
             }
         }
-        /// Compact screen context passed to the assistant router.
+        /// API schema wrapper for assistant screen context.
         ///
         /// - Remark: Generated from `#/components/schemas/AssistantScreenContextDto`.
         internal struct AssistantScreenContextDto: Codable, Hashable, Sendable {
@@ -3217,6 +3179,23 @@ internal enum Components {
                 case session
                 case status
                 case userMessage = "user_message"
+            }
+        }
+        /// Dependency readiness for uploaded-audio transcription.
+        ///
+        /// - Remark: Generated from `#/components/schemas/AudioTranscriptionHealthResponse`.
+        internal struct AudioTranscriptionHealthResponse: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/AudioTranscriptionHealthResponse/available`.
+            internal var available: Swift.Bool
+            /// Creates a new `AudioTranscriptionHealthResponse`.
+            ///
+            /// - Parameters:
+            ///   - available:
+            internal init(available: Swift.Bool) {
+                self.available = available
+            }
+            internal enum CodingKeys: String, CodingKey {
+                case available
             }
         }
         /// Transcription payload returned for uploaded audio.
@@ -4340,7 +4319,12 @@ internal enum Components {
                 case status
             }
         }
-        /// User-configurable persona preset for council chat.
+        /// User-configurable expert for council chat.
+        ///
+        /// Each expert represents a real person whose perspective the user values.
+        /// The ``instruction_prompt`` is kept for backward compatibility but is no
+        /// longer required — the council chat service generates a rich impersonation
+        /// prompt from the ``display_name`` at runtime.
         ///
         /// - Remark: Generated from `#/components/schemas/CouncilPersonaConfig`.
         internal struct CouncilPersonaConfig: Codable, Hashable, Sendable {
@@ -4349,7 +4333,7 @@ internal enum Components {
             /// - Remark: Generated from `#/components/schemas/CouncilPersonaConfig/id`.
             internal var id: Swift.String
             /// - Remark: Generated from `#/components/schemas/CouncilPersonaConfig/instruction_prompt`.
-            internal var instructionPrompt: Swift.String
+            internal var instructionPrompt: Swift.String?
             /// - Remark: Generated from `#/components/schemas/CouncilPersonaConfig/sort_order`.
             internal var sortOrder: Swift.Int
             /// Creates a new `CouncilPersonaConfig`.
@@ -4362,7 +4346,7 @@ internal enum Components {
             internal init(
                 displayName: Swift.String,
                 id: Swift.String,
-                instructionPrompt: Swift.String,
+                instructionPrompt: Swift.String? = nil,
                 sortOrder: Swift.Int
             ) {
                 self.displayName = displayName
@@ -4386,7 +4370,7 @@ internal enum Components {
                     Swift.String.self,
                     forKey: .id
                 )
-                self.instructionPrompt = try container.decode(
+                self.instructionPrompt = try container.decodeIfPresent(
                     Swift.String.self,
                     forKey: .instructionPrompt
                 )
@@ -4515,146 +4499,6 @@ internal enum Components {
                 case config
                 case isActive = "is_active"
                 case scraperType = "scraper_type"
-            }
-        }
-        /// Request payload for creating or resuming a voice session.
-        ///
-        /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionRequest`.
-        internal struct CreateVoiceSessionRequest: Codable, Hashable, Sendable {
-            /// Voice entrypoint mode.
-            ///
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionRequest/launch_mode`.
-            internal enum LaunchModePayload: String, Codable, Hashable, Sendable, CaseIterable {
-                case general = "general"
-                case articleVoice = "article_voice"
-                case dictateSummary = "dictate_summary"
-            }
-            /// Voice entrypoint mode.
-            ///
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionRequest/launch_mode`.
-            internal var launchMode: Components.Schemas.CreateVoiceSessionRequest.LaunchModePayload?
-            /// Request first-use intro turn when user has not completed onboarding.
-            ///
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionRequest/request_intro`.
-            internal var requestIntro: Swift.Bool?
-            /// Client microphone sample rate.
-            ///
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionRequest/sample_rate_hz`.
-            internal var sampleRateHz: Swift.Int?
-            /// Client surface that launched live voice.
-            ///
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionRequest/source_surface`.
-            internal enum SourceSurfacePayload: String, Codable, Hashable, Sendable, CaseIterable {
-                case knowledgeLive = "knowledge_live"
-                case chatSession = "chat_session"
-                case contentDetail = "content_detail"
-            }
-            /// Client surface that launched live voice.
-            ///
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionRequest/source_surface`.
-            internal var sourceSurface: Components.Schemas.CreateVoiceSessionRequest.SourceSurfacePayload?
-            /// Creates a new `CreateVoiceSessionRequest`.
-            ///
-            /// - Parameters:
-            ///   - launchMode: Voice entrypoint mode.
-            ///   - requestIntro: Request first-use intro turn when user has not completed onboarding.
-            ///   - sampleRateHz: Client microphone sample rate.
-            ///   - sourceSurface: Client surface that launched live voice.
-            internal init(
-                launchMode: Components.Schemas.CreateVoiceSessionRequest.LaunchModePayload? = nil,
-                requestIntro: Swift.Bool? = nil,
-                sampleRateHz: Swift.Int? = nil,
-                sourceSurface: Components.Schemas.CreateVoiceSessionRequest.SourceSurfacePayload? = nil
-            ) {
-                self.launchMode = launchMode
-                self.requestIntro = requestIntro
-                self.sampleRateHz = sampleRateHz
-                self.sourceSurface = sourceSurface
-            }
-            internal enum CodingKeys: String, CodingKey {
-                case launchMode = "launch_mode"
-                case requestIntro = "request_intro"
-                case sampleRateHz = "sample_rate_hz"
-                case sourceSurface = "source_surface"
-            }
-        }
-        /// Session metadata required to open websocket streaming.
-        ///
-        /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse`.
-        internal struct CreateVoiceSessionResponse: Codable, Hashable, Sendable {
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/audio_format`.
-            internal var audioFormat: Swift.String?
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/channels`.
-            internal var channels: Swift.Int?
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/chat_session_id`.
-            internal var chatSessionId: Swift.Int
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/content_context_attached`.
-            internal var contentContextAttached: Swift.Bool
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/launch_mode`.
-            internal enum LaunchModePayload: String, Codable, Hashable, Sendable, CaseIterable {
-                case general = "general"
-                case articleVoice = "article_voice"
-                case dictateSummary = "dictate_summary"
-            }
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/launch_mode`.
-            internal var launchMode: Components.Schemas.CreateVoiceSessionResponse.LaunchModePayload
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/max_input_seconds`.
-            internal var maxInputSeconds: Swift.Int
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/sample_rate_hz`.
-            internal var sampleRateHz: Swift.Int
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/session_id`.
-            internal var sessionId: Swift.String
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/tts_output_format`.
-            internal var ttsOutputFormat: Swift.String
-            /// - Remark: Generated from `#/components/schemas/CreateVoiceSessionResponse/websocket_path`.
-            internal var websocketPath: Swift.String
-            /// Creates a new `CreateVoiceSessionResponse`.
-            ///
-            /// - Parameters:
-            ///   - audioFormat:
-            ///   - channels:
-            ///   - chatSessionId:
-            ///   - contentContextAttached:
-            ///   - launchMode:
-            ///   - maxInputSeconds:
-            ///   - sampleRateHz:
-            ///   - sessionId:
-            ///   - ttsOutputFormat:
-            ///   - websocketPath:
-            internal init(
-                audioFormat: Swift.String? = nil,
-                channels: Swift.Int? = nil,
-                chatSessionId: Swift.Int,
-                contentContextAttached: Swift.Bool,
-                launchMode: Components.Schemas.CreateVoiceSessionResponse.LaunchModePayload,
-                maxInputSeconds: Swift.Int,
-                sampleRateHz: Swift.Int,
-                sessionId: Swift.String,
-                ttsOutputFormat: Swift.String,
-                websocketPath: Swift.String
-            ) {
-                self.audioFormat = audioFormat
-                self.channels = channels
-                self.chatSessionId = chatSessionId
-                self.contentContextAttached = contentContextAttached
-                self.launchMode = launchMode
-                self.maxInputSeconds = maxInputSeconds
-                self.sampleRateHz = sampleRateHz
-                self.sessionId = sessionId
-                self.ttsOutputFormat = ttsOutputFormat
-                self.websocketPath = websocketPath
-            }
-            internal enum CodingKeys: String, CodingKey {
-                case audioFormat = "audio_format"
-                case channels
-                case chatSessionId = "chat_session_id"
-                case contentContextAttached = "content_context_attached"
-                case launchMode = "launch_mode"
-                case maxInputSeconds = "max_input_seconds"
-                case sampleRateHz = "sample_rate_hz"
-                case sessionId = "session_id"
-                case ttsOutputFormat = "tts_output_format"
-                case websocketPath = "websocket_path"
             }
         }
         /// Request schema for creating or resuming a debug user session.
@@ -6200,23 +6044,6 @@ internal enum Components {
                 case processingCount = "processing_count"
             }
         }
-        /// Ephemeral token for OpenAI Realtime sessions.
-        ///
-        /// - Remark: Generated from `#/components/schemas/RealtimeTokenResponse`.
-        internal struct RealtimeTokenResponse: Codable, Hashable, Sendable {
-            /// - Remark: Generated from `#/components/schemas/RealtimeTokenResponse/token`.
-            internal var token: Swift.String
-            /// Creates a new `RealtimeTokenResponse`.
-            ///
-            /// - Parameters:
-            ///   - token:
-            internal init(token: Swift.String) {
-                self.token = token
-            }
-            internal enum CodingKeys: String, CodingKey {
-                case token
-            }
-        }
         /// Request to record a user interaction with content.
         ///
         /// - Remark: Generated from `#/components/schemas/RecordContentInteractionRequest`.
@@ -6614,6 +6441,10 @@ internal enum Components {
             ///
             /// - Remark: Generated from `#/components/schemas/SubmitContentRequest/crawl_links`.
             internal var crawlLinks: Swift.Bool?
+            /// When true, download and summarize the submitted content, then mark it as read and add it to the user's favorites.
+            ///
+            /// - Remark: Generated from `#/components/schemas/SubmitContentRequest/favorite_and_mark_read`.
+            internal var favoriteAndMarkRead: Swift.Bool?
             /// When true, mark the submitted content as read and start a dig-deeper chat after processing completes.
             ///
             /// - Remark: Generated from `#/components/schemas/SubmitContentRequest/share_and_chat`.
@@ -6630,22 +6461,26 @@ internal enum Components {
             ///
             /// - Parameters:
             ///   - crawlLinks: Whether to create additional content items from relevant links discovered on the submitted page.
+            ///   - favoriteAndMarkRead: When true, download and summarize the submitted content, then mark it as read and add it to the user's favorites.
             ///   - shareAndChat: When true, mark the submitted content as read and start a dig-deeper chat after processing completes.
             ///   - subscribeToFeed: When true, detect an RSS/Atom feed from the URL and subscribe to it instead of processing the URL as content.
             ///   - url: URL to submit (http/https only)
             internal init(
                 crawlLinks: Swift.Bool? = nil,
+                favoriteAndMarkRead: Swift.Bool? = nil,
                 shareAndChat: Swift.Bool? = nil,
                 subscribeToFeed: Swift.Bool? = nil,
                 url: Swift.String
             ) {
                 self.crawlLinks = crawlLinks
+                self.favoriteAndMarkRead = favoriteAndMarkRead
                 self.shareAndChat = shareAndChat
                 self.subscribeToFeed = subscribeToFeed
                 self.url = url
             }
             internal enum CodingKeys: String, CodingKey {
                 case crawlLinks = "crawl_links"
+                case favoriteAndMarkRead = "favorite_and_mark_read"
                 case shareAndChat = "share_and_chat"
                 case subscribeToFeed = "subscribe_to_feed"
                 case url
@@ -7007,8 +6842,6 @@ internal enum Components {
             internal var createdAt: Swift.String
             /// - Remark: Generated from `#/components/schemas/UserResponse/email`.
             internal var email: Swift.String
-            /// - Remark: Generated from `#/components/schemas/UserResponse/has_completed_live_voice_onboarding`.
-            internal var hasCompletedLiveVoiceOnboarding: Swift.Bool
             /// - Remark: Generated from `#/components/schemas/UserResponse/has_completed_new_user_tutorial`.
             internal var hasCompletedNewUserTutorial: Swift.Bool
             /// - Remark: Generated from `#/components/schemas/UserResponse/has_completed_onboarding`.
@@ -7030,7 +6863,6 @@ internal enum Components {
             ///   - councilPersonas:
             ///   - createdAt:
             ///   - email:
-            ///   - hasCompletedLiveVoiceOnboarding:
             ///   - hasCompletedNewUserTutorial:
             ///   - hasCompletedOnboarding:
             ///   - hasXBookmarkSync:
@@ -7043,7 +6875,6 @@ internal enum Components {
                 councilPersonas: [Components.Schemas.CouncilPersonaConfig]? = nil,
                 createdAt: Swift.String,
                 email: Swift.String,
-                hasCompletedLiveVoiceOnboarding: Swift.Bool,
                 hasCompletedNewUserTutorial: Swift.Bool,
                 hasCompletedOnboarding: Swift.Bool,
                 hasXBookmarkSync: Swift.Bool? = nil,
@@ -7056,7 +6887,6 @@ internal enum Components {
                 self.councilPersonas = councilPersonas
                 self.createdAt = createdAt
                 self.email = email
-                self.hasCompletedLiveVoiceOnboarding = hasCompletedLiveVoiceOnboarding
                 self.hasCompletedNewUserTutorial = hasCompletedNewUserTutorial
                 self.hasCompletedOnboarding = hasCompletedOnboarding
                 self.hasXBookmarkSync = hasXBookmarkSync
@@ -7070,7 +6900,6 @@ internal enum Components {
                 case councilPersonas = "council_personas"
                 case createdAt = "created_at"
                 case email
-                case hasCompletedLiveVoiceOnboarding = "has_completed_live_voice_onboarding"
                 case hasCompletedNewUserTutorial = "has_completed_new_user_tutorial"
                 case hasCompletedOnboarding = "has_completed_onboarding"
                 case hasXBookmarkSync = "has_x_bookmark_sync"
@@ -7168,61 +6997,6 @@ internal enum Components {
                 case loc
                 case msg
                 case _type = "type"
-            }
-        }
-        /// Capabilities and readiness for voice pipeline dependencies.
-        ///
-        /// - Remark: Generated from `#/components/schemas/VoiceHealthResponse`.
-        internal struct VoiceHealthResponse: Codable, Hashable, Sendable {
-            /// - Remark: Generated from `#/components/schemas/VoiceHealthResponse/anthropic_api_configured`.
-            internal var anthropicApiConfigured: Swift.Bool
-            /// - Remark: Generated from `#/components/schemas/VoiceHealthResponse/elevenlabs_api_configured`.
-            internal var elevenlabsApiConfigured: Swift.Bool
-            /// - Remark: Generated from `#/components/schemas/VoiceHealthResponse/elevenlabs_package_available`.
-            internal var elevenlabsPackageAvailable: Swift.Bool
-            /// - Remark: Generated from `#/components/schemas/VoiceHealthResponse/exa_api_configured`.
-            internal var exaApiConfigured: Swift.Bool
-            /// - Remark: Generated from `#/components/schemas/VoiceHealthResponse/readiness_reasons`.
-            internal var readinessReasons: [Swift.String]
-            /// - Remark: Generated from `#/components/schemas/VoiceHealthResponse/ready`.
-            internal var ready: Swift.Bool
-            /// - Remark: Generated from `#/components/schemas/VoiceHealthResponse/stt_model_id`.
-            internal var sttModelId: Swift.String
-            /// Creates a new `VoiceHealthResponse`.
-            ///
-            /// - Parameters:
-            ///   - anthropicApiConfigured:
-            ///   - elevenlabsApiConfigured:
-            ///   - elevenlabsPackageAvailable:
-            ///   - exaApiConfigured:
-            ///   - readinessReasons:
-            ///   - ready:
-            ///   - sttModelId:
-            internal init(
-                anthropicApiConfigured: Swift.Bool,
-                elevenlabsApiConfigured: Swift.Bool,
-                elevenlabsPackageAvailable: Swift.Bool,
-                exaApiConfigured: Swift.Bool,
-                readinessReasons: [Swift.String],
-                ready: Swift.Bool,
-                sttModelId: Swift.String
-            ) {
-                self.anthropicApiConfigured = anthropicApiConfigured
-                self.elevenlabsApiConfigured = elevenlabsApiConfigured
-                self.elevenlabsPackageAvailable = elevenlabsPackageAvailable
-                self.exaApiConfigured = exaApiConfigured
-                self.readinessReasons = readinessReasons
-                self.ready = ready
-                self.sttModelId = sttModelId
-            }
-            internal enum CodingKeys: String, CodingKey {
-                case anthropicApiConfigured = "anthropic_api_configured"
-                case elevenlabsApiConfigured = "elevenlabs_api_configured"
-                case elevenlabsPackageAvailable = "elevenlabs_package_available"
-                case exaApiConfigured = "exa_api_configured"
-                case readinessReasons = "readiness_reasons"
-                case ready
-                case sttModelId = "stt_model_id"
             }
         }
         /// Current X integration connection state for a user.
@@ -24301,7 +24075,7 @@ internal enum Operations {
     }
     /// Convert one news item into article content
     ///
-    /// Convert one representative news item into article content.
+    /// Convert one representative news item into saved article content.
     ///
     /// - Remark: HTTP `POST /api/news/items/{news_item_id}/convert-to-article`.
     /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/convert-to-article/post(convertNewsItemToArticle)`.
@@ -25894,118 +25668,6 @@ internal enum Operations {
             }
         }
     }
-    /// Create OpenAI Realtime token
-    ///
-    /// Create a short-lived token for OpenAI Realtime sessions.
-    ///
-    /// - Remark: HTTP `POST /api/openai/realtime/token`.
-    /// - Remark: Generated from `#/paths//api/openai/realtime/token/post(createOpenaiRealtimeToken)`.
-    internal enum CreateOpenaiRealtimeToken {
-        internal static let id: Swift.String = "createOpenaiRealtimeToken"
-        internal struct Input: Sendable, Hashable {
-            /// - Remark: Generated from `#/paths/api/openai/realtime/token/POST/header`.
-            internal struct Headers: Sendable, Hashable {
-                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.CreateOpenaiRealtimeToken.AcceptableContentType>]
-                /// Creates a new `Headers`.
-                ///
-                /// - Parameters:
-                ///   - accept:
-                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.CreateOpenaiRealtimeToken.AcceptableContentType>] = .defaultValues()) {
-                    self.accept = accept
-                }
-            }
-            internal var headers: Operations.CreateOpenaiRealtimeToken.Input.Headers
-            /// Creates a new `Input`.
-            ///
-            /// - Parameters:
-            ///   - headers:
-            internal init(headers: Operations.CreateOpenaiRealtimeToken.Input.Headers = .init()) {
-                self.headers = headers
-            }
-        }
-        internal enum Output: Sendable, Hashable {
-            internal struct Ok: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/openai/realtime/token/POST/responses/200/content`.
-                internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/openai/realtime/token/POST/responses/200/content/application\/json`.
-                    case json(Components.Schemas.RealtimeTokenResponse)
-                    /// The associated value of the enum case if `self` is `.json`.
-                    ///
-                    /// - Throws: An error if `self` is not `.json`.
-                    /// - SeeAlso: `.json`.
-                    internal var json: Components.Schemas.RealtimeTokenResponse {
-                        get throws {
-                            switch self {
-                            case let .json(body):
-                                return body
-                            }
-                        }
-                    }
-                }
-                /// Received HTTP response body
-                internal var body: Operations.CreateOpenaiRealtimeToken.Output.Ok.Body
-                /// Creates a new `Ok`.
-                ///
-                /// - Parameters:
-                ///   - body: Received HTTP response body
-                internal init(body: Operations.CreateOpenaiRealtimeToken.Output.Ok.Body) {
-                    self.body = body
-                }
-            }
-            /// Successful Response
-            ///
-            /// - Remark: Generated from `#/paths//api/openai/realtime/token/post(createOpenaiRealtimeToken)/responses/200`.
-            ///
-            /// HTTP response code: `200 ok`.
-            case ok(Operations.CreateOpenaiRealtimeToken.Output.Ok)
-            /// The associated value of the enum case if `self` is `.ok`.
-            ///
-            /// - Throws: An error if `self` is not `.ok`.
-            /// - SeeAlso: `.ok`.
-            internal var ok: Operations.CreateOpenaiRealtimeToken.Output.Ok {
-                get throws {
-                    switch self {
-                    case let .ok(response):
-                        return response
-                    default:
-                        try throwUnexpectedResponseStatus(
-                            expectedStatus: "ok",
-                            response: self
-                        )
-                    }
-                }
-            }
-            /// Undocumented response.
-            ///
-            /// A response with a code that is not documented in the OpenAPI document.
-            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
-        }
-        internal enum AcceptableContentType: AcceptableProtocol {
-            case json
-            case other(Swift.String)
-            internal init?(rawValue: Swift.String) {
-                switch rawValue.lowercased() {
-                case "application/json":
-                    self = .json
-                default:
-                    self = .other(rawValue)
-                }
-            }
-            internal var rawValue: Swift.String {
-                switch self {
-                case let .other(string):
-                    return string
-                case .json:
-                    return "application/json"
-                }
-            }
-            internal static var allCases: [Self] {
-                [
-                    .json
-                ]
-            }
-        }
-    }
     /// Transcribe uploaded audio via the backend
     ///
     /// Transcribe uploaded audio without exposing provider API keys to the client.
@@ -26144,6 +25806,118 @@ internal enum Operations {
                     default:
                         try throwUnexpectedResponseStatus(
                             expectedStatus: "unprocessableContent",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        internal enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case other(Swift.String)
+            internal init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            internal var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                }
+            }
+            internal static var allCases: [Self] {
+                [
+                    .json
+                ]
+            }
+        }
+    }
+    /// Check uploaded-audio transcription availability
+    ///
+    /// Return whether backend-managed audio transcription is configured.
+    ///
+    /// - Remark: HTTP `GET /api/openai/transcriptions/health`.
+    /// - Remark: Generated from `#/paths//api/openai/transcriptions/health/get(transcriptionOpenaiHealth)`.
+    internal enum TranscriptionOpenaiHealth {
+        internal static let id: Swift.String = "transcriptionOpenaiHealth"
+        internal struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/openai/transcriptions/health/GET/header`.
+            internal struct Headers: Sendable, Hashable {
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.TranscriptionOpenaiHealth.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.TranscriptionOpenaiHealth.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            internal var headers: Operations.TranscriptionOpenaiHealth.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - headers:
+            internal init(headers: Operations.TranscriptionOpenaiHealth.Input.Headers = .init()) {
+                self.headers = headers
+            }
+        }
+        internal enum Output: Sendable, Hashable {
+            internal struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/openai/transcriptions/health/GET/responses/200/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/openai/transcriptions/health/GET/responses/200/content/application\/json`.
+                    case json(Components.Schemas.AudioTranscriptionHealthResponse)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Components.Schemas.AudioTranscriptionHealthResponse {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.TranscriptionOpenaiHealth.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.TranscriptionOpenaiHealth.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// Successful Response
+            ///
+            /// - Remark: Generated from `#/paths//api/openai/transcriptions/health/get(transcriptionOpenaiHealth)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.TranscriptionOpenaiHealth.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            internal var ok: Operations.TranscriptionOpenaiHealth.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
                             response: self
                         )
                     }
@@ -27005,292 +26779,6 @@ internal enum Operations {
             /// - Throws: An error if `self` is not `.unprocessableContent`.
             /// - SeeAlso: `.unprocessableContent`.
             internal var unprocessableContent: Operations.DeleteScraperConfigEndpoint.Output.UnprocessableContent {
-                get throws {
-                    switch self {
-                    case let .unprocessableContent(response):
-                        return response
-                    default:
-                        try throwUnexpectedResponseStatus(
-                            expectedStatus: "unprocessableContent",
-                            response: self
-                        )
-                    }
-                }
-            }
-            /// Undocumented response.
-            ///
-            /// A response with a code that is not documented in the OpenAPI document.
-            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
-        }
-        internal enum AcceptableContentType: AcceptableProtocol {
-            case json
-            case other(Swift.String)
-            internal init?(rawValue: Swift.String) {
-                switch rawValue.lowercased() {
-                case "application/json":
-                    self = .json
-                default:
-                    self = .other(rawValue)
-                }
-            }
-            internal var rawValue: Swift.String {
-                switch self {
-                case let .other(string):
-                    return string
-                case .json:
-                    return "application/json"
-                }
-            }
-            internal static var allCases: [Self] {
-                [
-                    .json
-                ]
-            }
-        }
-    }
-    /// Voice Health
-    ///
-    /// Return dependency readiness for voice APIs.
-    ///
-    /// - Remark: HTTP `GET /api/voice/health`.
-    /// - Remark: Generated from `#/paths//api/voice/health/get(voiceHealth)`.
-    internal enum VoiceHealth {
-        internal static let id: Swift.String = "voiceHealth"
-        internal struct Input: Sendable, Hashable {
-            /// - Remark: Generated from `#/paths/api/voice/health/GET/header`.
-            internal struct Headers: Sendable, Hashable {
-                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.VoiceHealth.AcceptableContentType>]
-                /// Creates a new `Headers`.
-                ///
-                /// - Parameters:
-                ///   - accept:
-                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.VoiceHealth.AcceptableContentType>] = .defaultValues()) {
-                    self.accept = accept
-                }
-            }
-            internal var headers: Operations.VoiceHealth.Input.Headers
-            /// Creates a new `Input`.
-            ///
-            /// - Parameters:
-            ///   - headers:
-            internal init(headers: Operations.VoiceHealth.Input.Headers = .init()) {
-                self.headers = headers
-            }
-        }
-        internal enum Output: Sendable, Hashable {
-            internal struct Ok: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/voice/health/GET/responses/200/content`.
-                internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/voice/health/GET/responses/200/content/application\/json`.
-                    case json(Components.Schemas.VoiceHealthResponse)
-                    /// The associated value of the enum case if `self` is `.json`.
-                    ///
-                    /// - Throws: An error if `self` is not `.json`.
-                    /// - SeeAlso: `.json`.
-                    internal var json: Components.Schemas.VoiceHealthResponse {
-                        get throws {
-                            switch self {
-                            case let .json(body):
-                                return body
-                            }
-                        }
-                    }
-                }
-                /// Received HTTP response body
-                internal var body: Operations.VoiceHealth.Output.Ok.Body
-                /// Creates a new `Ok`.
-                ///
-                /// - Parameters:
-                ///   - body: Received HTTP response body
-                internal init(body: Operations.VoiceHealth.Output.Ok.Body) {
-                    self.body = body
-                }
-            }
-            /// Successful Response
-            ///
-            /// - Remark: Generated from `#/paths//api/voice/health/get(voiceHealth)/responses/200`.
-            ///
-            /// HTTP response code: `200 ok`.
-            case ok(Operations.VoiceHealth.Output.Ok)
-            /// The associated value of the enum case if `self` is `.ok`.
-            ///
-            /// - Throws: An error if `self` is not `.ok`.
-            /// - SeeAlso: `.ok`.
-            internal var ok: Operations.VoiceHealth.Output.Ok {
-                get throws {
-                    switch self {
-                    case let .ok(response):
-                        return response
-                    default:
-                        try throwUnexpectedResponseStatus(
-                            expectedStatus: "ok",
-                            response: self
-                        )
-                    }
-                }
-            }
-            /// Undocumented response.
-            ///
-            /// A response with a code that is not documented in the OpenAPI document.
-            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
-        }
-        internal enum AcceptableContentType: AcceptableProtocol {
-            case json
-            case other(Swift.String)
-            internal init?(rawValue: Swift.String) {
-                switch rawValue.lowercased() {
-                case "application/json":
-                    self = .json
-                default:
-                    self = .other(rawValue)
-                }
-            }
-            internal var rawValue: Swift.String {
-                switch self {
-                case let .other(string):
-                    return string
-                case .json:
-                    return "application/json"
-                }
-            }
-            internal static var allCases: [Self] {
-                [
-                    .json
-                ]
-            }
-        }
-    }
-    /// Create Or Resume Voice Session
-    ///
-    /// Create or resume an authenticated voice session.
-    ///
-    /// - Remark: HTTP `POST /api/voice/sessions`.
-    /// - Remark: Generated from `#/paths//api/voice/sessions/post(createOrResumeVoiceSession)`.
-    internal enum CreateOrResumeVoiceSession {
-        internal static let id: Swift.String = "createOrResumeVoiceSession"
-        internal struct Input: Sendable, Hashable {
-            /// - Remark: Generated from `#/paths/api/voice/sessions/POST/header`.
-            internal struct Headers: Sendable, Hashable {
-                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.CreateOrResumeVoiceSession.AcceptableContentType>]
-                /// Creates a new `Headers`.
-                ///
-                /// - Parameters:
-                ///   - accept:
-                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.CreateOrResumeVoiceSession.AcceptableContentType>] = .defaultValues()) {
-                    self.accept = accept
-                }
-            }
-            internal var headers: Operations.CreateOrResumeVoiceSession.Input.Headers
-            /// - Remark: Generated from `#/paths/api/voice/sessions/POST/requestBody`.
-            internal enum Body: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/voice/sessions/POST/requestBody/content/application\/json`.
-                case json(Components.Schemas.CreateVoiceSessionRequest)
-            }
-            internal var body: Operations.CreateOrResumeVoiceSession.Input.Body
-            /// Creates a new `Input`.
-            ///
-            /// - Parameters:
-            ///   - headers:
-            ///   - body:
-            internal init(
-                headers: Operations.CreateOrResumeVoiceSession.Input.Headers = .init(),
-                body: Operations.CreateOrResumeVoiceSession.Input.Body
-            ) {
-                self.headers = headers
-                self.body = body
-            }
-        }
-        internal enum Output: Sendable, Hashable {
-            internal struct Ok: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/voice/sessions/POST/responses/200/content`.
-                internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/voice/sessions/POST/responses/200/content/application\/json`.
-                    case json(Components.Schemas.CreateVoiceSessionResponse)
-                    /// The associated value of the enum case if `self` is `.json`.
-                    ///
-                    /// - Throws: An error if `self` is not `.json`.
-                    /// - SeeAlso: `.json`.
-                    internal var json: Components.Schemas.CreateVoiceSessionResponse {
-                        get throws {
-                            switch self {
-                            case let .json(body):
-                                return body
-                            }
-                        }
-                    }
-                }
-                /// Received HTTP response body
-                internal var body: Operations.CreateOrResumeVoiceSession.Output.Ok.Body
-                /// Creates a new `Ok`.
-                ///
-                /// - Parameters:
-                ///   - body: Received HTTP response body
-                internal init(body: Operations.CreateOrResumeVoiceSession.Output.Ok.Body) {
-                    self.body = body
-                }
-            }
-            /// Successful Response
-            ///
-            /// - Remark: Generated from `#/paths//api/voice/sessions/post(createOrResumeVoiceSession)/responses/200`.
-            ///
-            /// HTTP response code: `200 ok`.
-            case ok(Operations.CreateOrResumeVoiceSession.Output.Ok)
-            /// The associated value of the enum case if `self` is `.ok`.
-            ///
-            /// - Throws: An error if `self` is not `.ok`.
-            /// - SeeAlso: `.ok`.
-            internal var ok: Operations.CreateOrResumeVoiceSession.Output.Ok {
-                get throws {
-                    switch self {
-                    case let .ok(response):
-                        return response
-                    default:
-                        try throwUnexpectedResponseStatus(
-                            expectedStatus: "ok",
-                            response: self
-                        )
-                    }
-                }
-            }
-            internal struct UnprocessableContent: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/voice/sessions/POST/responses/422/content`.
-                internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/voice/sessions/POST/responses/422/content/application\/json`.
-                    case json(Components.Schemas.HTTPValidationError)
-                    /// The associated value of the enum case if `self` is `.json`.
-                    ///
-                    /// - Throws: An error if `self` is not `.json`.
-                    /// - SeeAlso: `.json`.
-                    internal var json: Components.Schemas.HTTPValidationError {
-                        get throws {
-                            switch self {
-                            case let .json(body):
-                                return body
-                            }
-                        }
-                    }
-                }
-                /// Received HTTP response body
-                internal var body: Operations.CreateOrResumeVoiceSession.Output.UnprocessableContent.Body
-                /// Creates a new `UnprocessableContent`.
-                ///
-                /// - Parameters:
-                ///   - body: Received HTTP response body
-                internal init(body: Operations.CreateOrResumeVoiceSession.Output.UnprocessableContent.Body) {
-                    self.body = body
-                }
-            }
-            /// Validation Error
-            ///
-            /// - Remark: Generated from `#/paths//api/voice/sessions/post(createOrResumeVoiceSession)/responses/422`.
-            ///
-            /// HTTP response code: `422 unprocessableContent`.
-            case unprocessableContent(Operations.CreateOrResumeVoiceSession.Output.UnprocessableContent)
-            /// The associated value of the enum case if `self` is `.unprocessableContent`.
-            ///
-            /// - Throws: An error if `self` is not `.unprocessableContent`.
-            /// - SeeAlso: `.unprocessableContent`.
-            internal var unprocessableContent: Operations.CreateOrResumeVoiceSession.Output.UnprocessableContent {
                 get throws {
                     switch self {
                     case let .unprocessableContent(response):

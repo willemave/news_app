@@ -481,10 +481,7 @@ def _execute_sql(
     engine = create_engine(database_url, pool_pre_ping=True)
     try:
         with engine.connect() as connection:
-            if connection.engine.dialect.name == "sqlite":
-                connection.exec_driver_sql("PRAGMA query_only = 1")
-            else:
-                connection.execute(text("SET TRANSACTION READ ONLY"))
+            connection.execute(text("SET TRANSACTION READ ONLY"))
             result = connection.execute(text(sql))
             rows = result.fetchmany(limit)
             columns = list(result.keys())

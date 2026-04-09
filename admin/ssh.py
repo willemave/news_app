@@ -61,9 +61,13 @@ def _build_remote_context_override(config: AdminConfig) -> dict[str, str] | None
     """Return explicit remote paths when the CLI should avoid reading remote .env."""
     if config.remote_context_source != "direct":
         return None
+    if "://" not in config.remote_db_path:
+        raise RemoteCommandError(
+            "Direct remote context now requires a full SQLAlchemy database URL for --remote-db-path"
+        )
 
     return {
-        "database_url": f"sqlite:///{config.remote_db_path}",
+        "database_url": config.remote_db_path,
         "logs_dir": config.logs_dir,
         "service_log_dir": config.service_log_dir,
     }

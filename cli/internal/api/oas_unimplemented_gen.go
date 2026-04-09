@@ -33,7 +33,7 @@ func (UnimplementedHandler) CompleteOnboarding(ctx context.Context, req *AgentOn
 
 // ConvertNewsItemToArticle implements convertNewsItemToArticle operation.
 //
-// Convert one representative news item into article content.
+// Convert one representative news item into saved article content.
 //
 // POST /api/news/items/{news_item_id}/convert-to-article
 func (UnimplementedHandler) ConvertNewsItemToArticle(ctx context.Context, params ConvertNewsItemToArticleParams) (r ConvertNewsItemToArticleRes, _ error) {

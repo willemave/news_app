@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type CLILinkStartResponse struct {
@@ -59,11 +63,40 @@ func (c *Client) PollCLILink(ctx context.Context, sessionID string, pollToken st
 	return &response, nil
 }
 
+func (c *Client) WaitForCLILink(
+	ctx context.Context,
+	sessionID string,
+	pollToken string,
+	wait WaitOptions,
+) (*CLILinkPollResponse, error) {
+	deadline := time.Now().Add(wait.Timeout)
+	for {
+		polled, err := c.PollCLILink(ctx, sessionID, pollToken)
+		if err != nil {
+			return nil, err
+		}
+		switch normalizeStatus(polled.Status) {
+		case "approved":
+			if polled.APIKey != "" {
+				return polled, nil
+			}
+		case "claimed":
+			return nil, errors.New("CLI link session was already claimed")
+		case "expired":
+			return nil, errors.New("CLI link session expired")
+		}
+		if time.Now().After(deadline) {
+			return nil, errors.New("timed out waiting for CLI approval")
+		}
+		if err := sleepContext(ctx, wait.Interval); err != nil {
+			return nil, err
+		}
+	}
+}
+
 func (c *Client) GetLibraryManifest(ctx context.Context, includeSource bool) (*AgentLibraryManifestResponse, error) {
 	query := url.Values{}
-	if includeSource {
-		query.Set("include_source", "true")
-	}
+	query.Set("include_source", strconv.FormatBool(includeSource))
 	var response AgentLibraryManifestResponse
 	if err := c.doJSON(ctx, http.MethodGet, "/api/agent/library/manifest", nil, true, query, &response); err != nil {
 		return nil, err
@@ -82,8 +115,10 @@ func (c *Client) GetLibraryFile(ctx context.Context, relativePath string) (*Agen
 }
 
 func DefaultDeviceName() string {
-	if host, err := os.Hostname(); err == nil && strings.TrimSpace(host) != "" {
-		return strings.TrimSpace(host)
+	if host, err := os.Hostname(); err == nil {
+		if trimmed := strings.TrimSpace(host); trimmed != "" {
+			return trimmed
+		}
 	}
 	return "Newsly CLI"
 }
@@ -102,10 +137,8 @@ func (c *Client) doJSON(
 		endpoint += "?" + query.Encode()
 	}
 
-	var bodyReader *bytes.Reader
-	if body == nil {
-		bodyReader = bytes.NewReader(nil)
-	} else {
+	var bodyReader io.Reader
+	if body != nil {
 		payload, err := json.Marshal(body)
 		if err != nil {
 			return err

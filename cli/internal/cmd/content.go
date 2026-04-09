@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -62,9 +60,9 @@ func (a *App) newContentCommand() *cobra.Command {
 		Short: "Fetch one content item",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			contentID, err := strconv.Atoi(args[0])
+			contentID, err := a.parseIntArg("content.get", args[0])
 			if err != nil {
-				return a.renderError("content.get", err)
+				return err
 			}
 			return a.runRemote(cmd, "content.get", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
 				data, err := client.GetContent(ctx, contentID)
@@ -105,8 +103,9 @@ func (a *App) newSubmitCommand(use string, commandName string) *cobra.Command {
 			if err != nil {
 				return a.renderError(commandName, err)
 			}
-			if args.Wait.Wait && args.Wait.Interval <= 0 {
-				return a.renderError(commandName, errors.New("wait-interval must be greater than zero"))
+			wait, shouldWait, err := optionalWaitOptions(args.Wait)
+			if err != nil {
+				return a.renderError(commandName, err)
 			}
 
 			request := &api.SubmitContentRequest{}
@@ -119,6 +118,9 @@ func (a *App) newSubmitCommand(use string, commandName string) *cobra.Command {
 			}
 			if args.SubscribeToFeed {
 				request.SubscribeToFeed.SetTo(true)
+			}
+			if use == "summarize" {
+				request.FavoriteAndMarkRead.SetTo(true)
 			}
 			if args.Title != "" {
 				request.Title.SetTo(args.Title)
@@ -136,19 +138,24 @@ func (a *App) newSubmitCommand(use string, commandName string) *cobra.Command {
 					return commandResult{}, err
 				}
 				result := commandResult{Data: data}
-				if args.Wait.Wait {
+				if shouldWait {
 					jobID, ok := data.TaskID.Get()
-					if !ok {
-						return commandResult{}, errors.New("submit response did not include task_id")
+					if ok {
+						job, err := client.WaitForJob(ctx, jobID, wait)
+						if err != nil {
+							return commandResult{}, err
+						}
+						if runtime.IsFailedOrSkippedStatus(job.Status) {
+							return commandResult{}, &runtime.APIError{
+								Message: "submission job did not complete successfully",
+								Payload: job,
+							}
+						}
+						result.Job = job
 					}
-					job, err := client.WaitForJob(ctx, jobID, runtime.WaitOptions{
-						Interval: args.Wait.Interval,
-						Timeout:  args.Wait.Timeout,
-					})
-					if err != nil {
+					if _, err := client.WaitForSubmittedContent(ctx, data.ContentID, wait); err != nil {
 						return commandResult{}, err
 					}
-					result.Job = job
 				}
 				return result, nil
 			})

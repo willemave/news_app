@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -28,8 +26,9 @@ func (a *App) newOnboardingCommand() *cobra.Command {
 		Aliases: []string{"run"},
 		Short:   "Start onboarding discovery",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if startArgs.Wait.Wait && startArgs.Wait.Interval <= 0 {
-				return a.renderError("onboarding.start", errors.New("wait-interval must be greater than zero"))
+			wait, shouldWait, err := optionalWaitOptions(startArgs.Wait)
+			if err != nil {
+				return a.renderError("onboarding.start", err)
 			}
 			request := &api.AgentOnboardingStartRequest{Brief: startArgs.Brief}
 			request.SeedUrls = startArgs.SeedURLs
@@ -41,11 +40,8 @@ func (a *App) newOnboardingCommand() *cobra.Command {
 					return commandResult{}, err
 				}
 				result := commandResult{Data: data}
-				if startArgs.Wait.Wait {
-					run, err := client.WaitForOnboarding(ctx, data.RunID, runtime.WaitOptions{
-						Interval: startArgs.Wait.Interval,
-						Timeout:  startArgs.Wait.Timeout,
-					})
+				if shouldWait {
+					run, err := client.WaitForOnboarding(ctx, data.RunID, wait)
 					if err != nil {
 						return commandResult{}, err
 					}
@@ -66,9 +62,9 @@ func (a *App) newOnboardingCommand() *cobra.Command {
 		Short: "Fetch onboarding run status",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runID, err := strconv.Atoi(args[0])
+			runID, err := a.parseIntArg("onboarding.status", args[0])
 			if err != nil {
-				return a.renderError("onboarding.status", err)
+				return err
 			}
 			return a.runRemote(cmd, "onboarding.status", func(ctx context.Context, client *runtime.Client) (commandResult, error) {
 				data, err := client.GetOnboarding(ctx, runID)
@@ -90,9 +86,9 @@ func (a *App) newOnboardingCommand() *cobra.Command {
 		Short: "Complete onboarding selections",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runID, err := strconv.Atoi(args[0])
+			runID, err := a.parseIntArg("onboarding.complete", args[0])
 			if err != nil {
-				return a.renderError("onboarding.complete", err)
+				return err
 			}
 			request := &api.AgentOnboardingCompleteRequest{}
 			request.AcceptAll.SetTo(completeArgs.AcceptAll)

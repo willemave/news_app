@@ -6,11 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
-
-	"github.com/willem/news_app/cli/internal/config"
-	"github.com/willem/news_app/cli/internal/runtime"
 )
 
 const libraryManifestFilename = ".newsly-agent-manifest.json"
@@ -36,7 +34,7 @@ func (a *App) newLibraryCommand() *cobra.Command {
 		Use:   "sync",
 		Short: "Download the current markdown library diff to local disk",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			runtimeCfg, err := config.ResolveRuntime(a.opts.ConfigPath, a.opts.ServerURL, a.opts.APIKey)
+			runtimeCfg, err := a.resolveRuntimeConfig()
 			if err != nil {
 				return a.renderError("library.sync", err)
 			}
@@ -44,7 +42,7 @@ func (a *App) newLibraryCommand() *cobra.Command {
 				return a.renderErrorWithPath("library.sync", runtimeCfg.Path, err)
 			}
 
-			client, err := runtime.NewClient(runtimeCfg, a.opts.Timeout)
+			client, err := a.newRuntimeClient(runtimeCfg)
 			if err != nil {
 				return a.renderErrorWithPath("library.sync", runtimeCfg.Path, err)
 			}
@@ -110,11 +108,13 @@ func (a *App) newLibraryCommand() *cobra.Command {
 				if err != nil {
 					return a.renderError("library.sync", err)
 				}
-				if err := os.Remove(targetPath); err == nil || os.IsNotExist(err) {
-					deleted++
-				} else {
+				if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
 					return a.renderError("library.sync", err)
 				}
+				if err := pruneEmptyLibraryDirs(filepath.Dir(targetPath), libraryRoot); err != nil {
+					return a.renderError("library.sync", err)
+				}
+				deleted++
 			}
 
 			if err := saveLocalLibraryManifest(filepath.Join(libraryRoot, libraryManifestFilename), remoteFiles); err != nil {
@@ -179,4 +179,23 @@ func safeLibraryPath(root string, relativePath string) (string, error) {
 		return "", errors.New("library path escapes the sync root")
 	}
 	return targetPath, nil
+}
+
+func pruneEmptyLibraryDirs(start string, stop string) error {
+	current := filepath.Clean(start)
+	stop = filepath.Clean(stop)
+	for current != stop && current != "." && current != string(filepath.Separator) {
+		if err := os.Remove(current); err != nil {
+			if os.IsNotExist(err) {
+				current = filepath.Dir(current)
+				continue
+			}
+			if errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST) {
+				return nil
+			}
+			return err
+		}
+		current = filepath.Dir(current)
+	}
+	return nil
 }

@@ -6665,6 +6665,13 @@ func (o *OptDetectedFeed) Decode(d *jx.Decoder) error {
 	if o == nil {
 		return errors.New("invalid: unable to decode OptDetectedFeed to nil")
 	}
+	if d.Next() == jx.Null {
+		if err := d.Null(); err != nil {
+			return err
+		}
+		o.Reset()
+		return nil
+	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
 		return err
@@ -6934,7 +6941,8 @@ func (o *OptNilDateTime) Decode(d *jx.Decoder, format func(*jx.Decoder) (time.Ti
 	}
 	o.Set = true
 	o.Null = false
-	v, err := format(d)
+	_ = format
+	v, err := decodeFlexibleDateTime(d)
 	if err != nil {
 		return err
 	}
@@ -7184,6 +7192,13 @@ func (o *OptOnboardingFastDiscoverResponse) Decode(d *jx.Decoder) error {
 	if o == nil {
 		return errors.New("invalid: unable to decode OptOnboardingFastDiscoverResponse to nil")
 	}
+	if d.Next() == jx.Null {
+		if err := d.Null(); err != nil {
+			return err
+		}
+		o.Reset()
+		return nil
+	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
 		return err
@@ -7285,6 +7300,13 @@ func (o *OptSummaryKind) Decode(d *jx.Decoder) error {
 	if o == nil {
 		return errors.New("invalid: unable to decode OptSummaryKind to nil")
 	}
+	if d.Next() == jx.Null {
+		if err := d.Null(); err != nil {
+			return err
+		}
+		o.Reset()
+		return nil
+	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
 		return err
@@ -7317,6 +7339,13 @@ func (o OptSummaryVersion) Encode(e *jx.Encoder) {
 func (o *OptSummaryVersion) Decode(d *jx.Decoder) error {
 	if o == nil {
 		return errors.New("invalid: unable to decode OptSummaryVersion to nil")
+	}
+	if d.Next() == jx.Null {
+		if err := d.Null(); err != nil {
+			return err
+		}
+		o.Reset()
+		return nil
 	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
@@ -7575,7 +7604,7 @@ func (s *ScraperConfigResponse) Decode(d *jx.Decoder) error {
 		case "created_at":
 			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
-				v, err := json.DecodeDateTime(d)
+				v, err := decodeFlexibleDateTime(d)
 				s.CreatedAt = v
 				if err != nil {
 					return err
@@ -8107,6 +8136,12 @@ func (s *SubmitContentRequest) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.FavoriteAndMarkRead.Set {
+			e.FieldStart("favorite_and_mark_read")
+			s.FavoriteAndMarkRead.Encode(e)
+		}
+	}
+	{
 		if s.Instruction.Set {
 			e.FieldStart("instruction")
 			s.Instruction.Encode(e)
@@ -8142,15 +8177,16 @@ func (s *SubmitContentRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfSubmitContentRequest = [8]string{
+var jsonFieldsNameOfSubmitContentRequest = [9]string{
 	0: "content_type",
 	1: "crawl_links",
-	2: "instruction",
-	3: "platform",
-	4: "share_and_chat",
-	5: "subscribe_to_feed",
-	6: "title",
-	7: "url",
+	2: "favorite_and_mark_read",
+	3: "instruction",
+	4: "platform",
+	5: "share_and_chat",
+	6: "subscribe_to_feed",
+	7: "title",
+	8: "url",
 }
 
 // Decode decodes SubmitContentRequest from json.
@@ -8158,7 +8194,7 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode SubmitContentRequest to nil")
 	}
-	var requiredBitSet [1]uint8
+	var requiredBitSet [2]uint8
 	s.setDefaults()
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
@@ -8182,6 +8218,16 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"crawl_links\"")
+			}
+		case "favorite_and_mark_read":
+			if err := func() error {
+				s.FavoriteAndMarkRead.Reset()
+				if err := s.FavoriteAndMarkRead.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"favorite_and_mark_read\"")
 			}
 		case "instruction":
 			if err := func() error {
@@ -8234,7 +8280,7 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"title\"")
 			}
 		case "url":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := json.DecodeURI(d)
 				s.URL = v
@@ -8254,8 +8300,9 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
-		0b10000000,
+	for i, mask := range [2]uint8{
+		0b00000000,
+		0b00000001,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

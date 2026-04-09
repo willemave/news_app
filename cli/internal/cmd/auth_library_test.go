@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"bytes"
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,12 +16,12 @@ func TestAuthLoginPersistsAPIKey(t *testing.T) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/agent/cli/link/start":
 			writeJSON(t, w, map[string]any{
-				"session_id":             "session-123",
-				"status":                 "pending",
-				"poll_token":             "poll-123",
-				"approve_url":            "newsly://cli-link?session_id=session-123&approve_token=approve-123",
-				"expires_at":             "2026-04-04T18:00:00Z",
-				"poll_interval_seconds":  2,
+				"session_id":            "session-123",
+				"status":                "pending",
+				"poll_token":            "poll-123",
+				"approve_url":           "newsly://cli-link?session_id=session-123&approve_token=approve-123",
+				"expires_at":            "2026-04-04T18:00:00Z",
+				"poll_interval_seconds": 2,
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/agent/cli/link/session-123":
 			if got := r.URL.Query().Get("poll_token"); got != "poll-123" {
@@ -42,25 +40,20 @@ func TestAuthLoginPersistsAPIKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	configPath := filepath.Join(t.TempDir(), "config.json")
+	cli := newTestCLI(t, config.FileConfig{})
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	app := New("test", &stdout, &stderr)
-
-	exitCode := app.Execute(context.Background(), []string{
-		"--config", configPath,
+	exitCode := cli.run(
 		"--server", server.URL,
 		"auth", "login",
 		"--poll-interval", "1ms",
 		"--poll-timeout", "1s",
-	})
+	)
 
 	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
+		t.Fatalf("expected exit 0, got %d stdout=%s stderr=%s", exitCode, cli.stdout.String(), cli.stderr.String())
 	}
 
-	cfg, err := config.Load(configPath)
+	cfg, err := config.Load(cli.configPath)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -70,8 +63,14 @@ func TestAuthLoginPersistsAPIKey(t *testing.T) {
 	if cfg.APIKey != "newsly_ak_linked_secret" {
 		t.Fatalf("expected linked API key to persist, got %q", cfg.APIKey)
 	}
-	if !strings.Contains(stderr.String(), "newsly://cli-link?") {
-		t.Fatalf("expected QR/link instructions on stderr, got %q", stderr.String())
+	if !strings.Contains(cli.stderr.String(), "Scan this QR code in the Newsly app") {
+		t.Fatalf("expected QR instructions on stderr, got %q", cli.stderr.String())
+	}
+	if !strings.Contains(cli.stderr.String(), "newsly://cli-link?") {
+		t.Fatalf("expected QR/link instructions on stderr, got %q", cli.stderr.String())
+	}
+	if !strings.Contains(cli.stderr.String(), "▀") && !strings.Contains(cli.stderr.String(), "▄") {
+		t.Fatalf("expected terminal QR glyphs on stderr, got %q", cli.stderr.String())
 	}
 }
 
@@ -149,26 +148,18 @@ func TestLibrarySyncDownloadsAndPrunesFiles(t *testing.T) {
 		t.Fatalf("write stale manifest: %v", err)
 	}
 
-	configPath := filepath.Join(t.TempDir(), "config.json")
-	if err := config.Save(configPath, config.FileConfig{
+	cli := newTestCLI(t, config.FileConfig{
 		ServerURL:   server.URL,
 		APIKey:      "newsly_ak_test",
 		LibraryRoot: libraryRoot,
-	}); err != nil {
-		t.Fatalf("save config: %v", err)
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	app := New("test", &stdout, &stderr)
-
-	exitCode := app.Execute(context.Background(), []string{
-		"--config", configPath,
-		"library", "sync",
 	})
 
+	exitCode := cli.run(
+		"library", "sync",
+	)
+
 	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
+		t.Fatalf("expected exit 0, got %d stdout=%s stderr=%s", exitCode, cli.stdout.String(), cli.stderr.String())
 	}
 
 	newPath := filepath.Join(libraryRoot, "article", "example", "new-doc__2026-04-03__summary__c1.md")
@@ -197,7 +188,197 @@ func TestLibrarySyncDownloadsAndPrunesFiles(t *testing.T) {
 	if !strings.Contains(string(manifestBytes), "new-doc__2026-04-03__summary__c1.md") {
 		t.Fatalf("expected manifest to update, got %s", string(manifestBytes))
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected no stderr output, got %q", stderr.String())
+	if cli.stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", cli.stderr.String())
+	}
+}
+
+func TestLibrarySyncIsIdempotentAndPrunesEmptyDirectories(t *testing.T) {
+	type syncPhase struct {
+		documents []map[string]any
+		files     map[string]string
+	}
+
+	phases := []syncPhase{
+		{
+			documents: []map[string]any{
+				{
+					"relative_path":   "article/example/doc__2026-04-03__summary__c1.md",
+					"content_id":      1,
+					"variant":         "summary",
+					"updated_at":      "2026-04-04T17:59:00Z",
+					"size_bytes":      8,
+					"checksum_sha256": "sha-1",
+				},
+			},
+			files: map[string]string{
+				"article/example/doc__2026-04-03__summary__c1.md": "# Hello\n",
+			},
+		},
+		{
+			documents: []map[string]any{
+				{
+					"relative_path":   "article/example/doc__2026-04-03__summary__c1.md",
+					"content_id":      1,
+					"variant":         "summary",
+					"updated_at":      "2026-04-04T17:59:00Z",
+					"size_bytes":      8,
+					"checksum_sha256": "sha-1",
+				},
+			},
+			files: map[string]string{
+				"article/example/doc__2026-04-03__summary__c1.md": "# Hello\n",
+			},
+		},
+		{
+			documents: []map[string]any{},
+			files:     map[string]string{},
+		},
+	}
+
+	phaseIndex := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer newsly_ak_test" {
+			t.Fatalf("unexpected auth header: %q", got)
+		}
+
+		current := phases[phaseIndex]
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agent/library/manifest":
+			writeJSON(t, w, map[string]any{
+				"generated_at":   "2026-04-04T18:00:00Z",
+				"include_source": true,
+				"documents":      current.documents,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agent/library/file":
+			path := r.URL.Query().Get("path")
+			text, ok := current.files[path]
+			if !ok {
+				t.Fatalf("unexpected file path query: %q", path)
+			}
+			writeJSON(t, w, map[string]any{
+				"relative_path":   path,
+				"content_id":      1,
+				"variant":         "summary",
+				"updated_at":      "2026-04-04T17:59:00Z",
+				"checksum_sha256": "sha-1",
+				"text":            text,
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	libraryRoot := filepath.Join(t.TempDir(), "library")
+	cli := newTestCLI(t, config.FileConfig{
+		ServerURL:   server.URL,
+		APIKey:      "newsly_ak_test",
+		LibraryRoot: libraryRoot,
+	})
+
+	runAndDecode := func() map[string]any {
+		cli.stdout.Reset()
+		cli.stderr.Reset()
+		exitCode := cli.run("library", "sync")
+		if exitCode != 0 {
+			t.Fatalf("expected exit 0, got %d stdout=%s stderr=%s", exitCode, cli.stdout.String(), cli.stderr.String())
+		}
+		return cli.envelope(t)
+	}
+
+	first := runAndDecode()
+	firstData := first["data"].(map[string]any)
+	if int(firstData["downloaded"].(float64)) != 1 || int(firstData["unchanged"].(float64)) != 0 {
+		t.Fatalf("unexpected first sync data: %#v", firstData)
+	}
+
+	phaseIndex = 1
+	second := runAndDecode()
+	secondData := second["data"].(map[string]any)
+	if int(secondData["downloaded"].(float64)) != 0 || int(secondData["unchanged"].(float64)) != 1 {
+		t.Fatalf("unexpected second sync data: %#v", secondData)
+	}
+
+	phaseIndex = 2
+	third := runAndDecode()
+	thirdData := third["data"].(map[string]any)
+	if int(thirdData["deleted"].(float64)) != 1 || int(thirdData["document_count"].(float64)) != 0 {
+		t.Fatalf("unexpected third sync data: %#v", thirdData)
+	}
+
+	if _, err := os.Stat(filepath.Join(libraryRoot, "article", "example")); !os.IsNotExist(err) {
+		t.Fatalf("expected empty article/example directory to be pruned, stat err=%v", err)
+	}
+
+	manifestBytes, err := os.ReadFile(filepath.Join(libraryRoot, ".newsly-agent-manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if string(manifestBytes) != "{\n  \"files\": {}\n}\n" {
+		t.Fatalf("unexpected manifest contents: %s", string(manifestBytes))
+	}
+}
+
+func TestLibrarySyncCanExcludeSourceDocuments(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer newsly_ak_test" {
+			t.Fatalf("unexpected auth header: %q", got)
+		}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agent/library/manifest":
+			if got := r.URL.Query().Get("include_source"); got != "false" {
+				t.Fatalf("unexpected include_source query: %q", got)
+			}
+			writeJSON(t, w, map[string]any{
+				"generated_at":   "2026-04-04T18:00:00Z",
+				"include_source": false,
+				"documents": []map[string]any{
+					{
+						"relative_path":   "article/example/summary-only__2026-04-03__summary__c1.md",
+						"content_id":      1,
+						"variant":         "summary",
+						"updated_at":      "2026-04-04T17:59:00Z",
+						"size_bytes":      12,
+						"checksum_sha256": "summary-sha",
+					},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agent/library/file":
+			if got := r.URL.Query().Get("path"); got != "article/example/summary-only__2026-04-03__summary__c1.md" {
+				t.Fatalf("unexpected file path query: %q", got)
+			}
+			writeJSON(t, w, map[string]any{
+				"relative_path":   "article/example/summary-only__2026-04-03__summary__c1.md",
+				"content_id":      1,
+				"variant":         "summary",
+				"updated_at":      "2026-04-04T17:59:00Z",
+				"checksum_sha256": "summary-sha",
+				"text":            "# Summary\n",
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	libraryRoot := filepath.Join(t.TempDir(), "library")
+	cli := newTestCLI(t, config.FileConfig{
+		ServerURL:   server.URL,
+		APIKey:      "newsly_ak_test",
+		LibraryRoot: libraryRoot,
+	})
+
+	exitCode := cli.run("library", "sync", "--include-source=false")
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0, got %d stdout=%s stderr=%s", exitCode, cli.stdout.String(), cli.stderr.String())
+	}
+
+	files, err := filepath.Glob(filepath.Join(libraryRoot, "article", "example", "*.md"))
+	if err != nil {
+		t.Fatalf("glob files: %v", err)
+	}
+	if len(files) != 1 || !strings.HasSuffix(files[0], "__summary__c1.md") {
+		t.Fatalf("expected only summary file, got %#v", files)
 	}
 }

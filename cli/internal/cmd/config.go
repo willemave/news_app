@@ -23,22 +23,20 @@ func (a *App) newConfigCommand() *cobra.Command {
 		Short: "Persist the server URL",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.runLocal(cmd, "config.set-server", func(_ context.Context) (commandResult, error) {
-				path := config.ResolvePath(a.opts.ConfigPath)
-				cfg, err := config.Update(path, func(current config.FileConfig) config.FileConfig {
+			return a.updateConfig(
+				cmd,
+				"config.set-server",
+				func(current config.FileConfig) config.FileConfig {
 					current.ServerURL = args[0]
 					return current
-				})
-				if err != nil {
-					return commandResult{}, err
-				}
-				return commandResult{
-					Data: map[string]any{
+				},
+				func(path string, cfg config.FileConfig) any {
+					return map[string]any{
 						"config_path": path,
 						"server_url":  cfg.ServerURL,
-					},
-				}, nil
-			})
+					}
+				},
+			)
 		},
 	}
 	setAPIKey := &cobra.Command{
@@ -46,22 +44,20 @@ func (a *App) newConfigCommand() *cobra.Command {
 		Short: "Persist the API key",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.runLocal(cmd, "config.set-api-key", func(_ context.Context) (commandResult, error) {
-				path := config.ResolvePath(a.opts.ConfigPath)
-				cfg, err := config.Update(path, func(current config.FileConfig) config.FileConfig {
+			return a.updateConfig(
+				cmd,
+				"config.set-api-key",
+				func(current config.FileConfig) config.FileConfig {
 					current.APIKey = args[0]
 					return current
-				})
-				if err != nil {
-					return commandResult{}, err
-				}
-				return commandResult{
-					Data: map[string]any{
+				},
+				func(path string, cfg config.FileConfig) any {
+					return map[string]any{
 						"config_path": path,
 						"api_key_set": cfg.APIKey != "",
-					},
-				}, nil
-			})
+					}
+				},
+			)
 		},
 	}
 	setLibraryRoot := &cobra.Command{
@@ -69,22 +65,20 @@ func (a *App) newConfigCommand() *cobra.Command {
 		Short: "Persist the local markdown sync directory",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.runLocal(cmd, "config.set-library-root", func(_ context.Context) (commandResult, error) {
-				path := config.ResolvePath(a.opts.ConfigPath)
-				cfg, err := config.Update(path, func(current config.FileConfig) config.FileConfig {
+			return a.updateConfig(
+				cmd,
+				"config.set-library-root",
+				func(current config.FileConfig) config.FileConfig {
 					current.LibraryRoot = args[0]
 					return current
-				})
-				if err != nil {
-					return commandResult{}, err
-				}
-				return commandResult{
-					Data: map[string]any{
+				},
+				func(path string, cfg config.FileConfig) any {
+					return map[string]any{
 						"config_path":  path,
 						"library_root": cfg.LibraryRoot,
-					},
-				}, nil
-			})
+					}
+				},
+			)
 		},
 	}
 
@@ -93,7 +87,7 @@ func (a *App) newConfigCommand() *cobra.Command {
 		Short: "Show the effective CLI configuration",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runLocal(cmd, "config.show", func(_ context.Context) (commandResult, error) {
-				runtimeCfg, err := config.ResolveRuntime(a.opts.ConfigPath, a.opts.ServerURL, a.opts.APIKey)
+				runtimeCfg, err := a.resolveRuntimeConfig()
 				if err != nil {
 					return commandResult{}, err
 				}

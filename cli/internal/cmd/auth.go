@@ -1,11 +1,12 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
+	"github.com/mdp/qrterminal/v3"
 	"github.com/spf13/cobra"
 
 	"github.com/willem/news_app/cli/internal/config"
@@ -27,18 +28,15 @@ func (a *App) newAuthCommand() *cobra.Command {
 		Use:   "login",
 		Short: "Start QR login and persist the linked API key",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			runtimeCfg, err := config.ResolveRuntime(a.opts.ConfigPath, a.opts.ServerURL, a.opts.APIKey)
+			runtimeCfg, err := a.resolveRuntimeConfig()
 			if err != nil {
 				return a.renderError("auth.login", err)
 			}
 			if err := runtimeCfg.ValidateServerOnly(); err != nil {
 				return a.renderErrorWithPath("auth.login", runtimeCfg.Path, err)
 			}
-			if args.Wait.Interval <= 0 {
-				return a.renderError("auth.login", errors.New("poll-interval must be greater than zero"))
-			}
 
-			client, err := runtime.NewClient(runtimeCfg, a.opts.Timeout)
+			client, err := a.newRuntimeClient(runtimeCfg)
 			if err != nil {
 				return a.renderErrorWithPath("auth.login", runtimeCfg.Path, err)
 			}
@@ -53,9 +51,13 @@ func (a *App) newAuthCommand() *cobra.Command {
 				return a.renderErrorWithPath("auth.login", runtimeCfg.Path, err)
 			}
 
-			fmt.Fprintf(a.stderr, "Scan this link in the Newsly app to approve CLI access:\n%s\n\n", started.ApproveURL)
+			renderCLILinkQRCode(a.stderr, started.ApproveURL)
 
-			polled, err := waitForCLILink(cmd.Context(), client, started.SessionID, started.PollToken, args.Wait.Interval, args.Wait.Timeout)
+			wait, err := waitOptions(args.Wait)
+			if err != nil {
+				return a.renderError("auth.login", errors.New("poll-interval must be greater than zero"))
+			}
+			polled, err := client.WaitForCLILink(cmd.Context(), started.SessionID, started.PollToken, wait)
 			if err != nil {
 				return a.renderErrorWithPath("auth.login", runtimeCfg.Path, err)
 			}
@@ -95,40 +97,11 @@ func (a *App) newAuthCommand() *cobra.Command {
 	return authCmd
 }
 
-func waitForCLILink(
-	ctx context.Context,
-	client *runtime.Client,
-	sessionID string,
-	pollToken string,
-	interval time.Duration,
-	timeout time.Duration,
-) (*runtime.CLILinkPollResponse, error) {
-	deadline := time.Now().Add(timeout)
-	for {
-		polled, err := client.PollCLILink(ctx, sessionID, pollToken)
-		if err != nil {
-			return nil, err
-		}
-		switch polled.Status {
-		case "approved":
-			if polled.APIKey != "" {
-				return polled, nil
-			}
-		case "claimed":
-			return nil, errors.New("CLI link session was already claimed")
-		case "expired":
-			return nil, errors.New("CLI link session expired")
-		}
-		if time.Now().After(deadline) {
-			return nil, errors.New("timed out waiting for CLI approval")
-		}
-		timer := time.NewTimer(interval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, ctx.Err()
-		case <-timer.C:
-		}
-	}
+func renderCLILinkQRCode(w io.Writer, approveURL string) {
+	fmt.Fprintln(w, "Scan this QR code in the Newsly app to approve CLI access:")
+	qrterminal.GenerateHalfBlock(approveURL, qrterminal.M, w)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Approval link:")
+	fmt.Fprintln(w, approveURL)
+	fmt.Fprintln(w)
 }
-
