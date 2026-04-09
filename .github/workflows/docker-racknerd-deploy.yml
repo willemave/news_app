@@ -130,6 +130,43 @@ jobs:
               sudo supervisorctl stop ${LEGACY_PROGRAMS} >/dev/null 2>&1 || true
             fi
             sudo -u ${SERVICE_USER} -H crontab -r >/dev/null 2>&1 || true
+
+            LEGACY_PATTERNS=(
+              \"python -m uvicorn app.main:app\"
+              \"/opt/news_app/scripts/run_workers.py\"
+              \"watchdog_queue_recovery.py --loop\"
+              \"docker/supercronic.py\"
+              \"start_bgutil_provider.sh\"
+            )
+
+            stop_matching_processes() {
+              local signal=\"$1\"
+              local pattern=\"\"
+              local matched=\"false\"
+              for pattern in \"\${LEGACY_PATTERNS[@]}\"; do
+                if sudo pkill \"-\${signal}\" -f \"\$pattern\" >/dev/null 2>&1; then
+                  matched=\"true\"
+                fi
+              done
+              [[ \"\$matched\" == \"true\" ]]
+            }
+
+            stop_matching_processes TERM || true
+            sleep 5
+            stop_matching_processes KILL || true
+
+            for attempt in 1 2 3 4 5 6; do
+              if ! sudo ss -ltnp | grep -q '[: ]8000 '; then
+                exit 0
+              fi
+              if [[ \$attempt -eq 6 ]]; then
+                echo \"Port 8000 is still in use after legacy shutdown\" >&2
+                sudo ss -ltnp | grep ':8000' >&2 || true
+                sudo pgrep -af \"python -m uvicorn app.main:app|/opt/news_app/scripts/run_workers.py|watchdog_queue_recovery.py|docker/supercronic.py|start_bgutil_provider.sh\" >&2 || true
+                exit 1
+              fi
+              sleep 5
+            done
           '"
 
           echo "→ Streaming image to remote host"
