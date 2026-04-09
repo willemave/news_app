@@ -45,7 +45,7 @@ final class QuickMicViewModel: ObservableObject {
         transcriptionService: (any SpeechTranscribing)? = nil,
         chatService: any QuickMicChatServicing = ChatService.shared
     ) {
-        self.transcriptionService = transcriptionService ?? RealtimeTranscriptionService()
+        self.transcriptionService = transcriptionService ?? SpeechTranscriberFactory.makeVoiceDictationTranscriber()
         self.chatService = chatService
         configureTranscriptionCallbacks()
     }

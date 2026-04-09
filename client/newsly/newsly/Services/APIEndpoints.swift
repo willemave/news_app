@@ -106,12 +106,7 @@ enum APIEndpoints {
     static let xIntegrationOAuthExchange = "/api/integrations/x/oauth/exchange"
 
     // MARK: - OpenAI Endpoints
-    static let openaiRealtimeToken = "/api/openai/realtime/token"
     static let openaiTranscriptions = "/api/openai/transcriptions"
-
-    // MARK: - Voice Endpoints
-    static let voiceSessions = "/api/voice/sessions"
-    static let voiceHealth = "/api/voice/health"
 
     // MARK: - Chat Endpoints
     static let chatSessions = "/api/content/chat/sessions"

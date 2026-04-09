@@ -64,7 +64,6 @@ LEGACY_KNOWLEDGE_SESSION_TYPES = {
     "assistant_quick",
     "article_brain",
     "topic",
-    "voice_live",
 }
 ASSISTANT_SESSION_TYPES = {
     KNOWLEDGE_SESSION_TYPE,

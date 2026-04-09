@@ -39,3 +39,74 @@ extension SpeechTranscribing {
         return hasAuthToken && AppSettings.shared.backendTranscriptionAvailable
     }
 }
+
+@MainActor
+enum SpeechTranscriberFactory {
+    static func makeVoiceDictationTranscriber() -> any SpeechTranscribing {
+        if E2ETestLaunch.fakeSpeechEnabled {
+            return E2EFakeSpeechTranscriber()
+        }
+        return VoiceDictationService.shared
+    }
+}
+
+@MainActor
+private final class E2EFakeSpeechTranscriber: SpeechTranscribing {
+    var onTranscriptDelta: ((String) -> Void)?
+    var onTranscriptFinal: ((String) -> Void)?
+    var onError: ((String) -> Void)?
+    var onStateChange: ((SpeechTranscriptionState) -> Void)?
+    var onStopReason: ((SpeechStopReason) -> Void)?
+
+    var isAvailable: Bool { true }
+    private(set) var isRecording = false {
+        didSet { notifyStateChange() }
+    }
+    private(set) var isTranscribing = false {
+        didSet { notifyStateChange() }
+    }
+
+    private let transcript: String
+
+    init(transcript: String? = E2ETestLaunch.fakeSpeechTranscript) {
+        self.transcript = transcript ?? "E2E transcript"
+    }
+
+    func start() async throws {
+        guard !isRecording else { return }
+        isRecording = true
+        isTranscribing = false
+    }
+
+    func stop() async throws -> String {
+        guard isRecording else { return transcript }
+
+        isRecording = false
+        isTranscribing = true
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        onTranscriptFinal?(transcript)
+        isTranscribing = false
+        onStopReason?(.manual)
+        return transcript
+    }
+
+    func cancel() {
+        reset()
+        onStopReason?(.cancel)
+    }
+
+    func reset() {
+        isRecording = false
+        isTranscribing = false
+    }
+
+    private func notifyStateChange() {
+        if isRecording {
+            onStateChange?(.recording)
+        } else if isTranscribing {
+            onStateChange?(.transcribing)
+        } else {
+            onStateChange?(.idle)
+        }
+    }
+}

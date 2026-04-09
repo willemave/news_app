@@ -254,8 +254,6 @@ def debug_create_user(
         user.has_completed_onboarding = payload.has_completed_onboarding
     if payload.has_completed_new_user_tutorial is not None:
         user.has_completed_new_user_tutorial = payload.has_completed_new_user_tutorial
-    if payload.has_completed_live_voice_onboarding is not None:
-        user.has_completed_live_voice_onboarding = payload.has_completed_live_voice_onboarding
 
     db.commit()
     db.refresh(user)

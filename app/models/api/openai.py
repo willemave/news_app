@@ -8,3 +8,9 @@ class AudioTranscriptionResponse(BaseModel):
 
     transcript: str
     language: str | None = None
+
+
+class AudioTranscriptionHealthResponse(BaseModel):
+    """Dependency readiness for uploaded-audio transcription."""
+
+    available: bool

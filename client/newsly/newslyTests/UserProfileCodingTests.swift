@@ -43,7 +43,6 @@ final class UserProfileCodingTests: XCTestCase {
           "is_active": true,
           "has_completed_onboarding": true,
           "has_completed_new_user_tutorial": true,
-          "has_completed_live_voice_onboarding": false,
           "created_at": "2026-03-26T20:00:00Z",
           "updated_at": "2026-03-26T20:00:00Z"
         }
@@ -117,7 +116,6 @@ final class UserProfileCodingTests: XCTestCase {
           "is_active": true,
           "has_completed_onboarding": true,
           "has_completed_new_user_tutorial": true,
-          "has_completed_live_voice_onboarding": false,
           "created_at": "2026-03-26T20:00:00Z",
           "updated_at": "2026-03-26T20:00:00Z"
         }

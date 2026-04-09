@@ -43,10 +43,7 @@ class KnowledgeHubViewModel: ObservableObject {
 
         do {
             let sessions = try await chatService.listSessions(contentId: nil, limit: 10)
-            recentSessions = sessions
-                .filter { $0.sessionType != "voice_live" && !$0.isLiveVoiceSession }
-                .prefix(5)
-                .map { $0 }
+            recentSessions = Array(sessions.prefix(5))
         } catch {
             errorMessage = error.localizedDescription
         }

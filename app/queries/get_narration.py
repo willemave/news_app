@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.content_mapper import content_to_domain
 from app.repositories.content_detail_repository import get_visible_content
-from app.services.voice.persistence import build_summary_narration
+from app.services.summary_narration import build_summary_narration
 
 NarrationTargetType = Literal["content"]
 

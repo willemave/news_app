@@ -80,7 +80,6 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     has_completed_new_user_tutorial = Column(Boolean, default=False, nullable=False)
     has_completed_onboarding = Column(Boolean, default=False, nullable=False)
-    has_completed_live_voice_onboarding = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -114,7 +113,6 @@ class UserResponse(UserBase):
     has_x_bookmark_sync: bool = False
     has_completed_onboarding: bool
     has_completed_new_user_tutorial: bool
-    has_completed_live_voice_onboarding: bool
     created_at: datetime
     updated_at: datetime
 
@@ -167,7 +165,6 @@ class DebugUserSessionRequest(BaseModel):
     user_id: int | None = Field(default=None, ge=1)
     has_completed_onboarding: bool | None = None
     has_completed_new_user_tutorial: bool | None = None
-    has_completed_live_voice_onboarding: bool | None = None
 
 
 class TokenResponse(BaseModel):

@@ -959,15 +959,6 @@ class OnboardingAudioDiscoverResponse(BaseModel):
     lanes: list[OnboardingDiscoveryLaneStatus] = Field(default_factory=list)
 
 
-class RealtimeTokenResponse(BaseModel):
-    """Ephemeral token for OpenAI Realtime sessions."""
-
-    token: str
-    expires_at: int | None = None
-    model: str | None = None
-    session_type: Literal["realtime", "transcription"] | None = None
-
-
 class OnboardingSuggestion(BaseModel):
     """Single onboarding recommendation item."""
 

@@ -27,6 +27,7 @@ class ChatSessionViewModel: ObservableObject {
     @Published var isRecording = false
     @Published var isTranscribing = false
     @Published private(set) var voiceDictationAvailable = false
+    @Published private(set) var isVoiceActionInFlight = false
 
     private let chatService = ChatService.shared
     private let transcriptionService: any SpeechTranscribing
@@ -42,6 +43,7 @@ class ChatSessionViewModel: ObservableObject {
         initialPendingUserMessage: ChatMessage? = nil,
         initialPendingMessageId: Int? = nil,
         pendingCouncilPrompt: String? = nil,
+        initialVoiceDictationAvailable: Bool = false,
         transcriptionService: (any SpeechTranscribing)? = nil
     ) {
         self.sessionId = sessionId
@@ -49,7 +51,8 @@ class ChatSessionViewModel: ObservableObject {
         self.initialPendingMessageId = initialPendingMessageId
         self.pendingCouncilPrompt = pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.messages = initialPendingUserMessage.map { [$0] } ?? []
-        let resolvedService = transcriptionService ?? VoiceDictationService.shared
+        self.voiceDictationAvailable = initialVoiceDictationAvailable
+        let resolvedService = transcriptionService ?? SpeechTranscriberFactory.makeVoiceDictationTranscriber()
         self.transcriptionService = resolvedService
     }
 
@@ -58,6 +61,7 @@ class ChatSessionViewModel: ObservableObject {
         initialPendingUserMessage: ChatMessage? = nil,
         initialPendingMessageId: Int? = nil,
         pendingCouncilPrompt: String? = nil,
+        initialVoiceDictationAvailable: Bool = false,
         transcriptionService: (any SpeechTranscribing)? = nil
     ) {
         self.sessionId = session.id
@@ -66,7 +70,8 @@ class ChatSessionViewModel: ObservableObject {
         self.initialPendingMessageId = initialPendingMessageId
         self.pendingCouncilPrompt = pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.messages = initialPendingUserMessage.map { [$0] } ?? []
-        let resolvedService = transcriptionService ?? VoiceDictationService.shared
+        self.voiceDictationAvailable = initialVoiceDictationAvailable
+        let resolvedService = transcriptionService ?? SpeechTranscriberFactory.makeVoiceDictationTranscriber()
         self.transcriptionService = resolvedService
     }
 
@@ -283,7 +288,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     var canStartCouncil: Bool {
         guard let session else { return false }
         guard !session.isCouncilMode else { return false }
-        return session.sessionType != "deep_research" && session.sessionType != "voice_live"
+        return session.sessionType != "deep_research"
     }
 
     /// All messages including any streaming message
@@ -401,6 +406,11 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     /// Check voice dictation availability and attempt token refresh if auth is stale.
     func checkAndRefreshVoiceDictation() async {
+        if transcriptionService.isAvailable {
+            voiceDictationAvailable = true
+            return
+        }
+
         do {
             if !hasVoiceAuthToken {
                 _ = try await AuthenticationService.shared.refreshAccessToken()
@@ -415,6 +425,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     /// Start voice recording for chat message.
     func startVoiceRecording() async {
+        guard !isRecording, !isTranscribing else { return }
         if !voiceDictationAvailable {
             await checkAndRefreshVoiceDictation()
         }
@@ -422,6 +433,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
             errorMessage = "Microphone is unavailable right now. Try again in a moment."
             return
         }
+        errorMessage = nil
         configureTranscriptionCallbacks()
         do {
             try await transcriptionService.start()
@@ -461,11 +473,25 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         }
     }
 
+    func toggleVoiceRecording() async {
+        guard !isVoiceActionInFlight, !isTranscribing else { return }
+
+        isVoiceActionInFlight = true
+        defer { isVoiceActionInFlight = false }
+
+        if isRecording {
+            await stopVoiceRecording()
+        } else {
+            await startVoiceRecording()
+        }
+    }
+
     /// Cancel voice recording.
     func cancelVoiceRecording() {
         transcriptionService.cancel()
         isRecording = false
         isTranscribing = false
+        isVoiceActionInFlight = false
     }
 
     private var hasVoiceAuthToken: Bool {

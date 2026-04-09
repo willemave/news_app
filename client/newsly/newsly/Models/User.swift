@@ -15,6 +15,7 @@ struct CouncilPersona: Codable, Equatable, Identifiable {
 
     static let maxExperts = 3
     static let minExperts = 2
+    static let defaults: [CouncilPersona] = []
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -57,7 +58,6 @@ struct User: Codable, Identifiable, Equatable {
     let isActive: Bool
     let hasCompletedOnboarding: Bool
     let hasCompletedNewUserTutorial: Bool
-    let hasCompletedLiveVoiceOnboarding: Bool
     let createdAt: Date
     let updatedAt: Date
 
@@ -74,7 +74,6 @@ struct User: Codable, Identifiable, Equatable {
         case isActive = "is_active"
         case hasCompletedOnboarding = "has_completed_onboarding"
         case hasCompletedNewUserTutorial = "has_completed_new_user_tutorial"
-        case hasCompletedLiveVoiceOnboarding = "has_completed_live_voice_onboarding"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -92,7 +91,6 @@ struct User: Codable, Identifiable, Equatable {
         isActive: Bool,
         hasCompletedOnboarding: Bool,
         hasCompletedNewUserTutorial: Bool,
-        hasCompletedLiveVoiceOnboarding: Bool,
         createdAt: Date,
         updatedAt: Date
     ) {
@@ -108,7 +106,6 @@ struct User: Codable, Identifiable, Equatable {
         self.isActive = isActive
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.hasCompletedNewUserTutorial = hasCompletedNewUserTutorial
-        self.hasCompletedLiveVoiceOnboarding = hasCompletedLiveVoiceOnboarding
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -129,10 +126,6 @@ struct User: Codable, Identifiable, Equatable {
         isActive = try container.decode(Bool.self, forKey: .isActive)
         hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? true
         hasCompletedNewUserTutorial = try container.decode(Bool.self, forKey: .hasCompletedNewUserTutorial)
-        hasCompletedLiveVoiceOnboarding = try container.decodeIfPresent(
-            Bool.self,
-            forKey: .hasCompletedLiveVoiceOnboarding
-        ) ?? false
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }

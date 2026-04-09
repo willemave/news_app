@@ -189,10 +189,6 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         }
     }
 
-    var isLiveVoiceSession: Bool {
-        sessionType == "voice_live"
-    }
-
     var displayTitle: String {
         title ?? articleTitle ?? "Chat"
     }
@@ -289,8 +285,6 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "bubble.left.and.bubble.right.fill"
         case "assistant_quick":
             return "sparkle.magnifyingglass"
-        case "voice_live":
-            return "waveform.and.mic"
         case "deep_research":
             return "magnifyingglass.circle.fill"
         case "weekly_discovery":
@@ -315,8 +309,6 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "Knowledge"
         case "assistant_quick":
             return "Assistant"
-        case "voice_live":
-            return "Live Voice"
         case "deep_research":
             return "Deep Research"
         case "weekly_discovery":

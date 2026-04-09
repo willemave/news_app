@@ -1,23 +1,6 @@
 from __future__ import annotations
 
 
-def test_realtime_token_endpoint(client, monkeypatch):
-    def fake_create_secret(*, locale=None):
-        return ("test-token", 1234567890, "gpt-realtime")
-
-    monkeypatch.setattr(
-        "app.services.openai_realtime.create_transcription_session_token", fake_create_secret
-    )
-
-    response = client.post("/api/openai/realtime/token")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["token"] == "test-token"
-    assert data["expires_at"] == 1234567890
-    assert data["model"] == "gpt-realtime"
-    assert data["session_type"] == "transcription"
-
-
 def test_audio_transcription_endpoint(client, monkeypatch):
     class FakeTranscriptionService:
         def transcribe_audio_from_buffer(self, audio_buffer, filename):

@@ -109,7 +109,6 @@ struct AuthenticatedRootView: View {
             isActive: user.isActive,
             hasCompletedOnboarding: completed,
             hasCompletedNewUserTutorial: user.hasCompletedNewUserTutorial,
-            hasCompletedLiveVoiceOnboarding: user.hasCompletedLiveVoiceOnboarding,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         )
@@ -128,7 +127,6 @@ struct AuthenticatedRootView: View {
             isActive: user.isActive,
             hasCompletedOnboarding: user.hasCompletedOnboarding,
             hasCompletedNewUserTutorial: completed,
-            hasCompletedLiveVoiceOnboarding: user.hasCompletedLiveVoiceOnboarding,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         )

@@ -26,7 +26,7 @@ final class OpenAIService {
     @discardableResult
     func refreshTranscriptionAvailability() async -> Bool {
         do {
-            _ = try await fetchRealtimeToken()
+            _ = try await fetchAccessToken()
             await MainActor.run {
                 AppSettings.shared.setBackendTranscriptionAvailable(true)
             }
@@ -37,13 +37,6 @@ final class OpenAIService {
             }
             return false
         }
-    }
-
-    func fetchRealtimeToken() async throws -> RealtimeTokenResponse {
-        try await client.request(
-            APIEndpoints.openaiRealtimeToken,
-            method: "POST"
-        )
     }
 
     func transcribeAudio(

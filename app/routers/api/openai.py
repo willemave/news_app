@@ -5,36 +5,26 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.core.deps import get_current_user
-from app.models.api.common import RealtimeTokenResponse
-from app.models.api.openai import AudioTranscriptionResponse
+from app.core.settings import get_settings
+from app.models.api.openai import AudioTranscriptionHealthResponse, AudioTranscriptionResponse
 from app.models.user import User
-from app.services import openai_realtime
 from app.services.openai_llm import get_openai_transcription_service
 
 router = APIRouter(prefix="/openai", tags=["openai"])
 
 
-@router.post(
-    "/realtime/token",
-    response_model=RealtimeTokenResponse,
-    summary="Create OpenAI Realtime token",
+@router.get(
+    "/transcriptions/health",
+    response_model=AudioTranscriptionHealthResponse,
+    summary="Check uploaded-audio transcription availability",
 )
-async def create_realtime_token(
+async def transcription_health(
     current_user: Annotated[User, Depends(get_current_user)],
-) -> RealtimeTokenResponse:
-    """Create a short-lived token for OpenAI Realtime sessions."""
+) -> AudioTranscriptionHealthResponse:
+    """Return whether backend-managed audio transcription is configured."""
     _ = current_user
-    try:
-        token, expires_at, model = openai_realtime.create_transcription_session_token()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    return RealtimeTokenResponse(
-        token=token,
-        expires_at=expires_at,
-        model=model,
-        session_type="transcription",
-    )
+    settings = get_settings()
+    return AudioTranscriptionHealthResponse(available=bool(settings.openai_api_key))
 
 
 @router.post(

@@ -17,9 +17,7 @@ struct ChatSessionHistoryView: View {
     }
 
     private var knowledgeSessions: [ChatSessionSummary] {
-        viewModel.sessions.filter {
-            $0.sessionType != "voice_live" && !$0.isLiveVoiceSession
-        }
+        viewModel.sessions
     }
 
     private var filteredSessions: [ChatSessionSummary] {

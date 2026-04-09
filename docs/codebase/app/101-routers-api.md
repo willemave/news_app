@@ -34,5 +34,3 @@ User-facing JSON API surface for content, chat, discovery, onboarding, voice, in
 | `app/routers/api/scraper_configs.py` | `ScraperConfigResponse`, `SubscribeToFeedRequest`, `list_scraper_configs`, `create_scraper_config`, `update_scraper_config`, `delete_scraper_config_endpoint`, `subscribe_to_feed` | CRUD endpoints for per-user scraper configurations. |
 | `app/routers/api/stats.py` | `get_unread_counts`, `get_processing_count`, `get_long_form_stats` | User-scoped content statistics endpoints. |
 | `app/routers/api/submission.py` | `submit_content`, `list_submission_statuses` | Endpoint for one-off user submissions. |
-| `app/routers/api/voice.py` | `create_or_resume_voice_session`, `voice_health`, `voice_websocket` | Realtime voice conversation endpoints. |
-| `app/routers/api/voice_models.py` | `CreateVoiceSessionRequest`, `CreateVoiceSessionResponse`, `VoiceHealthResponse`, `VoiceClientSessionStartEvent`, `VoiceClientAudioFrameEvent`, `VoiceClientAudioCommitEvent`, `VoiceClientCancelEvent`, `VoiceClientSessionEndEvent`, `VoiceClientIntroAckEvent` | Pydantic DTOs for voice session endpoints and websocket events. |

@@ -31,7 +31,6 @@ from app.routers.api import (
     onboarding,
     openai,
     scraper_configs,
-    voice,
 )
 from app.services.langfuse_tracing import (
     flush_langfuse_tracing,
@@ -331,7 +330,6 @@ app.include_router(integrations.router, prefix="/api")
 app.include_router(integrations.llm_router, prefix="/api")
 app.include_router(agent.router, prefix="/api")
 app.include_router(openai.router, prefix="/api")
-app.include_router(voice.router, prefix="/api")
 
 
 @app.get("/", include_in_schema=False)

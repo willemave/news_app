@@ -49,9 +49,9 @@ final class KnowledgeHubViewModelTests: XCTestCase {
         )
     }
 
-    func testLoadHubFiltersVoiceSessionsAndLimitsToFive() async {
+    func testLoadHubLimitsToFiveMostRecentSessions() async {
         let sessions = [
-            makeSession(id: 1, sessionType: "voice_live"),
+            makeSession(id: 1),
             makeSession(id: 2),
             makeSession(id: 3),
             makeSession(id: 4),
@@ -68,7 +68,7 @@ final class KnowledgeHubViewModelTests: XCTestCase {
         await viewModel.loadHub()
 
         XCTAssertEqual(chatService.requestedListLimit, 10)
-        XCTAssertEqual(viewModel.recentSessions.map(\.id), [2, 3, 4, 5, 6])
+        XCTAssertEqual(viewModel.recentSessions.map(\.id), [1, 2, 3, 4, 5])
         XCTAssertNil(viewModel.errorMessage)
     }
 

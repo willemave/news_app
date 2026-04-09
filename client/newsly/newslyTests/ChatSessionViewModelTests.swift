@@ -12,10 +12,63 @@ final class ChatSessionViewModelTests: XCTestCase {
         XCTAssertTrue(service === VoiceDictationService.shared)
     }
 
+    func testToggleVoiceRecordingStartsRecordingOnFirstTap() async {
+        let transcriptionService = MockChatSpeechTranscriber(transcript: "Ignored")
+        let viewModel = ChatSessionViewModel(
+            sessionId: 42,
+            initialVoiceDictationAvailable: true,
+            transcriptionService: transcriptionService
+        )
+
+        await viewModel.toggleVoiceRecording()
+
+        XCTAssertTrue(viewModel.isRecording)
+        XCTAssertFalse(viewModel.isTranscribing)
+        XCTAssertEqual(transcriptionService.startCallCount, 1)
+        XCTAssertEqual(transcriptionService.stopCallCount, 0)
+    }
+
+    func testToggleVoiceRecordingStopsRecordingOnSecondTapAndPopulatesDraft() async {
+        let transcriptionService = MockChatSpeechTranscriber(transcript: "Final transcript")
+        let viewModel = ChatSessionViewModel(
+            sessionId: 42,
+            initialVoiceDictationAvailable: true,
+            transcriptionService: transcriptionService
+        )
+
+        await viewModel.toggleVoiceRecording()
+        await viewModel.toggleVoiceRecording()
+
+        XCTAssertEqual(viewModel.inputText, "Final transcript")
+        XCTAssertFalse(viewModel.isRecording)
+        XCTAssertFalse(viewModel.isTranscribing)
+        XCTAssertEqual(transcriptionService.startCallCount, 1)
+        XCTAssertEqual(transcriptionService.stopCallCount, 1)
+    }
+
+    func testToggleVoiceRecordingIgnoresTapWhileTranscribing() async {
+        let transcriptionService = MockChatSpeechTranscriber(transcript: "Ignored")
+        let viewModel = ChatSessionViewModel(
+            sessionId: 42,
+            initialVoiceDictationAvailable: true,
+            transcriptionService: transcriptionService
+        )
+
+        viewModel.isTranscribing = true
+
+        await viewModel.toggleVoiceRecording()
+
+        XCTAssertEqual(transcriptionService.startCallCount, 0)
+        XCTAssertEqual(transcriptionService.stopCallCount, 0)
+        XCTAssertFalse(viewModel.isRecording)
+        XCTAssertTrue(viewModel.isTranscribing)
+    }
+
     func testStopVoiceRecordingPopulatesInputWithoutStreamingPreview() async {
         let transcriptionService = MockChatSpeechTranscriber(transcript: "Final transcript")
         let viewModel = ChatSessionViewModel(
             sessionId: 42,
+            initialVoiceDictationAvailable: true,
             transcriptionService: transcriptionService
         )
 
@@ -34,6 +87,7 @@ final class ChatSessionViewModelTests: XCTestCase {
         let transcriptionService = MockChatSpeechTranscriber(transcript: "second thought")
         let viewModel = ChatSessionViewModel(
             sessionId: 42,
+            initialVoiceDictationAvailable: true,
             transcriptionService: transcriptionService
         )
 
@@ -57,6 +111,8 @@ private final class MockChatSpeechTranscriber: SpeechTranscribing {
     var isAvailable = true
     var isRecording = false
     var isTranscribing = false
+    private(set) var startCallCount = 0
+    private(set) var stopCallCount = 0
 
     private let transcript: String
 
@@ -65,11 +121,13 @@ private final class MockChatSpeechTranscriber: SpeechTranscribing {
     }
 
     func start() async throws {
+        startCallCount += 1
         isRecording = true
         onStateChange?(.recording)
     }
 
     func stop() async throws -> String {
+        stopCallCount += 1
         isRecording = false
         isTranscribing = false
         onStateChange?(.idle)

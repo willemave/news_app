@@ -315,7 +315,6 @@ struct DebugMenuView: View {
             isActive: user.isActive,
             hasCompletedOnboarding: false,
             hasCompletedNewUserTutorial: false,
-            hasCompletedLiveVoiceOnboarding: user.hasCompletedLiveVoiceOnboarding,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         )
