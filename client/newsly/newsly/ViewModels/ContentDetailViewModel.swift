@@ -152,24 +152,24 @@ class ContentDetailViewModel: ObservableObject {
         presentActivityViewControllerWhenReady(activityVC)
     }
     
-    func toggleFavorite() async {
+    func toggleKnowledgeSave() async {
         guard let currentContent = content else { return }
 
         do {
-            // Optimistically update the UI
-            content?.isFavorited.toggle()
-
-            // Make API call
-            let response = try await contentService.toggleFavorite(id: currentContent.id)
-
-            // Update with server response
-            if let isFavorited = response["is_favorited"] as? Bool {
-                content?.isFavorited = isFavorited
+            let targetSavedState = !currentContent.isSavedToKnowledge
+            content?.isSavedToKnowledge = targetSavedState
+            if targetSavedState {
+                let response = try await contentService.saveToKnowledge(id: currentContent.id)
+                if let isSavedToKnowledge = response["is_saved_to_knowledge"] as? Bool {
+                    content?.isSavedToKnowledge = isSavedToKnowledge
+                }
+            } else {
+                try await contentService.removeFromKnowledge(id: currentContent.id)
+                content?.isSavedToKnowledge = false
             }
         } catch {
-            // Revert on error
-            content?.isFavorited = currentContent.isFavorited
-            errorMessage = "Failed to update favorite status"
+            content?.isSavedToKnowledge = currentContent.isSavedToKnowledge
+            errorMessage = "Failed to update knowledge save"
         }
     }
 

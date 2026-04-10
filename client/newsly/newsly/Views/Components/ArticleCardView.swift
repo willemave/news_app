@@ -16,7 +16,7 @@ struct ArticleCardView: View {
     let hook: String?
     let topics: [String]?
     let isLoadingKeyPoints: Bool
-    let onFavorite: () -> Void
+    let onSaveToKnowledge: () -> Void
     let onMarkRead: () -> Void
     let onTap: () -> Void
     let onDownloadMore: (Int) -> Void
@@ -286,11 +286,11 @@ struct ArticleCardView: View {
 
             Spacer()
 
-            // Favorite
-            Button(action: onFavorite) {
-                Image(systemName: content.isFavorited ? "star.fill" : "star")
+            // Save to Knowledge
+            Button(action: onSaveToKnowledge) {
+                Image(systemName: content.isSavedToKnowledge ? "books.vertical.fill" : "books.vertical")
                     .font(.system(size: 20, weight: .regular))
-                    .foregroundColor(content.isFavorited ? .yellow : .secondary)
+                    .foregroundColor(content.isSavedToKnowledge ? .terracottaPrimary : .secondary)
             }
             .frame(width: 44, height: 44)
         }

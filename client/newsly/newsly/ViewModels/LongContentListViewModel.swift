@@ -175,24 +175,31 @@ final class LongContentListViewModel: BaseContentListViewModel {
         }
     }
 
-    func toggleFavorite(_ contentId: Int) async {
-        logger.info("[LongContentList] toggleFavorite called | contentId=\(contentId)")
+    func toggleKnowledgeSave(_ contentId: Int) async {
+        logger.info("[LongContentList] toggleKnowledgeSave called | contentId=\(contentId)")
 
         guard let current = currentItems().first(where: { $0.id == contentId }) else {
-            logger.warning("[LongContentList] toggleFavorite failed: item not found | contentId=\(contentId)")
+            logger.warning("[LongContentList] toggleKnowledgeSave failed: item not found | contentId=\(contentId)")
             return
         }
-        updateItem(id: contentId) { $0.updating(isFavorited: !current.isFavorited) }
+        let targetSavedState = !current.isSavedToKnowledge
+        updateItem(id: contentId) { $0.updating(isSavedToKnowledge: targetSavedState) }
 
         do {
-            let response = try await contentService.toggleFavorite(id: contentId)
-            if let isFavorited = response["is_favorited"] as? Bool {
-                updateItem(id: contentId) { $0.updating(isFavorited: isFavorited) }
-                logger.info("[LongContentList] toggleFavorite success | contentId=\(contentId) isFavorited=\(isFavorited)")
+            if targetSavedState {
+                let response = try await contentService.saveToKnowledge(id: contentId)
+                if let isSavedToKnowledge = response["is_saved_to_knowledge"] as? Bool {
+                    updateItem(id: contentId) { $0.updating(isSavedToKnowledge: isSavedToKnowledge) }
+                    logger.info("[LongContentList] toggleKnowledgeSave success | contentId=\(contentId) isSavedToKnowledge=\(isSavedToKnowledge)")
+                }
+            } else {
+                try await contentService.removeFromKnowledge(id: contentId)
+                updateItem(id: contentId) { $0.updating(isSavedToKnowledge: false) }
+                logger.info("[LongContentList] toggleKnowledgeSave success | contentId=\(contentId) isSavedToKnowledge=false")
             }
         } catch {
-            updateItem(id: contentId) { $0.updating(isFavorited: current.isFavorited) }
-            logger.error("[LongContentList] toggleFavorite failed | contentId=\(contentId) error=\(error.localizedDescription)")
+            updateItem(id: contentId) { $0.updating(isSavedToKnowledge: current.isSavedToKnowledge) }
+            logger.error("[LongContentList] toggleKnowledgeSave failed | contentId=\(contentId) error=\(error.localizedDescription)")
         }
     }
 

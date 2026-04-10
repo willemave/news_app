@@ -17,8 +17,8 @@ class ContentListViewModel: CursorPaginatedViewModel {
     @Published var isLoadingMore = false
     @Published var errorMessage: String?
 
-    // Track if we're in favorites mode
-    private var isFavoritesMode: Bool = false
+    // Track if we're in knowledge library mode
+    private var isKnowledgeLibraryMode: Bool = false
     // Track if we're in recently read mode
     private var isRecentlyReadMode: Bool = false
 
@@ -57,7 +57,7 @@ class ContentListViewModel: CursorPaginatedViewModel {
         errorMessage = nil
 
         // Reset pagination and special modes when loading fresh content
-        isFavoritesMode = false
+        isKnowledgeLibraryMode = false
         isRecentlyReadMode = false
         resetPagination()
 
@@ -103,8 +103,8 @@ class ContentListViewModel: CursorPaginatedViewModel {
         do {
             let response: ContentListResponse
 
-            if isFavoritesMode {
-                response = try await contentService.fetchFavoritesList(cursor: cursor)
+            if isKnowledgeLibraryMode {
+                response = try await contentService.fetchKnowledgeLibrary(cursor: cursor)
             } else if isRecentlyReadMode {
                 response = try await contentService.fetchRecentlyReadList(cursor: cursor)
             } else {
@@ -165,42 +165,40 @@ class ContentListViewModel: CursorPaginatedViewModel {
         }
     }
     
-    func toggleFavorite(_ contentId: Int) async {
+    func toggleKnowledgeSave(_ contentId: Int) async {
         do {
-            // Find the content
             guard let index = contents.firstIndex(where: { $0.id == contentId }) else { return }
             let currentContent = contents[index]
-            
-            // Optimistically update the UI
-            contents[index] = currentContent.updating(isFavorited: !currentContent.isFavorited)
-            
-            // Make API call
-            let response = try await contentService.toggleFavorite(id: contentId)
-            
-            // Update with server response
-            if let isFavorited = response["is_favorited"] as? Bool {
-                contents[index] = currentContent.updating(isFavorited: isFavorited)
+            let targetSavedState = !currentContent.isSavedToKnowledge
+
+            contents[index] = currentContent.updating(isSavedToKnowledge: targetSavedState)
+            if targetSavedState {
+                let response = try await contentService.saveToKnowledge(id: contentId)
+                if let isSavedToKnowledge = response["is_saved_to_knowledge"] as? Bool {
+                    contents[index] = currentContent.updating(isSavedToKnowledge: isSavedToKnowledge)
+                }
+            } else {
+                try await contentService.removeFromKnowledge(id: contentId)
+                contents[index] = currentContent.updating(isSavedToKnowledge: false)
             }
         } catch {
-            // Revert on error
             if let index = contents.firstIndex(where: { $0.id == contentId }) {
-                contents[index] = contents[index].updating(isFavorited: !contents[index].isFavorited)
+                contents[index] = contents[index].updating(isSavedToKnowledge: !contents[index].isSavedToKnowledge)
             }
-            errorMessage = "Failed to update favorite status"
+            errorMessage = "Failed to update knowledge save"
         }
     }
 
-    func loadFavorites() async {
+    func loadKnowledgeLibrary() async {
         isLoading = true
         errorMessage = nil
 
-        // Set favorites mode and reset pagination
-        isFavoritesMode = true
+        isKnowledgeLibraryMode = true
         isRecentlyReadMode = false
         resetPagination()
 
         do {
-            let response = try await contentService.fetchFavoritesList(cursor: nil)
+            let response = try await contentService.fetchKnowledgeLibrary(cursor: nil)
             contents = response.contents
             availableDates = response.availableDates
             contentTypes = response.contentTypes
@@ -216,8 +214,7 @@ class ContentListViewModel: CursorPaginatedViewModel {
         isLoading = true
         errorMessage = nil
 
-        // Set recently read mode and reset pagination
-        isFavoritesMode = false
+        isKnowledgeLibraryMode = false
         isRecentlyReadMode = true
         resetPagination()
 

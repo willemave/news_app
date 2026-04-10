@@ -12,14 +12,14 @@ struct LongFormStatsResponse: Codable {
     let totalCount: Int
     let unreadCount: Int
     let readCount: Int
-    let favoritedCount: Int
+    let savedToKnowledgeCount: Int
     let processingCount: Int
 
     enum CodingKeys: String, CodingKey {
         case totalCount = "total_count"
         case unreadCount = "unread_count"
         case readCount = "read_count"
-        case favoritedCount = "favorited_count"
+        case savedToKnowledgeCount = "saved_to_knowledge_count"
         case processingCount = "processing_count"
     }
 }
@@ -31,7 +31,7 @@ final class LongFormStatsService: ObservableObject {
     @Published var totalCount: Int = 0
     @Published var unreadCount: Int = 0
     @Published var readCount: Int = 0
-    @Published var favoritedCount: Int = 0
+    @Published var savedToKnowledgeCount: Int = 0
     @Published var processingCount: Int = 0
 
     private let client = APIClient.shared
@@ -44,7 +44,7 @@ final class LongFormStatsService: ObservableObject {
             totalCount = response.totalCount
             unreadCount = response.unreadCount
             readCount = response.readCount
-            favoritedCount = response.favoritedCount
+            savedToKnowledgeCount = response.savedToKnowledgeCount
             processingCount = response.processingCount
         } catch {
             print("Failed to fetch long-form stats: \(error)")

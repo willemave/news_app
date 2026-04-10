@@ -38,10 +38,10 @@ struct ProcessingStatsView: View {
                     color: .green
                 )
                 statRow(
-                    title: "Favorited",
-                    subtitle: "Saved items",
-                    count: statsService.favoritedCount,
-                    icon: "star.fill",
+                    title: "Saved to Knowledge",
+                    subtitle: "Markdown-backed library items",
+                    count: statsService.savedToKnowledgeCount,
+                    icon: "books.vertical.fill",
                     color: .yellow
                 )
                 statRow(

@@ -107,7 +107,7 @@ struct ChatSessionCard: View {
              Text(preview).foregroundColor(.onSurfaceSecondary))
                 .font(.terracottaBodyMedium)
                 .lineLimit(2)
-        } else if session.isEmptyFavorite, let summary = session.articleSummary, !summary.isEmpty {
+        } else if session.isEmptyKnowledgeSave, let summary = session.articleSummary, !summary.isEmpty {
             Text(summary)
                 .font(.terracottaBodyMedium)
                 .foregroundColor(.onSurfaceSecondary)

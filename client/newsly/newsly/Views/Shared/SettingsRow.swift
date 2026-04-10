@@ -137,7 +137,7 @@ struct SettingsToggleRow: View {
 
 #Preview {
     VStack(spacing: 0) {
-        SettingsRow(icon: "star", iconColor: .yellow, title: "Favorites")
+        SettingsRow(icon: "books.vertical", iconColor: .yellow, title: "Knowledge Library")
 
         RowDivider()
 

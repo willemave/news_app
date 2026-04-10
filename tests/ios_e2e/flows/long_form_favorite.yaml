@@ -23,6 +23,6 @@ appId: "${APP_ID}"
 - assertVisible:
     id: content.detail.screen
 - tapOn:
-    id: content.action.favorite
+    id: content.action.knowledge
 - assertVisible:
     id: content.detail.screen

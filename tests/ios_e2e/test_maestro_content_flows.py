@@ -10,7 +10,7 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserProm
 from app.models.schema import (
     ChatMessage,
     ChatSession,
-    ContentFavorites,
+    ContentKnowledgeSave,
     ContentReadStatus,
     NewsItem,
 )
@@ -55,10 +55,10 @@ def test_long_form_detail_favorite_action_updates_backend_state(
     )
 
     favorite = (
-        db_session.query(ContentFavorites)
+        db_session.query(ContentKnowledgeSave)
         .filter(
-            ContentFavorites.user_id == test_user.id,
-            ContentFavorites.content_id == content.id,
+            ContentKnowledgeSave.user_id == test_user.id,
+            ContentKnowledgeSave.content_id == content.id,
         )
         .one_or_none()
     )
@@ -231,8 +231,10 @@ def test_council_tabs_switch_between_mocked_branch_replies(
         "long_form_council_mocked.yaml",
         extra_env={
             "CONTENT_ID": str(content.id),
-            "ANALYST_REPLY": "Analyst mocked council reply",
-            "STRATEGIST_REPLY": "Strategist mocked council reply",
+            "PRIMARY_PERSONA_NAME": "Paul Graham",
+            "SECONDARY_PERSONA_NAME": "Ben Thompson",
+            "PRIMARY_PERSONA_REPLY": "Paul Graham mocked council reply",
+            "SECONDARY_PERSONA_REPLY": "Ben Thompson mocked council reply",
         },
     )
 

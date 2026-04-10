@@ -548,10 +548,17 @@ struct ContentDetailView: View {
         chatError = nil
 
         do {
-            let session = try await ChatService.shared.startArticleChat(
-                contentId: contentId,
-                provider: provider
-            )
+            let session: ChatSessionSummary
+            if let existingSession = try await ChatService.shared.getSessionForContent(
+                contentId: contentId
+            ) {
+                session = existingSession
+            } else {
+                session = try await ChatService.shared.startArticleChat(
+                    contentId: contentId,
+                    provider: provider
+                )
+            }
             activeSheet = nil
             openChatSession(
                 sessionId: session.id,
@@ -1025,20 +1032,21 @@ struct ContentDetailView: View {
                 .accessibilityLabel("Save linked article to Knowledge")
             }
 
-            Spacer()
+            if content.contentTypeEnum != .news {
+                Spacer()
 
-            // Favorite
-            Button(action: {
-                Task { await viewModel.toggleFavorite() }
-            }) {
-                let favColor: Color = content.isFavorited ? .yellow : (overlaid ? .white : .secondary)
-                minimalActionIcon(
-                    content.isFavorited ? "star.fill" : "star",
-                    color: favColor,
-                    overlaid: overlaid
-                )
+                Button(action: {
+                    Task { await viewModel.toggleKnowledgeSave() }
+                }) {
+                    let knowledgeColor: Color = content.isSavedToKnowledge ? .terracottaPrimary : (overlaid ? .white : .secondary)
+                    minimalActionIcon(
+                        content.isSavedToKnowledge ? "books.vertical.fill" : "books.vertical",
+                        color: knowledgeColor,
+                        overlaid: overlaid
+                    )
+                }
+                .accessibilityIdentifier("content.action.knowledge")
             }
-            .accessibilityIdentifier("content.action.favorite")
 
             if supportsSummaryNarration(for: content) {
                 Spacer()

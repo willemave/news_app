@@ -11,7 +11,7 @@ struct LongFormCard: View {
     let content: ContentSummary
     var variant: Variant = .hero
     var onMarkRead: (() -> Void)?
-    var onToggleFavorite: (() -> Void)?
+    var onToggleKnowledgeSave: (() -> Void)?
 
     enum Variant {
         case hero
@@ -97,14 +97,14 @@ struct LongFormCard: View {
                             .accessibilityIdentifier("long.action.mark_read.\(content.id)")
 
                             Button {
-                                onToggleFavorite?()
+                                onToggleKnowledgeSave?()
                             } label: {
-                                Image(systemName: content.isFavorited ? "star.fill" : "star")
+                                Image(systemName: content.isSavedToKnowledge ? "books.vertical.fill" : "books.vertical")
                                     .font(.system(size: 20))
-                                    .foregroundStyle(content.isFavorited ? Color.terracottaPrimary : Color.onSurfaceSecondary)
+                                    .foregroundStyle(content.isSavedToKnowledge ? Color.terracottaPrimary : Color.onSurfaceSecondary)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityIdentifier("long.action.favorite.\(content.id)")
+                            .accessibilityIdentifier("long.action.knowledge.\(content.id)")
                         }
                     }
                     .padding(.top, 4)

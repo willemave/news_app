@@ -54,15 +54,15 @@ struct RecentlyReadView: View {
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button {
                                     Task {
-                                        await viewModel.toggleFavorite(content.id)
+                                        await viewModel.toggleKnowledgeSave(content.id)
                                     }
                                 } label: {
                                     Label(
-                                        content.isFavorited ? "Remove from Favorites" : "Add to Favorites",
-                                        systemImage: content.isFavorited ? "star.slash" : "star"
+                                        content.isSavedToKnowledge ? "Remove from Knowledge" : "Save to Knowledge",
+                                        systemImage: content.isSavedToKnowledge ? "books.vertical.fill" : "books.vertical"
                                     )
                                 }
-                                .tint(content.isFavorited ? .red : .yellow)
+                                .tint(content.isSavedToKnowledge ? .red : .terracottaPrimary)
                             }
                             .onAppear {
                                 if content.id == viewModel.contents.last?.id {

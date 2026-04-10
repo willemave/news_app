@@ -31,12 +31,12 @@ appId: "${APP_ID}"
 - assertVisible:
     text: Initial mocked assistant reply.
 - assertVisible:
-    text: Analyst
+    text: ${PRIMARY_PERSONA_NAME}
 - assertVisible:
-    text: Strategist
+    text: ${SECONDARY_PERSONA_NAME}
 - assertVisible:
-    text: ${ANALYST_REPLY}
+    text: ${PRIMARY_PERSONA_REPLY}
 - tapOn:
-    text: Strategist
+    text: ${SECONDARY_PERSONA_NAME}
 - assertVisible:
-    text: ${STRATEGIST_REPLY}
+    text: ${SECONDARY_PERSONA_REPLY}

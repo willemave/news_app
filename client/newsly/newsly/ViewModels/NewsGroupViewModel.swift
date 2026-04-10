@@ -149,40 +149,6 @@ class NewsGroupViewModel: CursorPaginatedViewModel {
         }
     }
 
-    func toggleFavorite(_ contentId: Int) async {
-        // Find group and item
-        guard let groupIndex = newsGroups.firstIndex(where: { $0.items.contains(where: { $0.id == contentId }) }) else {
-            return
-        }
-
-        let group = newsGroups[groupIndex]
-        guard group.items.contains(where: { $0.id == contentId }) else {
-            return
-        }
-
-        // Optimistically update
-        newsGroups[groupIndex] = group.updatingItem(id: contentId) { item in
-            item.updating(isFavorited: !item.isFavorited)
-        }
-
-        do {
-            let response = try await contentService.toggleFavorite(id: contentId)
-
-            // Update with server response
-            if let isFavorited = response["is_favorited"] as? Bool {
-                newsGroups[groupIndex] = group.updatingItem(id: contentId) { item in
-                    item.updating(isFavorited: isFavorited)
-                }
-            }
-        } catch {
-            // Revert on error
-            newsGroups[groupIndex] = group.updatingItem(id: contentId) { item in
-                item.updating(isFavorited: !item.isFavorited)
-            }
-            errorMessage = "Failed to toggle favorite"
-        }
-    }
-
     func refresh() async {
         resetPagination()
         await loadNewsGroups(preserveReadGroups: true)

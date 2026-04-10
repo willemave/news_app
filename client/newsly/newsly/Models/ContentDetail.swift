@@ -25,7 +25,7 @@ struct ContentDetail: Codable, Identifiable {
     let checkedOutAt: String?
     let publicationDate: String?
     var isRead: Bool
-    var isFavorited: Bool
+    var isSavedToKnowledge: Bool
     let summary: String?
     let shortSummary: String?
     let summaryKind: String?
@@ -65,7 +65,7 @@ struct ContentDetail: Codable, Identifiable {
         case checkedOutAt = "checked_out_at"
         case publicationDate = "publication_date"
         case isRead = "is_read"
-        case isFavorited = "is_favorited"
+        case isSavedToKnowledge = "is_saved_to_knowledge"
         case summary
         case shortSummary = "short_summary"
         case summaryKind = "summary_kind"

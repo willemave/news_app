@@ -172,9 +172,9 @@ struct LongFormView: View {
                 onMarkRead: {
                     viewModel.markAsRead(content.id)
                 },
-                onToggleFavorite: {
+                onToggleKnowledgeSave: {
                     Task {
-                        await viewModel.toggleFavorite(content.id)
+                        await viewModel.toggleKnowledgeSave(content.id)
                     }
                 }
             )
