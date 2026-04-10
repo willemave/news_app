@@ -14,6 +14,7 @@ from app.core.settings import get_settings
 from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.schema import NewsItem
 from app.services.news_embeddings import encode_news_texts
+from app.utils.title_utils import clean_title
 from app.utils.url_utils import normalize_http_url
 
 MATCH_TOKEN_PATTERN = re.compile(r"[a-z0-9]{3,}")
@@ -46,6 +47,7 @@ MULTI_VIEW_WEIGHTS = {
 }
 SEMANTIC_PREFILTER_MIN_TITLE_TOKEN_OVERLAP = 1
 SEMANTIC_PREFILTER_MAX_CANDIDATES = 12
+CLUSTER_RELATED_TITLE_LIMIT = 6
 
 
 def _utcnow_naive() -> datetime:
@@ -59,20 +61,12 @@ def _clean_string(value: Any) -> str | None:
     return cleaned or None
 
 
-def _normalize_title_key(value: str | None) -> str | None:
-    cleaned = _clean_string(value)
-    if not cleaned:
-        return None
-    return cleaned.casefold()
-
-
 def _normalize_match_token(token: str) -> str:
     normalized = token.casefold()
     if normalized.endswith("ing") and len(normalized) > 6:
         normalized = normalized[:-3]
-    elif (
-        (normalized.endswith("ed") and len(normalized) > 5)
-        or (normalized.endswith("es") and len(normalized) > 5)
+    elif (normalized.endswith("ed") and len(normalized) > 5) or (
+        normalized.endswith("es") and len(normalized) > 5
     ):
         normalized = normalized[:-2]
     elif normalized.endswith("s") and len(normalized) > 4:
@@ -101,10 +95,89 @@ def matching_text(item: NewsItem) -> str:
     )
 
 
+def _relation_primary_title(item: NewsItem) -> str | None:
+    return clean_title(item.summary_title or item.article_title)
+
+
+def _cluster_related_titles(item: NewsItem) -> list[str]:
+    titles: list[str] = []
+    seen: set[str] = set()
+
+    def _append_title(value: Any) -> None:
+        cleaned = clean_title(value)
+        if not cleaned:
+            return
+        key = cleaned.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        titles.append(cleaned)
+
+    _append_title(item.summary_title or item.article_title)
+
+    raw_cluster = dict(item.raw_metadata or {}).get("cluster")
+    related_titles = raw_cluster.get("related_titles") if isinstance(raw_cluster, dict) else None
+    if isinstance(related_titles, list):
+        for value in related_titles:
+            _append_title(value)
+            if len(titles) >= CLUSTER_RELATED_TITLE_LIMIT:
+                break
+
+    return titles
+
+
 def title_matching_text(item: NewsItem) -> str:
     """Return the title-specific view text for one item."""
-    title = _clean_string(item.summary_title or item.article_title)
+    title = _relation_primary_title(item)
     return f"Title: {title}" if title else ""
+
+
+def candidate_title_matching_text(item: NewsItem) -> str:
+    """Return cluster-aware title text for representative candidate matching."""
+    titles = _cluster_related_titles(item)
+    if not titles:
+        return ""
+    if len(titles) == 1:
+        return f"Title: {titles[0]}"
+    return "\n".join(
+        (
+            f"Title: {titles[0]}",
+            "Related titles:",
+            *[f"- {title}" for title in titles[1:]],
+        )
+    )
+
+
+def _candidate_title_similarity_scores(
+    item: NewsItem,
+    candidates: list[NewsItem],
+) -> list[float | None]:
+    item_text = title_matching_text(item)
+    if not item_text:
+        return [None] * len(candidates)
+
+    variant_texts: list[str] = []
+    variant_candidate_indexes: list[int] = []
+    for candidate_index, candidate in enumerate(candidates):
+        for title in _cluster_related_titles(candidate):
+            variant_texts.append(f"Title: {title}")
+            variant_candidate_indexes.append(candidate_index)
+
+    if not variant_texts:
+        return [None] * len(candidates)
+
+    vectors = encode_news_texts([item_text, *variant_texts])
+    if vectors.size == 0:
+        return [None] * len(candidates)
+
+    raw_scores = vectors[0] @ vectors[1:].T
+    scores: list[float | None] = [None] * len(candidates)
+    for position, candidate_index in enumerate(variant_candidate_indexes):
+        score = float(raw_scores[position])
+        best_score = scores[candidate_index]
+        if best_score is None or score > best_score:
+            scores[candidate_index] = score
+    return scores
 
 
 def _key_point_texts(item: NewsItem) -> list[str]:
@@ -146,8 +219,16 @@ def provenance_matching_text(item: NewsItem) -> str:
 
 def match_tokens(item: NewsItem) -> set[str]:
     """Return normalized lexical tokens for one news item."""
-    title = _clean_string(item.summary_title or item.article_title)
+    title = _relation_primary_title(item)
     return match_tokens_for_text(title or "")
+
+
+def candidate_match_tokens(item: NewsItem) -> set[str]:
+    """Return lexical tokens for the representative's known title variants."""
+    tokens: set[str] = set()
+    for title in _cluster_related_titles(item):
+        tokens.update(match_tokens_for_text(title))
+    return tokens
 
 
 def match_tokens_for_text(text: str) -> set[str]:
@@ -211,7 +292,7 @@ def _semantic_prefilter_candidates(
     item_source = _normalized_source(item)
     ranked: list[tuple[int, int, int, int, NewsItem, set[str]]] = []
     for index, candidate in enumerate(candidates):
-        candidate_tokens = match_tokens(candidate)
+        candidate_tokens = candidate_match_tokens(candidate)
         overlap = len(item_tokens & candidate_tokens)
         if overlap < SEMANTIC_PREFILTER_MIN_TITLE_TOKEN_OVERLAP:
             continue
@@ -259,13 +340,15 @@ def _view_similarity_scores(
     item: NewsItem,
     candidates: list[NewsItem],
     *,
-    view_builder: Callable[[NewsItem], str],
+    item_view_builder: Callable[[NewsItem], str],
+    candidate_view_builder: Callable[[NewsItem], str] | None = None,
 ) -> list[float | None]:
-    item_text = view_builder(item)
+    item_text = item_view_builder(item)
     if not item_text:
         return [None] * len(candidates)
 
-    candidate_texts = [view_builder(candidate) for candidate in candidates]
+    builder = candidate_view_builder or item_view_builder
+    candidate_texts = [builder(candidate) for candidate in candidates]
     non_empty_indexes = [index for index, text in enumerate(candidate_texts) if text]
     if not non_empty_indexes:
         return [None] * len(candidates)
@@ -296,11 +379,6 @@ def exact_relation_key(item: NewsItem) -> tuple[str, str] | None:
     if item.platform and item.source_external_id:
         return "external", f"{item.platform}:{item.source_external_id}"
     return None
-
-
-def exact_title_relation_key(item: NewsItem) -> str | None:
-    """Return a normalized exact-title key for deduping repeated summaries."""
-    return _normalize_title_key(item.summary_title or item.article_title)
 
 
 def select_best_evidence_item(items: list[NewsItem]) -> NewsItem:
@@ -348,11 +426,21 @@ def _cluster_payload(items: list[NewsItem]) -> dict[str, Any]:
         if domain and domain not in domains:
             domains.append(domain)
 
-        title = _clean_string(item.summary_title or item.article_title)
-        if title and title not in related_titles:
-            related_titles.append(title)
-
         raw_metadata = dict(item.raw_metadata or {})
+        prior_cluster = raw_metadata.get("cluster")
+        prior_related_titles = (
+            prior_cluster.get("related_titles") if isinstance(prior_cluster, dict) else None
+        )
+
+        for candidate_title in (
+            item.summary_title,
+            item.article_title,
+            *(prior_related_titles if isinstance(prior_related_titles, list) else []),
+        ):
+            title = clean_title(candidate_title)
+            if title and title not in related_titles:
+                related_titles.append(title)
+
         top_comment = raw_metadata.get("top_comment")
         if isinstance(top_comment, dict):
             snippet = _clean_string(top_comment.get("text"))
@@ -457,12 +545,6 @@ def find_related_representative(
             if exact_relation_key(candidate) == exact_key:
                 return candidate
 
-    exact_title_key = exact_title_relation_key(item)
-    if exact_title_key is not None:
-        for candidate in candidates:
-            if exact_title_relation_key(candidate) == exact_title_key:
-                return candidate
-
     semantic_candidates, candidate_tokens_by_id, item_tokens = _semantic_prefilter_candidates(
         item,
         candidates,
@@ -472,20 +554,16 @@ def find_related_representative(
 
     similarity_scores = _combine_view_scores(
         view_scores={
-            "title": _view_similarity_scores(
-                item,
-                semantic_candidates,
-                view_builder=title_matching_text,
-            ),
+            "title": _candidate_title_similarity_scores(item, semantic_candidates),
             "content": _view_similarity_scores(
                 item,
                 semantic_candidates,
-                view_builder=content_matching_text,
+                item_view_builder=content_matching_text,
             ),
             "provenance": _view_similarity_scores(
                 item,
                 semantic_candidates,
-                view_builder=provenance_matching_text,
+                item_view_builder=provenance_matching_text,
             ),
         },
     )

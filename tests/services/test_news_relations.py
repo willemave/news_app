@@ -55,15 +55,34 @@ def _high_similarity_encode(texts: list[str]) -> np.ndarray:
     return np.ones((len(texts), 1), dtype=float)
 
 
+def _similarity_matrix(score: float) -> np.ndarray:
+    companion = max(0.0, 1.0 - score**2) ** 0.5
+    return np.array(
+        [
+            [1.0, 0.0],
+            [score, companion],
+        ],
+        dtype=float,
+    )
+
+
+def _uniform_similarity_encode(score: float):
+    def _encode(texts: list[str]) -> np.ndarray:
+        companion = max(0.0, 1.0 - score**2) ** 0.5
+        rows = [[1.0, 0.0]]
+        rows.extend([[score, companion] for _ in texts[1:]])
+        return np.array(rows, dtype=float)
+
+    return _encode
+
+
 def _representative_first_titles(titles: list[str]) -> list[str]:
     tokenized = [match_tokens_for_text(title) for title in titles]
     best_index = 0
     best_overlap = -1
     for index, tokens in enumerate(tokenized):
         overlap = sum(
-            len(tokens & other_tokens)
-            for other_tokens in tokenized
-            if other_tokens is not tokens
+            len(tokens & other_tokens) for other_tokens in tokenized if other_tokens is not tokens
         )
         if overlap > best_overlap:
             best_index = index
@@ -124,7 +143,7 @@ def test_reconcile_news_item_relation_suppresses_exact_duplicate_title_with_diff
 ) -> None:
     monkeypatch.setattr(
         "app.services.news_relations.encode_news_texts",
-        lambda texts: np.eye(len(texts), dtype=float),
+        _high_similarity_encode,
     )
 
     representative = _news_item(
@@ -158,6 +177,42 @@ def test_reconcile_news_item_relation_suppresses_exact_duplicate_title_with_diff
     db_session.refresh(duplicate)
     assert duplicate.representative_news_item_id == representative.id
     assert representative.cluster_size == 2
+
+
+def test_reconcile_news_item_relation_ignores_blocked_placeholder_titles(
+    db_session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.news_relations.encode_news_texts",
+        lambda texts: np.eye(len(texts), dtype=float),
+    )
+
+    representative = _news_item(
+        db_session,
+        ingest_key="wsj-placeholder-rep",
+        source_external_id="120",
+        title="wsj.com",
+        story_url="https://www.wsj.com/tech/ai/story-1",
+    )
+    representative.summary_text = "Anthropic races to contain leak fallout."
+    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+
+    unrelated = _news_item(
+        db_session,
+        ingest_key="wsj-placeholder-unrelated",
+        source_external_id="121",
+        title="wsj.com",
+        story_url="https://www.wsj.com/markets/story-2",
+    )
+    unrelated.summary_text = "Arm stock jumps after a new chip announcement."
+    reconcile_news_item_relation(db_session, news_item_id=unrelated.id)
+    db_session.commit()
+
+    db_session.refresh(representative)
+    db_session.refresh(unrelated)
+    assert representative.cluster_size == 1
+    assert unrelated.representative_news_item_id is None
 
 
 @pytest.mark.parametrize(
@@ -258,16 +313,10 @@ def test_reconcile_news_item_relation_clusters_project_glasswing_launch_family(
     db_session,
     monkeypatch,
 ) -> None:
-    def fake_encode(_texts: list[str]) -> np.ndarray:
-        return np.array(
-            [
-                [1.0, 0.0],
-                [0.77, 0.63],
-            ],
-            dtype=float,
-        )
-
-    monkeypatch.setattr("app.services.news_relations.encode_news_texts", fake_encode)
+    monkeypatch.setattr(
+        "app.services.news_relations.encode_news_texts",
+        _uniform_similarity_encode(0.77),
+    )
 
     representative = _news_item(
         db_session,
@@ -337,6 +386,81 @@ def test_reconcile_news_item_relation_clusters_project_glasswing_launch_family(
     assert representative.cluster_size == 3
 
 
+def test_reconcile_news_item_relation_matches_against_related_cluster_titles(
+    db_session,
+    monkeypatch,
+) -> None:
+    def fake_encode(texts: list[str]) -> np.ndarray:
+        first = texts[0]
+        if first.startswith("Title: Arm Stock Jumps"):
+            rows = [[1.0, 0.0]]
+            for text in texts[1:]:
+                score = 0.84 if "136-Core AGI CPU" in text else 0.68
+                companion = max(0.0, 1.0 - score**2) ** 0.5
+                rows.append([score, companion])
+            return np.array(rows, dtype=float)
+        if first.startswith("Title: "):
+            return _uniform_similarity_encode(0.88)(texts)
+        if first.startswith("Key points:"):
+            return _uniform_similarity_encode(0.82)(texts)
+        if first.startswith("Domain: "):
+            return _uniform_similarity_encode(0.75)(texts)
+        raise AssertionError(f"Unexpected texts: {texts}")
+
+    monkeypatch.setattr("app.services.news_relations.encode_news_texts", fake_encode)
+
+    representative = _news_item(
+        db_session,
+        ingest_key="arm-rep",
+        source_external_id="720",
+        title="Arm Debuts 'AGI CPU' Silicon with 136 Cores for AI Infrastructure",
+        story_url="https://example.com/arm/0",
+    )
+    representative.summary_key_points = ["Arm launches AGI CPU for data centers"]
+    representative.summary_text = "Arm launches AGI CPU for data centers summary"
+    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+
+    for index, title in enumerate(
+        [
+            "Arm Launches First In-House 'AGI CPU' for Agentic AI Infrastructure",
+            "Arm Debuts First Proprietary AGI CPU for Data Centers with Up to 136 Cores",
+            "Arm Enters Silicon Market with 136-Core AGI CPU for AI Infrastructure",
+        ],
+        start=1,
+    ):
+        item = _news_item(
+            db_session,
+            ingest_key=f"arm-variant-{index}",
+            source_external_id=f"72{index}",
+            title=title,
+            story_url=f"https://example.com/arm/{index}",
+        )
+        item.summary_key_points = ["Arm launches AGI CPU for data centers"]
+        item.summary_text = "Arm launches AGI CPU for data centers summary"
+        reconcile_news_item_relation(db_session, news_item_id=item.id)
+
+    stock_reaction = _news_item(
+        db_session,
+        ingest_key="arm-stock",
+        source_external_id="724",
+        title="Arm Stock Jumps 6% as CEO Targets $25B in Revenue by 2031 with New In-House Chip",
+        story_url="https://example.com/arm/4",
+    )
+    stock_reaction.summary_key_points = ["Arm launches AGI CPU for data centers"]
+    stock_reaction.summary_text = "Arm launches AGI CPU for data centers summary"
+    reconcile_news_item_relation(db_session, news_item_id=stock_reaction.id)
+    db_session.commit()
+
+    db_session.refresh(representative)
+    db_session.refresh(stock_reaction)
+    assert stock_reaction.representative_news_item_id == representative.id
+    assert representative.cluster_size == 5
+    assert (
+        "Arm Debuts 'AGI CPU' Silicon with 136 Cores for AI Infrastructure"
+        in (representative.raw_metadata["cluster"]["related_titles"])
+    )
+
+
 def test_reconcile_news_item_relation_uses_multiview_primary_score(
     db_session,
     monkeypatch,
@@ -404,16 +528,10 @@ def test_reconcile_news_item_relation_clusters_claude_code_leak_family(
     db_session,
     monkeypatch,
 ) -> None:
-    def fake_encode(_texts: list[str]) -> np.ndarray:
-        return np.array(
-            [
-                [1.0, 0.0],
-                [0.77, 0.63],
-            ],
-            dtype=float,
-        )
-
-    monkeypatch.setattr("app.services.news_relations.encode_news_texts", fake_encode)
+    monkeypatch.setattr(
+        "app.services.news_relations.encode_news_texts",
+        _uniform_similarity_encode(0.77),
+    )
 
     representative = _news_item(
         db_session,
