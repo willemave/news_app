@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
-from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope, TaskStatus, TaskType
+from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope, TaskType
 from app.models.news_digest_models import (
     NewsDigestBatchBulletDraft,
     NewsDigestBatchDraft,
@@ -32,7 +32,6 @@ from app.models.schema import (
     NewsDigestBulletSource,
     NewsItem,
     NewsItemDigestCoverage,
-    ProcessingTask,
 )
 from app.models.user import User
 from app.services.llm_agents import get_basic_agent
@@ -871,20 +870,6 @@ def _coverage_item_ids_for_cluster(cluster: NewsDigestCluster) -> list[int]:
     return [item.id for item in cluster.items]
 
 
-def _ensure_no_pending_generate_task(db: Session, *, user_id: int) -> bool:
-    pending_tasks = (
-        db.query(ProcessingTask)
-        .filter(ProcessingTask.task_type == TaskType.GENERATE_NEWS_DIGEST.value)
-        .filter(ProcessingTask.status.in_([TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]))
-        .all()
-    )
-    for task in pending_tasks:
-        payload = task.payload if isinstance(task.payload, dict) else {}
-        if payload.get("user_id") == user_id:
-            return False
-    return True
-
-
 def enqueue_news_digest_generation(
     db: Session,
     *,
@@ -892,16 +877,14 @@ def enqueue_news_digest_generation(
     trigger_reason: str,
 ) -> int | None:
     """Enqueue one digest generation task when not already pending."""
-    if not _ensure_no_pending_generate_task(db, user_id=user_id):
-        return None
-
+    del db
     from app.services.queue import get_queue_service
 
     queue_service = get_queue_service()
     return queue_service.enqueue(
         TaskType.GENERATE_NEWS_DIGEST,
         payload={"user_id": user_id, "trigger_reason": trigger_reason},
-        dedupe=False,
+        dedupe_key=f"generate_news_digest:user:{user_id}",
     )
 
 

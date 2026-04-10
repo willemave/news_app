@@ -60,6 +60,7 @@ def test_finalize_task_retryable_failure_requeues_in_one_step(db_session, monkey
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
+    original_created_at = task.created_at
 
     transition = queue.finalize_task(
         task.id,
@@ -78,7 +79,11 @@ def test_finalize_task_retryable_failure_requeues_in_one_step(db_session, monkey
     assert task.started_at is None
     assert task.completed_at is None
     assert task.error_message == "database is locked"
-    assert task.created_at > datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
+    assert task.locked_at is None
+    assert task.locked_by is None
+    assert task.lease_expires_at is None
+    assert task.created_at == original_created_at
+    assert task.available_at >= datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=110)
 
 
 def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
@@ -239,6 +244,106 @@ def test_dequeue_filters_by_queue_name(db_session, monkeypatch):
     assert twitter_task["queue_name"] == TaskQueue.TWITTER.value
 
 
+def test_dequeue_claims_task_with_lease_metadata(db_session, monkeypatch):
+    """Dequeued tasks should be marked processing with worker lease metadata."""
+    queue = _patch_db(monkeypatch, db_session)
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    task = ProcessingTask(
+        task_type=TaskType.SUMMARIZE.value,
+        status=TaskStatus.PENDING.value,
+        payload={},
+        queue_name=TaskQueue.CONTENT.value,
+        available_at=now - timedelta(seconds=1),
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    dequeued = queue.dequeue(worker_id="worker-lease", queue_name=TaskQueue.CONTENT)
+
+    assert dequeued is not None
+    assert dequeued["id"] == task.id
+    assert dequeued["status"] == TaskStatus.PROCESSING.value
+    assert dequeued["locked_by"] == "worker-lease"
+    assert dequeued["locked_at"] is not None
+    assert dequeued["lease_expires_at"] is not None
+    assert dequeued["available_at"] == task.available_at
+
+    refreshed = db_session.query(ProcessingTask).filter(ProcessingTask.id == task.id).first()
+    assert refreshed is not None
+    assert refreshed.status == TaskStatus.PROCESSING.value
+    assert refreshed.locked_by == "worker-lease"
+    assert refreshed.locked_at is not None
+    assert refreshed.lease_expires_at is not None
+
+
+def test_dequeue_reclaims_expired_processing_task(db_session, monkeypatch):
+    """Expired processing leases should be reclaimable by another worker."""
+    queue = _patch_db(monkeypatch, db_session)
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    task = ProcessingTask(
+        task_type=TaskType.SUMMARIZE.value,
+        status=TaskStatus.PROCESSING.value,
+        payload={},
+        queue_name=TaskQueue.CONTENT.value,
+        available_at=now - timedelta(minutes=10),
+        started_at=now - timedelta(minutes=10),
+        locked_at=now - timedelta(minutes=10),
+        locked_by="stale-worker",
+        lease_expires_at=now - timedelta(seconds=1),
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    dequeued = queue.dequeue(worker_id="worker-reclaim", queue_name=TaskQueue.CONTENT)
+
+    assert dequeued is not None
+    assert dequeued["id"] == task.id
+    assert dequeued["locked_by"] == "worker-reclaim"
+    assert dequeued["lease_expires_at"] is not None
+
+    refreshed = db_session.query(ProcessingTask).filter(ProcessingTask.id == task.id).first()
+    assert refreshed is not None
+    assert refreshed.status == TaskStatus.PROCESSING.value
+    assert refreshed.locked_by == "worker-reclaim"
+    assert refreshed.lease_expires_at is not None
+    assert refreshed.lease_expires_at > now
+
+
+def test_renew_lease_extends_processing_task(db_session, monkeypatch):
+    """Renewing a lease should extend the expiration for the owning worker."""
+    queue = _patch_db(monkeypatch, db_session)
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    task = ProcessingTask(
+        task_type=TaskType.SUMMARIZE.value,
+        status=TaskStatus.PROCESSING.value,
+        payload={},
+        queue_name=TaskQueue.CONTENT.value,
+        available_at=now - timedelta(minutes=1),
+        started_at=now - timedelta(minutes=1),
+        locked_at=now - timedelta(seconds=30),
+        locked_by="worker-lease",
+        lease_expires_at=now + timedelta(seconds=10),
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    original_expiry = task.lease_expires_at
+    renewed = queue.renew_lease(task.id, worker_id="worker-lease", lease_seconds=120)
+
+    assert renewed is True
+    db_session.refresh(task)
+    assert task.locked_by == "worker-lease"
+    assert task.lease_expires_at is not None
+    assert original_expiry is not None
+    assert task.lease_expires_at > original_expiry
+
+
 def test_get_queue_stats_reports_pending_by_queue(db_session, monkeypatch):
     """Queue stats include pending totals grouped by queue and queue/type."""
     queue = _patch_db(monkeypatch, db_session)
@@ -333,7 +438,7 @@ def test_get_backpressure_status_uses_content_thresholds(db_session, monkeypatch
 def test_dequeue_respects_retry_delay_schedule(db_session, monkeypatch):
     """Tasks scheduled for future retry are not dequeued early."""
     queue = _patch_db(monkeypatch, db_session)
-    now = datetime.now(UTC)
+    now = datetime.now(UTC).replace(tzinfo=None)
 
     ready_task = ProcessingTask(
         task_type=TaskType.SUMMARIZE.value,
@@ -341,13 +446,15 @@ def test_dequeue_respects_retry_delay_schedule(db_session, monkeypatch):
         payload={},
         queue_name=TaskQueue.CONTENT.value,
         created_at=now - timedelta(seconds=1),
+        available_at=now - timedelta(seconds=1),
     )
     delayed_task = ProcessingTask(
         task_type=TaskType.SUMMARIZE.value,
         status=TaskStatus.PENDING.value,
         payload={},
         queue_name=TaskQueue.CONTENT.value,
-        created_at=now + timedelta(minutes=5),
+        created_at=now,
+        available_at=now + timedelta(minutes=5),
     )
     db_session.add_all([ready_task, delayed_task])
     db_session.commit()
@@ -363,7 +470,7 @@ def test_dequeue_respects_retry_delay_schedule(db_session, monkeypatch):
 def test_dequeue_rotates_retry_buckets(db_session, monkeypatch):
     """Dequeue should rotate available retry buckets to avoid starvation."""
     queue = _patch_db(monkeypatch, db_session)
-    now = datetime.now(UTC)
+    now = datetime.now(UTC).replace(tzinfo=None)
 
     retry_zero_oldest = ProcessingTask(
         task_type=TaskType.SUMMARIZE.value,
@@ -372,6 +479,7 @@ def test_dequeue_rotates_retry_buckets(db_session, monkeypatch):
         queue_name=TaskQueue.CONTENT.value,
         retry_count=0,
         created_at=now - timedelta(minutes=10),
+        available_at=now - timedelta(minutes=10),
     )
     retry_zero_newer = ProcessingTask(
         task_type=TaskType.SUMMARIZE.value,
@@ -380,6 +488,7 @@ def test_dequeue_rotates_retry_buckets(db_session, monkeypatch):
         queue_name=TaskQueue.CONTENT.value,
         retry_count=0,
         created_at=now - timedelta(minutes=5),
+        available_at=now - timedelta(minutes=5),
     )
     retry_one_task = ProcessingTask(
         task_type=TaskType.SUMMARIZE.value,
@@ -388,6 +497,7 @@ def test_dequeue_rotates_retry_buckets(db_session, monkeypatch):
         queue_name=TaskQueue.CONTENT.value,
         retry_count=1,
         created_at=now - timedelta(minutes=20),
+        available_at=now - timedelta(minutes=20),
     )
     db_session.add_all([retry_zero_oldest, retry_zero_newer, retry_one_task])
     db_session.commit()

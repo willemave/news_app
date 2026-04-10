@@ -179,7 +179,10 @@ def _requeue_stale_tasks(
             row.status = TaskStatus.PENDING.value
             row.started_at = None
             row.completed_at = None
-            row.created_at = now
+            row.available_at = now
+            row.locked_at = None
+            row.locked_by = None
+            row.lease_expires_at = None
             row.error_message = None
             row.retry_count = int(row.retry_count or 0) + 1
 

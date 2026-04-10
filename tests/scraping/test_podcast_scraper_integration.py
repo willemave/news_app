@@ -154,8 +154,10 @@ class TestPodcastScraperIntegration:
     
     @patch('app.scraping.podcast_unified.feedparser.parse')
     @patch('app.scraping.base.get_db')
+    @patch('app.scraping.base.get_queue_service')
     def test_podcast_scraper_skips_existing_urls(
         self,
+        mock_queue_service,
         mock_get_db,
         mock_feedparser,
         mock_podcast_feed,
@@ -168,6 +170,7 @@ class TestPodcastScraperIntegration:
         # Mock database - first URL exists, second doesn't
         mock_db = Mock()
         mock_get_db.return_value.__enter__.return_value = mock_db
+        mock_queue_service.return_value = Mock()
         
         # Create existing content for first episode
         existing_content = Content()

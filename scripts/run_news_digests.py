@@ -101,7 +101,7 @@ def main() -> None:
 
         for user in query.yield_per(200):
             considered += 1
-            decision = get_news_digest_trigger_decision(db, user=user, now_utc=now_utc)
+            decision = get_news_digest_trigger_decision(db, user, now_utc)
             if not decision.should_generate:
                 skipped += 1
                 continue
@@ -128,8 +128,8 @@ def main() -> None:
 
             task_id = enqueue_news_digest_generation(
                 db,
-                user_id=user.id,
-                trigger_reason=decision.trigger_reason or "scheduled",
+                user.id,
+                decision.trigger_reason or "scheduled",
             )
             if task_id is None:
                 skipped += 1

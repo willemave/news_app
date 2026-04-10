@@ -201,15 +201,29 @@ class ProcessingTask(Base):
     queue_name = Column(String(32), nullable=False, index=True, default="content")
 
     created_at = Column(DateTime, default=_utcnow)
+    available_at = Column(DateTime, default=_utcnow, nullable=False, index=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    locked_at = Column(DateTime, nullable=True)
+    locked_by = Column(String(100), nullable=True, index=True)
+    lease_expires_at = Column(DateTime, nullable=True, index=True)
 
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0)
+    dedupe_key = Column(String(512), nullable=True, index=True)
 
     __table_args__ = (
         Index("idx_task_status_created", "status", "created_at"),
         Index("idx_task_queue_status_created", "queue_name", "status", "created_at"),
+        Index("idx_task_status_available", "status", "available_at", "retry_count", "id"),
+        Index(
+            "idx_task_queue_status_available",
+            "queue_name",
+            "status",
+            "available_at",
+            "retry_count",
+            "created_at",
+        ),
     )
 
 
@@ -227,19 +241,19 @@ class ContentReadStatus(Base):
     __table_args__ = (Index("idx_content_read_user_content", "user_id", "content_id", unique=True),)
 
 
-class ContentFavorites(Base):
-    """Track which content has been favorited by which user."""
+class ContentKnowledgeSave(Base):
+    """Track which content has been saved to knowledge by which user."""
 
-    __tablename__ = "content_favorites"
+    __tablename__ = "content_knowledge_saves"
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, nullable=False, index=True)
     content_id = Column(Integer, nullable=False, index=True)
-    favorited_at = Column(DateTime, default=_utcnow, nullable=False)
+    saved_at = Column(DateTime, default=_utcnow, nullable=False)
     created_at = Column(DateTime, default=_utcnow, nullable=False)
 
     __table_args__ = (
-        Index("idx_content_favorites_user_content", "user_id", "content_id", unique=True),
+        Index("idx_content_knowledge_saves_user_content", "user_id", "content_id", unique=True),
     )
 
 

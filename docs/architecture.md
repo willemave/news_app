@@ -2,11 +2,11 @@
 
 > Canonical architecture reference for the FastAPI backend, DB-backed processing pipeline, discovery and chat systems, and the SwiftUI iOS client.
 
-**Last Updated:** 2026-04-05  
+**Last Updated:** 2026-04-09  
 **Repository Root:** `news_app/`  
 **Primary Runtime:** Python 3.13, FastAPI, SQLAlchemy 2, Pydantic v2, pydantic-ai  
 **Primary Clients:** SwiftUI iOS app, iOS Share Extension, Jinja admin UI, machine-facing agent/CLI APIs  
-**Storage:** SQLite today, PostgreSQL-ready seams in key repository/search areas  
+**Storage:** PostgreSQL for local/staging/production with native queue and search support  
 **Processing Model:** Database-backed async task queue with queue partitions and sequential workers
 
 ## 1. Documentation Map

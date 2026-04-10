@@ -22,6 +22,7 @@ class TaskQueueGateway:
         payload: dict[str, Any] | None = None,
         queue_name: TaskQueue | str | None = None,
         dedupe: bool | None = None,
+        dedupe_key: str | None = None,
     ) -> int:
         """Enqueue task with optional dedupe and queue override."""
         enqueue_kwargs: dict[str, Any] = {"task_type": task_type}
@@ -33,6 +34,8 @@ class TaskQueueGateway:
             enqueue_kwargs["queue_name"] = queue_name
         if dedupe is not None:
             enqueue_kwargs["dedupe"] = dedupe
+        if dedupe_key is not None:
+            enqueue_kwargs["dedupe_key"] = dedupe_key
         return self._queue_service.enqueue(**enqueue_kwargs)
 
     def complete_task(

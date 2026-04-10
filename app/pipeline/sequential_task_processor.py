@@ -2,7 +2,10 @@
 
 import signal
 import sys
+import threading
 import time
+from contextlib import contextmanager
+from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy.exc import OperationalError
@@ -34,6 +37,11 @@ from app.services.gateways.task_queue_gateway import TaskQueueGateway
 from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.news_embeddings import warm_news_embedding_model
 from app.services.queue import QueueService, TaskQueue, TaskType
+
+try:
+    import psycopg
+except ImportError:  # pragma: no cover
+    psycopg = None
 
 logger = get_logger(__name__)
 
@@ -91,6 +99,7 @@ class SequentialTaskProcessor:
         self.running = True
         self.worker_slot = worker_slot
         self.worker_id = f"{self.queue_name}-processor-{self.worker_slot}"
+        self._queue_listener: Any | None = None
         logger.debug(
             "SequentialTaskProcessor initialized with worker_id: %s queue=%s",
             self.worker_id,
@@ -124,6 +133,113 @@ class SequentialTaskProcessor:
             DigDeeperHandler(),
             SyncIntegrationHandler(),
         ]
+
+    def _idle_wait(self, timeout_seconds: float) -> None:
+        """Sleep until the next poll interval or an incoming queue notification."""
+        if timeout_seconds <= 0:
+            return
+
+        wait_result = self._wait_for_queue_notification(timeout_seconds)
+        if wait_result is not None:
+            return
+
+        time.sleep(timeout_seconds)
+
+    def _wait_for_queue_notification(self, timeout_seconds: float) -> bool | None:
+        """Wait for a queue notification using the dedicated LISTEN connection."""
+        listener = self._ensure_queue_listener()
+        if listener is None:
+            return None
+        try:
+            for _notify in listener.notifies(timeout=timeout_seconds, stop_after=1):
+                return True
+            return False
+        except Exception:  # noqa: BLE001
+            logger.warning("Queue notification wait failed; falling back to polling", exc_info=True)
+            self._close_queue_listener()
+            return None
+
+    def _ensure_queue_listener(self):
+        if self._queue_listener is not None:
+            return self._queue_listener
+        if psycopg is None:
+            return None
+        try:
+            self._queue_listener = psycopg.connect(str(self.settings.database_url), autocommit=True)
+            self._queue_listener.execute("LISTEN processing_tasks")
+            return self._queue_listener
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Unable to open queue notification listener; polling only",
+                exc_info=True,
+            )
+            self._queue_listener = None
+            return None
+
+    def _close_queue_listener(self) -> None:
+        if self._queue_listener is None:
+            return
+        try:
+            self._queue_listener.close()
+        except Exception:  # noqa: BLE001
+            logger.debug("Queue notification listener close failed", exc_info=True)
+        finally:
+            self._queue_listener = None
+
+    @contextmanager
+    def _lease_heartbeat(self, task_id: int):
+        """Renew the lease for the current task while it is being processed."""
+        if not isinstance(self.queue_service, QueueService):
+            yield
+            return
+
+        raw_lease_seconds = getattr(self.settings, "worker_timeout_seconds", 300)
+        try:
+            lease_seconds = max(int(raw_lease_seconds), 1)
+        except (TypeError, ValueError):
+            lease_seconds = 300
+        interval_seconds = max(min(lease_seconds / 3, 30.0), 5.0)
+        stop_event = threading.Event()
+
+        def _run() -> None:
+            while not stop_event.wait(interval_seconds):
+                renewed = self.queue_service.renew_lease(
+                    task_id,
+                    worker_id=self.worker_id,
+                    lease_seconds=lease_seconds,
+                )
+                if renewed:
+                    continue
+                logger.warning(
+                    "Task lease heartbeat stopped after renewal failure",
+                    extra=build_log_extra(
+                        component="task_processor",
+                        operation="renew_lease",
+                        event_name="task.lease_heartbeat_stopped",
+                        status="degraded",
+                        task_id=task_id,
+                        worker_id=self.worker_id,
+                    ),
+                )
+                return
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            stop_event.set()
+            thread.join(timeout=1.0)
+
+    def _process_and_finalize_task(
+        self,
+        task: TaskEnvelope,
+    ) -> tuple[TaskResult, dict[str, object] | None]:
+        """Run one task under a lease heartbeat and persist the outcome."""
+        with self._lease_heartbeat(task.id):
+            result = self.process_task(task)
+            finalization = self._finalize_processed_task(task=task, result=result)
+        return result, finalization
 
     def process_task(self, task: TaskEnvelope) -> TaskResult:
         """Process a single task."""
@@ -347,21 +463,12 @@ class SequentialTaskProcessor:
                             startup_polls,
                             startup_phase_polls,
                         )
-                        for _ in range(10):
-                            if not self.running:
-                                break
-                            time.sleep(0.01)
+                        self._idle_wait(0.1)
                     elif consecutive_empty_polls >= max_empty_polls:
                         logger.debug("Queue empty, backing off...")
-                        for _ in range(50):
-                            if not self.running:
-                                break
-                            time.sleep(0.1)
+                        self._idle_wait(5.0)
                     else:
-                        for _ in range(10):
-                            if not self.running:
-                                break
-                            time.sleep(0.1)
+                        self._idle_wait(1.0)
                     continue
 
                 consecutive_empty_polls = 0
@@ -403,8 +510,7 @@ class SequentialTaskProcessor:
                             result=TaskResult.fail("Invalid task payload", retryable=False),
                         )
                     continue
-                result = self.process_task(task)
-                finalization = self._finalize_processed_task(task=task, result=result)
+                result, finalization = self._process_and_finalize_task(task)
 
                 if result.success:
                     processed_count += 1
@@ -465,6 +571,7 @@ class SequentialTaskProcessor:
                 logger.error("Error in main loop: %s", exc, exc_info=True)
                 time.sleep(5)
 
+        self._close_queue_listener()
         logger.info("Processor shutting down (processed %s tasks)", processed_count)
 
     def run_single_task(self, task_data: dict[str, object]) -> bool:
@@ -510,9 +617,7 @@ class SequentialTaskProcessor:
                 )
             return False
 
-        result = self.process_task(task)
-
-        finalization = self._finalize_processed_task(task=task, result=result)
+        result, finalization = self._process_and_finalize_task(task)
 
         if finalization and finalization.get("status") == "pending":
             logger.info("Task %s scheduled for retry", task.id)

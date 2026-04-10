@@ -154,6 +154,7 @@ def test_task_queue_gateway_enqueue_builds_kwargs():
         payload={"foo": "bar"},
         queue_name=TaskQueue.CONTENT,
         dedupe=True,
+        dedupe_key="content|process_content|content:1",
     )
     queue_service.enqueue.assert_called_once_with(
         task_type=TaskType.PROCESS_CONTENT,
@@ -161,6 +162,7 @@ def test_task_queue_gateway_enqueue_builds_kwargs():
         payload={"foo": "bar"},
         queue_name=TaskQueue.CONTENT,
         dedupe=True,
+        dedupe_key="content|process_content|content:1",
     )
 
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, literal, or_
 from sqlalchemy.orm import Session
 
 from app.models.metadata import ContentType
@@ -80,28 +81,58 @@ def search_contents(
     query_text: str,
     content_type: str,
     search_backend,
-    cursor: tuple[int | None, object | None],
+    cursor: tuple[int | None, object | None, float | None],
     limit: int,
     offset: int,
 ):
     """Return card rows for content search."""
     query = build_user_feed_query(db, user_id, mode="inbox")
+    search_context: dict[str, Any] = {}
     if content_type and content_type != "all":
         query = query.filter(Content.content_type == content_type)
 
-    query = search_backend.apply_search(query, query_text)
-    query = query.order_by(Content.created_at.desc(), Content.id.desc())
+    query = search_backend.apply_search(query, query_text, context=search_context)
+    search_rank_expr = search_context.get("rank_expr")
+    if search_rank_expr is not None:
+        query = query.add_columns(search_rank_expr.label("_search_rank"))
+        query = query.order_by(
+            search_rank_expr.desc(),
+            Content.created_at.desc(),
+            Content.id.desc(),
+        )
+    else:
+        query = query.add_columns(literal(None).label("_search_rank"))
+        query = query.order_by(Content.created_at.desc(), Content.id.desc())
 
-    last_id, last_sort_timestamp = cursor
+    last_id, last_sort_timestamp, last_rank = cursor
     if last_id and last_sort_timestamp:
-        query = apply_sort_timestamp_cursor(query, last_sort_timestamp, last_id)
+        if search_rank_expr is not None and last_rank is not None:
+            query = query.filter(
+                or_(
+                    search_rank_expr < last_rank,
+                    (
+                        (search_rank_expr == last_rank)
+                        & (
+                            or_(
+                                Content.created_at < last_sort_timestamp,
+                                (
+                                    (Content.created_at == last_sort_timestamp)
+                                    & (Content.id < last_id)
+                                ),
+                            )
+                        )
+                    ),
+                )
+            )
+        else:
+            query = apply_sort_timestamp_cursor(query, last_sort_timestamp, last_id)
     elif offset > 0:
         query = query.offset(offset)
 
     return query.limit(limit + 1).all()
 
 
-def get_favorites(
+def get_knowledge_library_entries(
     db: Session,
     *,
     user_id: int,
@@ -109,8 +140,8 @@ def get_favorites(
     last_sort_timestamp: datetime | None,
     limit: int,
 ):
-    """Return favorited card rows."""
-    query = build_user_feed_query(db, user_id, mode="favorites")
+    """Return knowledge-library card rows."""
+    query = build_user_feed_query(db, user_id, mode="knowledge_library")
     query = apply_sort_timestamp_cursor(query, last_sort_timestamp, last_id)
     return query.order_by(Content.created_at.desc(), Content.id.desc()).limit(limit + 1).all()
 

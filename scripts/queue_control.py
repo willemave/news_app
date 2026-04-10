@@ -129,10 +129,10 @@ def show_status(session: Session, stale_hours: float, sample_limit: int) -> None
             ProcessingTask.queue_name,
             ProcessingTask.content_id,
             ProcessingTask.retry_count,
-            ProcessingTask.created_at,
+            ProcessingTask.available_at,
         )
         .filter(ProcessingTask.status == TaskStatus.PENDING.value)
-        .order_by(ProcessingTask.created_at.asc(), ProcessingTask.id.asc())
+        .order_by(ProcessingTask.available_at.asc(), ProcessingTask.id.asc())
         .limit(sample_limit)
         .all()
     )
@@ -141,10 +141,10 @@ def show_status(session: Session, stale_hours: float, sample_limit: int) -> None
         print("None")
     else:
         for row in pending_rows:
-            created = row.created_at.isoformat() if row.created_at else "None"
+            available = row.available_at.isoformat() if row.available_at else "None"
             print(
                 f"id={row.id} type={row.task_type} queue={row.queue_name} "
-                f"content={row.content_id} retry={row.retry_count} created={created}"
+                f"content={row.content_id} retry={row.retry_count} available={available}"
             )
 
 
@@ -283,7 +283,10 @@ def requeue_stale_processing(
         row.status = TaskStatus.PENDING.value
         row.started_at = None
         row.completed_at = None
-        row.created_at = now
+        row.available_at = now
+        row.locked_at = None
+        row.locked_by = None
+        row.lease_expires_at = None
         row.error_message = None
         row.retry_count = int(row.retry_count or 0) + 1
     session.commit()

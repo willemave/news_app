@@ -1,7 +1,8 @@
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, select, update
 
 from app.core.db import get_db
 from app.core.logging import get_logger
@@ -46,6 +47,89 @@ def _utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _task_lease_seconds() -> int:
+    """Return the default worker lease duration in seconds."""
+    settings = get_settings()
+    return max(int(settings.worker_timeout_seconds), 1)
+
+
+def _normalize_payload_for_dedupe(payload: dict[str, Any] | None) -> str | None:
+    """Serialize payload to a stable dedupe fragment when needed."""
+    if not payload:
+        return None
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _build_dedupe_key(
+    *,
+    task_type: TaskType,
+    content_id: int | None,
+    payload: dict[str, Any] | None,
+    queue_name: str,
+    should_dedupe: bool,
+) -> str | None:
+    """Build a stable dedupe key for active work items."""
+    if not should_dedupe:
+        return None
+
+    parts = [queue_name, task_type.value]
+    if content_id is not None:
+        parts.append(f"content:{content_id}")
+    payload_fragment = _normalize_payload_for_dedupe(payload)
+    if payload_fragment is not None and content_id is None:
+        parts.append(f"payload:{payload_fragment}")
+    return "|".join(parts)
+
+
+def _log_dequeued_task(task_data: dict[str, Any], *, worker_id: str) -> None:
+    """Emit the standard log for a claimed task."""
+    logger.debug(
+        "Task dequeued",
+        extra=build_log_extra(
+            component="queue",
+            operation="dequeue",
+            event_name="task.dequeued",
+            status="started",
+            task_id=task_data["id"],
+            task_type=task_data["task_type"],
+            queue_name=task_data["queue_name"],
+            worker_id=worker_id,
+            content_id=task_data["content_id"],
+            context_data={
+                "retry_count": task_data["retry_count"],
+                "lease_expires_at": task_data["lease_expires_at"].isoformat()
+                if task_data["lease_expires_at"] is not None
+                else None,
+            },
+        ),
+    )
+
+
+def _clear_task_lease(task: ProcessingTask) -> None:
+    """Clear lease ownership fields on a task row."""
+    task.locked_at = None
+    task.locked_by = None
+    task.lease_expires_at = None
+
+
+def _claimable_task_filters(now: datetime):
+    """Return the predicate for tasks that are ready to be claimed."""
+    return or_(
+        and_(
+            ProcessingTask.status == TaskStatus.PENDING.value,
+            or_(
+                ProcessingTask.available_at.is_(None),
+                ProcessingTask.available_at <= now,
+            ),
+        ),
+        and_(
+            ProcessingTask.status == TaskStatus.PROCESSING.value,
+            ProcessingTask.lease_expires_at.is_not(None),
+            ProcessingTask.lease_expires_at <= now,
+        ),
+    )
+
+
 class QueueService:
     """Simple database-backed task queue."""
 
@@ -76,22 +160,21 @@ class QueueService:
             return normalized
         return TASK_QUEUE_BY_TYPE[task_type].value
 
-    def _select_retry_bucket(
+    def _ordered_retry_counts(
         self,
         available_retry_counts: list[int],
         cursor_key: tuple[str | None, str | None],
-    ) -> int:
-        """Select a retry bucket using round-robin to reduce starvation."""
+    ) -> list[int]:
+        """Return retry buckets in a rotating order to reduce starvation."""
         if not available_retry_counts:
-            return 0
+            return []
         if len(available_retry_counts) == 1:
-            return available_retry_counts[0]
+            return available_retry_counts
 
         cursor = self._retry_bucket_cursor.get(cursor_key, 0)
-        slot = cursor % len(available_retry_counts)
-        selected = available_retry_counts[slot]
-        self._retry_bucket_cursor[cursor_key] = (slot + 1) % len(available_retry_counts)
-        return selected
+        ordered = available_retry_counts[cursor:] + available_retry_counts[:cursor]
+        self._retry_bucket_cursor[cursor_key] = (cursor + 1) % len(available_retry_counts)
+        return ordered
 
     def enqueue(
         self,
@@ -100,6 +183,7 @@ class QueueService:
         payload: dict[str, Any] | None = None,
         queue_name: TaskQueue | str | None = None,
         dedupe: bool | None = None,
+        dedupe_key: str | None = None,
     ) -> int:
         """
         Add a task to the queue.
@@ -108,22 +192,34 @@ class QueueService:
             Task ID
         """
         target_queue = self._resolve_task_queue(task_type, queue_name)
+        active_task_order = func.coalesce(
+            ProcessingTask.available_at,
+            ProcessingTask.created_at,
+        )
         with get_db() as db:
             should_dedupe = (
                 dedupe if dedupe is not None else task_type in DEDUPABLE_CONTENT_TASK_TYPES
             )
-            if should_dedupe and content_id is not None:
+            resolved_dedupe_key = dedupe_key
+            if resolved_dedupe_key is None:
+                resolved_dedupe_key = _build_dedupe_key(
+                    task_type=task_type,
+                    content_id=content_id,
+                    payload=payload,
+                    queue_name=target_queue,
+                    should_dedupe=should_dedupe,
+                )
+            existing_task = None
+            if resolved_dedupe_key is not None:
                 existing_task = (
                     db.query(ProcessingTask)
-                    .filter(ProcessingTask.task_type == task_type.value)
-                    .filter(ProcessingTask.content_id == content_id)
-                    .filter(ProcessingTask.queue_name == target_queue)
+                    .filter(ProcessingTask.dedupe_key == resolved_dedupe_key)
                     .filter(
                         ProcessingTask.status.in_(
                             [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
                         )
                     )
-                    .order_by(ProcessingTask.created_at.desc())
+                    .order_by(active_task_order.desc(), ProcessingTask.id.desc())
                     .first()
                 )
                 if existing_task:
@@ -134,7 +230,7 @@ class QueueService:
                             operation="enqueue",
                             event_name="task.reused",
                             status="completed",
-                            task_id=existing_task.id,
+                            task_id=int(existing_task.id),
                             task_type=task_type.value,
                             queue_name=target_queue,
                             content_id=content_id,
@@ -142,21 +238,28 @@ class QueueService:
                     )
                     return existing_task.id
 
-            def _create_task() -> int:
-                task = ProcessingTask(
-                    task_type=task_type.value,
-                    content_id=content_id,
-                    payload=payload or {},
-                    status=TaskStatus.PENDING.value,
-                    queue_name=target_queue,
-                )
-                db.add(task)
-                db.flush()
-                task_id = int(task.id)
-                db.commit()
-                return task_id
+            task = ProcessingTask(
+                task_type=task_type.value,
+                content_id=content_id,
+                payload=payload or {},
+                status=TaskStatus.PENDING.value,
+                queue_name=target_queue,
+                available_at=_utc_now(),
+                dedupe_key=resolved_dedupe_key,
+            )
+            db.add(task)
+            db.flush()
+            task_id = int(task.id)
 
-            task_id = _create_task()
+            notification_payload = json.dumps(
+                {
+                    "task_id": task_id,
+                    "task_type": task_type.value,
+                    "queue_name": target_queue,
+                },
+                separators=(",", ":"),
+            )
+            db.execute(select(func.pg_notify("processing_tasks", notification_payload)))
 
             logger.info(
                 "Task enqueued",
@@ -192,151 +295,133 @@ class QueueService:
             Task data as dictionary or None if queue is empty
         """
         with get_db() as db:
-            # Retry claim a few times to avoid races across worker processes.
-            # The compare-and-set update avoids duplicate claims between workers.
-            for _ in range(5):
-                now = _utc_now()
-                query = db.query(ProcessingTask.id).filter(
-                    ProcessingTask.status == TaskStatus.PENDING.value,
-                    or_(ProcessingTask.created_at.is_(None), ProcessingTask.created_at <= now),
-                )
+            now = _utc_now()
+            normalized_queue = self._normalize_queue_name(queue_name)
+            task_order = func.coalesce(ProcessingTask.available_at, ProcessingTask.created_at)
+            base_filters = [_claimable_task_filters(now)]
+            if task_type:
+                base_filters.append(ProcessingTask.task_type == task_type.value)
+            if normalized_queue:
+                base_filters.append(ProcessingTask.queue_name == normalized_queue)
 
-                if task_type:
-                    query = query.filter(ProcessingTask.task_type == task_type.value)
+            retry_rows = (
+                db.query(func.coalesce(ProcessingTask.retry_count, 0).label("retry_count"))
+                .filter(*base_filters)
+                .distinct()
+                .order_by("retry_count")
+                .all()
+            )
+            if not retry_rows:
+                return None
 
-                normalized_queue = self._normalize_queue_name(queue_name)
-                if normalized_queue:
-                    query = query.filter(ProcessingTask.queue_name == normalized_queue)
-
-                retry_rows = (
-                    query.with_entities(ProcessingTask.retry_count)
-                    .distinct()
-                    .order_by(ProcessingTask.retry_count.asc())
-                    .all()
-                )
-                if not retry_rows:
-                    return None
-
-                available_retry_counts = [int(row[0] or 0) for row in retry_rows]
-                cursor_key = (
-                    normalized_queue,
-                    task_type.value if task_type is not None else None,
-                )
-                selected_retry = self._select_retry_bucket(available_retry_counts, cursor_key)
-
-                task_row = (
-                    query.filter(ProcessingTask.retry_count == selected_retry)
-                    .order_by(ProcessingTask.created_at.asc(), ProcessingTask.id.asc())
-                    .first()
-                )
-                if task_row is None:
-                    fallback_task_row = query.order_by(
-                        ProcessingTask.created_at.asc(),
-                        ProcessingTask.retry_count.asc(),
-                        ProcessingTask.id.asc(),
-                    ).first()
-                    if fallback_task_row is None:
-                        return None
-                    task_row = fallback_task_row
-
-                if task_row is None:
-                    return None
-
-                raw_task_id = getattr(task_row, "id", None)
-                if raw_task_id is None:
-                    raw_task_id = task_row[0]
-                task_id = int(raw_task_id)
-
-                def _claim_task(
-                    claimed_task_id: int = task_id,
-                    claimed_started_at: datetime = now,
-                ) -> int:
-                    claimed_rows = (
-                        db.query(ProcessingTask)
-                        .filter(
-                            ProcessingTask.id == claimed_task_id,
-                            ProcessingTask.status == TaskStatus.PENDING.value,
-                        )
-                        .update(
-                            {
-                                ProcessingTask.status: TaskStatus.PROCESSING.value,
-                                ProcessingTask.started_at: claimed_started_at,
-                            },
-                            synchronize_session=False,
-                        )
+            available_retry_counts = [int(row.retry_count or 0) for row in retry_rows]
+            cursor_key = (
+                normalized_queue,
+                task_type.value if task_type is not None else None,
+            )
+            for selected_retry in self._ordered_retry_counts(
+                available_retry_counts,
+                cursor_key,
+            ):
+                candidate_id_subquery = (
+                    select(ProcessingTask.id)
+                    .where(
+                        *base_filters,
+                        func.coalesce(ProcessingTask.retry_count, 0) == selected_retry,
                     )
-                    if claimed_rows == 0:
-                        db.rollback()
-                        return 0
-                    db.commit()
-                    return int(claimed_rows)
-
-                claimed = _claim_task()
-                if claimed == 0:
-                    continue
-
-                task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
-                if task is None:
-                    return None
-
-                # Create a dictionary with all necessary task data
-                # This prevents "not bound to Session" errors
-                task_data = {
-                    "id": task.id,
-                    "task_type": task.task_type,
-                    "content_id": task.content_id,
-                    "payload": task.payload,
-                    "retry_count": task.retry_count,
-                    "status": task.status,
-                    "queue_name": task.queue_name,
-                    "created_at": task.created_at,
-                    "started_at": task.started_at,
-                }
-
-                logger.debug(
-                    "Task dequeued",
-                    extra=build_log_extra(
-                        component="queue",
-                        operation="dequeue",
-                        event_name="task.dequeued",
-                        status="started",
-                        task_id=task_data["id"],
-                        task_type=task_data["task_type"],
-                        queue_name=task_data["queue_name"],
-                        worker_id=worker_id,
-                        content_id=task_data["content_id"],
-                        context_data={"retry_count": task_data["retry_count"]},
-                    ),
+                    .order_by(
+                        task_order.asc(),
+                        ProcessingTask.created_at.asc(),
+                        ProcessingTask.id.asc(),
+                    )
+                    .with_for_update(skip_locked=True)
+                    .limit(1)
                 )
+                claim_stmt = (
+                    update(ProcessingTask)
+                    .where(ProcessingTask.id == candidate_id_subquery.scalar_subquery())
+                    .values(
+                        status=TaskStatus.PROCESSING.value,
+                        started_at=now,
+                        locked_at=now,
+                        locked_by=worker_id,
+                        lease_expires_at=now + timedelta(seconds=_task_lease_seconds()),
+                    )
+                    .returning(
+                        ProcessingTask.id,
+                        ProcessingTask.task_type,
+                        ProcessingTask.content_id,
+                        ProcessingTask.payload,
+                        ProcessingTask.retry_count,
+                        ProcessingTask.status,
+                        ProcessingTask.queue_name,
+                        ProcessingTask.created_at,
+                        ProcessingTask.available_at,
+                        ProcessingTask.started_at,
+                        ProcessingTask.completed_at,
+                        ProcessingTask.locked_at,
+                        ProcessingTask.locked_by,
+                        ProcessingTask.lease_expires_at,
+                    )
+                )
+                task_row = db.execute(claim_stmt).mappings().first()
+                if task_row is None:
+                    continue
+                task_data = dict(task_row)
+                task_data["retry_count"] = int(task_data.get("retry_count") or 0)
+                _log_dequeued_task(task_data, worker_id=worker_id)
                 return task_data
 
             return None
 
+    def renew_lease(
+        self,
+        task_id: int,
+        *,
+        worker_id: str,
+        lease_seconds: int | None = None,
+    ) -> bool:
+        """Extend the lease for a task currently owned by the worker."""
+        effective_lease_seconds = max(int(lease_seconds or _task_lease_seconds()), 1)
+        with get_db() as db:
+            now = _utc_now()
+            renewed = (
+                db.query(ProcessingTask)
+                .filter(ProcessingTask.id == task_id)
+                .filter(ProcessingTask.status == TaskStatus.PROCESSING.value)
+                .filter(ProcessingTask.locked_by == worker_id)
+                .update(
+                    {
+                        ProcessingTask.locked_at: now,
+                        ProcessingTask.lease_expires_at: now
+                        + timedelta(seconds=effective_lease_seconds),
+                    },
+                    synchronize_session=False,
+                )
+            )
+            return bool(renewed)
+
     def complete_task(self, task_id: int, success: bool = True, error_message: str | None = None):
         """Mark a task as completed."""
         with get_db() as db:
-
-            def _complete_task() -> dict[str, Any] | None:
-                task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
-                if not task:
-                    return None
-
+            task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+            if not task:
+                completion = None
+            else:
                 task.completed_at = _utc_now()
+                _clear_task_lease(task)
                 if success:
                     task.status = TaskStatus.COMPLETED.value
                     task.error_message = None
                 else:
                     task.status = TaskStatus.FAILED.value
                     task.error_message = error_message or "Task failed without error details"
-                db.commit()
-                return {
+                completion = {
                     "task_type": task.task_type,
                     "queue_name": task.queue_name,
                     "content_id": task.content_id,
                     "error_message": task.error_message,
                 }
-
-            completion = _complete_task()
 
             if completion is None:
                 logger.error(
@@ -400,12 +485,10 @@ class QueueService:
                 not success and retryable and current_retry_count < max(int(max_retries), 0)
             )
             resolved_delay_seconds = retry_delay_seconds if should_retry else None
-
-            def _finalize_task() -> dict[str, Any] | None:
-                task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
-                if not task:
-                    return None
-
+            task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+            if not task:
+                transition = None
+            else:
                 now = _utc_now()
                 persisted_retry_count = int(task.retry_count or 0)
                 base_retry_count = max(persisted_retry_count, int(current_retry_count or 0))
@@ -419,15 +502,15 @@ class QueueService:
                     task.retry_count = base_retry_count + 1
                     task.started_at = None
                     task.completed_at = None
-                    task.created_at = now + timedelta(seconds=resolved_delay_seconds or 0)
+                    task.available_at = now + timedelta(seconds=resolved_delay_seconds or 0)
                     task.error_message = error_message or "Task failed without error details"
                 else:
                     task.status = TaskStatus.FAILED.value
                     task.completed_at = now
                     task.error_message = error_message or "Task failed without error details"
 
-                db.commit()
-                return {
+                _clear_task_lease(task)
+                transition = {
                     "task_type": task.task_type,
                     "queue_name": task.queue_name,
                     "content_id": task.content_id,
@@ -435,9 +518,8 @@ class QueueService:
                     "status": task.status,
                     "retry_count": int(task.retry_count or 0),
                     "retry_delay_seconds": resolved_delay_seconds,
+                    "available_at": task.available_at,
                 }
-
-            transition = _finalize_task()
 
             if transition is None:
                 logger.error(
@@ -508,26 +590,23 @@ class QueueService:
     def retry_task(self, task_id: int, delay_seconds: int = 60):
         """Retry a failed task after a delay."""
         with get_db() as db:
-
-            def _schedule_retry() -> dict[str, Any] | None:
-                task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
-                if not task:
-                    return None
-
+            task = db.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+            if not task:
+                retry_result = None
+            else:
                 task.status = TaskStatus.PENDING.value
-                task.retry_count += 1
+                task.retry_count = int(task.retry_count or 0) + 1
                 task.started_at = None
                 task.completed_at = None
-                task.created_at = _utc_now() + timedelta(seconds=delay_seconds)
-                db.commit()
-                return {
+                task.available_at = _utc_now() + timedelta(seconds=delay_seconds)
+                _clear_task_lease(task)
+                retry_result = {
                     "task_type": task.task_type,
                     "queue_name": task.queue_name,
                     "content_id": task.content_id,
                     "retry_count": task.retry_count,
+                    "available_at": task.available_at,
                 }
-
-            retry_result = _schedule_retry()
 
             if retry_result is None:
                 logger.error(
@@ -686,7 +765,6 @@ class QueueService:
                 .delete()
             )
 
-            db.commit()
             logger.info(f"Cleaned up {deleted} old completed tasks")
 
 

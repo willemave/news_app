@@ -18,7 +18,7 @@ from app.main import app
 from app.models.schema import (
     ChatSession,
     Content,
-    ContentFavorites,
+    ContentKnowledgeSave,
     ContentReadStatus,
     ContentStatusEntry,
     NewsItem,
@@ -237,8 +237,8 @@ def favorite_factory(db_session: Session):
         content: Content | None = None,
         content_id: int | None = None,
         **overrides: Any,
-    ) -> ContentFavorites:
-        favorite = ContentFavorites(
+    ) -> ContentKnowledgeSave:
+        favorite = ContentKnowledgeSave(
             user_id=user_id or (user.id if user is not None else None),
             content_id=content_id or (content.id if content is not None else None),
             **overrides,

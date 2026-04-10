@@ -66,6 +66,7 @@ def create_temporary_postgres_harness(
     schema_name = f"{schema_prefix}_{uuid4().hex}"
     admin_engine = create_engine(_admin_database_url(base_url), isolation_level="AUTOCOMMIT")
     with admin_engine.connect() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         connection.execute(text(f'CREATE SCHEMA "{schema_name}"'))
 
     database_url = _schema_database_url(base_url, schema_name)
