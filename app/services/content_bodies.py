@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -32,6 +33,37 @@ API_METADATA_REDACT_KEYS: tuple[str, ...] = LEGACY_RAW_METADATA_KEYS + (
     "storage_key",
     "storage_bucket",
 )
+API_METADATA_INTERNAL_KEYS: tuple[str, ...] = (
+    "domain",
+    "processing",
+)
+API_METADATA_LARGE_VALUE_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "summary",
+        "article",
+        "aggregator",
+        "discussion_url",
+        "source",
+        "platform",
+        "discovery_time",
+        "publication_date",
+        "top_comment",
+        "comment_count",
+        "detected_feed",
+        "source_type",
+        "source_label",
+        "source_external_id",
+        "author",
+        "content_type",
+        "workflow_from",
+        "workflow_to",
+        "workflow_transition",
+        "summary_kind",
+        "summary_version",
+        "summarization_date",
+    }
+)
+API_METADATA_MAX_VALUE_CHARS = 12_000
 
 logger = get_logger(__name__)
 
@@ -176,6 +208,8 @@ def sanitize_metadata_for_api(metadata: dict[str, Any]) -> dict[str, Any]:
     sanitized = dict(metadata)
     for key in API_METADATA_REDACT_KEYS:
         sanitized.pop(key, None)
+    for key in API_METADATA_INTERNAL_KEYS:
+        sanitized.pop(key, None)
 
     summary = sanitized.get("summary")
     if isinstance(summary, dict) and "full_markdown" in summary:
@@ -183,7 +217,21 @@ def sanitize_metadata_for_api(metadata: dict[str, Any]) -> dict[str, Any]:
         summary_copy.pop("full_markdown", None)
         sanitized["summary"] = summary_copy
 
+    for key in list(sanitized.keys()):
+        if key in API_METADATA_LARGE_VALUE_ALLOWLIST:
+            continue
+        if _serialized_metadata_size(sanitized[key]) > API_METADATA_MAX_VALUE_CHARS:
+            sanitized.pop(key, None)
+
     return sanitized
+
+
+def _serialized_metadata_size(value: Any) -> int:
+    """Return a conservative serialized size estimate for one metadata value."""
+    try:
+        return len(json.dumps(value, ensure_ascii=False, default=str))
+    except TypeError:
+        return len(str(value))
 
 
 def strip_legacy_body_fields(metadata: dict[str, Any]) -> dict[str, Any]:

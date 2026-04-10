@@ -1,9 +1,11 @@
 """Tests for content detail chat URL generation."""
 
+from copy import deepcopy
 from datetime import UTC, datetime
 from urllib.parse import parse_qs, unquote_plus, urlparse
 
 from app.models.schema import Content
+from app.queries.get_content_body import MAX_CONTENT_BODY_RESPONSE_CHARS, TRUNCATED_BODY_NOTICE
 
 
 def _get_display_title(fixture_data: dict) -> str:
@@ -163,6 +165,64 @@ def test_content_body_returns_visible_content(client, create_sample_content, sam
     assert payload["content_id"] == content.id
     assert payload["variant"] == "source"
     assert payload["text"]
+
+
+def test_content_body_truncates_oversized_visible_content(
+    client,
+    create_sample_content,
+    sample_article_long,
+):
+    """Canonical body endpoint should bound oversized payloads for the app renderer."""
+    fixture_data = deepcopy(sample_article_long)
+    huge_body = ("Paragraph of very long article text.\n\n" * 6_000).strip()
+    fixture_data["content_metadata"]["content_to_summarize"] = huge_body
+
+    content = create_sample_content(fixture_data)
+
+    response = client.get(f"/api/content/{content.id}/body")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["content_id"] == content.id
+    assert payload["text"].endswith(TRUNCATED_BODY_NOTICE)
+    assert len(payload["text"]) <= MAX_CONTENT_BODY_RESPONSE_CHARS
+    assert huge_body.startswith(payload["text"].split(TRUNCATED_BODY_NOTICE, 1)[0])
+
+
+def test_content_detail_redacts_oversized_internal_metadata(
+    client,
+    create_sample_content,
+    sample_article_long,
+):
+    """Detail payload should omit oversized internal metadata blobs."""
+    fixture_data = deepcopy(sample_article_long)
+    fixture_data["content_metadata"]["domain"] = {"content": "x" * 20_000}
+    fixture_data["content_metadata"]["processing"] = {"content": "y" * 20_000}
+    fixture_data["content_metadata"]["summary"] = deepcopy(
+        fixture_data["content_metadata"]["summary"]
+    )
+    fixture_data["content_metadata"]["summary"]["title"] = "Visible summary title"
+    fixture_data["content_metadata"]["article"] = {
+        "url": "https://example.com/story",
+        "title": "Visible article title",
+        "source_domain": "example.com",
+    }
+    fixture_data["content_metadata"]["keep_small"] = "ok"
+    fixture_data["content_metadata"]["drop_big_misc"] = {"payload": "z" * 20_000}
+
+    content = create_sample_content(fixture_data)
+
+    response = client.get(f"/api/content/{content.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    metadata = payload["metadata"]
+    assert metadata["summary"]["title"] == "Visible summary title"
+    assert metadata["article"]["title"] == "Visible article title"
+    assert metadata["keep_small"] == "ok"
+    assert "domain" not in metadata
+    assert "processing" not in metadata
+    assert "drop_big_misc" not in metadata
 
 
 def test_content_detail_falls_back_to_visible_news_item_when_legacy_content_is_missing(
