@@ -9,6 +9,8 @@ import pytest
 from admin.remote_ops import (
     RemoteContext,
     logs_exceptions,
+    preview_sanitize_content_metadata,
+    sanitize_content_metadata,
     usage_by_content,
     usage_by_user,
     usage_summary,
@@ -142,9 +144,7 @@ def test_usage_by_user_redacts_metadata(remote_context):
 
     assert result["user"]["email"] == "user@example.com"
     assert result["totals"]["call_count"] == 2
-    assert any(
-        row["metadata"].get("access_token") == "<redacted>" for row in result["rows"]
-    )
+    assert any(row["metadata"].get("access_token") == "<redacted>" for row in result["rows"])
 
 
 def test_usage_by_content_includes_content_metadata(remote_context):
@@ -178,3 +178,79 @@ def test_logs_exceptions_does_not_require_schema_models(remote_context, monkeypa
     result = logs_exceptions(remote_context, limit=1)
 
     assert result["returned"] == 1
+
+
+def test_preview_sanitize_content_metadata_returns_matching_rows(remote_context):
+    harness = create_temporary_postgres_harness(
+        schema_prefix="newsly_fix_preview",
+        tables=[Content.__table__],
+    )
+    try:
+        malformed_metadata = '{"summary":{"quotes":[{"text":"You\\u0000re not trying to help"}]}}'
+        with harness.engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                INSERT INTO contents (
+                    id, content_type, url, title, status, is_aggregate, content_metadata, created_at
+                ) VALUES (
+                    101, 'article', 'https://example.com/bad', 'Broken Metadata Row',
+                    'completed', false, CAST(%s AS json), now()
+                )
+                """,
+                (malformed_metadata,),
+            )
+
+        result = preview_sanitize_content_metadata(
+            RemoteContext(
+                database_url=harness.database_url,
+                logs_dir=remote_context.logs_dir,
+                service_log_dir=remote_context.service_log_dir,
+            ),
+            content_id=None,
+            limit=10,
+        )
+
+        assert result["applied"] is False
+        assert result["matched_total"] == 1
+        assert result["selected_count"] == 1
+        assert result["rows"][0]["id"] == 101
+        assert result["rows"][0]["changed"] is True
+    finally:
+        harness.close()
+
+
+def test_sanitize_content_metadata_updates_row(remote_context):
+    harness = create_temporary_postgres_harness(
+        schema_prefix="newsly_fix_apply",
+        tables=[Content.__table__],
+    )
+    try:
+        malformed_metadata = '{"summary":{"quotes":[{"text":"You\\u0000re not trying to help"}]}}'
+        with harness.engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                INSERT INTO contents (
+                    id, content_type, url, title, status, is_aggregate, content_metadata, created_at
+                ) VALUES (
+                    102, 'article', 'https://example.com/fix', 'Needs Repair',
+                    'completed', false, CAST(%s AS json), now()
+                )
+                """,
+                (malformed_metadata,),
+            )
+
+        repair_context = RemoteContext(
+            database_url=harness.database_url,
+            logs_dir=remote_context.logs_dir,
+            service_log_dir=remote_context.service_log_dir,
+        )
+        result = sanitize_content_metadata(repair_context, content_id=102, limit=10)
+
+        assert result["applied"] is True
+        assert result["updated_count"] == 1
+
+        query_result = preview_sanitize_content_metadata(repair_context, content_id=102, limit=10)
+        assert query_result["matched_total"] == 0
+        assert query_result["rows"] == []
+    finally:
+        harness.close()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -26,6 +27,8 @@ from app.models.user import User
 
 DEFAULT_ROW_LIMIT = 200
 MAX_ROW_LIMIT = 1000
+ESCAPED_NUL_JSON_PATTERN = r"%\\u0000%"
+_ALLOWED_CONTROL_CHARACTERS = {"\n", "\r", "\t"}
 
 
 @dataclass(frozen=True)
@@ -258,9 +261,7 @@ def health_snapshot(context: RemoteContext) -> dict[str, Any]:
             content_total = int(session.query(func.count(Content.id)).scalar() or 0)
             task_total = int(session.query(func.count(ProcessingTask.id)).scalar() or 0)
             content_by_status = dict(
-                session.query(Content.status, func.count(Content.id))
-                .group_by(Content.status)
-                .all()
+                session.query(Content.status, func.count(Content.id)).group_by(Content.status).all()
             )
             task_by_status = dict(
                 session.query(ProcessingTask.status, func.count(ProcessingTask.id))
@@ -308,9 +309,7 @@ def preview_reset_content(
                 )
             content_rows = content_query.all()
             content_ids = (
-                [row.id for row in content_rows]
-                if (hours is not None or content_type)
-                else None
+                [row.id for row in content_rows] if (hours is not None or content_type) else None
             )
 
             task_query = session.query(ProcessingTask)
@@ -339,6 +338,36 @@ def preview_reset_content(
             }
     finally:
         engine.dispose()
+
+
+def preview_sanitize_content_metadata(
+    context: RemoteContext,
+    *,
+    content_id: int | None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Preview malformed content-metadata rows that can be sanitized safely."""
+    return _sanitize_content_metadata_rows(
+        context,
+        content_id=content_id,
+        limit=limit,
+        apply=False,
+    )
+
+
+def sanitize_content_metadata(
+    context: RemoteContext,
+    *,
+    content_id: int | None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Apply metadata sanitization for malformed content rows."""
+    return _sanitize_content_metadata_rows(
+        context,
+        content_id=content_id,
+        limit=limit,
+        apply=True,
+    )
 
 
 def logs_list(context: RemoteContext) -> dict[str, Any]:
@@ -489,6 +518,140 @@ def _execute_sql(
             return serialized_rows, columns
     finally:
         engine.dispose()
+
+
+def _sanitize_content_metadata_rows(
+    context: RemoteContext,
+    *,
+    content_id: int | None,
+    limit: int,
+    apply: bool,
+) -> dict[str, Any]:
+    bounded_limit = _bounded_limit(limit)
+    engine = create_engine(context.database_url, pool_pre_ping=True)
+    try:
+        with engine.begin() as connection:
+            selected = _select_malformed_content_rows(
+                connection,
+                content_id=content_id,
+                limit=bounded_limit,
+            )
+            matched_total = _count_malformed_content_rows(connection, content_id=content_id)
+
+            updated_rows: list[dict[str, Any]] = []
+            for row in selected:
+                sanitized_json = _sanitize_json_text(str(row["metadata_text"]))
+                updated_rows.append(
+                    {
+                        "id": int(row["id"]),
+                        "content_type": row["content_type"],
+                        "status": row["status"],
+                        "title": row["title"],
+                        "created_at": row["created_at"],
+                        "processed_at": row["processed_at"],
+                        "changed": sanitized_json != str(row["metadata_text"]),
+                    }
+                )
+                if not apply or sanitized_json == str(row["metadata_text"]):
+                    continue
+                connection.execute(
+                    text(
+                        """
+                        UPDATE contents
+                        SET content_metadata = CAST(:content_metadata AS json),
+                            updated_at = :updated_at
+                        WHERE id = :content_id
+                        """
+                    ),
+                    {
+                        "content_metadata": sanitized_json,
+                        "updated_at": datetime.now(UTC).replace(tzinfo=None),
+                        "content_id": int(row["id"]),
+                    },
+                )
+
+            return {
+                "applied": apply,
+                "content_id": content_id,
+                "limit": bounded_limit,
+                "matched_total": matched_total,
+                "selected_count": len(updated_rows),
+                "updated_count": sum(1 for row in updated_rows if row["changed"]) if apply else 0,
+                "rows": updated_rows,
+            }
+    finally:
+        engine.dispose()
+
+
+def _count_malformed_content_rows(connection, *, content_id: int | None) -> int:
+    filters = ["CAST(content_metadata AS text) LIKE :pattern"]
+    params: dict[str, Any] = {"pattern": ESCAPED_NUL_JSON_PATTERN}
+    if content_id is not None:
+        filters.append("id = :content_id")
+        params["content_id"] = int(content_id)
+    count_sql = f"SELECT count(*) FROM contents WHERE {' AND '.join(filters)}"
+    return int(connection.execute(text(count_sql), params).scalar() or 0)
+
+
+def _select_malformed_content_rows(
+    connection,
+    *,
+    content_id: int | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    filters = ["CAST(content_metadata AS text) LIKE :pattern"]
+    params: dict[str, Any] = {
+        "pattern": ESCAPED_NUL_JSON_PATTERN,
+        "limit": int(limit),
+    }
+    if content_id is not None:
+        filters.append("id = :content_id")
+        params["content_id"] = int(content_id)
+    select_sql = f"""
+        SELECT
+            id,
+            content_type,
+            status,
+            title,
+            created_at,
+            processed_at,
+            CAST(content_metadata AS text) AS metadata_text
+        FROM contents
+        WHERE {" AND ".join(filters)}
+        ORDER BY id ASC
+        LIMIT :limit
+    """
+    result = connection.execute(text(select_sql), params)
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+def _sanitize_json_text(raw_json: str) -> str:
+    parsed = json.loads(raw_json)
+    sanitized = _sanitize_json_value(parsed)
+    return json.dumps(sanitized, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _sanitize_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            _strip_disallowed_control_characters(str(key)): _sanitize_json_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_json_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_json_value(item) for item in value]
+    if isinstance(value, str):
+        return _strip_disallowed_control_characters(value)
+    return value
+
+
+def _strip_disallowed_control_characters(value: str) -> str:
+    return "".join(
+        character
+        for character in value
+        if ord(character) >= 32 or character in _ALLOWED_CONTROL_CHARACTERS
+    )
 
 
 def _collect_logs(

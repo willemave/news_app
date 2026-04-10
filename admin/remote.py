@@ -23,6 +23,8 @@ from admin.remote_ops import (
     logs_search,
     logs_tail,
     preview_reset_content,
+    preview_sanitize_content_metadata,
+    sanitize_content_metadata,
     usage_by_content,
     usage_by_user,
     usage_summary,
@@ -146,6 +148,22 @@ def _dispatch(action: str, *, context: RemoteContext, payload: dict[str, Any]) -
             cancel_only=bool(payload.get("cancel_only")),
             hours=float(payload["hours"]) if payload.get("hours") is not None else None,
             content_type=payload.get("content_type"),
+        )
+    if action == "fix.preview-sanitize-content-metadata":
+        return preview_sanitize_content_metadata(
+            context,
+            content_id=(
+                int(payload["content_id"]) if payload.get("content_id") is not None else None
+            ),
+            limit=int(payload.get("limit", 100)),
+        )
+    if action == "fix.sanitize-content-metadata":
+        return sanitize_content_metadata(
+            context,
+            content_id=(
+                int(payload["content_id"]) if payload.get("content_id") is not None else None
+            ),
+            limit=int(payload.get("limit", 100)),
         )
     raise ValueError(f"Unsupported remote action: {action}")
 

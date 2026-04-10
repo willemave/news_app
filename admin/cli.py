@@ -266,6 +266,22 @@ def _handle_fix(args: argparse.Namespace, *, config: AdminConfig) -> CommandResu
     if args.yes and not args.apply:
         raise AdminCLIError("--yes is only valid together with --apply")
 
+    if args.fix_command == "sanitize-content-metadata":
+        payload = {
+            "content_id": args.content_id,
+            "limit": args.limit,
+        }
+        action = (
+            "fix.sanitize-content-metadata"
+            if args.apply
+            else "fix.preview-sanitize-content-metadata"
+        )
+        warnings = [] if args.apply else ["Preview only; add --apply --yes to execute updates."]
+        return CommandResult(
+            data=_invoke_remote(action, config=config, payload=payload),
+            warnings=warnings,
+        )
+
     if args.fix_command == "reset-content" and not args.apply:
         payload = {
             "cancel_only": bool(args.cancel_only),
@@ -669,6 +685,13 @@ def _build_fix_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
     reset_parser.add_argument("--cancel-only", action="store_true", dest="cancel_only")
     reset_parser.add_argument("--hours", type=float, default=None)
     reset_parser.add_argument("--content-type", default=None)
+
+    sanitize_parser = fix_subparsers.add_parser(
+        "sanitize-content-metadata",
+        help="Strip escaped null/control characters from malformed content metadata rows",
+    )
+    sanitize_parser.add_argument("--content-id", type=int, default=None)
+    sanitize_parser.add_argument("--limit", type=int, default=100)
 
     run_scraper_parser = fix_subparsers.add_parser("run-scraper", help="Run selected scrapers")
     run_scraper_parser.add_argument("--scraper", dest="scrapers", action="append", required=True)
