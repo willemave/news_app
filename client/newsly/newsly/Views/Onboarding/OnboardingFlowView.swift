@@ -29,7 +29,6 @@ struct OnboardingFlowView: View {
                 LoadingOverlay(message: viewModel.loadingMessage)
             }
         }
-        .preferredColorScheme(.light)
         .onChange(of: viewModel.completionResponse) { _, response in
             if let response {
                 onFinish(response)

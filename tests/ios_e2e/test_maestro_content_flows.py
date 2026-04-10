@@ -13,6 +13,7 @@ from app.models.schema import (
     ContentKnowledgeSave,
     ContentReadStatus,
     NewsItem,
+    UserScraperConfig,
 )
 from app.services.chat_agent import ChatRunResult, save_messages
 
@@ -298,7 +299,7 @@ def test_personalized_onboarding_flow_uses_seeded_fixture_data(
     ios_onboarding_personalized_fixture,
     test_user,
 ) -> None:
-    """Personalized onboarding should be Maestro-testable via deterministic launch fixtures."""
+    """Personalized onboarding should cover mocked mic capture through persisted completion."""
     run_ios_flow(
         "onboarding_personalized.yaml",
         extra_env={"ONBOARDING_FIXTURE": ios_onboarding_personalized_fixture},
@@ -307,3 +308,14 @@ def test_personalized_onboarding_flow_uses_seeded_fixture_data(
     db_session.refresh(test_user)
     assert test_user.has_completed_onboarding is True
     assert test_user.has_completed_new_user_tutorial is True
+    assert test_user.twitter_username == "willem_aw"
+    assert test_user.news_list_preference_prompt is not None
+    assert "Prefer chips and AI infra." in test_user.news_list_preference_prompt
+
+    scraper_types = {
+        row.scraper_type
+        for row in db_session.query(UserScraperConfig)
+        .filter(UserScraperConfig.user_id == test_user.id)
+        .all()
+    }
+    assert scraper_types == {"reddit", "substack"}

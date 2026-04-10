@@ -12,15 +12,32 @@ appId: "${APP_ID}"
       newslyE2EUserId: "${USER_ID}"
       newslyE2ECompleteOnboarding: false
       newslyE2ECompleteTutorial: false
+      newslyE2EFakeSpeechEnabled: true
       newslyE2EOnboardingFixture: "${ONBOARDING_FIXTURE}"
 - assertVisible:
     text: Set up your feeds
 - tapOn:
     text: Personalize with voice
 - assertVisible:
+    text: Tell us what you read
+- assertVisible:
+    text: LISTENING...
+- tapOn:
+    text: Recording. Tap to stop.
+- assertVisible:
+    text: Your picks
+- assertVisible:
     text: Lenny's Newsletter
 - assertVisible:
     text: Latent Space
+- tapOn:
+    id: onboarding.input.twitter_username
+- inputText: "@willem_aw"
+- tapOn:
+    id: onboarding.input.news_preferences
+- inputText: "Prefer chips and AI infra."
+- tapOn:
+    text: Your picks
 - tapOn:
     text: Start reading
 - assertVisible:

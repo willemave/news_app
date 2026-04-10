@@ -40,7 +40,7 @@ final class DiscoveryPersonalizeViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let service = OnboardingService.shared
-    private let dictationService = VoiceDictationService.shared
+    private let dictationService: any SpeechTranscribing
     private let onboardingStateStore = OnboardingStateStore.shared
     private let userId: Int
     private var audioTimer: Timer?
@@ -51,6 +51,7 @@ final class DiscoveryPersonalizeViewModel: ObservableObject {
 
     init(userId: Int) {
         self.userId = userId
+        self.dictationService = SpeechTranscriberFactory.makeVoiceDictationTranscriber()
     }
 
     deinit {

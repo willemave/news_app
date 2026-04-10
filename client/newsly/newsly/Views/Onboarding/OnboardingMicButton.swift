@@ -64,6 +64,7 @@ struct OnboardingMicButton: View {
                 .onChanged { _ in isPressed = true }
                 .onEnded { _ in isPressed = false }
         )
+        .accessibilityIdentifier("onboarding.audio.mic")
         .accessibilityLabel(accessibilityText)
     }
 

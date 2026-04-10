@@ -69,7 +69,9 @@ private final class E2EFakeSpeechTranscriber: SpeechTranscribing {
     private let transcript: String
 
     init(transcript: String? = E2ETestLaunch.fakeSpeechTranscript) {
-        self.transcript = transcript ?? "E2E transcript"
+        self.transcript = transcript
+            ?? OnboardingE2EFixtureStore.shared?.transcript
+            ?? "E2E transcript"
     }
 
     func start() async throws {

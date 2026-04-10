@@ -49,7 +49,7 @@ final class OnboardingViewModel: ObservableObject {
     @Published var newsListPreferencePrompt: String = ""
 
     private let service = OnboardingService.shared
-    private let dictationService = VoiceDictationService.shared
+    private let dictationService: any SpeechTranscribing
     private let onboardingStateStore = OnboardingStateStore.shared
     private let user: User
     private var audioTimer: Timer?
@@ -60,6 +60,7 @@ final class OnboardingViewModel: ObservableObject {
 
     init(user: User) {
         self.user = user
+        self.dictationService = SpeechTranscriberFactory.makeVoiceDictationTranscriber()
         self.twitterUsername = user.twitterUsername ?? ""
         self.newsListPreferencePrompt = user.newsListPreferencePrompt
     }
@@ -67,6 +68,8 @@ final class OnboardingViewModel: ObservableObject {
     deinit {
         pollingTask?.cancel()
         audioTimer?.invalidate()
+        let service = dictationService
+        Task { @MainActor in service.cancel() }
     }
 
     var substackSuggestions: [OnboardingSuggestion] {
@@ -112,22 +115,10 @@ final class OnboardingViewModel: ObservableObject {
     func startAudioCaptureIfNeeded() async {
         guard !didAutoStartRecording else { return }
         didAutoStartRecording = true
-        if let transcript = OnboardingE2EFixtureStore.shared?.transcript {
-            audioState = .transcribing
-            stopAudioTimer()
-            await beginDiscovery(transcript: transcript)
-            return
-        }
         await startAudioCapture()
     }
 
     func startAudioCapture() async {
-        if let transcript = OnboardingE2EFixtureStore.shared?.transcript {
-            audioState = .transcribing
-            stopAudioTimer()
-            await beginDiscovery(transcript: transcript)
-            return
-        }
         configureDictationCallbacks()
         errorMessage = nil
         hasMicPermissionDenied = false
