@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -174,7 +175,7 @@ def _resolve_context(request: dict[str, Any]) -> RemoteContext:
 
     settings = get_settings()
     return RemoteContext(
-        database_url=str(settings.database_url),
+        database_url=_resolve_runtime_database_url(str(settings.database_url)),
         logs_dir=Path(settings.logs_dir),
         service_log_dir=Path("/var/log/news_app"),
     )
@@ -189,6 +190,19 @@ def _parse_datetime(raw: Any) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _resolve_runtime_database_url(configured_url: str) -> str:
+    if configured_url and "change-me" not in configured_url:
+        return configured_url
+
+    password = os.environ.get("POSTGRES_PASSWORD")
+    user = os.environ.get("POSTGRES_USER", "newsly")
+    database = os.environ.get("POSTGRES_DB", "newsly")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    if not password:
+        return configured_url
+    return f"postgresql+psycopg://{user}:{password}@127.0.0.1:{port}/{database}"
 
 
 def _print_payload(payload: dict[str, Any]) -> None:

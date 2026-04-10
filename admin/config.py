@@ -10,11 +10,12 @@ from dotenv import dotenv_values
 
 DEFAULT_REMOTE = "willem@192.3.250.10"
 DEFAULT_APP_DIR = "/opt/news_app"
+DEFAULT_DOCKER_SERVICE_NAME = "newsly"
 DEFAULT_LOGS_DIR = "/data/logs"
 DEFAULT_SERVICE_LOG_DIR = "/var/log/news_app"
 DEFAULT_REMOTE_DB_PATH = "/data/news_app.db"
 DEFAULT_REMOTE_PYTHON = ".venv/bin/python"
-DEFAULT_REMOTE_CONTEXT_SOURCE = "direct"
+DEFAULT_REMOTE_CONTEXT_SOURCE = "app-settings"
 DEFAULT_LOCAL_LOGS_DIR = "logs_from_server"
 DEFAULT_LOCAL_DB_PATH = "admin/news_app.remote.db"
 DEFAULT_PROMPT_REPORT_OUTPUT_DIR = "outputs"
@@ -27,6 +28,7 @@ class AdminConfig:
     env_file: Path
     remote: str
     app_dir: str
+    docker_service_name: str
     logs_dir: str
     service_log_dir: str
     remote_db_path: str
@@ -51,6 +53,13 @@ def resolve_config(args: Any) -> AdminConfig:
         env_file=env_file,
         remote=_resolve_value(args, env_values, "remote", "ADMIN_REMOTE", DEFAULT_REMOTE),
         app_dir=_resolve_value(args, env_values, "app_dir", "ADMIN_APP_DIR", DEFAULT_APP_DIR),
+        docker_service_name=_resolve_value(
+            args,
+            env_values,
+            "docker_service_name",
+            "ADMIN_DOCKER_SERVICE_NAME",
+            DEFAULT_DOCKER_SERVICE_NAME,
+        ),
         logs_dir=_resolve_value(args, env_values, "logs_dir", "ADMIN_LOGS_DIR", DEFAULT_LOGS_DIR),
         service_log_dir=_resolve_value(
             args,

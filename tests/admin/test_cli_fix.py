@@ -15,6 +15,7 @@ def _config(tmp_path: Path) -> AdminConfig:
         env_file=tmp_path / ".env",
         remote="willem@host",
         app_dir="/opt/news_app",
+        docker_service_name="newsly",
         logs_dir="/data/logs",
         service_log_dir="/var/log/news_app",
         remote_db_path="/data/news_app.db",

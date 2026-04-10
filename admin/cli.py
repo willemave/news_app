@@ -11,7 +11,13 @@ from typing import Any
 
 from admin.config import AdminConfig, resolve_config
 from admin.output import Envelope, EnvelopeError, emit
-from admin.ssh import RemoteCommandError, rsync_from_remote, run_remote_module, run_remote_script
+from admin.ssh import (
+    RemoteCommandError,
+    rsync_from_remote,
+    run_remote_docker_logs,
+    run_remote_module,
+    run_remote_script,
+)
 
 
 class AdminCLIError(RuntimeError):
@@ -83,21 +89,27 @@ def build_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  admin health snapshot\n"
             "  admin logs list\n"
+            "  admin logs tail --limit 200\n"
             "  admin logs exceptions --limit 10\n"
-            "  admin logs tail --source structured --limit 20\n"
-            "  admin db query --sql 'select count(*) from content'"
+            "  admin db query --sql 'select count(*) from content'\n"
+            "  admin fix requeue-stale --hours 4"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--env-file", default=None, help="Override admin/.env path")
     parser.add_argument("--remote", default=None, help="Remote SSH target")
     parser.add_argument("--app-dir", default=None, help="Remote app checkout directory")
+    parser.add_argument(
+        "--docker-service-name",
+        default=None,
+        help="Docker container name for the Newsly runtime",
+    )
     parser.add_argument("--logs-dir", default=None, help="Primary remote logs directory")
     parser.add_argument("--service-log-dir", default=None, help="Remote service log directory")
     parser.add_argument(
         "--remote-db-path",
         default=None,
-        help="Remote SQLAlchemy database URL used when --remote-context-source=direct",
+        help="Legacy direct-access SQLAlchemy database URL for non-container deployments",
     )
     parser.add_argument("--remote-python", default=None, help="Remote Python executable path")
     parser.add_argument(
@@ -105,8 +117,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("direct", "app-settings"),
         default=None,
         help=(
-            "How remote read-only commands resolve DB/log paths. "
-            "'direct' uses configured paths and avoids reading remote .env."
+            "How legacy direct-access commands resolve DB/log paths. "
+            "Use 'app-settings' for the Docker container runtime."
         ),
     )
     parser.add_argument("--local-logs-dir", default=None, help="Local synced log directory")
@@ -185,6 +197,12 @@ def _handle_logs(args: argparse.Namespace, *, config: AdminConfig) -> CommandRes
         destination = Path(args.destination or config.local_logs_dir)
         synced = _sync_logs(config, destination=destination)
         return CommandResult(data=synced, warnings=[])
+
+    if args.logs_command == "tail" and _is_docker_log_source(args.source):
+        return CommandResult(
+            data=run_remote_docker_logs(config, tail=args.limit),
+            warnings=[],
+        )
 
     action_map = {
         "list": "logs.list",
@@ -527,9 +545,9 @@ def _build_logs_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentP
         description=(
             "List, tail, search, or sync production logs.\n\n"
             "Sources are either:\n"
-            "  structured, errors\n"
+            "  structured, errors, docker\n"
             "  or a service log stem such as server, worker, scraper\n\n"
-            "Run `admin logs list` first to see the sources available on the remote host."
+            "Use `docker` to read the unified Docker container logs."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -550,8 +568,11 @@ def _build_logs_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentP
     tail_parser = logs_subparsers.add_parser("tail", help="Tail one log source")
     tail_parser.add_argument(
         "--source",
-        required=True,
-        help="Log source to read, for example structured, errors, server, worker, or scraper.",
+        default="docker",
+        help=(
+            "Log source to read, for example structured, errors, server, worker, scraper, "
+            "or docker for the unified container log stream. Defaults to docker."
+        ),
     )
     tail_parser.add_argument("--limit", type=int, default=50)
 
@@ -714,31 +735,18 @@ def _build_parser_hint(prog: str, message: str) -> str | None:
             "Pick a logs subcommand:\n"
             "  admin logs list\n"
             "  admin logs exceptions --limit 10\n"
-            "  admin logs tail --source structured --limit 20\n"
+            "  admin logs tail --limit 200\n"
             "  admin logs search --source errors --query timeout"
         )
-    if (
-        "the following arguments are required: --source" in normalized
-        and prog.endswith("logs tail")
-    ):
-        return (
-            "Choose one log source with `--source`.\n"
-            "Run `admin logs list` to discover valid values, then retry with one of:\n"
-            "  admin logs tail --source structured --limit 20\n"
-            "  admin logs tail --source errors --limit 20\n"
-            "  admin logs tail --source server --limit 50"
-        )
-    if (
-        "the following arguments are required: --source" in normalized
-        and prog.endswith("logs range")
+    if "the following arguments are required: --source" in normalized and prog.endswith(
+        "logs range"
     ):
         return (
             "Choose one log source with `--source`, for example:\n"
             "  admin logs range --source structured --since 2026-03-29T00:00:00Z"
         )
-    if (
-        "the following arguments are required: --source" in normalized
-        and prog.endswith("logs search")
+    if "the following arguments are required: --source" in normalized and prog.endswith(
+        "logs search"
     ):
         return (
             "Choose one log source with `--source`, for example:\n"
@@ -752,3 +760,7 @@ def _build_parser_hint(prog: str, message: str) -> str | None:
             "  admin db tables"
         )
     return None
+
+
+def _is_docker_log_source(source: str) -> bool:
+    return str(source).strip().lower() in {"docker", "compose", "container"}

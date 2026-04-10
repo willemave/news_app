@@ -19,35 +19,52 @@ class RemoteCommandError(RuntimeError):
         self.stderr = stderr
 
 
-def run_remote_module(
+def _run_ssh_command(
     config: AdminConfig,
+    remote_command: str,
     *,
-    action: str,
-    payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Run `python -m admin.remote` on the remote host and parse its JSON result."""
-    remote_command = (
-        f"cd {shlex.quote(config.app_dir)} && "
-        f"{shlex.quote(config.remote_python)} -m admin.remote {shlex.quote(action)}"
-    )
+    error_message: str,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
         ["ssh", config.remote, remote_command],
-        input=json.dumps(
-            {
-                "payload": payload or {},
-                "context_override": _build_remote_context_override(config),
-            }
-        ),
+        input=input_text,
         text=True,
         capture_output=True,
         check=False,
     )
     if completed.returncode != 0:
         stderr = completed.stderr.strip() or completed.stdout.strip()
-        raise RemoteCommandError(
-            f"Remote command failed for action '{action}'",
-            stderr=stderr or None,
-        )
+        raise RemoteCommandError(error_message, stderr=stderr or None)
+    return completed
+
+
+def run_remote_module(
+    config: AdminConfig,
+    *,
+    action: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run `python -m admin.remote` inside the Docker container and parse JSON."""
+    remote_command = _build_docker_exec_command(
+        config,
+        [
+            "python",
+            "-m",
+            "admin.remote",
+            action,
+        ],
+    )
+    request: dict[str, Any] = {
+        "payload": payload or {},
+        "context_override": _build_remote_context_override(config),
+    }
+    completed = _run_ssh_command(
+        config,
+        remote_command,
+        error_message=f"Remote command failed for action '{action}'",
+        input_text=json.dumps(request),
+    )
     try:
         return json.loads(completed.stdout or "{}")
     except json.JSONDecodeError as exc:
@@ -57,44 +74,102 @@ def run_remote_module(
         ) from exc
 
 
-def _build_remote_context_override(config: AdminConfig) -> dict[str, str] | None:
-    """Return explicit remote paths when the CLI should avoid reading remote .env."""
-    if config.remote_context_source != "direct":
-        return None
-    if "://" not in config.remote_db_path:
-        raise RemoteCommandError(
-            "Direct remote context now requires a full SQLAlchemy database URL for --remote-db-path"
-        )
-
+def _build_remote_context_override(config: AdminConfig) -> dict[str, str]:
+    database_url = (
+        config.remote_db_path
+        if config.remote_context_source == "direct" and "://" in config.remote_db_path
+        else _resolve_container_database_url(config)
+    )
     return {
-        "database_url": config.remote_db_path,
+        "database_url": database_url,
         "logs_dir": config.logs_dir,
         "service_log_dir": config.service_log_dir,
     }
 
 
-def run_remote_script(config: AdminConfig, script_args: list[str]) -> dict[str, Any]:
-    """Run a trusted script inside the deployed app checkout."""
-    quoted = " ".join(shlex.quote(part) for part in script_args)
+def _resolve_container_database_url(config: AdminConfig) -> str:
     remote_command = (
         f"cd {shlex.quote(config.app_dir)} && "
-        f"{shlex.quote(config.remote_python)} {quoted}"
+        f"sudo docker exec {shlex.quote(config.docker_service_name)} env"
     )
-    completed = subprocess.run(
-        ["ssh", config.remote, remote_command],
-        text=True,
-        capture_output=True,
-        check=False,
+    completed = _run_ssh_command(
+        config,
+        remote_command,
+        error_message="Remote env inspection failed",
     )
-    if completed.returncode != 0:
-        stderr = completed.stderr.strip() or completed.stdout.strip()
-        raise RemoteCommandError("Remote script failed", stderr=stderr or None)
+
+    env_values: dict[str, str] = {}
+    for line in completed.stdout.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        env_values[key] = value
+
+    database_url = env_values.get("DATABASE_URL", "").strip()
+    if database_url and "change-me" not in database_url:
+        return database_url
+
+    password = env_values.get("POSTGRES_PASSWORD", "").strip()
+    user = env_values.get("POSTGRES_USER", "newsly").strip() or "newsly"
+    database = env_values.get("POSTGRES_DB", "newsly").strip() or "newsly"
+    port = env_values.get("POSTGRES_PORT", "5432").strip() or "5432"
+    if password:
+        return f"postgresql+psycopg://{user}:{password}@127.0.0.1:{port}/{database}"
+
+    raise RemoteCommandError("Could not resolve remote database URL from container env")
+
+
+def run_remote_script(config: AdminConfig, script_args: list[str]) -> dict[str, Any]:
+    """Run a trusted script inside the Docker container."""
+    remote_command = _build_docker_exec_command(
+        config,
+        ["python", *script_args],
+    )
+    completed = _run_ssh_command(
+        config,
+        remote_command,
+        error_message="Remote script failed",
+    )
     return {
         "stdout": completed.stdout,
         "stderr": completed.stderr,
         "remote": config.remote,
         "command": script_args,
     }
+
+
+def run_remote_docker_logs(
+    config: AdminConfig,
+    *,
+    tail: int,
+) -> dict[str, Any]:
+    """Return recent logs from the unified Docker container stdout stream."""
+    remote_command = (
+        f"cd {shlex.quote(config.app_dir)} && "
+        "sudo docker logs --timestamps "
+        f"--tail {shlex.quote(str(tail))} {shlex.quote(config.docker_service_name)}"
+    )
+    completed = _run_ssh_command(
+        config,
+        remote_command,
+        error_message="Remote docker logs failed",
+    )
+    return {
+        "source": "docker",
+        "remote": config.remote,
+        "service": config.docker_service_name,
+        "tail": tail,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
+
+
+def _build_docker_exec_command(config: AdminConfig, command: list[str]) -> str:
+    quoted = " ".join(shlex.quote(part) for part in command)
+    return (
+        f"cd {shlex.quote(config.app_dir)} && "
+        f"sudo docker exec -i {shlex.quote(config.docker_service_name)} {quoted}"
+    )
 
 
 def rsync_from_remote(config: AdminConfig, *, remote_path: str, local_path: Path) -> dict[str, Any]:

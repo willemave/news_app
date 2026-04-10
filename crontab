@@ -1,7 +1,7 @@
 SHELL=/bin/bash
 PATH=/opt/news_app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Backup DB daily (02:00 UTC)
+# Backup PostgreSQL daily (02:00 UTC)
 0 2 * * * flock -n /tmp/news_app_backup.lock /bin/bash -lc '/opt/news_app/scripts/backup_database.sh' >> /var/log/news_app/backup.log 2>&1
 
 # Run scrapers every 15 minutes

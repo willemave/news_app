@@ -19,6 +19,7 @@ This file stays minimal and only captures repo-specific working rules.
 - Clients: SwiftUI iOS app, iOS Share Extension, Jinja admin UI, machine-facing APIs.
 - UI note: this repo is not a React app. Web UI is Jinja-rendered; mobile UI is SwiftUI.
 - Runtime note: local development should use the normal local services and a local PostgreSQL instance. Treat Docker as a staging/production runtime, not the default local-dev path.
+- Operator note: use the `admin` CLI for Docker-runtime inspection and repairs. `admin logs tail` defaults to the unified `newsly` container log stream.
 
 ## Dependency Direction
 
@@ -50,6 +51,7 @@ For processing changes, follow this order:
 
 - Add tests for new functionality under `tests/` when you change production behavior.
 - Scripts under `scripts/` do not need tests unless the task specifically asks for them.
+- If you change the admin CLI, bug-test the touched CLI commands with `pytest tests/admin -v` and `ruff check admin tests/admin` before handoff when possible.
 - Run `ruff check` on touched Python files, or the repo, before handoff when possible.
 - Use `pytest tests/ -v` for relevant validation when behavior changes.
 

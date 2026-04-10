@@ -75,6 +75,21 @@ def _format_success_text(command: str, data: Any) -> str:
     if not isinstance(data, dict):
         return json.dumps(data, ensure_ascii=False, indent=2, default=str)
 
+    if command == "logs.tail" and data.get("source") in {
+        "docker",
+        "compose",
+        "container",
+    }:
+        stdout = _coerce_text(data.get("stdout") or "").rstrip("\n")
+        stderr = _coerce_text(data.get("stderr") or "").rstrip("\n")
+        if stdout and stderr:
+            return f"{stdout}\n{stderr}"
+        if stdout:
+            return stdout
+        if stderr:
+            return stderr
+        return "No log output."
+
     if command == "db.tables":
         tables = data.get("tables") or []
         if not tables:
@@ -103,13 +118,22 @@ def _format_success_text(command: str, data: Any) -> str:
 
 def _format_error_details(details: dict[str, Any]) -> str:
     stderr = details.get("stderr")
-    if isinstance(stderr, str) and "PermissionError" in stderr and "/opt/news_app/.env" in stderr:
+    if not isinstance(stderr, str):
+        return json.dumps(details, ensure_ascii=False, indent=2, default=str)
+
+    lowered = stderr.lower()
+    if (
+        "docker compose" in lowered
+        or "docker exec" in lowered
+        or "docker logs" in lowered
+        or "/var/run/docker.sock" in stderr
+        or "permission denied" in lowered
+    ):
         return (
-            "The remote command reached the host, but the remote process could not read "
-            "`/opt/news_app/.env`.\n"
-            "Retry with `--remote-context-source direct` (or set "
-            "`ADMIN_REMOTE_CONTEXT_SOURCE=direct`) to avoid reading remote app settings, or "
-            "check the SSH user in `ADMIN_REMOTE`."
+            "The remote command reached the host, but Docker could not run the "
+            "newsly container command.\n"
+            "Check that the `newsly` container is up (`docker ps`), that Docker is "
+            "installed on the host, and that the SSH user in `ADMIN_REMOTE` can run Docker."
         )
     return json.dumps(details, ensure_ascii=False, indent=2, default=str)
 
@@ -117,14 +141,21 @@ def _format_error_details(details: dict[str, Any]) -> str:
 def _format_logs_list(data: dict[str, Any]) -> str:
     sources = data.get("sources") or {}
     if not sources:
-        return "No log sources found."
+        return "\n".join(
+            [
+                "No file-backed log sources found.",
+                "",
+                "Docker logs:",
+                "  admin logs tail --limit 200",
+            ]
+        )
 
     sections = ["Available log sources:"]
     for source, files in sorted(sources.items()):
         sections.append(f"- {source} ({len(files)} file{'s' if len(files) != 1 else ''})")
     sections.append("")
     sections.append("Example:")
-    sections.append("  admin logs tail --source structured --limit 20")
+    sections.append("  admin logs tail --limit 200")
     return "\n".join(sections)
 
 
@@ -155,9 +186,7 @@ def _format_exceptions(data: dict[str, Any]) -> str:
         error_message = _coerce_text(
             record.get("error_message") or record.get("message") or "Unknown error"
         ).strip()
-        lines.append(
-            f"- [{timestamp}] {component}/{operation} {error_type}: {error_message}"
-        )
+        lines.append(f"- [{timestamp}] {component}/{operation} {error_type}: {error_message}")
     return "\n".join(lines)
 
 

@@ -23,69 +23,114 @@
 
 Newsly is an AI-powered knowledge companion that keeps you informed without the noise. It pulls in content from RSS feeds, podcasts, Hacker News, Reddit, Techmeme, X bookmarks, and any URL you throw at it — then summarizes everything with LLMs so you get focused, non-sensationalized reading on the things you actually care about.
 
-> **Hosted version coming soon to the App Store.** Or [self-host it yourself](#getting-started) with your own API keys.
+<br>
+
+<p align="center">
+  <a href="#ios-app"><img src="https://img.shields.io/badge/Download_on_the-App_Store-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download on the App Store"></a>
+</p>
+
+<p align="center">
+  <sub>Newsly is a native iOS app built with SwiftUI. Coming soon to the App Store — or <a href="#getting-started">self-host it yourself</a> with your own API keys.</sub>
+</p>
 
 <br>
 
 ## Highlights
 
 <table>
+<tr><td colspan="2"><br></td></tr>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
 
-### Focused Reading, Zero Noise
-Stay informed on the go with content that respects your attention. Newsly delivers non-sensationalized, AI-summarized reading across the topics you care about and what's happening in the world — so you read what matters, when you want to.
+<h3>
+<picture><img src="https://img.shields.io/badge/-%20-eef2ff?style=flat-square" height="1"></picture><br>
+Focused Reading, Zero Noise
+</h3>
+
+<p>Stay informed on the go with content that respects your attention. Newsly delivers non-sensationalized, AI-summarized reading across the topics you care about — so you read what matters, when you want to.</p>
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
 
-### Your Council of Experts
-Chat with a council of AI experts grounded in your entire knowledge base. Dig deeper into any article, corroborate claims across sources, and explore new angles — all in one conversation. Think of it as a research team that's read everything you have.
+<h3>
+<picture><img src="https://img.shields.io/badge/-%20-eef2ff?style=flat-square" height="1"></picture><br>
+Your Council of Experts
+</h3>
+
+<p>Chat with a council of AI experts grounded in your entire knowledge base. Dig deeper into any article, corroborate claims across sources, and explore new angles — all in one conversation.</p>
 
 </td>
 </tr>
+<tr><td colspan="2"></td></tr>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
 
-### RSS Feeds & Long-Form Content
-First-class support for RSS and Atom feeds, podcasts, and long-form articles. Subscribe to your favorite blogs, newsletters, and shows — Newsly monitors them continuously and processes new content as it arrives.
+<h3>
+<picture><img src="https://img.shields.io/badge/-%20-eef2ff?style=flat-square" height="1"></picture><br>
+RSS Feeds &amp; Long-Form Content
+</h3>
+
+<p>First-class support for RSS and Atom feeds, podcasts, and long-form articles. Subscribe to your favorite blogs, newsletters, and shows — Newsly monitors them continuously and processes new content as it arrives.</p>
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
 
-### Fast Tech News
-Curated, quick-hit summaries from Hacker News, Techmeme, Reddit, and more. Get the signal from the noisiest corners of the internet in seconds, not hours of scrolling.
+<h3>
+<picture><img src="https://img.shields.io/badge/-%20-eef2ff?style=flat-square" height="1"></picture><br>
+Fast Tech News
+</h3>
+
+<p>Curated, quick-hit summaries from Hacker News, Techmeme, Reddit, and more. Get the signal from the noisiest corners of the internet in seconds, not hours of scrolling.</p>
 
 </td>
 </tr>
+<tr><td colspan="2"></td></tr>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
 
-### Discover New Knowledge
-Newsly surfaces related content and new sources based on what you've read and what's trending across the open web — expanding your knowledge graph without you having to hunt for it.
+<h3>
+<picture><img src="https://img.shields.io/badge/-%20-eef2ff?style=flat-square" height="1"></picture><br>
+Discover New Knowledge
+</h3>
+
+<p>Newsly surfaces related content and new sources based on what you've read and what's trending across the open web — expanding your knowledge graph without you having to hunt for it.</p>
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
 
-### Sources You Already Use
-Built-in integrations for **X bookmarks & follows**, **Hacker News**, **Techmeme**, **Reddit**, **Substack**, and any RSS/Atom feed. Connect the sources you already follow and let Newsly do the rest.
+<h3>
+<picture><img src="https://img.shields.io/badge/-%20-eef2ff?style=flat-square" height="1"></picture><br>
+Sources You Already Use
+</h3>
+
+<p>Built-in integrations for <strong>X bookmarks &amp; follows</strong>, <strong>Hacker News</strong>, <strong>Techmeme</strong>, <strong>Reddit</strong>, <strong>Substack</strong>, and any RSS/Atom feed. Connect the sources you already follow and let Newsly do the rest.</p>
 
 </td>
 </tr>
+<tr><td colspan="2"></td></tr>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
 
-### CLI-Powered Content Management
-A dedicated CLI lets your AI *claws* manage and curate your library from the terminal. Add feeds, submit one-off articles, manage sources, and organize by topic — the system classifies, processes, and enriches everything automatically so your knowledge base stays fresh.
+<h3>
+<picture><img src="https://img.shields.io/badge/-%20-eef2ff?style=flat-square" height="1"></picture><br>
+CLI-Powered Content Management
+</h3>
+
+<p>A dedicated CLI lets your AI <em>claws</em> manage and curate your library from the terminal. Add feeds, submit articles, manage sources — the system classifies, processes, and enriches everything automatically.</p>
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
 
-### Local Markdown Sync
-Export and sync your saved knowledge as Markdown files locally. Keep a searchable, offline archive of everything you've read for research, note-taking, or integration with your existing tools.
+<h3>
+<picture><img src="https://img.shields.io/badge/-%20-eef2ff?style=flat-square" height="1"></picture><br>
+Local Markdown Sync
+</h3>
+
+<p>Export and sync your saved knowledge as Markdown files locally. Keep a searchable, offline archive of everything you've read for research, note-taking, or integration with your existing tools.</p>
 
 </td>
 </tr>
+<tr><td colspan="2"><br></td></tr>
 </table>
 
 <br>

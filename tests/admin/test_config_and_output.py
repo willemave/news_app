@@ -17,6 +17,7 @@ def _namespace(**overrides: object) -> argparse.Namespace:
         "env_file": None,
         "remote": None,
         "app_dir": None,
+        "docker_service_name": None,
         "logs_dir": None,
         "service_log_dir": None,
         "remote_db_path": None,
@@ -37,6 +38,7 @@ def test_resolve_config_loads_admin_env_file(tmp_path):
             [
                 "ADMIN_REMOTE=ops@example.com",
                 "ADMIN_APP_DIR=/srv/news_app",
+                "ADMIN_DOCKER_SERVICE_NAME=newsly",
                 "ADMIN_LOGS_DIR=/srv/logs",
                 "ADMIN_SERVICE_LOG_DIR=/srv/service-logs",
                 "ADMIN_REMOTE_DB_PATH=/srv/news.db",
@@ -50,6 +52,7 @@ def test_resolve_config_loads_admin_env_file(tmp_path):
 
     assert config.remote == "ops@example.com"
     assert config.app_dir == "/srv/news_app"
+    assert config.docker_service_name == "newsly"
     assert config.logs_dir == "/srv/logs"
     assert config.service_log_dir == "/srv/service-logs"
     assert config.remote_db_path == "/srv/news.db"
@@ -113,7 +116,7 @@ def test_emit_text_logs_list_envelope_is_human_readable():
     assert "Available log sources:" in rendered
     assert "- structured (1 file)" in rendered
     assert "- worker (1 file)" in rendered
-    assert "admin logs tail --source structured --limit 20" in rendered
+    assert "admin logs tail --limit 200" in rendered
 
 
 def test_emit_text_permission_error_envelope_is_actionable():
@@ -126,8 +129,8 @@ def test_emit_text_permission_error_envelope_is_actionable():
                 "Remote command failed for action 'logs.list'",
                 details={
                     "stderr": (
-                        "PermissionError: [Errno 13] Permission denied: "
-                        "'/opt/news_app/.env'"
+                        "docker compose exec -T newsly python -m admin.remote logs.list: "
+                        "permission denied"
                     )
                 },
             ),
@@ -137,8 +140,8 @@ def test_emit_text_permission_error_envelope_is_actionable():
     )
 
     rendered = stream.getvalue()
-    assert "could not read `/opt/news_app/.env`" in rendered
-    assert "ADMIN_REMOTE_CONTEXT_SOURCE=direct" in rendered
+    assert "Docker could not run the newsly container command" in rendered
+    assert "docker ps" in rendered
 
 
 def test_build_parser_defaults_to_text_output():
@@ -152,6 +155,22 @@ def test_build_parser_supports_logs_exceptions():
 
     assert args.logs_command == "exceptions"
     assert args.limit == 7
+
+
+def test_build_parser_supports_docker_log_source():
+    args = build_parser().parse_args(["logs", "tail", "--source", "docker", "--limit", "12"])
+
+    assert args.logs_command == "tail"
+    assert args.source == "docker"
+    assert args.limit == 12
+
+
+def test_build_parser_defaults_logs_tail_to_docker():
+    args = build_parser().parse_args(["logs", "tail"])
+
+    assert args.logs_command == "tail"
+    assert args.source == "docker"
+    assert args.limit == 50
 
 
 def test_emit_text_logs_exceptions_is_human_readable():
@@ -190,10 +209,40 @@ def test_logs_group_error_includes_next_steps(capsys):
     assert "admin logs list" in captured.err
 
 
-def test_logs_tail_error_includes_source_examples(capsys):
-    with pytest.raises(SystemExit):
-        build_parser().parse_args(["logs", "tail"])
+def test_emit_text_docker_logs_are_rendered_raw():
+    stream = StringIO()
+    emit(
+        Envelope(
+            ok=True,
+            command="logs.tail",
+            data={
+                "source": "docker",
+                "stdout": "newsly  | 2026-04-09T12:00:00Z booted\nnewsly  | ready\n",
+            },
+        ),
+        "text",
+        stream,
+    )
 
-    captured = capsys.readouterr()
-    assert "Choose one log source with `--source`." in captured.err
-    assert "admin logs list" in captured.err
+    rendered = stream.getvalue()
+    assert "newsly  | ready" in rendered
+
+
+def test_emit_text_docker_logs_fall_back_to_stderr():
+    stream = StringIO()
+    emit(
+        Envelope(
+            ok=True,
+            command="logs.tail",
+            data={
+                "source": "docker",
+                "stdout": "",
+                "stderr": "newsly  | 2026-04-09T12:00:00Z worker warning\n",
+            },
+        ),
+        "text",
+        stream,
+    )
+
+    rendered = stream.getvalue()
+    assert "worker warning" in rendered
