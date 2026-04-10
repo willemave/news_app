@@ -90,6 +90,7 @@ from app.models.metadata import (
 )
 from app.models.schema import Content, ContentDiscussion, ContentReadStatus, ContentStatusEntry
 from app.models.user import User
+from app.services.news_ingestion import backfill_news_items_from_contents
 from app.services.twitter_share import canonical_tweet_url
 
 # Sample data pools
@@ -216,23 +217,18 @@ DISCUSSION_COMMENTS = [
     {
         "author": "patio11",
         "text": (
-            "Having worked in this space, the regulatory angle "
-            "is what most people miss entirely."
+            "Having worked in this space, the regulatory angle is what most people miss entirely."
         ),
     },
     {
         "author": "dang",
         "text": (
-            "We changed the title from the clickbait original. "
-            "Please keep discussion substantive."
+            "We changed the title from the clickbait original. Please keep discussion substantive."
         ),
     },
     {
         "author": "rauchg",
-        "text": (
-            "We've been building toward this at Vercel. "
-            "The DX implications are massive."
-        ),
+        "text": ("We've been building toward this at Vercel. The DX implications are massive."),
     },
     {
         "author": "karpathy",
@@ -244,8 +240,7 @@ DISCUSSION_COMMENTS = [
     {
         "author": "swyx",
         "text": (
-            "This confirms the trend I wrote about last month. "
-            "The ecosystem is consolidating fast."
+            "This confirms the trend I wrote about last month. The ecosystem is consolidating fast."
         ),
     },
     {
@@ -265,16 +260,12 @@ DISCUSSION_COMMENTS = [
     {
         "author": "simonw",
         "text": (
-            "I built a quick prototype using this "
-            "and the API ergonomics are surprisingly good."
+            "I built a quick prototype using this and the API ergonomics are surprisingly good."
         ),
     },
     {
         "author": "antirez",
-        "text": (
-            "Simple systems that work beat complex systems "
-            "that don't. This gets that right."
-        ),
+        "text": ("Simple systems that work beat complex systems that don't. This gets that right."),
     },
 ]
 
@@ -1105,9 +1096,7 @@ def generate_test_data(
             status = random.choice([ContentStatus.NEW.value, ContentStatus.PROCESSING.value])
         else:
             status = ContentStatus.COMPLETED.value
-        data.append(
-            PodcastGenerator.generate(status=status, summary_format=podcast_summary_format)
-        )
+        data.append(PodcastGenerator.generate(status=status, summary_format=podcast_summary_format))
 
     # Generate news
     for i in range(num_news):
@@ -1182,6 +1171,7 @@ def insert_test_data(
         List of inserted content IDs
     """
     inserted_ids = []
+    inserted_news_content_ids: list[int] = []
 
     if user_ids is None:
         user_ids = _fetch_user_ids(session)
@@ -1198,6 +1188,8 @@ def insert_test_data(
         session.add(content)
         session.flush()  # Get the ID
         inserted_ids.append(content.id)
+        if content.content_type == ContentType.NEWS.value:
+            inserted_news_content_ids.append(content.id)
 
         # SQLite can reuse primary keys for rows that were deleted earlier.
         # If the local dev DB contains orphaned per-user rows for an old content ID,
@@ -1205,9 +1197,9 @@ def insert_test_data(
         session.query(ContentStatusEntry).filter(
             ContentStatusEntry.content_id == content.id
         ).delete(synchronize_session=False)
-        session.query(ContentReadStatus).filter(
-            ContentReadStatus.content_id == content.id
-        ).delete(synchronize_session=False)
+        session.query(ContentReadStatus).filter(ContentReadStatus.content_id == content.id).delete(
+            synchronize_session=False
+        )
 
         metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
         discussion_url = metadata.get("discussion_url")
@@ -1258,6 +1250,13 @@ def insert_test_data(
                         status=CONTENT_STATUS_INBOX,
                     )
                 )
+
+    if inserted_news_content_ids:
+        backfill_news_items_from_contents(
+            session,
+            content_ids=inserted_news_content_ids,
+            only_missing=False,
+        )
 
     session.commit()
     return inserted_ids
@@ -1373,8 +1372,7 @@ def main():
         "--logged-in-user",
         action="store_true",
         help=(
-            "Target only the inferred logged-in user "
-            "(most recently updated active non-admin user)"
+            "Target only the inferred logged-in user (most recently updated active non-admin user)"
         ),
     )
 

@@ -211,7 +211,7 @@ final class QuickMicViewModelTests: XCTestCase {
                 articleSummary: nil,
                 articleSource: nil,
                 hasPendingMessage: true,
-                isFavorite: false,
+                isSavedToKnowledge: false,
                 hasMessages: true,
                 lastMessagePreview: nil,
                 lastMessageRole: nil

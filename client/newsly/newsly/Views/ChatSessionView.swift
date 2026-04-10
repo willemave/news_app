@@ -684,7 +684,7 @@ struct ChatSessionView: View {
         )
     }
 
-    // MARK: - Article Preview Card (for empty favorites)
+    // MARK: - Article Preview Card (for empty knowledge saves)
 
     @ViewBuilder
     private func articlePreviewCard(

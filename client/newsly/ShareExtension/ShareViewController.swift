@@ -45,9 +45,9 @@ final class ShareViewController: UIViewController {
     private let contentStack = UIStackView()
     private let titleLabel = UILabel()
     private let optionsStack = UIStackView()
-    private let favoriteToggleView = ToggleRowView(
-        title: "Add to favorites",
-        description: "Download and summarize this item, then mark it read and save it for memory sync."
+    private let knowledgeSaveToggleView = ToggleRowView(
+        title: "Save to knowledge",
+        description: "Download and summarize this item, then mark it read and save it to your knowledge library."
     )
     private let submitButton = UIButton(type: .system)
 
@@ -108,7 +108,7 @@ final class ShareViewController: UIViewController {
 
         contentStack.addArrangedSubview(titleLabel)
         contentStack.addArrangedSubview(optionsStack)
-        contentStack.addArrangedSubview(favoriteToggleView)
+        contentStack.addArrangedSubview(knowledgeSaveToggleView)
         contentStack.addArrangedSubview(submitButton)
 
         view.addSubview(contentStack)
@@ -142,7 +142,7 @@ final class ShareViewController: UIViewController {
         optionViews.forEach { mode, view in
             view.isSelected = (mode == linkHandlingMode)
         }
-        updateFavoriteToggleAvailability()
+        updateKnowledgeSaveToggleAvailability()
     }
 
     private func updateSubmitState() {
@@ -232,12 +232,12 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func updateFavoriteToggleAvailability() {
+    private func updateKnowledgeSaveToggleAvailability() {
         let isAvailable = linkHandlingMode != .addFeed
-        if !isAvailable && favoriteToggleView.isOn {
-            favoriteToggleView.isOn = false
+        if !isAvailable && knowledgeSaveToggleView.isOn {
+            knowledgeSaveToggleView.isOn = false
         }
-        favoriteToggleView.isEnabled = isAvailable
+        knowledgeSaveToggleView.isEnabled = isAvailable
     }
 
     // MARK: - API Submission
@@ -248,7 +248,7 @@ final class ShareViewController: UIViewController {
             "url": url.absoluteString,
             "crawl_links": linkHandlingMode == .addLinks,
             "share_and_chat": false,
-            "favorite_and_mark_read": favoriteToggleView.isOn,
+            "save_to_knowledge_and_mark_read": knowledgeSaveToggleView.isOn,
             "subscribe_to_feed": linkHandlingMode == .addFeed,
         ]
         if let platform = handler.platform {

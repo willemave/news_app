@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 def test_recently_read_scoped_to_user(
     client,
     content_factory,
-    favorite_factory,
+    knowledge_save_factory,
     read_status_factory,
     test_user,
     user_factory,
@@ -39,7 +39,7 @@ def test_recently_read_scoped_to_user(
         read_at=timestamp,
         created_at=timestamp,
     )
-    favorite_factory(
+    knowledge_save_factory(
         user=other_user,
         content=content_one,
         saved_at=timestamp,

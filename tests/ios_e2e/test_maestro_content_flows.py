@@ -37,25 +37,25 @@ def test_long_form_detail_flow_uses_seeded_fixture_data(
     )
 
 
-def test_long_form_detail_favorite_action_updates_backend_state(
+def test_long_form_detail_knowledge_save_action_updates_backend_state(
     run_ios_flow,
     create_sample_content,
     sample_article_long,
     test_user,
     db_session,
 ) -> None:
-    """Favoriting from the detail screen should persist to the shared backend DB."""
+    """Saving to knowledge from the detail screen should persist to the shared backend DB."""
     content = create_sample_content(sample_article_long)
 
     run_ios_flow(
-        "long_form_favorite.yaml",
+        "long_form_save_to_knowledge.yaml",
         extra_env={
             "CONTENT_ID": str(content.id),
             "CONTENT_TITLE": content.title,
         },
     )
 
-    favorite = (
+    knowledge_save = (
         db_session.query(ContentKnowledgeSave)
         .filter(
             ContentKnowledgeSave.user_id == test_user.id,
@@ -63,7 +63,7 @@ def test_long_form_detail_favorite_action_updates_backend_state(
         )
         .one_or_none()
     )
-    assert favorite is not None
+    assert knowledge_save is not None
 
 
 def test_long_form_list_mark_read_action_updates_backend_state(

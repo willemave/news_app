@@ -10,6 +10,7 @@ This file stays minimal and only captures repo-specific working rules.
 
 - Keep replies short, technical, and complete.
 - Never commit or push unless explicitly asked.
+- If asked to commit, commit to the current checked-out branch unless explicitly asked to create or use a different branch. This applies even if the current branch is `main`.
 - Prefer small, local changes that follow the existing layer boundaries.
 - Do not duplicate architecture notes here; update `docs/architecture.md` instead.
 

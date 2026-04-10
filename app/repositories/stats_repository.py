@@ -38,8 +38,7 @@ def _build_active_processing_filter(now_utc: datetime):
     fresh_checkout = and_(
         Content.checked_out_by.is_not(None),
         Content.checked_out_at.is_not(None),
-        Content.checked_out_at
-        >= now_utc - timedelta(minutes=settings.checkout_timeout_minutes),
+        Content.checked_out_at >= now_utc - timedelta(minutes=settings.checkout_timeout_minutes),
     )
     return or_(active_task_exists, fresh_checkout)
 
@@ -144,7 +143,7 @@ def get_long_form_stats(db: Session, *, user_id: int) -> dict[str, int]:
             ContentReadStatus.content_id == Content.id,
         )
     )
-    favorite_exists = exists(
+    knowledge_save_exists = exists(
         select(ContentKnowledgeSave.id).where(
             ContentKnowledgeSave.user_id == user_id,
             ContentKnowledgeSave.content_id == Content.id,
@@ -188,7 +187,7 @@ def get_long_form_stats(db: Session, *, user_id: int) -> dict[str, int]:
             .join(ContentStatusEntry, ContentStatusEntry.content_id == Content.id)
             .filter(*inbox_filter)
             .filter(*completed_filter)
-            .filter(favorite_exists)
+            .filter(knowledge_save_exists)
             .scalar()
             or 0
         ),

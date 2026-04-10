@@ -87,6 +87,57 @@ struct ContentDetail: Codable, Identifiable {
         case detectedFeed = "detected_feed"
         case canSubscribe = "can_subscribe"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(Int.self, forKey: .id)
+        contentType = try container.decode(String.self, forKey: .contentType)
+        url = try container.decode(String.self, forKey: .url)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        status = try container.decode(String.self, forKey: .status)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        retryCount = try container.decodeIfPresent(Int.self, forKey: .retryCount) ?? 0
+        metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata) ?? [:]
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        processedAt = try container.decodeIfPresent(String.self, forKey: .processedAt)
+        checkedOutBy = try container.decodeIfPresent(String.self, forKey: .checkedOutBy)
+        checkedOutAt = try container.decodeIfPresent(String.self, forKey: .checkedOutAt)
+        publicationDate = try container.decodeIfPresent(String.self, forKey: .publicationDate)
+        isRead = try container.decodeIfPresent(Bool.self, forKey: .isRead) ?? false
+        isSavedToKnowledge = try container.decodeIfPresent(Bool.self, forKey: .isSavedToKnowledge) ?? false
+        summary = try container.decodeIfPresent(String.self, forKey: .summary)
+        shortSummary = try container.decodeIfPresent(String.self, forKey: .shortSummary)
+        summaryKind = try container.decodeIfPresent(String.self, forKey: .summaryKind)
+        summaryVersion = try container.decodeIfPresent(Int.self, forKey: .summaryVersion)
+        structuredSummaryRaw = try container.decodeIfPresent([String: AnyCodable].self, forKey: .structuredSummaryRaw)
+        bulletPoints = try container.decodeIfPresent([BulletPoint].self, forKey: .bulletPoints) ?? []
+        quotes = try container.decodeIfPresent([Quote].self, forKey: .quotes) ?? []
+        topics = try container.decodeIfPresent([String].self, forKey: .topics) ?? []
+        fullMarkdown = try container.decodeIfPresent(String.self, forKey: .fullMarkdown)
+        bodyAvailable = try container.decodeIfPresent(Bool.self, forKey: .bodyAvailable) ?? false
+        bodyKind = try container.decodeIfPresent(String.self, forKey: .bodyKind)
+        bodyFormat = try container.decodeIfPresent(String.self, forKey: .bodyFormat)
+        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
+        thumbnailUrl = try container.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+        newsArticleURL = try container.decodeIfPresent(String.self, forKey: .newsArticleURL)
+        newsDiscussionURL = try container.decodeIfPresent(String.self, forKey: .newsDiscussionURL)
+        newsKeyPoints = try container.decodeIfPresent([String].self, forKey: .newsKeyPoints)
+        newsSummary = try container.decodeIfPresent(String.self, forKey: .newsSummary)
+        detectedFeed = try container.decodeIfPresent(DetectedFeed.self, forKey: .detectedFeed)
+        canSubscribe = try container.decodeIfPresent(Bool.self, forKey: .canSubscribe)
+
+        if let displayTitle = try container.decodeIfPresent(String.self, forKey: .displayTitle),
+           !displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            self.displayTitle = displayTitle
+        } else if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            self.displayTitle = title
+        } else {
+            self.displayTitle = url
+        }
+    }
     
     var contentTypeEnum: ContentType? {
         ContentType(rawValue: contentType)

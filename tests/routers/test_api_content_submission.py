@@ -544,7 +544,7 @@ def test_submit_save_to_knowledge_and_mark_read_marks_read_and_saves(
     response = client.post(
         "/api/content/submit",
         json={
-            "url": "https://example.com/favorite-article",
+            "url": "https://example.com/knowledge-article",
             "save_to_knowledge_and_mark_read": True,
         },
     )
@@ -555,7 +555,7 @@ def test_submit_save_to_knowledge_and_mark_read_marks_read_and_saves(
     created = db_session.query(Content).filter(Content.id == data["content_id"]).first()
     assert created is not None
 
-    favorite_row = (
+    knowledge_save = (
         db_session.query(ContentKnowledgeSave)
         .filter(
             ContentKnowledgeSave.user_id == test_user.id,
@@ -563,7 +563,7 @@ def test_submit_save_to_knowledge_and_mark_read_marks_read_and_saves(
         )
         .first()
     )
-    assert favorite_row is not None
+    assert knowledge_save is not None
 
     read_status_row = (
         db_session.query(ContentReadStatus)
@@ -585,9 +585,9 @@ def test_existing_completed_submission_save_to_knowledge_and_mark_read_reuses_re
     db_session,
     test_user,
 ):
-    """Completed content should be favorited and marked read without reanalysis."""
+    """Completed content should be saved and marked read without reanalysis."""
     existing = Content(
-        url="https://example.com/existing-favorite",
+        url="https://example.com/existing-knowledge",
         content_type=ContentType.ARTICLE.value,
         status=ContentStatus.COMPLETED.value,
         source=SELF_SUBMISSION_SOURCE,
@@ -606,7 +606,7 @@ def test_existing_completed_submission_save_to_knowledge_and_mark_read_reuses_re
     assert data["content_id"] == existing.id
     assert data["task_id"] is None
 
-    favorite_row = (
+    knowledge_save = (
         db_session.query(ContentKnowledgeSave)
         .filter(
             ContentKnowledgeSave.user_id == test_user.id,
@@ -614,7 +614,7 @@ def test_existing_completed_submission_save_to_knowledge_and_mark_read_reuses_re
         )
         .first()
     )
-    assert favorite_row is not None
+    assert knowledge_save is not None
 
     read_status_row = (
         db_session.query(ContentReadStatus)

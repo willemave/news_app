@@ -34,7 +34,7 @@ def _make_content() -> Content:
     )
 
 
-def _seed_favorited_content(db_session, test_user) -> Content:
+def _seed_knowledge_saved_content(db_session, test_user) -> Content:
     content = _make_content()
     db_session.add(content)
     db_session.commit()
@@ -49,7 +49,7 @@ def test_agent_library_manifest_defaults_to_source_and_summary(
     test_user,
 ) -> None:
     """Manifest should include both summary and source markdown by default."""
-    _seed_favorited_content(db_session, test_user)
+    _seed_knowledge_saved_content(db_session, test_user)
 
     response = client.get("/api/agent/library/manifest")
 
@@ -68,7 +68,7 @@ def test_agent_library_manifest_can_exclude_source_when_requested(
     test_user,
 ) -> None:
     """Manifest should still support summary-only export when requested."""
-    content = _seed_favorited_content(db_session, test_user)
+    content = _seed_knowledge_saved_content(db_session, test_user)
 
     response = client.get(
         "/api/agent/library/manifest",
@@ -92,7 +92,7 @@ def test_agent_library_manifest_can_include_source_and_download_document(
     test_user,
 ) -> None:
     """Library sync should expose both manifest metadata and file contents."""
-    _seed_favorited_content(db_session, test_user)
+    _seed_knowledge_saved_content(db_session, test_user)
 
     manifest_response = client.get(
         "/api/agent/library/manifest",

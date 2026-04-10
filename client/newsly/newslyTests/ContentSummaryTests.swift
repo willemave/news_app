@@ -60,7 +60,7 @@ final class ContentSummaryTests: XCTestCase {
             classification: nil,
             publicationDate: publicationDate,
             isRead: false,
-            isFavorited: false,
+            isSavedToKnowledge: false,
             imageUrl: nil,
             thumbnailUrl: nil,
             primaryTopic: nil,

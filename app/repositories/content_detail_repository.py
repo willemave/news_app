@@ -9,7 +9,7 @@ from app.repositories.content_repository import build_visibility_context
 
 
 def get_content_detail(db: Session, *, user_id: int, content_id: int):
-    """Return detail row with read/favorite flags."""
+    """Return detail row with read and knowledge-save flags."""
     context = build_visibility_context(user_id)
     return (
         db.query(

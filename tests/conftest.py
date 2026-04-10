@@ -227,8 +227,8 @@ def status_entry_factory(db_session: Session):
 
 
 @pytest.fixture
-def favorite_factory(db_session: Session):
-    """Create favorite rows for a user/content pair."""
+def knowledge_save_factory(db_session: Session):
+    """Create knowledge-save rows for a user/content pair."""
 
     def _create(
         *,
@@ -238,15 +238,15 @@ def favorite_factory(db_session: Session):
         content_id: int | None = None,
         **overrides: Any,
     ) -> ContentKnowledgeSave:
-        favorite = ContentKnowledgeSave(
+        knowledge_save = ContentKnowledgeSave(
             user_id=user_id or (user.id if user is not None else None),
             content_id=content_id or (content.id if content is not None else None),
             **overrides,
         )
-        db_session.add(favorite)
+        db_session.add(knowledge_save)
         db_session.commit()
-        db_session.refresh(favorite)
-        return favorite
+        db_session.refresh(knowledge_save)
+        return knowledge_save
 
     return _create
 

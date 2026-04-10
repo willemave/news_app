@@ -253,7 +253,10 @@ struct SettingsView: View {
                 if councilPersonasDraft.count < CouncilPersona.maxExperts {
                     HStack(spacing: 10) {
                         TextField("e.g. Paul Graham, Mariana Mazzucato", text: $newExpertName)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color.surfaceTertiary, in: RoundedRectangle(cornerRadius: 12))
                             .submitLabel(.done)
                             .onSubmit { addExpert() }
 
@@ -283,14 +286,24 @@ struct SettingsView: View {
                     Button {
                         Task { await saveCouncilPersonas() }
                     } label: {
-                        if isSavingCouncilPersonas {
-                            ProgressView()
-                        } else {
-                            Text("Save")
-                                .font(.callout.weight(.semibold))
+                        Group {
+                            if isSavingCouncilPersonas {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(.white)
+                            } else {
+                                Text("Save")
+                                    .font(.callout.weight(.semibold))
+                            }
                         }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.terracottaPrimary, in: RoundedRectangle(cornerRadius: 10))
                     }
+                    .buttonStyle(.plain)
                     .disabled(isSavingCouncilPersonas || !hasUnsavedCouncilPersonaEdits)
+                    .opacity((isSavingCouncilPersonas || !hasUnsavedCouncilPersonaEdits) ? 0.4 : 1.0)
                 }
             }
             .padding(.horizontal, Spacing.rowHorizontal)
@@ -347,8 +360,8 @@ struct SettingsView: View {
                 .frame(minHeight: 140)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
-                .background(Color.surfaceSecondary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .background(Color.surfaceTertiary)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .onChange(of: newsListPreferencePromptDraft) { _, newValue in
                     hasUnsavedNewsListPreferencePromptEdits =
                         normalizedNewsListPreferencePromptForComparison(newValue)
@@ -363,16 +376,26 @@ struct SettingsView: View {
                 Button {
                     Task { await saveNewsListPreferencePrompt() }
                 } label: {
-                    if isSavingNewsListPreferencePrompt {
-                        ProgressView()
-                    } else {
-                        Text("Save Preferences")
-                            .font(.callout.weight(.semibold))
+                    Group {
+                        if isSavingNewsListPreferencePrompt {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                        } else {
+                            Text("Save")
+                                .font(.callout.weight(.semibold))
+                        }
                     }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.terracottaPrimary, in: RoundedRectangle(cornerRadius: 10))
                 }
+                .buttonStyle(.plain)
                 .disabled(
                     isSavingNewsListPreferencePrompt || !hasUnsavedNewsListPreferencePromptEdits
                 )
+                .opacity((isSavingNewsListPreferencePrompt || !hasUnsavedNewsListPreferencePromptEdits) ? 0.4 : 1.0)
             }
         }
         .padding(.horizontal, Spacing.rowHorizontal)
@@ -439,7 +462,7 @@ struct SettingsView: View {
             .padding(.horizontal, Spacing.rowHorizontal)
             .padding(.top, Spacing.rowVertical)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Text("A")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.onSurfaceSecondary)
@@ -451,7 +474,8 @@ struct SettingsView: View {
                     .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(Color.onSurfaceSecondary)
             }
-            .padding(.horizontal, Spacing.rowHorizontal)
+            .padding(.leading, Spacing.rowDividerInset)
+            .padding(.trailing, Spacing.rowHorizontal)
             .padding(.bottom, Spacing.rowVertical)
         }
     }
@@ -755,14 +779,13 @@ private struct AccountCard: View {
     let user: User
 
     var body: some View {
-        HStack(spacing: 14) {
-            // Avatar — warm palette
+        HStack(spacing: 12) {
             Circle()
                 .fill(Color.terracottaPrimary.opacity(0.15))
-                .frame(width: 44, height: 44)
+                .frame(width: Spacing.iconSize, height: Spacing.iconSize)
                 .overlay(
                     Text(user.email.prefix(1).uppercased())
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.terracottaPrimary)
                 )
 

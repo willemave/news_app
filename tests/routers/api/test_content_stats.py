@@ -240,8 +240,8 @@ def test_long_form_stats_counts(client, db_session, test_user) -> None:
         status=ContentStatus.COMPLETED.value,
         content_metadata={},
     )
-    completed_article_favorited = Content(
-        url="https://example.com/article-favorite",
+    completed_article_saved = Content(
+        url="https://example.com/article-knowledge",
         content_type=ContentType.ARTICLE.value,
         status=ContentStatus.COMPLETED.value,
         content_metadata={},
@@ -282,7 +282,7 @@ def test_long_form_stats_counts(client, db_session, test_user) -> None:
         [
             completed_article_unread,
             completed_podcast_read,
-            completed_article_favorited,
+            completed_article_saved,
             completed_youtube,
             completed_news,
             processing_article,
@@ -294,7 +294,7 @@ def test_long_form_stats_counts(client, db_session, test_user) -> None:
     for content in (
         completed_article_unread,
         completed_podcast_read,
-        completed_article_favorited,
+        completed_article_saved,
         completed_youtube,
         completed_news,
         processing_article,
@@ -305,7 +305,7 @@ def test_long_form_stats_counts(client, db_session, test_user) -> None:
 
     _add_inbox_status(db_session, test_user.id, completed_article_unread.id)
     _add_inbox_status(db_session, test_user.id, completed_podcast_read.id)
-    _add_inbox_status(db_session, test_user.id, completed_article_favorited.id)
+    _add_inbox_status(db_session, test_user.id, completed_article_saved.id)
     _add_inbox_status(db_session, test_user.id, completed_youtube.id)
     _add_inbox_status(db_session, test_user.id, completed_news.id)
     _add_inbox_status(db_session, test_user.id, processing_article.id)
@@ -325,7 +325,7 @@ def test_long_form_stats_counts(client, db_session, test_user) -> None:
     db_session.add(
         ContentKnowledgeSave(
             user_id=test_user.id,
-            content_id=completed_article_favorited.id,
+            content_id=completed_article_saved.id,
         )
     )
     db_session.commit()

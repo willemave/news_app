@@ -161,8 +161,7 @@ def test_list_news_items_falls_back_from_blocked_titles_to_summary_text(
     payload = response.json()
     listed = next(content for content in payload["contents"] if content["id"] == item.id)
     assert (
-        listed["title"]
-        == "OpenAI and Oracle discuss a new enterprise infrastructure partnership."
+        listed["title"] == "OpenAI and Oracle discuss a new enterprise infrastructure partnership."
     )
 
 
@@ -363,7 +362,7 @@ def test_convert_news_item_to_article_queues_processing(
     assert article.url == "https://example.com/convert-1"
 
 
-def test_convert_news_item_to_article_favorites_existing_article(
+def test_convert_news_item_to_article_reuses_existing_article_and_saves_to_knowledge(
     client,
     db_session,
     test_user,

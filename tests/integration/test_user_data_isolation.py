@@ -5,7 +5,7 @@ def test_users_see_only_their_own_knowledge_saves(
     auth_headers_factory,
     client_factory,
     content_factory,
-    favorite_factory,
+    knowledge_save_factory,
     status_entry_factory,
     user_factory,
 ):
@@ -15,8 +15,8 @@ def test_users_see_only_their_own_knowledge_saves(
     content1 = content_factory(title="Article 1", url="https://example.com/article1")
     content2 = content_factory(title="Article 2", url="https://example.com/article2")
 
-    favorite_factory(user=user1, content=content1)
-    favorite_factory(user=user2, content=content2)
+    knowledge_save_factory(user=user1, content=content1)
+    knowledge_save_factory(user=user2, content=content2)
     for user in (user1, user2):
         for content in (content1, content2):
             status_entry_factory(user=user, content=content, status="inbox")

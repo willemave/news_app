@@ -352,7 +352,9 @@ class TestSearchEndpointPagination:
 class TestKnowledgeLibraryPagination:
     """Test pagination on GET /api/content/knowledge/list endpoint."""
 
-    def test_favorites_pagination(self, client, sample_contents, db_session: Session, test_user):
+    def test_knowledge_library_pagination(
+        self, client, sample_contents, db_session: Session, test_user
+    ):
         """Test knowledge library list with pagination."""
         from app.services import knowledge
 

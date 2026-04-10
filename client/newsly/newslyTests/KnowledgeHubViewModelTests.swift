@@ -116,7 +116,7 @@ final class KnowledgeHubViewModelTests: XCTestCase {
             articleSummary: nil,
             articleSource: nil,
             hasPendingMessage: false,
-            isFavorite: false,
+            isSavedToKnowledge: false,
             hasMessages: true,
             lastMessagePreview: nil,
             lastMessageRole: nil

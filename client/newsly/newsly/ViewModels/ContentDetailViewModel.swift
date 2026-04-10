@@ -57,6 +57,7 @@ class ContentDetailViewModel: ObservableObject {
         logger.info("[ContentDetail] loadContent started | contentId=\(self.contentId)")
         isLoading = true
         errorMessage = nil
+        contentBody = nil
 
         do {
             logger.debug("[ContentDetail] Fetching content detail | contentId=\(self.contentId) contentType=\(self.contentType?.rawValue ?? "nil", privacy: .public)")
@@ -67,60 +68,87 @@ class ContentDetailViewModel: ObservableObject {
                 fetched = try await contentService.fetchContentDetail(id: contentId)
             }
             content = fetched
-            contentBody = nil
             logger.info("[ContentDetail] Content fetched | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public) isRead=\(fetched.isRead) title=\(fetched.displayTitle, privacy: .public)")
-
-            if fetched.bodyAvailable {
-                do {
-                    contentBody = try await contentService.fetchContentBody(id: fetched.id)
-                } catch {
-                    logger.error("[ContentDetail] Failed to fetch content body | contentId=\(self.contentId) error=\(error.localizedDescription)")
-                }
-            }
 
             // Capture read state as returned by the server BEFORE any auto-marking
             wasAlreadyReadWhenLoaded = fetched.isRead
             logger.debug("[ContentDetail] wasAlreadyReadWhenLoaded=\(fetched.isRead) | contentId=\(self.contentId)")
 
+            // Render immediately once the main detail payload arrives.
+            isLoading = false
+
             Task {
                 await self.trackOpenedInteraction(for: fetched)
             }
 
-            // Auto-mark as read if not already read
-            if !fetched.isRead {
-                logger.info("[ContentDetail] Content not read, marking as read | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public)")
-                try await contentService.markContentAsRead(id: contentId, contentType: fetched.contentTypeEnum)
-                logger.info("[ContentDetail] Successfully marked as read | contentId=\(self.contentId)")
-
-                // Post notification so list views can update their local state
-                logger.debug("[ContentDetail] Posting contentMarkedAsRead notification | contentId=\(self.contentId) type=\(fetched.contentType, privacy: .public)")
-                NotificationCenter.default.post(
-                    name: .contentMarkedAsRead,
-                    object: nil,
-                    userInfo: ["contentId": contentId, "contentType": fetched.contentType]
-                )
-
-                // Update unread count based on content type
-                if fetched.apiContentType == .article {
-                    logger.debug("[ContentDetail] Decrementing article count | contentId=\(self.contentId)")
-                    unreadCountService.decrementArticleCount()
-                } else if fetched.apiContentType == .podcast {
-                    logger.debug("[ContentDetail] Decrementing podcast count | contentId=\(self.contentId)")
-                    unreadCountService.decrementPodcastCount()
-                } else if fetched.apiContentType == .news {
-                    logger.debug("[ContentDetail] Decrementing news count | contentId=\(self.contentId)")
-                    unreadCountService.decrementNewsCount()
+            if fetched.bodyAvailable {
+                Task {
+                    await self.loadContentBody(for: fetched)
                 }
-            } else {
-                logger.info("[ContentDetail] Content already read, skipping mark-as-read | contentId=\(self.contentId)")
+            }
+
+            Task {
+                await self.markFetchedContentAsReadIfNeeded(fetched)
             }
         } catch {
             logger.error("[ContentDetail] Error loading content | contentId=\(self.contentId) error=\(error.localizedDescription)")
             errorMessage = error.localizedDescription
+            isLoading = false
+        }
+        logger.debug("[ContentDetail] loadContent completed | contentId=\(self.contentId)")
+    }
+
+    private func loadContentBody(for fetched: ContentDetail) async {
+        do {
+            let body = try await contentService.fetchContentBody(id: fetched.id)
+            guard self.contentId == fetched.id else {
+                logger.debug("[ContentDetail] Ignoring stale content body | requestedId=\(fetched.id) currentId=\(self.contentId)")
+                return
+            }
+            contentBody = body
+        } catch {
+            logger.error("[ContentDetail] Failed to fetch content body | contentId=\(fetched.id) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func markFetchedContentAsReadIfNeeded(_ fetched: ContentDetail) async {
+        guard !fetched.isRead else {
+            logger.info("[ContentDetail] Content already read, skipping mark-as-read | contentId=\(fetched.id)")
+            return
         }
 
-        isLoading = false
-        logger.debug("[ContentDetail] loadContent completed | contentId=\(self.contentId)")
+        do {
+            logger.info("[ContentDetail] Content not read, marking as read | contentId=\(fetched.id) type=\(fetched.contentType, privacy: .public)")
+            try await contentService.markContentAsRead(id: fetched.id, contentType: fetched.contentTypeEnum)
+            logger.info("[ContentDetail] Successfully marked as read | contentId=\(fetched.id)")
+
+            guard self.contentId == fetched.id else {
+                logger.debug("[ContentDetail] Ignoring stale mark-as-read completion | requestedId=\(fetched.id) currentId=\(self.contentId)")
+                return
+            }
+
+            content?.isRead = true
+
+            logger.debug("[ContentDetail] Posting contentMarkedAsRead notification | contentId=\(fetched.id) type=\(fetched.contentType, privacy: .public)")
+            NotificationCenter.default.post(
+                name: .contentMarkedAsRead,
+                object: nil,
+                userInfo: ["contentId": fetched.id, "contentType": fetched.contentType]
+            )
+
+            if fetched.apiContentType == .article {
+                logger.debug("[ContentDetail] Decrementing article count | contentId=\(fetched.id)")
+                unreadCountService.decrementArticleCount()
+            } else if fetched.apiContentType == .podcast {
+                logger.debug("[ContentDetail] Decrementing podcast count | contentId=\(fetched.id)")
+                unreadCountService.decrementPodcastCount()
+            } else if fetched.apiContentType == .news {
+                logger.debug("[ContentDetail] Decrementing news count | contentId=\(fetched.id)")
+                unreadCountService.decrementNewsCount()
+            }
+        } catch {
+            logger.error("[ContentDetail] Failed to mark content as read | contentId=\(fetched.id) error=\(error.localizedDescription)")
+        }
     }
 
     private func trackOpenedInteraction(for fetched: ContentDetail) async {

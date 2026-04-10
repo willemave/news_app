@@ -7,7 +7,7 @@ from app.models.schema import Content, ContentStatusEntry, UserScraperConfig
 from app.services import assistant_router
 
 
-def test_build_turn_instructions_prefers_knowledge_for_favorites() -> None:
+def test_build_turn_instructions_prefers_knowledge_for_saved_content_prompts() -> None:
     """Favorite/saved prompts should route to SearchKnowledge."""
 
     instructions = assistant_router._build_turn_instructions("What is my favorite article?")

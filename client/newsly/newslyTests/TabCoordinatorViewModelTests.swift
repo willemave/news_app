@@ -124,7 +124,7 @@ final class TabCoordinatorViewModelTests: XCTestCase {
             classification: nil,
             publicationDate: nil,
             isRead: false,
-            isFavorited: false,
+            isSavedToKnowledge: false,
             imageUrl: nil,
             thumbnailUrl: nil,
             primaryTopic: nil,

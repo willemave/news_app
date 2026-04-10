@@ -214,7 +214,7 @@ def test_stream_agent_turn_reuses_one_runtime_for_multiple_turns(
     assert counters["end"] == 1
 
 
-def test_search_knowledge_returns_only_matching_favorites(db_session, test_user) -> None:
+def test_search_knowledge_returns_only_matching_saved_items(db_session, test_user) -> None:
     """Knowledge search should include only knowledge-saved matching content."""
 
     c1 = Content(
@@ -273,7 +273,7 @@ def test_search_web_returns_empty_when_exa_unavailable(monkeypatch: pytest.Monke
     assert hits == []
 
 
-def test_build_available_knowledge_context_lists_favorites(db_session, test_user) -> None:
+def test_build_available_knowledge_context_lists_saved_items(db_session, test_user) -> None:
     """Bootstrap knowledge context should enumerate knowledge-saved titles."""
 
     content = Content(
@@ -297,7 +297,7 @@ def test_build_available_knowledge_context_lists_favorites(db_session, test_user
 def test_stream_agent_turn_uses_local_saved_knowledge_response() -> None:
     """Saved-history questions should return deterministic local knowledge responses."""
 
-    state = service.create_or_get_session_state("local-favorites", 42)
+    state = service.create_or_get_session_state("local-knowledge", 42)
     runtime = service.AgentConversationRuntime(
         session_id=state.session_id,
         user_id=42,

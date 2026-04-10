@@ -143,7 +143,7 @@ extension Color {
     }
     static var editorialBorder: Color { Color(.systemGray5) }
 
-    // Adaptive accent (topic badges, favorites)
+    // Adaptive accent (topic badges, knowledge saves)
     static var topicAccent: Color {
         Color(UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark

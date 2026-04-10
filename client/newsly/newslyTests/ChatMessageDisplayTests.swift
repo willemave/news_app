@@ -54,7 +54,7 @@ final class ChatMessageDisplayTests: XCTestCase {
                 "article_summary": null,
                 "article_source": null,
                 "has_pending_message": false,
-                "is_favorite": false,
+                "is_saved_to_knowledge": false,
                 "has_messages": true,
                 "last_message_preview": "Final deep-dive answer.",
                 "last_message_role": "assistant"
@@ -199,7 +199,7 @@ final class ChatMessageDisplayTests: XCTestCase {
                 "article_summary": null,
                 "article_source": null,
                 "has_pending_message": false,
-                "is_favorite": false,
+                "is_saved_to_knowledge": false,
                 "has_messages": true,
                 "last_message_preview": "Analyst branch",
                 "last_message_role": "assistant",
