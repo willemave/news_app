@@ -67,21 +67,16 @@ struct OnboardingFlowView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(Color.watercolorSlate.opacity(0.08))
-                        .frame(width: 88, height: 88)
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 32, weight: .medium))
-                        .foregroundColor(.watercolorSlate)
-                }
+            VStack(spacing: 20) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 36, weight: .medium))
+                    .foregroundColor(.watercolorSlate.opacity(0.7))
 
                 VStack(spacing: 10) {
                     Text("Set up your feeds")
                         .font(.title2.bold())
                         .foregroundColor(.watercolorSlate)
-                    Text("Share what you read and we'll\ncurate the best sources for you.")
+                    Text("Tell us what you follow and\nwe'll find the best sources.")
                         .font(.callout)
                         .foregroundColor(.watercolorSlate.opacity(0.6))
                         .multilineTextAlignment(.center)
@@ -90,28 +85,36 @@ struct OnboardingFlowView: View {
 
             Spacer()
 
-            VStack(spacing: 10) {
-                choiceCard(
-                    icon: "mic.fill",
-                    title: "Personalize with voice",
-                    subtitle: "Tell us your interests in 30 seconds",
-                    isPrimary: true,
-                    accessibilityID: "onboarding.choice.personalized"
-                ) {
+            VStack(spacing: 12) {
+                Button {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         viewModel.startPersonalized()
                     }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "mic.fill")
+                            .font(.body.weight(.medium))
+                        Text("Personalize with voice")
+                            .font(.callout.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .foregroundColor(.white)
+                    .background(Color.watercolorSlate)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("onboarding.choice.personalized")
 
-                choiceCard(
-                    icon: "wand.and.stars",
-                    title: "Start with defaults",
-                    subtitle: "We'll pick popular tech & news feeds",
-                    isPrimary: false,
-                    accessibilityID: "onboarding.choice.defaults"
-                ) {
+                Button {
                     viewModel.chooseDefaults()
+                } label: {
+                    Text("Skip — use popular defaults")
+                        .font(.callout)
+                        .foregroundColor(.watercolorSlate.opacity(0.55))
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("onboarding.choice.defaults")
             }
 
             if let error = viewModel.errorMessage {
@@ -122,48 +125,8 @@ struct OnboardingFlowView: View {
             }
         }
         .padding(24)
-        .padding(.bottom, 8)
+        .padding(.bottom, 16)
         .accessibilityIdentifier("onboarding.choice.screen")
-    }
-
-    private func choiceCard(
-        icon: String,
-        title: String,
-        subtitle: String,
-        isPrimary: Bool,
-        accessibilityID: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.body.weight(.medium))
-                    .foregroundColor(isPrimary ? .white : .watercolorSlate)
-                    .frame(width: 36, height: 36)
-                    .background(isPrimary ? Color.watercolorSlate : Color.watercolorSlate.opacity(0.1))
-                    .clipShape(Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.callout.weight(.semibold))
-                        .foregroundColor(.watercolorSlate)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.watercolorSlate.opacity(0.6))
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.watercolorSlate.opacity(0.4))
-            }
-            .padding(16)
-            .background(Color.white.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(accessibilityID)
     }
 
     // MARK: - Audio
@@ -174,7 +137,7 @@ struct OnboardingFlowView: View {
                 Text("Tell us what you read")
                     .font(.title2.bold())
                     .foregroundColor(.watercolorSlate)
-                Text("Speak naturally about your interests.")
+                Text("Just talk — we'll find matching sources.")
                     .font(.callout)
                     .foregroundColor(.watercolorSlate.opacity(0.6))
             }
@@ -238,7 +201,7 @@ struct OnboardingFlowView: View {
                 Text("Finding your feeds")
                     .font(.title2.bold())
                     .foregroundColor(.watercolorSlate)
-                Text("Searching newsletters, podcasts, and Reddit.")
+                Text("Searching newsletters, podcasts, and Reddit")
                     .font(.callout)
                     .foregroundColor(.watercolorSlate.opacity(0.6))
             }
@@ -302,7 +265,7 @@ struct OnboardingFlowView: View {
                         Text("Your picks")
                             .font(.title2.bold())
                             .foregroundColor(.watercolorSlate)
-                        Text("Tap to deselect any you don't want.")
+                        Text("Deselect any you don't want.")
                             .font(.callout)
                             .foregroundColor(.watercolorSlate.opacity(0.6))
                     }

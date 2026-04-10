@@ -106,8 +106,7 @@ struct SettingsView: View {
                         SettingsRow(
                             icon: "qrcode.viewfinder",
                             iconColor: .green,
-                            title: "Link CLI",
-                            subtitle: "Scan a Newsly CLI QR code to approve local access"
+                            title: "Link CLI"
                         ) {
                             if isApprovingCLILink {
                                 ProgressView()
@@ -153,8 +152,7 @@ struct SettingsView: View {
                     SettingsRow(
                         icon: "at",
                         iconColor: .blue,
-                        title: "X / Twitter",
-                        subtitle: "Username and account connection"
+                        title: "X / Twitter"
                     )
                 }
                 .buttonStyle(.plain)
@@ -199,26 +197,18 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
-                    Image(systemName: "person.3.sequence.fill")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(.orange)
-                        .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+                    SettingsIcon(systemName: "person.3.sequence.fill", color: .orange)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Your Experts")
-                            .font(.listTitle)
-                            .foregroundStyle(Color.onSurface)
-                        Text("Add 2-3 people you respect. Council chat gives you their perspective on any article.")
-                            .font(.listCaption)
-                            .foregroundStyle(Color.onSurfaceSecondary)
-                    }
+                    Text("Your Experts")
+                        .font(.listTitle)
+                        .foregroundStyle(Color.onSurface)
 
                     Spacer(minLength: 8)
                 }
 
                 // Expert list
                 ForEach(Array(councilPersonasDraft.enumerated()), id: \.element.id) { index, persona in
-                    HStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
                         Circle()
                             .fill(expertColor(for: index).opacity(0.15))
                             .frame(width: 36, height: 36)
@@ -338,41 +328,48 @@ struct SettingsView: View {
     private var newsListPreferencePromptRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Image(systemName: "text.badge.star")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.orange)
-                    .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+                SettingsIcon(systemName: "text.badge.star", color: .orange)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("News List Preferences")
-                        .font(.listTitle)
-                        .foregroundStyle(Color.onSurface)
-                    Text("Used to enrich the news list and filter related X posts before they show up.")
-                        .font(.listCaption)
-                        .foregroundStyle(Color.onSurfaceSecondary)
-                }
+                Text("News List Preferences")
+                    .font(.listTitle)
+                    .foregroundStyle(Color.onSurface)
 
                 Spacer(minLength: 8)
             }
 
             TextEditor(text: $newsListPreferencePromptDraft)
                 .focused($isNewsListPreferencePromptFocused)
+                .scrollContentBackground(.hidden)
+                .font(.body)
+                .foregroundStyle(Color.onSurface)
                 .frame(minHeight: 140)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 8)
-                .background(Color.surfaceTertiary)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.surfaceTertiary, in: RoundedRectangle(cornerRadius: 12))
                 .onChange(of: newsListPreferencePromptDraft) { _, newValue in
                     hasUnsavedNewsListPreferencePromptEdits =
                         normalizedNewsListPreferencePromptForComparison(newValue)
                         != normalizedNewsListPreferencePromptForComparison(serverNewsListPreferencePrompt)
                 }
 
-            HStack {
-                Text("Clear the field and save to restore the default prompt.")
-                    .font(.caption)
-                    .foregroundStyle(Color.onSurfaceSecondary)
+            HStack(spacing: 12) {
                 Spacer()
+
+                Button {
+                    newsListPreferencePromptDraft = ""
+                    hasUnsavedNewsListPreferencePromptEdits =
+                        normalizedNewsListPreferencePromptForComparison("")
+                        != normalizedNewsListPreferencePromptForComparison(serverNewsListPreferencePrompt)
+                } label: {
+                    Text("Reset")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(Color.onSurfaceSecondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.surfaceTertiary, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+
                 Button {
                     Task { await saveNewsListPreferencePrompt() }
                 } label: {
@@ -408,7 +405,6 @@ struct SettingsView: View {
                 icon: "textformat.size",
                 iconColor: .orange,
                 title: "App Text Size",
-                subtitle: AppTextSize(index: settings.appTextSizeIndex).label,
                 value: Binding(
                     get: { Double(settings.appTextSizeIndex) },
                     set: { settings.appTextSizeIndex = Int($0.rounded()) }
@@ -422,7 +418,6 @@ struct SettingsView: View {
                 icon: "book",
                 iconColor: .purple,
                 title: "Content Text Size",
-                subtitle: ContentTextSize(index: settings.contentTextSizeIndex).label,
                 value: Binding(
                     get: { Double(settings.contentTextSizeIndex) },
                     set: { settings.contentTextSizeIndex = Int($0.rounded()) }
@@ -436,26 +431,16 @@ struct SettingsView: View {
         icon: String,
         iconColor: Color,
         title: String,
-        subtitle: String,
         value: Binding<Double>,
         range: ClosedRange<Double>
     ) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(iconColor)
-                    .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+                SettingsIcon(systemName: icon, color: iconColor)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.listTitle)
-                        .foregroundStyle(Color.onSurface)
-
-                    Text(subtitle)
-                        .font(.listCaption)
-                        .foregroundStyle(Color.onSurfaceSecondary)
-                }
+                Text(title)
+                    .font(.listTitle)
+                    .foregroundStyle(Color.onSurface)
 
                 Spacer(minLength: 8)
             }
@@ -485,19 +470,12 @@ struct SettingsView: View {
             let selectedMode = LongArticleDisplayMode(rawValue: settings.longArticleDisplayMode) ?? .both
 
             HStack(spacing: 12) {
-                Image(systemName: "doc.text.magnifyingglass")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.indigo)
-                    .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+                SettingsIcon(systemName: "doc.text.magnifyingglass", color: .indigo)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Long Article Format")
-                        .font(.listTitle)
-                        .foregroundStyle(Color.onSurface)
-                    Text(selectedMode.detail)
-                        .font(.listCaption)
-                        .foregroundStyle(Color.onSurfaceSecondary)
-                }
+                Text("Long Article Format")
+                    .font(.listTitle)
+                    .foregroundStyle(Color.onSurface)
+
                 Spacer(minLength: 8)
             }
 
@@ -559,8 +537,7 @@ struct SettingsView: View {
                 SettingsRow(
                     icon: "checkmark.circle",
                     iconColor: .green,
-                    title: "Mark All As Read",
-                    subtitle: "Choose content type to mark as read"
+                    title: "Mark All As Read"
                 ) {
                     if isProcessingMarkAll {
                         ProgressView()
@@ -587,8 +564,7 @@ struct SettingsView: View {
                 SettingsRow(
                     icon: "ladybug",
                     iconColor: .red,
-                    title: "Debug Menu",
-                    subtitle: "Test authentication (Simulator)"
+                    title: "Debug Menu"
                 ) {
                     EmptyView()
                 }
@@ -780,14 +756,11 @@ private struct AccountCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(Color.terracottaPrimary.opacity(0.15))
+            Text(user.email.prefix(1).uppercased())
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
                 .frame(width: Spacing.iconSize, height: Spacing.iconSize)
-                .overlay(
-                    Text(user.email.prefix(1).uppercased())
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.terracottaPrimary)
-                )
+                .background(Color.terracottaPrimary, in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(user.fullName ?? user.email)

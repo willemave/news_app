@@ -7,6 +7,25 @@
 
 import SwiftUI
 
+// MARK: - Settings Icon
+
+/// Colored rounded-square icon matching iOS Settings style.
+/// Normalises visual weight across all SF Symbol glyphs.
+struct SettingsIcon: View {
+    let systemName: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+            .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+}
+
+// MARK: - Settings Row
+
 struct SettingsRow<Accessory: View>: View {
     let icon: String
     let iconColor: Color
@@ -30,10 +49,7 @@ struct SettingsRow<Accessory: View>: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(iconColor)
-                .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+            SettingsIcon(systemName: icon, color: iconColor)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -108,10 +124,7 @@ struct SettingsToggleRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(iconColor)
-                .frame(width: Spacing.iconSize, height: Spacing.iconSize)
+            SettingsIcon(systemName: icon, color: iconColor)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
