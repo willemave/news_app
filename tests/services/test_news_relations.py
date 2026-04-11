@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
+from app.core.settings import get_settings
 from app.models.schema import NewsItem, NewsItemReadStatus
 from app.services.news_feed import count_unread_news_items
 from app.services.news_relations import (
@@ -15,6 +17,16 @@ from app.services.news_relations import (
     reconcile_news_item_relation,
 )
 from tests.services.news_relation_cluster_cases import PRODUCTION_CLUSTER_CASES
+
+
+def _require_id(value: int | None) -> int:
+    assert value is not None
+    return value
+
+
+def _metadata(value: object | None) -> dict[str, Any]:
+    assert isinstance(value, dict)
+    return cast(dict[str, Any], value)
 
 
 def _news_item(
@@ -109,11 +121,11 @@ def test_reconcile_news_item_relation_suppresses_exact_duplicate_and_keeps_unrea
         title="OpenAI ships new feature",
         story_url="https://example.com/story-1",
     )
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
     db_session.add(
         NewsItemReadStatus(
-            user_id=test_user.id,
-            news_item_id=representative.id,
+            user_id=_require_id(test_user.id),
+            news_item_id=_require_id(representative.id),
             read_at=datetime.now(UTC).replace(tzinfo=None),
         )
     )
@@ -126,15 +138,16 @@ def test_reconcile_news_item_relation_suppresses_exact_duplicate_and_keeps_unrea
         title="OpenAI ships new feature again",
         story_url="https://example.com/story-1",
     )
-    reconcile_news_item_relation(db_session, news_item_id=duplicate.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(duplicate.id))
     db_session.commit()
 
     db_session.refresh(representative)
     db_session.refresh(duplicate)
     assert duplicate.representative_news_item_id == representative.id
     assert representative.cluster_size == 2
-    assert representative.raw_metadata["cluster"]["member_ids"] == [representative.id, duplicate.id]
-    assert count_unread_news_items(db_session, user_id=test_user.id) == 0
+    cluster = _metadata(_metadata(representative.raw_metadata)["cluster"])
+    assert cluster["member_ids"] == [_require_id(representative.id), _require_id(duplicate.id)]
+    assert count_unread_news_items(db_session, user_id=_require_id(test_user.id)) == 0
 
 
 def test_reconcile_news_item_relation_suppresses_exact_duplicate_title_with_different_urls(
@@ -156,7 +169,7 @@ def test_reconcile_news_item_relation_suppresses_exact_duplicate_title_with_diff
         ),
         story_url="https://x.com/i/status/925217336477287470",
     )
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
     duplicate = _news_item(
         db_session,
@@ -170,7 +183,7 @@ def test_reconcile_news_item_relation_suppresses_exact_duplicate_title_with_diff
     )
     duplicate.platform = "twitter"
     duplicate.source_label = "AI Researchers"
-    reconcile_news_item_relation(db_session, news_item_id=duplicate.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(duplicate.id))
     db_session.commit()
 
     db_session.refresh(representative)
@@ -196,7 +209,7 @@ def test_reconcile_news_item_relation_ignores_blocked_placeholder_titles(
         story_url="https://www.wsj.com/tech/ai/story-1",
     )
     representative.summary_text = "Anthropic races to contain leak fallout."
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
     unrelated = _news_item(
         db_session,
@@ -206,7 +219,7 @@ def test_reconcile_news_item_relation_ignores_blocked_placeholder_titles(
         story_url="https://www.wsj.com/markets/story-2",
     )
     unrelated.summary_text = "Arm stock jumps after a new chip announcement."
-    reconcile_news_item_relation(db_session, news_item_id=unrelated.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(unrelated.id))
     db_session.commit()
 
     db_session.refresh(representative)
@@ -218,7 +231,7 @@ def test_reconcile_news_item_relation_ignores_blocked_placeholder_titles(
 @pytest.mark.parametrize(
     "case",
     PRODUCTION_CLUSTER_CASES,
-    ids=[case["case_id"] for case in PRODUCTION_CLUSTER_CASES],
+    ids=[cast(str, case["case_id"]) for case in PRODUCTION_CLUSTER_CASES],
 )
 def test_reconcile_news_item_relation_clusters_curated_production_families(
     db_session,
@@ -227,8 +240,8 @@ def test_reconcile_news_item_relation_clusters_curated_production_families(
 ) -> None:
     monkeypatch.setattr("app.services.news_relations.encode_news_texts", _high_similarity_encode)
 
-    titles = _representative_first_titles(list(case["titles"]))
-    label = str(case["label"])
+    titles = _representative_first_titles(cast(list[str], case["titles"]))
+    label = cast(str, case["label"])
 
     representative = _news_item(
         db_session,
@@ -241,9 +254,9 @@ def test_reconcile_news_item_relation_clusters_curated_production_families(
     representative.source_label = "Source 0"
     representative.summary_key_points = [label]
     representative.summary_text = f"{label} summary"
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
-    created_ids = [representative.id]
+    created_ids = [_require_id(representative.id)]
     for index, title in enumerate(titles[1:], start=1):
         item = _news_item(
             db_session,
@@ -256,8 +269,8 @@ def test_reconcile_news_item_relation_clusters_curated_production_families(
         item.source_label = f"Source {index}"
         item.summary_key_points = [label]
         item.summary_text = f"{label} summary"
-        reconcile_news_item_relation(db_session, news_item_id=item.id)
-        created_ids.append(item.id)
+        reconcile_news_item_relation(db_session, news_item_id=_require_id(item.id))
+        created_ids.append(_require_id(item.id))
 
     db_session.commit()
 
@@ -292,7 +305,7 @@ def test_reconcile_news_item_relation_uses_secondary_threshold_with_lexical_guar
         title="Nvidia launches Blackwell server",
         story_url="https://example.com/story-2",
     )
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
     related = _news_item(
         db_session,
@@ -302,11 +315,98 @@ def test_reconcile_news_item_relation_uses_secondary_threshold_with_lexical_guar
         story_url="https://example.com/story-3",
     )
     related.article_domain = "example.com"
-    reconcile_news_item_relation(db_session, news_item_id=related.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(related.id))
     db_session.commit()
 
     db_session.refresh(related)
     assert related.representative_news_item_id == representative.id
+
+
+def test_reconcile_news_item_relation_reranker_can_merge_below_embedding_threshold(
+    db_session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.news_relations.encode_news_texts",
+        _uniform_similarity_encode(0.20),
+    )
+    monkeypatch.setattr(
+        "app.services.news_relations._candidate_reranker_scores",
+        lambda item, candidates: [0.93 for _ in candidates],
+    )
+    monkeypatch.setenv("NEWS_LIST_RERANKER_ENABLED", "true")
+    monkeypatch.setenv("NEWS_LIST_RERANKER_SIMILARITY_THRESHOLD", "0.60")
+    get_settings.cache_clear()
+
+    try:
+        representative = _news_item(
+            db_session,
+            ingest_key="rerank-merge-rep",
+            source_external_id="210",
+            title="TikTok forms U.S. joint venture with Oracle and Silver Lake",
+            story_url="https://example.com/story-210",
+        )
+        reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
+
+        related = _news_item(
+            db_session,
+            ingest_key="rerank-merge-related",
+            source_external_id="211",
+            title="US TikTok deal lets ByteDance keep algorithm and retain commercial control",
+            story_url="https://example.com/story-211",
+        )
+        reconcile_news_item_relation(db_session, news_item_id=_require_id(related.id))
+        db_session.commit()
+
+        db_session.refresh(representative)
+        db_session.refresh(related)
+        assert related.representative_news_item_id == representative.id
+    finally:
+        get_settings.cache_clear()
+
+
+def test_reconcile_news_item_relation_reranker_blocks_same_brand_false_merge(
+    db_session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.news_relations.encode_news_texts",
+        _high_similarity_encode,
+    )
+    monkeypatch.setattr(
+        "app.services.news_relations._candidate_reranker_scores",
+        lambda item, candidates: [0.12 for _ in candidates],
+    )
+    monkeypatch.setenv("NEWS_LIST_RERANKER_ENABLED", "true")
+    monkeypatch.setenv("NEWS_LIST_RERANKER_SIMILARITY_THRESHOLD", "0.60")
+    get_settings.cache_clear()
+
+    try:
+        representative = _news_item(
+            db_session,
+            ingest_key="rerank-block-rep",
+            source_external_id="220",
+            title="TikTok forms U.S. joint venture with Oracle and Silver Lake",
+            story_url="https://example.com/story-220",
+        )
+        reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
+
+        unrelated = _news_item(
+            db_session,
+            ingest_key="rerank-block-unrelated",
+            source_external_id="221",
+            title="TikTok privacy update collects precise location and AI prompts",
+            story_url="https://example.com/story-221",
+        )
+        reconcile_news_item_relation(db_session, news_item_id=_require_id(unrelated.id))
+        db_session.commit()
+
+        db_session.refresh(representative)
+        db_session.refresh(unrelated)
+        assert representative.cluster_size == 1
+        assert unrelated.representative_news_item_id is None
+    finally:
+        get_settings.cache_clear()
 
 
 def test_reconcile_news_item_relation_clusters_project_glasswing_launch_family(
@@ -337,7 +437,7 @@ def test_reconcile_news_item_relation_clusters_project_glasswing_launch_family(
     representative.summary_text = (
         "Anthropic launched Project Glasswing for AI-era software security."
     )
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
     partners = _news_item(
         db_session,
@@ -355,7 +455,7 @@ def test_reconcile_news_item_relation_clusters_project_glasswing_launch_family(
         "Project Glasswing launches with major security and cloud partners",
     ]
     partners.summary_text = "Coverage of Anthropic's Project Glasswing launch partner roster."
-    reconcile_news_item_relation(db_session, news_item_id=partners.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(partners.id))
 
     funding = _news_item(
         db_session,
@@ -375,7 +475,7 @@ def test_reconcile_news_item_relation_clusters_project_glasswing_launch_family(
     funding.summary_text = (
         "Project Glasswing includes major credits and donations for security work."
     )
-    reconcile_news_item_relation(db_session, news_item_id=funding.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(funding.id))
     db_session.commit()
 
     db_session.refresh(representative)
@@ -418,7 +518,7 @@ def test_reconcile_news_item_relation_matches_against_related_cluster_titles(
     )
     representative.summary_key_points = ["Arm launches AGI CPU for data centers"]
     representative.summary_text = "Arm launches AGI CPU for data centers summary"
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
     for index, title in enumerate(
         [
@@ -437,7 +537,7 @@ def test_reconcile_news_item_relation_matches_against_related_cluster_titles(
         )
         item.summary_key_points = ["Arm launches AGI CPU for data centers"]
         item.summary_text = "Arm launches AGI CPU for data centers summary"
-        reconcile_news_item_relation(db_session, news_item_id=item.id)
+        reconcile_news_item_relation(db_session, news_item_id=_require_id(item.id))
 
     stock_reaction = _news_item(
         db_session,
@@ -448,16 +548,16 @@ def test_reconcile_news_item_relation_matches_against_related_cluster_titles(
     )
     stock_reaction.summary_key_points = ["Arm launches AGI CPU for data centers"]
     stock_reaction.summary_text = "Arm launches AGI CPU for data centers summary"
-    reconcile_news_item_relation(db_session, news_item_id=stock_reaction.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(stock_reaction.id))
     db_session.commit()
 
     db_session.refresh(representative)
     db_session.refresh(stock_reaction)
     assert stock_reaction.representative_news_item_id == representative.id
     assert representative.cluster_size == 5
-    assert (
-        "Arm Debuts 'AGI CPU' Silicon with 136 Cores for AI Infrastructure"
-        in (representative.raw_metadata["cluster"]["related_titles"])
+    assert "Arm Debuts 'AGI CPU' Silicon with 136 Cores for AI Infrastructure" in cast(
+        list[str],
+        _metadata(_metadata(representative.raw_metadata)["cluster"])["related_titles"],
     )
 
 
@@ -504,7 +604,7 @@ def test_reconcile_news_item_relation_uses_multiview_primary_score(
     )
     representative.summary_key_points = ["Launches a coding agent", "Targets code review"]
     representative.summary_text = "OpenAI launched a coding agent for code review."
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
     related = _news_item(
         db_session,
@@ -517,7 +617,7 @@ def test_reconcile_news_item_relation_uses_multiview_primary_score(
     related.source_label = "Techmeme"
     related.summary_key_points = ["Launches a coding agent", "Targets code review"]
     related.summary_text = "Coverage of the coding agent release for code review workflows."
-    reconcile_news_item_relation(db_session, news_item_id=related.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(related.id))
     db_session.commit()
 
     db_session.refresh(related)
@@ -546,7 +646,7 @@ def test_reconcile_news_item_relation_clusters_claude_code_leak_family(
     representative.summary_text = (
         "The Claude Code leak kicked off a wider story around internal features."
     )
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
     kairos = _news_item(
         db_session,
@@ -565,7 +665,7 @@ def test_reconcile_news_item_relation_clusters_claude_code_leak_family(
     kairos.summary_text = (
         "Follow-up reporting on the Claude Code leak and its internal roadmap details."
     )
-    reconcile_news_item_relation(db_session, news_item_id=kairos.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(kairos.id))
 
     fallout = _news_item(
         db_session,
@@ -582,7 +682,7 @@ def test_reconcile_news_item_relation_clusters_claude_code_leak_family(
     fallout.source_label = "wsj.com"
     fallout.summary_key_points = ["Leak fallout drives takedown efforts and broader coverage"]
     fallout.summary_text = "Coverage of the operational fallout from the Claude Code leak."
-    reconcile_news_item_relation(db_session, news_item_id=fallout.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(fallout.id))
     db_session.commit()
 
     db_session.refresh(representative)
@@ -638,7 +738,7 @@ def test_reconcile_news_item_relation_rejects_topical_neighbor_under_multiview_s
     representative.source_label = "X Following"
     representative.summary_key_points = ["Codex plugin launches for Claude Code"]
     representative.summary_text = "OpenAI launched a Codex plugin inside Claude Code."
-    reconcile_news_item_relation(db_session, news_item_id=representative.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(representative.id))
 
     adjacent = _news_item(
         db_session,
@@ -651,7 +751,7 @@ def test_reconcile_news_item_relation_rejects_topical_neighbor_under_multiview_s
     adjacent.source_label = "Show HN"
     adjacent.summary_key_points = ["Dashboard product for Claude Code teams"]
     adjacent.summary_text = "A separate analytics dashboard for Claude Code engineering teams."
-    reconcile_news_item_relation(db_session, news_item_id=adjacent.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(adjacent.id))
     db_session.commit()
 
     db_session.refresh(adjacent)
@@ -685,7 +785,7 @@ def test_reconcile_news_item_relation_skips_embeddings_without_title_overlap(
         story_url="https://example.com/story-501",
     )
 
-    reconcile_news_item_relation(db_session, news_item_id=unrelated.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(unrelated.id))
     db_session.commit()
 
     db_session.refresh(unrelated)
@@ -722,7 +822,7 @@ def test_reconcile_news_item_relation_caps_semantic_prefilter_candidates(
         story_url="https://example.com/story-cap-related",
     )
 
-    reconcile_news_item_relation(db_session, news_item_id=related.id)
+    reconcile_news_item_relation(db_session, news_item_id=_require_id(related.id))
 
     assert call_lengths
     assert max(call_lengths) == SEMANTIC_PREFILTER_MAX_CANDIDATES + 1

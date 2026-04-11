@@ -1,6 +1,4 @@
 """Tests for admin password verification."""
-import os
-import pytest
 
 from app.core.security import verify_admin_password
 from app.core.settings import get_settings

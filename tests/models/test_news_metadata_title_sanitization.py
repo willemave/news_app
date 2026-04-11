@@ -1,5 +1,7 @@
 """Regression tests for noisy/oversized news article metadata titles."""
 
+from pydantic import HttpUrl, TypeAdapter
+
 from app.models.content_mapper import content_to_domain
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.schema import Content as DBContent
@@ -26,10 +28,14 @@ def _build_news_metadata(raw_title: str) -> dict:
     }
 
 
+def _url(value: str) -> HttpUrl:
+    return TypeAdapter(HttpUrl).validate_python(value)
+
+
 def test_content_data_normalizes_noisy_news_article_title() -> None:
     content = ContentData(
         content_type=ContentType.NEWS,
-        url="https://news.ycombinator.com/item?id=123",
+        url=_url("https://news.ycombinator.com/item?id=123"),
         status=ContentStatus.COMPLETED,
         metadata=_build_news_metadata(_build_noisy_title()),
     )
@@ -45,7 +51,7 @@ def test_content_data_normalizes_noisy_news_article_title() -> None:
 def test_content_data_drops_placeholder_news_article_title() -> None:
     content = ContentData(
         content_type=ContentType.NEWS,
-        url="https://news.ycombinator.com/item?id=1234",
+        url=_url("https://news.ycombinator.com/item?id=1234"),
         status=ContentStatus.COMPLETED,
         metadata=_build_news_metadata("SKILL0"),
     )
@@ -56,7 +62,7 @@ def test_content_data_drops_placeholder_news_article_title() -> None:
 def test_content_data_drops_blocked_page_titles() -> None:
     content = ContentData(
         content_type=ContentType.NEWS,
-        url="https://news.ycombinator.com/item?id=12345",
+        url=_url("https://news.ycombinator.com/item?id=12345"),
         status=ContentStatus.COMPLETED,
         metadata=_build_news_metadata("Subscribe to read"),
     )
@@ -67,7 +73,7 @@ def test_content_data_drops_blocked_page_titles() -> None:
 def test_content_data_drops_bare_domain_titles() -> None:
     content = ContentData(
         content_type=ContentType.NEWS,
-        url="https://news.ycombinator.com/item?id=12346",
+        url=_url("https://news.ycombinator.com/item?id=12346"),
         status=ContentStatus.COMPLETED,
         metadata=_build_news_metadata("wsj.com"),
     )
@@ -78,7 +84,7 @@ def test_content_data_drops_bare_domain_titles() -> None:
 def test_content_data_display_title_falls_back_to_summary_text() -> None:
     content = ContentData(
         content_type=ContentType.NEWS,
-        url="https://news.ycombinator.com/item?id=4321",
+        url=_url("https://news.ycombinator.com/item?id=4321"),
         title="SKILL0",
         status=ContentStatus.COMPLETED,
         metadata={
@@ -88,7 +94,7 @@ def test_content_data_display_title_falls_back_to_summary_text() -> None:
                 "title": "SKILL0",
                 "source_domain": "openclaw.army",
             },
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
             "summary": {
                 "title": "SKILL0",

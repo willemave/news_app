@@ -30,7 +30,7 @@ def test_full_convert_workflow(client: TestClient, db_session: Session) -> None:
                 ),
                 "key_points": ["AI is evolving rapidly", "New models are more efficient"],
             },
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
     )
@@ -99,6 +99,7 @@ def test_convert_saves_resulting_article_to_knowledge(
     assert convert_response.status_code == 200
 
     new_article_id = convert_response.json()["new_content_id"]
+    assert test_user.id is not None
     db_session.add(
         ContentStatusEntry(user_id=test_user.id, content_id=new_article_id, status="inbox")
     )
@@ -109,6 +110,5 @@ def test_convert_saves_resulting_article_to_knowledge(
     assert news_detail.json()["is_saved_to_knowledge"] is False
 
     assert (
-        knowledge_repository.is_saved_to_knowledge(db_session, new_article_id, test_user.id)
-        is True
+        knowledge_repository.is_saved_to_knowledge(db_session, new_article_id, test_user.id) is True
     )

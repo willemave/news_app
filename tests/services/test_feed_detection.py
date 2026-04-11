@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any, cast
 
 from app.models.schema import LlmUsageRecord
 from app.services import feed_detection
@@ -43,7 +44,7 @@ def test_validate_feed_candidate_parses_rss(monkeypatch) -> None:
     detector = feed_detection.FeedDetector(
         use_llm=False,
         use_exa_search=False,
-        http_service=DummyHttpService(),
+        http_service=cast(Any, DummyHttpService()),
     )
 
     result = detector._validate_feed_candidate("https://example.com/rss.xml")
@@ -71,7 +72,7 @@ def test_validate_feed_candidate_rejects_html_article() -> None:
     detector = feed_detection.FeedDetector(
         use_llm=False,
         use_exa_search=False,
-        http_service=DummyHttpService(),
+        http_service=cast(Any, DummyHttpService()),
     )
 
     result = detector._validate_feed_candidate("https://example.com/articles/post")

@@ -47,6 +47,7 @@ def test_scrape_returns_items(mocker, tmp_path: Path) -> None:
     channel = YouTubeChannelConfig(
         name="Example",
         channel_id="UC123",
+        playlist_id=None,
         limit=2,
         max_age_days=30,
         language="en",
@@ -117,6 +118,7 @@ def test_scrape_respects_max_age(mocker) -> None:
     channel = YouTubeChannelConfig(
         name="Example",
         channel_id="UC123",
+        playlist_id=None,
         limit=5,
         max_age_days=30,
     )

@@ -7,10 +7,10 @@ from app.models.schema import ProcessingTask
 from scripts.watchdog_queue_recovery import _parse_args, run_watchdog_once
 
 
-def test_run_watchdog_once_requeues_stale_generate_news_digest(db_session) -> None:
-    """Watchdog should requeue stale generate_news_digest tasks."""
+def test_run_watchdog_once_requeues_stale_agent_digest(db_session) -> None:
+    """Watchdog should requeue stale generate_agent_digest tasks."""
     stale_task = ProcessingTask(
-        task_type=TaskType.GENERATE_NEWS_DIGEST.value,
+        task_type=TaskType.GENERATE_AGENT_DIGEST.value,
         status=TaskStatus.PROCESSING.value,
         payload={"user_id": 1},
         queue_name=TaskQueue.CONTENT.value,
@@ -25,7 +25,7 @@ def test_run_watchdog_once_requeues_stale_generate_news_digest(db_session) -> No
         transcribe_stale_hours=2.0,
         process_content_stale_hours=2.0,
         process_news_item_stale_hours=2.0,
-        generate_news_digest_stale_hours=2.0,
+        generate_agent_digest_stale_hours=2.0,
         alert_threshold=99,
         slack_webhook_url=None,
         dry_run=False,
@@ -34,7 +34,7 @@ def test_run_watchdog_once_requeues_stale_generate_news_digest(db_session) -> No
     db_session.commit()
     db_session.refresh(stale_task)
 
-    assert result.requeued_generate_news_digest.touched_count == 1
+    assert result.requeued_generate_agent_digest.touched_count == 1
     assert stale_task.status == TaskStatus.PENDING.value
     assert stale_task.started_at is None
     assert stale_task.completed_at is None
@@ -59,7 +59,7 @@ def test_run_watchdog_once_requeues_stale_process_news_item(db_session) -> None:
         transcribe_stale_hours=2.0,
         process_content_stale_hours=2.0,
         process_news_item_stale_hours=2.0,
-        generate_news_digest_stale_hours=2.0,
+        generate_agent_digest_stale_hours=2.0,
         alert_threshold=99,
         slack_webhook_url=None,
         dry_run=False,
@@ -75,10 +75,10 @@ def test_run_watchdog_once_requeues_stale_process_news_item(db_session) -> None:
     assert stale_task.retry_count == 1
 
 
-def test_parse_args_supports_generate_news_digest_stale_hours() -> None:
-    """CLI parsing should expose the digest stale-hours option."""
-    args = _parse_args(["--generate-news-digest-stale-hours", "4.5"])
-    assert args.generate_news_digest_stale_hours == 4.5
+def test_parse_args_supports_generate_agent_digest_stale_hours() -> None:
+    """CLI parsing should expose the agent-digest stale-hours option."""
+    args = _parse_args(["--generate-agent-digest-stale-hours", "4.5"])
+    assert args.generate_agent_digest_stale_hours == 4.5
 
 
 def test_parse_args_supports_process_news_item_stale_hours() -> None:

@@ -34,6 +34,7 @@ def test_record_llm_usage_persists_row_and_cost(db_session, monkeypatch) -> None
         user_id=3,
     )
     db_session.commit()
+    assert record is not None
 
     persisted = db_session.query(LlmUsageRecord).filter(LlmUsageRecord.id == record.id).one()
     assert persisted.total_tokens == 1500
@@ -52,6 +53,7 @@ def test_record_llm_usage_allows_unknown_pricing(db_session, monkeypatch) -> Non
         usage={"input": 12, "output": 8, "total": 20},
     )
     db_session.commit()
+    assert record is not None
 
     persisted = db_session.query(LlmUsageRecord).filter(LlmUsageRecord.id == record.id).one()
     assert persisted.input_tokens == 12

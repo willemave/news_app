@@ -1,3 +1,5 @@
+from typing import cast
+
 from app.models.metadata import ContentData, ContentStatus, ContentType
 
 
@@ -5,19 +7,22 @@ def _build_points(count: int) -> list[dict[str, object]]:
     points = []
     for idx in range(count):
         points.append(
-            {
-                "text": f"Point {idx + 1} covers a main idea in one sentence.",
-                "detail": (
-                    f"Detail for point {idx + 1} adds supporting evidence and context. "
-                    "It includes implications and concrete specifics for the reader."
-                ),
-                "quotes": [
-                    {
-                        "text": f"This is a supporting quote for point {idx + 1}.",
-                        "context": "Source context",
-                    }
-                ],
-            }
+            cast(
+                dict[str, object],
+                {
+                    "text": f"Point {idx + 1} covers a main idea in one sentence.",
+                    "detail": (
+                        f"Detail for point {idx + 1} adds supporting evidence and context. "
+                        "It includes implications and concrete specifics for the reader."
+                    ),
+                    "quotes": [
+                        {
+                            "text": f"This is a supporting quote for point {idx + 1}.",
+                            "context": "Source context",
+                        }
+                    ],
+                },
+            )
         )
     return points
 

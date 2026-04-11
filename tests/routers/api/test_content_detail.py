@@ -112,7 +112,7 @@ def test_content_narration_returns_audio_bytes(
     create_sample_content,
     sample_article_long,
     monkeypatch,
-):
+) -> None:
     """Unified narration endpoint should stream audio when audio is requested."""
 
     content = create_sample_content(sample_article_long)

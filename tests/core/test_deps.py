@@ -1,4 +1,5 @@
 """Tests for FastAPI dependencies."""
+
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -13,14 +14,12 @@ def test_get_current_user_valid_token(db: Session):
     """Test get_current_user with valid token."""
     # Create test user
     user = User(
-        apple_id="test.apple.001",
-        email="test@example.com",
-        full_name="Test User",
-        is_active=True
+        apple_id="test.apple.001", email="test@example.com", full_name="Test User", is_active=True
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    assert user.id is not None
 
     # Create valid access token
     token = create_access_token(user.id)
@@ -63,11 +62,12 @@ def test_get_current_user_inactive_user(db: Session):
         apple_id="test.apple.002",
         email="inactive@example.com",
         full_name="Inactive User",
-        is_active=False
+        is_active=False,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    assert user.id is not None
 
     token = create_access_token(user.id)
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
@@ -82,14 +82,11 @@ def test_get_current_user_inactive_user(db: Session):
 def test_get_current_user_refresh_token(db: Session):
     """Test get_current_user rejects refresh token."""
     # Create user
-    user = User(
-        apple_id="test.apple.003",
-        email="test3@example.com",
-        is_active=True
-    )
+    user = User(apple_id="test.apple.003", email="test3@example.com", is_active=True)
     db.add(user)
     db.commit()
     db.refresh(user)
+    assert user.id is not None
 
     # Try with refresh token (should fail)
     refresh_token = create_refresh_token(user.id)
@@ -99,4 +96,3 @@ def test_get_current_user_refresh_token(db: Session):
         get_current_user(credentials=credentials, db=db)
 
     assert exc_info.value.status_code == 401
-

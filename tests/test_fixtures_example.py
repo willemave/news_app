@@ -3,14 +3,15 @@
 This module shows how to use the content fixtures for testing different
 parts of the processing pipeline.
 """
-from typing import Any, Dict
+
+from typing import Any
 
 import pytest
 
 from app.models.schema import Content
 
 
-def test_load_article_fixture(sample_article_long: Dict[str, Any]) -> None:
+def test_load_article_fixture(sample_article_long: dict[str, Any]) -> None:
     """Test loading a long-form article fixture."""
     assert sample_article_long["content_type"] == "article"
     assert sample_article_long["status"] == "completed"
@@ -25,7 +26,7 @@ def test_load_article_fixture(sample_article_long: Dict[str, Any]) -> None:
     assert "topics" in summary
 
 
-def test_load_podcast_fixture(sample_podcast: Dict[str, Any]) -> None:
+def test_load_podcast_fixture(sample_podcast: dict[str, Any]) -> None:
     """Test loading a podcast fixture."""
     assert sample_podcast["content_type"] == "podcast"
     assert sample_podcast["status"] == "completed"
@@ -36,7 +37,7 @@ def test_load_podcast_fixture(sample_podcast: Dict[str, Any]) -> None:
     assert "duration_seconds" in metadata
 
 
-def test_unprocessed_content(sample_unprocessed_article: Dict[str, Any]) -> None:
+def test_unprocessed_content(sample_unprocessed_article: dict[str, Any]) -> None:
     """Test loading unprocessed content for pipeline testing."""
     assert sample_unprocessed_article["status"] == "new"
     assert "content" in sample_unprocessed_article["content_metadata"]
@@ -48,7 +49,7 @@ def test_unprocessed_content(sample_unprocessed_article: Dict[str, Any]) -> None
 
 def test_create_content_in_db(
     create_sample_content,
-    sample_article_long: Dict[str, Any],
+    sample_article_long: dict[str, Any],
     db_session,
 ) -> None:
     """Test creating content in the database from a fixture."""
@@ -67,8 +68,8 @@ def test_create_content_in_db(
 
 def test_multiple_content_types(
     create_sample_content,
-    sample_article_long: Dict[str, Any],
-    sample_podcast: Dict[str, Any],
+    sample_article_long: dict[str, Any],
+    sample_podcast: dict[str, Any],
     db_session,
 ) -> None:
     """Test creating multiple content types in the database."""
@@ -87,7 +88,7 @@ def test_multiple_content_types(
     assert len(podcasts) >= 1
 
 
-def test_content_metadata_structure(sample_article_long: Dict[str, Any]) -> None:
+def test_content_metadata_structure(sample_article_long: dict[str, Any]) -> None:
     """Test that content metadata follows expected structure."""
     metadata = sample_article_long["content_metadata"]
 
@@ -121,7 +122,7 @@ def test_content_metadata_structure(sample_article_long: Dict[str, Any]) -> None
         assert "context" in quote
 
 
-def test_podcast_metadata_structure(sample_podcast: Dict[str, Any]) -> None:
+def test_podcast_metadata_structure(sample_podcast: dict[str, Any]) -> None:
     """Test that podcast metadata follows expected structure."""
     metadata = sample_podcast["content_metadata"]
 

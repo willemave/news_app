@@ -229,10 +229,11 @@ def test_list_chat_sessions(client: TestClient, db_session: Session, test_user) 
 
 def _seed_turn(
     db_session: Session,
-    session_id: int,
+    session_id: int | None,
     user_prompt: str,
     assistant_text: str,
 ) -> ChatMessage:
+    assert session_id is not None
     return save_messages(
         db_session,
         session_id,
@@ -1337,7 +1338,7 @@ def test_message_status_returns_distinct_assistant_display_id(
                     {
                         "content": (
                             "Your most recent saved knowledge item in this result set is "
-                            "\"AI Infrastructure Update\" (https://example.com/ai-update)."
+                            '"AI Infrastructure Update" (https://example.com/ai-update).'
                         ),
                         "id": None,
                         "provider_name": None,

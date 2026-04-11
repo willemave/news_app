@@ -69,7 +69,7 @@ def test_start_x_oauth_persists_pending_state_and_sync_scopes(
     db_session,
     test_user,
     monkeypatch,
-):
+) -> None:
     """OAuth start should persist pending state and request timeline/list scopes."""
     monkeypatch.setattr("app.services.x_integration.is_x_oauth_configured", lambda: True)
 
@@ -171,7 +171,11 @@ def test_exchange_x_oauth_stores_encrypted_tokens_and_profile(
     assert test_user.twitter_username == "willemaw"
 
 
-def test_sync_x_sources_ingests_digest_only_timeline_content(db_session, test_user, monkeypatch):
+def test_sync_x_sources_ingests_digest_only_timeline_content(
+    db_session,
+    test_user,
+    monkeypatch,
+) -> None:
     """Timeline sync should create user-scoped news items and processing tasks."""
     connection = _build_connection(
         test_user,

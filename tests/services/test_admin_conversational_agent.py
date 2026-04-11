@@ -140,7 +140,9 @@ def test_stream_agent_turn_reuses_one_runtime_for_multiple_turns(
 ) -> None:
     """Multiple turns should run on one started conversation runtime."""
 
-    counters = {"start": 0, "end": 0, "sent": []}
+    start_count = 0
+    end_count = 0
+    sent_messages: list[str] = []
 
     class FakeClient:
         def __init__(self, api_key: str | None = None) -> None:
@@ -168,18 +170,20 @@ def test_stream_agent_turn_reuses_one_runtime_for_multiple_turns(
             self.callback_agent_chat_response_part = callback_agent_chat_response_part
 
         def start_session(self) -> None:
-            counters["start"] += 1
+            nonlocal start_count
+            start_count += 1
 
         def send_contextual_update(self, _text: str) -> None:
             return
 
         def send_user_message(self, text: str) -> None:
-            counters["sent"].append(text)
+            sent_messages.append(text)
             self.callback_agent_chat_response_part("ok", "stop")
-            self.callback_agent_response(f"reply-{len(counters['sent'])}")
+            self.callback_agent_response(f"reply-{len(sent_messages)}")
 
         def end_session(self) -> None:
-            counters["end"] += 1
+            nonlocal end_count
+            end_count += 1
 
         def wait_for_session_end(self) -> str:
             return "conversation_1"
@@ -209,9 +213,9 @@ def test_stream_agent_turn_reuses_one_runtime_for_multiple_turns(
     finally:
         service.close_agent_session(runtime)
 
-    assert counters["start"] == 1
-    assert counters["sent"] == ["first", "second"]
-    assert counters["end"] == 1
+    assert start_count == 1
+    assert sent_messages == ["first", "second"]
+    assert end_count == 1
 
 
 def test_search_knowledge_returns_only_matching_saved_items(db_session, test_user) -> None:

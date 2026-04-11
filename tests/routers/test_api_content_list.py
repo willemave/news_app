@@ -48,7 +48,9 @@ def _build_podcast_summary(title: str) -> dict[str, object]:
     }
 
 
-def _add_inbox_status(db_session, user_id: int, content_id: int) -> None:
+def _add_inbox_status(db_session, user_id: int | None, content_id: int | None) -> None:
+    assert user_id is not None
+    assert content_id is not None
     db_session.add(
         ContentStatusEntry(
             user_id=user_id,
@@ -162,7 +164,7 @@ def test_list_hides_news_images_even_when_metadata_has_urls(
                 "summary": "Short news summary",
                 "classification": "to_read",
             },
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
             "article": {"url": "https://example.com/news-item"},
             "image_url": "https://example.com/screenshot.png",
@@ -274,7 +276,7 @@ def test_list_orders_news_by_publication_date_before_created_at(
                 "summary": "Older summary",
                 "classification": "to_read",
             },
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
     )
@@ -291,7 +293,7 @@ def test_list_orders_news_by_publication_date_before_created_at(
                 "summary": "Newer summary",
                 "classification": "to_read",
             },
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
     )

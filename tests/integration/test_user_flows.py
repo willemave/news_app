@@ -58,7 +58,7 @@ def test_onboarding_complete_seeds_configs_tasks_and_visible_content(
     monkeypatch,
     sample_article_long,
     test_user,
-):
+) -> None:
     """Completing onboarding should create configs, queue work, and seed inbox content."""
     feed_url = "https://feeds.example.com/ai.atom"
     article_metadata = deepcopy(sample_article_long["content_metadata"])
@@ -165,9 +165,7 @@ def test_list_detail_and_actions_flow_end_to_end(
 
     list_response = client.get("/api/content/")
     assert list_response.status_code == 200
-    matching_items = [
-        item for item in list_response.json()["contents"] if item["id"] == content.id
-    ]
+    matching_items = [item for item in list_response.json()["contents"] if item["id"] == content.id]
     assert len(matching_items) == 1
     assert matching_items[0]["is_read"] is False
     assert matching_items[0]["is_saved_to_knowledge"] is False
@@ -252,16 +250,11 @@ def test_chat_session_message_and_status_flow_end_to_end(
     send_payload = send_response.json()
     assert send_payload["status"] == "processing"
 
-    status_response = client.get(
-        f"/api/content/chat/messages/{send_payload['message_id']}/status"
-    )
+    status_response = client.get(f"/api/content/chat/messages/{send_payload['message_id']}/status")
     assert status_response.status_code == 200
     status_payload = status_response.json()
     assert status_payload["status"] == "completed"
-    assert (
-        "operational constraint"
-        in status_payload["assistant_message"]["content"].casefold()
-    )
+    assert "operational constraint" in status_payload["assistant_message"]["content"].casefold()
 
     detail_response = client.get(f"/api/content/chat/sessions/{session_id}")
     assert detail_response.status_code == 200

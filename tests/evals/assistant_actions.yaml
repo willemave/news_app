@@ -35,119 +35,89 @@ cases:
       The assistant uses the user's favorited content to identify "AI policy landscape"
       at https://example.com/ai-policy as the matching favorite for the term
       "policy" and does not answer with the unrelated sports favorite.
-  - id: recent_news_digests_summary
-    query: "can you summarize my recent news digests?"
+  - id: recent_news_items_summary
+    query: "can you summarize my recent news items from my feed?"
     screen_context:
-      screen_type: daily_digest_list
-      screen_title: News Digests
+      screen_type: news_list
+      screen_title: News
     seed_data:
-      news_digests:
-        - window_start_at: 2026-03-16T08:00:00
-          window_end_at: 2026-03-16T09:00:00
-          title: Washington and AI policy moved quickly
+      news_items:
+        - title: Washington and AI policy moved quickly
           summary: >
             The day centered on AI regulation, semiconductor policy, and a new
             round of campaign messaging ahead of key votes.
-          bullets:
-            - topic: AI transparency framework
-              details: Congress debated a fresh AI transparency framework.
-            - topic: Chip export controls
-              details: Semiconductor export controls remained a major flashpoint.
-            - topic: Campaign messaging
-              details: Campaigns sharpened messaging around the economy and immigration.
-          source_count: 3
-        - window_start_at: 2026-03-15T08:00:00
-          window_end_at: 2026-03-15T09:00:00
-          title: Markets, media, and election strategy shaped the news
+          summary_key_points:
+            - Congress debated a fresh AI transparency framework.
+            - Semiconductor export controls remained a major flashpoint.
+            - Campaigns sharpened messaging around the economy and immigration.
+        - title: Markets, media, and election strategy shaped the news
           summary: >
             Coverage focused on market volatility, coalition politics, and how
             major media outlets framed the next election cycle.
-          bullets:
-            - topic: Market volatility
-              details: Investors reacted to a mix of rate expectations and political uncertainty.
-            - topic: Coalition politics
-              details: Party strategists argued over turnout and coalition building.
-            - topic: Media narratives
-              details: Media narratives diverged on the most important campaign issues.
-          source_count: 3
+          summary_key_points:
+            - Investors reacted to rate expectations and political uncertainty.
+            - Party strategists argued over turnout and coalition building.
+            - Media narratives diverged on the most important campaign issues.
     expected_outcome: >
-      The assistant summarizes the user's recent news digests using the
-      digest titles, summaries, or bullet points from the app context rather
+      The assistant summarizes the user's recent news items using their
+      titles, summaries, or key points from the app context rather
       than switching to unrelated web results.
   - id: knowledge_hub_todays_summary
-    query: "Give me a summary of the last day's content. What are the key themes and most important takeaways?"
+    query: "Give me a summary of the last day's content from my feed, including recent news items and articles. What are the key themes and most important takeaways?"
     screen_context:
       screen_type: knowledge_hub
       screen_title: Knowledge
+      query: recent news items and articles from my feed
+      note: Summarize recent in-app feed content. Include both short-form news items and longer articles. Prefer in-app content before web search.
     seed_data:
-      news_digests:
-        - window_start_at: 2026-03-16T08:00:00
-          window_end_at: 2026-03-16T09:00:00
-          title: Washington and AI policy moved quickly
+      news_items:
+        - title: Washington and AI policy moved quickly
           summary: >
             The day centered on AI regulation, semiconductor policy, and a new
             round of campaign messaging ahead of key votes.
-          bullets:
-            - topic: AI transparency framework
-              details: Congress debated a fresh AI transparency framework.
-            - topic: Chip export controls
-              details: Semiconductor export controls remained a major flashpoint.
-            - topic: Campaign messaging
-              details: Campaigns sharpened messaging around the economy and immigration.
-          source_count: 3
-        - window_start_at: 2026-03-15T08:00:00
-          window_end_at: 2026-03-15T09:00:00
-          title: Markets, media, and election strategy shaped the news
+          summary_key_points:
+            - Congress debated a fresh AI transparency framework.
+            - Semiconductor export controls remained a major flashpoint.
+            - Campaigns sharpened messaging around the economy and immigration.
+        - title: Markets, media, and election strategy shaped the news
           summary: >
             Coverage focused on market volatility, coalition politics, and how
             major media outlets framed the next election cycle.
-          bullets:
-            - topic: Market volatility
-              details: Investors reacted to a mix of rate expectations and political uncertainty.
-            - topic: Coalition politics
-              details: Party strategists argued over turnout and coalition building.
-            - topic: Media narratives
-              details: Media narratives diverged on the most important campaign issues.
-          source_count: 3
+          summary_key_points:
+            - Investors reacted to a mix of rate expectations and political uncertainty.
+            - Party strategists argued over turnout and coalition building.
+            - Media narratives diverged on the most important campaign issues.
     expected_outcome: >
-      The assistant summarizes the user's recent news digests using the
-      digest titles, summaries, or bullet points from the app context rather
+      The assistant summarizes the user's recent news items using their
+      titles, summaries, or key points from the app context rather
       than switching to unrelated web results.
   - id: knowledge_hub_top_comments
-    query: "What are the most interesting and insightful comments from the content I've received recently? Highlight any surprising perspectives or debates."
+    query: "What are the most interesting and insightful comments from the news items and articles in my feed recently? Highlight any surprising perspectives or debates."
     screen_context:
       screen_type: knowledge_hub
       screen_title: Knowledge
     seed_data:
-      news_digests:
-        - window_start_at: 2026-03-16T08:00:00
-          window_end_at: 2026-03-16T09:00:00
-          title: AI policy, chips, and campaign framing collided
+      news_items:
+        - title: AI policy, chips, and campaign framing collided
           summary: >
             The day's discussion focused on AI regulation, semiconductor
             controls, and how campaigns framed economic anxiety.
-          bullets:
-            - topic: Export controls debate
-              details: Commentators split on whether export controls help or hurt long-term competitiveness.
-            - topic: Open-source pressure
-              details: Several analysts argued open-source models are weakening the case for hardware-only restrictions.
-            - topic: Campaign coverage
-              details: Campaign coverage diverged between media narratives and what local organizers said voters cared about.
-          source_count: 3
-        - window_start_at: 2026-03-15T08:00:00
-          window_end_at: 2026-03-15T09:00:00
-          title: Markets, turnout, and media narratives drove debate
+          summary_key_points:
+            - Commentators split on whether export controls help or hurt long-term competitiveness.
+            - Analysts argued open-source models weaken the case for hardware-only restrictions.
+          top_comment_text: >
+            Export controls look symbolic if open models can route around them.
+          top_comment_author: Analyst A
+        - title: Markets, turnout, and media narratives drove debate
           summary: >
             Coverage emphasized election strategy, turnout assumptions, and
             whether market volatility would change the political narrative.
-          bullets:
-            - topic: Persuasion versus turnout
-              details: Strategists disagreed on whether persuasion or turnout mattered more.
-            - topic: Media framing pushback
-              details: Commentators pushed back on headline-driven media framing.
-            - topic: Investor anxiety
-              details: Analysts argued investor anxiety was more about policy ambiguity than rates alone.
-          source_count: 3
+          summary_key_points:
+            - Strategists disagreed on whether persuasion or turnout mattered more.
+            - Commentators pushed back on headline-driven media framing.
+          top_comment_text: >
+            Most headlines missed what local organizers said voters actually cared about.
+          top_comment_author: Organizer B
     expected_outcome: >
       The assistant highlights concrete disagreements or surprising
       perspectives from the user's recent content context, including at least

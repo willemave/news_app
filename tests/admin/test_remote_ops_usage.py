@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 
@@ -21,7 +24,7 @@ from app.testing.postgres_harness import create_temporary_postgres_harness
 
 
 @pytest.fixture
-def remote_context(tmp_path) -> RemoteContext:
+def remote_context(tmp_path) -> Iterator[RemoteContext]:
     harness = create_temporary_postgres_harness(
         schema_prefix="newsly_test",
         tables=[
@@ -66,7 +69,7 @@ def remote_context(tmp_path) -> RemoteContext:
                         input_tokens=10,
                         output_tokens=5,
                         total_tokens=15,
-                        cost_usd=0.12,
+                        cost_usd=cast(Any, Decimal("0.12")),
                         currency="USD",
                         pricing_version="2026-03-28",
                         metadata_json={"access_token": "secret"},
@@ -83,7 +86,7 @@ def remote_context(tmp_path) -> RemoteContext:
                         input_tokens=6,
                         output_tokens=4,
                         total_tokens=10,
-                        cost_usd=0.08,
+                        cost_usd=cast(Any, Decimal("0.08")),
                         currency="USD",
                         pricing_version="2026-03-28",
                         metadata_json={},

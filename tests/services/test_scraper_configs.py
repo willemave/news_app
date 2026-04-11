@@ -13,6 +13,8 @@ def test_ensure_inbox_status_allows_news(db_session, test_user) -> None:
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    assert test_user.id is not None
+    assert content.id is not None
 
     created = ensure_inbox_status(
         db_session,

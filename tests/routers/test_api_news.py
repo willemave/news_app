@@ -378,6 +378,8 @@ def test_convert_news_item_to_article_reuses_existing_article_and_saves_to_knowl
     )
     db_session.add(existing_article)
     db_session.flush()
+    assert existing_article.id is not None
+    assert test_user.id is not None
 
     news_item = _create_news_item(
         db_session,

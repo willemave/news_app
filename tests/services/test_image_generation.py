@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
+
+from pydantic import HttpUrl, TypeAdapter
 
 from app.models.contracts import ContentStatus, ContentType
 from app.models.metadata import ContentData
@@ -12,7 +15,7 @@ def _build_article_content() -> ContentData:
     return ContentData(
         id=123,
         content_type=ContentType.ARTICLE,
-        url="https://example.com/article",
+        url=TypeAdapter(HttpUrl).validate_python("https://example.com/article"),
         status=ContentStatus.COMPLETED,
         metadata={
             "summary_kind": "long_structured",
@@ -99,9 +102,10 @@ def test_generate_infographic_uses_lowest_supported_image_size(
     monkeypatch.setattr(service, "generate_thumbnail", lambda source_path, content_id: None)
 
     result = service.generate_image(_build_article_content())
+    config = cast(Any, captured["config"])
 
     assert result.success is True
     assert captured["model"] == image_generation.INFOGRAPHIC_MODEL
-    assert captured["config"].image_config.image_size == image_generation.INFOGRAPHIC_IMAGE_SIZE
-    assert captured["config"].image_config.aspect_ratio == "16:9"
+    assert config.image_config.image_size == image_generation.INFOGRAPHIC_IMAGE_SIZE
+    assert config.image_config.aspect_ratio == "16:9"
     assert image_generation.INFOGRAPHIC_IMAGE_SIZE == "512"

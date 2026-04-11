@@ -26,7 +26,7 @@ def test_default_onboarding_fallback_order() -> None:
     assert AUDIO_PLAN_FALLBACK_MODELS == ()
 
 
-def test_discover_generation_does_not_use_secondary_model(monkeypatch):
+def test_discover_generation_does_not_use_secondary_model(monkeypatch) -> None:
     attempts: list[str] = []
 
     class FailingAgent:
@@ -104,7 +104,7 @@ def test_fast_discover_returns_defaults_when_generation_fails(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_audio_plan_generation_does_not_use_secondary_model(monkeypatch):
+async def test_audio_plan_generation_does_not_use_secondary_model(monkeypatch) -> None:
     attempts: list[str] = []
 
     class FailingAgent:

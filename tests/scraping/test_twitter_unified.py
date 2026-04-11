@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pytest
+
+from app.scraping.twitter_unified import DEFAULT_USER_AGENT, TwitterUnifiedScraper
 
 
 @dataclass
@@ -42,8 +44,6 @@ class DummyResponse:
     def body(self) -> bytes:
         return self.payload
 
-from app.scraping.twitter_unified import DEFAULT_USER_AGENT, TwitterUnifiedScraper
-
 
 def build_sample_graphql_payload() -> dict[str, Any]:
     """Build a minimal GraphQL payload matching TweetWithVisibilityResults."""
@@ -65,8 +65,10 @@ def build_sample_graphql_payload() -> dict[str, Any]:
                                                             "rest_id": "1234567890",
                                                             "legacy": {
                                                                 "id_str": "1234567890",
-                                                                "full_text": "Sample tweet body",
-                                                                "created_at": "Mon Sep 16 12:34:56 +0000 2025",
+                                                                "full_text": ("Sample tweet body"),
+                                                                "created_at": (
+                                                                    "Mon Sep 16 12:34:56 +0000 2025"
+                                                                ),
                                                                 "favorite_count": 42,
                                                                 "retweet_count": 7,
                                                                 "reply_count": 3,
@@ -75,8 +77,12 @@ def build_sample_graphql_payload() -> dict[str, Any]:
                                                                     "urls": [
                                                                         {
                                                                             "url": "https://t.co/example",
-                                                                            "expanded_url": "http://example.com/story",
-                                                                            "display_url": "example.com/story",
+                                                                            "expanded_url": (
+                                                                                "http://example.com/story"
+                                                                            ),
+                                                                            "display_url": (
+                                                                                "example.com/story"
+                                                                            ),
                                                                         }
                                                                     ]
                                                                 },
@@ -85,7 +91,9 @@ def build_sample_graphql_payload() -> dict[str, Any]:
                                                                 "user_results": {
                                                                     "result": {
                                                                         "legacy": {
-                                                                            "screen_name": "news_bot",
+                                                                            "screen_name": (
+                                                                                "news_bot"
+                                                                            ),
                                                                             "name": "News Bot",
                                                                         }
                                                                     }
@@ -101,9 +109,7 @@ def build_sample_graphql_payload() -> dict[str, Any]:
                                         "content": {
                                             "itemContent": {
                                                 "tweet_results": {
-                                                    "result": {
-                                                        "__typename": "TweetTombstone"
-                                                    }
+                                                    "result": {"__typename": "TweetTombstone"}
                                                 }
                                             }
                                         }
@@ -115,7 +121,7 @@ def build_sample_graphql_payload() -> dict[str, Any]:
                 }
             }
         }
-}
+    }
 
 
 def test_extract_tweets_from_visibility_results() -> None:
@@ -158,8 +164,13 @@ def test_extract_tweets_handles_value_wrapped_results() -> None:
                                                                 "rest_id": "555",
                                                                 "legacy": {
                                                                     "id_str": "555",
-                                                                    "full_text": "Nested tweet body",
-                                                                    "created_at": "Tue Sep 23 09:12:34 +0000 2025",
+                                                                    "full_text": (
+                                                                        "Nested tweet body"
+                                                                    ),
+                                                                    "created_at": (
+                                                                        "Tue Sep 23 09:12:34 "
+                                                                        "+0000 2025"
+                                                                    ),
                                                                     "favorite_count": 10,
                                                                     "retweet_count": 2,
                                                                     "reply_count": 1,
@@ -168,8 +179,12 @@ def test_extract_tweets_handles_value_wrapped_results() -> None:
                                                                         "urls": [
                                                                             {
                                                                                 "url": "https://t.co/example2",
-                                                                                "expanded_url": "https://example.org/article",
-                                                                                "display_url": "example.org/article",
+                                                                                "expanded_url": (
+                                                                                    "https://example.org/article"
+                                                                                ),
+                                                                                "display_url": (
+                                                                                    "example.org/article"
+                                                                                ),
                                                                             }
                                                                         ]
                                                                     },
@@ -178,7 +193,9 @@ def test_extract_tweets_handles_value_wrapped_results() -> None:
                                                                     "user_results": {
                                                                         "result": {
                                                                             "legacy": {
-                                                                                "screen_name": "depth_bot",
+                                                                                "screen_name": (
+                                                                                    "depth_bot"
+                                                                                ),
                                                                                 "name": "Depth Bot",
                                                                             }
                                                                         }
@@ -222,7 +239,7 @@ def test_decode_response_json_skips_non_json() -> None:
         payload=b"<html></html>",
     )
 
-    assert scraper._decode_response_json(response) is None
+    assert scraper._decode_response_json(cast(Any, response)) is None
 
 
 def test_parse_cookie_json_export() -> None:
@@ -284,7 +301,7 @@ def test_decode_response_json_skips_empty_body() -> None:
         payload=b"   ",
     )
 
-    assert scraper._decode_response_json(response) is None
+    assert scraper._decode_response_json(cast(Any, response)) is None
 
 
 def test_decode_response_json_returns_payload() -> None:
@@ -298,7 +315,7 @@ def test_decode_response_json_returns_payload() -> None:
         payload=body,
     )
 
-    decoded = scraper._decode_response_json(response)
+    decoded = scraper._decode_response_json(cast(Any, response))
     assert decoded is not None
     data, length = decoded
     assert data == {"data": {"hello": "world"}}
@@ -317,7 +334,7 @@ def test_decode_response_json_logs_404_empty_body(caplog: pytest.LogCaptureFixtu
     )
 
     with caplog.at_level("DEBUG"):
-        assert scraper._decode_response_json(response) is None
+        assert scraper._decode_response_json(cast(Any, response)) is None
 
     assert any("Skipping non-success response" in message for message in caplog.messages)
 
@@ -334,7 +351,7 @@ def test_decode_response_json_skips_abs_asset_logs(caplog: pytest.LogCaptureFixt
     )
 
     with caplog.at_level("DEBUG"):
-        assert scraper._decode_response_json(response) is None
+        assert scraper._decode_response_json(cast(Any, response)) is None
 
     assert any("Skipping asset response" in message for message in caplog.messages)
 
@@ -355,11 +372,10 @@ def test_decode_response_json_logs_transient_429(caplog: pytest.LogCaptureFixtur
     )
 
     with caplog.at_level("WARNING"):
-        assert scraper._decode_response_json(response) is None
+        assert scraper._decode_response_json(cast(Any, response)) is None
 
     assert any(
-        "retry_failed" in message or "retry_exhausted" in message
-        for message in caplog.messages
+        "retry_failed" in message or "retry_exhausted" in message for message in caplog.messages
     )
 
 
@@ -371,7 +387,12 @@ def test_build_headers_activates_guest_token(monkeypatch: pytest.MonkeyPatch) ->
 
     activation_calls: list[tuple[str, str]] = []
 
-    def fake_request(url: str, method: str, headers: dict[str, str], data: bytes | None) -> tuple[int, str, str]:
+    def fake_request(
+        url: str,
+        method: str,
+        headers: dict[str, str],
+        data: bytes | None,
+    ) -> tuple[int, str, str]:
         activation_calls.append((url, method))
         return 200, "application/json", json.dumps({"guest_token": "TOKEN123"})
 
@@ -424,7 +445,12 @@ def test_retry_fetch_json_recovers_after_rate_limits(monkeypatch: pytest.MonkeyP
 
     tokens_seen: list[str | None] = []
 
-    def fake_request(url: str, method: str, headers: dict[str, str], data: bytes | None) -> tuple[int, str, str]:
+    def fake_request(
+        url: str,
+        method: str,
+        headers: dict[str, str],
+        data: bytes | None,
+    ) -> tuple[int, str, str]:
         tokens_seen.append(headers.get("x-guest-token"))
         return next(call_sequence)
 
@@ -441,7 +467,7 @@ def test_retry_fetch_json_recovers_after_rate_limits(monkeypatch: pytest.MonkeyP
         ),
     )
 
-    decoded, meta = scraper._retry_fetch_json(response, response.status)
+    decoded, meta = scraper._retry_fetch_json(cast(Any, response), response.status)
 
     assert decoded is not None
     data, length = decoded
@@ -503,7 +529,12 @@ def test_retry_fetch_json_refreshes_guest_token(monkeypatch: pytest.MonkeyPatch)
 
     tokens_seen: list[str | None] = []
 
-    def fake_request(url: str, method: str, headers: dict[str, str], data: bytes | None) -> tuple[int, str, str]:
+    def fake_request(
+        url: str,
+        method: str,
+        headers: dict[str, str],
+        data: bytes | None,
+    ) -> tuple[int, str, str]:
         tokens_seen.append(headers.get("x-guest-token"))
         return next(call_sequence)
 
@@ -520,7 +551,7 @@ def test_retry_fetch_json_refreshes_guest_token(monkeypatch: pytest.MonkeyPatch)
         ),
     )
 
-    decoded, meta = scraper._retry_fetch_json(response, response.status)
+    decoded, meta = scraper._retry_fetch_json(cast(Any, response), response.status)
 
     assert decoded is not None
     data, length = decoded

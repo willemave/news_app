@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import cast
 
 from pydantic_ai.models.instrumented import InstrumentationSettings
 
@@ -184,13 +185,13 @@ def test_initialize_langfuse_tracing_does_not_retry_after_missing_keys(monkeypat
     class FakeLangfuse:
         def __init__(self, **kwargs: object) -> None:
             captured["client_kwargs"] = kwargs
-            captured["langfuse_inits"] = int(captured["langfuse_inits"]) + 1
+            captured["langfuse_inits"] = cast(int, captured["langfuse_inits"]) + 1
 
         def flush(self) -> None:
             return None
 
     def _instrument_all(_: InstrumentationSettings) -> None:
-        captured["instrumentation_calls"] = int(captured["instrumentation_calls"]) + 1
+        captured["instrumentation_calls"] = cast(int, captured["instrumentation_calls"]) + 1
 
     monkeypatch.setattr(langfuse_tracing, "get_settings", _get_settings)
     monkeypatch.setattr(langfuse_tracing, "Langfuse", FakeLangfuse)

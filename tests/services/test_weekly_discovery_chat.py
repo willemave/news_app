@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import Any, cast
 
 from sqlalchemy.orm import Session
 
@@ -57,9 +58,7 @@ def test_ensure_weekly_discovery_session_creates_one_session_per_week(
     db_session.commit()
 
     run = (
-        db_session.query(FeedDiscoveryRun)
-        .filter(FeedDiscoveryRun.user_id == test_user.id)
-        .first()
+        db_session.query(FeedDiscoveryRun).filter(FeedDiscoveryRun.user_id == test_user.id).first()
     )
     assert run is not None
 
@@ -72,7 +71,7 @@ def test_ensure_weekly_discovery_session_creates_one_session_per_week(
             title="AI Robotics Feed",
             rationale="It overlaps with recent AI robotics reading.",
             status="new",
-            score=0.91,
+            score=cast(Any, 0.91),
         )
     )
     db_session.commit()

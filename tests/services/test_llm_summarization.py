@@ -2,35 +2,41 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.models.metadata import ContentType, EditorialNarrativeSummary, NewsSummary
+from app.models.metadata import (
+    ContentType,
+    EditorialKeyPoint,
+    EditorialNarrativeSummary,
+    EditorialQuote,
+    NewsSummary,
+)
 from app.models.schema import LlmUsageRecord
 from app.services import llm_summarization
 
 
 class FakeResult:
-    def __init__(self, output, usage=None):
+    def __init__(self, output: object, usage: object | None = None) -> None:
         self.output = output
         self.data = output
         self._usage = usage
 
-    def usage(self):  # noqa: ANN001
+    def usage(self) -> object | None:
         return self._usage
 
 
 class FakeAgent:
-    def __init__(self, data, *, usage=None):
+    def __init__(self, data: object, *, usage: object | None = None) -> None:
         self._data = data
         self._usage = usage
         self.last_prompt: str | None = None
 
-    def run_sync(self, prompt: str):
+    def run_sync(self, prompt: str) -> FakeResult:
         self.last_prompt = prompt
         return FakeResult(self._data, usage=self._usage)
 
 
 def _editorial_summary(
     *,
-    quotes: list[dict[str, str | None]] | None = None,
+    quotes: list[EditorialQuote] | None = None,
 ) -> EditorialNarrativeSummary:
     return EditorialNarrativeSummary(
         title="Test Title",
@@ -44,21 +50,22 @@ def _editorial_summary(
         ),
         quotes=quotes
         or [
-            {
-                "text": "This is a meaningful supporting quote from the source material.",
-                "attribution": "Source A",
-            },
-            {
-                "text": "This is another meaningful quote with enough detail to validate.",
-                "attribution": "Source B",
-            },
+            EditorialQuote(
+                text="This is a meaningful supporting quote from the source material.",
+                attribution="Source A",
+            ),
+            EditorialQuote(
+                text="This is another meaningful quote with enough detail to validate.",
+                attribution="Source B",
+            ),
         ],
         key_points=[
-            {"point": "First key point with enough detail to be valid."},
-            {"point": "Second key point with enough detail to be valid."},
-            {"point": "Third key point with enough detail to be valid."},
-            {"point": "Fourth key point with enough detail to be valid."},
+            EditorialKeyPoint(point="First key point with enough detail to be valid."),
+            EditorialKeyPoint(point="Second key point with enough detail to be valid."),
+            EditorialKeyPoint(point="Third key point with enough detail to be valid."),
+            EditorialKeyPoint(point="Fourth key point with enough detail to be valid."),
         ],
+        source_details=None,
     )
 
 
@@ -232,8 +239,8 @@ def test_summarize_truncates_long_payload(monkeypatch: pytest.MonkeyPatch) -> No
 def test_summarize_prunes_short_editorial_quotes(monkeypatch: pytest.MonkeyPatch) -> None:
     summary = _editorial_summary()
     summary.quotes = [
-        SimpleNamespace(text="short", attribution="A"),
-        SimpleNamespace(
+        EditorialQuote(text="short quote!", attribution="A"),
+        EditorialQuote(
             text="This quote is long enough to survive finalization.",
             attribution="B",
         ),
@@ -244,6 +251,7 @@ def test_summarize_prunes_short_editorial_quotes(monkeypatch: pytest.MonkeyPatch
     summarizer = llm_summarization.ContentSummarizer()
     result = summarizer.summarize("Body", content_type=ContentType.ARTICLE)
 
+    assert isinstance(result, EditorialNarrativeSummary)
     assert result is not None
     assert len(result.quotes) == 1
     assert result.quotes[0].text == "This quote is long enough to survive finalization."

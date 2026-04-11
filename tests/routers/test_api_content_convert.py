@@ -27,7 +27,7 @@ def test_convert_news_link_to_article(
             },
             "discussion_url": "https://news.ycombinator.com/item?id=12345",
             "summary": {"title": "News Summary", "summary": "This is a news summary"},
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
     )
@@ -47,6 +47,8 @@ def test_convert_news_link_to_article(
     # Verify new article was created
     new_article = db_session.query(Content).filter(Content.id == data["new_content_id"]).first()
     assert new_article is not None
+    assert new_article.id is not None
+    assert test_user.id is not None
     assert new_article.content_type == ContentType.ARTICLE.value
     assert new_article.url == "https://example.com/article"
     assert new_article.status == ContentStatus.PENDING.value
@@ -63,7 +65,7 @@ def test_convert_news_link_no_article_url(client: TestClient, db_session: Sessio
         status=ContentStatus.COMPLETED.value,
         content_metadata={
             "summary": {"title": "News Summary"},
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
     )
@@ -109,6 +111,8 @@ def test_convert_already_exists(
     db_session.add(existing)
     db_session.commit()
     db_session.refresh(existing)
+    assert existing.id is not None
+    assert test_user.id is not None
 
     # Create news item pointing to same URL
     news = Content(

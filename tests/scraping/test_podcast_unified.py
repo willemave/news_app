@@ -43,7 +43,11 @@ def test_podcast_fallback_uses_alternate_link_when_link_missing() -> None:
             "title": "Episode 2",
             "links": [
                 feedparser.FeedParserDict(
-                    {"href": "https://example.com/episode-2", "rel": "alternate", "type": "text/html"}
+                    {
+                        "href": "https://example.com/episode-2",
+                        "rel": "alternate",
+                        "type": "text/html",
+                    }
                 )
             ],
             "enclosures": [_build_enclosure("https://cdn.example.com/ep2.mp3", "audio/mpeg")],

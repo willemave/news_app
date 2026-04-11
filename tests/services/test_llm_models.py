@@ -1,9 +1,11 @@
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIResponsesModel
+from sqlalchemy.orm import Session
 
 from app.services import llm_models
 
@@ -77,7 +79,7 @@ def test_build_pydantic_model_google(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(model, GoogleModel)
     assert model._provider.name == "google-vertex"
     assert model_settings is not None
-    assert model_settings["google_thinking_config"] == {
+    assert cast(dict[str, object], model_settings)["google_thinking_config"] == {
         "include_thoughts": False,
         "thinking_level": "low",
     }
@@ -91,7 +93,7 @@ def test_build_pydantic_model_google_gemini3(monkeypatch: pytest.MonkeyPatch) ->
     assert isinstance(model, GoogleModel)
     assert model._provider.name == "google-vertex"
     assert model_settings is not None
-    assert model_settings["google_thinking_config"] == {
+    assert cast(dict[str, object], model_settings)["google_thinking_config"] == {
         "include_thoughts": False,
         "thinking_level": "low",
     }
@@ -129,7 +131,7 @@ def test_resolve_effective_api_key_prefers_user_key(monkeypatch: pytest.MonkeyPa
     )
 
     resolved = llm_models.resolve_effective_api_key(
-        db=object(),
+        db=cast(Session, object()),
         user_id=123,
         model_spec="openai:gpt-5.4-mini",
     )
@@ -150,7 +152,7 @@ def test_resolve_effective_api_key_falls_back_to_platform(monkeypatch: pytest.Mo
     )
 
     resolved = llm_models.resolve_effective_api_key(
-        db=object(),
+        db=cast(Session, object()),
         user_id=123,
         model_spec="anthropic:claude-opus-4-5-20251101",
     )

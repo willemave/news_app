@@ -50,7 +50,7 @@ def test_finalize_task_retryable_failure_requeues_in_one_step(db_session, monkey
     queue = _patch_db(monkeypatch, db_session)
 
     task = ProcessingTask(
-        task_type=TaskType.GENERATE_NEWS_DIGEST.value,
+        task_type=TaskType.GENERATE_AGENT_DIGEST.value,
         payload={"user_id": 1},
         status=TaskStatus.PROCESSING.value,
         queue_name=TaskQueue.CONTENT.value,
@@ -98,8 +98,8 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
         TaskType.SYNC_INTEGRATION,
         payload={"user_id": 11, "provider": "x"},
     )
-    news_digest_task_id = queue.enqueue(
-        TaskType.GENERATE_NEWS_DIGEST,
+    agent_digest_task_id = queue.enqueue(
+        TaskType.GENERATE_AGENT_DIGEST,
         payload={"user_id": 11, "trigger_reason": "scheduled"},
     )
     chat_task_id = queue.enqueue(
@@ -119,7 +119,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
                     transcribe_task_id,
                     onboarding_task_id,
                     integration_task_id,
-                    news_digest_task_id,
+                    agent_digest_task_id,
                     chat_task_id,
                 ]
             )
@@ -132,7 +132,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     assert tasks[transcribe_task_id].queue_name == TaskQueue.MEDIA.value
     assert tasks[onboarding_task_id].queue_name == TaskQueue.ONBOARDING.value
     assert tasks[integration_task_id].queue_name == TaskQueue.TWITTER.value
-    assert tasks[news_digest_task_id].queue_name == TaskQueue.CONTENT.value
+    assert tasks[agent_digest_task_id].queue_name == TaskQueue.CONTENT.value
     assert tasks[chat_task_id].queue_name == TaskQueue.CHAT.value
 
 
@@ -402,7 +402,7 @@ def test_get_backpressure_status_uses_content_thresholds(db_session, monkeypatch
         lambda: SimpleNamespace(
             queue_backpressure_max_pending_content=2,
             queue_backpressure_max_pending_process_news_item=1,
-            queue_backpressure_max_pending_generate_news_digest=1,
+            queue_backpressure_max_pending_generate_agent_digest=1,
         ),
     )
 
@@ -415,7 +415,7 @@ def test_get_backpressure_status_uses_content_thresholds(db_session, monkeypatch
                 queue_name=TaskQueue.CONTENT.value,
             ),
             ProcessingTask(
-                task_type=TaskType.GENERATE_NEWS_DIGEST.value,
+                task_type=TaskType.GENERATE_AGENT_DIGEST.value,
                 status=TaskStatus.PENDING.value,
                 payload={},
                 queue_name=TaskQueue.CONTENT.value,
@@ -429,10 +429,10 @@ def test_get_backpressure_status_uses_content_thresholds(db_session, monkeypatch
     assert status["should_throttle"] is True
     assert status["counts"]["pending_content"] == 2
     assert status["counts"]["pending_process_news_item"] == 1
-    assert status["counts"]["pending_generate_news_digest"] == 1
+    assert status["counts"]["pending_generate_agent_digest"] == 1
     assert "content_queue_backlog" in status["reasons"]
     assert "process_news_item_backlog" in status["reasons"]
-    assert "generate_news_digest_backlog" in status["reasons"]
+    assert "generate_agent_digest_backlog" in status["reasons"]
 
 
 def test_dequeue_respects_retry_delay_schedule(db_session, monkeypatch):

@@ -31,7 +31,7 @@ class TestHackerNewsProcessorStrategy:
             "http://news.ycombinator.com/item?id=67890",
             "https://hacker-news.firebaseio.com/v0/item/12345",
         ]
-        
+
         for url in valid_urls:
             assert hn_strategy.can_handle_url(url) is True
 
@@ -43,7 +43,7 @@ class TestHackerNewsProcessorStrategy:
             "https://news.ycombinator.com/user?id=test",
             "https://github.com/project",
         ]
-        
+
         for url in invalid_urls:
             assert hn_strategy.can_handle_url(url) is False
 
@@ -54,7 +54,7 @@ class TestHackerNewsProcessorStrategy:
             ("https://hacker-news.firebaseio.com/v0/item/67890", "67890"),
             ("https://news.ycombinator.com/item?id=99999", "99999"),
         ]
-        
+
         for url, expected_id in test_cases:
             assert hn_strategy._extract_item_id(url) == expected_id
 
@@ -65,7 +65,7 @@ class TestHackerNewsProcessorStrategy:
             "https://example.com",
             "not-a-url",
         ]
-        
+
         for url in invalid_urls:
             assert hn_strategy._extract_item_id(url) is None
 
@@ -83,25 +83,26 @@ class TestHackerNewsProcessorStrategy:
             "url": "https://example.com/article",
             "kids": [1, 2, 3],
         }
-        
+
         # Patch the specific httpx.AsyncClient in the module
-        with patch("app.processing_strategies.hackernews_strategy.httpx.AsyncClient") as mock_client:
+        with patch(
+            "app.processing_strategies.hackernews_strategy.httpx.AsyncClient"
+        ) as mock_client:
             mock_async_client = AsyncMock()
             mock_client.return_value.__aenter__.return_value = mock_async_client
-            
+
             # Create a mock response object
             mock_resp = MagicMock()
             mock_resp.json.return_value = mock_response
             mock_resp.raise_for_status = MagicMock()
-            
+
             mock_async_client.get.return_value = mock_resp
-            
+
             result = await hn_strategy._fetch_item_data("12345")
-            
+
             assert result == mock_response
             mock_async_client.get.assert_called_once_with(
-                "https://hacker-news.firebaseio.com/v0/item/12345.json",
-                timeout=30.0
+                "https://hacker-news.firebaseio.com/v0/item/12345.json", timeout=30.0
             )
 
     @pytest.mark.asyncio
@@ -110,35 +111,30 @@ class TestHackerNewsProcessorStrategy:
         mock_item = {
             "kids": [1001, 1002, 1003],
         }
-        
-        mock_comments = [
-            {
-                "id": 1001,
-                "type": "comment",
-                "by": "user1",
-                "text": "First comment",
-                "time": 1234567891,
-                "kids": [],
-            },
-            {
-                "id": 1002,
-                "type": "comment", 
-                "by": "user2",
-                "text": "Second comment",
-                "time": 1234567892,
-                "kids": [],
-            },
-        ]
-        
+
         with patch.object(hn_strategy, "_fetch_comment", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.side_effect = [
-                {"id": 1001, "author": "user1", "text": "First comment", "time": 1234567891, "kids": [], "depth": 0},
-                {"id": 1002, "author": "user2", "text": "Second comment", "time": 1234567892, "kids": [], "depth": 0},
+                {
+                    "id": 1001,
+                    "author": "user1",
+                    "text": "First comment",
+                    "time": 1234567891,
+                    "kids": [],
+                    "depth": 0,
+                },
+                {
+                    "id": 1002,
+                    "author": "user2",
+                    "text": "Second comment",
+                    "time": 1234567892,
+                    "kids": [],
+                    "depth": 0,
+                },
                 None,  # Third comment returns None
             ]
-            
+
             comments = await hn_strategy._fetch_comments(mock_item)
-            
+
             assert len(comments) == 2
             assert comments[0]["author"] == "user1"
             assert comments[1]["author"] == "user2"
@@ -148,11 +144,14 @@ class TestHackerNewsProcessorStrategy:
         test_cases = [
             ("<p>Hello world</p>", "Hello world"),
             ("Plain text", "Plain text"),
-            ("<p>First paragraph</p><p>Second paragraph</p>", "First paragraph\n\nSecond paragraph"),
+            (
+                "<p>First paragraph</p><p>Second paragraph</p>",
+                "First paragraph\n\nSecond paragraph",
+            ),
             ("Text with &lt;code&gt; and &amp; symbols", "Text with <code> and & symbols"),
-            ("<a href=\"http://example.com\">Link</a>", "Link"),
+            ('<a href="http://example.com">Link</a>', "Link"),
         ]
-        
+
         for html_input, expected_output in test_cases:
             assert hn_strategy._clean_html_text(html_input) == expected_output
 
@@ -162,9 +161,9 @@ class TestHackerNewsProcessorStrategy:
             {"author": "user1", "text": "This is the first comment"},
             {"author": "user2", "text": "This is the second comment"},
         ]
-        
+
         result = hn_strategy._format_comments_for_summary(comments)
-        
+
         assert "Comment 1 by user1:" in result
         assert "This is the first comment" in result
         assert "Comment 2 by user2:" in result
@@ -179,7 +178,7 @@ class TestHackerNewsProcessorStrategy:
     def test_extract_data_text_post(self, hn_strategy):
         """Test extracting data from an Ask HN or text post."""
         url = "https://news.ycombinator.com/item?id=12345"
-        
+
         mock_item_data = {
             "id": 12345,
             "type": "story",
@@ -191,29 +190,32 @@ class TestHackerNewsProcessorStrategy:
             "text": "<p>I'm curious about how different teams handle technical debt...</p>",
             "kids": [1001, 1002],
         }
-        
-        with patch.object(hn_strategy, "_fetch_item_data", new_callable=AsyncMock) as mock_fetch_item:
-            with patch.object(hn_strategy, "_fetch_comments", new_callable=AsyncMock) as mock_fetch_comments:
-                mock_fetch_item.return_value = mock_item_data
-                mock_fetch_comments.return_value = []
-                
-                with patch("asyncio.run") as mock_run:
-                    mock_run.return_value = (mock_item_data, [])
-                    
-                    result = hn_strategy.extract_data("", url)
-                    
-                    assert result["title"] == "Ask HN: How do you manage technical debt?"
-                    assert result["author"] == "askuser"
-                    assert result["hn_score"] == 150
-                    assert result["hn_comments_count"] == 75
-                    assert result["is_hn_text_post"] is True
-                    assert result["requires_content_fetch"] is False
-                    assert "curious about how different teams" in result["text_content"]
+
+        with (
+            patch.object(
+                hn_strategy, "_fetch_item_data", new_callable=AsyncMock
+            ) as mock_fetch_item,
+            patch.object(
+                hn_strategy, "_fetch_comments", new_callable=AsyncMock
+            ) as mock_fetch_comments,
+        ):
+            mock_fetch_item.return_value = mock_item_data
+            mock_fetch_comments.return_value = []
+
+            result = hn_strategy.extract_data("", url)
+
+            assert result["title"] == "Ask HN: How do you manage technical debt?"
+            assert result["author"] == "askuser"
+            assert result["hn_score"] == 150
+            assert result["hn_comments_count"] == 75
+            assert result["is_hn_text_post"] is True
+            assert result["requires_content_fetch"] is False
+            assert "curious about how different teams" in result["text_content"]
 
     def test_extract_data_link_post(self, hn_strategy):
         """Test extracting data from a link post."""
         url = "https://news.ycombinator.com/item?id=67890"
-        
+
         mock_item_data = {
             "id": 67890,
             "type": "story",
@@ -225,22 +227,25 @@ class TestHackerNewsProcessorStrategy:
             "url": "https://example.com/ai-breakthrough",
             "kids": [2001, 2002],
         }
-        
-        with patch.object(hn_strategy, "_fetch_item_data", new_callable=AsyncMock) as mock_fetch_item:
-            with patch.object(hn_strategy, "_fetch_comments", new_callable=AsyncMock) as mock_fetch_comments:
-                mock_fetch_item.return_value = mock_item_data
-                mock_fetch_comments.return_value = []
-                
-                with patch("asyncio.run") as mock_run:
-                    mock_run.return_value = (mock_item_data, [])
-                    
-                    result = hn_strategy.extract_data("", url)
-                    
-                    assert result["title"] == "New AI breakthrough announced"
-                    assert result["hn_linked_url"] == "https://example.com/ai-breakthrough"
-                    assert result["is_hn_text_post"] is False
-                    assert result["requires_content_fetch"] is True
-                    assert result["content_url_to_fetch"] == "https://example.com/ai-breakthrough"
+
+        with (
+            patch.object(
+                hn_strategy, "_fetch_item_data", new_callable=AsyncMock
+            ) as mock_fetch_item,
+            patch.object(
+                hn_strategy, "_fetch_comments", new_callable=AsyncMock
+            ) as mock_fetch_comments,
+        ):
+            mock_fetch_item.return_value = mock_item_data
+            mock_fetch_comments.return_value = []
+
+            result = hn_strategy.extract_data("", url)
+
+            assert result["title"] == "New AI breakthrough announced"
+            assert result["hn_linked_url"] == "https://example.com/ai-breakthrough"
+            assert result["is_hn_text_post"] is False
+            assert result["requires_content_fetch"] is True
+            assert result["content_url_to_fetch"] == "https://example.com/ai-breakthrough"
 
     def test_prepare_for_llm_with_linked_content(self, hn_strategy, mock_http_client):
         """Test preparing data for LLM with linked article content."""
@@ -256,20 +261,20 @@ class TestHackerNewsProcessorStrategy:
             "hn_comments_raw": "Comment 1 by user1:\nGreat article!",
             "is_hn_text_post": False,
         }
-        
+
         # Mock the HEAD request and HTML strategy
         mock_response = MagicMock()
         mock_response.headers = httpx.Headers({"content-type": "text/html"})
         # http_client uses 'request' method
         mock_http_client.request = MagicMock(return_value=mock_response)
-        
+
         with patch.object(hn_strategy.html_strategy, "extract_data") as mock_extract:
             mock_extract.return_value = {
                 "text_content": "This is the actual article content about AI breakthroughs...",
             }
-            
+
             result = hn_strategy.prepare_for_llm(extracted_data)
-            
+
             assert "This is the actual article content" in result["content_to_summarize"]
             assert "HackerNews Discussion Context:" in result["content_to_summarize"]
             assert "Score: 100 points" in result["content_to_summarize"]
@@ -291,9 +296,9 @@ class TestHackerNewsProcessorStrategy:
             "hn_comments_raw": "No comments available.",
             "is_hn_text_post": True,
         }
-        
+
         result = hn_strategy.prepare_for_llm(extracted_data)
-        
+
         assert "--- POST CONTENT ---" in result["content_to_summarize"]
         assert "What are the best practices" in result["content_to_summarize"]
         assert result["hn_metadata"]["has_comments"] is False

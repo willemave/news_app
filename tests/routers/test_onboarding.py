@@ -15,7 +15,7 @@ from app.models.schema import (
 from app.services.queue import TaskType
 
 
-def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, test_user):
+def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, test_user) -> None:
     calls: list[tuple[str, dict]] = []
 
     class FakeQueueGateway:
@@ -202,7 +202,7 @@ def test_onboarding_parse_voice(client, monkeypatch):
     assert data["missing_fields"] == []
 
 
-def test_onboarding_audio_discover_creates_run(client, db_session, monkeypatch, test_user):
+def test_onboarding_audio_discover_creates_run(client, db_session, monkeypatch, test_user) -> None:
     def fake_get_basic_agent(_model, _output_cls, _system_prompt):
         class FakeAgent:
             async def run(self, _prompt, model_settings=None):

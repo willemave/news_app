@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 
@@ -26,14 +27,11 @@ def test_load_assistant_eval_suite_parses_yaml(tmp_path: Path) -> None:
                 "    query: find Armin Ronacher's blog",
                 "    expected_outcome: finds the right blog and subscribes to it",
                 "    seed_data:",
-                "      news_digests:",
-                "        - window_start_at: 2026-03-16T08:00:00",
-                "          window_end_at: 2026-03-16T09:00:00",
-                "          title: Policy and AI moved fast",
+                "      news_items:",
+                "        - title: Policy and AI moved fast",
                 "          summary: Congress, chips, and platforms led the day.",
-                "          bullets:",
-                "            - topic: Policy",
-                "              details: Congress, chips, and platforms led the day.",
+                "          summary_key_points:",
+                "            - Congress, chips, and platforms led the day.",
                 "      favorites:",
                 "        - url: https://example.com/policy",
                 "          title: AI policy landscape",
@@ -48,7 +46,7 @@ def test_load_assistant_eval_suite_parses_yaml(tmp_path: Path) -> None:
     assert suite.suite == "assistant_actions_v1"
     assert suite.defaults.model_spec == "openai:gpt-5.4"
     assert suite.cases[0].id == "case-1"
-    assert suite.cases[0].seed_data.news_digests[0].title == "Policy and AI moved fast"
+    assert suite.cases[0].seed_data.news_items[0].title == "Policy and AI moved fast"
     assert suite.cases[0].seed_data.favorites[0].title == "AI policy landscape"
 
 
@@ -67,6 +65,7 @@ def test_seed_case_data_seeds_searchable_favorites() -> None:
             db.add(user)
             db.commit()
             db.refresh(user)
+            assert user.id is not None
 
             assistant_eval._seed_case_data(
                 db,
@@ -101,7 +100,7 @@ def test_seed_case_data_seeds_searchable_favorites() -> None:
 def test_build_assistant_trace_serializes_tool_flow() -> None:
     """Trace builder should preserve ordered tool calls, returns, and assistant text."""
 
-    messages = [
+    messages: list[ModelRequest | ModelResponse] = [
         ModelResponse(
             parts=[
                 ToolCallPart(tool_name="search_web", args={"query": "Armin Ronacher blog"}),
@@ -147,7 +146,7 @@ def test_run_assistant_eval_case_uses_generic_expected_outcome(monkeypatch) -> N
             return [ModelResponse(parts=[TextPart(content="Subscribed to lucumr.")])]
 
     def fake_run_assistant_turn_sync(*args, **kwargs):
-        return FakeResult()
+        return cast(Any, FakeResult())
 
     def fake_judge_assistant_trace(*, expected_outcome, trace, judge_model_spec):
         captured["expected_outcome"] = expected_outcome
@@ -217,7 +216,7 @@ def test_run_assistant_eval_case_requires_feed_options_when_expected(monkeypatch
             ]
 
     def fake_run_assistant_turn_sync(*args, **kwargs):
-        return FakeResult()
+        return cast(Any, FakeResult())
 
     def fake_judge_assistant_trace(*, expected_outcome, trace, judge_model_spec):
         return assistant_eval.AssistantJudgeVerdict(

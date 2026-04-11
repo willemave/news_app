@@ -132,7 +132,7 @@ def test_build_chat_deps_prefers_session_context_snapshot(db_session) -> None:
         user_id=123,
         content_id=content.id,
         title="Digest chat",
-        session_type="news_digest_brain",
+        session_type="article_brain",
         context_snapshot="Digest bullets:\n- Bullet A\n- Bullet B",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
@@ -154,7 +154,7 @@ def test_build_context_prompt_parts_marks_snapshot_as_reference_material() -> No
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="news_digest_brain",
+        session_type="article_brain",
         context_snapshot="Digest bullets:\n- Bullet A\n- Bullet B",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
@@ -177,7 +177,7 @@ def test_build_run_user_prompt_includes_snapshot_context() -> None:
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="news_digest_brain",
+        session_type="article_brain",
         context_snapshot="Digest bullets:\n- Bullet A\n- Bullet B",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
@@ -201,13 +201,14 @@ def test_dump_messages_json_restores_user_visible_prompt(db_session) -> None:
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="news_digest_brain",
+        session_type="article_brain",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
     )
     db_session.add(session)
     db_session.commit()
     db_session.refresh(session)
+    assert session.id is not None
 
     create_processing_message(
         db_session,

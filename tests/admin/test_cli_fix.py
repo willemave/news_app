@@ -27,7 +27,7 @@ def _config(tmp_path: Path) -> AdminConfig:
     )
 
 
-def test_fix_requeue_stale_preview_uses_dry_run(monkeypatch, tmp_path):
+def test_fix_requeue_stale_preview_uses_dry_run(monkeypatch, tmp_path) -> None:
     captured: dict[str, object] = {}
     args = build_parser().parse_args(["fix", "requeue-stale", "--hours", "3"])
 
@@ -57,7 +57,7 @@ def test_fix_requeue_stale_apply_requires_yes(tmp_path):
         _handle_fix(args, config=_config(tmp_path))
 
 
-def test_fix_reset_content_preview_uses_remote_helper(monkeypatch, tmp_path):
+def test_fix_reset_content_preview_uses_remote_helper(monkeypatch, tmp_path) -> None:
     captured: dict[str, object] = {}
     args = build_parser().parse_args(["fix", "reset-content", "--hours", "4"])
 
@@ -75,7 +75,7 @@ def test_fix_reset_content_preview_uses_remote_helper(monkeypatch, tmp_path):
     assert captured["payload"] == {"cancel_only": False, "hours": 4.0, "content_type": None}
 
 
-def test_fix_sanitize_content_metadata_preview_uses_remote_helper(monkeypatch, tmp_path):
+def test_fix_sanitize_content_metadata_preview_uses_remote_helper(monkeypatch, tmp_path) -> None:
     captured: dict[str, object] = {}
     args = build_parser().parse_args(["fix", "sanitize-content-metadata", "--limit", "3"])
 
@@ -93,7 +93,7 @@ def test_fix_sanitize_content_metadata_preview_uses_remote_helper(monkeypatch, t
     assert captured["payload"] == {"content_id": None, "limit": 3}
 
 
-def test_fix_sanitize_content_metadata_apply_uses_remote_helper(monkeypatch, tmp_path):
+def test_fix_sanitize_content_metadata_apply_uses_remote_helper(monkeypatch, tmp_path) -> None:
     captured: dict[str, object] = {}
     args = build_parser().parse_args(
         ["fix", "--apply", "--yes", "sanitize-content-metadata", "--content-id", "12"]

@@ -17,6 +17,11 @@ from app.services.personal_markdown_library import (
 )
 
 
+def _require_id(value: int | None) -> int:
+    assert value is not None
+    return value
+
+
 def _enable_personal_markdown(
     monkeypatch,
     tmp_path: Path,
@@ -100,24 +105,26 @@ def test_sync_personal_markdown_library_writes_source_and_summary_files(
 
     content = _make_content()
     _persist_content(db_session, content)
+    content_id = _require_id(content.id)
+    user_id = _require_id(test_user.id)
 
-    knowledge_repository.save_to_knowledge(db_session, content.id, test_user.id)
+    knowledge_repository.save_to_knowledge(db_session, content_id, user_id)
 
-    result = sync_personal_markdown_library_for_user(db_session, user_id=test_user.id)
+    result = sync_personal_markdown_library_for_user(db_session, user_id=user_id)
 
     assert result.written_files
-    user_root = get_personal_markdown_user_root(test_user.id)
+    user_root = get_personal_markdown_user_root(user_id)
     source_path = (
         user_root
         / "article"
         / "new-york-times"
-        / f"how-agents-work__2026-04-03__source__c{content.id}.md"
+        / f"how-agents-work__2026-04-03__source__c{content_id}.md"
     )
     summary_path = (
         user_root
         / "article"
         / "new-york-times"
-        / f"how-agents-work__2026-04-03__summary__c{content.id}.md"
+        / f"how-agents-work__2026-04-03__summary__c{content_id}.md"
     )
     assert source_path.exists()
     assert summary_path.exists()
@@ -142,11 +149,13 @@ def test_sync_personal_markdown_for_content_keeps_files_when_chat_session_exists
 
     content = _make_content()
     _persist_content(db_session, content)
+    content_id = _require_id(content.id)
+    user_id = _require_id(test_user.id)
 
-    knowledge_repository.save_to_knowledge(db_session, content.id, test_user.id)
+    knowledge_repository.save_to_knowledge(db_session, content_id, user_id)
     chat_session = ChatSession(
-        user_id=test_user.id,
-        content_id=content.id,
+        user_id=user_id,
+        content_id=content_id,
         title=content.title,
         session_type="knowledge_chat",
         llm_model="openai:gpt-5.4",
@@ -155,19 +164,19 @@ def test_sync_personal_markdown_for_content_keeps_files_when_chat_session_exists
     db_session.add(chat_session)
     db_session.commit()
 
-    knowledge_repository.remove_from_knowledge(db_session, content.id, test_user.id)
+    knowledge_repository.remove_from_knowledge(db_session, content_id, user_id)
     result = sync_personal_markdown_for_content(
         db_session,
-        user_id=test_user.id,
-        content_id=content.id,
+        user_id=user_id,
+        content_id=content_id,
     )
 
     assert result.written_files
     summary_path = (
-        get_personal_markdown_user_root(test_user.id)
+        get_personal_markdown_user_root(user_id)
         / "article"
         / "new-york-times"
-        / f"how-agents-work__2026-04-03__summary__c{content.id}.md"
+        / f"how-agents-work__2026-04-03__summary__c{content_id}.md"
     )
     assert summary_path.exists()
     assert "- chatted" in summary_path.read_text(encoding="utf-8")
@@ -183,18 +192,20 @@ def test_sync_personal_markdown_for_content_deletes_files_when_no_reasons_remain
 
     content = _make_content()
     _persist_content(db_session, content)
+    content_id = _require_id(content.id)
+    user_id = _require_id(test_user.id)
 
-    knowledge_repository.save_to_knowledge(db_session, content.id, test_user.id)
-    knowledge_repository.remove_from_knowledge(db_session, content.id, test_user.id)
+    knowledge_repository.save_to_knowledge(db_session, content_id, user_id)
+    knowledge_repository.remove_from_knowledge(db_session, content_id, user_id)
 
     result = sync_personal_markdown_for_content(
         db_session,
-        user_id=test_user.id,
-        content_id=content.id,
+        user_id=user_id,
+        content_id=content_id,
     )
 
     assert result.written_files == []
-    assert list(get_personal_markdown_user_root(test_user.id).rglob("*.md")) == []
+    assert list(get_personal_markdown_user_root(user_id).rglob("*.md")) == []
 
 
 def test_collect_personal_markdown_documents_skips_missing_source_object(
@@ -220,13 +231,15 @@ def test_collect_personal_markdown_documents_skips_missing_source_object(
             "quotes": [{"text": "Agents need clear boundaries."}],
             "topics": ["Agents"],
             "summarization_date": "2026-04-03T12:00:00Z",
-        }
+        },
     }
     _persist_content(db_session, content)
+    content_id = _require_id(content.id)
+    user_id = _require_id(test_user.id)
 
     db_session.add(
         ContentBody(
-            content_id=content.id,
+            content_id=content_id,
             variant=ContentBodyVariant.SOURCE.value,
             storage_provider="local",
             storage_key="content/999/source-missing.txt",
@@ -238,11 +251,11 @@ def test_collect_personal_markdown_documents_skips_missing_source_object(
     )
     db_session.commit()
 
-    knowledge_repository.save_to_knowledge(db_session, content.id, test_user.id)
+    knowledge_repository.save_to_knowledge(db_session, content_id, user_id)
 
     documents = collect_personal_markdown_documents_for_user(
         db_session,
-        user_id=test_user.id,
+        user_id=user_id,
         include_source=True,
     )
 
@@ -260,17 +273,19 @@ def test_collect_personal_markdown_documents_has_stable_checksums_between_calls(
 
     content = _make_content()
     _persist_content(db_session, content)
+    content_id = _require_id(content.id)
+    user_id = _require_id(test_user.id)
 
-    knowledge_repository.save_to_knowledge(db_session, content.id, test_user.id)
+    knowledge_repository.save_to_knowledge(db_session, content_id, user_id)
 
     first_documents = collect_personal_markdown_documents_for_user(
         db_session,
-        user_id=test_user.id,
+        user_id=user_id,
         include_source=True,
     )
     second_documents = collect_personal_markdown_documents_for_user(
         db_session,
-        user_id=test_user.id,
+        user_id=user_id,
         include_source=True,
     )
 
@@ -293,12 +308,15 @@ def test_collect_personal_markdown_documents_supports_mixed_types_and_reasons(
     article = _make_content()
     podcast = _make_podcast_content()
     _persist_content(db_session, article, podcast)
+    article_id = _require_id(article.id)
+    podcast_id = _require_id(podcast.id)
+    user_id = _require_id(test_user.id)
 
-    knowledge_repository.save_to_knowledge(db_session, article.id, test_user.id)
+    knowledge_repository.save_to_knowledge(db_session, article_id, user_id)
     db_session.add(
         ChatSession(
-            user_id=test_user.id,
-            content_id=podcast.id,
+            user_id=user_id,
+            content_id=podcast_id,
             title=podcast.title,
             session_type="knowledge_chat",
             llm_model="openai:gpt-5.4",

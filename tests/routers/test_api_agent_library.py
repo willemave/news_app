@@ -39,6 +39,8 @@ def _seed_knowledge_saved_content(db_session, test_user) -> Content:
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    assert content.id is not None
+    assert test_user.id is not None
     knowledge_repository.save_to_knowledge(db_session, content.id, test_user.id)
     return content
 

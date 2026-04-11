@@ -539,6 +539,7 @@ def auth_headers_factory():
     """Create Authorization headers for a user."""
 
     def _create(user: User) -> dict[str, str]:
+        assert user.id is not None
         return {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
     return _create

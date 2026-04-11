@@ -1,11 +1,19 @@
 """Tests for security utilities."""
-from datetime import timedelta, datetime, UTC
+
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
 
-from app.core.security import create_access_token, create_refresh_token, verify_token, verify_apple_token
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    verify_apple_token,
+    verify_token,
+)
 from app.core.settings import get_settings
+
+TEST_JWT_KEY = "dummy-key-for-tests-only-32-bytes"
 
 
 def test_create_access_token():
@@ -91,7 +99,11 @@ def test_verify_apple_token_mvp_decode():
 
     # Create a JWT token (we'll use a dummy key since MVP doesn't verify)
     # In production, Apple would sign this with their private key
-    test_token = jwt.encode(mock_apple_claims, "dummy-key", algorithm="HS256")
+    test_token = jwt.encode(
+        mock_apple_claims,
+        TEST_JWT_KEY,
+        algorithm="HS256",
+    )
 
     # This should decode successfully for MVP (without signature verification)
     claims = verify_apple_token(test_token)
@@ -113,7 +125,7 @@ def test_verify_apple_token_missing_required_claims():
         # Missing "iss" claim
     }
 
-    test_token = jwt.encode(invalid_claims, "dummy-key", algorithm="HS256")
+    test_token = jwt.encode(invalid_claims, TEST_JWT_KEY, algorithm="HS256")
 
     # Should raise error for missing required claim
     with pytest.raises(ValueError, match="Invalid issuer"):

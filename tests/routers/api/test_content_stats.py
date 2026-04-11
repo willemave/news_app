@@ -16,7 +16,9 @@ from app.models.schema import (
 from app.models.user import User
 
 
-def _add_inbox_status(db_session, user_id: int, content_id: int) -> None:
+def _add_inbox_status(db_session, user_id: int | None, content_id: int | None) -> None:
+    assert user_id is not None
+    assert content_id is not None
     db_session.add(
         ContentStatusEntry(
             user_id=user_id,
@@ -29,10 +31,11 @@ def _add_inbox_status(db_session, user_id: int, content_id: int) -> None:
 def _add_active_task(
     db_session,
     *,
-    content_id: int,
+    content_id: int | None,
     task_type: str = "process_content",
     status: str = "pending",
 ) -> None:
+    assert content_id is not None
     db_session.add(
         ProcessingTask(
             task_type=task_type,

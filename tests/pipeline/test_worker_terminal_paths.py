@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
+from pydantic import HttpUrl, TypeAdapter
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -11,6 +12,11 @@ from app.models.content_mapper import content_to_domain
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content
 from app.pipeline.worker import ContentWorker
+
+
+def _require_id(value: int | None) -> int:
+    assert value is not None
+    return value
 
 
 def _patch_worker_db(monkeypatch, db_session) -> None:
@@ -45,12 +51,13 @@ def test_update_canonical_url_marks_existing_content_id(monkeypatch, db_session)
     db_session.commit()
     db_session.refresh(existing)
     db_session.refresh(incoming)
+    existing_id = _require_id(existing.id)
 
     worker = ContentWorker()
     domain_content = content_to_domain(incoming)
     worker._update_canonical_url(domain_content, "https://example.com/canonical")
 
-    assert domain_content.metadata["canonical_content_id"] == existing.id
+    assert domain_content.metadata["canonical_content_id"] == existing_id
     assert str(domain_content.url) == "https://example.com/original"
 
 
@@ -73,10 +80,11 @@ def test_handle_canonical_integrity_conflict_marks_content_skipped(monkeypatch, 
     db_session.commit()
     db_session.refresh(existing)
     db_session.refresh(incoming)
+    existing_id = _require_id(existing.id)
 
     worker = ContentWorker()
     domain_content = content_to_domain(incoming)
-    domain_content.url = "https://example.com/dupe"
+    domain_content.url = TypeAdapter(HttpUrl).validate_python("https://example.com/dupe")
     integrity_error = IntegrityError(
         "UPDATE contents ...",
         {},
@@ -88,7 +96,8 @@ def test_handle_canonical_integrity_conflict_marks_content_skipped(monkeypatch, 
 
     db_session.refresh(incoming)
     assert incoming.status == ContentStatus.SKIPPED.value
-    assert incoming.content_metadata["canonical_content_id"] == existing.id
+    assert incoming.content_metadata is not None
+    assert incoming.content_metadata["canonical_content_id"] == existing_id
 
 
 def test_process_content_handles_integrity_error_from_worker(monkeypatch, db_session) -> None:
@@ -110,6 +119,8 @@ def test_process_content_handles_integrity_error_from_worker(monkeypatch, db_ses
     db_session.commit()
     db_session.refresh(existing)
     db_session.refresh(incoming)
+    existing_id = _require_id(existing.id)
+    incoming_id = _require_id(incoming.id)
 
     def _raise_integrity(_self, content):  # noqa: ANN001
         content.url = "https://example.com/dupe-worker"
@@ -122,12 +133,13 @@ def test_process_content_handles_integrity_error_from_worker(monkeypatch, db_ses
     monkeypatch.setattr(ContentWorker, "_process_article", _raise_integrity)
 
     worker = ContentWorker()
-    handled = worker.process_content(incoming.id, "test-worker")
+    handled = worker.process_content(incoming_id, "test-worker")
 
     assert handled is True
     db_session.refresh(incoming)
     assert incoming.status == ContentStatus.SKIPPED.value
-    assert incoming.content_metadata["canonical_content_id"] == existing.id
+    assert incoming.content_metadata is not None
+    assert incoming.content_metadata["canonical_content_id"] == existing_id
 
 
 def test_process_content_preserves_concurrent_discussion_preview(
@@ -145,6 +157,7 @@ def test_process_content_preserves_concurrent_discussion_preview(
     db_session.add(incoming)
     db_session.commit()
     db_session.refresh(incoming)
+    incoming_id = _require_id(incoming.id)
 
     def _process_with_concurrent_discussion_update(worker, content):  # noqa: ANN001
         external_session_factory = sessionmaker(
@@ -180,10 +193,11 @@ def test_process_content_preserves_concurrent_discussion_preview(
     )
 
     worker = ContentWorker()
-    handled = worker.process_content(incoming.id, "test-worker")
+    handled = worker.process_content(incoming_id, "test-worker")
 
     assert handled is True
     db_session.refresh(incoming)
+    assert incoming.content_metadata is not None
     assert incoming.content_metadata.get("top_comment") == {
         "author": "alice",
         "text": "Great write-up",

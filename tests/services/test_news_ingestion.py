@@ -1,6 +1,7 @@
 """Tests for news-native ingestion and backfill helpers."""
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.metadata import ContentType
@@ -362,6 +363,7 @@ def test_backfill_news_items_from_contents_can_target_specific_content_ids(db_se
     )
     db_session.add_all([first_content, second_content])
     db_session.commit()
+    assert second_content.id is not None
 
     result = backfill_news_items_from_contents(
         db_session,
@@ -427,12 +429,14 @@ def test_upsert_news_item_ignores_volatile_scrape_metadata_for_identity(db_sessi
             "discovery_time": "2026-03-30T20:00:12.583355+00:00",
         },
     }
+    first_metadata = cast(dict[str, Any], first_item["metadata"])
+    first_aggregator = cast(dict[str, Any], first_metadata["aggregator"])
     second_item = {
         **first_item,
         "metadata": {
-            **first_item["metadata"],
+            **first_metadata,
             "aggregator": {
-                **first_item["metadata"]["aggregator"],
+                **first_aggregator,
                 "metadata": {
                     "score": 9,
                     "comments_count": 0,

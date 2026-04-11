@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 from app.models.metadata import ContentType, NewsSummary
 from app.models.schema import Content, NewsItem
@@ -11,6 +12,20 @@ from app.services.discussion_fetcher import DiscussionFetchResult
 from app.services.news_article_bodies import NEWS_ARTICLE_BODY_REF_KEY
 from app.services.news_article_enrichment import enrich_news_item_article
 from app.services.news_processing import process_news_item
+
+
+def _require_id(value: int | None) -> int:
+    assert value is not None
+    return value
+
+
+def _metadata(value: object | None) -> dict[str, Any]:
+    assert isinstance(value, dict)
+    return cast(dict[str, Any], value)
+
+
+def _summarizer(fn: object) -> Any:
+    return cast(Any, SimpleNamespace(summarize=fn))
 
 
 def test_process_news_item_fails_on_invalid_summarizer_output(db_session) -> None:
@@ -32,11 +47,11 @@ def test_process_news_item_fails_on_invalid_summarizer_output(db_session) -> Non
     db_session.commit()
     db_session.refresh(item)
 
-    summarizer = SimpleNamespace(summarize=lambda *_args, **_kwargs: {"title": "bad payload"})
+    summarizer = _summarizer(lambda *_args, **_kwargs: {"title": "bad payload"})
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
+        news_item_id=_require_id(item.id),
         summarizer=summarizer,
     )
 
@@ -78,11 +93,11 @@ def test_process_news_item_commits_processing_state_before_summarization(
             observed_statuses.append(observed.status if observed is not None else None)
             return {"title": "bad payload"}
 
-        summarizer = SimpleNamespace(summarize=_summarize)
+        summarizer = _summarizer(_summarize)
 
         result = process_news_item(
             write_session,
-            news_item_id=item.id,
+            news_item_id=_require_id(item.id),
             summarizer=summarizer,
         )
 
@@ -124,11 +139,11 @@ def test_process_news_item_passes_usage_persistence_context(db_session) -> None:
             summary="Short summary.",
         )
 
-    summarizer = SimpleNamespace(summarize=_summarize)
+    summarizer = _summarizer(_summarize)
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
+        news_item_id=_require_id(item.id),
         summarizer=summarizer,
     )
 
@@ -169,9 +184,9 @@ def test_process_news_item_finalizes_summary(
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
-        summarizer=SimpleNamespace(
-            summarize=lambda *_args, **_kwargs: NewsSummary(
+        news_item_id=_require_id(item.id),
+        summarizer=_summarizer(
+            lambda *_args, **_kwargs: NewsSummary(
                 title="Retry-backed title",
                 article_url=item.article_url,
                 key_points=["Point one"],
@@ -254,15 +269,16 @@ def test_process_news_item_fetches_discussion_via_public_news_item_flow(
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
-        summarizer=SimpleNamespace(summarize=_summarize),
+        news_item_id=_require_id(item.id),
+        summarizer=_summarizer(_summarize),
     )
 
     db_session.refresh(item)
     assert result.success is True
-    assert "Discussion snippets:" in captured["prompt"]
-    assert "This changed the market." in captured["prompt"]
-    assert item.raw_metadata["discussion_status"] == "completed"
+    prompt = cast(str, captured["prompt"])
+    assert "Discussion snippets:" in prompt
+    assert "This changed the market." in prompt
+    assert _metadata(item.raw_metadata)["discussion_status"] == "completed"
     assert item.status == "ready"
 
 
@@ -320,9 +336,9 @@ def test_process_news_item_continues_when_discussion_fetch_fails(
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
-        summarizer=SimpleNamespace(
-            summarize=lambda *_args, **_kwargs: NewsSummary(
+        news_item_id=_require_id(item.id),
+        summarizer=_summarizer(
+            lambda *_args, **_kwargs: NewsSummary(
                 title="Recovered title",
                 article_url=item.article_url,
                 key_points=["Recovered point"],
@@ -334,8 +350,9 @@ def test_process_news_item_continues_when_discussion_fetch_fails(
     db_session.refresh(item)
     assert result.success is True
     assert item.status == "ready"
-    assert item.raw_metadata["discussion_status"] == "failed"
-    assert item.raw_metadata["discussion_error"] == "Discussion fetch failed: blocked"
+    item_metadata = _metadata(item.raw_metadata)
+    assert item_metadata["discussion_status"] == "failed"
+    assert item_metadata["discussion_error"] == "Discussion fetch failed: blocked"
 
 
 def test_process_news_item_marks_failure_on_invalid_summary_payload(
@@ -361,8 +378,8 @@ def test_process_news_item_marks_failure_on_invalid_summary_payload(
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
-        summarizer=SimpleNamespace(summarize=lambda *_args, **_kwargs: {"bad": "payload"}),
+        news_item_id=_require_id(item.id),
+        summarizer=_summarizer(lambda *_args, **_kwargs: {"bad": "payload"}),
     )
 
     db_session.refresh(item)
@@ -401,11 +418,11 @@ def test_process_news_item_does_not_treat_title_only_row_as_summarized(db_sessio
             summary="Short summary.",
         )
 
-    summarizer = SimpleNamespace(summarize=_summarize)
+    summarizer = _summarizer(_summarize)
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
+        news_item_id=_require_id(item.id),
         summarizer=summarizer,
     )
 
@@ -459,11 +476,11 @@ def test_process_news_item_regenerates_legacy_prefilled_summary(db_session) -> N
             summary="Fresh summary text.",
         )
 
-    summarizer = SimpleNamespace(summarize=_summarize)
+    summarizer = _summarizer(_summarize)
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
+        news_item_id=_require_id(item.id),
         summarizer=summarizer,
     )
 
@@ -475,8 +492,9 @@ def test_process_news_item_regenerates_legacy_prefilled_summary(db_session) -> N
     assert item.summary_title == "Fresh digest title"
     assert item.summary_key_points == ["Fresh point"]
     assert item.summary_text == "Fresh summary text."
-    assert item.raw_metadata["summary_kind"] == "short_news_digest"
-    assert item.raw_metadata["summary_version"] == 1
+    item_metadata = _metadata(item.raw_metadata)
+    assert item_metadata["summary_kind"] == "short_news"
+    assert item_metadata["summary_version"] == 1
 
 
 def test_process_news_item_reuses_generated_short_digest(db_session) -> None:
@@ -501,7 +519,7 @@ def test_process_news_item_reuses_generated_short_digest(db_session) -> None:
                 "key_points": ["Generated point"],
                 "summary": "Generated summary text.",
             },
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
         status="ready",
@@ -522,11 +540,11 @@ def test_process_news_item_reuses_generated_short_digest(db_session) -> None:
             summary="Unexpected",
         )
 
-    summarizer = SimpleNamespace(summarize=_summarize)
+    summarizer = _summarizer(_summarize)
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
+        news_item_id=_require_id(item.id),
         summarizer=summarizer,
     )
 
@@ -575,19 +593,21 @@ def test_process_news_item_ignores_void_placeholder_titles(db_session) -> None:
             summary="Fresh summary text.",
         )
 
-    summarizer = SimpleNamespace(summarize=_summarize)
+    summarizer = _summarizer(_summarize)
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
+        news_item_id=_require_id(item.id),
         summarizer=summarizer,
     )
 
     db_session.refresh(item)
     assert result.success is True
     assert result.generated_summary is True
-    assert captured["kwargs"]["title"] is None
-    assert "Article title: VOID" not in captured["args"][0]
+    captured_kwargs = cast(dict[str, Any], captured["kwargs"])
+    captured_args = cast(tuple[Any, ...], captured["args"])
+    assert captured_kwargs["title"] is None
+    assert "Article title: VOID" not in captured_args[0]
     assert item.summary_title == "Fresh digest title"
     assert item.status == "ready"
 
@@ -619,9 +639,9 @@ def test_process_news_item_rewrites_placeholder_generated_title_from_summary_tex
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
-        summarizer=SimpleNamespace(
-            summarize=lambda prompt, **_kwargs: NewsSummary(
+        news_item_id=_require_id(item.id),
+        summarizer=_summarizer(
+            lambda prompt, **_kwargs: NewsSummary(
                 title="SKILL0",
                 article_url=item.article_url,
                 key_points=["One concrete point."],
@@ -638,7 +658,7 @@ def test_process_news_item_rewrites_placeholder_generated_title_from_summary_tex
     assert item.summary_title == (
         "A Hugging Face space demo that explains how a tiny skill model works in practice."
     )
-    assert item.raw_metadata["summary"]["title"] == item.summary_title
+    assert _metadata(_metadata(item.raw_metadata)["summary"])["title"] == item.summary_title
 
 
 def test_process_news_item_accepts_long_generated_titles(db_session) -> None:
@@ -664,8 +684,8 @@ def test_process_news_item_accepts_long_generated_titles(db_session) -> None:
     db_session.commit()
     db_session.refresh(item)
 
-    summarizer = SimpleNamespace(
-        summarize=lambda *_args, **_kwargs: NewsSummary(
+    summarizer = _summarizer(
+        lambda *_args, **_kwargs: NewsSummary(
             title=long_title,
             article_url=item.article_url,
             key_points=["Fresh point"],
@@ -675,7 +695,7 @@ def test_process_news_item_accepts_long_generated_titles(db_session) -> None:
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
+        news_item_id=_require_id(item.id),
         summarizer=summarizer,
     )
 
@@ -708,7 +728,7 @@ def test_process_news_item_reuses_generated_digest_with_long_title(db_session) -
                 "key_points": ["Generated point"],
                 "summary": "Generated summary text.",
             },
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
         status="ready",
@@ -731,8 +751,8 @@ def test_process_news_item_reuses_generated_digest_with_long_title(db_session) -
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
-        summarizer=SimpleNamespace(summarize=_summarize),
+        news_item_id=_require_id(item.id),
+        summarizer=_summarizer(_summarize),
     )
 
     db_session.refresh(item)
@@ -773,8 +793,8 @@ def test_process_news_item_preserves_short_valid_titles(db_session) -> None:
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
-        summarizer=SimpleNamespace(summarize=_summarize),
+        news_item_id=_require_id(item.id),
+        summarizer=_summarizer(_summarize),
     )
 
     db_session.refresh(item)
@@ -816,14 +836,17 @@ def test_enrich_news_item_article_reuses_existing_article_content(db_session) ->
     db_session.commit()
     db_session.refresh(item)
 
-    result = enrich_news_item_article(db_session, news_item_id=item.id)
+    result = enrich_news_item_article(db_session, news_item_id=_require_id(item.id))
 
     db_session.refresh(item)
     assert result.success is True
     assert result.source == "content"
-    assert item.raw_metadata[NEWS_ARTICLE_BODY_REF_KEY]["kind"] == "content"
-    assert item.raw_metadata[NEWS_ARTICLE_BODY_REF_KEY]["content_id"] == article.id
-    assert item.raw_metadata["article_extraction"]["status"] == "completed"
+    item_metadata = _metadata(item.raw_metadata)
+    body_ref = _metadata(item_metadata[NEWS_ARTICLE_BODY_REF_KEY])
+    extraction = _metadata(item_metadata["article_extraction"])
+    assert body_ref["kind"] == "content"
+    assert body_ref["content_id"] == article.id
+    assert extraction["status"] == "completed"
 
 
 def test_process_news_item_includes_resolved_article_body_in_prompt(
@@ -874,8 +897,8 @@ def test_process_news_item_includes_resolved_article_body_in_prompt(
 
     result = process_news_item(
         db_session,
-        news_item_id=item.id,
-        summarizer=SimpleNamespace(summarize=_summarize),
+        news_item_id=_require_id(item.id),
+        summarizer=_summarizer(_summarize),
     )
 
     db_session.refresh(item)

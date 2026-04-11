@@ -114,7 +114,7 @@ def test_extract_messages_for_display_hides_intermediate_agent_scaffolding(db_se
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="news_digest_brain",
+        session_type="article_brain",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
     )
@@ -144,6 +144,7 @@ def test_extract_messages_for_display_hides_intermediate_agent_scaffolding(db_se
     )
     db_session.add(db_message)
     db_session.commit()
+    assert session.id is not None
 
     display_messages = _extract_messages_for_display(db_session, session.id)
 
@@ -159,7 +160,7 @@ def test_extract_messages_for_display_omits_process_summary_for_simple_turn(db_s
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="news_digest_brain",
+        session_type="article_brain",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
     )
@@ -214,6 +215,7 @@ def test_extract_messages_for_display_omits_process_summary_for_simple_turn(db_s
     )
     db_session.add(db_message)
     db_session.commit()
+    assert session.id is not None
 
     display_messages = _extract_messages_for_display(db_session, session.id)
 
@@ -225,7 +227,7 @@ def test_extract_last_message_preview_prefers_final_assistant_text(db_session) -
     session = ChatSession(
         user_id=123,
         title="Digest chat",
-        session_type="news_digest_brain",
+        session_type="article_brain",
         llm_provider="anthropic",
         llm_model="anthropic:claude-opus-4-5-20251101",
     )

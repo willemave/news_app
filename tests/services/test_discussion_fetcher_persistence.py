@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 from sqlalchemy.orm import sessionmaker
 
@@ -21,6 +23,16 @@ from tests.services._discussion_fetcher_helpers import (
     FakeSubmission,
     create_news_content,
 )
+
+
+def _require_id(value: int | None) -> int:
+    assert value is not None
+    return value
+
+
+def _require_mapping(value: object | None) -> dict[str, Any]:
+    assert isinstance(value, dict)
+    return cast(dict[str, Any], value)
 
 
 def test_fetch_techmeme_discussion_groups_parses_grouped_links(monkeypatch) -> None:
@@ -88,7 +100,7 @@ def test_fetch_and_store_discussion_techmeme_persists_list(db_session, monkeypat
         ],
     )
 
-    result = fetch_and_store_discussion(db_session, content.id)
+    result = fetch_and_store_discussion(db_session, _require_id(content.id))
 
     assert result.success is True
     assert result.status == "completed"
@@ -100,8 +112,9 @@ def test_fetch_and_store_discussion_techmeme_persists_list(db_session, monkeypat
     )
     assert row is not None
     assert row.status == "completed"
-    assert row.discussion_data["mode"] == "discussion_list"
-    assert row.discussion_data["discussion_groups"][0]["label"] == "Forums"
+    discussion_data = _require_mapping(row.discussion_data)
+    assert discussion_data["mode"] == "discussion_list"
+    assert discussion_data["discussion_groups"][0]["label"] == "Forums"
 
 
 def test_fetch_and_store_discussion_hn_persists_comments(db_session, monkeypatch) -> None:
@@ -142,7 +155,7 @@ def test_fetch_and_store_discussion_hn_persists_comments(db_session, monkeypatch
         ),
     )
 
-    result = fetch_and_store_discussion(db_session, content.id)
+    result = fetch_and_store_discussion(db_session, _require_id(content.id))
 
     assert result.success is True
     assert result.status == "completed"
@@ -153,8 +166,9 @@ def test_fetch_and_store_discussion_hn_persists_comments(db_session, monkeypatch
         .first()
     )
     assert row is not None
-    assert row.discussion_data["mode"] == "comments"
-    assert row.discussion_data["comments"][0]["author"] == "alice"
+    discussion_data = _require_mapping(row.discussion_data)
+    assert discussion_data["mode"] == "comments"
+    assert discussion_data["comments"][0]["author"] == "alice"
 
 
 def test_build_reddit_payload_uses_authenticated_reddit_client(monkeypatch) -> None:
@@ -231,7 +245,7 @@ def test_fetch_and_store_discussion_propagates_non_retryable_fetch_errors(
         ),
     )
 
-    result = fetch_and_store_discussion(db_session, content.id)
+    result = fetch_and_store_discussion(db_session, _require_id(content.id))
 
     assert result.success is False
     assert result.retryable is False
@@ -253,7 +267,7 @@ def test_fetch_and_store_discussion_unsupported_platform_is_partial(db_session) 
         },
     )
 
-    result = fetch_and_store_discussion(db_session, content.id)
+    result = fetch_and_store_discussion(db_session, _require_id(content.id))
 
     assert result.success is True
     assert result.status == "partial"
@@ -265,7 +279,8 @@ def test_fetch_and_store_discussion_unsupported_platform_is_partial(db_session) 
     )
     assert row is not None
     assert row.status == "partial"
-    assert row.discussion_data["mode"] == "none"
+    discussion_data = _require_mapping(row.discussion_data)
+    assert discussion_data["mode"] == "none"
 
 
 def test_fetch_and_store_denormalizes_comment_count_for_hn(db_session, monkeypatch) -> None:
@@ -311,11 +326,11 @@ def test_fetch_and_store_denormalizes_comment_count_for_hn(db_session, monkeypat
         ),
     )
 
-    result = fetch_and_store_discussion(db_session, content.id)
+    result = fetch_and_store_discussion(db_session, _require_id(content.id))
     assert result.success is True
 
     db_session.refresh(content)
-    assert content.content_metadata["comment_count"] == 42
+    assert _require_mapping(content.content_metadata)["comment_count"] == 42
 
 
 def test_fetch_and_store_denormalizes_comment_count_for_techmeme(
@@ -347,12 +362,13 @@ def test_fetch_and_store_denormalizes_comment_count_for_techmeme(
         ],
     )
 
-    result = fetch_and_store_discussion(db_session, content.id)
+    result = fetch_and_store_discussion(db_session, _require_id(content.id))
     assert result.success is True
 
     db_session.refresh(content)
-    assert content.content_metadata["comment_count"] == 2
-    assert content.content_metadata["top_comment"]["author"] == "news.ycombinator.com"
+    content_metadata = _require_mapping(content.content_metadata)
+    assert content_metadata["comment_count"] == 2
+    assert _require_mapping(content_metadata["top_comment"])["author"] == "news.ycombinator.com"
 
 
 def test_fetch_and_store_discussion_preserves_concurrent_metadata_updates(
@@ -419,14 +435,15 @@ def test_fetch_and_store_discussion_preserves_concurrent_metadata_updates(
         ),
     )
 
-    result = fetch_and_store_discussion(db_session, content.id)
+    result = fetch_and_store_discussion(db_session, _require_id(content.id))
     assert result.success is True
 
     db_session.refresh(content)
-    assert content.content_metadata["workflow_transition"] == "analyze_url.complete"
-    assert content.content_metadata["external_flag"] is True
-    assert content.content_metadata["top_comment"]["author"] == "alice"
-    assert content.content_metadata["comment_count"] == 42
+    content_metadata = _require_mapping(content.content_metadata)
+    assert content_metadata["workflow_transition"] == "analyze_url.complete"
+    assert content_metadata["external_flag"] is True
+    assert _require_mapping(content_metadata["top_comment"])["author"] == "alice"
+    assert content_metadata["comment_count"] == 42
 
 
 def test_fetch_and_store_news_item_discussion_persists_payload_and_preview_fields(
@@ -485,17 +502,18 @@ def test_fetch_and_store_news_item_discussion_persists_payload_and_preview_field
         ),
     )
 
-    result = fetch_and_store_news_item_discussion(db_session, item.id)
+    result = fetch_and_store_news_item_discussion(db_session, _require_id(item.id))
 
     assert result.success is True
     db_session.refresh(item)
-    assert item.raw_metadata["workflow_transition"] == "news.ingested"
-    assert item.raw_metadata["discussion_status"] == "completed"
-    assert item.raw_metadata["discussion_payload"]["comments"][0]["author"] == "alice"
-    assert item.raw_metadata["top_comment"] == {"author": "alice", "text": "Great post"}
-    assert item.raw_metadata["comment_count"] == 42
-    assert isinstance(item.raw_metadata["discussion_fetched_at"], str)
-    assert "discussion_error" not in item.raw_metadata
+    raw_metadata = _require_mapping(item.raw_metadata)
+    assert raw_metadata["workflow_transition"] == "news.ingested"
+    assert raw_metadata["discussion_status"] == "completed"
+    assert _require_mapping(raw_metadata["discussion_payload"])["comments"][0]["author"] == "alice"
+    assert raw_metadata["top_comment"] == {"author": "alice", "text": "Great post"}
+    assert raw_metadata["comment_count"] == 42
+    assert isinstance(raw_metadata["discussion_fetched_at"], str)
+    assert "discussion_error" not in raw_metadata
 
 
 def test_fetch_and_store_news_item_discussion_persists_failed_status(
@@ -528,7 +546,7 @@ def test_fetch_and_store_news_item_discussion_persists_failed_status(
         ),
     )
 
-    result = fetch_and_store_news_item_discussion(db_session, item.id)
+    result = fetch_and_store_news_item_discussion(db_session, _require_id(item.id))
 
     assert result == DiscussionFetchResult(
         success=False,
@@ -537,7 +555,8 @@ def test_fetch_and_store_news_item_discussion_persists_failed_status(
         retryable=False,
     )
     db_session.refresh(item)
-    assert item.raw_metadata["discussion_status"] == "failed"
-    assert item.raw_metadata["discussion_payload"]["mode"] == "none"
-    assert item.raw_metadata["discussion_error"] == "Discussion fetch failed: blocked"
-    assert "discussion_fetched_at" not in item.raw_metadata
+    raw_metadata = _require_mapping(item.raw_metadata)
+    assert raw_metadata["discussion_status"] == "failed"
+    assert _require_mapping(raw_metadata["discussion_payload"])["mode"] == "none"
+    assert raw_metadata["discussion_error"] == "Discussion fetch failed: blocked"
+    assert "discussion_fetched_at" not in raw_metadata

@@ -1,4 +1,5 @@
 """Tests for API content visibility rules."""
+
 from sqlalchemy.orm import Session
 
 from app.constants import CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
@@ -76,7 +77,7 @@ def test_api_excludes_unprocessed_news(client, db_session: Session, test_user):
             },
             "discussion_url": "https://www.techmeme.com/cluster/processed",
             "summary": _news_summary_payload("Processed Digest"),
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
     )
@@ -179,7 +180,7 @@ def test_api_excludes_digest_only_news(client, db_session: Session, test_user):
         content_metadata={
             "digest_visibility": CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY,
             "summary": _news_summary_payload("Hidden X item"),
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
     )

@@ -10,7 +10,13 @@ from app.constants import (
     SUMMARY_VERSION_V1,
     SUMMARY_VERSION_V2,
 )
-from app.models.metadata import EditorialNarrativeSummary, NewsSummary
+from app.models.metadata import (
+    EditorialKeyPoint,
+    EditorialNarrativeSummary,
+    EditorialQuote,
+    NewsSummary,
+    ResearchSourceDetails,
+)
 from app.models.schema import Content, ContentStatusEntry
 from app.pipeline.handlers.summarize import SummarizeHandler
 from app.pipeline.task_context import TaskContext
@@ -41,7 +47,7 @@ class DummySummarizer:
         usage_persist=None,
     ):
         del content, content_id, max_bullet_points, max_quotes, provider_override, db, usage_persist
-        if content_type == "news_digest":
+        if content_type == "news":
             return NewsSummary(
                 title="News Title",
                 article_url="https://example.com",
@@ -58,15 +64,22 @@ class DummySummarizer:
                 "that outlines near-term tradeoffs, implementation risks, and practical actions."
             ),
             quotes=[
-                {"text": "Quote one with enough detail for validation.", "attribution": "Source A"},
-                {"text": "Quote two with enough detail for validation.", "attribution": "Source B"},
+                EditorialQuote(
+                    text="Quote one with enough detail for validation.",
+                    attribution="Source A",
+                ),
+                EditorialQuote(
+                    text="Quote two with enough detail for validation.",
+                    attribution="Source B",
+                ),
             ],
             key_points=[
-                {"point": "Key point one with concrete detail and consequence."},
-                {"point": "Key point two with concrete detail and consequence."},
-                {"point": "Key point three with concrete detail and consequence."},
-                {"point": "Key point four with concrete detail and consequence."},
+                EditorialKeyPoint(point="Key point one with concrete detail and consequence."),
+                EditorialKeyPoint(point="Key point two with concrete detail and consequence."),
+                EditorialKeyPoint(point="Key point three with concrete detail and consequence."),
+                EditorialKeyPoint(point="Key point four with concrete detail and consequence."),
             ],
+            source_details=None,
         )
 
 
@@ -88,7 +101,9 @@ def _create_content(db_session, content_type: str) -> Content:
     return content
 
 
-def _add_inbox_status(db_session, user_id: int, content_id: int) -> None:
+def _add_inbox_status(db_session, user_id: int | None, content_id: int | None) -> None:
+    assert user_id is not None
+    assert content_id is not None
     db_session.add(
         ContentStatusEntry(
             user_id=user_id,
@@ -144,6 +159,7 @@ def test_summarize_article_enqueues_image_when_visible_in_inbox(db_session, test
         content_id=content.id,
     )
     db_session.refresh(content)
+    assert content.content_metadata is not None
     assert content.content_metadata["summary_kind"] == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
     assert content.content_metadata["summary_version"] == SUMMARY_VERSION_V1
 
@@ -189,26 +205,31 @@ def test_summarize_pdf_article_uses_research_template_and_version_v2(db_session)
             "for teams evaluating whether the result generalizes."
         ),
         quotes=[
-            {"text": "Quote one with enough detail for validation.", "attribution": "Paper"},
-            {"text": "Quote two with enough detail for validation.", "attribution": "Authors"},
+            EditorialQuote(
+                text="Quote one with enough detail for validation.",
+                attribution="Paper",
+            ),
+            EditorialQuote(
+                text="Quote two with enough detail for validation.",
+                attribution="Authors",
+            ),
         ],
         key_points=[
-            {"point": "Key point one with concrete detail and consequence."},
-            {"point": "Key point two with concrete detail and consequence."},
-            {"point": "Key point three with concrete detail and consequence."},
-            {"point": "Key point four with concrete detail and consequence."},
+            EditorialKeyPoint(point="Key point one with concrete detail and consequence."),
+            EditorialKeyPoint(point="Key point two with concrete detail and consequence."),
+            EditorialKeyPoint(point="Key point three with concrete detail and consequence."),
+            EditorialKeyPoint(point="Key point four with concrete detail and consequence."),
         ],
-        source_details={
-            "template": "research",
-            "hypothesis": "This paper tests a concrete scaling claim.",
-            "methods": ["Evaluation across benchmark suites."],
-            "arguments": [
+        source_details=ResearchSourceDetails(
+            hypothesis="This paper tests a concrete scaling claim.",
+            methods=["Evaluation across benchmark suites."],
+            arguments=[
                 "The main method improves the target metric.",
                 "The improvement depends on dataset quality.",
             ],
-            "limitations": ["The benchmark coverage is narrow."],
-            "implications": ["Teams should validate on in-domain data."],
-        },
+            limitations=["The benchmark coverage is narrow."],
+            implications=["Teams should validate on in-domain data."],
+        ),
     )
     handler = SummarizeHandler()
     context = _build_context(db_session, queue_service, llm_service)
@@ -223,6 +244,7 @@ def test_summarize_pdf_article_uses_research_template_and_version_v2(db_session)
     llm_service.summarize.assert_called_once()
     assert llm_service.summarize.call_args.kwargs["content_type"] == "editorial_research"
     db_session.refresh(content)
+    assert content.content_metadata is not None
     assert content.content_metadata["summary_kind"] == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
     assert content.content_metadata["summary_version"] == SUMMARY_VERSION_V2
 
@@ -317,6 +339,7 @@ def test_summarize_preserves_top_comment_from_concurrent_discussion_update(db_se
 
     assert result.success is True
     db_session.refresh(content)
+    assert content.content_metadata is not None
     assert content.content_metadata.get("top_comment") == {
         "author": "alice",
         "text": "Great write-up",

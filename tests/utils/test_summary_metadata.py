@@ -3,7 +3,7 @@ from app.constants import (
     SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
-    SUMMARY_KIND_SHORT_NEWS_DIGEST,
+    SUMMARY_KIND_SHORT_NEWS,
     SUMMARY_VERSION_V1,
     SUMMARY_VERSION_V2,
 )
@@ -16,10 +16,10 @@ def test_infer_summary_kind_version_interleaved_v1() -> None:
     assert result == (SUMMARY_KIND_LONG_INTERLEAVED, SUMMARY_VERSION_V1)
 
 
-def test_infer_summary_kind_version_news_digest() -> None:
-    summary = {"summary_type": "news_digest", "summary": "Quick summary"}
+def test_infer_summary_kind_version_short_news() -> None:
+    summary = {"summary": "Quick summary", "key_points": ["Point"]}
     result = infer_summary_kind_version("article", summary, None, None)
-    assert result == (SUMMARY_KIND_SHORT_NEWS_DIGEST, SUMMARY_VERSION_V1)
+    assert result == (SUMMARY_KIND_SHORT_NEWS, SUMMARY_VERSION_V1)
 
 
 def test_infer_summary_kind_version_interleaved_v2() -> None:
@@ -50,9 +50,9 @@ def test_infer_summary_kind_version_editorial_narrative() -> None:
 
 
 def test_infer_summary_kind_version_news_content_type_defaults() -> None:
-    summary = {"key_points": ["Item"], "summary": "Digest"}
+    summary = {"key_points": ["Item"], "summary": "Summary"}
     result = infer_summary_kind_version("news", summary, None, None)
-    assert result == (SUMMARY_KIND_SHORT_NEWS_DIGEST, SUMMARY_VERSION_V1)
+    assert result == (SUMMARY_KIND_SHORT_NEWS, SUMMARY_VERSION_V1)
 
 
 def test_infer_summary_kind_version_preserves_kind_for_missing_version() -> None:

@@ -45,23 +45,32 @@ def mock_http_client(mocker):
     mock = MagicMock(spec=RobustHttpClient)
     return mock
 
+
 @pytest.fixture
 def pubmed_strategy(mock_http_client):
     """Fixture to provide an instance of PubMedProcessorStrategy with a mocked http_client."""
     return PubMedProcessorStrategy(http_client=mock_http_client)
 
-@pytest.mark.parametrize("url, expected", [
-    ("https://pubmed.ncbi.nlm.nih.gov/1234567/", True),
-    ("http://pubmed.ncbi.nlm.nih.gov/9876543", True),
-    ("https://pubmed.ncbi.nlm.nih.gov/1234567", True), # Without trailing slash
-    ("https://www.ncbi.nlm.nih.gov/pubmed/1234567", False), # Different subdomain structure, though might be valid pubmed
-    ("https://example.com/pubmed/1234567", False),
-    ("https://pubmed.ncbi.nlm.nih.gov/some/other/path", False), # Not just PMID
-    ("https://pubmed.ncbi.nlm.nih.gov/1234567.pdf", False), # Direct PDF link
-])
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://pubmed.ncbi.nlm.nih.gov/1234567/", True),
+        ("http://pubmed.ncbi.nlm.nih.gov/9876543", True),
+        ("https://pubmed.ncbi.nlm.nih.gov/1234567", True),  # Without trailing slash
+        (
+            "https://www.ncbi.nlm.nih.gov/pubmed/1234567",
+            False,
+        ),  # Different subdomain structure, though might be valid pubmed
+        ("https://example.com/pubmed/1234567", False),
+        ("https://pubmed.ncbi.nlm.nih.gov/some/other/path", False),  # Not just PMID
+        ("https://pubmed.ncbi.nlm.nih.gov/1234567.pdf", False),  # Direct PDF link
+    ],
+)
 def test_can_handle_url(pubmed_strategy: PubMedProcessorStrategy, url: str, expected: bool):
     """Test can_handle_url for various PubMed URL patterns."""
     assert pubmed_strategy.can_handle_url(url, None) is expected
+
 
 def test_download_content(pubmed_strategy: PubMedProcessorStrategy, mock_http_client: MagicMock):
     """Test download_content returns the URL placeholder."""
@@ -72,11 +81,12 @@ def test_download_content(pubmed_strategy: PubMedProcessorStrategy, mock_http_cl
     assert content == url
     assert not mock_http_client.get.called
 
+
 def test_extract_data_pmc_link_found(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when a PMC full-text link is found."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/1234567/"
     expected_full_text_url = "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12345/"
-    
+
     mock_result = MagicMock()
     mock_result.success = True
     mock_result.html = SAMPLE_PUBMED_PAGE_HTML_PMC_LINK
@@ -86,7 +96,10 @@ def test_extract_data_pmc_link_found(pubmed_strategy: PubMedProcessorStrategy):
     mock_crawler.__aenter__.return_value = mock_crawler
     mock_crawler.__aexit__.return_value = None
 
-    with patch("app.processing_strategies.pubmed_strategy.AsyncWebCrawler", return_value=mock_crawler):
+    with patch(
+        "app.processing_strategies.pubmed_strategy.AsyncWebCrawler",
+        return_value=mock_crawler,
+    ):
         extracted_data = pubmed_strategy.extract_data("ignored", pubmed_url)
 
     assert extracted_data["content_type"] == "pubmed_delegation"
@@ -94,11 +107,12 @@ def test_extract_data_pmc_link_found(pubmed_strategy: PubMedProcessorStrategy):
     assert extracted_data["original_pubmed_url"] == pubmed_url
     assert extracted_data["final_url_after_redirects"] == pubmed_url
 
+
 def test_extract_data_first_link_used(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when no PMC link is found, and the first available link is used."""
     pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/2345678/"
     expected_full_text_url = "https://example.com/first_full_text.pdf"
-    
+
     mock_result = MagicMock()
     mock_result.success = True
     mock_result.html = SAMPLE_PUBMED_PAGE_HTML_FIRST_LINK
@@ -108,12 +122,16 @@ def test_extract_data_first_link_used(pubmed_strategy: PubMedProcessorStrategy):
     mock_crawler.__aenter__.return_value = mock_crawler
     mock_crawler.__aexit__.return_value = None
 
-    with patch("app.processing_strategies.pubmed_strategy.AsyncWebCrawler", return_value=mock_crawler):
+    with patch(
+        "app.processing_strategies.pubmed_strategy.AsyncWebCrawler",
+        return_value=mock_crawler,
+    ):
         extracted_data = pubmed_strategy.extract_data("ignored", pubmed_url)
 
     assert extracted_data["content_type"] == "pubmed_delegation"
     assert extracted_data["next_url_to_process"] == expected_full_text_url
     assert extracted_data["original_pubmed_url"] == pubmed_url
+
 
 def test_extract_data_no_links_found(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data when no full-text links are found on the PubMed page."""
@@ -127,13 +145,20 @@ def test_extract_data_no_links_found(pubmed_strategy: PubMedProcessorStrategy):
     mock_crawler.__aenter__.return_value = mock_crawler
     mock_crawler.__aexit__.return_value = None
 
-    with patch("app.processing_strategies.pubmed_strategy.AsyncWebCrawler", return_value=mock_crawler):
+    with patch(
+        "app.processing_strategies.pubmed_strategy.AsyncWebCrawler",
+        return_value=mock_crawler,
+    ):
         extracted_data = pubmed_strategy.extract_data("ignored", pubmed_url)
 
     assert extracted_data["content_type"] == "error_pubmed_extraction"
     assert "next_url_to_process" not in extracted_data
-    assert extracted_data["title"] == f"PubMed Full-Text Link Extraction Failed for {pubmed_url.split('/')[-1]}"
+    assert (
+        extracted_data["title"]
+        == f"PubMed Full-Text Link Extraction Failed for {pubmed_url.split('/')[-1]}"
+    )
     assert "Could not find a usable full-text link" in extracted_data["text_content"]
+
 
 def test_extract_data_malformed_html(pubmed_strategy: PubMedProcessorStrategy):
     """Test extract_data with malformed HTML where link sections might be missing."""
@@ -147,36 +172,44 @@ def test_extract_data_malformed_html(pubmed_strategy: PubMedProcessorStrategy):
     mock_crawler.__aenter__.return_value = mock_crawler
     mock_crawler.__aexit__.return_value = None
 
-    with patch("app.processing_strategies.pubmed_strategy.AsyncWebCrawler", return_value=mock_crawler):
+    with patch(
+        "app.processing_strategies.pubmed_strategy.AsyncWebCrawler",
+        return_value=mock_crawler,
+    ):
         extracted_data = pubmed_strategy.extract_data("ignored", pubmed_url)
 
     assert extracted_data["content_type"] == "error_pubmed_extraction"
     assert "next_url_to_process" not in extracted_data
+
 
 def test_prepare_for_llm_delegation_case(pubmed_strategy: PubMedProcessorStrategy):
     """Test prepare_for_llm when delegation is expected (should be minimal)."""
     extracted_data_delegation = {
         "next_url_to_process": "https://example.com/fulltext.pdf",
         "original_pubmed_url": "https://pubmed.ncbi.nlm.nih.gov/123/",
-        "content_type": "pubmed_delegation"
+        "content_type": "pubmed_delegation",
     }
     llm_input = pubmed_strategy.prepare_for_llm(extracted_data_delegation)
     assert llm_input["content_to_filter"] is None
     assert llm_input["content_to_summarize"] is None
     assert llm_input["is_pdf"] is False
 
+
 def test_prepare_for_llm_failure_case(pubmed_strategy: PubMedProcessorStrategy):
     """Test prepare_for_llm when PubMed link extraction failed."""
     extracted_data_failure = {
         "title": "PubMed Extraction Failed",
         "text_content": "No link found.",
-        "content_type": "error_pubmed_extraction"
+        "content_type": "error_pubmed_extraction",
     }
     llm_input = pubmed_strategy.prepare_for_llm(extracted_data_failure)
     assert llm_input["content_to_filter"] is None
     assert llm_input["content_to_summarize"] is None
 
+
 def test_extract_internal_urls_placeholder(pubmed_strategy: PubMedProcessorStrategy):
     """Test the placeholder implementation of extract_internal_urls for PubMed."""
-    urls = pubmed_strategy.extract_internal_urls(SAMPLE_PUBMED_PAGE_HTML_PMC_LINK, "http://example.com/pubmed123")
+    urls = pubmed_strategy.extract_internal_urls(
+        SAMPLE_PUBMED_PAGE_HTML_PMC_LINK, "http://example.com/pubmed123"
+    )
     assert urls == []

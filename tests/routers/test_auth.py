@@ -1,6 +1,7 @@
 """Tests for authentication endpoints."""
 
 import re
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +13,7 @@ from app.services.news_list_preferences import DEFAULT_NEWS_LIST_PREFERENCE_PROM
 
 
 @pytest.fixture
-def auth_client(client_factory) -> TestClient:
+def auth_client(client_factory) -> Iterator[TestClient]:
     """Create a client for auth flows without overriding current_user."""
     with client_factory(authenticate=False) as test_client:
         yield test_client

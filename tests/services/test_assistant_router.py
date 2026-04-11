@@ -1,4 +1,6 @@
-"""Tests for Quick Assistant routing heuristics."""
+"""Tests for contextual assistant routing heuristics."""
+
+from datetime import UTC, datetime, timedelta
 
 from pydantic_ai.models.test import TestModel
 
@@ -52,15 +54,12 @@ def test_build_turn_instructions_keeps_feed_recommendations_non_mutating() -> No
     assert "attached below for review" in instructions
 
 
-def test_build_screen_aware_turn_instructions_prefers_content_search_for_digests() -> None:
-    """Digest prompts should route to SearchContent before web search."""
+def test_build_turn_instructions_prefers_content_search_for_feed_summary() -> None:
+    """Feed summary prompts should route to SearchContent before web search."""
 
-    instructions = assistant_router._build_screen_aware_turn_instructions(
-        "Can you summarize my recent daily news digests?",
-        assistant_router.AssistantScreenContext(
-            screen_type="daily_digest_list",
-            screen_title="Daily News Digests",
-        ),
+    instructions = assistant_router._build_turn_instructions(
+        "Give me a summary of the last day's content from my feed, "
+        "including recent news items and articles."
     )
 
     assert instructions is not None
@@ -200,11 +199,58 @@ def test_format_content_hits_reports_total_matches() -> None:
         query="BG2 pods",
         content_rows=[(content, object(), None)],
         total_content_matches=13,
-        digest_rows=[],
-        digest_bullets_by_digest_id={},
     )
 
     assert "Feed Content (13 total matches, showing 1):" in formatted
+
+
+def test_format_content_hits_includes_news_item_section(visible_news_item) -> None:
+    """Formatted SearchContent responses should include recent news items."""
+
+    formatted = assistant_router._format_content_hits(
+        query="recent news items from my feed",
+        content_rows=[],
+        total_content_matches=0,
+        news_item_rows=[(visible_news_item, None)],
+        total_news_item_matches=0,
+    )
+
+    assert "Recent News Items:" in formatted
+    assert f"[news:{visible_news_item.id}]" in formatted
+    assert "summary:" in formatted
+
+
+def test_find_visible_news_item_matches_returns_recent_visible_rows(
+    db_session,
+    test_user,
+    news_item_factory,
+) -> None:
+    """Generic feed-summary prompts should fall back to recent visible news items."""
+
+    older_item = news_item_factory(
+        summary_title="Older policy story",
+        summary_text="Older policy summary",
+        visibility_scope="user",
+        owner_user_id=test_user.id,
+        ingested_at=(datetime.now(UTC) - timedelta(hours=3)).replace(tzinfo=None),
+    )
+    newer_item = news_item_factory(
+        summary_title="Newer chip story",
+        summary_text="Newer chip summary",
+        visibility_scope="user",
+        owner_user_id=test_user.id,
+        ingested_at=(datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None),
+    )
+
+    rows, total_matches = assistant_router._find_visible_news_item_matches(
+        db_session,
+        user_id=test_user.id,
+        query="Give me a summary of the last day's content from my feed.",
+        limit=5,
+    )
+
+    assert total_matches == 0
+    assert [item.id for item, _is_read in rows[:2]] == [newer_item.id, older_item.id]
 
 
 def test_build_assistant_personal_library_runtime_skips_sync_when_sandbox_disabled(

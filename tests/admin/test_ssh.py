@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from typing import Any, cast
 
 from admin.config import AdminConfig
 from admin.ssh import run_remote_docker_logs, run_remote_module
@@ -25,7 +26,7 @@ def _config() -> AdminConfig:
     )
 
 
-def test_run_remote_module_builds_expected_ssh_command(monkeypatch):
+def test_run_remote_module_builds_expected_ssh_command(monkeypatch) -> None:
     captured: dict[str, object] = {"calls": []}
 
     def fake_run(*args, **kwargs):
@@ -58,25 +59,25 @@ def test_run_remote_module_builds_expected_ssh_command(monkeypatch):
     result = run_remote_module(_config(), action="db.tables", payload={"limit": 10})
 
     assert result == {"ok": True, "data": {"x": 1}}
-    assert captured["calls"][0] == [
+    assert cast(list[list[str]], captured["calls"])[0] == [
         "ssh",
         "willem@host",
         "cd /opt/news_app && sudo docker exec newsly env",
     ]
-    assert captured["args"] == [
+    assert cast(list[str], captured["args"]) == [
         "ssh",
         "willem@host",
         "cd /opt/news_app && sudo docker exec -i newsly python -m admin.remote db.tables",
     ]
-    assert captured["input"] == (
+    assert cast(str, captured["input"]) == (
         '{"payload": {"limit": 10}, "context_override": {"database_url": '
         '"postgresql+psycopg://newsly:secret@127.0.0.1:5432/newsly", "logs_dir": "/data/logs", '
         '"service_log_dir": "/var/log/news_app"}}'
     )
 
 
-def test_run_remote_docker_logs_builds_expected_ssh_command(monkeypatch):
-    captured: dict[str, object] = {}
+def test_run_remote_docker_logs_builds_expected_ssh_command(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
 
     def fake_run(*args, **kwargs):
         captured["args"] = args[0]
@@ -93,7 +94,7 @@ def test_run_remote_docker_logs_builds_expected_ssh_command(monkeypatch):
 
     assert result["stdout"] == "newsly  | booted\n"
     assert result["source"] == "docker"
-    assert captured["args"] == [
+    assert cast(list[str], captured["args"]) == [
         "ssh",
         "willem@host",
         "cd /opt/news_app && sudo docker logs --timestamps --tail 25 newsly",

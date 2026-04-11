@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from admin.cli import _handle_logs, build_parser
 from admin.config import AdminConfig
@@ -25,7 +26,7 @@ def _config(tmp_path: Path) -> AdminConfig:
     )
 
 
-def test_logs_tail_uses_docker_compose_logs(monkeypatch, tmp_path):
+def test_logs_tail_uses_docker_compose_logs(monkeypatch, tmp_path) -> None:
     args = build_parser().parse_args(["logs", "tail", "--limit", "12"])
     captured: dict[str, object] = {}
 
@@ -40,5 +41,5 @@ def test_logs_tail_uses_docker_compose_logs(monkeypatch, tmp_path):
 
     assert result.data["stdout"] == "line 1\nline 2\n"
     assert captured["tail"] == 12
-    assert captured["config"].docker_service_name == "newsly"
+    assert cast(AdminConfig, captured["config"]).docker_service_name == "newsly"
     assert args.source == "docker"

@@ -3,16 +3,13 @@
 Demonstrates how to use content_samples fixtures in unit tests for more
 realistic testing scenarios.
 """
-from typing import Any, Dict
-from unittest.mock import Mock, patch
+
+from typing import Any
 
 import pytest
 
-from app.models.metadata import ContentStatus, ContentType, StructuredSummary, SummaryBulletPoint, ContentQuote
-from app.pipeline.worker import ContentWorker
 
-
-def test_extract_content_metadata_from_article_fixture(sample_article_long: Dict[str, Any]):
+def test_extract_content_metadata_from_article_fixture(sample_article_long: dict[str, Any]):
     """Test that we can extract and validate metadata from article fixtures."""
     metadata = sample_article_long["content_metadata"]
 
@@ -32,7 +29,7 @@ def test_extract_content_metadata_from_article_fixture(sample_article_long: Dict
     assert len(summary["bullet_points"]) > 0
 
 
-def test_extract_podcast_metadata_from_fixture(sample_podcast: Dict[str, Any]):
+def test_extract_podcast_metadata_from_fixture(sample_podcast: dict[str, Any]):
     """Test that podcast fixtures have all required metadata fields."""
     metadata = sample_podcast["content_metadata"]
 
@@ -76,7 +73,7 @@ def test_fixture_content_types_and_statuses(
     assert fixture_data["status"] == expected_status
 
 
-def test_worker_processing_with_article_fixture(sample_unprocessed_article: Dict[str, Any]):
+def test_worker_processing_with_article_fixture(sample_unprocessed_article: dict[str, Any]):
     """Test that unprocessed article fixture has expected structure for processing."""
     # Verify fixture has the content needed for processing
     assert "content" in sample_unprocessed_article["content_metadata"]
@@ -94,7 +91,7 @@ def test_worker_processing_with_article_fixture(sample_unprocessed_article: Dict
     # 3. Processing with worker.process_content(content_id)
 
 
-def test_worker_processing_with_podcast_fixture(sample_unprocessed_podcast: Dict[str, Any]):
+def test_worker_processing_with_podcast_fixture(sample_unprocessed_podcast: dict[str, Any]):
     """Test that unprocessed podcast fixture has expected structure for processing."""
     # Verify fixture has transcript for processing
     assert "transcript" in sample_unprocessed_podcast["content_metadata"]
@@ -118,7 +115,7 @@ def test_worker_processing_with_podcast_fixture(sample_unprocessed_podcast: Dict
     # 3. Processing with worker.process_content(content_id)
 
 
-def test_completed_fixture_has_valid_summary_structure(sample_article_long: Dict[str, Any]):
+def test_completed_fixture_has_valid_summary_structure(sample_article_long: dict[str, Any]):
     """Validate that completed fixture summaries match expected StructuredSummary format."""
     summary = sample_article_long["content_metadata"]["summary"]
 
@@ -134,8 +131,14 @@ def test_completed_fixture_has_valid_summary_structure(sample_article_long: Dict
         assert "category" in bp
         # Verify category is valid
         valid_categories = [
-            "key_finding", "methodology", "context", "implication",
-            "insight", "review", "related_work", "availability"
+            "key_finding",
+            "methodology",
+            "context",
+            "implication",
+            "insight",
+            "review",
+            "related_work",
+            "availability",
         ]
         assert bp["category"] in valid_categories, f"Invalid category: {bp['category']}"
 

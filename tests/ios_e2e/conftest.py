@@ -82,8 +82,13 @@ def maestro_bin() -> str:
 
 
 @pytest.fixture
-def live_server(db_session_factory: sessionmaker) -> Iterator[LiveServer]:
+def live_server(
+    maestro_bin: str,
+    db_session_factory: sessionmaker,
+) -> Iterator[LiveServer]:
     """Expose the FastAPI app over HTTP with test DB dependency overrides."""
+    del maestro_bin
+
     def override_get_db() -> Iterator[Session]:
         db = db_session_factory()
         try:
@@ -258,6 +263,7 @@ def completed_chat_processors_factory(
         return _process_message_async, _process_assistant_turn_async
 
     return _build
+
 
 @pytest.fixture
 def ios_onboarding_personalized_fixture() -> str:

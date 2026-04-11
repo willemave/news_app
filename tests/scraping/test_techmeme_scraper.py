@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -26,7 +27,7 @@ def techmeme_settings() -> TechmemeSettings:
 
 
 @pytest.fixture
-def scraper(techmeme_settings: TechmemeSettings) -> TechmemeScraper:
+def scraper(techmeme_settings: TechmemeSettings) -> Iterator[TechmemeScraper]:
     """Instantiate scraper with mocked config and error logger."""
 
     with patch("app.scraping.techmeme_unified.load_techmeme_config") as mock_load_config:
@@ -104,7 +105,7 @@ def test_scrape_skips_entries_without_article(scraper: TechmemeScraper) -> None:
     feed_entry = {
         "title": "Cluster without article",
         "link": "http://www.techmeme.com/cluster",
-        "description": "<p><a href=\"http://www.techmeme.com/cluster\">Permalink</a></p>",
+        "description": '<p><a href="http://www.techmeme.com/cluster">Permalink</a></p>',
         "published_parsed": (2025, 9, 21, 12, 0, 0, 0, 0, 0),
     }
 

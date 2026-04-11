@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+from pydantic import HttpUrl, TypeAdapter
+
 from app.constants import TWEET_MODELS
 from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentStatus, ContentType
@@ -13,6 +15,10 @@ from app.services.tweet_suggestions import (
 )
 
 settings = get_settings()
+
+
+def _url(value: str) -> HttpUrl:
+    return TypeAdapter(HttpUrl).validate_python(value)
 
 
 class TestTweetSuggestionService:
@@ -87,7 +93,7 @@ class TestTweetSuggestionService:
         content = ContentData(
             id=1,
             content_type=ContentType.PODCAST,
-            url="https://example.com/podcast",
+            url=_url("https://example.com/podcast"),
             title="Test Podcast",
             status=ContentStatus.COMPLETED,
             metadata={

@@ -37,7 +37,10 @@ def test_resolve_config_path_default_when_missing(monkeypatch: pytest.MonkeyPatc
     assert resolved == (PROJECT_ROOT / "config" / "reddit.yml").resolve()
 
 
-def test_resolve_config_path_uses_config_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_resolve_config_path_uses_config_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     config_dir = tmp_path / "cfg"
     config_dir.mkdir()
     file_path = config_dir / "reddit.yml"
@@ -51,7 +54,10 @@ def test_resolve_config_path_uses_config_dir(monkeypatch: pytest.MonkeyPatch, tm
     assert resolved == file_path.resolve()
 
 
-def test_resolve_config_directory_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_resolve_config_directory_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     config_dir = tmp_path / "configs"
     config_dir.mkdir()
     monkeypatch.setenv("NEWSAPP_CONFIG_DIR", str(config_dir))

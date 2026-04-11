@@ -3,7 +3,13 @@
 from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
-from app.models.metadata import BulletedSummary, ContentStatus, ContentType
+from app.models.metadata import (
+    BulletedSummary,
+    BulletSummaryPoint,
+    ContentQuote,
+    ContentStatus,
+    ContentType,
+)
 from app.models.schema import Content
 from app.pipeline.sequential_task_processor import SequentialTaskProcessor
 from app.pipeline.task_context import TaskContext
@@ -78,19 +84,20 @@ def test_scrape_to_completion_smoke(db_session, monkeypatch) -> None:
         mock_llm.summarize.return_value = BulletedSummary(
             title="Article Title",
             points=[
-                {
-                    "text": f"Point {idx + 1} highlights a key takeaway.",
-                    "detail": (
+                BulletSummaryPoint(
+                    text=f"Point {idx + 1} highlights a key takeaway.",
+                    detail=(
                         "This detail expands on the takeaway with concrete evidence "
                         "and explains why it matters for the reader."
                     ),
-                    "quotes": [
-                        {
-                            "text": "This supporting quote provides additional context.",
-                            "context": "Test Source",
-                        }
+                    quotes=[
+                        ContentQuote(
+                            text="This supporting quote provides additional context.",
+                            context="Test Source",
+                            attribution=None,
+                        )
                     ],
-                }
+                )
                 for idx in range(10)
             ],
             classification="to_read",
@@ -108,9 +115,7 @@ def test_scrape_to_completion_smoke(db_session, monkeypatch) -> None:
             "content_type": "html",
             "final_url_after_redirects": "https://example.com/smoke",
         }
-        mock_strategy.prepare_for_llm.return_value = {
-            "content_to_summarize": "Smoke content"
-        }
+        mock_strategy.prepare_for_llm.return_value = {"content_to_summarize": "Smoke content"}
         mock_strategy.extract_internal_urls.return_value = []
 
         mock_registry_instance = Mock()
@@ -142,8 +147,6 @@ def test_scrape_to_completion_smoke(db_session, monkeypatch) -> None:
             summarize_task["id"], success=result.success, error_message=result.error_message
         )
 
-    content = (
-        db_session.query(Content).filter(Content.url == "https://example.com/smoke").first()
-    )
+    content = db_session.query(Content).filter(Content.url == "https://example.com/smoke").first()
     assert content is not None
     assert content.status == ContentStatus.COMPLETED.value

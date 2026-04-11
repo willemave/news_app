@@ -13,9 +13,12 @@ from app.services.tweet_suggestions import (
     TweetSuggestionsResult,
 )
 
-TWEET_GENERATOR_PATCH_TARGET = (
-    "app.commands.generate_tweet_suggestions.generate_tweet_suggestions"
-)
+TWEET_GENERATOR_PATCH_TARGET = "app.commands.generate_tweet_suggestions.generate_tweet_suggestions"
+
+
+def _require_id(value: int | None) -> int:
+    assert value is not None
+    return value
 
 
 def test_tweet_suggestions_success(client: TestClient, db_session: Session) -> None:
@@ -49,9 +52,10 @@ def test_tweet_suggestions_success(client: TestClient, db_session: Session) -> N
     db_session.add(article)
     db_session.commit()
     db_session.refresh(article)
+    article_id = _require_id(article.id)
 
     mock_result = TweetSuggestionsResult(
-        content_id=article.id,
+        content_id=article_id,
         creativity=5,
         length="medium",
         model=TWEET_MODEL,
@@ -64,13 +68,13 @@ def test_tweet_suggestions_success(client: TestClient, db_session: Session) -> N
 
     with patch(TWEET_GENERATOR_PATCH_TARGET, return_value=mock_result):
         response = client.post(
-            f"/api/content/{article.id}/tweet-suggestions",
+            f"/api/content/{article_id}/tweet-suggestions",
             json={"creativity": 5},
         )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["content_id"] == article.id
+    assert data["content_id"] == article_id
     assert data["creativity"] == 5
     assert data["model"] == TWEET_MODEL
     assert len(data["suggestions"]) == 3
@@ -107,9 +111,10 @@ def test_tweet_suggestions_with_message(client: TestClient, db_session: Session)
     db_session.add(article)
     db_session.commit()
     db_session.refresh(article)
+    article_id = _require_id(article.id)
 
     mock_result = TweetSuggestionsResult(
-        content_id=article.id,
+        content_id=article_id,
         creativity=7,
         length="medium",
         model=TWEET_MODEL,
@@ -122,7 +127,7 @@ def test_tweet_suggestions_with_message(client: TestClient, db_session: Session)
 
     with patch(TWEET_GENERATOR_PATCH_TARGET, return_value=mock_result) as mock_gen:
         response = client.post(
-            f"/api/content/{article.id}/tweet-suggestions",
+            f"/api/content/{article_id}/tweet-suggestions",
             json={
                 "message": "focus on startup implications",
                 "creativity": 7,
@@ -158,9 +163,10 @@ def test_tweet_suggestions_content_not_completed(client: TestClient, db_session:
     db_session.add(article)
     db_session.commit()
     db_session.refresh(article)
+    article_id = _require_id(article.id)
 
     response = client.post(
-        f"/api/content/{article.id}/tweet-suggestions",
+        f"/api/content/{article_id}/tweet-suggestions",
         json={"creativity": 5},
     )
 
@@ -194,9 +200,10 @@ def test_tweet_suggestions_podcast_supported(client: TestClient, db_session: Ses
     db_session.add(podcast)
     db_session.commit()
     db_session.refresh(podcast)
+    podcast_id = _require_id(podcast.id)
 
     mock_result = TweetSuggestionsResult(
-        content_id=podcast.id,
+        content_id=podcast_id,
         creativity=5,
         length="medium",
         model=TWEET_MODEL,
@@ -212,13 +219,13 @@ def test_tweet_suggestions_podcast_supported(client: TestClient, db_session: Ses
         return_value=mock_result,
     ):
         response = client.post(
-            f"/api/content/{podcast.id}/tweet-suggestions",
+            f"/api/content/{podcast_id}/tweet-suggestions",
             json={"creativity": 5},
         )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["content_id"] == podcast.id
+    assert data["content_id"] == podcast_id
 
 
 def test_tweet_suggestions_creativity_out_of_range(client: TestClient, db_session: Session) -> None:
@@ -232,9 +239,10 @@ def test_tweet_suggestions_creativity_out_of_range(client: TestClient, db_sessio
     db_session.add(article)
     db_session.commit()
     db_session.refresh(article)
+    article_id = _require_id(article.id)
 
     response = client.post(
-        f"/api/content/{article.id}/tweet-suggestions",
+        f"/api/content/{article_id}/tweet-suggestions",
         json={"creativity": 0},
     )
     assert response.status_code == 422
@@ -304,16 +312,17 @@ def test_tweet_suggestions_news_content(client: TestClient, db_session: Session)
                 "summary": "Overview of the news",
                 "key_points": ["Point 1"],
             },
-            "summary_kind": "short_news_digest",
+            "summary_kind": "short_news",
             "summary_version": 1,
         },
     )
     db_session.add(news)
     db_session.commit()
     db_session.refresh(news)
+    news_id = _require_id(news.id)
 
     mock_result = TweetSuggestionsResult(
-        content_id=news.id,
+        content_id=news_id,
         creativity=5,
         length="medium",
         model=TWEET_MODEL,
@@ -326,13 +335,13 @@ def test_tweet_suggestions_news_content(client: TestClient, db_session: Session)
 
     with patch(TWEET_GENERATOR_PATCH_TARGET, return_value=mock_result):
         response = client.post(
-            f"/api/content/{news.id}/tweet-suggestions",
+            f"/api/content/{news_id}/tweet-suggestions",
             json={"creativity": 5},
         )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["content_id"] == news.id
+    assert data["content_id"] == news_id
 
 
 def test_tweet_suggestions_default_creativity(client: TestClient, db_session: Session) -> None:
@@ -364,9 +373,10 @@ def test_tweet_suggestions_default_creativity(client: TestClient, db_session: Se
     db_session.add(article)
     db_session.commit()
     db_session.refresh(article)
+    article_id = _require_id(article.id)
 
     mock_result = TweetSuggestionsResult(
-        content_id=article.id,
+        content_id=article_id,
         creativity=5,
         length="medium",
         model=TWEET_MODEL,

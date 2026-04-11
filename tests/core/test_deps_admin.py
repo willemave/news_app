@@ -1,10 +1,11 @@
 """Tests for admin authentication dependency."""
 
+from unittest.mock import MagicMock, Mock
+
 import pytest
 from fastapi import Request
-from unittest.mock import Mock, MagicMock
 
-from app.core.deps import require_admin, AdminAuthRequired
+from app.core.deps import AdminAuthRequired, require_admin
 
 
 def test_require_admin_valid_session(monkeypatch):

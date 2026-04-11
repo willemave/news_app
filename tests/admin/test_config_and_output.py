@@ -13,7 +13,7 @@ from admin.output import Envelope, EnvelopeError, emit
 
 
 def _namespace(**overrides: object) -> argparse.Namespace:
-    defaults = {
+    defaults: dict[str, object] = {
         "env_file": None,
         "remote": None,
         "app_dir": None,

@@ -53,5 +53,5 @@ def test_pdf_strategy_uses_settings_model(monkeypatch):
     class DummyHttpClient:
         pass
 
-    strategy = pdf_module.PdfProcessorStrategy(http_client=DummyHttpClient())  # type: ignore[arg-type]
+    strategy = pdf_module.PdfProcessorStrategy(http_client=DummyHttpClient())
     assert strategy.model_name == "gemini-3.1-flash-lite-preview"

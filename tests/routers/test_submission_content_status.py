@@ -1,7 +1,7 @@
 from app.models.schema import Content, ContentStatusEntry
 
 
-def test_submission_creates_content_status(client, db_session, test_user):
+def test_submission_creates_content_status(client, db_session, test_user) -> None:
     payload = {
         "url": "https://example.com/article-1",
         "content_type": "article",
@@ -27,7 +27,7 @@ def test_submission_of_existing_visible_article_enqueues_generated_image(
     db_session,
     monkeypatch,
     test_user,
-):
+) -> None:
     enqueue_calls: list[tuple[str, int | None]] = []
 
     def _fake_enqueue(self, task_type, content_id=None, payload=None, queue_name=None, dedupe=None):

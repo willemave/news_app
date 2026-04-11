@@ -6,6 +6,11 @@ from app.models.schema import Content, User
 from app.services import read_status
 
 
+def _require_id(value: int | None) -> int:
+    assert value is not None
+    return value
+
+
 class TestMarkContentAsRead:
     """Tests for mark_content_as_read function."""
 
@@ -13,28 +18,35 @@ class TestMarkContentAsRead:
         self, db_session: Session, test_user: User, test_content: Content
     ):
         """Test marking content as read successfully."""
+        content_id = _require_id(test_content.id)
+        user_id = _require_id(test_user.id)
         # Act
-        result = read_status.mark_content_as_read(db_session, test_content.id, test_user.id)
+        result = read_status.mark_content_as_read(db_session, content_id, user_id)
 
         # Assert
         assert result is not None
-        assert result.content_id == test_content.id
-        assert result.user_id == test_user.id
+        assert result.content_id == content_id
+        assert result.user_id == user_id
         assert result.read_at is not None
 
     def test_mark_content_as_read_already_read(
         self, db_session: Session, test_user: User, test_content: Content
     ):
         """Test marking already read content refreshes timestamp."""
+        content_id = _require_id(test_content.id)
+        user_id = _require_id(test_user.id)
         # Arrange - mark as read first
-        first = read_status.mark_content_as_read(db_session, test_content.id, test_user.id)
+        first = read_status.mark_content_as_read(db_session, content_id, user_id)
+        assert first is not None
+        assert first.read_at is not None
         first_timestamp = first.read_at
 
         # Act - mark as read again
-        second = read_status.mark_content_as_read(db_session, test_content.id, test_user.id)
+        second = read_status.mark_content_as_read(db_session, content_id, user_id)
 
         # Assert - should return same record with updated timestamp
         assert second is not None
+        assert second.read_at is not None
         assert first.id == second.id
         assert second.read_at >= first_timestamp
 
@@ -47,13 +59,16 @@ class TestMarkContentAsRead:
         """Test that read status is isolated per user."""
         user1 = user_factory(email="user1@example.com", apple_id="apple_id_1")
         user2 = user_factory(email="user2@example.com", apple_id="apple_id_2")
+        content_id = _require_id(test_content.id)
+        user1_id = _require_id(user1.id)
+        user2_id = _require_id(user2.id)
 
         # Act - user1 marks as read
-        read_status.mark_content_as_read(db_session, test_content.id, user1.id)
+        read_status.mark_content_as_read(db_session, content_id, user1_id)
 
         # Assert - user1 has read, user2 has not
-        assert read_status.is_content_read(db_session, test_content.id, user1.id)
-        assert not read_status.is_content_read(db_session, test_content.id, user2.id)
+        assert read_status.is_content_read(db_session, content_id, user1_id)
+        assert not read_status.is_content_read(db_session, content_id, user2_id)
 
 
 class TestMarkContentsAsRead:
@@ -61,8 +76,9 @@ class TestMarkContentsAsRead:
 
     def test_mark_contents_as_read_empty_list(self, db_session: Session, test_user: User):
         """Test marking empty list returns zero."""
+        user_id = _require_id(test_user.id)
         # Act
-        marked_count, failed_ids = read_status.mark_contents_as_read(db_session, [], test_user.id)
+        marked_count, failed_ids = read_status.mark_contents_as_read(db_session, [], user_id)
 
         # Assert
         assert marked_count == 0
@@ -77,27 +93,34 @@ class TestMarkContentsAsRead:
         test_content_3: Content,
     ):
         """Test marking multiple contents as read."""
+        content_ids = [
+            _require_id(test_content.id),
+            _require_id(test_content_2.id),
+            _require_id(test_content_3.id),
+        ]
+        user_id = _require_id(test_user.id)
         # Act
-        content_ids = [test_content.id, test_content_2.id, test_content_3.id]
         marked_count, failed_ids = read_status.mark_contents_as_read(
-            db_session, content_ids, test_user.id
+            db_session, content_ids, user_id
         )
 
         # Assert
         assert marked_count == 3
         assert failed_ids == []
-        assert read_status.is_content_read(db_session, test_content.id, test_user.id)
-        assert read_status.is_content_read(db_session, test_content_2.id, test_user.id)
-        assert read_status.is_content_read(db_session, test_content_3.id, test_user.id)
+        assert read_status.is_content_read(db_session, content_ids[0], user_id)
+        assert read_status.is_content_read(db_session, content_ids[1], user_id)
+        assert read_status.is_content_read(db_session, content_ids[2], user_id)
 
     def test_mark_contents_as_read_with_duplicates(
         self, db_session: Session, test_user: User, test_content: Content
     ):
         """Test marking contents with duplicate IDs."""
+        content_id = _require_id(test_content.id)
+        user_id = _require_id(test_user.id)
         # Act
-        content_ids = [test_content.id, test_content.id, test_content.id]
+        content_ids = [content_id, content_id, content_id]
         marked_count, failed_ids = read_status.mark_contents_as_read(
-            db_session, content_ids, test_user.id
+            db_session, content_ids, user_id
         )
 
         # Assert
@@ -108,13 +131,16 @@ class TestMarkContentsAsRead:
         self, db_session: Session, test_user: User, test_content: Content, test_content_2: Content
     ):
         """Test marking contents when some are already read."""
+        first_content_id = _require_id(test_content.id)
+        second_content_id = _require_id(test_content_2.id)
+        user_id = _require_id(test_user.id)
         # Arrange - mark one as read first
-        read_status.mark_content_as_read(db_session, test_content.id, test_user.id)
+        read_status.mark_content_as_read(db_session, first_content_id, user_id)
 
         # Act - mark both
-        content_ids = [test_content.id, test_content_2.id]
+        content_ids = [first_content_id, second_content_id]
         marked_count, failed_ids = read_status.mark_contents_as_read(
-            db_session, content_ids, test_user.id
+            db_session, content_ids, user_id
         )
 
         # Assert
@@ -131,16 +157,20 @@ class TestMarkContentsAsRead:
         """Test that bulk marking is isolated per user."""
         user1 = user_factory(email="user1@example.com", apple_id="apple_id_1")
         user2 = user_factory(email="user2@example.com", apple_id="apple_id_2")
+        first_content_id = _require_id(test_content.id)
+        second_content_id = _require_id(test_content_2.id)
+        user1_id = _require_id(user1.id)
+        user2_id = _require_id(user2.id)
 
         # Act - user1 marks content1, user2 marks content2
-        read_status.mark_contents_as_read(db_session, [test_content.id], user1.id)
-        read_status.mark_contents_as_read(db_session, [test_content_2.id], user2.id)
+        read_status.mark_contents_as_read(db_session, [first_content_id], user1_id)
+        read_status.mark_contents_as_read(db_session, [second_content_id], user2_id)
 
         # Assert
-        user1_read = read_status.get_read_content_ids(db_session, user1.id)
-        user2_read = read_status.get_read_content_ids(db_session, user2.id)
-        assert user1_read == [test_content.id]
-        assert user2_read == [test_content_2.id]
+        user1_read = read_status.get_read_content_ids(db_session, user1_id)
+        user2_read = read_status.get_read_content_ids(db_session, user2_id)
+        assert user1_read == [first_content_id]
+        assert user2_read == [second_content_id]
 
 
 class TestGetReadContentIds:
@@ -148,8 +178,9 @@ class TestGetReadContentIds:
 
     def test_get_read_content_ids_empty(self, db_session: Session, test_user: User):
         """Test getting read IDs when user has read nothing."""
+        user_id = _require_id(test_user.id)
         # Act
-        content_ids = read_status.get_read_content_ids(db_session, test_user.id)
+        content_ids = read_status.get_read_content_ids(db_session, user_id)
 
         # Assert
         assert content_ids == []
@@ -158,17 +189,20 @@ class TestGetReadContentIds:
         self, db_session: Session, test_user: User, test_content: Content, test_content_2: Content
     ):
         """Test getting read IDs when user has read multiple items."""
+        first_content_id = _require_id(test_content.id)
+        second_content_id = _require_id(test_content_2.id)
+        user_id = _require_id(test_user.id)
         # Arrange - mark as read
-        read_status.mark_content_as_read(db_session, test_content.id, test_user.id)
-        read_status.mark_content_as_read(db_session, test_content_2.id, test_user.id)
+        read_status.mark_content_as_read(db_session, first_content_id, user_id)
+        read_status.mark_content_as_read(db_session, second_content_id, user_id)
 
         # Act
-        content_ids = read_status.get_read_content_ids(db_session, test_user.id)
+        content_ids = read_status.get_read_content_ids(db_session, user_id)
 
         # Assert
         assert len(content_ids) == 2
-        assert test_content.id in content_ids
-        assert test_content_2.id in content_ids
+        assert first_content_id in content_ids
+        assert second_content_id in content_ids
 
     def test_get_read_content_ids_user_isolation(
         self,
@@ -180,17 +214,21 @@ class TestGetReadContentIds:
         """Test that read IDs are isolated per user."""
         user1 = user_factory(email="user1@example.com", apple_id="apple_id_1")
         user2 = user_factory(email="user2@example.com", apple_id="apple_id_2")
+        first_content_id = _require_id(test_content.id)
+        second_content_id = _require_id(test_content_2.id)
+        user1_id = _require_id(user1.id)
+        user2_id = _require_id(user2.id)
 
-        read_status.mark_content_as_read(db_session, test_content.id, user1.id)
-        read_status.mark_content_as_read(db_session, test_content_2.id, user2.id)
+        read_status.mark_content_as_read(db_session, first_content_id, user1_id)
+        read_status.mark_content_as_read(db_session, second_content_id, user2_id)
 
         # Act
-        user1_read = read_status.get_read_content_ids(db_session, user1.id)
-        user2_read = read_status.get_read_content_ids(db_session, user2.id)
+        user1_read = read_status.get_read_content_ids(db_session, user1_id)
+        user2_read = read_status.get_read_content_ids(db_session, user2_id)
 
         # Assert
-        assert user1_read == [test_content.id]
-        assert user2_read == [test_content_2.id]
+        assert user1_read == [first_content_id]
+        assert user2_read == [second_content_id]
 
 
 class TestIsContentRead:
@@ -200,11 +238,13 @@ class TestIsContentRead:
         self, db_session: Session, test_user: User, test_content: Content
     ):
         """Test checking if content is read returns True when it is."""
+        content_id = _require_id(test_content.id)
+        user_id = _require_id(test_user.id)
         # Arrange
-        read_status.mark_content_as_read(db_session, test_content.id, test_user.id)
+        read_status.mark_content_as_read(db_session, content_id, user_id)
 
         # Act
-        is_read = read_status.is_content_read(db_session, test_content.id, test_user.id)
+        is_read = read_status.is_content_read(db_session, content_id, user_id)
 
         # Assert
         assert is_read is True
@@ -213,8 +253,10 @@ class TestIsContentRead:
         self, db_session: Session, test_user: User, test_content: Content
     ):
         """Test checking if content is read returns False when it isn't."""
+        content_id = _require_id(test_content.id)
+        user_id = _require_id(test_user.id)
         # Act
-        is_read = read_status.is_content_read(db_session, test_content.id, test_user.id)
+        is_read = read_status.is_content_read(db_session, content_id, user_id)
 
         # Assert
         assert is_read is False
@@ -227,21 +269,25 @@ class TestClearReadStatus:
         self, db_session: Session, test_user: User, test_content: Content, test_content_2: Content
     ):
         """Test clearing all read status for a user."""
+        first_content_id = _require_id(test_content.id)
+        second_content_id = _require_id(test_content_2.id)
+        user_id = _require_id(test_user.id)
         # Arrange - mark multiple as read
-        read_status.mark_content_as_read(db_session, test_content.id, test_user.id)
-        read_status.mark_content_as_read(db_session, test_content_2.id, test_user.id)
+        read_status.mark_content_as_read(db_session, first_content_id, user_id)
+        read_status.mark_content_as_read(db_session, second_content_id, user_id)
 
         # Act
-        count = read_status.clear_read_status(db_session, test_user.id)
+        count = read_status.clear_read_status(db_session, user_id)
 
         # Assert
         assert count == 2
-        assert read_status.get_read_content_ids(db_session, test_user.id) == []
+        assert read_status.get_read_content_ids(db_session, user_id) == []
 
     def test_clear_read_status_empty(self, db_session: Session, test_user: User):
         """Test clearing read status when user has none."""
+        user_id = _require_id(test_user.id)
         # Act
-        count = read_status.clear_read_status(db_session, test_user.id)
+        count = read_status.clear_read_status(db_session, user_id)
 
         # Assert
         assert count == 0
@@ -256,13 +302,17 @@ class TestClearReadStatus:
         """Test that clearing read status only affects specific user."""
         user1 = user_factory(email="user1@example.com", apple_id="apple_id_1")
         user2 = user_factory(email="user2@example.com", apple_id="apple_id_2")
+        first_content_id = _require_id(test_content.id)
+        second_content_id = _require_id(test_content_2.id)
+        user1_id = _require_id(user1.id)
+        user2_id = _require_id(user2.id)
 
-        read_status.mark_content_as_read(db_session, test_content.id, user1.id)
-        read_status.mark_content_as_read(db_session, test_content_2.id, user2.id)
+        read_status.mark_content_as_read(db_session, first_content_id, user1_id)
+        read_status.mark_content_as_read(db_session, second_content_id, user2_id)
 
         # Act - clear user1's read status
-        read_status.clear_read_status(db_session, user1.id)
+        read_status.clear_read_status(db_session, user1_id)
 
         # Assert - user1's cleared, user2's remains
-        assert read_status.get_read_content_ids(db_session, user1.id) == []
-        assert read_status.get_read_content_ids(db_session, user2.id) == [test_content_2.id]
+        assert read_status.get_read_content_ids(db_session, user1_id) == []
+        assert read_status.get_read_content_ids(db_session, user2_id) == [second_content_id]

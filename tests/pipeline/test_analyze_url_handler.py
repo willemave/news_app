@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import Mock
 
 from app.constants import DEFAULT_INITIAL_FEED_ARTICLE_DOWNLOAD_COUNT, SELF_SUBMISSION_SOURCE
@@ -15,6 +16,11 @@ from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope
 from app.services.queue import TaskType
 from app.services.x_api import XTweet, XTweetFetchResult, XTweetsPage
+
+
+def _metadata(value: object | None) -> dict[str, Any]:
+    assert isinstance(value, dict)
+    return cast(dict[str, Any], value)
 
 
 def _build_context(db_session, queue_gateway: Mock) -> TaskContext:
@@ -78,12 +84,14 @@ def test_tweet_submission_missing_x_app_auth_fails_fast(
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
+    tweet_enrichment = _metadata(metadata["tweet_enrichment"])
     assert result.success is False
     assert result.retryable is False
     assert content.status == ContentStatus.FAILED.value
     assert "X_APP_BEARER_TOKEN" in (content.error_message or "")
-    assert content.content_metadata["tweet_enrichment"]["status"] == "failed"
-    assert content.content_metadata["tweet_enrichment"]["reason"] == "x_app_auth_unavailable"
+    assert tweet_enrichment["status"] == "failed"
+    assert tweet_enrichment["reason"] == "x_app_auth_unavailable"
     queue_gateway.enqueue.assert_not_called()
     assert db_session.query(Content).count() == 1
 
@@ -154,19 +162,21 @@ def test_subscribe_to_feed_accepts_direct_feed_url(db_session, monkeypatch) -> N
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
+    feed_subscription = _metadata(metadata["feed_subscription"])
+    initial_download = _metadata(feed_subscription["initial_download"])
     assert result.success is True
     assert content.status == ContentStatus.SKIPPED.value
-    assert content.content_metadata["detected_feed"] == {
+    assert metadata["detected_feed"] == {
         "url": "https://example.com/feed.xml",
         "type": "atom",
         "title": "Example Feed",
         "format": "rss",
     }
-    assert content.content_metadata["feed_subscription"]["status"] == "created"
-    assert content.content_metadata["feed_subscription"]["feed_url"] == "https://example.com/feed.xml"
-    assert content.content_metadata["feed_subscription"]["feed_type"] == "atom"
-    assert content.content_metadata["feed_subscription"]["created"] is True
-    initial_download = content.content_metadata["feed_subscription"]["initial_download"]
+    assert feed_subscription["status"] == "created"
+    assert feed_subscription["feed_url"] == "https://example.com/feed.xml"
+    assert feed_subscription["feed_type"] == "atom"
+    assert feed_subscription["created"] is True
     assert initial_download["ran"] is True
     assert initial_download["status"] == "completed"
     assert initial_download["requested_count"] == DEFAULT_INITIAL_FEED_ARTICLE_DOWNLOAD_COUNT
@@ -260,23 +270,21 @@ def test_subscribe_to_feed_from_article_page_uses_detected_feed_url_and_page_tit
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
+    feed_subscription = _metadata(metadata["feed_subscription"])
+    initial_download = _metadata(feed_subscription["initial_download"])
     assert result.success is True
     assert content.status == ContentStatus.SKIPPED.value
-    assert content.content_metadata["detected_feed"] == {
+    assert metadata["detected_feed"] == {
         "url": "https://registerspill.thorstenball.com/feed.xml",
         "type": "substack",
         "title": None,
         "format": "rss",
     }
-    assert content.content_metadata["feed_subscription"]["feed_url"] == (
-        "https://registerspill.thorstenball.com/feed.xml"
-    )
-    assert content.content_metadata["feed_subscription"]["feed_type"] == "substack"
-    assert content.content_metadata["feed_subscription"]["created"] is True
-    assert (
-        content.content_metadata["feed_subscription"]["initial_download"]["status"]
-        == "completed"
-    )
+    assert feed_subscription["feed_url"] == ("https://registerspill.thorstenball.com/feed.xml")
+    assert feed_subscription["feed_type"] == "substack"
+    assert feed_subscription["created"] is True
+    assert initial_download["status"] == "completed"
     queue_gateway.enqueue.assert_not_called()
 
     config = (
@@ -363,11 +371,13 @@ def test_subscribe_to_feed_existing_subscription_skips_initial_download(
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
+    feed_subscription = _metadata(metadata["feed_subscription"])
     assert result.success is True
-    assert content.content_metadata["feed_subscription"]["status"] == "already_exists"
-    assert content.content_metadata["feed_subscription"]["created"] is False
-    assert content.content_metadata["feed_subscription"]["config_id"] is None
-    assert content.content_metadata["feed_subscription"]["initial_download"] == {
+    assert feed_subscription["status"] == "already_exists"
+    assert feed_subscription["created"] is False
+    assert feed_subscription["config_id"] is None
+    assert feed_subscription["initial_download"] == {
         "requested_count": DEFAULT_INITIAL_FEED_ARTICLE_DOWNLOAD_COUNT,
         "ran": False,
         "status": "skipped",
@@ -440,11 +450,13 @@ def test_subscribe_to_feed_records_initial_download_failure(
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
+    feed_subscription = _metadata(metadata["feed_subscription"])
+    initial_download = _metadata(feed_subscription["initial_download"])
     assert result.success is True
     assert content.status == ContentStatus.SKIPPED.value
-    assert content.content_metadata["feed_subscription"]["status"] == "created"
-    assert content.content_metadata["feed_subscription"]["created"] is True
-    initial_download = content.content_metadata["feed_subscription"]["initial_download"]
+    assert feed_subscription["status"] == "created"
+    assert feed_subscription["created"] is True
     assert initial_download["ran"] is True
     assert initial_download["status"] == "failed"
     assert initial_download["requested_count"] == DEFAULT_INITIAL_FEED_ARTICLE_DOWNLOAD_COUNT
@@ -533,15 +545,10 @@ def test_tweet_bookmark_reuses_existing_article_when_primary_url_already_exists(
     assert result.success is True
     assert bookmark_shell.status == ContentStatus.SKIPPED.value
     assert bookmark_shell.error_message == "Canonical URL conflicts with existing content"
-    assert bookmark_shell.content_metadata["canonical_content_id"] == existing_article.id
+    assert _metadata(bookmark_shell.content_metadata)["canonical_content_id"] == existing_article.id
     assert status_row is not None
     assert status_row.status == "inbox"
-    assert (
-        db_session.query(Content)
-        .filter(Content.url == "https://example.com/story")
-        .count()
-        == 1
-    )
+    assert db_session.query(Content).filter(Content.url == "https://example.com/story").count() == 1
     queue_gateway.enqueue.assert_not_called()
 
 
@@ -564,6 +571,7 @@ def test_tweet_bookmark_records_native_x_article_metadata(
     db_session.add(bookmark_shell)
     db_session.commit()
     db_session.refresh(bookmark_shell)
+    metadata = _metadata(bookmark_shell.content_metadata)
 
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.fetch_tweet_by_id",
@@ -605,16 +613,12 @@ def test_tweet_bookmark_records_native_x_article_metadata(
     assert result.success is True
     assert bookmark_shell.url == "https://x.com/i/status/123456789"
     assert bookmark_shell.title == "Native X Article"
-    assert bookmark_shell.content_metadata["tweet_article_title"] == "Native X Article"
-    assert (
-        bookmark_shell.content_metadata["tweet_article_text"]
-        == "This is the full native X article body."
+    assert metadata["tweet_article_title"] == "Native X Article"
+    assert metadata["tweet_article_text"] == "This is the full native X article body."
+    assert metadata["tweet_processing_text"] == (
+        "Native X Article\n\nThis is the full native X article body."
     )
-    assert (
-        bookmark_shell.content_metadata["tweet_processing_text"]
-        == "Native X Article\n\nThis is the full native X article body."
-    )
-    assert "tweet_only" not in bookmark_shell.content_metadata
+    assert "tweet_only" not in metadata
     queue_gateway.enqueue.assert_called_once_with(
         TaskType.PROCESS_CONTENT,
         content_id=bookmark_shell.id,
@@ -637,6 +641,7 @@ def test_tweet_share_uses_root_article_url_without_fanout(db_session, monkeypatc
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.fetch_tweet_by_id",
@@ -674,10 +679,10 @@ def test_tweet_share_uses_root_article_url_without_fanout(db_session, monkeypatc
 
     assert result.success is True
     assert content.url == "https://example.com/root-story"
-    assert content.content_metadata["tweet_text"] == "Root tweet body"
-    assert content.content_metadata["tweet_resolution_source"] == "root_tweet"
-    assert content.content_metadata["tweet_resolution_tweet_id"] == "123456789"
-    assert content.content_metadata["tweet_thread_lookup_status"] == "not_needed"
+    assert metadata["tweet_text"] == "Root tweet body"
+    assert metadata["tweet_resolution_source"] == "root_tweet"
+    assert metadata["tweet_resolution_tweet_id"] == "123456789"
+    assert metadata["tweet_thread_lookup_status"] == "not_needed"
     assert db_session.query(Content).count() == 1
     queue_gateway.enqueue.assert_called_once_with(TaskType.PROCESS_CONTENT, content_id=content.id)
 
@@ -698,6 +703,7 @@ def test_tweet_share_resolves_article_from_linked_tweet(db_session, monkeypatch)
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -749,11 +755,11 @@ def test_tweet_share_resolves_article_from_linked_tweet(db_session, monkeypatch)
 
     assert result.success is True
     assert content.url == "https://example.com/linked-story"
-    assert content.content_metadata["tweet_text"] == "Root tweet body"
-    assert content.content_metadata["tweet_linked_tweet_ids"] == ["987654321"]
-    assert content.content_metadata["tweet_resolution_source"] == "linked_tweet"
-    assert content.content_metadata["tweet_resolution_tweet_id"] == "987654321"
-    assert content.content_metadata["tweet_thread_lookup_status"] == "not_needed"
+    assert metadata["tweet_text"] == "Root tweet body"
+    assert metadata["tweet_linked_tweet_ids"] == ["987654321"]
+    assert metadata["tweet_resolution_source"] == "linked_tweet"
+    assert metadata["tweet_resolution_tweet_id"] == "987654321"
+    assert metadata["tweet_thread_lookup_status"] == "not_needed"
 
 
 def test_tweet_share_resolves_article_from_same_author_thread_reply(
@@ -775,6 +781,7 @@ def test_tweet_share_resolves_article_from_same_author_thread_reply(
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -835,10 +842,10 @@ def test_tweet_share_resolves_article_from_same_author_thread_reply(
 
     assert result.success is True
     assert content.url == "https://example.com/thread-story"
-    assert content.content_metadata["tweet_resolution_source"] == "thread_reply"
-    assert content.content_metadata["tweet_resolution_tweet_id"] == "123456790"
-    assert content.content_metadata["tweet_thread_lookup_status"] == "found"
-    assert content.content_metadata["tweet_thread_text"] == "Thread root\n\nHere is the link"
+    assert metadata["tweet_resolution_source"] == "thread_reply"
+    assert metadata["tweet_resolution_tweet_id"] == "123456790"
+    assert metadata["tweet_thread_lookup_status"] == "found"
+    assert metadata["tweet_thread_text"] == "Thread root\n\nHere is the link"
 
 
 def test_tweet_share_falls_back_to_tweet_only_when_no_article_found(
@@ -860,6 +867,7 @@ def test_tweet_share_falls_back_to_tweet_only_when_no_article_found(
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -908,9 +916,9 @@ def test_tweet_share_falls_back_to_tweet_only_when_no_article_found(
 
     assert result.success is True
     assert content.url == "https://x.com/i/status/123456789"
-    assert content.content_metadata["tweet_resolution_source"] == "tweet_only"
-    assert content.content_metadata["tweet_thread_lookup_status"] == "not_found"
-    assert content.content_metadata["tweet_only"] is True
+    assert metadata["tweet_resolution_source"] == "tweet_only"
+    assert metadata["tweet_thread_lookup_status"] == "not_found"
+    assert metadata["tweet_only"] is True
 
 
 def test_tweet_share_uses_user_timeline_for_older_threads(db_session, monkeypatch) -> None:
@@ -929,6 +937,7 @@ def test_tweet_share_uses_user_timeline_for_older_threads(db_session, monkeypatc
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -983,9 +992,9 @@ def test_tweet_share_uses_user_timeline_for_older_threads(db_session, monkeypatc
 
     assert result.success is True
     assert content.url == "https://example.com/old-thread-story"
-    assert content.content_metadata["tweet_resolution_source"] == "thread_reply"
-    assert content.content_metadata["tweet_resolution_tweet_id"] == "123456790"
-    assert content.content_metadata["tweet_thread_lookup_status"] == "found"
+    assert metadata["tweet_resolution_source"] == "thread_reply"
+    assert metadata["tweet_resolution_tweet_id"] == "123456790"
+    assert metadata["tweet_thread_lookup_status"] == "found"
 
 
 def test_tweet_share_records_capped_thread_lookup_and_degrades_gracefully(
@@ -1007,6 +1016,7 @@ def test_tweet_share_records_capped_thread_lookup_and_degrades_gracefully(
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -1057,6 +1067,6 @@ def test_tweet_share_records_capped_thread_lookup_and_degrades_gracefully(
     assert result.success is True
     assert call_counter["count"] == 10
     assert content.url == "https://x.com/i/status/123456789"
-    assert content.content_metadata["tweet_resolution_source"] == "tweet_only"
-    assert content.content_metadata["tweet_thread_lookup_status"] == "capped"
-    assert content.content_metadata["tweet_only"] is True
+    assert metadata["tweet_resolution_source"] == "tweet_only"
+    assert metadata["tweet_thread_lookup_status"] == "capped"
+    assert metadata["tweet_only"] is True

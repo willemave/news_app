@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from app.models.api.common import OnboardingFastDiscoverRequest, OnboardingSuggestion
 from app.services.exa_client import ExaSearchResult
 from app.services.onboarding import (
@@ -59,7 +61,11 @@ def test_format_discovery_prompt_includes_curated_fill_ins() -> None:
     ]
     curated = _curated_defaults()
 
-    prompt = _format_discovery_prompt(request, results, _curated_fill_in_candidates(curated))
+    prompt = _format_discovery_prompt(
+        request,
+        cast(list[Any], results),
+        _curated_fill_in_candidates(curated),
+    )
 
     assert "web_results:" in prompt
     assert "curated_fill_ins:" in prompt
@@ -77,9 +83,7 @@ def test_fast_discover_defaults_backfills_rationale() -> None:
     )
 
     for item in (
-        response.recommended_substacks
-        + response.recommended_pods
-        + response.recommended_subreddits
+        response.recommended_substacks + response.recommended_pods + response.recommended_subreddits
     ):
         assert item.rationale
         assert item.rationale.strip()
@@ -109,9 +113,7 @@ def test_build_discovery_response_backfills_merged_rationale() -> None:
     assert response.recommended_substacks[0].rationale == "Freshly discovered AI source."
 
     for item in (
-        response.recommended_substacks
-        + response.recommended_pods
-        + response.recommended_subreddits
+        response.recommended_substacks + response.recommended_pods + response.recommended_subreddits
     ):
         assert item.rationale
         assert item.rationale.strip()

@@ -50,7 +50,7 @@ def test_run_summary_eval_case_fails_when_generated_title_matches_bad_title(
 
     def fake_run_summary_generation(*, case, model_spec, longform_template):  # noqa: ANN001
         del model_spec, longform_template
-        return "news_digest", {"title": case.bad_titles[0], "summary": "ignored"}
+        return "news", {"title": case.bad_titles[0], "summary": "ignored"}
 
     monkeypatch.setattr(summary_eval, "_run_summary_generation", fake_run_summary_generation)
 
@@ -79,7 +79,7 @@ def test_run_summary_eval_case_uses_judge_verdict(monkeypatch) -> None:
 
     def fake_run_summary_generation(*, case, model_spec, longform_template):  # noqa: ANN001
         del case, model_spec, longform_template
-        return "news_digest", {
+        return "news", {
             "title": "Perplexity Adds AI Tax Filing Guidance to Computer",
             "summary": "Perplexity now guides users through federal tax returns.",
         }
@@ -140,7 +140,7 @@ def test_run_summary_eval_suite_supports_case_selection(monkeypatch) -> None:
             content_type=case.content_type,
             model_spec="google:gemini-3.1-flash-lite-preview",
             judge_model_spec="anthropic:claude-opus-4-1-20250805",
-            prompt_type="news_digest",
+            prompt_type="news",
             passed=True,
             generated_title="Synthetic title",
         )

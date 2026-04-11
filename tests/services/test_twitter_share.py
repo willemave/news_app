@@ -34,11 +34,7 @@ def test_fetch_tweet_detail_parses_thread(monkeypatch) -> None:
                 ]
             },
         },
-        "core": {
-            "user_results": {
-                "result": {"legacy": {"screen_name": "alice", "name": "Alice"}}
-            }
-        },
+        "core": {"user_results": {"result": {"legacy": {"screen_name": "alice", "name": "Alice"}}}},
     }
     thread_result = {
         "rest_id": "124",
@@ -51,11 +47,7 @@ def test_fetch_tweet_detail_parses_thread(monkeypatch) -> None:
             "reply_count": 0,
             "entities": {"urls": [{"expanded_url": "https://example.org"}]},
         },
-        "core": {
-            "user_results": {
-                "result": {"legacy": {"screen_name": "alice", "name": "Alice"}}
-            }
-        },
+        "core": {"user_results": {"result": {"legacy": {"screen_name": "alice", "name": "Alice"}}}},
     }
     payload = {
         "data": {
@@ -64,8 +56,16 @@ def test_fetch_tweet_detail_parses_thread(monkeypatch) -> None:
                 "instructions": [
                     {
                         "entries": [
-                            {"content": {"itemContent": {"tweet_results": {"result": tweet_result}}}},
-                            {"content": {"itemContent": {"tweet_results": {"result": thread_result}}}},
+                            {
+                                "content": {
+                                    "itemContent": {"tweet_results": {"result": tweet_result}}
+                                }
+                            },
+                            {
+                                "content": {
+                                    "itemContent": {"tweet_results": {"result": thread_result}}
+                                }
+                            },
                         ]
                     }
                 ]
@@ -92,9 +92,7 @@ def test_fetch_tweet_detail_parses_thread(monkeypatch) -> None:
     monkeypatch.setattr(twitter_share, "_get_query_ids", lambda **kwargs: {"TweetDetail": "TEST"})
     monkeypatch.setattr(twitter_share.httpx, "Client", DummyClient)
 
-    credentials = twitter_share.TwitterCredentials(
-        auth_token="auth", ct0="ct0", user_agent="ua"
-    )
+    credentials = twitter_share.TwitterCredentials(auth_token="auth", ct0="ct0", user_agent="ua")
     result = twitter_share.fetch_tweet_detail(
         twitter_share.TweetFetchParams(tweet_id="123", credentials=credentials)
     )

@@ -1,5 +1,6 @@
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx  # For creating mock Headers
@@ -344,19 +345,19 @@ def test_newspaper_fallback_skips_non_allowlisted_domain(html_strategy: HtmlProc
 def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrategy):
     """Test that browser close errors don't fail the extraction."""
     url = "https://en.wikipedia.org/wiki/Pfeilstorch"
-    
+
     # Mock successful extraction result
     mock_result = MagicMock()
     mock_result.success = True
     mock_result.metadata = {"title": "Pfeilstorch Article"}
     mock_result.url = url
     mock_result.cleaned_html = "<html>...</html>"
-    
+
     # Create a mock markdown object
     mock_markdown = MagicMock()
     mock_markdown.raw_markdown = "Article about Pfeilstorch"
     mock_result.markdown = mock_markdown
-    
+
     # Mock crawler that raises error on close
     mock_crawler = AsyncMock()
     mock_crawler.arun = AsyncMock(return_value=mock_result)
@@ -365,13 +366,13 @@ def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrat
     mock_crawler.__aexit__ = AsyncMock(
         side_effect=Exception("Browser.close: Connection closed while reading from the driver")
     )
-    
+
     with patch(
         "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
     ):
         # Should not raise an exception despite browser close error
         extracted_data = html_strategy.extract_data("", url)
-        
+
         # Verify extraction succeeded
         assert extracted_data["title"] == "Pfeilstorch Article"
         assert extracted_data["text_content"] == "Article about Pfeilstorch"
@@ -429,7 +430,7 @@ def test_extract_data_uses_fallback_for_discussion_only_extraction(
     assert extracted_data["text_content"] == "Full article body"
     assert extracted_data["final_url_after_redirects"] == url
     assert extracted_data["extraction_error"] is None
-    html_strategy.http_client.get.assert_not_called()
+    cast(Any, html_strategy.http_client.get).assert_not_called()
 
 
 def test_extract_data_uses_http_fallback_when_exa_fallback_fails(
@@ -464,7 +465,8 @@ def test_extract_data_uses_http_fallback_when_exa_fallback_fails(
         "<body><article>Full article body</article></body></html>"
     )
     mock_response.url = url
-    html_strategy.http_client.get.return_value = mock_response
+    mock_get = cast(Any, html_strategy.http_client.get)
+    mock_get.return_value = mock_response
 
     with (
         patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
@@ -480,7 +482,7 @@ def test_extract_data_uses_http_fallback_when_exa_fallback_fails(
     assert extracted_data["text_content"] == "Full article body"
     assert extracted_data["final_url_after_redirects"] == url
     assert extracted_data["extraction_error"] is None
-    html_strategy.http_client.get.assert_called_once()
+    mock_get.assert_called_once()
 
 
 def test_prepare_for_llm(html_strategy: HtmlProcessorStrategy):
@@ -577,17 +579,20 @@ def test_extract_data_includes_table_strategy(monkeypatch, mock_http_client):
     table_strategy = MagicMock(name="table_strategy")
     run_config_instance = MagicMock(name="run_config")
 
-    with patch(
-        "app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler
-    ), patch(
-        "app.processing_strategies.html_strategy.LLMConfig", return_value=MagicMock()
-    ) as llm_config_cls, patch(
-        "app.processing_strategies.html_strategy.LLMTableExtraction",
-        return_value=table_strategy,
-    ) as table_extraction_cls, patch(
-        "app.processing_strategies.html_strategy.CrawlerRunConfig",
-        return_value=run_config_instance,
-    ) as run_config_cls:
+    with (
+        patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
+        patch(
+            "app.processing_strategies.html_strategy.LLMConfig", return_value=MagicMock()
+        ) as llm_config_cls,
+        patch(
+            "app.processing_strategies.html_strategy.LLMTableExtraction",
+            return_value=table_strategy,
+        ) as table_extraction_cls,
+        patch(
+            "app.processing_strategies.html_strategy.CrawlerRunConfig",
+            return_value=run_config_instance,
+        ) as run_config_cls,
+    ):
         extracted_data = strategy.extract_data("", url)
 
     table_extraction_cls.assert_called_once()

@@ -1,7 +1,7 @@
 """Test HTML strategy event loop handling."""
 
-from urllib.parse import urlparse
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 from app.processing_strategies.html_strategy import HtmlProcessorStrategy
 
@@ -72,6 +72,7 @@ class TestHtmlStrategyEventLoop:
         strategy = HtmlProcessorStrategy(mock_http_client)
 
         with patch("app.processing_strategies.html_strategy.AsyncWebCrawler") as mock_crawler_class:
+
             def create_mock_result(url):
                 mock_result = MagicMock()
                 mock_result.success = True

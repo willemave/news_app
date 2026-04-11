@@ -15,7 +15,7 @@ def test_domain_override_sets_no_wait_for(monkeypatch):
     _set_required_env(monkeypatch)
     get_settings.cache_clear()
 
-    strategy = HtmlProcessorStrategy(http_client=None)  # type: ignore[arg-type]
+    strategy = HtmlProcessorStrategy(http_client=None)
     overrides = strategy._get_domain_overrides(  # pylint: disable=protected-access
         "https://screenrant.com/some-article"
     )
